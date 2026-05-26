@@ -1,5 +1,3 @@
-
-
 import { useEffect } from "react";
 
 // react-router-dom components
@@ -28,6 +26,8 @@ function PageLayout({ background, children }) {
       height="100%"
       minHeight="100vh"
       bgColor={background}
+      p={0}
+      px={0}
       sx={{ overflowX: "hidden" }}
     >
       {children}

@@ -1,0 +1,302 @@
+{
+  "info": {
+    "name": "Sales ERP API Collection",
+    "description": "API Endpoints for EduNextG Sales Management System.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Authentication",
+      "item": [
+        {
+          "name": "Admin Login",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"admin@edunextg.com\",\n  \"password\": \"admin123\"\n}"
+            },
+            "url": {
+              "raw": "http://localhost:5000/api/auth/login",
+              "protocol": "http",
+              "host": [
+                "localhost"
+              ],
+              "port": "5000",
+              "path": [
+                "api",
+                "auth",
+                "login"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Verify Token",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{auth_token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "http://localhost:5000/api/auth/verify",
+              "protocol": "http",
+              "host": [
+                "localhost"
+              ],
+              "port": "5000",
+              "path": [
+                "api",
+                "auth",
+                "verify"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Staff & Sales",
+      "item": [
+        {
+          "name": "Get All Staff",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{auth_token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "http://localhost:5000/api/staff",
+              "protocol": "http",
+              "host": [
+                "localhost"
+              ],
+              "port": "5000",
+              "path": [
+                "api",
+                "staff"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get Staff Outlets by Date",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{auth_token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "http://localhost:5000/api/staff/1/outlets-by-date?date=2024-05-20",
+              "protocol": "http",
+              "host": [
+                "localhost"
+              ],
+              "port": "5000",
+              "path": [
+                "api",
+                "staff",
+                "1",
+                "outlets-by-date"
+              ],
+              "query": [
+                {
+                  "key": "date",
+                  "value": "2024-05-20"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Submit Sales (Cash/Credit)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{auth_token}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"date\": \"2024-05-20\",\n  \"sales\": [\n    {\n      \"outletId\": 1,\n      \"invoiceNumber\": \"INV-1001\",\n      \"price\": 1500.50,\n      \"deliveryBoyId\": 1,\n      \"vehicleNo\": \"KL-10-XY-1234\"\n    }\n  ]\n}"
+            },
+            "url": {
+              "raw": "http://localhost:5000/api/staff/1/sales",
+              "protocol": "http",
+              "host": [
+                "localhost"
+              ],
+              "port": "5000",
+              "path": [
+                "api",
+                "staff",
+                "1",
+                "sales"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Fetch Submitted Sales for Staff",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{auth_token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "http://localhost:5000/api/staff/1/sales-by-date?date=2024-05-20",
+              "protocol": "http",
+              "host": [
+                "localhost"
+              ],
+              "port": "5000",
+              "path": [
+                "api",
+                "staff",
+                "1",
+                "sales-by-date"
+              ],
+              "query": [
+                {
+                  "key": "date",
+                  "value": "2024-05-20"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Update Payment Mode (to Credit)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{auth_token}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"paymentMode\": \"credit\",\n  \"paidAmount\": 0,\n  \"balanceAmount\": 1500.50,\n  \"creditDays\": 15\n}"
+            },
+            "url": {
+              "raw": "http://localhost:5000/api/staff/sales/1/payment",
+              "protocol": "http",
+              "host": [
+                "localhost"
+              ],
+              "port": "5000",
+              "path": [
+                "api",
+                "staff",
+                "sales",
+                "1",
+                "payment"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get Pending Credits Global",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{auth_token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "http://localhost:5000/api/staff/credits/pending",
+              "protocol": "http",
+              "host": [
+                "localhost"
+              ],
+              "port": "5000",
+              "path": [
+                "api",
+                "staff",
+                "credits",
+                "pending"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Delivery Boys",
+      "item": [
+        {
+          "name": "Get All Delivery Boys",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{auth_token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "http://localhost:5000/api/delivery-boy",
+              "protocol": "http",
+              "host": [
+                "localhost"
+              ],
+              "port": "5000",
+              "path": [
+                "api",
+                "delivery-boy"
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "auth_token",
+      "value": "PASTE_YOUR_JWT_TOKEN_HERE"
+    }
+  ]
+}

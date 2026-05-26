@@ -1,11 +1,33 @@
 import StaffModel from '../models/staffModel.js';
+import CompanyModel from '../models/companyModel.js';
+import DeliveryBoyModel from '../models/deliveryBoyModel.js';
+import {
+    validateDigitsOnly,
+    validateNumeric,
+    validatePositiveInteger,
+    validateRequiredText,
+} from '../utils/validation.js';
+
+async function resolveCompanyId(companyName) {
+    if (!companyName || !String(companyName).trim()) {
+        return null;
+    }
+    return CompanyModel.findOrCreateByName(String(companyName).trim());
+}
 
 export const createStaff = async (req, res) => {
     try {
-        const { name, contactNo, assignments } = req.body;
+        const { name, contactNo, companyName, assignments } = req.body;
+
+        const contactValidation = validateDigitsOnly(contactNo, 'Contact number');
+        if (!contactValidation.valid) {
+            return res.status(400).json({ error: contactValidation.error });
+        }
+
+        const companyId = await resolveCompanyId(companyName);
 
         // Create staff entry
-        const staffId = await StaffModel.create(name, contactNo);
+        const staffId = await StaffModel.create(name, contactValidation.value, companyId);
 
         // Add location assignments
         // assignments: { Monday: [{ locationName: "..." }], Tuesday: [...] }
@@ -56,8 +78,19 @@ export const addCounter = async (req, res) => {
         const { day, location, counters } = req.body;
 
         if (Array.isArray(counters)) {
-            for (const counter of counters) {
-                await StaffModel.addCounter(id, day, location, counter);
+            for (let i = 0; i < counters.length; i++) {
+                const counter = counters[i];
+                const contactValidation = validateDigitsOnly(
+                    counter.contactNumber,
+                    `Counter ${i + 1} contact number`
+                );
+                if (!contactValidation.valid) {
+                    return res.status(400).json({ error: contactValidation.error });
+                }
+                await StaffModel.addCounter(id, day, location, {
+                    ...counter,
+                    contactNumber: contactValidation.value,
+                });
             }
         }
 
@@ -104,10 +137,17 @@ export const getStaffFullDetails = async (req, res) => {
 export const updateStaff = async (req, res) => {
     try {
         const { id } = req.params;
-        const { name, contactNo, assignments } = req.body;
+        const { name, contactNo, companyName, assignments } = req.body;
+
+        const contactValidation = validateDigitsOnly(contactNo, 'Contact number');
+        if (!contactValidation.valid) {
+            return res.status(400).json({ error: contactValidation.error });
+        }
+
+        const companyId = await resolveCompanyId(companyName);
 
         // Update staff info
-        await StaffModel.update(id, name, contactNo);
+        await StaffModel.update(id, name, contactValidation.value, companyId);
 
         // Replace locations
         await StaffModel.deleteLocations(id);
@@ -137,7 +177,7 @@ export const getOutletsByStaffAndDate = async (req, res) => {
         }
 
         const dayName = new Intl.DateTimeFormat('en-US', { weekday: 'long' }).format(new Date(date));
-        const outlets = await StaffModel.getOutletsForStaffAndDay(id, dayName);
+        const outlets = await StaffModel.getMissingSalesOutletsForDate(id, dayName, date);
         
         res.status(200).json(outlets);
     } catch (error) {
@@ -155,10 +195,157 @@ export const recordSales = async (req, res) => {
             return res.status(400).json({ error: 'Date and sales array are required' });
         }
 
-        await StaffModel.saveSales(id, date, sales);
-        res.status(201).json({ message: 'Sales recorded successfully' });
+        const deliveryBoyCache = new Map();
+        const validatedSales = [];
+        for (let i = 0; i < sales.length; i++) {
+            const item = sales[i];
+            const outletValidation = validatePositiveInteger(item.outletId, `Sale ${i + 1} outlet ID`);
+            if (!outletValidation.valid) {
+                return res.status(400).json({ error: outletValidation.error });
+            }
+            const invoiceValidation = validateRequiredText(
+                item.invoiceNumber,
+                `Sale ${i + 1} invoice number`
+            );
+            if (!invoiceValidation.valid) {
+                return res.status(400).json({ error: invoiceValidation.error });
+            }
+            const priceValidation = validateNumeric(item.price, `Sale ${i + 1} price`);
+            if (!priceValidation.valid) {
+                return res.status(400).json({ error: priceValidation.error });
+            }
+            const deliveryBoyValidation = validatePositiveInteger(
+                item.deliveryBoyId,
+                `Sale ${i + 1} delivery boy`
+            );
+            if (!deliveryBoyValidation.valid) {
+                return res.status(400).json({ error: deliveryBoyValidation.error });
+            }
+            const vehicleValidation = validateRequiredText(
+                item.vehicleNo,
+                `Sale ${i + 1} vehicle number`
+            );
+            if (!vehicleValidation.valid) {
+                return res.status(400).json({ error: vehicleValidation.error });
+            }
+
+            let deliveryBoyName = deliveryBoyCache.get(deliveryBoyValidation.value);
+            if (!deliveryBoyName) {
+                const deliveryBoy = await DeliveryBoyModel.getById(deliveryBoyValidation.value);
+                if (!deliveryBoy) {
+                    return res.status(400).json({ error: `Sale ${i + 1}: delivery boy not found` });
+                }
+                deliveryBoyName = deliveryBoy.name;
+                deliveryBoyCache.set(deliveryBoyValidation.value, deliveryBoyName);
+            }
+
+            validatedSales.push({
+                outletId: outletValidation.value,
+                invoiceNumber: invoiceValidation.value,
+                price: priceValidation.value,
+                deliveryBoyId: deliveryBoyValidation.value,
+                vehicleNo: item.vehicleNo,
+                paymentMode: 'cash',
+            });
+        }
+
+        const staff = await StaffModel.getDetails(id);
+        const savedSales = await StaffModel.saveSales(id, date, validatedSales);
+        const dayName = new Intl.DateTimeFormat('en-US', { weekday: 'long' }).format(
+            new Date(`${date}T12:00:00`)
+        );
+
+        res.status(201).json({
+            message: 'Sales recorded successfully',
+            summary: {
+                date,
+                dayName,
+                staffName: staff?.name || '',
+                companyName: staff?.company_name || '',
+                sales: savedSales,
+            },
+        });
     } catch (error) {
         console.error('Error recording sales:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+};
+
+export const getPendingCredits = async (req, res) => {
+    try {
+        const credits = await StaffModel.getPendingCredits();
+        res.status(200).json(credits);
+    } catch (error) {
+        console.error('Error fetching pending credits:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+};
+
+export const getOutletsByStaffAndDayName = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { day } = req.query; 
+        const outlets = await StaffModel.getOutletsForStaffAndDay(id, day);
+        res.status(200).json(outlets);
+    } catch (error) {
+        res.status(500).json({ error: 'Internal server error' });
+    }
+};
+
+export const fetchSalesByDate = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { date } = req.query; // Expecting YYYY-MM-DD
+        
+        if (!date) {
+            return res.status(400).json({ error: 'Date is required' });
+        }
+
+        const sales = await StaffModel.getSalesByDate(id, date);
+        res.status(200).json(sales);
+    } catch (error) {
+        console.error('Error fetching sales by date:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+};
+
+export const editCounter = async (req, res) => {
+    try {
+        res.status(200).json({ message: 'Counter updated successfully' });
+    } catch (error) {
+        res.status(500).json({ error: 'Internal server error' });
+    }
+};
+
+export const deleteCounter = async (req, res) => {
+    try {
+        res.status(200).json({ message: 'Counter deleted successfully' });
+    } catch (error) {
+        res.status(500).json({ error: 'Internal server error' });
+    }
+};
+
+export const updatePaymentMode = async (req, res) => {
+    try {
+        const { saleId } = req.params;
+        const { paymentMode, paidAmount, balanceAmount, referenceNo, referenceDate, creditDays } = req.body;
+        
+        if (!paymentMode) {
+            return res.status(400).json({ error: 'Payment mode is required' });
+        }
+
+        await StaffModel.updatePayment(saleId, {
+            paymentMode, 
+            paidAmount, 
+            balanceAmount, 
+            referenceNo, 
+            referenceDate, 
+            creditDays
+        });
+
+        res.status(200).json({ message: 'Payment mode updated successfully' });
+    } catch (error) {
+        console.error('Error updating payment mode:', error);
         res.status(500).json({ error: 'Internal server error' });
     }
 };

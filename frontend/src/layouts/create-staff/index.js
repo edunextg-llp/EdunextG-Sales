@@ -29,12 +29,15 @@ import Footer from "examples/Footer";
 
 function CreateStaff() {
   const days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+
   const [activeTab, setActiveTab] = useState(0);
   const [staffList, setStaffList] = useState([]);
   const [editingStaffId, setEditingStaffId] = useState(null);
+
   const [formData, setFormData] = useState({
     name: "",
     contactNo: "",
+    companyName: "",
     assignments: {
       Monday: [],
       Tuesday: [],
@@ -47,6 +50,7 @@ function CreateStaff() {
 
   const API = "http://localhost:5000/api";
 
+  // Fetch Staff List
   const fetchStaffList = async () => {
     try {
       const response = await fetch(`${API}/staff`);
@@ -61,56 +65,109 @@ function CreateStaff() {
     fetchStaffList();
   }, []);
 
+  // Tabs
   const handleTabChange = (event, newValue) => {
     setActiveTab(newValue);
   };
 
+  // Input Change
   const handleInputChange = (e) => {
     const { name, value } = e.target;
-    setFormData((prev) => ({ ...prev, [name]: value }));
+
+    // Only numbers for contact number
+    if (name === "contactNo") {
+      const numericValue = value.replace(/\D/g, "");
+
+      setFormData((prev) => ({
+        ...prev,
+        [name]: numericValue,
+      }));
+
+      return;
+    }
+
+    setFormData((prev) => ({
+      ...prev,
+      [name]: value,
+    }));
   };
 
+  // Add Location
   const addLocation = (day) => {
     const updatedAssignments = { ...formData.assignments };
+
     updatedAssignments[day].push({
       locationName: "",
     });
-    setFormData((prev) => ({ ...prev, assignments: updatedAssignments }));
+
+    setFormData((prev) => ({
+      ...prev,
+      assignments: updatedAssignments,
+    }));
   };
 
+  // Remove Location
   const removeLocation = (day, locIndex) => {
     const updatedAssignments = { ...formData.assignments };
+
     updatedAssignments[day].splice(locIndex, 1);
-    setFormData((prev) => ({ ...prev, assignments: updatedAssignments }));
+
+    setFormData((prev) => ({
+      ...prev,
+      assignments: updatedAssignments,
+    }));
   };
 
+  // Location Change
   const handleLocationChange = (day, locIndex, value) => {
     const updatedAssignments = { ...formData.assignments };
+
     updatedAssignments[day][locIndex].locationName = value;
-    setFormData((prev) => ({ ...prev, assignments: updatedAssignments }));
+
+    setFormData((prev) => ({
+      ...prev,
+      assignments: updatedAssignments,
+    }));
   };
 
+  // Edit Staff
   const handleEdit = async (staff) => {
     try {
       const response = await fetch(`${API}/staff/${staff.id}`);
       const data = await response.json();
+
       setFormData({
-        name: data.name,
-        contactNo: data.contact_no,
-        assignments: data.assignments,
+        name: data.name || "",
+        contactNo: data.contact_no || "",
+        companyName: data.company_name || "",
+        assignments: data.assignments || {
+          Monday: [],
+          Tuesday: [],
+          Wednesday: [],
+          Thursday: [],
+          Friday: [],
+          Saturday: [],
+        },
       });
+
       setEditingStaffId(staff.id);
-      window.scrollTo({ top: 0, behavior: "smooth" });
+
+      window.scrollTo({
+        top: 0,
+        behavior: "smooth",
+      });
     } catch (error) {
       console.error("Error fetching staff details:", error);
       alert("Error loading staff details.");
     }
   };
 
+  // Reset Form
   const resetForm = () => {
     setFormData({
       name: "",
       contactNo: "",
+      companyName: "",
       assignments: {
         Monday: [],
         Tuesday: [],
@@ -120,12 +177,15 @@ function CreateStaff() {
         Saturday: [],
       },
     });
+
     setEditingStaffId(null);
   };
 
+  // Submit
   const handleSubmit = async () => {
     try {
       const url = editingStaffId ? `${API}/staff/${editingStaffId}` : `${API}/staff`;
+
       const method = editingStaffId ? "PUT" : "POST";
 
       const response = await fetch(url, {
@@ -138,10 +198,12 @@ function CreateStaff() {
 
       if (response.ok) {
         alert(editingStaffId ? "Staff updated successfully!" : "Staff created successfully!");
+
         resetForm();
         fetchStaffList();
       } else {
-        alert("Operation failed.");
+        const err = await response.json().catch(() => ({}));
+        alert(err.error || "Operation failed.");
       }
     } catch (error) {
       console.error("Error submitting form:", error);
@@ -152,8 +214,10 @@ function CreateStaff() {
   return (
     <DashboardLayout>
       <DashboardNavbar />
+
       <MDBox pt={6} pb={3}>
         <Grid container spacing={3} justifyContent="center">
+          {/* FORM */}
           <Grid item xs={12} lg={10} mx="auto">
             <Card>
               <MDBox
@@ -171,9 +235,25 @@ function CreateStaff() {
                   {editingStaffId ? "Edit Staff" : "Create New Staff"}
                 </MDTypography>
               </MDBox>
+
               <MDBox pt={4} pb={3} px={3}>
                 <MDBox component="form" role="form">
                   <Grid container spacing={3}>
+                    {/* Company Name */}
+                    <Grid item xs={12} md={6}>
+                      <MDBox mb={2}>
+                        <MDInput
+                          type="text"
+                          label="Company Name"
+                          name="companyName"
+                          fullWidth
+                          value={formData.companyName}
+                          onChange={handleInputChange}
+                        />
+                      </MDBox>
+                    </Grid>
+
+                    {/* Staff Name */}
                     <Grid item xs={12} md={6}>
                       <MDBox mb={2}>
                         <MDInput
@@ -186,10 +266,12 @@ function CreateStaff() {
                         />
                       </MDBox>
                     </Grid>
+
+                    {/* Contact No */}
                     <Grid item xs={12} md={6}>
                       <MDBox mb={2}>
                         <MDInput
-                          type="text"
+                          type="number"
                           label="Contact No"
                           name="contactNo"
                           fullWidth
@@ -200,10 +282,12 @@ function CreateStaff() {
                     </Grid>
                   </Grid>
 
+                  {/* Assignments */}
                   <MDBox mt={4} mb={2}>
                     <MDTypography variant="h6" fontWeight="bold">
                       Location Assignments
                     </MDTypography>
+
                     <MDBox sx={{ borderBottom: 1, borderColor: "divider" }}>
                       <Tabs
                         value={activeTab}
@@ -230,13 +314,15 @@ function CreateStaff() {
                           <MDTypography variant="subtitle2" color="text">
                             Assigned Locations for {day}
                           </MDTypography>
+
                           <MDButton
                             variant="gradient"
                             color="dark"
                             size="small"
                             onClick={() => addLocation(day)}
                           >
-                            <Icon sx={{ mr: 1 }}>add</Icon> Add Location
+                            <Icon sx={{ mr: 1 }}>add</Icon>
+                            Add Location
                           </MDButton>
                         </MDBox>
 
@@ -262,6 +348,7 @@ function CreateStaff() {
                                   }
                                 />
                               </Grid>
+
                               <Grid item xs={12} sm={3}>
                                 <MDButton
                                   color="error"
@@ -269,7 +356,8 @@ function CreateStaff() {
                                   fullWidth
                                   onClick={() => removeLocation(day, locIndex)}
                                 >
-                                  <Icon sx={{ mr: 1 }}>delete</Icon> Remove
+                                  <Icon sx={{ mr: 1 }}>delete</Icon>
+                                  Remove
                                 </MDButton>
                               </Grid>
                             </Grid>
@@ -279,10 +367,12 @@ function CreateStaff() {
                     ))}
                   </MDBox>
 
+                  {/* Buttons */}
                   <MDBox mt={4} mb={1} display="flex" gap={2}>
                     <MDButton variant="gradient" color="info" fullWidth onClick={handleSubmit}>
                       {editingStaffId ? "Update Staff & Locations" : "Save Staff & Locations"}
                     </MDButton>
+
                     {editingStaffId && (
                       <MDButton variant="outlined" color="dark" fullWidth onClick={resetForm}>
                         Cancel Edit
@@ -294,30 +384,45 @@ function CreateStaff() {
             </Card>
           </Grid>
 
+          {/* EMPLOYEE LIST */}
           <Grid item xs={12} lg={10} mx="auto" mt={4}>
             <Card>
               <MDBox p={3}>
                 <MDTypography variant="h5" fontWeight="medium" mb={3}>
                   Employee List
                 </MDTypography>
+
                 <TableContainer component={Paper} sx={{ boxShadow: "none" }}>
                   <Table>
+                    {/* Table Head */}
                     <TableHead>
                       <TableRow>
-                        <TableCell sx={{ fontWeight: "bold" }}>Name</TableCell>
+                        <TableCell sx={{ fontWeight: "bold" }}>Company Name</TableCell>
+
                         <TableCell align="center" sx={{ fontWeight: "bold" }}>
-                          Contact No
+                          Staff Name
                         </TableCell>
+
+                        <TableCell align="center" sx={{ fontWeight: "bold" }}>
+                          Phone Number
+                        </TableCell>
+
                         <TableCell align="right" sx={{ fontWeight: "bold" }}>
                           Action
                         </TableCell>
                       </TableRow>
                     </TableHead>
+
+                    {/* Table Body */}
                     <TableBody>
                       {staffList.map((staff) => (
                         <TableRow key={staff.id}>
-                          <TableCell>{staff.name}</TableCell>
+                          <TableCell>{staff.company_name || "—"}</TableCell>
+
+                          <TableCell align="center">{staff.name}</TableCell>
+
                           <TableCell align="center">{staff.contact_no}</TableCell>
+
                           <TableCell align="right">
                             <MDButton variant="text" color="info" onClick={() => handleEdit(staff)}>
                               <Icon>edit</Icon>&nbsp;Edit
@@ -333,6 +438,7 @@ function CreateStaff() {
           </Grid>
         </Grid>
       </MDBox>
+
       <Footer />
     </DashboardLayout>
   );

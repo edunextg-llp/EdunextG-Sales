@@ -5,11 +5,17 @@ import * as staffController from '../controllers/staffController.js';
 router.post('/', staffController.createStaff);
 router.get('/', staffController.getStaff);
 router.get('/search', staffController.searchStaff);
+router.get('/credits/pending', staffController.getPendingCredits);
 router.get('/:id', staffController.getStaffFullDetails);
 router.put('/:id', staffController.updateStaff);
 router.get('/:id/locations', staffController.getStaffLocations);
 router.get('/:id/outlets-by-date', staffController.getOutletsByStaffAndDate);
+router.get('/:id/outlets-by-day', staffController.getOutletsByStaffAndDayName);
 router.post('/:id/counters', staffController.addCounter);
 router.post('/:id/sales', staffController.recordSales);
+router.get('/:id/sales-by-date', staffController.fetchSalesByDate);
+router.put('/counter/:counterId', staffController.editCounter);
+router.delete('/counter/:counterId', staffController.deleteCounter);
+router.put('/sales/:saleId/payment', staffController.updatePaymentMode);
 
 export default router;

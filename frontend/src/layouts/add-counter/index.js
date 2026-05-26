@@ -102,7 +102,8 @@ function AddCounter() {
         setOutlets([]);
         setSelectedLocation("");
       } else {
-        alert("Failed to add outlets.");
+        const err = await response.json().catch(() => ({}));
+        alert(err.error || "Failed to add outlets.");
       }
     } catch (error) {
       console.error("Error submitting outlets:", error);
@@ -159,6 +160,9 @@ function AddCounter() {
                       >
                         <MDTypography variant="button" fontWeight="bold">
                           Staff Details:
+                        </MDTypography>
+                        <MDTypography variant="body2">
+                          Company: {selectedStaff.company_name}
                         </MDTypography>
                         <MDTypography variant="body2">Name: {selectedStaff.name}</MDTypography>
                         <MDTypography variant="body2">

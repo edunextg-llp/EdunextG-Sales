@@ -18,11 +18,11 @@ function CoverLayout({ coverHeight, image, children }) {
   return (
     <PageLayout>
       <MDBox
-        width="calc(100% - 2rem)"
+        width="100%"
         minHeight={coverHeight}
-        borderRadius="xl"
-        mx={2}
-        my={2}
+        borderRadius={0}
+        mx={0}
+        my={0}
         pt={6}
         pb={28}
         sx={{
@@ -37,7 +37,7 @@ function CoverLayout({ coverHeight, image, children }) {
           backgroundRepeat: "no-repeat",
         }}
       />
-      <MDBox mt={{ xs: -20, lg: -18 }} px={1} width="calc(100% - 2rem)" mx="auto">
+      <MDBox mt={{ xs: -20, lg: -18 }} px={0} width="100%" mx="auto">
         <Grid container spacing={1} justifyContent="center">
           <Grid item xs={11} sm={9} md={5} lg={4} xl={3}>
             {children}

@@ -1,7 +1,6 @@
 import { useState } from "react";
-
-// react-router-dom components
-// import { Link } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
+import { useAuth } from "context/AuthContext";
 
 // @mui material components
 import Card from "@mui/material/Card";
@@ -28,8 +27,44 @@ import bgImage from "assets/images/bg-sign-in-basic.jpeg";
 
 function Basic() {
   const [rememberMe, setRememberMe] = useState(false);
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
+  const navigate = useNavigate();
+  const { login } = useAuth();
+  
+  const API = "http://localhost:5000/api/auth";
 
   const handleSetRememberMe = () => setRememberMe(!rememberMe);
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setError("");
+    setLoading(true);
+
+    try {
+      const response = await fetch(`${API}/login`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password }),
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        login(data.user, data.token);
+        navigate("/dashboard", { replace: true });
+      } else {
+        const err = await response.json().catch(() => ({}));
+        setError(err.error || "Invalid login credentials");
+      }
+    } catch (err) {
+      console.error(err);
+      setError("Unable to connect to the server.");
+    } finally {
+      setLoading(false);
+    }
+  };
 
   return (
     <BasicLayout image={bgImage}>
@@ -67,13 +102,20 @@ function Basic() {
           </Grid>
         </MDBox>
         <MDBox pt={4} pb={3} px={3}>
-          <MDBox component="form" role="form">
+          <MDBox component="form" role="form" onSubmit={handleSubmit}>
             <MDBox mb={2}>
-              <MDInput type="email" label="Email" fullWidth />
+              <MDInput type="email" label="Email" fullWidth value={email} onChange={(e) => setEmail(e.target.value)} required />
             </MDBox>
             <MDBox mb={2}>
-              <MDInput type="password" label="Password" fullWidth />
+              <MDInput type="password" label="Password" fullWidth value={password} onChange={(e) => setPassword(e.target.value)} required />
             </MDBox>
+            
+            {error && (
+              <MDTypography variant="caption" color="error" fontWeight="medium" textGradient mb={2}>
+                {error}
+              </MDTypography>
+            )}
+
             <MDBox display="flex" alignItems="center" ml={-1}>
               <Switch checked={rememberMe} onChange={handleSetRememberMe} />
               <MDTypography
@@ -87,8 +129,8 @@ function Basic() {
               </MDTypography>
             </MDBox>
             <MDBox mt={4} mb={1}>
-              <MDButton variant="gradient" color="info" fullWidth>
-                sign in
+              <MDButton variant="gradient" color="info" fullWidth type="submit" disabled={loading}>
+                {loading ? "Signing in..." : "Sign in"}
               </MDButton>
             </MDBox>
             {/* <MDBox mt={3} mb={1} textAlign="center">

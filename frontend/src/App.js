@@ -1,4 +1,3 @@
-
 import { useState, useEffect, useMemo } from "react";
 
 // react-router components
@@ -31,6 +30,8 @@ import createCache from "@emotion/cache";
 
 // Material Dashboard 2 React routes
 import routes from "routes";
+import ProtectedRoute from "components/ProtectedRoute";
+import SignIn from "layouts/authentication/sign-in";
 
 // Material Dashboard 2 React contexts
 import { useMaterialUIController, setMiniSidenav, setOpenConfigurator } from "context";
@@ -102,7 +103,13 @@ export default function App() {
       }
 
       if (route.route) {
-        return <Route exact path={route.route} element={route.component} key={route.key} />;
+        const isAuthRoute = route.route.includes("authentication");
+        const element = isAuthRoute ? (
+          route.component
+        ) : (
+          <ProtectedRoute>{route.component}</ProtectedRoute>
+        );
+        return <Route exact path={route.route} element={element} key={route.key} />;
       }
 
       return null;
@@ -153,6 +160,7 @@ export default function App() {
         {layout === "vr" && <Configurator />}
         <Routes>
           {getRoutes(routes)}
+          <Route exact path="/authentication/sign-in" element={<SignIn />} />
           <Route path="*" element={<Navigate to="/dashboard" />} />
         </Routes>
       </ThemeProvider>
@@ -177,6 +185,7 @@ export default function App() {
       {layout === "vr" && <Configurator />}
       <Routes>
         {getRoutes(routes)}
+        <Route exact path="/authentication/sign-in" element={<SignIn />} />
         <Route path="*" element={<Navigate to="/dashboard" />} />
       </Routes>
     </ThemeProvider>

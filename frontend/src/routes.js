@@ -5,11 +5,14 @@ import Dashboard from "layouts/dashboard";
 // import RTL from "layouts/rtl";
 // import Notifications from "layouts/notifications";
 // import Profile from "layouts/profile";
-import SignIn from "layouts/authentication/sign-in";
+// import SignIn from "layouts/authentication/sign-in";
 // import SignUp from "layouts/authentication/sign-up";
 import CreateStaff from "layouts/create-staff";
 import AddCounter from "layouts/add-counter";
 import AddSales from "layouts/add-sales";
+import AddDeliveryBoy from "layouts/add-delivery-boy";
+import UpdatePayment from "layouts/update-payment";
+import Credits from "layouts/credits";
 
 // @mui icons
 import Icon from "@mui/material/Icon";
@@ -49,6 +52,14 @@ const routes = [
   },
   {
     type: "collapse",
+    name: "Add Delivery Boy",
+    key: "add-delivery-boy",
+    icon: <Icon fontSize="small">local_shipping</Icon>,
+    route: "/add-delivery-boy",
+    component: <AddDeliveryBoy />,
+  },
+  {
+    type: "collapse",
     name: "Add Outlet",
     key: "add-outlet",
     icon: <Icon fontSize="small">store</Icon>,
@@ -62,6 +73,22 @@ const routes = [
     icon: <Icon fontSize="small">payments</Icon>,
     route: "/add-sales",
     component: <AddSales />,
+  },
+  {
+    type: "collapse",
+    name: "Update Payment",
+    key: "update-payment",
+    icon: <Icon fontSize="small">edit_note</Icon>,
+    route: "/update-payment",
+    component: <UpdatePayment />,
+  },
+  {
+    type: "collapse",
+    name: "Credits",
+    key: "credits",
+    icon: <Icon fontSize="small">price_change</Icon>,
+    route: "/credits",
+    component: <Credits />,
   },
   // {
   //   type: "collapse",
@@ -79,14 +106,14 @@ const routes = [
   //   route: "/profile",
   //   component: <Profile />,
   // },
-  {
-    type: "collapse",
-    name: "Sign In",
-    key: "sign-in",
-    icon: <Icon fontSize="small">login</Icon>,
-    route: "/authentication/sign-in",
-    component: <SignIn />,
-  },
+  // {
+  //   type: "collapse",
+  //   name: "Sign In",
+  //   key: "sign-in",
+  //   icon: <Icon fontSize="small">login</Icon>,
+  //   route: "/authentication/sign-in",
+  //   component: <SignIn />,
+  // },
   // {
   //   type: "collapse",
   //   name: "Sign Up",
