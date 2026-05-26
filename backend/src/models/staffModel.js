@@ -50,8 +50,10 @@ class StaffModel {
     static async addCounter(staffId, day, location, counterData) {
         const { outletErpId, outletName, contactNumber } = counterData;
         await db.execute(
-            'INSERT INTO staff_counters (staff_id, day, location, outlet_erp_id, outlet_name, contact_number) VALUES (?, ?, ?, ?, ?, ?)',
-            [staffId, day, location, outletErpId, outletName, contactNumber]
+            // `staff_counters` schema (see initDB.js) does not include a `location` column.
+            // Frontend still sends `location`, but we ignore it here and store outlets by (staff_id, day).
+            'INSERT INTO staff_counters (staff_id, day, outlet_erp_id, outlet_name, contact_number) VALUES (?, ?, ?, ?, ?)',
+            [staffId, day, outletErpId, outletName, contactNumber]
         );
     }
 

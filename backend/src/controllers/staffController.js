@@ -96,6 +96,7 @@ export const addCounter = async (req, res) => {
 
         res.status(201).json({ message: 'Counters added successfully' });
     } catch (error) {
+        console.error('Error adding counters:', error);
         res.status(500).json({ error: 'Internal server error' });
     }
 };
