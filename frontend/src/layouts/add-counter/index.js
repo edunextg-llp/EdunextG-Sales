@@ -27,7 +27,7 @@ function AddCounter() {
   const [selectedLocation, setSelectedLocation] = useState("");
   const [outlets, setOutlets] = useState([]);
 
-  const API = "http://localhost:5000/api";
+  const API = "https://bawarchee.edunextg.co/api";
 
   // Search staff
   const handleSearch = async (query) => {

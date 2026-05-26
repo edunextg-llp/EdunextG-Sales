@@ -33,8 +33,8 @@ function Basic() {
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
   const { login } = useAuth();
-  
-  const API = "http://localhost:5000/api/auth";
+
+  const API = "https://bawarchee.edunextg.co/api/auth";
 
   const handleSetRememberMe = () => setRememberMe(!rememberMe);
 
@@ -109,7 +109,7 @@ function Basic() {
             <MDBox mb={2}>
               <MDInput type="password" label="Password" fullWidth value={password} onChange={(e) => setPassword(e.target.value)} required />
             </MDBox>
-            
+
             {error && (
               <MDTypography variant="caption" color="error" fontWeight="medium" textGradient mb={2}>
                 {error}

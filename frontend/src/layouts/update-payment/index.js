@@ -42,7 +42,7 @@ function UpdatePayment() {
 
   const dialogSale = sales.find((s) => s.id === refDialogSaleId);
 
-  const API = "http://localhost:5000/api";
+  const API = "https://bawarchee.edunextg.co/api";
 
   const handleSearch = async (query) => {
     if (!query) return;
@@ -252,8 +252,8 @@ function UpdatePayment() {
                               </TableCell>
                               <TableCell align="center">
                                 {sale.payment_mode === "upi" ||
-                                sale.payment_mode === "cheque" ||
-                                sale.payment_mode === "credit" ? (
+                                  sale.payment_mode === "cheque" ||
+                                  sale.payment_mode === "credit" ? (
                                   <MDButton
                                     variant="outlined"
                                     color="secondary"

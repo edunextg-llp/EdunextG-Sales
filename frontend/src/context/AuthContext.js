@@ -21,9 +21,9 @@ export const AuthProvider = ({ children }) => {
     const originalFetch = window.fetch;
     window.fetch = async function (...args) {
       let [resource, config] = args;
-      
+
       const currentToken = localStorage.getItem("auth_token");
-      if (resource.includes("http://localhost:5000/api") && !resource.includes("/api/auth/login")) {
+      if (resource.includes("https://bawarchee.edunextg.co/api") && !resource.includes("/api/auth/login")) {
         config = config || {};
         config.headers = config.headers || {};
         if (currentToken) {
@@ -32,7 +32,7 @@ export const AuthProvider = ({ children }) => {
       }
 
       const response = await originalFetch(resource, config);
-      
+
       // Auto-logout if token is expired or unauthorized
       if (response.status === 401 || response.status === 403) {
         if (currentToken) {
@@ -75,10 +75,10 @@ export const AuthProvider = ({ children }) => {
       // 60 minutes inactivity
       inactivityTimer = setTimeout(() => {
         if (localStorage.getItem("auth_token")) {
-           logout();
-           window.location.href = "/authentication/sign-in";
+          logout();
+          window.location.href = "/authentication/sign-in";
         }
-      }, 60 * 60 * 1000); 
+      }, 60 * 60 * 1000);
     };
 
     if (token) {
@@ -86,7 +86,7 @@ export const AuthProvider = ({ children }) => {
       window.addEventListener("keypress", resetTimer);
       window.addEventListener("scroll", resetTimer);
       window.addEventListener("click", resetTimer);
-      resetTimer(); 
+      resetTimer();
     }
 
     return () => {

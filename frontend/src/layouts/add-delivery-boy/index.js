@@ -20,7 +20,7 @@ function AddDeliveryBoy() {
   const [contactNo, setContactNo] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
-  const API = "http://localhost:5000/api";
+  const API = "https://bawarchee.edunextg.co/api";
 
   const handleSubmit = async () => {
     if (!name.trim() || !contactNo.trim()) {

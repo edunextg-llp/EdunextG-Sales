@@ -40,7 +40,7 @@ function AddSales() {
   const [submitting, setSubmitting] = useState(false);
   const [deliveryBoys, setDeliveryBoys] = useState([]);
 
-  const API = "http://localhost:5000/api";
+  const API = "https://bawarchee.edunextg.co/api";
 
   useEffect(() => {
     const fetchDeliveryBoys = async () => {
@@ -121,7 +121,7 @@ function AddSales() {
               setSubmittedSummary(null);
             }
           } else {
-             setSubmittedSummary(null);
+            setSubmittedSummary(null);
           }
         } catch (error) {
           console.error("Error fetching data:", error);
