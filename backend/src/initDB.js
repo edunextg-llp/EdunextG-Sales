@@ -1,5 +1,6 @@
 import mysql from 'mysql2/promise';
 import dotenv from 'dotenv';
+import bcrypt from 'bcryptjs';
 dotenv.config();
 
 async function initDB() {
@@ -15,6 +16,27 @@ async function initDB() {
     console.log(`Database ${process.env.DB_NAME} created or already exists`);
 
     await connection.changeUser({ database: process.env.DB_NAME });
+
+    // Create Admins table
+    await connection.query(`
+        CREATE TABLE IF NOT EXISTS admins (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            username VARCHAR(255) NOT NULL UNIQUE,
+            email VARCHAR(255) NOT NULL UNIQUE,
+            password VARCHAR(255) NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+    `);
+    console.log('Admins table created');
+
+    const [adminRows] = await connection.query('SELECT * FROM admins WHERE email = ?', ['admin@edunextg.com']);
+    if (adminRows.length === 0) {
+        const hashedPassword = await bcrypt.hash('admin123', 10);
+        await connection.query('INSERT INTO admins (username, email, password) VALUES (?, ?, ?)', 
+            ['admin', 'admin@edunextg.com', hashedPassword]
+        );
+        console.log("Default admin created: admin@edunextg.com / admin123");
+    }
 
     // Create Companies table
     await connection.query(`
