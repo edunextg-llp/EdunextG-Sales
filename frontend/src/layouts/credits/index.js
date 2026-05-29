@@ -14,12 +14,14 @@ import Card from "@mui/material/Card";
 
 import MDBox from "components/MDBox";
 import MDTypography from "components/MDTypography";
+import MDInput from "components/MDInput";
 
 import DashboardLayout from "examples/LayoutContainers/DashboardLayout";
 import Footer from "examples/Footer";
 
 function CreditsPage() {
   const [credits, setCredits] = useState([]);
+  const [searchQuery, setSearchQuery] = useState("");
   const API = "https://bawarchee.edunextg.co/api";
 
   const fetchCredits = async () => {
@@ -76,6 +78,14 @@ function CreditsPage() {
     return date.toLocaleDateString("en-GB");
   };
 
+  const filteredCredits = credits.filter((credit) => {
+    const search = searchQuery.toLowerCase();
+    const outletName = credit.outlet_name ? credit.outlet_name.toLowerCase() : "";
+    const invoiceNum = credit.invoice_number ? credit.invoice_number.toLowerCase() : "";
+    const staffName = credit.staff_name ? credit.staff_name.toLowerCase() : "";
+    return outletName.includes(search) || invoiceNum.includes(search) || staffName.includes(search);
+  });
+
   return (
     <DashboardLayout>
       <MDBox pt={6} pb={3}>
@@ -97,7 +107,17 @@ function CreditsPage() {
                 </MDTypography>
               </MDBox>
 
-              <MDBox pt={3} pb={4} px={3}>
+              <MDBox px={3} pt={3} pb={1}>
+                <MDInput
+                  type="text"
+                  label="Search Outlet, Invoice, or Staff..."
+                  sx={{ width: { xs: "100%", md: "35%", lg: "25%" } }}
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                />
+              </MDBox>
+
+              <MDBox pb={4} px={3}>
                 <TableContainer
                   component={Paper}
                   sx={{ boxShadow: "none", backgroundColor: "transparent" }}
@@ -112,7 +132,7 @@ function CreditsPage() {
                           Invoice No
                         </TableCell>
                         <TableCell align="center" sx={{ fontWeight: "bold" }}>
-                          Staff Manager
+                          Staff
                         </TableCell>
                         <TableCell align="center" sx={{ fontWeight: "bold" }}>
                           Outstanding Balance
@@ -129,7 +149,7 @@ function CreditsPage() {
                       </TableRow>
                     </TableHead>
                     <TableBody>
-                      {credits.map((credit) => (
+                      {filteredCredits.map((credit) => (
                         <TableRow key={credit.id}>
                           <TableCell align="left">{credit.outlet_name}</TableCell>
                           <TableCell align="center">{credit.invoice_number}</TableCell>
@@ -151,7 +171,7 @@ function CreditsPage() {
                       ))}
                     </TableBody>
                   </Table>
-                  {credits.length === 0 && (
+                  {filteredCredits.length === 0 && (
                     <MDBox mt={4} textAlign="center">
                       <MDTypography variant="body2" color="text">
                         No outstanding credits found in the system!

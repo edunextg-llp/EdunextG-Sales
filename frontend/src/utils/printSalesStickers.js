@@ -65,6 +65,7 @@ export function printSalesStickers(stickers) {
       .stickers-grid {
         display: flex;
         flex-wrap: wrap;
+        justify-content: center;
         gap: 12px;
       }
       .sticker {
@@ -100,6 +101,10 @@ export function printSalesStickers(stickers) {
       }
       @media print {
         body { padding: 0; }
+        .stickers-grid { 
+          justify-content: center; 
+          margin-top: 24px; 
+        }
         .sticker { margin: 8px; }
       }
     </style>

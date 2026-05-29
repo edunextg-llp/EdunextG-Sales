@@ -135,12 +135,18 @@ async function initDB() {
 
     try {
         await connection.query(`
-            ALTER TABLE staff_sales ADD COLUMN payment_mode ENUM('cash', 'upi') NOT NULL DEFAULT 'cash'
+            ALTER TABLE staff_sales 
+            MODIFY payment_mode ENUM('cash', 'upi', 'credit', 'cheque') NOT NULL DEFAULT 'cash',
+            ADD COLUMN paid_amount DECIMAL(10, 2) NOT NULL DEFAULT 0.00,
+            ADD COLUMN balance_amount DECIMAL(10, 2) NOT NULL DEFAULT 0.00,
+            ADD COLUMN reference_no VARCHAR(100) NULL,
+            ADD COLUMN reference_date DATE NULL,
+            ADD COLUMN credit_days INT NULL
         `);
-        console.log('Added payment_mode to staff_sales table');
+        console.log('Added payment mode and credit tracking columns to staff_sales table');
     } catch (err) {
         if (err.code !== 'ER_DUP_FIELDNAME') {
-            console.log('payment_mode column may already exist on staff_sales');
+            console.log('Credit tracking columns may already exist on staff_sales');
         }
     }
 
@@ -177,6 +183,27 @@ async function initDB() {
         if (err.code !== 'ER_DUP_FIELDNAME') {
             console.log('vehicle_no column may already exist on staff_sales');
         }
+    }
+
+    try {
+        await connection.query(`
+            ALTER TABLE staff_sales ADD COLUMN packaging_status ENUM('not_packing', 'packing', 'packing_done', 'out_for_delivery') NOT NULL DEFAULT 'not_packing'
+        `);
+        console.log('Added packaging_status to staff_sales table');
+    } catch (err) {
+        if (err.code !== 'ER_DUP_FIELDNAME') {
+            console.log('packaging_status column may already exist on staff_sales');
+        }
+    }
+
+    // Modify existing enum to ensure terminal states are available
+    try {
+        await connection.query(`
+            ALTER TABLE staff_sales MODIFY COLUMN packaging_status ENUM('not_packing', 'packing', 'packing_done', 'out_for_delivery', 'delivered', 'cancelled') NOT NULL DEFAULT 'not_packing'
+        `);
+        console.log('Ensured packaging_status ENUM includes all delivery endpoints');
+    } catch (err) {
+        console.error('Error modifying packaging_status ENUM:', err);
     }
 
     await connection.query(`

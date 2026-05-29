@@ -1,8 +1,17 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 
 // @mui material components
 import Grid from "@mui/material/Grid";
 import Card from "@mui/material/Card";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
+  Paper,
+} from "@mui/material";
 
 // Material Dashboard 2 React components
 import MDBox from "components/MDBox";
@@ -19,8 +28,28 @@ function AddDeliveryBoy() {
   const [name, setName] = useState("");
   const [contactNo, setContactNo] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [deliveryBoys, setDeliveryBoys] = useState([]);
+  const [loadingList, setLoadingList] = useState(true);
 
   const API = "https://bawarchee.edunextg.co/api";
+
+  const fetchDeliveryBoys = async () => {
+    try {
+      const response = await fetch(`${API}/delivery-boy`);
+      if (response.ok) {
+        const data = await response.json();
+        setDeliveryBoys(data);
+      }
+    } catch (error) {
+      console.error("Error fetching delivery boys:", error);
+    } finally {
+      setLoadingList(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchDeliveryBoys();
+  }, []);
 
   const handleSubmit = async () => {
     if (!name.trim() || !contactNo.trim()) {
@@ -42,6 +71,7 @@ function AddDeliveryBoy() {
         alert("Delivery Boy created successfully!");
         setName("");
         setContactNo("");
+        await fetchDeliveryBoys();
       } else {
         const err = await response.json().catch(() => ({}));
         alert(err.error || "Failed to create Delivery Boy.");
@@ -108,6 +138,49 @@ function AddDeliveryBoy() {
                     </MDButton>
                   </MDBox>
                 </MDBox>
+              </MDBox>
+            </Card>
+          </Grid>
+
+          <Grid item xs={12} md={10} lg={8}>
+            <Card>
+              <MDBox p={3}>
+                <MDTypography variant="h5" fontWeight="medium" mb={3}>
+                  Delivery Boys
+                </MDTypography>
+
+                {loadingList ? (
+                  <MDTypography variant="body2" color="text">
+                    Loading...
+                  </MDTypography>
+                ) : deliveryBoys.length === 0 ? (
+                  <MDTypography variant="body2" color="text">
+                    No delivery boys added yet.
+                  </MDTypography>
+                ) : (
+                  <TableContainer component={Paper} sx={{ boxShadow: "none" }}>
+                    <Table>
+                      <TableHead>
+                        <TableRow>
+                          <TableCell sx={{ fontWeight: "bold" }}>#</TableCell>
+                          <TableCell sx={{ fontWeight: "bold" }}>Name</TableCell>
+                          <TableCell align="center" sx={{ fontWeight: "bold" }}>
+                            Contact Number
+                          </TableCell>
+                        </TableRow>
+                      </TableHead>
+                      <TableBody>
+                        {deliveryBoys.map((boy, index) => (
+                          <TableRow key={boy.id}>
+                            <TableCell>{index + 1}</TableCell>
+                            <TableCell>{boy.name}</TableCell>
+                            <TableCell align="center">{boy.contact_no}</TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </TableContainer>
+                )}
               </MDBox>
             </Card>
           </Grid>

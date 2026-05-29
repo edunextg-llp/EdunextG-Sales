@@ -13,6 +13,9 @@ import AddSales from "layouts/add-sales";
 import AddDeliveryBoy from "layouts/add-delivery-boy";
 import UpdatePayment from "layouts/update-payment";
 import Credits from "layouts/credits";
+import Packaging from "layouts/packaging";
+import Delivery from "layouts/delivery";
+import Delivered from "layouts/delivered";
 
 // @mui icons
 import Icon from "@mui/material/Icon";
@@ -73,6 +76,30 @@ const routes = [
     icon: <Icon fontSize="small">payments</Icon>,
     route: "/add-sales",
     component: <AddSales />,
+  },
+  {
+    type: "collapse",
+    name: "Packaging",
+    key: "packaging",
+    icon: <Icon fontSize="small">inventory_2</Icon>,
+    route: "/packaging",
+    component: <Packaging />,
+  },
+  {
+    type: "collapse",
+    name: "Delivery",
+    key: "delivery",
+    icon: <Icon fontSize="small">local_shipping</Icon>,
+    route: "/delivery",
+    component: <Delivery />,
+  },
+  {
+    type: "collapse",
+    name: "Delivered",
+    key: "delivered",
+    icon: <Icon fontSize="small">verified</Icon>,
+    route: "/delivered",
+    component: <Delivered />,
   },
   {
     type: "collapse",

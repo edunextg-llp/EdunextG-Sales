@@ -215,37 +215,37 @@ export const recordSales = async (req, res) => {
             if (!priceValidation.valid) {
                 return res.status(400).json({ error: priceValidation.error });
             }
-            const deliveryBoyValidation = validatePositiveInteger(
-                item.deliveryBoyId,
-                `Sale ${i + 1} delivery boy`
-            );
-            if (!deliveryBoyValidation.valid) {
-                return res.status(400).json({ error: deliveryBoyValidation.error });
-            }
-            const vehicleValidation = validateRequiredText(
-                item.vehicleNo,
-                `Sale ${i + 1} vehicle number`
-            );
-            if (!vehicleValidation.valid) {
-                return res.status(400).json({ error: vehicleValidation.error });
+            let deliveryBoyId = null;
+            let deliveryBoyName = '';
+            if (item.deliveryBoyId) {
+                const deliveryBoyValidation = validatePositiveInteger(
+                    item.deliveryBoyId,
+                    `Sale ${i + 1} delivery boy`
+                );
+                if (!deliveryBoyValidation.valid) {
+                    return res.status(400).json({ error: deliveryBoyValidation.error });
+                }
+                deliveryBoyId = deliveryBoyValidation.value;
+                
+                deliveryBoyName = deliveryBoyCache.get(deliveryBoyId);
+                if (!deliveryBoyName) {
+                    const deliveryBoy = await DeliveryBoyModel.getById(deliveryBoyId);
+                    if (!deliveryBoy) {
+                        return res.status(400).json({ error: `Sale ${i + 1}: delivery boy not found` });
+                    }
+                    deliveryBoyName = deliveryBoy.name;
+                    deliveryBoyCache.set(deliveryBoyId, deliveryBoyName);
+                }
             }
 
-            let deliveryBoyName = deliveryBoyCache.get(deliveryBoyValidation.value);
-            if (!deliveryBoyName) {
-                const deliveryBoy = await DeliveryBoyModel.getById(deliveryBoyValidation.value);
-                if (!deliveryBoy) {
-                    return res.status(400).json({ error: `Sale ${i + 1}: delivery boy not found` });
-                }
-                deliveryBoyName = deliveryBoy.name;
-                deliveryBoyCache.set(deliveryBoyValidation.value, deliveryBoyName);
-            }
+            const vehicleNo = item.vehicleNo ? item.vehicleNo.trim() : null;
 
             validatedSales.push({
                 outletId: outletValidation.value,
                 invoiceNumber: invoiceValidation.value,
                 price: priceValidation.value,
-                deliveryBoyId: deliveryBoyValidation.value,
-                vehicleNo: item.vehicleNo,
+                deliveryBoyId,
+                vehicleNo,
                 paymentMode: 'cash',
             });
         }
@@ -272,6 +272,27 @@ export const recordSales = async (req, res) => {
     }
 };
 
+export const updatePackagingStatus = async (req, res) => {
+    try {
+        const { saleId } = req.params;
+        const { packagingStatus, deliveryBoyId, vehicleNo } = req.body;
+
+        if (!['not_packing', 'packing', 'packing_done', 'out_for_delivery', 'delivered', 'cancelled'].includes(packagingStatus)) {
+            return res.status(400).json({ error: 'Invalid packaging status' });
+        }
+
+        if ((packagingStatus === 'out_for_delivery' || packagingStatus === 'delivered' || packagingStatus === 'cancelled') && (!deliveryBoyId || !vehicleNo)) {
+            return res.status(400).json({ error: 'Delivery Boy and Vehicle No are required for shipping statuses' });
+        }
+
+        await StaffModel.updatePackagingStatus(saleId, packagingStatus, deliveryBoyId || null, vehicleNo || null);
+        res.status(200).json({ message: 'Packaging status updated successfully' });
+    } catch (error) {
+        console.error('Error updating packaging status:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+};
+
 export const getPendingCredits = async (req, res) => {
     try {
         const credits = await StaffModel.getPendingCredits();
@@ -289,6 +310,18 @@ export const getOutletsByStaffAndDayName = async (req, res) => {
         const outlets = await StaffModel.getOutletsForStaffAndDay(id, day);
         res.status(200).json(outlets);
     } catch (error) {
+        res.status(500).json({ error: 'Internal server error' });
+    }
+};
+
+export const getAllSalesByDate = async (req, res) => {
+    try {
+        const { date } = req.query; // Optional YYYY-MM-DD
+        
+        const sales = await StaffModel.getAllSalesByDate(date);
+        res.status(200).json(sales);
+    } catch (error) {
+        console.error('Error fetching global sales by date:', error);
         res.status(500).json({ error: 'Internal server error' });
     }
 };
@@ -312,16 +345,24 @@ export const fetchSalesByDate = async (req, res) => {
 
 export const editCounter = async (req, res) => {
     try {
+        const { counterId } = req.params;
+        const { outletErpId, outletName, contactNumber } = req.body;
+        
+        await StaffModel.editCounter(counterId, { outletErpId, outletName, contactNumber });
         res.status(200).json({ message: 'Counter updated successfully' });
     } catch (error) {
+        console.error('Error editing counter:', error);
         res.status(500).json({ error: 'Internal server error' });
     }
 };
 
 export const deleteCounter = async (req, res) => {
     try {
+        const { counterId } = req.params;
+        await StaffModel.deleteCounter(counterId);
         res.status(200).json({ message: 'Counter deleted successfully' });
     } catch (error) {
+        console.error('Error deleting counter:', error);
         res.status(500).json({ error: 'Internal server error' });
     }
 };
@@ -335,12 +376,17 @@ export const updatePaymentMode = async (req, res) => {
             return res.status(400).json({ error: 'Payment mode is required' });
         }
 
+        let formattedDate = referenceDate || null;
+        if (formattedDate && typeof formattedDate === 'string' && formattedDate.includes('T')) {
+            formattedDate = formattedDate.split('T')[0];
+        }
+
         await StaffModel.updatePayment(saleId, {
             paymentMode, 
             paidAmount, 
             balanceAmount, 
             referenceNo, 
-            referenceDate, 
+            referenceDate: formattedDate, 
             creditDays
         });
 

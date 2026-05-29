@@ -5,7 +5,7 @@ import Grid from "@mui/material/Grid";
 import Card from "@mui/material/Card";
 import Icon from "@mui/material/Icon";
 import Autocomplete from "@mui/material/Autocomplete";
-import { FormControl, Select, MenuItem } from "@mui/material";
+// import { FormControl, Select, MenuItem } from "@mui/material";
 import {
   Table,
   TableBody,
@@ -28,7 +28,7 @@ import DashboardLayout from "examples/LayoutContainers/DashboardLayout";
 import DashboardNavbar from "examples/Navbars/DashboardNavbar";
 import Footer from "examples/Footer";
 import { printSalesStickers } from "utils/printSalesStickers";
-import { printSalesReceipt } from "utils/printSalesReceipt";
+// import { printSalesReceipt } from "utils/printSalesReceipt";
 
 function AddSales() {
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split("T")[0]);
@@ -57,9 +57,11 @@ function AddSales() {
     fetchDeliveryBoys();
   }, []);
 
-  const dayName = new Intl.DateTimeFormat("en-US", { weekday: "long" }).format(
-    new Date(`${selectedDate}T12:00:00`)
-  );
+  const dayName = selectedDate
+    ? new Intl.DateTimeFormat("en-US", { weekday: "long" }).format(
+      new Date(`${selectedDate}T12:00:00`)
+    )
+    : "";
 
   const handleSearch = async (query) => {
     if (!query) return;
@@ -144,6 +146,65 @@ function AddSales() {
     }));
   };
 
+  const handleSaveRow = async (outletId) => {
+    const data = salesData[outletId];
+    if (!data?.invoiceNumber?.trim() || !data?.price?.trim()) {
+      alert("Please enter invoice number and price.");
+      return;
+    }
+
+    const payload = {
+      date: selectedDate,
+      sales: [{
+        outletId: parseInt(outletId, 10),
+        invoiceNumber: data.invoiceNumber.trim(),
+        price: parseFloat(data.price),
+      }]
+    };
+
+    setSubmitting(true);
+    try {
+      const response = await fetch(`${API}/staff/${selectedStaff.id}/sales`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(payload),
+      });
+
+      if (response.ok) {
+        const result = await response.json();
+
+        setSubmittedSummary((prev) => {
+          if (prev) {
+            return {
+              ...prev,
+              sales: [...prev.sales, ...result.summary.sales],
+            };
+          }
+          return result.summary;
+        });
+
+        setOutlets((prev) => prev.filter((o) => o.id !== outletId));
+
+        setSalesData((prev) => {
+          const next = { ...prev };
+          delete next[outletId];
+          return next;
+        });
+
+      } else {
+        const err = await response.json().catch(() => ({}));
+        alert(err.error || "Failed to record sale.");
+      }
+    } catch (error) {
+      console.error("Error submitting sale:", error);
+      alert("Error submitting form.");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
   const handleSubmit = async () => {
     const salesEntries = Object.entries(salesData).filter(
       ([, data]) => data?.invoiceNumber?.trim() || data?.price?.trim()
@@ -157,23 +218,19 @@ function AddSales() {
     const incomplete = salesEntries.some(
       ([, data]) =>
         !data?.invoiceNumber?.trim() ||
-        !data?.price?.trim() ||
-        !data?.deliveryBoyId ||
-        !data?.vehicleNo?.trim()
+        !data?.price?.trim()
     );
     if (incomplete) {
-      alert("Each row must have invoice number, price, delivery boy, and vehicle number.");
+      alert("Each row must have an invoice number and price.");
       return;
     }
 
     const payload = {
       date: selectedDate,
       sales: salesEntries.map(([outletId, data]) => ({
-        outletId: parseInt(outletId),
+        outletId: parseInt(outletId, 10),
         invoiceNumber: data.invoiceNumber.trim(),
-        price: parseFloat(data.price),
-        deliveryBoyId: parseInt(data.deliveryBoyId, 10),
-        vehicleNo: data.vehicleNo.trim(),
+        price: parseFloat(data.price)
       })),
     };
 
@@ -230,7 +287,7 @@ function AddSales() {
       <DashboardNavbar />
       <MDBox pt={6} pb={3}>
         <Grid container spacing={3} justifyContent="center">
-          <Grid item xs={12} lg={10} mx="auto">
+          <Grid item xs={12}>
             <Card
               sx={{ boxShadow: "0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)" }}
             >
@@ -274,6 +331,7 @@ function AddSales() {
                       <Autocomplete
                         options={staffOptions}
                         getOptionLabel={(option) => option.name}
+                        isOptionEqualToValue={(option, value) => option.id === value.id}
                         onChange={(event, newValue) => {
                           setSelectedStaff(newValue);
                           setSubmittedSummary(null);
@@ -360,7 +418,7 @@ function AddSales() {
                               Price
                             </TableCell>
                             <TableCell
-                              align="left"
+                              align="center"
                               sx={{
                                 color: "#6b7280",
                                 fontSize: "0.75rem",
@@ -370,20 +428,7 @@ function AddSales() {
                                 py: 1.5,
                               }}
                             >
-                              Delivery Boy
-                            </TableCell>
-                            <TableCell
-                              align="left"
-                              sx={{
-                                color: "#6b7280",
-                                fontSize: "0.75rem",
-                                textTransform: "none",
-                                fontWeight: 500,
-                                borderBottom: "1px solid #e5e7eb",
-                                py: 1.5,
-                              }}
-                            >
-                              Vehicle No
+                              Action
                             </TableCell>
                           </TableRow>
                         </TableHead>
@@ -456,43 +501,16 @@ function AddSales() {
                                   }
                                 />
                               </TableCell>
-                              <TableCell sx={{ borderBottom: "1px solid #e5e7eb", py: 2 }}>
-                                <FormControl size="small" sx={{ minWidth: 140 }}>
-                                  <Select
-                                    value={salesData[outlet.id]?.deliveryBoyId || ""}
-                                    displayEmpty
-                                    onChange={(e) =>
-                                      handleSalesChange(outlet.id, "deliveryBoyId", e.target.value)
-                                    }
-                                    sx={{ height: "36px", fontSize: "0.875rem" }}
-                                  >
-                                    <MenuItem value="" disabled>
-                                      {deliveryBoys.length === 0
-                                        ? "Add delivery boy first"
-                                        : "Select"}
-                                    </MenuItem>
-                                    {deliveryBoys.map((boy) => (
-                                      <MenuItem key={boy.id} value={String(boy.id)}>
-                                        {boy.name}
-                                      </MenuItem>
-                                    ))}
-                                  </Select>
-                                </FormControl>
-                              </TableCell>
-                              <TableCell sx={{ borderBottom: "1px solid #e5e7eb", py: 2 }}>
-                                <MDInput
-                                  type="text"
-                                  placeholder="Vehicle..."
+                              <TableCell align="center" sx={{ borderBottom: "1px solid #e5e7eb", py: 2 }}>
+                                <MDButton
+                                  variant="gradient"
+                                  color="info"
                                   size="small"
-                                  sx={{
-                                    width: "110px",
-                                    "& .MuiInputBase-root": { height: "36px" },
-                                  }}
-                                  value={salesData[outlet.id]?.vehicleNo || ""}
-                                  onChange={(e) =>
-                                    handleSalesChange(outlet.id, "vehicleNo", e.target.value)
-                                  }
-                                />
+                                  onClick={() => handleSaveRow(outlet.id)}
+                                  disabled={submitting || !salesData[outlet.id]?.invoiceNumber?.trim() || !salesData[outlet.id]?.price?.trim()}
+                                >
+                                  Save
+                                </MDButton>
                               </TableCell>
                             </TableRow>
                           ))}
@@ -532,9 +550,20 @@ function AddSales() {
                       border: "1px solid #dee2e6",
                     }}
                   >
-                    <MDTypography variant="h6" fontWeight="bold" mb={2}>
-                      Submitted Details
-                    </MDTypography>
+                    <MDBox display="flex" justifyContent="space-between" alignItems="center" mb={2}>
+                      <MDTypography variant="h6" fontWeight="bold">
+                        Submitted Details
+                      </MDTypography>
+                      <MDButton
+                        variant="outlined"
+                        color="dark"
+                        size="small"
+                        onClick={() => printSalesStickers(submittedSummary.sales)}
+                      >
+                        <Icon sx={{ mr: 1 }}>label</Icon>
+                        Print Stickers
+                      </MDButton>
+                    </MDBox>
                     {/* <MDTypography variant="body2" mb={1}>
                       <strong>Date:</strong> {new Date(submittedSummary.date).toLocaleDateString()}{" "}
                       ({submittedSummary.dayName})
@@ -595,7 +624,7 @@ function AddSales() {
                             >
                               Sticker
                             </TableCell>
-                            <TableCell
+                            {/* <TableCell
                               align="center"
                               sx={{
                                 color: "#6b7280",
@@ -607,8 +636,8 @@ function AddSales() {
                               }}
                             >
                               Delivery Boy
-                            </TableCell>
-                            <TableCell
+                            </TableCell> */}
+                            {/* <TableCell
                               align="center"
                               sx={{
                                 color: "#6b7280",
@@ -620,7 +649,7 @@ function AddSales() {
                               }}
                             >
                               Vehicle No
-                            </TableCell>
+                            </TableCell> */}
                             <TableCell
                               align="right"
                               sx={{
@@ -698,7 +727,7 @@ function AddSales() {
                               >
                                 {row.stickerNumber}
                               </TableCell>
-                              <TableCell
+                              {/* <TableCell
                                 align="center"
                                 sx={{
                                   borderBottom: "1px solid #e5e7eb",
@@ -708,8 +737,8 @@ function AddSales() {
                                 }}
                               >
                                 {row.deliveryBoyName || "—"}
-                              </TableCell>
-                              <TableCell
+                              </TableCell> */}
+                              {/* <TableCell
                                 align="center"
                                 sx={{
                                   borderBottom: "1px solid #e5e7eb",
@@ -719,7 +748,7 @@ function AddSales() {
                                 }}
                               >
                                 {row.vehicleNo || "—"}
-                              </TableCell>
+                              </TableCell> */}
                               <TableCell
                                 align="right"
                                 sx={{
@@ -738,31 +767,7 @@ function AddSales() {
                       </Table>
                     </TableContainer>
 
-                    <MDBox
-                      mt={3}
-                      display="flex"
-                      flexDirection={{ xs: "column", sm: "row" }}
-                      gap={2}
-                    >
-                      {/* <MDButton
-                        variant="gradient"
-                        color="info"
-                        fullWidth
-                        onClick={() => printSalesReceipt(submittedSummary)}
-                      >
-                        <Icon sx={{ mr: 1 }}>print</Icon>
-                        Print Price Entry (Receiver Signature)
-                      </MDButton> */}
-                      <MDButton
-                        variant="outlined"
-                        color="dark"
-                        fullWidth
-                        onClick={() => printSalesStickers(submittedSummary.sales)}
-                      >
-                        <Icon sx={{ mr: 1 }}>label</Icon>
-                        Print Stickers
-                      </MDButton>
-                    </MDBox>
+
                   </MDBox>
                 )}
               </MDBox>

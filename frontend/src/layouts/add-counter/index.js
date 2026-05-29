@@ -26,6 +26,9 @@ function AddCounter() {
   const [availableLocations, setAvailableLocations] = useState([]);
   const [selectedLocation, setSelectedLocation] = useState("");
   const [outlets, setOutlets] = useState([]);
+  const [savedOutlets, setSavedOutlets] = useState([]);
+  const [editingOutletId, setEditingOutletId] = useState(null);
+  const [editFormData, setEditFormData] = useState({ outletErpId: "", outletName: "", contactNumber: "" });
 
   const API = "https://bawarchee.edunextg.co/api";
 
@@ -38,6 +41,16 @@ function AddCounter() {
       setStaffOptions(data);
     } catch (error) {
       console.error("Error searching staff:", error);
+    }
+  };
+
+  const fetchSavedOutlets = async (staffId, day) => {
+    try {
+      const response = await fetch(`${API}/staff/${staffId}/outlets-by-day?day=${day}`);
+      const data = await response.json();
+      setSavedOutlets(data);
+    } catch (error) {
+      console.error("Error fetching saved outlets:", error);
     }
   };
 
@@ -57,8 +70,10 @@ function AddCounter() {
         }
       };
       fetchLocations();
+      fetchSavedOutlets(selectedStaff.id, selectedDay);
     } else {
       setAvailableLocations([]);
+      setSavedOutlets([]);
     }
   }, [selectedStaff, selectedDay]);
 
@@ -101,6 +116,7 @@ function AddCounter() {
         alert("Outlets added successfully!");
         setOutlets([]);
         setSelectedLocation("");
+        fetchSavedOutlets(selectedStaff.id, selectedDay);
       } else {
         const err = await response.json().catch(() => ({}));
         alert(err.error || "Failed to add outlets.");
@@ -111,12 +127,67 @@ function AddCounter() {
     }
   };
 
+  const handleDeleteSavedOutlet = async (counterId) => {
+    if (!window.confirm("Are you sure you want to delete this outlet?")) return;
+    try {
+      const response = await fetch(`${API}/staff/counter/${counterId}`, {
+        method: "DELETE",
+      });
+      if (response.ok) {
+        alert("Outlet deleted successfully!");
+        fetchSavedOutlets(selectedStaff.id, selectedDay);
+      } else {
+        alert("Failed to delete outlet.");
+      }
+    } catch (error) {
+      console.error("Error deleting outlet:", error);
+    }
+  };
+
+  const handleEditClick = (outlet) => {
+    setEditingOutletId(outlet.id);
+    setEditFormData({
+      outletErpId: outlet.outlet_erp_id,
+      outletName: outlet.outlet_name,
+      contactNumber: outlet.contact_number,
+    });
+  };
+
+  const handleCancelEdit = () => {
+    setEditingOutletId(null);
+    setEditFormData({ outletErpId: "", outletName: "", contactNumber: "" });
+  };
+
+  const handleSaveEdit = async (counterId) => {
+    try {
+      const response = await fetch(`${API}/staff/counter/${counterId}`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(editFormData),
+      });
+
+      if (response.ok) {
+        alert("Outlet updated successfully!");
+        setEditingOutletId(null);
+        fetchSavedOutlets(selectedStaff.id, selectedDay);
+      } else {
+        const err = await response.json().catch(() => ({}));
+        alert(err.error || "Failed to update outlet.");
+      }
+    } catch (error) {
+      console.error("Error updating outlet:", error);
+      alert("Error updating outlet.");
+    }
+  };
+
   return (
     <DashboardLayout>
       <DashboardNavbar />
       <MDBox pt={6} pb={3}>
         <Grid container justifyContent="center">
-          <Grid item xs={12} lg={10} mx="auto">
+          <Grid item xs={12}>
             <Card>
               <MDBox
                 variant="gradient"
@@ -292,6 +363,91 @@ function AddCounter() {
                         Save Outlets
                       </MDButton>
                     </MDBox>
+                  </MDBox>
+                )}
+
+                {savedOutlets.length > 0 && (
+                  <MDBox mt={5}>
+                    <MDTypography variant="h6" mb={2}>Saved Outlets for {selectedDay}</MDTypography>
+                    {savedOutlets.map((saved) => (
+                      <MDBox
+                        key={saved.id}
+                        mb={2}
+                        p={2}
+                        sx={{
+                          backgroundColor: "#f8f9fa",
+                          borderRadius: "10px",
+                          border: "1px solid #e9ecef",
+                        }}
+                      >
+                        {editingOutletId === saved.id ? (
+                          <Grid container spacing={2} alignItems="center">
+                            <Grid item xs={12} sm={6} md={3}>
+                              <MDInput
+                                label="ERP Id"
+                                fullWidth
+                                value={editFormData.outletErpId}
+                                onChange={(e) => setEditFormData({ ...editFormData, outletErpId: e.target.value })}
+                              />
+                            </Grid>
+                            <Grid item xs={12} sm={6} md={4}>
+                              <MDInput
+                                label="Outlet Name"
+                                fullWidth
+                                value={editFormData.outletName}
+                                onChange={(e) => setEditFormData({ ...editFormData, outletName: e.target.value })}
+                              />
+                            </Grid>
+                            <Grid item xs={12} sm={6} md={3}>
+                              <MDInput
+                                label="Contact"
+                                fullWidth
+                                value={editFormData.contactNumber}
+                                onChange={(e) => setEditFormData({ ...editFormData, contactNumber: e.target.value })}
+                              />
+                            </Grid>
+                            <Grid item xs={12} md={2}>
+                              <MDBox display="flex" flexDirection="column" gap={1}>
+                                <MDButton color="success" variant="gradient" size="small" onClick={() => handleSaveEdit(saved.id)}>
+                                  Save
+                                </MDButton>
+                                <MDButton color="secondary" variant="gradient" size="small" onClick={handleCancelEdit}>
+                                  Cancel
+                                </MDButton>
+                              </MDBox>
+                            </Grid>
+                          </Grid>
+                        ) : (
+                          <Grid container spacing={2} alignItems="center">
+                            <Grid item xs={12} sm={6} md={3}>
+                              <MDTypography variant="body2" fontWeight="medium">
+                                {saved.outlet_erp_id}
+                              </MDTypography>
+                            </Grid>
+                            <Grid item xs={12} sm={6} md={4}>
+                              <MDTypography variant="body2" fontWeight="medium">
+                                {saved.outlet_name}
+                              </MDTypography>
+                            </Grid>
+                            <Grid item xs={12} sm={6} md={3}>
+                              <MDTypography variant="body2" fontWeight="medium">
+                                {saved.contact_number}
+                              </MDTypography>
+                            </Grid>
+                            <Grid item xs={12} md={2}>
+                              <MDBox display="flex" gap={1}>
+                                <MDButton color="info" variant="text" size="small" onClick={() => handleEditClick(saved)}>
+                                  <Icon>edit</Icon> Edit
+                                </MDButton>
+                                <MDButton color="error" variant="text" size="small" onClick={() => handleDeleteSavedOutlet(saved.id)}>
+                                  <Icon>delete</Icon> Delete
+                                </MDButton>
+                              </MDBox>
+                            </Grid>
+                          </Grid>
+                        )}
+                      </MDBox>
+                    ))}
                   </MDBox>
                 )}
               </MDBox>

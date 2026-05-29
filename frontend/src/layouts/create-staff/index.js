@@ -14,6 +14,11 @@ import {
   TableHead,
   TableRow,
   Paper,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  Divider,
 } from "@mui/material";
 
 // Material Dashboard 2 React components
@@ -33,6 +38,8 @@ function CreateStaff() {
   const [activeTab, setActiveTab] = useState(0);
   const [staffList, setStaffList] = useState([]);
   const [editingStaffId, setEditingStaffId] = useState(null);
+  const [viewModalOpen, setViewModalOpen] = useState(false);
+  const [selectedStaffDetails, setSelectedStaffDetails] = useState(null);
 
   const [formData, setFormData] = useState({
     name: "",
@@ -130,6 +137,24 @@ function CreateStaff() {
     }));
   };
 
+  // View Staff Location Details
+  const handleView = async (staff) => {
+    try {
+      const response = await fetch(`${API}/staff/${staff.id}`);
+      const data = await response.json();
+      setSelectedStaffDetails(data);
+      setViewModalOpen(true);
+    } catch (error) {
+      console.error("Error fetching staff details:", error);
+      alert("Error loading staff details.");
+    }
+  };
+
+  const handleCloseView = () => {
+    setViewModalOpen(false);
+    setSelectedStaffDetails(null);
+  };
+
   // Edit Staff
   const handleEdit = async (staff) => {
     try {
@@ -218,7 +243,7 @@ function CreateStaff() {
       <MDBox pt={6} pb={3}>
         <Grid container spacing={3} justifyContent="center">
           {/* FORM */}
-          <Grid item xs={12} lg={10} mx="auto">
+          <Grid item xs={12}>
             <Card>
               <MDBox
                 variant="gradient"
@@ -385,7 +410,7 @@ function CreateStaff() {
           </Grid>
 
           {/* EMPLOYEE LIST */}
-          <Grid item xs={12} lg={10} mx="auto" mt={4}>
+          <Grid item xs={12} mt={4}>
             <Card>
               <MDBox p={3}>
                 <MDTypography variant="h5" fontWeight="medium" mb={3}>
@@ -424,6 +449,9 @@ function CreateStaff() {
                           <TableCell align="center">{staff.contact_no}</TableCell>
 
                           <TableCell align="right">
+                            <MDButton variant="text" color="dark" onClick={() => handleView(staff)}>
+                              <Icon>visibility</Icon>&nbsp;View
+                            </MDButton>
                             <MDButton variant="text" color="info" onClick={() => handleEdit(staff)}>
                               <Icon>edit</Icon>&nbsp;Edit
                             </MDButton>
@@ -440,6 +468,43 @@ function CreateStaff() {
       </MDBox>
 
       <Footer />
+
+      <Dialog open={viewModalOpen} onClose={handleCloseView} fullWidth maxWidth="sm">
+        <DialogTitle>Employee Details</DialogTitle>
+        <DialogContent dividers>
+          {selectedStaffDetails ? (
+            <MDBox>
+              <MDTypography variant="subtitle2" fontWeight="bold">Name: <span style={{fontWeight: 400}}>{selectedStaffDetails.name}</span></MDTypography>
+              <MDTypography variant="subtitle2" fontWeight="bold">Company: <span style={{fontWeight: 400}}>{selectedStaffDetails.company_name || '—'}</span></MDTypography>
+              <MDTypography variant="subtitle2" fontWeight="bold" mb={2}>Contact No: <span style={{fontWeight: 400}}>{selectedStaffDetails.contact_no}</span></MDTypography>
+              <Divider />
+              <MDTypography variant="h6" fontWeight="bold" mt={2} mb={1}>Assigned Locations</MDTypography>
+              {Object.keys(selectedStaffDetails.assignments || {}).map((day) => {
+                const dayLocs = selectedStaffDetails.assignments[day];
+                if (dayLocs && dayLocs.length > 0) {
+                  return (
+                    <MDBox key={day} mb={1} display="flex">
+                      <MDTypography variant="button" fontWeight="bold" sx={{ minWidth: 100 }}>{day}: </MDTypography>
+                      <MDTypography variant="button" color="text">
+                        {dayLocs.map(l => l.locationName).join(', ')}
+                      </MDTypography>
+                    </MDBox>
+                  );
+                }
+                return null;
+              })}
+              {Object.values(selectedStaffDetails.assignments || {}).every(locs => !locs || locs.length === 0) && (
+                <MDTypography variant="body2" color="text">No locations assigned to this staff yet.</MDTypography>
+              )}
+            </MDBox>
+          ) : (
+            <MDTypography variant="body2">Loading details...</MDTypography>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <MDButton onClick={handleCloseView} variant="text" color="dark">Close</MDButton>
+        </DialogActions>
+      </Dialog>
     </DashboardLayout>
   );
 }

@@ -57,6 +57,21 @@ class StaffModel {
         );
     }
 
+    static async editCounter(counterId, counterData) {
+        const { outletErpId, outletName, contactNumber } = counterData;
+        await db.execute(
+            'UPDATE staff_counters SET outlet_erp_id = ?, outlet_name = ?, contact_number = ? WHERE id = ?',
+            [outletErpId, outletName, contactNumber, counterId]
+        );
+    }
+
+    static async deleteCounter(counterId) {
+        await db.execute(
+            'DELETE FROM staff_counters WHERE id = ?',
+            [counterId]
+        );
+    }
+
     static async update(id, name, contactNo, companyId = null) {
         await db.execute(
             'UPDATE staff SET name = ?, contact_no = ?, company_id = ? WHERE id = ?',
@@ -196,6 +211,30 @@ class StaffModel {
         }
     }
 
+    static async getAllSalesByDate(date) {
+        let query = `
+            SELECT ss.id, ss.staff_id, ss.outlet_id, ss.sale_date, ss.price, ss.invoice_number, 
+                    ss.sticker_number, ss.packaging_status, ss.delivery_boy_id, ss.vehicle_no,
+                    sc.outlet_name, sc.outlet_erp_id, s.name as staff_name, DATE_FORMAT(ss.sale_date, '%d-%m-%Y') as formatted_date,
+                    db.name as delivery_boy_name
+             FROM staff_sales ss
+             LEFT JOIN staff_counters sc ON ss.outlet_id = sc.id
+             LEFT JOIN staff s ON ss.staff_id = s.id
+             LEFT JOIN delivery_boys db ON ss.delivery_boy_id = db.id
+        `;
+        const params = [];
+        
+        if (date) {
+            query += ` WHERE ss.sale_date = ? ORDER BY ss.id DESC`;
+            params.push(date);
+        } else {
+            query += ` ORDER BY ss.sale_date DESC, ss.id DESC LIMIT 1000`;
+        }
+
+        const [rows] = await db.execute(query, params);
+        return rows;
+    }
+
     static async getSalesByDate(staffId, date) {
         const [rows] = await db.execute(
             `SELECT ss.id, ss.staff_id, ss.outlet_id, ss.sale_date, ss.price, ss.invoice_number, 
@@ -222,6 +261,25 @@ class StaffModel {
              WHERE id = ?`,
             [paymentMode, paidAmount, balanceAmount, referenceNo, referenceDate, creditDays, saleId]
         );
+    }
+
+    static async updatePackagingStatus(saleId, status, deliveryBoyId, vehicleNo) {
+        if (status === 'out_for_delivery' || status === 'delivered' || status === 'cancelled') {
+            await db.execute(
+                `UPDATE staff_sales 
+                 SET packaging_status = ?, delivery_boy_id = ?, vehicle_no = ?
+                 WHERE id = ?`,
+                [status, deliveryBoyId, vehicleNo, saleId]
+            );
+        } else {
+            // Keep existing delivery assignment if required, or clear it. We'll clear it for simplicity.
+            await db.execute(
+                `UPDATE staff_sales 
+                 SET packaging_status = ?, delivery_boy_id = NULL, vehicle_no = NULL
+                 WHERE id = ?`,
+                [status, saleId]
+            );
+        }
     }
 
     static async getPendingCredits() {

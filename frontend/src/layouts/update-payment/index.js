@@ -120,7 +120,7 @@ function UpdatePayment() {
       <DashboardNavbar />
       <MDBox pt={6} pb={3}>
         <Grid container spacing={3} justifyContent="center">
-          <Grid item xs={12} lg={10} mx="auto">
+          <Grid item xs={12}>
             <Card>
               <MDBox
                 variant="gradient"

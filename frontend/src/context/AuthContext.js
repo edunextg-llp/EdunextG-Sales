@@ -72,13 +72,13 @@ export const AuthProvider = ({ children }) => {
 
     const resetTimer = () => {
       clearTimeout(inactivityTimer);
-      // 60 minutes inactivity
+      // 7 hours inactivity
       inactivityTimer = setTimeout(() => {
         if (localStorage.getItem("auth_token")) {
           logout();
           window.location.href = "/authentication/sign-in";
         }
-      }, 60 * 60 * 1000);
+      }, 7 * 60 * 60 * 1000);
     };
 
     if (token) {

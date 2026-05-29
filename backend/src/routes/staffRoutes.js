@@ -6,6 +6,7 @@ router.post('/', staffController.createStaff);
 router.get('/', staffController.getStaff);
 router.get('/search', staffController.searchStaff);
 router.get('/credits/pending', staffController.getPendingCredits);
+router.get('/sales/by-date', staffController.getAllSalesByDate);
 router.get('/:id', staffController.getStaffFullDetails);
 router.put('/:id', staffController.updateStaff);
 router.get('/:id/locations', staffController.getStaffLocations);
@@ -17,5 +18,6 @@ router.get('/:id/sales-by-date', staffController.fetchSalesByDate);
 router.put('/counter/:counterId', staffController.editCounter);
 router.delete('/counter/:counterId', staffController.deleteCounter);
 router.put('/sales/:saleId/payment', staffController.updatePaymentMode);
+router.put('/sales/:saleId/packaging', staffController.updatePackagingStatus);
 
 export default router;
