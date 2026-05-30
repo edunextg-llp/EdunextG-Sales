@@ -1,11 +1,10 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, Fragment } from "react";
 
 // @mui material components
 import Grid from "@mui/material/Grid";
 import Card from "@mui/material/Card";
 import Icon from "@mui/material/Icon";
 import Autocomplete from "@mui/material/Autocomplete";
-// import { FormControl, Select, MenuItem } from "@mui/material";
 import {
   Table,
   TableBody,
@@ -28,7 +27,6 @@ import DashboardLayout from "examples/LayoutContainers/DashboardLayout";
 import DashboardNavbar from "examples/Navbars/DashboardNavbar";
 import Footer from "examples/Footer";
 import { printSalesStickers } from "utils/printSalesStickers";
-// import { printSalesReceipt } from "utils/printSalesReceipt";
 
 function AddSales() {
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split("T")[0]);
@@ -85,12 +83,12 @@ function AddSales() {
           setOutlets(data);
           const initialSales = {};
           data.forEach((outlet) => {
-            initialSales[outlet.id] = {
+            initialSales[outlet.id] = [{
               invoiceNumber: "",
               price: "",
               deliveryBoyId: "",
               vehicleNo: "",
-            };
+            }];
           });
           setSalesData(initialSales);
 
@@ -136,30 +134,69 @@ function AddSales() {
     }
   }, [selectedStaff, selectedDate]);
 
-  const handleSalesChange = (outletId, field, value) => {
+  const handleSalesChange = (outletId, index, field, value) => {
+    setSalesData((prev) => {
+      const outletSales = [...prev[outletId]];
+      outletSales[index] = { ...outletSales[index], [field]: value };
+      return {
+        ...prev,
+        [outletId]: outletSales,
+      };
+    });
+  };
+
+  const handleAddRow = (outletId) => {
     setSalesData((prev) => ({
       ...prev,
-      [outletId]: {
+      [outletId]: [
         ...prev[outletId],
-        [field]: value,
-      },
+        { invoiceNumber: "", price: "", deliveryBoyId: "", vehicleNo: "" }
+      ]
     }));
   };
 
+  const handleRemoveRow = (outletId, index) => {
+    setSalesData((prev) => {
+      const outletSales = [...prev[outletId]];
+      outletSales.splice(index, 1);
+      return {
+        ...prev,
+        [outletId]: outletSales
+      };
+    });
+  };
+
   const handleSaveRow = async (outletId) => {
-    const data = salesData[outletId];
-    if (!data?.invoiceNumber?.trim() || !data?.price?.trim()) {
-      alert("Please enter invoice number and price.");
+    const dataList = salesData[outletId] || [];
+    const validRows = dataList.filter(d => d.invoiceNumber?.trim() && d.price?.trim());
+
+    if (validRows.length === 0) {
+      alert("Please enter at least one valid invoice number and price.");
+      return;
+    }
+
+    const hasInvalidFormat = validRows.some(d => isNaN(parseFloat(d.price)));
+    if (hasInvalidFormat) {
+       alert("Please enter a valid numeric value for the price.");
+       return;
+    }
+
+    const hasIncomplete = dataList.some(d =>
+      (d.invoiceNumber?.trim() && !d.price?.trim()) ||
+      (!d.invoiceNumber?.trim() && d.price?.trim())
+    );
+    if (hasIncomplete) {
+      alert("Please complete partially filled rows or remove them.");
       return;
     }
 
     const payload = {
       date: selectedDate,
-      sales: [{
+      sales: validRows.map(d => ({
         outletId: parseInt(outletId, 10),
-        invoiceNumber: data.invoiceNumber.trim(),
-        price: parseFloat(data.price),
-      }]
+        invoiceNumber: d.invoiceNumber.trim(),
+        price: parseFloat(d.price),
+      }))
     };
 
     setSubmitting(true);
@@ -186,13 +223,11 @@ function AddSales() {
         });
 
         setOutlets((prev) => prev.filter((o) => o.id !== outletId));
-
         setSalesData((prev) => {
           const next = { ...prev };
           delete next[outletId];
           return next;
         });
-
       } else {
         const err = await response.json().catch(() => ({}));
         alert(err.error || "Failed to record sale.");
@@ -206,32 +241,41 @@ function AddSales() {
   };
 
   const handleSubmit = async () => {
-    const salesEntries = Object.entries(salesData).filter(
-      ([, data]) => data?.invoiceNumber?.trim() || data?.price?.trim()
-    );
+    const allSales = [];
+    const submittedOutletIds = new Set();
+    let hasError = false;
 
-    if (!selectedStaff || !selectedDate || salesEntries.length === 0) {
-      alert("Please select staff, date, and enter invoice numbers and prices.");
+    Object.entries(salesData).forEach(([outletId, dataList]) => {
+      const filledRows = dataList.filter(d => d.invoiceNumber?.trim() || d.price?.trim());
+      if (filledRows.length > 0) {
+        const incomplete = filledRows.some(d => !d.invoiceNumber?.trim() || !d.price?.trim() || isNaN(parseFloat(d.price)));
+        if (incomplete) {
+          hasError = true;
+        } else {
+          submittedOutletIds.add(parseInt(outletId, 10));
+          filledRows.forEach(d => {
+            allSales.push({
+              outletId: parseInt(outletId, 10),
+              invoiceNumber: d.invoiceNumber.trim(),
+              price: parseFloat(d.price)
+            });
+          });
+        }
+      }
+    });
+
+    if (!selectedStaff || !selectedDate || allSales.length === 0) {
+      alert("Please select staff, date, and enter at least one valid invoice and price.");
       return;
     }
-
-    const incomplete = salesEntries.some(
-      ([, data]) =>
-        !data?.invoiceNumber?.trim() ||
-        !data?.price?.trim()
-    );
-    if (incomplete) {
-      alert("Each row must have an invoice number and price.");
+    if (hasError) {
+      alert("Some rows are partially filled or invalid. Please provide both an invoice number and numeric price, or clear/remove the row.");
       return;
     }
 
     const payload = {
       date: selectedDate,
-      sales: salesEntries.map(([outletId, data]) => ({
-        outletId: parseInt(outletId, 10),
-        invoiceNumber: data.invoiceNumber.trim(),
-        price: parseFloat(data.price)
-      })),
+      sales: allSales,
     };
 
     setSubmitting(true);
@@ -246,7 +290,6 @@ function AddSales() {
 
       if (response.ok) {
         const result = await response.json();
-        const submittedOutletIds = salesEntries.map(([id]) => parseInt(id, 10));
 
         // Append to summary if exists, else set new summary
         setSubmittedSummary((prev) => {
@@ -260,7 +303,7 @@ function AddSales() {
         });
 
         // Remove from the outlets table list
-        setOutlets((prev) => prev.filter((o) => !submittedOutletIds.includes(o.id)));
+        setOutlets((prev) => prev.filter((o) => !submittedOutletIds.has(o.id)));
 
         // Remove from salesData
         setSalesData((prev) => {
@@ -433,87 +476,127 @@ function AddSales() {
                           </TableRow>
                         </TableHead>
                         <TableBody>
-                          {outlets.map((outlet) => (
-                            <TableRow
-                              key={outlet.id}
-                              sx={{ "&:last-child td, &:last-child th": { border: 0 } }}
-                            >
-                              <TableCell sx={{ borderBottom: "1px solid #e5e7eb", py: 2 }}>
-                                <MDBox display="flex" alignItems="center" gap={2}>
-                                  <MDAvatar
-                                    bgColor="light"
-                                    size="sm"
-                                    sx={{ border: "1px solid #e5e7eb", color: "#374151" }}
+                          {outlets.map((outlet) => {
+                            const rows = salesData[outlet.id] || [];
+                            return (
+                              <Fragment key={outlet.id}>
+                                {rows.map((row, index) => (
+                                  <TableRow
+                                    key={`${outlet.id}-${index}`}
+                                    sx={{
+                                      "&:last-child td, &:last-child th": { border: 0 },
+                                      backgroundColor: index % 2 !== 0 ? "#fdfdfd" : "inherit"
+                                    }}
                                   >
-                                    <MDTypography variant="caption" fontWeight="medium">
-                                      {outlet.outlet_name.charAt(0)}
-                                    </MDTypography>
-                                  </MDAvatar>
-                                  <MDBox lineHeight={1}>
-                                    <MDTypography
-                                      display="block"
-                                      variant="button"
-                                      fontWeight="medium"
-                                      color="dark"
-                                      sx={{ fontSize: "0.875rem" }}
-                                    >
-                                      {outlet.outlet_name}
-                                    </MDTypography>
-                                    <MDTypography
-                                      variant="caption"
-                                      color="text"
-                                      sx={{ fontSize: "0.75rem", color: "#6b7280" }}
-                                    >
-                                      {outlet.outlet_erp_id}
-                                    </MDTypography>
-                                  </MDBox>
-                                </MDBox>
-                              </TableCell>
-                              <TableCell sx={{ borderBottom: "1px solid #e5e7eb", py: 2 }}>
-                                <MDInput
-                                  type="text"
-                                  placeholder="Invoice..."
-                                  size="small"
-                                  sx={{
-                                    width: "120px",
-                                    "& .MuiInputBase-root": { height: "36px" },
-                                  }}
-                                  value={salesData[outlet.id]?.invoiceNumber || ""}
-                                  onChange={(e) =>
-                                    handleSalesChange(outlet.id, "invoiceNumber", e.target.value)
-                                  }
-                                />
-                              </TableCell>
-                              <TableCell sx={{ borderBottom: "1px solid #e5e7eb", py: 2 }}>
-                                <MDInput
-                                  type="number"
-                                  placeholder="0.00"
-                                  size="small"
-                                  disabled={!salesData[outlet.id]?.invoiceNumber?.trim()}
-                                  sx={{
-                                    width: "100px",
-                                    "& .MuiInputBase-root": { height: "36px" },
-                                    "& .Mui-disabled": { opacity: 0.8, backgroundColor: "#f3f4f6" }
-                                  }}
-                                  value={salesData[outlet.id]?.price || ""}
-                                  onChange={(e) =>
-                                    handleSalesChange(outlet.id, "price", e.target.value)
-                                  }
-                                />
-                              </TableCell>
-                              <TableCell align="center" sx={{ borderBottom: "1px solid #e5e7eb", py: 2 }}>
-                                <MDButton
-                                  variant="gradient"
-                                  color="info"
-                                  size="small"
-                                  onClick={() => handleSaveRow(outlet.id)}
-                                  disabled={submitting || !salesData[outlet.id]?.invoiceNumber?.trim() || !salesData[outlet.id]?.price?.trim()}
-                                >
-                                  Save
-                                </MDButton>
-                              </TableCell>
-                            </TableRow>
-                          ))}
+                                    <TableCell sx={{ borderBottom: index === rows.length - 1 ? "1px solid #e5e7eb" : "none", py: 2 }}>
+                                      {index === 0 && (
+                                        <MDBox display="flex" alignItems="center" gap={2}>
+                                          <MDAvatar
+                                            bgColor="light"
+                                            size="sm"
+                                            sx={{ border: "1px solid #e5e7eb", color: "#374151" }}
+                                          >
+                                            <MDTypography variant="caption" fontWeight="medium">
+                                              {outlet.outlet_name.charAt(0)}
+                                            </MDTypography>
+                                          </MDAvatar>
+                                          <MDBox lineHeight={1}>
+                                            <MDTypography
+                                              display="block"
+                                              variant="button"
+                                              fontWeight="medium"
+                                              color="dark"
+                                              sx={{ fontSize: "0.875rem" }}
+                                            >
+                                              {outlet.outlet_name}
+                                            </MDTypography>
+                                            <MDTypography
+                                              variant="caption"
+                                              color="text"
+                                              sx={{ fontSize: "0.75rem", color: "#6b7280" }}
+                                            >
+                                              {outlet.outlet_erp_id}
+                                            </MDTypography>
+                                          </MDBox>
+                                        </MDBox>
+                                      )}
+                                    </TableCell>
+                                    <TableCell sx={{ borderBottom: index === rows.length - 1 ? "1px solid #e5e7eb" : "none", py: 2 }}>
+                                      <MDInput
+                                        type="text"
+                                        placeholder="Invoice..."
+                                        size="small"
+                                        sx={{
+                                          width: "120px",
+                                          "& .MuiInputBase-root": { height: "36px" },
+                                        }}
+                                        value={row.invoiceNumber || ""}
+                                        onChange={(e) => handleSalesChange(outlet.id, index, "invoiceNumber", e.target.value)}
+                                      />
+                                    </TableCell>
+                                    <TableCell sx={{ borderBottom: index === rows.length - 1 ? "1px solid #e5e7eb" : "none", py: 2 }}>
+                                      <MDInput
+                                        type="number"
+                                        placeholder="0.00"
+                                        size="small"
+                                        disabled={!row.invoiceNumber?.trim()}
+                                        sx={{
+                                          width: "100px",
+                                          "& .MuiInputBase-root": { height: "36px" },
+                                          "& .Mui-disabled": { opacity: 0.8, backgroundColor: "#f3f4f6" }
+                                        }}
+                                        value={row.price || ""}
+                                        onChange={(e) => handleSalesChange(outlet.id, index, "price", e.target.value)}
+                                      />
+                                    </TableCell>
+                                    <TableCell align="center" sx={{ borderBottom: index === rows.length - 1 ? "1px solid #e5e7eb" : "none", py: 2 }}>
+                                      <MDBox display="flex" gap={1} justifyContent="center" alignItems="center">
+                                        {index === 0 ? (
+                                          <MDButton
+                                            variant="gradient"
+                                            color="info"
+                                            size="small"
+                                            onClick={() => handleSaveRow(outlet.id)}
+                                            disabled={submitting || !rows.some(r => r.invoiceNumber?.trim() && r.price?.trim())}
+                                          >
+                                            Save
+                                          </MDButton>
+                                        ) : (
+                                          <MDBox width="64px" /> /* Placeholder width matching Save btn to align icons */
+                                        )}
+                                        {index === rows.length - 1 && (
+                                          <MDButton
+                                            variant="outlined"
+                                            color="dark"
+                                            size="small"
+                                            iconOnly
+                                            circular
+                                            sx={{ minWidth: '32px', width: '32px', height: '32px' }}
+                                            onClick={() => handleAddRow(outlet.id)}
+                                          >
+                                            <Icon>add</Icon>
+                                          </MDButton>
+                                        )}
+                                        {rows.length > 1 && (
+                                          <MDButton
+                                            variant="outlined"
+                                            color="error"
+                                            size="small"
+                                            iconOnly
+                                            circular
+                                            sx={{ minWidth: '32px', width: '32px', height: '32px' }}
+                                            onClick={() => handleRemoveRow(outlet.id, index)}
+                                          >
+                                            <Icon>close</Icon>
+                                          </MDButton>
+                                        )}
+                                      </MDBox>
+                                    </TableCell>
+                                  </TableRow>
+                                ))}
+                              </Fragment>
+                            );
+                          })}
                         </TableBody>
                       </Table>
                     </TableContainer>
@@ -564,17 +647,6 @@ function AddSales() {
                         Print Stickers
                       </MDButton>
                     </MDBox>
-                    {/* <MDTypography variant="body2" mb={1}>
-                      <strong>Date:</strong> {new Date(submittedSummary.date).toLocaleDateString()}{" "}
-                      ({submittedSummary.dayName})
-                    </MDTypography>
-                    <MDTypography variant="body2" mb={1}>
-                      <strong>Staff:</strong> {submittedSummary.staffName}
-                    </MDTypography>
-                    <MDTypography variant="body2" mb={2}>
-                      <strong>Company:</strong> {submittedSummary.companyName || "—"}
-                    </MDTypography> */}
-
                     <TableContainer
                       sx={{
                         boxShadow: "none",
@@ -624,32 +696,6 @@ function AddSales() {
                             >
                               Sticker
                             </TableCell>
-                            {/* <TableCell
-                              align="center"
-                              sx={{
-                                color: "#6b7280",
-                                fontSize: "0.75rem",
-                                textTransform: "none",
-                                fontWeight: 500,
-                                borderBottom: "1px solid #e5e7eb",
-                                py: 1.5,
-                              }}
-                            >
-                              Delivery Boy
-                            </TableCell> */}
-                            {/* <TableCell
-                              align="center"
-                              sx={{
-                                color: "#6b7280",
-                                fontSize: "0.75rem",
-                                textTransform: "none",
-                                fontWeight: 500,
-                                borderBottom: "1px solid #e5e7eb",
-                                py: 1.5,
-                              }}
-                            >
-                              Vehicle No
-                            </TableCell> */}
                             <TableCell
                               align="right"
                               sx={{
@@ -727,28 +773,6 @@ function AddSales() {
                               >
                                 {row.stickerNumber}
                               </TableCell>
-                              {/* <TableCell
-                                align="center"
-                                sx={{
-                                  borderBottom: "1px solid #e5e7eb",
-                                  py: 1.5,
-                                  fontSize: "0.875rem",
-                                  color: "#374151",
-                                }}
-                              >
-                                {row.deliveryBoyName || "—"}
-                              </TableCell> */}
-                              {/* <TableCell
-                                align="center"
-                                sx={{
-                                  borderBottom: "1px solid #e5e7eb",
-                                  py: 1.5,
-                                  fontSize: "0.875rem",
-                                  color: "#374151",
-                                }}
-                              >
-                                {row.vehicleNo || "—"}
-                              </TableCell> */}
                               <TableCell
                                 align="right"
                                 sx={{
@@ -766,7 +790,6 @@ function AddSales() {
                         </TableBody>
                       </Table>
                     </TableContainer>
-
 
                   </MDBox>
                 )}

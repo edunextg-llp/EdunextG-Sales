@@ -207,6 +207,36 @@ async function initDB() {
     }
 
     await connection.query(`
+        CREATE TABLE IF NOT EXISTS sale_payments (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            sale_id INT NOT NULL,
+            payment_date DATE NOT NULL,
+            payment_mode ENUM('cash', 'upi', 'credit', 'cheque') NOT NULL,
+            amount DECIMAL(10, 2) NOT NULL,
+            reference_no VARCHAR(100) NULL,
+            reference_date DATE NULL,
+            credit_days INT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (sale_id) REFERENCES staff_sales(id) ON DELETE CASCADE
+        );
+    `);
+    console.log('Sale payments table created');
+
+    try {
+        await connection.query(`
+            UPDATE staff_sales ss
+            SET balance_amount = ss.price
+            WHERE ss.paid_amount = 0
+              AND ss.balance_amount = 0
+              AND ss.price > 0
+              AND NOT EXISTS (SELECT 1 FROM sale_payments sp WHERE sp.sale_id = ss.id)
+        `);
+        console.log('Initialized balance amounts for existing sales');
+    } catch (err) {
+        console.log('Balance initialization skipped or already applied');
+    }
+
+    await connection.query(`
         CREATE TABLE IF NOT EXISTS sticker_sequence (
             id INT PRIMARY KEY,
             seq_value INT NOT NULL DEFAULT 0

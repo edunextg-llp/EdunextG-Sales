@@ -147,8 +147,8 @@ class StaffModel {
             for (const item of salesData) {
                 const [existing] = await connection.execute(
                     `SELECT sticker_number FROM staff_sales
-                     WHERE staff_id = ? AND outlet_id = ? AND sale_date = ?`,
-                    [staffId, item.outletId, date]
+                     WHERE staff_id = ? AND outlet_id = ? AND sale_date = ? AND invoice_number = ?`,
+                    [staffId, item.outletId, date, item.invoiceNumber]
                 );
 
                 let stickerNumber = existing[0]?.sticker_number;
@@ -158,14 +158,19 @@ class StaffModel {
 
                 await connection.execute(
                     `INSERT INTO staff_sales
-                     (staff_id, outlet_id, sale_date, invoice_number, price, sticker_number, payment_mode, delivery_boy_id, vehicle_no)
-                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                     (staff_id, outlet_id, sale_date, invoice_number, price, sticker_number, payment_mode, delivery_boy_id, vehicle_no, paid_amount, balance_amount)
+                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?)
                      ON DUPLICATE KEY UPDATE
                        invoice_number = VALUES(invoice_number),
                        price = VALUES(price),
                        payment_mode = VALUES(payment_mode),
                        delivery_boy_id = VALUES(delivery_boy_id),
-                       vehicle_no = VALUES(vehicle_no)`,
+                       vehicle_no = VALUES(vehicle_no),
+                       balance_amount = IF(
+                         (SELECT COUNT(*) FROM sale_payments sp WHERE sp.sale_id = staff_sales.id) = 0,
+                         VALUES(price),
+                         balance_amount
+                       )`,
                     [
                         staffId,
                         item.outletId,
@@ -176,6 +181,7 @@ class StaffModel {
                         item.paymentMode,
                         item.deliveryBoyId,
                         item.vehicleNo,
+                        item.price,
                     ]
                 );
 
@@ -215,6 +221,7 @@ class StaffModel {
         let query = `
             SELECT ss.id, ss.staff_id, ss.outlet_id, ss.sale_date, ss.price, ss.invoice_number, 
                     ss.sticker_number, ss.packaging_status, ss.delivery_boy_id, ss.vehicle_no,
+                    ss.paid_amount, ss.balance_amount, ss.payment_mode,
                     sc.outlet_name, sc.outlet_erp_id, s.name as staff_name, DATE_FORMAT(ss.sale_date, '%d-%m-%Y') as formatted_date,
                     db.name as delivery_boy_name
              FROM staff_sales ss
@@ -239,7 +246,7 @@ class StaffModel {
         const [rows] = await db.execute(
             `SELECT ss.id, ss.staff_id, ss.outlet_id, ss.sale_date, ss.price, ss.invoice_number, 
                     ss.sticker_number, ss.payment_mode, ss.paid_amount, ss.balance_amount, 
-                    ss.reference_no, ss.reference_date, ss.credit_days, ss.vehicle_no,
+                    ss.reference_no, ss.reference_date, ss.credit_days, ss.vehicle_no, ss.packaging_status,
                     sc.outlet_name, sc.outlet_erp_id,
                     db.name as delivery_boy_name
              FROM staff_sales ss
@@ -263,6 +270,14 @@ class StaffModel {
         );
     }
 
+    static async getSaleStatusById(saleId) {
+        const [rows] = await db.execute(
+            'SELECT packaging_status FROM staff_sales WHERE id = ?',
+            [saleId]
+        );
+        return rows[0] ? rows[0].packaging_status : null;
+    }
+
     static async updatePackagingStatus(saleId, status, deliveryBoyId, vehicleNo) {
         if (status === 'out_for_delivery' || status === 'delivered' || status === 'cancelled') {
             await db.execute(
@@ -284,13 +299,14 @@ class StaffModel {
 
     static async getPendingCredits() {
         const [rows] = await db.execute(
-            `SELECT ss.id, ss.invoice_number, ss.balance_amount, ss.sale_date, ss.credit_days,
-                    sc.outlet_name, s.name as staff_name
-             FROM staff_sales ss
+            `SELECT sp.id, sp.amount AS balance_amount, sp.payment_date AS sale_date, sp.credit_days,
+                    ss.invoice_number, sc.outlet_name, s.name AS staff_name
+             FROM sale_payments sp
+             JOIN staff_sales ss ON sp.sale_id = ss.id
              LEFT JOIN staff_counters sc ON ss.outlet_id = sc.id
              LEFT JOIN staff s ON ss.staff_id = s.id
-             WHERE ss.payment_mode = 'credit' OR ss.balance_amount > 0
-             ORDER BY ss.sale_date ASC`
+             WHERE sp.payment_mode = 'credit'
+             ORDER BY sp.payment_date ASC`
         );
         return rows;
     }

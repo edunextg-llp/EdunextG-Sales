@@ -164,16 +164,22 @@ function Delivered() {
                               )}
                             </TableCell>
                             <TableCell align="center" sx={{ borderBottom: "1px solid #cbd5e1", py: 2 }}>
-                              {row.packaging_status === 'out_for_delivery' && (
-                                <MDBox display="flex" gap={1} justifyContent="center">
-                                  <MDButton color="error" variant="contained" size="small" onClick={() => handleUpdateStatus(row.id, 'cancelled', row.delivery_boy_id, row.vehicle_no)}>
-                                    Cancel
-                                  </MDButton>
-                                  <MDButton color="success" variant="contained" size="small" onClick={() => handleUpdateStatus(row.id, 'delivered', row.delivery_boy_id, row.vehicle_no)}>
-                                    Deliver
-                                  </MDButton>
-                                </MDBox>
-                              )}
+                              <MDBox display="flex" gap={1} justifyContent="center" flexWrap="wrap">
+                                {row.packaging_status === 'out_for_delivery' && (
+                                  <>
+                                    <MDButton color="error" variant="contained" size="small" onClick={() => handleUpdateStatus(row.id, 'cancelled', row.delivery_boy_id, row.vehicle_no)}>
+                                      Cancel
+                                    </MDButton>
+                                    <MDButton color="success" variant="contained" size="small" onClick={() => handleUpdateStatus(row.id, 'delivered', row.delivery_boy_id, row.vehicle_no)}>
+                                      Deliver
+                                    </MDButton>
+                                    <MDButton color="dark" variant="gradient" size="small" onClick={() => handleUpdateStatus(row.id, 'packing_done', row.delivery_boy_id, row.vehicle_no)}>
+                                      Return
+                                    </MDButton>
+                                  </>
+                                )}
+
+                              </MDBox>
                             </TableCell>
                           </TableRow>
                         ))

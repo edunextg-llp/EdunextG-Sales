@@ -1,4 +1,5 @@
 import StaffModel from '../models/staffModel.js';
+import PaymentModel from '../models/paymentModel.js';
 import CompanyModel from '../models/companyModel.js';
 import DeliveryBoyModel from '../models/deliveryBoyModel.js';
 import {
@@ -285,6 +286,11 @@ export const updatePackagingStatus = async (req, res) => {
             return res.status(400).json({ error: 'Delivery Boy and Vehicle No are required for shipping statuses' });
         }
 
+        const currentStatus = await StaffModel.getSaleStatusById(saleId);
+        if (currentStatus === 'delivered' || currentStatus === 'cancelled') {
+            return res.status(400).json({ error: 'Cannot update status of an item that is already delivered or cancelled' });
+        }
+
         await StaffModel.updatePackagingStatus(saleId, packagingStatus, deliveryBoyId || null, vehicleNo || null);
         res.status(200).json({ message: 'Packaging status updated successfully' });
     } catch (error) {
@@ -363,6 +369,106 @@ export const deleteCounter = async (req, res) => {
         res.status(200).json({ message: 'Counter deleted successfully' });
     } catch (error) {
         console.error('Error deleting counter:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+};
+
+export const getSalePayments = async (req, res) => {
+    try {
+        const { saleId } = req.params;
+        const sale = await PaymentModel.getSaleSummary(saleId);
+
+        if (!sale) {
+            return res.status(404).json({ error: 'Sale not found' });
+        }
+
+        const payments = await PaymentModel.getBySaleId(saleId);
+
+        res.status(200).json({
+            payments,
+            summary: {
+                price: parseFloat(sale.price),
+                paidAmount: parseFloat(sale.paid_amount),
+                balanceAmount: parseFloat(sale.balance_amount),
+                invoiceNumber: sale.invoice_number,
+            },
+        });
+    } catch (error) {
+        console.error('Error fetching sale payments:', error);
+        res.status(500).json({
+            error: 'Internal server error',
+            details: error.code === 'ER_NO_SUCH_TABLE'
+                ? 'sale_payments table missing — restart server after running node src/initDB.js'
+                : undefined,
+        });
+    }
+};
+
+export const addSalePayment = async (req, res) => {
+    try {
+        const { saleId } = req.params;
+        const { paymentDate, paymentMode, amount, referenceNo, referenceDate, creditDays } = req.body;
+
+        if (!paymentDate) {
+            return res.status(400).json({ error: 'Payment date is required' });
+        }
+        if (!paymentMode) {
+            return res.status(400).json({ error: 'Payment mode is required' });
+        }
+
+        const amountValidation = validateNumeric(amount, 'Amount');
+        if (!amountValidation.valid) {
+            return res.status(400).json({ error: amountValidation.error });
+        }
+        if (amountValidation.value <= 0) {
+            return res.status(400).json({ error: 'Amount must be greater than zero' });
+        }
+
+        const allowedModes = ['cash', 'upi', 'credit', 'cheque'];
+        if (!allowedModes.includes(String(paymentMode).toLowerCase())) {
+            return res.status(400).json({ error: 'Invalid payment mode' });
+        }
+
+        const mode = String(paymentMode).toLowerCase();
+        if (mode === 'credit') {
+            const daysValidation = validatePositiveInteger(creditDays, 'Credit days');
+            if (!daysValidation.valid) {
+                return res.status(400).json({ error: daysValidation.error });
+            }
+        }
+
+        if (mode === 'cheque' && !referenceNo) {
+            return res.status(400).json({ error: 'Cheque number is required' });
+        }
+
+        let formattedRefDate = referenceDate || null;
+        if (formattedRefDate && typeof formattedRefDate === 'string' && formattedRefDate.includes('T')) {
+            formattedRefDate = formattedRefDate.split('T')[0];
+        }
+
+        const result = await PaymentModel.addPayment(saleId, {
+            paymentDate,
+            paymentMode: mode,
+            amount: amountValidation.value,
+            referenceNo: referenceNo || null,
+            referenceDate: formattedRefDate,
+            creditDays: mode === 'credit' ? parseInt(creditDays, 10) : null,
+        });
+
+        res.status(201).json({
+            message: 'Payment recorded successfully',
+            ...result,
+        });
+    } catch (error) {
+        if (error.message === 'SALE_NOT_FOUND') {
+            return res.status(404).json({ error: 'Sale not found' });
+        }
+        if (error.message === 'EXCEEDS_BALANCE') {
+            return res.status(400).json({
+                error: `Amount exceeds remaining balance (₹${error.remaining.toFixed(2)} left)`,
+            });
+        }
+        console.error('Error adding sale payment:', error);
         res.status(500).json({ error: 'Internal server error' });
     }
 };

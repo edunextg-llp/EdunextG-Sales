@@ -18,6 +18,8 @@ router.get('/:id/sales-by-date', staffController.fetchSalesByDate);
 router.put('/counter/:counterId', staffController.editCounter);
 router.delete('/counter/:counterId', staffController.deleteCounter);
 router.put('/sales/:saleId/payment', staffController.updatePaymentMode);
+router.get('/sales/:saleId/payments', staffController.getSalePayments);
+router.post('/sales/:saleId/payments', staffController.addSalePayment);
 router.put('/sales/:saleId/packaging', staffController.updatePackagingStatus);
 
 export default router;
