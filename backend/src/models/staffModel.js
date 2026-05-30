@@ -128,11 +128,17 @@ class StaffModel {
 
     static async getNextStickerNumber(connection) {
         await connection.execute(
+            'INSERT IGNORE INTO sticker_sequence (id, seq_value) VALUES (1, 0)'
+        );
+        await connection.execute(
             'UPDATE sticker_sequence SET seq_value = seq_value + 1 WHERE id = 1'
         );
         const [rows] = await connection.execute(
             'SELECT seq_value FROM sticker_sequence WHERE id = 1'
         );
+        if (!rows[0]) {
+            throw new Error('Sticker sequence not initialized. Run node src/initDB.js on the server.');
+        }
         return formatStickerNumber(rows[0].seq_value);
     }
 
@@ -166,11 +172,7 @@ class StaffModel {
                        payment_mode = VALUES(payment_mode),
                        delivery_boy_id = VALUES(delivery_boy_id),
                        vehicle_no = VALUES(vehicle_no),
-                       balance_amount = IF(
-                         (SELECT COUNT(*) FROM sale_payments sp WHERE sp.sale_id = staff_sales.id) = 0,
-                         VALUES(price),
-                         balance_amount
-                       )`,
+                       balance_amount = IF(staff_sales.paid_amount = 0, VALUES(price), staff_sales.balance_amount)`,
                     [
                         staffId,
                         item.outletId,
