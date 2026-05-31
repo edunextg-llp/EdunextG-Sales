@@ -102,6 +102,18 @@ function Delivered() {
                   <Table sx={{ minWidth: 650 }}>
                     <TableHead sx={{ display: "table-header-group", backgroundColor: "#f9fafb" }}>
                       <TableRow>
+                        <TableCell
+                          align="center"
+                          sx={{
+                            color: "#6b7280",
+                            borderBottom: "1px solid #e5e7eb",
+                            py: 1.5,
+                            fontWeight: 500,
+                            width: 56,
+                          }}
+                        >
+                          Sr No
+                        </TableCell>
                         <TableCell sx={{ color: "#6b7280", borderBottom: "1px solid #e5e7eb", py: 1.5, fontWeight: 500 }}>
                           Staff Name
                         </TableCell>
@@ -133,7 +145,7 @@ function Delivered() {
                     </TableHead>
                     <TableBody>
                       {filteredSales.length > 0 ? (
-                        filteredSales.map((row) => (
+                        filteredSales.map((row, index) => (
                           <TableRow
                             key={row.id}
                             sx={{
@@ -141,6 +153,9 @@ function Delivered() {
                               "&:last-child td, &:last-child th": { border: 0 }
                             }}
                           >
+                            <TableCell align="center" sx={{ borderBottom: "1px solid #cbd5e1", py: 2 }}>
+                              {index + 1}
+                            </TableCell>
                             <TableCell sx={{ borderBottom: "1px solid #cbd5e1", py: 2 }}>{row.staff_name}</TableCell>
                             <TableCell sx={{ borderBottom: "1px solid #cbd5e1", py: 2, fontWeight: "medium" }}>{row.outlet_name}</TableCell>
                             <TableCell sx={{ borderBottom: "1px solid #cbd5e1", py: 2 }}>{row.outlet_erp_id}</TableCell>
@@ -185,7 +200,7 @@ function Delivered() {
                         ))
                       ) : (
                         <TableRow>
-                          <TableCell colSpan={8} align="center" sx={{ py: 3, borderBottom: 0 }}>
+                          <TableCell colSpan={10} align="center" sx={{ py: 3, borderBottom: 0 }}>
                             <MDTypography variant="body2" color="text">
                               No delivered items found.
                             </MDTypography>

@@ -24,9 +24,12 @@ class PaymentModel {
         return parseFloat(rows[0].price);
     }
 
-    static async getTotalAllocated(connection, saleId) {
+    /** Sum of cash, UPI, and cheque only — credit does not count as paid. */
+    static async getTotalPaid(connection, saleId) {
         const [rows] = await connection.execute(
-            'SELECT COALESCE(SUM(amount), 0) AS total FROM sale_payments WHERE sale_id = ?',
+            `SELECT COALESCE(SUM(amount), 0) AS total
+             FROM sale_payments
+             WHERE sale_id = ? AND payment_mode IN ('cash', 'upi', 'cheque')`,
             [saleId]
         );
         return parseFloat(rows[0].total);
@@ -44,19 +47,18 @@ class PaymentModel {
         );
 
         let paidAmount = 0;
-        let totalAllocated = 0;
         let lastMode = 'cash';
 
         for (const payment of payments) {
             const amount = parseFloat(payment.amount);
-            totalAllocated += amount;
             if (['cash', 'upi', 'cheque'].includes(payment.payment_mode)) {
                 paidAmount += amount;
             }
             lastMode = payment.payment_mode;
         }
 
-        const balanceAmount = Math.max(0, Math.round((price - totalAllocated) * 100) / 100);
+        // Balance = invoice price minus money received; credit entries do not reduce balance.
+        const balanceAmount = Math.max(0, Math.round((price - paidAmount) * 100) / 100);
         const paymentMode =
             balanceAmount === 0
                 ? lastMode
@@ -100,12 +102,10 @@ class PaymentModel {
 
         if (payments.length > 0) {
             let paidAmount = 0;
-            let totalAllocated = 0;
             let lastMode = 'cash';
 
             for (const payment of payments) {
                 const amount = parseFloat(payment.amount) || 0;
-                totalAllocated += amount;
                 if (['cash', 'upi', 'cheque'].includes(payment.payment_mode)) {
                     paidAmount += amount;
                 }
@@ -116,7 +116,7 @@ class PaymentModel {
                 id: sale.id,
                 price,
                 paid_amount: paidAmount,
-                balance_amount: Math.max(0, Math.round((price - totalAllocated) * 100) / 100),
+                balance_amount: Math.max(0, Math.round((price - paidAmount) * 100) / 100),
                 payment_mode: lastMode,
                 invoice_number: sale.invoice_number,
             };
@@ -151,8 +151,8 @@ class PaymentModel {
                 throw err;
             }
 
-            const totalAllocated = await PaymentModel.getTotalAllocated(connection, saleId);
-            const remaining = Math.round((price - totalAllocated) * 100) / 100;
+            const totalPaid = await PaymentModel.getTotalPaid(connection, saleId);
+            const remaining = Math.round((price - totalPaid) * 100) / 100;
 
             if (amount > remaining + 0.001) {
                 const err = new Error('EXCEEDS_BALANCE');

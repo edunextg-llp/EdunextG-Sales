@@ -162,6 +162,18 @@ function Delivery() {
                   <Table sx={{ minWidth: 650 }}>
                     <TableHead sx={{ display: "table-header-group", backgroundColor: "#f9fafb" }}>
                       <TableRow>
+                        <TableCell
+                          align="center"
+                          sx={{
+                            color: "#6b7280",
+                            borderBottom: "1px solid #e5e7eb",
+                            py: 1.5,
+                            fontWeight: 500,
+                            width: 56,
+                          }}
+                        >
+                          Sr No
+                        </TableCell>
                         <TableCell sx={{ color: "#6b7280", borderBottom: "1px solid #e5e7eb", py: 1.5, fontWeight: 500 }}>
                           Staff Name
                         </TableCell>
@@ -190,7 +202,7 @@ function Delivery() {
                     </TableHead>
                     <TableBody>
                       {filteredSales.length > 0 ? (
-                        filteredSales.map((row) => {
+                        filteredSales.map((row, index) => {
                           const bgColor = getRowColor(row.packaging_status);
                           const txColor = getTextColor(row.packaging_status);
                           const borderCol = `1px solid ${txColor}`;
@@ -202,6 +214,9 @@ function Delivery() {
                                 "&:last-child td, &:last-child th": { border: 0 }
                               }}
                             >
+                              <TableCell align="center" sx={{ borderBottom: borderCol, py: 2, color: txColor }}>
+                                {index + 1}
+                              </TableCell>
                               <TableCell sx={{ borderBottom: borderCol, py: 2, color: txColor }}>
                                 {row.staff_name}
                               </TableCell>
@@ -245,7 +260,7 @@ function Delivery() {
                         })
                       ) : (
                         <TableRow>
-                          <TableCell colSpan={8} align="center" sx={{ py: 3, borderBottom: 0 }}>
+                          <TableCell colSpan={9} align="center" sx={{ py: 3, borderBottom: 0 }}>
                             <MDTypography variant="body2" color="text">
                               No deliveries found.
                             </MDTypography>

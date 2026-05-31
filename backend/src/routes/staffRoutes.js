@@ -20,6 +20,8 @@ router.delete('/counter/:counterId', staffController.deleteCounter);
 router.put('/sales/:saleId/payment', staffController.updatePaymentMode);
 router.get('/sales/:saleId/payments', staffController.getSalePayments);
 router.post('/sales/:saleId/payments', staffController.addSalePayment);
+router.put('/sales/:saleId', staffController.updateSale);
+router.delete('/sales/:saleId', staffController.deleteSale);
 router.put('/sales/:saleId/packaging', staffController.updatePackagingStatus);
 
 export default router;

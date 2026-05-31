@@ -109,6 +109,19 @@ export async function ensureSchema() {
               AND NOT EXISTS (SELECT 1 FROM sale_payments sp WHERE sp.sale_id = ss.id)
         `);
 
+        await connection.query(`
+            UPDATE staff_sales ss
+            SET paid_amount = COALESCE((
+                    SELECT SUM(sp.amount) FROM sale_payments sp
+                    WHERE sp.sale_id = ss.id AND sp.payment_mode IN ('cash', 'upi', 'cheque')
+                ), 0),
+                balance_amount = GREATEST(0, ss.price - COALESCE((
+                    SELECT SUM(sp.amount) FROM sale_payments sp
+                    WHERE sp.sale_id = ss.id AND sp.payment_mode IN ('cash', 'upi', 'cheque')
+                ), 0))
+            WHERE EXISTS (SELECT 1 FROM sale_payments sp WHERE sp.sale_id = ss.id)
+        `);
+
         console.log('Database schema verified');
     } finally {
         await connection.end();

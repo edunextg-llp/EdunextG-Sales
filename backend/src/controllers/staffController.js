@@ -273,6 +273,66 @@ export const recordSales = async (req, res) => {
     }
 };
 
+export const updateSale = async (req, res) => {
+    try {
+        const { saleId } = req.params;
+        const { invoiceNumber, price } = req.body;
+
+        const invoiceValidation = validateRequiredText(invoiceNumber, 'Invoice number');
+        if (!invoiceValidation.valid) {
+            return res.status(400).json({ error: invoiceValidation.error });
+        }
+        const priceValidation = validateNumeric(price, 'Price');
+        if (!priceValidation.valid) {
+            return res.status(400).json({ error: priceValidation.error });
+        }
+
+        const existing = await StaffModel.getSaleById(saleId);
+        if (!existing) {
+            return res.status(404).json({ error: 'Sale not found' });
+        }
+
+        const updated = await StaffModel.updateSale(
+            saleId,
+            invoiceValidation.value,
+            priceValidation.value
+        );
+
+        res.status(200).json({
+            message: 'Sale updated successfully',
+            sale: {
+                id: updated.id,
+                shopName: updated.outlet_name,
+                outletErpId: updated.outlet_erp_id || '',
+                invoiceNumber: updated.invoice_number,
+                stickerNumber: updated.sticker_number,
+                amount: updated.price,
+                deliveryBoyName: updated.delivery_boy_name || '',
+                vehicleNo: updated.vehicle_no || '',
+            },
+        });
+    } catch (error) {
+        console.error('Error updating sale:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+};
+
+export const deleteSale = async (req, res) => {
+    try {
+        const { saleId } = req.params;
+        const existing = await StaffModel.getSaleById(saleId);
+        if (!existing) {
+            return res.status(404).json({ error: 'Sale not found' });
+        }
+
+        await StaffModel.deleteSale(saleId);
+        res.status(200).json({ message: 'Sale deleted successfully' });
+    } catch (error) {
+        console.error('Error deleting sale:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+};
+
 export const updatePackagingStatus = async (req, res) => {
     try {
         const { saleId } = req.params;

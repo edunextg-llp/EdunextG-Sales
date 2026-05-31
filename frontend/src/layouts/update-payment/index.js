@@ -238,6 +238,10 @@ function UpdatePayment() {
     paymentSummary?.balanceAmount ??
     (paymentDialogSale ? getRemainingBalance(paymentDialogSale) : 0);
 
+  const totalCreditOnAccount = payments
+    .filter((p) => p.payment_mode === "credit")
+    .reduce((sum, p) => sum + (parseFloat(p.amount) || 0), 0);
+
   return (
     <DashboardLayout>
       <DashboardNavbar />
@@ -285,6 +289,9 @@ function UpdatePayment() {
                     <Table size="small">
                       <TableHead sx={{ display: "table-header-group", backgroundColor: "#f9fafb" }}>
                         <TableRow>
+                          <TableCell align="center" sx={{ fontWeight: "bold", width: 56 }}>
+                            Sr No
+                          </TableCell>
                           <TableCell align="left" sx={{ fontWeight: "bold" }}>
                             Outlet Name
                           </TableCell>
@@ -307,11 +314,12 @@ function UpdatePayment() {
                       </TableHead>
                       <TableBody>
                         {filteredSales.length > 0 ? (
-                          filteredSales.map((sale) => {
+                          filteredSales.map((sale, index) => {
                             const balance = getRemainingBalance(sale);
                             const paid = getPaidAmount(sale);
                             return (
                               <TableRow key={sale.id}>
+                                <TableCell align="center">{index + 1}</TableCell>
                                 <TableCell align="left">{sale.outlet_name}</TableCell>
                                 <TableCell align="center">{sale.invoice_number}</TableCell>
                                 <TableCell align="center">
@@ -342,7 +350,7 @@ function UpdatePayment() {
                           })
                         ) : (
                           <TableRow>
-                            <TableCell colSpan={6} align="center" sx={{ py: 4 }}>
+                            <TableCell colSpan={7} align="center" sx={{ py: 4 }}>
                               <MDTypography variant="body2" color="text">
                                 No delivered items found matching your search.
                               </MDTypography>
@@ -387,6 +395,11 @@ function UpdatePayment() {
                 <MDTypography variant="body2" color={dialogRemaining > 0 ? "error" : "success"}>
                   <strong>Balance:</strong> ₹{dialogRemaining.toFixed(2)}
                 </MDTypography>
+                {totalCreditOnAccount > 0 && (
+                  <MDTypography variant="body2" color="text">
+                    <strong>On credit:</strong> ₹{totalCreditOnAccount.toFixed(2)} (does not reduce balance)
+                  </MDTypography>
+                )}
               </MDBox>
 
               <MDTypography variant="h6" fontWeight="medium" mb={2}>
@@ -399,7 +412,7 @@ function UpdatePayment() {
                 </MDTypography>
               ) : payments.length === 0 ? (
                 <MDTypography variant="body2" color="text" mb={3}>
-                  No payments recorded yet. Add entries below until balance is ₹0.
+                  No payments recorded yet. Add cash/UPI/cheque until balance is ₹0. Credit is recorded separately and does not reduce balance.
                 </MDTypography>
               ) : (
                 <TableContainer component={Paper} sx={{ boxShadow: "none", mb: 3, border: "1px solid #e5e7eb" }}>
@@ -519,6 +532,11 @@ function UpdatePayment() {
                       </Grid>
                     )}
                   </Grid>
+                  {paymentForm.paymentMode === "credit" && (
+                    <MDTypography variant="caption" color="text" display="block" mt={1}>
+                      Credit is logged for tracking only. Balance stays the same until paid by cash, UPI, or cheque.
+                    </MDTypography>
+                  )}
                   <MDBox mt={2}>
                     <MDButton
                       variant="gradient"

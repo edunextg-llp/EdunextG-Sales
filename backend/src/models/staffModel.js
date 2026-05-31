@@ -197,7 +197,14 @@ class StaffModel {
                     [item.deliveryBoyId]
                 );
 
+                const [saleRows] = await connection.execute(
+                    `SELECT id FROM staff_sales
+                     WHERE staff_id = ? AND outlet_id = ? AND sale_date = ? AND invoice_number = ?`,
+                    [staffId, item.outletId, date, item.invoiceNumber]
+                );
+
                 stickers.push({
+                    saleId: saleRows[0]?.id,
                     stickerNumber,
                     shopName: outletRows[0]?.outlet_name || 'Unknown Shop',
                     outletErpId: outletRows[0]?.outlet_erp_id || '',
@@ -258,6 +265,37 @@ class StaffModel {
             [staffId, date]
         );
         return rows;
+    }
+
+    static async getSaleById(saleId) {
+        const [rows] = await db.execute(
+            `SELECT ss.id, ss.staff_id, ss.outlet_id, ss.sale_date, ss.price, ss.invoice_number,
+                    ss.sticker_number, ss.paid_amount, ss.balance_amount,
+                    sc.outlet_name, sc.outlet_erp_id,
+                    db.name AS delivery_boy_name, ss.vehicle_no
+             FROM staff_sales ss
+             LEFT JOIN staff_counters sc ON ss.outlet_id = sc.id
+             LEFT JOIN delivery_boys db ON ss.delivery_boy_id = db.id
+             WHERE ss.id = ?`,
+            [saleId]
+        );
+        return rows[0] || null;
+    }
+
+    static async updateSale(saleId, invoiceNumber, price) {
+        await db.execute(
+            `UPDATE staff_sales
+             SET invoice_number = ?, price = ?,
+                 balance_amount = IF(paid_amount = 0, ?, balance_amount)
+             WHERE id = ?`,
+            [invoiceNumber, price, price, saleId]
+        );
+        return StaffModel.getSaleById(saleId);
+    }
+
+    static async deleteSale(saleId) {
+        const [result] = await db.execute('DELETE FROM staff_sales WHERE id = ?', [saleId]);
+        return result.affectedRows > 0;
     }
 
     static async updatePayment(saleId, paymentData) {
