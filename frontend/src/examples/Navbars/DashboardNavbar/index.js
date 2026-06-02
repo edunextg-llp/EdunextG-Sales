@@ -117,11 +117,27 @@ function DashboardNavbar({ absolute, light, isMini }) {
     >
       {notifications.length > 0 ? (
         notifications.map((notif) => (
-          <NotificationItem
+          <MenuItem
             key={notif.id}
-            icon={<Icon color="warning">warning</Icon>}
-            title={`${notif.outlet_name}: Inv ${notif.invoice_number}`}
-          />
+            sx={{ display: "flex", flexDirection: "column", alignItems: "flex-start", py: 1 }}
+          >
+            <MDBox display="flex" alignItems="center">
+              <Icon color="warning" sx={{ mr: 1 }}>
+                warning
+              </Icon>
+              <MDTypography variant="button" fontWeight="medium">
+                {notif.outlet_name}
+              </MDTypography>
+            </MDBox>
+            <MDBox mt={0.5} ml={4} p={1} bgColor="grey-100" borderRadius="md" minWidth="200px">
+              <MDTypography variant="caption" color="text" display="block">
+                Invoice: <strong>{notif.invoice_number}</strong>
+              </MDTypography>
+              <MDTypography variant="caption" color="error" fontWeight="bold" display="block">
+                Due Amount: ₹{Number(notif.balance_amount).toFixed(2)}
+              </MDTypography>
+            </MDBox>
+          </MenuItem>
         ))
       ) : (
         <NotificationItem
