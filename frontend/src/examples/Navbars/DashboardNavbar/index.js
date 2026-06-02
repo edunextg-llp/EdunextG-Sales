@@ -12,6 +12,7 @@ import Toolbar from "@mui/material/Toolbar";
 import IconButton from "@mui/material/IconButton";
 import Menu from "@mui/material/Menu";
 import Icon from "@mui/material/Icon";
+import Badge from "@mui/material/Badge";
 
 // Material Dashboard 2 React components
 import MDBox from "components/MDBox";
@@ -44,6 +45,32 @@ function DashboardNavbar({ absolute, light, isMini }) {
   const { miniSidenav, transparentNavbar, fixedNavbar, openConfigurator, darkMode } = controller;
   const [openMenu, setOpenMenu] = useState(false);
   const route = useLocation().pathname.split("/").slice(1);
+  const [notifications, setNotifications] = useState([]);
+
+  useEffect(() => {
+    const fetchPendingCredits = async () => {
+      try {
+        const response = await fetch("http://localhost:5000/api/staff/credits/pending");
+        if (response.ok) {
+          const data = await response.json();
+          const dueTomorrow = data.filter((credit) => {
+            if (!credit.credit_days || !credit.sale_date) return false;
+            const saleDate = new Date(credit.sale_date);
+            const msInDay = 24 * 60 * 60 * 1000;
+            const dueDate = new Date(saleDate.getTime() + credit.credit_days * msInDay);
+            const now = new Date();
+            now.setHours(0, 0, 0, 0);
+            dueDate.setHours(0, 0, 0, 0);
+            return Math.round((dueDate - now) / msInDay) === 1;
+          });
+          setNotifications(dueTomorrow);
+        }
+      } catch (error) {
+        console.error("Error fetching credits for notifications:", error);
+      }
+    };
+    fetchPendingCredits();
+  }, []);
 
   useEffect(() => {
     // Setting the navbar type
@@ -76,7 +103,6 @@ function DashboardNavbar({ absolute, light, isMini }) {
   const handleOpenMenu = (event) => setOpenMenu(event.currentTarget);
   const handleCloseMenu = () => setOpenMenu(false);
 
-  // Render the notifications menu
   const renderMenu = () => (
     <Menu
       anchorEl={openMenu}
@@ -89,9 +115,20 @@ function DashboardNavbar({ absolute, light, isMini }) {
       onClose={handleCloseMenu}
       sx={{ mt: 2 }}
     >
-      <NotificationItem icon={<Icon>email</Icon>} title="Check new messages" />
-      <NotificationItem icon={<Icon>podcasts</Icon>} title="Manage Podcast sessions" />
-      <NotificationItem icon={<Icon>shopping_cart</Icon>} title="Payment successfully completed" />
+      {notifications.length > 0 ? (
+        notifications.map((notif) => (
+          <NotificationItem
+            key={notif.id}
+            icon={<Icon color="warning">warning</Icon>}
+            title={`${notif.outlet_name}: Inv ${notif.invoice_number}`}
+          />
+        ))
+      ) : (
+        <NotificationItem
+          icon={<Icon color="success">check_circle</Icon>}
+          title="No credits due tomorrow"
+        />
+      )}
     </Menu>
   );
 
@@ -159,7 +196,9 @@ function DashboardNavbar({ absolute, light, isMini }) {
                 variant="contained"
                 onClick={handleOpenMenu}
               >
-                <Icon sx={iconsStyle}>notifications</Icon>
+                <Badge badgeContent={notifications.length} color="error" size="small">
+                  <Icon sx={iconsStyle}>notifications</Icon>
+                </Badge>
               </IconButton>
               {renderMenu()}
             </MDBox>
