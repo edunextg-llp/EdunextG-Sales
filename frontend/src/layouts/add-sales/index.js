@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 
 // @mui material components
 import Grid from "@mui/material/Grid";
@@ -55,14 +55,34 @@ function AddSales() {
   const [submitting, setSubmitting] = useState(false);
   const [deliveryBoys, setDeliveryBoys] = useState([]);
   const [outletSearch, setOutletSearch] = useState("");
+  const [searchOutlets, setSearchOutlets] = useState([]);
+  const [searchingOutlets, setSearchingOutlets] = useState(false);
   const [editingSaleId, setEditingSaleId] = useState(null);
   const [editForm, setEditForm] = useState({ invoiceNumber: "", price: "" });
   const [savingEdit, setSavingEdit] = useState(false);
 
   const API = "https://https://bawarchee.edunextg.co/api";
 
+  const outletKey = (id) => String(id);
+
+  const mergeOutletsById = (...lists) => {
+    const map = new Map();
+    lists.flat().forEach((o) => {
+      if (o?.id != null) map.set(outletKey(o.id), o);
+    });
+    return Array.from(map.values());
+  };
+
+  const rowHasDraft = (row) =>
+    Boolean(row?.invoiceNumber?.trim() || row?.price?.toString().trim());
+
+  const outletHasDraft = (id) => {
+    const rows = salesData[outletKey(id)] || [];
+    return rows.some(rowHasDraft);
+  };
+
   const mapSaleFromApi = (s) => ({
-    id: s.id,
+    id: s.id != null ? Number(s.id) : null,
     outletId: s.outlet_id,
     shopName: s.outlet_name,
     outletErpId: s.outlet_erp_id || "",
@@ -74,25 +94,72 @@ function AddSales() {
     vehicleNo: s.vehicle_no || "",
   });
 
-  const mapSaleFromSave = (s) => ({
-    id: s.saleId,
-    shopName: s.shopName,
-    outletErpId: s.outletErpId || "",
-    invoiceNumber: s.invoiceNumber,
-    stickerNumber: s.stickerNumber,
-    paymentMode: s.paymentMode,
-    amount: s.amount,
-    deliveryBoyName: s.deliveryBoyName || "",
-    vehicleNo: s.vehicleNo || "",
+  const displayOutlets = useMemo(() => {
+    if (outletSearch.trim()) {
+      return mergeOutletsById(outlets, searchOutlets);
+    }
+    return mergeOutletsById(
+      outlets,
+      searchOutlets.filter((o) => outletHasDraft(o.id))
+    );
+  }, [outlets, searchOutlets, outletSearch, salesData]);
+
+  const hasSubmittableSales = useMemo(
+    () =>
+      Object.values(salesData).some((dataList) =>
+        (dataList || []).some(
+          (d) => d.invoiceNumber?.trim() && d.price?.toString().trim() && !Number.isNaN(parseFloat(d.price))
+        )
+      ),
+    [salesData]
+  );
+
+  const showEntryTable = Boolean(selectedStaff);
+
+  const showNoDayOutletsHint =
+    selectedStaff &&
+    outlets.length === 0 &&
+    !outletSearch.trim() &&
+    searchOutlets.length === 0 &&
+    displayOutlets.length === 0 &&
+    !hasSubmittableSales;
+
+  const submittedForSelectedDate =
+    submittedSummary && submittedSummary.date === selectedDate ? submittedSummary : null;
+
+  // Always show all sales for the selected date — outlet search only filters the entry table above.
+  const submittedSales = submittedForSelectedDate?.sales || [];
+
+  const buildSubmittedSummary = (staff, date, sales) => ({
+    date,
+    dayName: new Intl.DateTimeFormat("en-US", { weekday: "long" }).format(
+      new Date(`${date}T12:00:00`)
+    ),
+    staffName: staff.name,
+    companyName: staff.company_name || "",
+    sales,
   });
 
-  const filteredOutlets = outlets.filter((outlet) => {
-    if (!outletSearch.trim()) return true;
-    const q = outletSearch.toLowerCase();
-    const name = outlet.outlet_name ? outlet.outlet_name.toLowerCase() : "";
-    const erpId = outlet.outlet_erp_id ? outlet.outlet_erp_id.toLowerCase() : "";
-    return name.includes(q) || erpId.includes(q);
-  });
+  const refreshSubmittedSales = async () => {
+    if (!selectedStaff || !selectedDate) return;
+    try {
+      const salesRes = await fetch(
+        `${API}/staff/${selectedStaff.id}/sales-by-date?date=${selectedDate}`
+      );
+      if (salesRes.ok) {
+        const salesDataList = await salesRes.json();
+        if (salesDataList.length > 0) {
+          setSubmittedSummary(
+            buildSubmittedSummary(selectedStaff, selectedDate, salesDataList.map(mapSaleFromApi))
+          );
+        } else {
+          setSubmittedSummary(null);
+        }
+      }
+    } catch (error) {
+      console.error("Error refreshing submitted sales:", error);
+    }
+  };
 
   const refreshOutletsAndSubmitted = async () => {
     if (!selectedStaff || !selectedDate) return;
@@ -104,30 +171,20 @@ function AddSales() {
       if (outletsRes.ok) {
         const data = await outletsRes.json();
         setOutlets(data);
-        setSalesData((prev) => {
-          const next = { ...prev };
-          data.forEach((outlet) => {
-            if (!next[outlet.id]) {
-              next[outlet.id] = [
-                { invoiceNumber: "", price: "", deliveryBoyId: "", vehicleNo: "" },
-              ];
-            }
-          });
-          return next;
+        const initialSales = {};
+        data.forEach((outlet) => {
+          initialSales[outletKey(outlet.id)] = [
+            { invoiceNumber: "", price: "", deliveryBoyId: "", vehicleNo: "" },
+          ];
         });
+        setSalesData(initialSales);
       }
       if (salesRes.ok) {
         const salesDataList = await salesRes.json();
         if (salesDataList.length > 0) {
-          setSubmittedSummary({
-            date: selectedDate,
-            dayName: new Intl.DateTimeFormat("en-US", { weekday: "long" }).format(
-              new Date(`${selectedDate}T12:00:00`)
-            ),
-            staffName: selectedStaff.name,
-            companyName: selectedStaff.company_name || "",
-            sales: salesDataList.map(mapSaleFromApi),
-          });
+          setSubmittedSummary(
+            buildSubmittedSummary(selectedStaff, selectedDate, salesDataList.map(mapSaleFromApi))
+          );
         } else {
           setSubmittedSummary(null);
         }
@@ -173,6 +230,7 @@ function AddSales() {
   };
 
   useEffect(() => {
+<<<<<<< HEAD
     fetchStaffOptions();
   }, []);
 
@@ -189,86 +247,151 @@ function AddSales() {
           const allCounters = await allCountersResponse.json();
 
           setAllOutlets(allCounters);
+=======
+    if (!selectedStaff || !selectedDate) {
+      setOutlets([]);
+      setSearchOutlets([]);
+      setSalesData({});
+      setSubmittedSummary(null);
+      return;
+    }
+
+    setOutlets([]);
+    setSearchOutlets([]);
+    setSalesData({});
+    setSubmittedSummary(null);
+
+    const fetchAllData = async () => {
+      const staffId = selectedStaff.id;
+      const date = selectedDate;
+
+      try {
+        const [outletsRes, salesRes] = await Promise.all([
+          fetch(`${API}/staff/${staffId}/outlets-by-date?date=${date}`),
+          fetch(`${API}/staff/${staffId}/sales-by-date?date=${date}`),
+        ]);
+
+        if (outletsRes.ok) {
+          const data = await outletsRes.json();
+>>>>>>> 6b12021be87627cf361a91ede0efaed0830d0825
           setOutlets(data);
           const initialSales = {};
           data.forEach((outlet) => {
-            initialSales[outlet.id] = [{
-              invoiceNumber: "",
-              price: "",
-              deliveryBoyId: "",
-              vehicleNo: "",
-            }];
+            initialSales[outletKey(outlet.id)] = [
+              { invoiceNumber: "", price: "", deliveryBoyId: "", vehicleNo: "" },
+            ];
           });
           setSalesData(initialSales);
-
-          // Fetch ALREADY submitted sales to display at the bottom
-          const salesResponse = await fetch(
-            `${API}/staff/${selectedStaff.id}/sales-by-date?date=${selectedDate}`
-          );
-          if (salesResponse.ok) {
-            const salesDataList = await salesResponse.json();
-            if (salesDataList && salesDataList.length > 0) {
-              setSubmittedSummary({
-                date: selectedDate,
-                dayName: new Intl.DateTimeFormat("en-US", { weekday: "long" }).format(
-                  new Date(`${selectedDate}T12:00:00`)
-                ),
-                staffName: selectedStaff.name,
-                companyName: selectedStaff.company_name || "",
-                sales: salesDataList.map(mapSaleFromApi),
-              });
-            } else {
-              setSubmittedSummary(null);
-            }
-          } else {
-            setSubmittedSummary(null);
-          }
-        } catch (error) {
-          console.error("Error fetching data:", error);
         }
-      };
-      fetchAllData();
-    } else {
-      setOutlets([]);
-      setSubmittedSummary(null);
-    }
+
+        if (salesRes.ok) {
+          const salesDataList = await salesRes.json();
+          if (salesDataList.length > 0) {
+            setSubmittedSummary(
+              buildSubmittedSummary(selectedStaff, date, salesDataList.map(mapSaleFromApi))
+            );
+          }
+        }
+      } catch (error) {
+        console.error("Error fetching data:", error);
+      }
+    };
+
+    fetchAllData();
   }, [selectedStaff, selectedDate]);
 
+  useEffect(() => {
+    if (!selectedStaff || !selectedDate || !outletSearch.trim()) {
+      setSearchingOutlets(false);
+      return undefined;
+    }
+
+    const timer = setTimeout(async () => {
+      setSearchingOutlets(true);
+      try {
+        const params = new URLSearchParams({
+          date: selectedDate,
+          search: outletSearch.trim(),
+        });
+        const response = await fetch(
+          `${API}/staff/${selectedStaff.id}/outlets-by-date?${params.toString()}`
+        );
+        if (response.ok) {
+          const data = await response.json();
+          setSearchOutlets((prev) => mergeOutletsById(prev, data));
+          setSalesData((prev) => {
+            const next = { ...prev };
+            data.forEach((outlet) => {
+              const key = outletKey(outlet.id);
+              if (!next[key]) {
+                next[key] = [
+                  { invoiceNumber: "", price: "", deliveryBoyId: "", vehicleNo: "" },
+                ];
+              }
+            });
+            return next;
+          });
+        }
+      } catch (error) {
+        console.error("Error searching outlets:", error);
+      } finally {
+        setSearchingOutlets(false);
+      }
+    }, 300);
+
+    return () => clearTimeout(timer);
+  }, [outletSearch, selectedStaff, selectedDate]);
+
   const handleSalesChange = (outletId, index, field, value) => {
+    const key = outletKey(outletId);
     setSalesData((prev) => {
-      const outletSales = [...prev[outletId]];
+      const existing = prev[key] || [
+        { invoiceNumber: "", price: "", deliveryBoyId: "", vehicleNo: "" },
+      ];
+      const outletSales = [...existing];
       outletSales[index] = { ...outletSales[index], [field]: value };
       return {
         ...prev,
-        [outletId]: outletSales,
+        [key]: outletSales,
       };
     });
   };
 
   const handleAddRow = (outletId) => {
+    const key = outletKey(outletId);
     setSalesData((prev) => ({
       ...prev,
-      [outletId]: [
-        ...prev[outletId],
-        { invoiceNumber: "", price: "", deliveryBoyId: "", vehicleNo: "" }
-      ]
+      [key]: [
+        ...(prev[key] || [{ invoiceNumber: "", price: "", deliveryBoyId: "", vehicleNo: "" }]),
+        { invoiceNumber: "", price: "", deliveryBoyId: "", vehicleNo: "" },
+      ],
     }));
   };
 
   const handleRemoveRow = (outletId, index) => {
+    const key = outletKey(outletId);
     setSalesData((prev) => {
-      const outletSales = [...prev[outletId]];
+      const outletSales = [...(prev[key] || [])];
+      if (outletSales.length <= 1) {
+        return {
+          ...prev,
+          [key]: [{ invoiceNumber: "", price: "", deliveryBoyId: "", vehicleNo: "" }],
+        };
+      }
       outletSales.splice(index, 1);
       return {
         ...prev,
-        [outletId]: outletSales
+        [key]: outletSales,
       };
     });
   };
 
   const handleSaveRow = async (outletId) => {
-    const dataList = salesData[outletId] || [];
-    const validRows = dataList.filter(d => d.invoiceNumber?.trim() && d.price?.trim());
+    const key = outletKey(outletId);
+    const dataList = salesData[key] || [];
+    const validRows = dataList.filter(
+      (d) => d.invoiceNumber?.trim() && d.price?.toString().trim() && !Number.isNaN(parseFloat(d.price))
+    );
 
     if (validRows.length === 0) {
       alert("Please enter at least one valid invoice number and price.");
@@ -281,9 +404,10 @@ function AddSales() {
       return;
     }
 
-    const hasIncomplete = dataList.some(d =>
-      (d.invoiceNumber?.trim() && !d.price?.trim()) ||
-      (!d.invoiceNumber?.trim() && d.price?.trim())
+    const hasIncomplete = dataList.some(
+      (d) =>
+        (d.invoiceNumber?.trim() && !d.price?.toString().trim()) ||
+        (!d.invoiceNumber?.trim() && d.price?.toString().trim())
     );
     if (hasIncomplete) {
       alert("Please complete partially filled rows or remove them.");
@@ -310,8 +434,9 @@ function AddSales() {
       });
 
       if (response.ok) {
-        const result = await response.json();
+        await refreshSubmittedSales();
 
+<<<<<<< HEAD
         setSubmittedSummary((prev) => {
           const newRows = result.summary.sales.map(mapSaleFromSave);
           if (prev) {
@@ -322,11 +447,16 @@ function AddSales() {
 
         // Remove the submitted outlet
         setOutlets((prev) => prev.filter((o) => o.id !== parseInt(outletId, 10)));
+=======
+        setOutlets((prev) => prev.filter((o) => outletKey(o.id) !== key));
+        setSearchOutlets((prev) => prev.filter((o) => outletKey(o.id) !== key));
+>>>>>>> 6b12021be87627cf361a91ede0efaed0830d0825
         setSalesData((prev) => {
           const next = { ...prev };
-          delete next[outletId];
+          delete next[key];
           return next;
         });
+        window.scrollTo({ top: document.body.scrollHeight, behavior: "smooth" });
       } else {
         const err = await response.json().catch(() => ({}));
         alert(err.error || "Failed to record sale.");
@@ -344,17 +474,22 @@ function AddSales() {
     const submittedOutletIds = new Set();
     let hasError = false;
 
-    Object.entries(salesData).forEach(([outletId, dataList]) => {
-      const filledRows = dataList.filter(d => d.invoiceNumber?.trim() || d.price?.trim());
+    Object.entries(salesData).forEach(([key, dataList]) => {
+      const filledRows = dataList.filter((d) => d.invoiceNumber?.trim() || d.price?.toString().trim());
       if (filledRows.length > 0) {
-        const incomplete = filledRows.some(d => !d.invoiceNumber?.trim() || !d.price?.trim() || isNaN(parseFloat(d.price)));
+        const incomplete = filledRows.some(
+          (d) =>
+            !d.invoiceNumber?.trim() ||
+            !d.price?.toString().trim() ||
+            Number.isNaN(parseFloat(d.price))
+        );
         if (incomplete) {
           hasError = true;
         } else {
-          submittedOutletIds.add(parseInt(outletId, 10));
-          filledRows.forEach(d => {
+          submittedOutletIds.add(parseInt(key, 10));
+          filledRows.forEach((d) => {
             allSales.push({
-              outletId: parseInt(outletId, 10),
+              outletId: parseInt(key, 10),
               invoiceNumber: d.invoiceNumber.trim(),
               price: parseFloat(d.price)
             });
@@ -388,22 +523,18 @@ function AddSales() {
       });
 
       if (response.ok) {
-        const result = await response.json();
-
-        // Append to summary if exists, else set new summary
-        setSubmittedSummary((prev) => {
-          const newRows = result.summary.sales.map(mapSaleFromSave);
-          if (prev) {
-            return { ...prev, sales: [...prev.sales, ...newRows] };
-          }
-          return { ...result.summary, sales: newRows };
-        });
+        await refreshSubmittedSales();
 
         // Remove the submitted outlets
         setOutlets((prev) => prev.filter((o) => !submittedOutletIds.has(o.id)));
+<<<<<<< HEAD
+=======
+        setSearchOutlets((prev) => prev.filter((o) => !submittedOutletIds.has(o.id)));
+
+>>>>>>> 6b12021be87627cf361a91ede0efaed0830d0825
         setSalesData((prev) => {
           const next = { ...prev };
-          submittedOutletIds.forEach((id) => delete next[id]);
+          submittedOutletIds.forEach((id) => delete next[outletKey(id)]);
           return next;
         });
 
@@ -509,7 +640,11 @@ function AddSales() {
                     Daily Outlet Price Entry
                   </MDTypography>
                   <MDBadge
-                    badgeContent={`${outlets.length} outlet${outlets.length !== 1 ? "s" : ""}`}
+                    badgeContent={
+                      displayOutlets.length > 0
+                        ? `${displayOutlets.length} outlet${displayOutlets.length !== 1 ? "s" : ""}`
+                        : `${outlets.length} today`
+                    }
                     color="light"
                     container
                     sx={{
@@ -526,19 +661,22 @@ function AddSales() {
               </MDBox>
               <MDBox pb={3} px={3}>
                 <Grid container spacing={3}>
-                  <Grid item xs={12} md={6}>
+                  <Grid item xs={12} md={4}>
                     <MDBox mb={2}>
                       <MDInput
                         type="date"
                         label="Select Date"
                         fullWidth
                         value={selectedDate}
-                        onChange={(e) => setSelectedDate(e.target.value)}
+                        onChange={(e) => {
+                          setSelectedDate(e.target.value);
+                          setOutletSearch("");
+                        }}
                         InputLabelProps={{ shrink: true }}
                       />
                     </MDBox>
                   </Grid>
-                  <Grid item xs={12} md={6}>
+                  <Grid item xs={12} md={4}>
                     <MDBox mb={2}>
                       <Autocomplete
                         options={staffOptions}
@@ -547,6 +685,7 @@ function AddSales() {
                         onChange={(event, newValue) => {
                           setSelectedStaff(newValue);
                           setSubmittedSummary(null);
+                          setOutletSearch("");
                         }}
                         onOpen={() => {
                           if (staffOptions.length === 0) {
@@ -560,9 +699,26 @@ function AddSales() {
                       />
                     </MDBox>
                   </Grid>
+                  <Grid item xs={12} md={4}>
+                    <MDBox mb={2}>
+                      <MDInput
+                        type="text"
+                        label="Search Outlet (any weekday)"
+                        fullWidth
+                        value={outletSearch}
+                        onChange={(e) => setOutletSearch(e.target.value)}
+                        disabled={!selectedStaff}
+                        helperText={
+                          selectedStaff
+                            ? "Finds outlets from Mon–Sat routes; sale is saved for the selected date."
+                            : ""
+                        }
+                      />
+                    </MDBox>
+                  </Grid>
                 </Grid>
 
-                {selectedStaff && outlets.length > 0 && (
+                {showEntryTable && (
                   <MDBox mt={4}>
                     <MDBox display="flex" alignItems="center" flexWrap="wrap" gap={1} mb={2}>
                       <MDTypography variant="h6">
@@ -582,6 +738,7 @@ function AddSales() {
                         </MDTypography>
                       </MDBox>
                     </MDBox>
+<<<<<<< HEAD
                     <MDBox mb={2} maxWidth={400}>
                       <MDInput
                         type="text"
@@ -619,6 +776,8 @@ function AddSales() {
                         blurOnSelect
                       />
                     </MDBox>
+=======
+>>>>>>> 6b12021be87627cf361a91ede0efaed0830d0825
                     <TableContainer
                       sx={{
                         boxShadow: "none",
@@ -662,15 +821,26 @@ function AddSales() {
                           </TableRow>
                         </TableHead>
                         <TableBody>
-                          {filteredOutlets.length === 0 ? (
+                          {searchingOutlets ? (
                             <TableRow>
                               <TableCell colSpan={5} align="center" sx={{ py: 3 }}>
                                 <MDTypography variant="body2" color="text">
-                                  No outlets match your search.
+                                  Searching outlets...
+                                </MDTypography>
+                              </TableCell>
+                            </TableRow>
+                          ) : displayOutlets.length === 0 ? (
+                            <TableRow>
+                              <TableCell colSpan={5} align="center" sx={{ py: 3 }}>
+                                <MDTypography variant="body2" color="text">
+                                  {outletSearch.trim()
+                                    ? "No outlets match this search on this staff's routes."
+                                    : `No pending outlets for ${dayName}. Use Search Outlet above to find routes from other weekdays.`}
                                 </MDTypography>
                               </TableCell>
                             </TableRow>
                           ) : (
+<<<<<<< HEAD
                             filteredOutlets.map((outlet, outletIndex) => {
                               const rows = salesData[outlet.id] || [];
                               return rows.map((row, index) => {
@@ -681,10 +851,162 @@ function AddSales() {
                                 return (
                                   <TableRow
                                     key={`${outlet.id}-${index}`}
+=======
+                          displayOutlets.map((outlet, outletIndex) => {
+                            const alreadySubmitted = Boolean(
+                              outlet.already_submitted_today === 1 ||
+                                outlet.already_submitted_today === true
+                            );
+                            const rows = salesData[outletKey(outlet.id)] || [
+                              { invoiceNumber: "", price: "", deliveryBoyId: "", vehicleNo: "" },
+                            ];
+                            return rows.map((row, index) => {
+                              const rowBorder =
+                                index === rows.length - 1
+                                  ? { borderBottom: "1px solid #e5e7eb" }
+                                  : { borderBottom: "1px solid #f0f0f0" };
+                              return (
+                              <TableRow
+                                key={`${outlet.id}-${index}`}
+                                sx={{
+                                  backgroundColor: index % 2 !== 0 ? "#fafafa" : "inherit",
+                                }}
+                              >
+                                {index === 0 && (
+                                  <TableCell
+                                    rowSpan={rows.length}
+                                    align="center"
+>>>>>>> 6b12021be87627cf361a91ede0efaed0830d0825
                                     sx={{
                                       backgroundColor: index % 2 !== 0 ? "#fafafa" : "inherit",
                                     }}
                                   >
+<<<<<<< HEAD
+=======
+                                    {outletIndex + 1}
+                                  </TableCell>
+                                )}
+                                {index === 0 && (
+                                  <TableCell
+                                    rowSpan={rows.length}
+                                    align="left"
+                                    sx={{
+                                      ...tableBodySx,
+                                      borderBottom: "1px solid #e5e7eb",
+                                    }}
+                                  >
+                                    <MDBox display="flex" alignItems="center" gap={1.5}>
+                                      <MDAvatar
+                                        bgColor="light"
+                                        size="sm"
+                                        sx={{ border: "1px solid #e5e7eb", color: "#374151", flexShrink: 0 }}
+                                      >
+                                        <MDTypography variant="caption" fontWeight="medium">
+                                          {outlet.outlet_name.charAt(0)}
+                                        </MDTypography>
+                                      </MDAvatar>
+                                      <MDBox lineHeight={1} minWidth={0}>
+                                        <MDTypography
+                                          display="block"
+                                          variant="button"
+                                          fontWeight="medium"
+                                          color="dark"
+                                          sx={{ fontSize: "0.875rem" }}
+                                        >
+                                          {outlet.outlet_name}
+                                        </MDTypography>
+                                        <MDTypography
+                                          variant="caption"
+                                          sx={{ fontSize: "0.75rem", color: "#6b7280" }}
+                                        >
+                                          {outlet.outlet_erp_id}
+                                        </MDTypography>
+                                        {outlet.assigned_day && outlet.assigned_day !== dayName && (
+                                          <MDTypography
+                                            variant="caption"
+                                            sx={{
+                                              display: "block",
+                                              fontSize: "0.7rem",
+                                              color: "#b45309",
+                                              fontWeight: 600,
+                                            }}
+                                          >
+                                            Assigned on {outlet.assigned_day}
+                                          </MDTypography>
+                                        )}
+                                        {alreadySubmitted && (
+                                          <MDTypography
+                                            variant="caption"
+                                            sx={{
+                                              display: "block",
+                                              fontSize: "0.7rem",
+                                              color: "#059669",
+                                              fontWeight: 600,
+                                            }}
+                                          >
+                                            Already submitted for this date
+                                          </MDTypography>
+                                        )}
+                                      </MDBox>
+                                    </MDBox>
+                                  </TableCell>
+                                )}
+                                <TableCell align="left" sx={{ ...tableBodySx, ...rowBorder }}>
+                                  {alreadySubmitted ? (
+                                    <MDTypography variant="caption" color="text">
+                                      See Submitted Details below
+                                    </MDTypography>
+                                  ) : (
+                                    <MDInput
+                                      type="text"
+                                      placeholder="Invoice..."
+                                      size="small"
+                                      fullWidth
+                                      sx={{ "& .MuiInputBase-root": { height: "36px" } }}
+                                      value={row.invoiceNumber || ""}
+                                      onChange={(e) =>
+                                        handleSalesChange(outletKey(outlet.id), index, "invoiceNumber", e.target.value)
+                                      }
+                                    />
+                                  )}
+                                </TableCell>
+                                <TableCell align="left" sx={{ ...tableBodySx, ...rowBorder }}>
+                                  {alreadySubmitted ? (
+                                    <MDTypography variant="caption" color="text">
+                                      —
+                                    </MDTypography>
+                                  ) : (
+                                    <MDInput
+                                      type="number"
+                                      placeholder="0.00"
+                                      size="small"
+                                      fullWidth
+                                      disabled={!row.invoiceNumber?.trim()}
+                                      sx={{
+                                        "& .MuiInputBase-root": { height: "36px" },
+                                        "& .Mui-disabled": { opacity: 0.8, backgroundColor: "#f3f4f6" },
+                                      }}
+                                      value={row.price || ""}
+                                      onChange={(e) =>
+                                        handleSalesChange(outletKey(outlet.id), index, "price", e.target.value)
+                                      }
+                                    />
+                                  )}
+                                </TableCell>
+                                <TableCell align="center" sx={{ ...tableBodySx, ...rowBorder }}>
+                                  {alreadySubmitted ? (
+                                    <MDTypography variant="caption" color="text">
+                                      Submitted
+                                    </MDTypography>
+                                  ) : (
+                                  <MDBox
+                                    display="flex"
+                                    gap={0.5}
+                                    justifyContent="center"
+                                    alignItems="center"
+                                    flexWrap="nowrap"
+                                  >
+>>>>>>> 6b12021be87627cf361a91ede0efaed0830d0825
                                     {index === 0 && (
                                       <TableCell
                                         rowSpan={rows.length}
@@ -741,11 +1063,23 @@ function AddSales() {
                                         type="text"
                                         placeholder="Invoice..."
                                         size="small"
+<<<<<<< HEAD
                                         fullWidth
                                         sx={{ "& .MuiInputBase-root": { height: "36px" } }}
                                         value={row.invoiceNumber || ""}
                                         onChange={(e) =>
                                           handleSalesChange(outlet.id, index, "invoiceNumber", e.target.value)
+=======
+                                        onClick={() => handleSaveRow(outletKey(outlet.id))}
+                                        disabled={
+                                          submitting ||
+                                          !rows.some(
+                                            (r) =>
+                                              r.invoiceNumber?.trim() &&
+                                              r.price?.toString().trim() &&
+                                              !Number.isNaN(parseFloat(r.price))
+                                          )
+>>>>>>> 6b12021be87627cf361a91ede0efaed0830d0825
                                         }
                                       />
                                     </TableCell>
@@ -754,6 +1088,7 @@ function AddSales() {
                                         type="number"
                                         placeholder="0.00"
                                         size="small"
+<<<<<<< HEAD
                                         fullWidth
                                         disabled={!row.invoiceNumber?.trim()}
                                         sx={{
@@ -821,6 +1156,35 @@ function AddSales() {
                                 );
                               });
                             })
+=======
+                                        iconOnly
+                                        circular
+                                        sx={{ minWidth: 32, width: 32, height: 32 }}
+                                        onClick={() => handleAddRow(outletKey(outlet.id))}
+                                      >
+                                        <Icon>add</Icon>
+                                      </MDButton>
+                                    )}
+                                    <MDButton
+                                      variant="outlined"
+                                      color="error"
+                                      size="small"
+                                      iconOnly
+                                      circular
+                                      sx={{ minWidth: 32, width: 32, height: 32 }}
+                                      onClick={() => handleRemoveRow(outletKey(outlet.id), index)}
+                                      title={rows.length > 1 ? "Remove row" : "Clear invoice and price"}
+                                    >
+                                      <Icon>{rows.length > 1 ? "close" : "delete"}</Icon>
+                                    </MDButton>
+                                  </MDBox>
+                                  )}
+                                </TableCell>
+                              </TableRow>
+                              );
+                            });
+                          })
+>>>>>>> 6b12021be87627cf361a91ede0efaed0830d0825
                           )}
                         </TableBody>
                       </Table>
@@ -832,7 +1196,7 @@ function AddSales() {
                         color="info"
                         fullWidth
                         onClick={handleSubmit}
-                        disabled={submitting}
+                        disabled={submitting || !hasSubmittableSales}
                       >
                         {submitting ? "Submitting..." : "Submit"}
                       </MDButton>
@@ -840,14 +1204,16 @@ function AddSales() {
                   </MDBox>
                 )}
 
-                {selectedStaff && outlets.length === 0 && (
-                  <MDBox mt={4} textAlign="center">
+                {showNoDayOutletsHint && (
+                  <MDBox mt={2} textAlign="center">
                     <MDTypography variant="body2" color="text">
-                      No outlets assigned for this staff on this day of the week.
+                      No outlets on {dayName} for this staff. Search by outlet name in the box above to
+                      record a sale from another weekday&apos;s route.
                     </MDTypography>
                   </MDBox>
                 )}
 
+<<<<<<< HEAD
                 {submittedSummary && (
                   <MDBox
                     mt={4}
@@ -878,6 +1244,106 @@ function AddSales() {
                         borderTop: "1px solid #e5e7eb",
                         backgroundColor: "transparent",
                       }}
+=======
+                {submittedForSelectedDate && (
+  <MDBox
+    mt={4}
+    p={3}
+    sx={{
+      backgroundColor: "#f8f9fa",
+      borderRadius: "12px",
+      border: "1px solid #dee2e6",
+    }}
+  >
+    <MDBox display="flex" justifyContent="space-between" alignItems="center" mb={2}>
+      <MDTypography variant="h6" fontWeight="bold">
+        Submitted Details — {new Date(selectedDate).toLocaleDateString()}
+      </MDTypography>
+      <MDButton
+        variant="outlined"
+        color="dark"
+        size="small"
+        onClick={() => printSalesStickers(submittedSales)}
+      >
+        <Icon sx={{ mr: 1 }}>label</Icon>
+        Print Stickers
+      </MDButton>
+    </MDBox>
+    <TableContainer
+      sx={{
+        boxShadow: "none",
+        borderTop: "1px solid #e5e7eb",
+        backgroundColor: "transparent",
+      }}
+    >
+      <Table
+        size="small"
+        sx={{
+          tableLayout: "fixed",
+          width: "100%",
+          minWidth: 720,
+          "& .MuiTableCell-root": { overflow: "hidden" },
+        }}
+      >
+        <colgroup>
+          <col style={{ width: "48px" }} />
+          <col style={{ width: "28%" }} />
+          <col style={{ width: "16%" }} />
+          <col style={{ width: "16%" }} />
+          <col style={{ width: "14%" }} />
+          <col style={{ width: "18%" }} />
+        </colgroup>
+        <TableHead sx={{ backgroundColor: "#f9fafb" }}>
+          <TableRow>
+            <TableCell align="center" sx={tableHeadSx}>
+              Sr No
+            </TableCell>
+            <TableCell align="left" sx={tableHeadSx}>
+              Outlet
+            </TableCell>
+            <TableCell align="center" sx={tableHeadSx}>
+              Invoice
+            </TableCell>
+            <TableCell align="center" sx={tableHeadSx}>
+              Sticker
+            </TableCell>
+            <TableCell align="right" sx={tableHeadSx}>
+              Amount
+            </TableCell>
+            <TableCell align="center" sx={tableHeadSx}>
+              Action
+            </TableCell>
+          </TableRow>
+        </TableHead>
+        <TableBody>
+          {submittedSales.length === 0 ? (
+            <TableRow>
+              <TableCell colSpan={6} align="center" sx={{ py: 3 }}>
+                <MDTypography variant="body2" color="text">
+                  No submitted sales for this date.
+                </MDTypography>
+              </TableCell>
+            </TableRow>
+          ) : (
+          submittedSales.map((row, index) => (
+            <TableRow
+              key={row.id || index}
+              sx={{ "&:last-child td, &:last-child th": { border: 0 } }}
+            >
+              <TableCell align="center" sx={{ ...tableBodySx, borderBottom: "1px solid #e5e7eb" }}>
+                {index + 1}
+              </TableCell>
+
+              <TableCell align="left" sx={{ ...tableBodySx, borderBottom: "1px solid #e5e7eb" }}>
+                <MDBox display="flex" alignItems="center" gap={1.5}>
+                  <MDBox lineHeight={1} minWidth={0}>
+                    <MDTypography
+                      display="block"
+                      variant="button"
+                      fontWeight="medium"
+                      color="dark"
+                      sx={{ fontSize: "0.875rem" }}
+>>>>>>> 6b12021be87627cf361a91ede0efaed0830d0825
                     >
                       <Table
                         size="small"
@@ -1038,6 +1504,78 @@ function AddSales() {
                     </TableContainer>
                   </MDBox>
                 )}
+<<<<<<< HEAD
+=======
+              </TableCell>
+
+              <TableCell
+                align="center"
+                sx={{ ...tableBodySx, borderBottom: "1px solid #e5e7eb", fontSize: "0.875rem", color: "#374151" }}
+              >
+                {row.stickerNumber}
+              </TableCell>
+
+              <TableCell
+                align="right"
+                sx={{
+                  ...tableBodySx,
+                  borderBottom: "1px solid #e5e7eb",
+                  fontSize: "0.875rem",
+                  fontWeight: 500,
+                  color: "#111827",
+                }}
+              >
+                {editingSaleId === row.id ? (
+                  <MDInput
+                    type="number"
+                    size="small"
+                    value={editForm.price}
+                    onChange={(e) =>
+                      setEditForm((f) => ({ ...f, price: e.target.value }))
+                    }
+                    inputProps={{ style: { textAlign: "right" } }}
+                    sx={{ width: "100%", maxWidth: 120, ml: "auto" }}
+                  />
+                ) : (
+                  `₹${Number(row.amount).toFixed(2)}`
+                )}
+              </TableCell>
+
+              <TableCell align="center" sx={{ ...tableBodySx, borderBottom: "1px solid #e5e7eb" }}>
+                {row.id ? (
+                  <MDBox display="flex" gap={0.5} justifyContent="center" alignItems="center" flexWrap="wrap">
+                    {editingSaleId === row.id ? (
+                      <>
+                        <MDButton variant="gradient" color="info" size="small" onClick={() => saveEditSale(row.id)} disabled={savingEdit}>
+                          Save
+                        </MDButton>
+                        <MDButton variant="outlined" color="dark" size="small" onClick={cancelEditSale}>
+                          Cancel
+                        </MDButton>
+                      </>
+                    ) : (
+                      <>
+                        <MDButton variant="outlined" color="info" size="small" onClick={() => startEditSale(row)}>
+                          <Icon fontSize="small">edit</Icon>
+                        </MDButton>
+                        <MDButton variant="outlined" color="error" size="small" onClick={() => handleDeleteSale(row.id)}>
+                          <Icon fontSize="small">delete</Icon>
+                        </MDButton>
+                      </>
+                    )}
+                  </MDBox>
+                ) : (
+                  "—"
+                )}
+              </TableCell>
+            </TableRow>
+          )))}
+        </TableBody>
+      </Table>
+    </TableContainer>
+  </MDBox>
+)}
+>>>>>>> 6b12021be87627cf361a91ede0efaed0830d0825
               </MDBox>
             </Card>
           </Grid>

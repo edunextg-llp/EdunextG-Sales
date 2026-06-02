@@ -53,6 +53,7 @@ const emptyPaymentForm = () => ({
   creditDays: "",
 });
 
+<<<<<<< HEAD
 const toInputDate = (value) => {
   if (!value) return "";
   const dateValue = String(value);
@@ -74,6 +75,23 @@ const toInputDate = (value) => {
   return "";
 };
 
+=======
+const formatDateForInput = (value) => {
+  if (!value) return "";
+  const str = String(value);
+  return str.includes("T") ? str.split("T")[0] : str.slice(0, 10);
+};
+
+const paymentToForm = (payment) => ({
+  paymentDate: formatDateForInput(payment.payment_date),
+  paymentMode: payment.payment_mode || "cash",
+  amount: String(payment.amount ?? ""),
+  referenceNo: payment.reference_no || "",
+  referenceDate: formatDateForInput(payment.reference_date),
+  creditDays: payment.credit_days != null ? String(payment.credit_days) : "",
+});
+
+>>>>>>> 6b12021be87627cf361a91ede0efaed0830d0825
 function UpdatePayment() {
   const [searchQuery, setSearchQuery] = useState("");
   const [salesData, setSalesData] = useState([]);
@@ -174,6 +192,7 @@ function UpdatePayment() {
     setEditingPaymentId(null);
   };
 
+<<<<<<< HEAD
   const startEditPayment = (payment) => {
     setEditingPaymentId(payment.id);
     const formattedDate = toInputDate(payment.reference_date);
@@ -192,6 +211,34 @@ function UpdatePayment() {
   const cancelEditPayment = () => {
     setEditingPaymentId(null);
     setPaymentForm(emptyPaymentForm());
+=======
+  const cancelEditPayment = () => {
+    setEditingPaymentId(null);
+    setPaymentForm(emptyPaymentForm());
+  };
+
+  const startEditPayment = (payment) => {
+    setEditingPaymentId(payment.id);
+    setPaymentForm(paymentToForm(payment));
+  };
+
+  const applyPaymentResponse = (data) => {
+    setPayments(data.payments);
+    setPaymentSummary(data.summary);
+    if (paymentDialogSale) {
+      setSalesData((prev) =>
+        prev.map((sale) =>
+          sale.id === paymentDialogSale.id
+            ? {
+                ...sale,
+                paid_amount: data.summary.paidAmount,
+                balance_amount: data.summary.balanceAmount,
+              }
+            : sale
+        )
+      );
+    }
+>>>>>>> 6b12021be87627cf361a91ede0efaed0830d0825
   };
 
   const handlePaymentFormChange = (field, value) => {
@@ -214,12 +261,11 @@ function UpdatePayment() {
     return "—";
   };
 
-  const handleAddPayment = async () => {
-    if (!paymentDialogSale) return;
-
+  const validatePaymentForm = () => {
     const amount = parseFloat(paymentForm.amount);
     if (!paymentForm.paymentDate || !paymentForm.amount || Number.isNaN(amount) || amount <= 0) {
       alert("Please enter a valid date and amount.");
+<<<<<<< HEAD
       return;
     }
 
@@ -236,20 +282,52 @@ function UpdatePayment() {
     if (amount > remaining + 0.001 && ["cash", "upi", "cheque"].includes(paymentForm.paymentMode)) {
       alert(`Amount cannot exceed remaining balance (₹${remaining.toFixed(2)}).`);
       return;
+=======
+      return null;
+>>>>>>> 6b12021be87627cf361a91ede0efaed0830d0825
     }
 
     if (paymentForm.paymentMode === "credit" && !paymentForm.creditDays) {
       alert("Please enter credit days.");
-      return;
+      return null;
     }
 
     if (paymentForm.paymentMode === "cheque" && !paymentForm.referenceNo.trim()) {
       alert("Please enter cheque number.");
-      return;
+      return null;
     }
+
+    if (!editingPaymentId) {
+      const remaining = paymentSummary?.balanceAmount ?? getRemainingBalance(paymentDialogSale);
+      if (
+        ["cash", "upi", "cheque"].includes(paymentForm.paymentMode) &&
+        amount > remaining + 0.001
+      ) {
+        alert(`Amount cannot exceed remaining balance (₹${remaining.toFixed(2)}).`);
+        return null;
+      }
+    }
+
+    return {
+      paymentDate: paymentForm.paymentDate,
+      paymentMode: paymentForm.paymentMode,
+      amount,
+      referenceNo: paymentForm.referenceNo.trim() || null,
+      referenceDate: paymentForm.referenceDate || null,
+      creditDays:
+        paymentForm.paymentMode === "credit" ? parseInt(paymentForm.creditDays, 10) : null,
+    };
+  };
+
+  const handleSavePayment = async () => {
+    if (!paymentDialogSale) return;
+
+    const payload = validatePaymentForm();
+    if (!payload) return;
 
     setAddingPayment(true);
     try {
+<<<<<<< HEAD
       const isEditing = !!editingPaymentId;
       const url = isEditing
         ? `${API}/staff/sales/${paymentDialogSale.id}/payments/${editingPaymentId}`
@@ -257,22 +335,20 @@ function UpdatePayment() {
 
       const response = await fetch(url, {
         method: isEditing ? "PUT" : "POST",
+=======
+      const url = editingPaymentId
+        ? `${API}/staff/sales/${paymentDialogSale.id}/payments/${editingPaymentId}`
+        : `${API}/staff/sales/${paymentDialogSale.id}/payments`;
+      const response = await fetch(url, {
+        method: editingPaymentId ? "PUT" : "POST",
+>>>>>>> 6b12021be87627cf361a91ede0efaed0830d0825
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          paymentDate: paymentForm.paymentDate,
-          paymentMode: paymentForm.paymentMode,
-          amount,
-          referenceNo: paymentForm.referenceNo.trim() || null,
-          referenceDate: paymentForm.referenceDate || null,
-          creditDays:
-            paymentForm.paymentMode === "credit"
-              ? parseInt(paymentForm.creditDays, 10)
-              : null,
-        }),
+        body: JSON.stringify(payload),
       });
 
       if (response.ok) {
         const data = await response.json();
+<<<<<<< HEAD
         setPayments(data.payments);
         setPaymentSummary(data.summary);
         setEditingPaymentId(null);
@@ -288,6 +364,11 @@ function UpdatePayment() {
               : sale
           )
         );
+=======
+        applyPaymentResponse(data);
+        setPaymentForm(emptyPaymentForm());
+        setEditingPaymentId(null);
+>>>>>>> 6b12021be87627cf361a91ede0efaed0830d0825
       } else {
         const err = await response.json().catch(() => ({}));
         alert(err.error || `Failed to ${editingPaymentId ? "update" : "add"} payment.`);
@@ -303,6 +384,21 @@ function UpdatePayment() {
   const dialogRemaining =
     paymentSummary?.balanceAmount ??
     (paymentDialogSale ? getRemainingBalance(paymentDialogSale) : 0);
+
+  const maxPayableOnEdit = (() => {
+    if (!editingPaymentId || !paymentSummary) return dialogRemaining;
+    const price = parseFloat(paymentSummary.price) || 0;
+    const paidExcludingEdit = payments.reduce((sum, p) => {
+      if (p.id === editingPaymentId) return sum;
+      if (["cash", "upi", "cheque"].includes(p.payment_mode)) {
+        return sum + (parseFloat(p.amount) || 0);
+      }
+      return sum;
+    }, 0);
+    return Math.max(0, Math.round((price - paidExcludingEdit) * 100) / 100);
+  })();
+
+  const showPaymentForm = dialogRemaining > 0 || editingPaymentId;
 
   const totalCreditOnAccount = payments
     .filter((p) => p.payment_mode === "credit")
@@ -491,13 +587,31 @@ function UpdatePayment() {
                           Amount
                         </TableCell>
                         <TableCell sx={{ fontWeight: "bold" }}>Details</TableCell>
+<<<<<<< HEAD
                         <TableCell align="center" sx={{ fontWeight: "bold" }}>Action</TableCell>
+=======
+                        <TableCell align="center" sx={{ fontWeight: "bold" }}>
+                          Action
+                        </TableCell>
+>>>>>>> 6b12021be87627cf361a91ede0efaed0830d0825
                       </TableRow>
                     </TableHead>
                     <TableBody>
                       {payments.map((payment) => (
+<<<<<<< HEAD
                         <TableRow key={payment.id} sx={{ backgroundColor: editingPaymentId === payment.id ? "#fff9c4" : "inherit" }}>
                           <TableCell>{toInputDate(payment.payment_date)}</TableCell>
+=======
+                        <TableRow
+                          key={payment.id}
+                          sx={
+                            editingPaymentId === payment.id
+                              ? { backgroundColor: "#e3f2fd" }
+                              : undefined
+                          }
+                        >
+                          <TableCell>{formatDateForInput(payment.payment_date)}</TableCell>
+>>>>>>> 6b12021be87627cf361a91ede0efaed0830d0825
                           <TableCell>
                             {PAYMENT_MODE_LABELS[payment.payment_mode] || payment.payment_mode}
                           </TableCell>
@@ -508,7 +622,13 @@ function UpdatePayment() {
                               variant="outlined"
                               color="info"
                               size="small"
+<<<<<<< HEAD
                               onClick={() => startEditPayment(payment)}
+=======
+                              iconOnly
+                              onClick={() => startEditPayment(payment)}
+                              disabled={addingPayment}
+>>>>>>> 6b12021be87627cf361a91ede0efaed0830d0825
                             >
                               <Icon fontSize="small">edit</Icon>
                             </MDButton>
@@ -520,11 +640,26 @@ function UpdatePayment() {
                 </TableContainer>
               )}
 
+<<<<<<< HEAD
               {(dialogRemaining > 0 || editingPaymentId) && (
                 <MDBox>
                   <MDTypography variant="h6" fontWeight="medium" mb={2}>
                     {editingPaymentId ? "Edit Payment" : "Add Payment"}
                   </MDTypography>
+=======
+              {showPaymentForm && (
+                <MDBox>
+                  <MDBox display="flex" justifyContent="space-between" alignItems="center" mb={2}>
+                    <MDTypography variant="h6" fontWeight="medium">
+                      {editingPaymentId ? "Edit Payment" : "Add Payment"}
+                    </MDTypography>
+                    {editingPaymentId && (
+                      <MDButton variant="text" color="dark" size="small" onClick={cancelEditPayment}>
+                        Cancel edit
+                      </MDButton>
+                    )}
+                  </MDBox>
+>>>>>>> 6b12021be87627cf361a91ede0efaed0830d0825
                   <Grid container spacing={2}>
                     <Grid item xs={12} sm={6} md={3}>
                       <MDInput
@@ -555,7 +690,11 @@ function UpdatePayment() {
                     <Grid item xs={12} sm={6} md={3}>
                       <MDInput
                         type="number"
-                        label={`Amount (max ₹${dialogRemaining.toFixed(2)})`}
+                        label={
+                          editingPaymentId
+                            ? `Amount (max ₹${maxPayableOnEdit.toFixed(2)})`
+                            : `Amount (max ₹${dialogRemaining.toFixed(2)})`
+                        }
                         fullWidth
                         value={paymentForm.amount}
                         onChange={(e) => handlePaymentFormChange("amount", e.target.value)}
@@ -614,16 +753,30 @@ function UpdatePayment() {
                       Credit is logged for tracking only. Balance stays the same until paid by cash, UPI, or cheque.
                     </MDTypography>
                   )}
-                  <MDBox mt={2}>
+                  <MDBox mt={2} display="flex" gap={1} flexWrap="wrap">
                     <MDButton
                       variant="gradient"
                       color="info"
-                      onClick={handleAddPayment}
+                      onClick={handleSavePayment}
                       disabled={addingPayment}
                     >
-                      <Icon sx={{ mr: 1 }}>add</Icon>
-                      {addingPayment ? "Adding..." : "Add Payment"}
+                      <Icon sx={{ mr: 1 }}>{editingPaymentId ? "save" : "add"}</Icon>
+                      {addingPayment
+                        ? "Saving..."
+                        : editingPaymentId
+                          ? "Update Payment"
+                          : "Add Payment"}
                     </MDButton>
+                    {editingPaymentId && (
+                      <MDButton
+                        variant="outlined"
+                        color="dark"
+                        onClick={cancelEditPayment}
+                        disabled={addingPayment}
+                      >
+                        Cancel
+                      </MDButton>
+                    )}
                   </MDBox>
                 </MDBox>
               )}
