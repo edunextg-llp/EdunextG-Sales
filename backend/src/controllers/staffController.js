@@ -488,9 +488,13 @@ export const getSalePayments = async (req, res) => {
 export const addSalePayment = async (req, res) => {
     try {
         const { saleId } = req.params;
-        const parsed = parsePaymentBody(req.body);
-        if (parsed.error) {
-            return res.status(400).json({ error: parsed.error });
+        const { paymentDate, paymentMode, amount, referenceNo, referenceDate, creditDays } = req.body;
+
+        if (!paymentDate) {
+            return res.status(400).json({ error: 'Payment date is required' });
+        }
+        if (!paymentMode) {
+            return res.status(400).json({ error: 'Payment mode is required' });
         }
 
 
