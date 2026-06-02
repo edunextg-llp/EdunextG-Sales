@@ -678,7 +678,7 @@ function AddSales() {
                       />
                     </MDBox>
                   </Grid>
-                  <Grid item xs={12} md={4}>
+                  {/* <Grid item xs={12} md={4}>
                     <MDBox mb={2}>
                       <MDInput
                         type="text"
@@ -694,7 +694,7 @@ function AddSales() {
                         }
                       />
                     </MDBox>
-                  </Grid>
+                  </Grid> */}
                 </Grid>
 
                 {showEntryTable && (
