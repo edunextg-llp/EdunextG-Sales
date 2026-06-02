@@ -235,20 +235,39 @@ function AddSales() {
   }, []);
 
   useEffect(() => {
-    if (selectedStaff && selectedDate) {
-      const fetchAllData = async () => {
-        try {
-          const [outletsResponse, allCountersResponse] = await Promise.all([
-            fetch(`${API}/staff/${selectedStaff.id}/outlets-by-date?date=${selectedDate}`),
-            fetch(`${API}/staff/${selectedStaff.id}/all-counters`)
-          ]);
+    if (!selectedStaff || !selectedDate) {
+      setOutlets([]);
+      setSearchOutlets([]);
+      setSalesData({});
+      setSubmittedSummary(null);
+      return;
+    }
 
+    setOutlets([]);
+    setSearchOutlets([]);
+    setSalesData({});
+    setSubmittedSummary(null);
+
+    const fetchAllData = async () => {
+      const staffId = selectedStaff.id;
+      const date = selectedDate;
+
+      try {
+        const [outletsResponse, allCountersResponse, salesRes] = await Promise.all([
+          fetch(`${API}/staff/${staffId}/outlets-by-date?date=${date}`),
+          fetch(`${API}/staff/${staffId}/all-counters`),
+          fetch(`${API}/staff/${staffId}/sales-by-date?date=${date}`),
+        ]);
+
+        if (outletsResponse.ok) {
           const data = await outletsResponse.json();
-          const allCounters = await allCountersResponse.json();
-
-          setAllOutlets(allCounters);
-
           setOutlets(data);
+          
+          if (allCountersResponse.ok) {
+            const allCounters = await allCountersResponse.json();
+            setAllOutlets(allCounters);
+          }
+
           const initialSales = {};
           data.forEach((outlet) => {
             initialSales[outletKey(outlet.id)] = [
