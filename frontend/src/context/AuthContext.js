@@ -23,7 +23,7 @@ export const AuthProvider = ({ children }) => {
       let [resource, config] = args;
 
       const currentToken = localStorage.getItem("auth_token");
-      if (resource.includes("https://bawarchee.edunextg.co/api") && !resource.includes("/api/auth/login")) {
+      if (resource.includes("http://localhost:5000/api") && !resource.includes("/api/auth/login")) {
         config = config || {};
         config.headers = config.headers || {};
         if (currentToken) {

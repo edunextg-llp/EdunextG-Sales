@@ -467,53 +467,12 @@ export const getSalePayments = async (req, res) => {
 export const addSalePayment = async (req, res) => {
     try {
         const { saleId } = req.params;
-        const { paymentDate, paymentMode, amount, referenceNo, referenceDate, creditDays } = req.body;
-
-        if (!paymentDate) {
-            return res.status(400).json({ error: 'Payment date is required' });
-        }
-        if (!paymentMode) {
-            return res.status(400).json({ error: 'Payment mode is required' });
+        const parsed = parsePaymentBody(req.body);
+        if (parsed.error) {
+            return res.status(400).json({ error: parsed.error });
         }
 
-        const amountValidation = validateNumeric(amount, 'Amount');
-        if (!amountValidation.valid) {
-            return res.status(400).json({ error: amountValidation.error });
-        }
-        if (amountValidation.value <= 0) {
-            return res.status(400).json({ error: 'Amount must be greater than zero' });
-        }
-
-        const allowedModes = ['cash', 'upi', 'credit', 'cheque'];
-        if (!allowedModes.includes(String(paymentMode).toLowerCase())) {
-            return res.status(400).json({ error: 'Invalid payment mode' });
-        }
-
-        const mode = String(paymentMode).toLowerCase();
-        if (mode === 'credit') {
-            const daysValidation = validatePositiveInteger(creditDays, 'Credit days');
-            if (!daysValidation.valid) {
-                return res.status(400).json({ error: daysValidation.error });
-            }
-        }
-
-        if (mode === 'cheque' && !referenceNo) {
-            return res.status(400).json({ error: 'Cheque number is required' });
-        }
-
-        let formattedRefDate = referenceDate || null;
-        if (formattedRefDate && typeof formattedRefDate === 'string' && formattedRefDate.includes('T')) {
-            formattedRefDate = formattedRefDate.split('T')[0];
-        }
-
-        const result = await PaymentModel.addPayment(saleId, {
-            paymentDate,
-            paymentMode: mode,
-            amount: amountValidation.value,
-            referenceNo: referenceNo || null,
-            referenceDate: formattedRefDate,
-            creditDays: mode === 'credit' ? parseInt(creditDays, 10) : null,
-        });
+        const result = await PaymentModel.addPayment(saleId, parsed.data);
 
         res.status(201).json({
             message: 'Payment recorded successfully',
@@ -529,6 +488,89 @@ export const addSalePayment = async (req, res) => {
             });
         }
         console.error('Error adding sale payment:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+};
+
+function parsePaymentBody(body) {
+    const { paymentDate, paymentMode, amount, referenceNo, referenceDate, creditDays } = body;
+
+    if (!paymentDate) {
+        return { error: 'Payment date is required' };
+    }
+    if (!paymentMode) {
+        return { error: 'Payment mode is required' };
+    }
+
+    const amountValidation = validateNumeric(amount, 'Amount');
+    if (!amountValidation.valid) {
+        return { error: amountValidation.error };
+    }
+    if (amountValidation.value <= 0) {
+        return { error: 'Amount must be greater than zero' };
+    }
+
+    const allowedModes = ['cash', 'upi', 'credit', 'cheque'];
+    if (!allowedModes.includes(String(paymentMode).toLowerCase())) {
+        return { error: 'Invalid payment mode' };
+    }
+
+    const mode = String(paymentMode).toLowerCase();
+    if (mode === 'credit') {
+        const daysValidation = validatePositiveInteger(creditDays, 'Credit days');
+        if (!daysValidation.valid) {
+            return { error: daysValidation.error };
+        }
+    }
+
+    if (mode === 'cheque' && !referenceNo) {
+        return { error: 'Cheque number is required' };
+    }
+
+    let formattedRefDate = referenceDate || null;
+    if (formattedRefDate && typeof formattedRefDate === 'string' && formattedRefDate.includes('T')) {
+        formattedRefDate = formattedRefDate.split('T')[0];
+    }
+
+    return {
+        data: {
+            paymentDate,
+            paymentMode: mode,
+            amount: amountValidation.value,
+            referenceNo: referenceNo || null,
+            referenceDate: formattedRefDate,
+            creditDays: mode === 'credit' ? parseInt(creditDays, 10) : null,
+        },
+    };
+}
+
+export const updateSalePayment = async (req, res) => {
+    try {
+        const { saleId, paymentId } = req.params;
+        const parsed = parsePaymentBody(req.body);
+        if (parsed.error) {
+            return res.status(400).json({ error: parsed.error });
+        }
+
+        const result = await PaymentModel.updatePayment(saleId, paymentId, parsed.data);
+
+        res.status(200).json({
+            message: 'Payment updated successfully',
+            ...result,
+        });
+    } catch (error) {
+        if (error.message === 'SALE_NOT_FOUND') {
+            return res.status(404).json({ error: 'Sale not found' });
+        }
+        if (error.message === 'PAYMENT_NOT_FOUND') {
+            return res.status(404).json({ error: 'Payment not found' });
+        }
+        if (error.message === 'EXCEEDS_BALANCE') {
+            return res.status(400).json({
+                error: `Amount exceeds remaining balance (₹${error.remaining.toFixed(2)} left)`,
+            });
+        }
+        console.error('Error updating sale payment:', error);
         res.status(500).json({ error: 'Internal server error' });
     }
 };

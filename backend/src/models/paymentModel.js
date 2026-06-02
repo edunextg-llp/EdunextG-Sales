@@ -25,14 +25,37 @@ class PaymentModel {
     }
 
     /** Sum of cash, UPI, and cheque only — credit does not count as paid. */
-    static async getTotalPaid(connection, saleId) {
+    static async getTotalPaid(connection, saleId, excludePaymentId = null) {
+        const params = [saleId];
+        let excludeClause = '';
+        if (excludePaymentId != null) {
+            excludeClause = ' AND id <> ?';
+            params.push(excludePaymentId);
+        }
         const [rows] = await connection.execute(
             `SELECT COALESCE(SUM(amount), 0) AS total
              FROM sale_payments
-             WHERE sale_id = ? AND payment_mode IN ('cash', 'upi', 'cheque')`,
-            [saleId]
+             WHERE sale_id = ? AND payment_mode IN ('cash', 'upi', 'cheque')${excludeClause}`,
+            params
         );
         return parseFloat(rows[0].total);
+    }
+
+    static async buildPaymentResponse(saleId) {
+        const payments = await PaymentModel.getBySaleId(saleId);
+        const [saleRows] = await db.execute(
+            'SELECT price, paid_amount, balance_amount FROM staff_sales WHERE id = ?',
+            [saleId]
+        );
+
+        return {
+            payments,
+            summary: {
+                price: parseFloat(saleRows[0].price),
+                paidAmount: parseFloat(saleRows[0].paid_amount),
+                balanceAmount: parseFloat(saleRows[0].balance_amount),
+            },
+        };
     }
 
     static async recalculateSaleTotals(connection, saleId) {
@@ -178,20 +201,72 @@ class PaymentModel {
             await PaymentModel.recalculateSaleTotals(connection, saleId);
             await connection.commit();
 
-            const payments = await PaymentModel.getBySaleId(saleId);
-            const [saleRows] = await db.execute(
-                'SELECT price, paid_amount, balance_amount FROM staff_sales WHERE id = ?',
-                [saleId]
+            return PaymentModel.buildPaymentResponse(saleId);
+        } catch (error) {
+            await connection.rollback();
+            throw error;
+        } finally {
+            connection.release();
+        }
+    }
+
+    static async updatePayment(saleId, paymentId, data) {
+        const { paymentDate, paymentMode, amount, referenceNo, referenceDate, creditDays } = data;
+        const connection = await db.getConnection();
+
+        try {
+            await connection.beginTransaction();
+
+            const [existingRows] = await connection.execute(
+                'SELECT id FROM sale_payments WHERE id = ? AND sale_id = ?',
+                [paymentId, saleId]
+            );
+            if (!existingRows.length) {
+                const err = new Error('PAYMENT_NOT_FOUND');
+                throw err;
+            }
+
+            const price = await PaymentModel.getSalePrice(connection, saleId);
+            if (price === null) {
+                const err = new Error('SALE_NOT_FOUND');
+                throw err;
+            }
+
+            if (['cash', 'upi', 'cheque'].includes(paymentMode)) {
+                const totalPaidExcluding = await PaymentModel.getTotalPaid(
+                    connection,
+                    saleId,
+                    paymentId
+                );
+                const remaining = Math.round((price - totalPaidExcluding) * 100) / 100;
+                if (amount > remaining + 0.001) {
+                    const err = new Error('EXCEEDS_BALANCE');
+                    err.remaining = remaining;
+                    throw err;
+                }
+            }
+
+            await connection.execute(
+                `UPDATE sale_payments
+                 SET payment_date = ?, payment_mode = ?, amount = ?,
+                     reference_no = ?, reference_date = ?, credit_days = ?
+                 WHERE id = ? AND sale_id = ?`,
+                [
+                    paymentDate,
+                    paymentMode,
+                    amount,
+                    referenceNo || null,
+                    referenceDate || null,
+                    creditDays ?? null,
+                    paymentId,
+                    saleId,
+                ]
             );
 
-            return {
-                payments,
-                summary: {
-                    price: parseFloat(saleRows[0].price),
-                    paidAmount: parseFloat(saleRows[0].paid_amount),
-                    balanceAmount: parseFloat(saleRows[0].balance_amount),
-                },
-            };
+            await PaymentModel.recalculateSaleTotals(connection, saleId);
+            await connection.commit();
+
+            return PaymentModel.buildPaymentResponse(saleId);
         } catch (error) {
             await connection.rollback();
             throw error;
