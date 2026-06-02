@@ -55,7 +55,7 @@ function CreateStaff() {
     },
   });
 
-  const API = "http://localhost:5000/api";
+  const API = "https://bawarchee.edunextg.co/api";
 
   // Fetch Staff List
   const fetchStaffList = async () => {
