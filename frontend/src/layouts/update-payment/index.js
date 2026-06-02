@@ -53,7 +53,7 @@ const emptyPaymentForm = () => ({
   creditDays: "",
 });
 
-<<<<<<< HEAD
+
 const toInputDate = (value) => {
   if (!value) return "";
   const dateValue = String(value);
@@ -75,23 +75,7 @@ const toInputDate = (value) => {
   return "";
 };
 
-=======
-const formatDateForInput = (value) => {
-  if (!value) return "";
-  const str = String(value);
-  return str.includes("T") ? str.split("T")[0] : str.slice(0, 10);
-};
 
-const paymentToForm = (payment) => ({
-  paymentDate: formatDateForInput(payment.payment_date),
-  paymentMode: payment.payment_mode || "cash",
-  amount: String(payment.amount ?? ""),
-  referenceNo: payment.reference_no || "",
-  referenceDate: formatDateForInput(payment.reference_date),
-  creditDays: payment.credit_days != null ? String(payment.credit_days) : "",
-});
-
->>>>>>> 6b12021be87627cf361a91ede0efaed0830d0825
 function UpdatePayment() {
   const [searchQuery, setSearchQuery] = useState("");
   const [salesData, setSalesData] = useState([]);
@@ -192,7 +176,7 @@ function UpdatePayment() {
     setEditingPaymentId(null);
   };
 
-<<<<<<< HEAD
+
   const startEditPayment = (payment) => {
     setEditingPaymentId(payment.id);
     const formattedDate = toInputDate(payment.reference_date);
@@ -211,34 +195,7 @@ function UpdatePayment() {
   const cancelEditPayment = () => {
     setEditingPaymentId(null);
     setPaymentForm(emptyPaymentForm());
-=======
-  const cancelEditPayment = () => {
-    setEditingPaymentId(null);
-    setPaymentForm(emptyPaymentForm());
-  };
 
-  const startEditPayment = (payment) => {
-    setEditingPaymentId(payment.id);
-    setPaymentForm(paymentToForm(payment));
-  };
-
-  const applyPaymentResponse = (data) => {
-    setPayments(data.payments);
-    setPaymentSummary(data.summary);
-    if (paymentDialogSale) {
-      setSalesData((prev) =>
-        prev.map((sale) =>
-          sale.id === paymentDialogSale.id
-            ? {
-                ...sale,
-                paid_amount: data.summary.paidAmount,
-                balance_amount: data.summary.balanceAmount,
-              }
-            : sale
-        )
-      );
-    }
->>>>>>> 6b12021be87627cf361a91ede0efaed0830d0825
   };
 
   const handlePaymentFormChange = (field, value) => {
@@ -265,7 +222,7 @@ function UpdatePayment() {
     const amount = parseFloat(paymentForm.amount);
     if (!paymentForm.paymentDate || !paymentForm.amount || Number.isNaN(amount) || amount <= 0) {
       alert("Please enter a valid date and amount.");
-<<<<<<< HEAD
+
       return;
     }
 
@@ -282,9 +239,7 @@ function UpdatePayment() {
     if (amount > remaining + 0.001 && ["cash", "upi", "cheque"].includes(paymentForm.paymentMode)) {
       alert(`Amount cannot exceed remaining balance (₹${remaining.toFixed(2)}).`);
       return;
-=======
-      return null;
->>>>>>> 6b12021be87627cf361a91ede0efaed0830d0825
+
     }
 
     if (paymentForm.paymentMode === "credit" && !paymentForm.creditDays) {
@@ -327,7 +282,7 @@ function UpdatePayment() {
 
     setAddingPayment(true);
     try {
-<<<<<<< HEAD
+
       const isEditing = !!editingPaymentId;
       const url = isEditing
         ? `${API}/staff/sales/${paymentDialogSale.id}/payments/${editingPaymentId}`
@@ -335,20 +290,14 @@ function UpdatePayment() {
 
       const response = await fetch(url, {
         method: isEditing ? "PUT" : "POST",
-=======
-      const url = editingPaymentId
-        ? `${API}/staff/sales/${paymentDialogSale.id}/payments/${editingPaymentId}`
-        : `${API}/staff/sales/${paymentDialogSale.id}/payments`;
-      const response = await fetch(url, {
-        method: editingPaymentId ? "PUT" : "POST",
->>>>>>> 6b12021be87627cf361a91ede0efaed0830d0825
+
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
 
       if (response.ok) {
         const data = await response.json();
-<<<<<<< HEAD
+
         setPayments(data.payments);
         setPaymentSummary(data.summary);
         setEditingPaymentId(null);
@@ -364,11 +313,7 @@ function UpdatePayment() {
               : sale
           )
         );
-=======
-        applyPaymentResponse(data);
-        setPaymentForm(emptyPaymentForm());
-        setEditingPaymentId(null);
->>>>>>> 6b12021be87627cf361a91ede0efaed0830d0825
+
       } else {
         const err = await response.json().catch(() => ({}));
         alert(err.error || `Failed to ${editingPaymentId ? "update" : "add"} payment.`);
@@ -587,31 +532,17 @@ function UpdatePayment() {
                           Amount
                         </TableCell>
                         <TableCell sx={{ fontWeight: "bold" }}>Details</TableCell>
-<<<<<<< HEAD
+
                         <TableCell align="center" sx={{ fontWeight: "bold" }}>Action</TableCell>
-=======
-                        <TableCell align="center" sx={{ fontWeight: "bold" }}>
-                          Action
-                        </TableCell>
->>>>>>> 6b12021be87627cf361a91ede0efaed0830d0825
+
                       </TableRow>
                     </TableHead>
                     <TableBody>
                       {payments.map((payment) => (
-<<<<<<< HEAD
+
                         <TableRow key={payment.id} sx={{ backgroundColor: editingPaymentId === payment.id ? "#fff9c4" : "inherit" }}>
                           <TableCell>{toInputDate(payment.payment_date)}</TableCell>
-=======
-                        <TableRow
-                          key={payment.id}
-                          sx={
-                            editingPaymentId === payment.id
-                              ? { backgroundColor: "#e3f2fd" }
-                              : undefined
-                          }
-                        >
-                          <TableCell>{formatDateForInput(payment.payment_date)}</TableCell>
->>>>>>> 6b12021be87627cf361a91ede0efaed0830d0825
+
                           <TableCell>
                             {PAYMENT_MODE_LABELS[payment.payment_mode] || payment.payment_mode}
                           </TableCell>
@@ -622,13 +553,9 @@ function UpdatePayment() {
                               variant="outlined"
                               color="info"
                               size="small"
-<<<<<<< HEAD
+
                               onClick={() => startEditPayment(payment)}
-=======
-                              iconOnly
-                              onClick={() => startEditPayment(payment)}
-                              disabled={addingPayment}
->>>>>>> 6b12021be87627cf361a91ede0efaed0830d0825
+
                             >
                               <Icon fontSize="small">edit</Icon>
                             </MDButton>
@@ -640,26 +567,13 @@ function UpdatePayment() {
                 </TableContainer>
               )}
 
-<<<<<<< HEAD
+
               {(dialogRemaining > 0 || editingPaymentId) && (
                 <MDBox>
                   <MDTypography variant="h6" fontWeight="medium" mb={2}>
                     {editingPaymentId ? "Edit Payment" : "Add Payment"}
                   </MDTypography>
-=======
-              {showPaymentForm && (
-                <MDBox>
-                  <MDBox display="flex" justifyContent="space-between" alignItems="center" mb={2}>
-                    <MDTypography variant="h6" fontWeight="medium">
-                      {editingPaymentId ? "Edit Payment" : "Add Payment"}
-                    </MDTypography>
-                    {editingPaymentId && (
-                      <MDButton variant="text" color="dark" size="small" onClick={cancelEditPayment}>
-                        Cancel edit
-                      </MDButton>
-                    )}
-                  </MDBox>
->>>>>>> 6b12021be87627cf361a91ede0efaed0830d0825
+
                   <Grid container spacing={2}>
                     <Grid item xs={12} sm={6} md={3}>
                       <MDInput

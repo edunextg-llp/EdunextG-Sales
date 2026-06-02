@@ -493,7 +493,7 @@ export const addSalePayment = async (req, res) => {
             return res.status(400).json({ error: parsed.error });
         }
 
-<<<<<<< HEAD
+
         const amountValidation = validateNumeric(amount, 'Amount');
         if (!amountValidation.valid) {
             return res.status(400).json({ error: amountValidation.error });
@@ -530,9 +530,7 @@ export const addSalePayment = async (req, res) => {
             referenceDate: formattedRefDate,
             creditDays: mode === 'credit' ? parseInt(creditDays, 10) : null,
         });
-=======
-        const result = await PaymentModel.addPayment(saleId, parsed.data);
->>>>>>> 6b12021be87627cf361a91ede0efaed0830d0825
+
 
         res.status(201).json({
             message: 'Payment recorded successfully',
@@ -552,7 +550,7 @@ export const addSalePayment = async (req, res) => {
     }
 };
 
-<<<<<<< HEAD
+
 export const editSalePayment = async (req, res) => {
     try {
         const { saleId, paymentId } = req.params;
@@ -602,73 +600,15 @@ export const editSalePayment = async (req, res) => {
 
         const result = await PaymentModel.updatePayment(paymentId, saleId, {
             paymentDate: formattedPaymentDate,
-=======
-function parsePaymentBody(body) {
-    const { paymentDate, paymentMode, amount, referenceNo, referenceDate, creditDays } = body;
 
-    if (!paymentDate) {
-        return { error: 'Payment date is required' };
-    }
-    if (!paymentMode) {
-        return { error: 'Payment mode is required' };
-    }
-
-    const amountValidation = validateNumeric(amount, 'Amount');
-    if (!amountValidation.valid) {
-        return { error: amountValidation.error };
-    }
-    if (amountValidation.value <= 0) {
-        return { error: 'Amount must be greater than zero' };
-    }
-
-    const allowedModes = ['cash', 'upi', 'credit', 'cheque'];
-    if (!allowedModes.includes(String(paymentMode).toLowerCase())) {
-        return { error: 'Invalid payment mode' };
-    }
-
-    const mode = String(paymentMode).toLowerCase();
-    if (mode === 'credit') {
-        const daysValidation = validatePositiveInteger(creditDays, 'Credit days');
-        if (!daysValidation.valid) {
-            return { error: daysValidation.error };
-        }
-    }
-
-    if (mode === 'cheque' && !referenceNo) {
-        return { error: 'Cheque number is required' };
-    }
-
-    let formattedRefDate = referenceDate || null;
-    if (formattedRefDate && typeof formattedRefDate === 'string' && formattedRefDate.includes('T')) {
-        formattedRefDate = formattedRefDate.split('T')[0];
-    }
-
-    return {
-        data: {
-            paymentDate,
->>>>>>> 6b12021be87627cf361a91ede0efaed0830d0825
             paymentMode: mode,
             amount: amountValidation.value,
             referenceNo: referenceNo || null,
             referenceDate: formattedRefDate,
             creditDays: mode === 'credit' ? parseInt(creditDays, 10) : null,
-<<<<<<< HEAD
+
         });
-=======
-        },
-    };
-}
 
-export const updateSalePayment = async (req, res) => {
-    try {
-        const { saleId, paymentId } = req.params;
-        const parsed = parsePaymentBody(req.body);
-        if (parsed.error) {
-            return res.status(400).json({ error: parsed.error });
-        }
-
-        const result = await PaymentModel.updatePayment(saleId, paymentId, parsed.data);
->>>>>>> 6b12021be87627cf361a91ede0efaed0830d0825
 
         res.status(200).json({
             message: 'Payment updated successfully',
@@ -678,12 +618,8 @@ export const updateSalePayment = async (req, res) => {
         if (error.message === 'SALE_NOT_FOUND') {
             return res.status(404).json({ error: 'Sale not found' });
         }
-<<<<<<< HEAD
-=======
-        if (error.message === 'PAYMENT_NOT_FOUND') {
-            return res.status(404).json({ error: 'Payment not found' });
-        }
->>>>>>> 6b12021be87627cf361a91ede0efaed0830d0825
+
+
         if (error.message === 'EXCEEDS_BALANCE') {
             return res.status(400).json({
                 error: `Amount exceeds remaining balance (₹${error.remaining.toFixed(2)} left)`,
