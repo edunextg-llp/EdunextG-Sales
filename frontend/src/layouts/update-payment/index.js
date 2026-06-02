@@ -36,14 +36,43 @@ const PAYMENT_MODE_LABELS = {
   cheque: "Cheque",
 };
 
+const getTodayLocalDate = () => {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, "0");
+  const day = String(now.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+};
+
 const emptyPaymentForm = () => ({
-  paymentDate: new Date().toISOString().split("T")[0],
+  paymentDate: getTodayLocalDate(),
   paymentMode: "cash",
   amount: "",
   referenceNo: "",
   referenceDate: "",
   creditDays: "",
 });
+
+const toInputDate = (value) => {
+  if (!value) return "";
+  const dateValue = String(value);
+
+  if (dateValue.includes("T")) {
+    return dateValue.split("T")[0];
+  }
+
+  const ddmmyyyy = dateValue.match(/^(\d{2})-(\d{2})-(\d{4})$/);
+  if (ddmmyyyy) {
+    return `${ddmmyyyy[3]}-${ddmmyyyy[2]}-${ddmmyyyy[1]}`;
+  }
+
+  const yyyymmdd = dateValue.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (yyyymmdd) {
+    return dateValue;
+  }
+
+  return "";
+};
 
 function UpdatePayment() {
   const [searchQuery, setSearchQuery] = useState("");
@@ -54,8 +83,9 @@ function UpdatePayment() {
   const [paymentForm, setPaymentForm] = useState(emptyPaymentForm());
   const [loadingPayments, setLoadingPayments] = useState(false);
   const [addingPayment, setAddingPayment] = useState(false);
+  const [editingPaymentId, setEditingPaymentId] = useState(null);
 
-  const API = "https://bawarchee.edunextg.co/api";
+  const API = "https://https://bawarchee.edunextg.co/api";
 
   const fetchSales = async () => {
     try {
@@ -115,10 +145,10 @@ function UpdatePayment() {
           prev.map((sale) =>
             sale.id === saleId
               ? {
-                  ...sale,
-                  paid_amount: data.summary.paidAmount,
-                  balance_amount: data.summary.balanceAmount,
-                }
+                ...sale,
+                paid_amount: data.summary.paidAmount,
+                balance_amount: data.summary.balanceAmount,
+              }
               : sale
           )
         );
@@ -141,6 +171,27 @@ function UpdatePayment() {
     setPayments([]);
     setPaymentSummary(null);
     setPaymentForm(emptyPaymentForm());
+    setEditingPaymentId(null);
+  };
+
+  const startEditPayment = (payment) => {
+    setEditingPaymentId(payment.id);
+    const formattedDate = toInputDate(payment.reference_date);
+    const paymentDt = toInputDate(payment.payment_date);
+
+    setPaymentForm({
+      paymentDate: paymentDt || getTodayLocalDate(),
+      paymentMode: payment.payment_mode,
+      amount: String(payment.amount),
+      referenceNo: payment.reference_no || "",
+      referenceDate: formattedDate,
+      creditDays: payment.credit_days ? String(payment.credit_days) : "",
+    });
+  };
+
+  const cancelEditPayment = () => {
+    setEditingPaymentId(null);
+    setPaymentForm(emptyPaymentForm());
   };
 
   const handlePaymentFormChange = (field, value) => {
@@ -154,7 +205,7 @@ function UpdatePayment() {
     if (payment.payment_mode === "cheque") {
       const parts = [];
       if (payment.reference_no) parts.push(`Cheque #${payment.reference_no}`);
-      if (payment.reference_date) parts.push(`Date: ${payment.reference_date}`);
+      if (payment.reference_date) parts.push(`Date: ${toInputDate(payment.reference_date)}`);
       return parts.join(" · ") || "—";
     }
     if (payment.payment_mode === "credit" && payment.credit_days) {
@@ -172,8 +223,17 @@ function UpdatePayment() {
       return;
     }
 
-    const remaining = paymentSummary?.balanceAmount ?? getRemainingBalance(paymentDialogSale);
-    if (amount > remaining + 0.001) {
+    let remaining = paymentSummary?.balanceAmount ?? getRemainingBalance(paymentDialogSale);
+
+    // If editing, add back the old amount of the payment we're editing so we don't overestimate
+    if (editingPaymentId && ["cash", "upi", "cheque"].includes(paymentForm.paymentMode)) {
+      const oldPayment = payments.find(p => p.id === editingPaymentId);
+      if (oldPayment && ["cash", "upi", "cheque"].includes(oldPayment.payment_mode)) {
+        remaining += parseFloat(oldPayment.amount) || 0;
+      }
+    }
+
+    if (amount > remaining + 0.001 && ["cash", "upi", "cheque"].includes(paymentForm.paymentMode)) {
       alert(`Amount cannot exceed remaining balance (₹${remaining.toFixed(2)}).`);
       return;
     }
@@ -190,8 +250,13 @@ function UpdatePayment() {
 
     setAddingPayment(true);
     try {
-      const response = await fetch(`${API}/staff/sales/${paymentDialogSale.id}/payments`, {
-        method: "POST",
+      const isEditing = !!editingPaymentId;
+      const url = isEditing
+        ? `${API}/staff/sales/${paymentDialogSale.id}/payments/${editingPaymentId}`
+        : `${API}/staff/sales/${paymentDialogSale.id}/payments`;
+
+      const response = await fetch(url, {
+        method: isEditing ? "PUT" : "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           paymentDate: paymentForm.paymentDate,
@@ -210,25 +275,26 @@ function UpdatePayment() {
         const data = await response.json();
         setPayments(data.payments);
         setPaymentSummary(data.summary);
+        setEditingPaymentId(null);
         setPaymentForm(emptyPaymentForm());
         setSalesData((prev) =>
           prev.map((sale) =>
             sale.id === paymentDialogSale.id
               ? {
-                  ...sale,
-                  paid_amount: data.summary.paidAmount,
-                  balance_amount: data.summary.balanceAmount,
-                }
+                ...sale,
+                paid_amount: data.summary.paidAmount,
+                balance_amount: data.summary.balanceAmount,
+              }
               : sale
           )
         );
       } else {
         const err = await response.json().catch(() => ({}));
-        alert(err.error || "Failed to add payment.");
+        alert(err.error || `Failed to ${editingPaymentId ? "update" : "add"} payment.`);
       }
     } catch (error) {
-      console.error("Error adding payment:", error);
-      alert("Error adding payment.");
+      console.error("Error saving payment:", error);
+      alert("Error saving payment.");
     } finally {
       setAddingPayment(false);
     }
@@ -425,17 +491,28 @@ function UpdatePayment() {
                           Amount
                         </TableCell>
                         <TableCell sx={{ fontWeight: "bold" }}>Details</TableCell>
+                        <TableCell align="center" sx={{ fontWeight: "bold" }}>Action</TableCell>
                       </TableRow>
                     </TableHead>
                     <TableBody>
                       {payments.map((payment) => (
-                        <TableRow key={payment.id}>
-                          <TableCell>{payment.payment_date}</TableCell>
+                        <TableRow key={payment.id} sx={{ backgroundColor: editingPaymentId === payment.id ? "#fff9c4" : "inherit" }}>
+                          <TableCell>{toInputDate(payment.payment_date)}</TableCell>
                           <TableCell>
                             {PAYMENT_MODE_LABELS[payment.payment_mode] || payment.payment_mode}
                           </TableCell>
                           <TableCell align="right">₹{Number(payment.amount).toFixed(2)}</TableCell>
                           <TableCell>{formatPaymentDetails(payment)}</TableCell>
+                          <TableCell align="center">
+                            <MDButton
+                              variant="outlined"
+                              color="info"
+                              size="small"
+                              onClick={() => startEditPayment(payment)}
+                            >
+                              <Icon fontSize="small">edit</Icon>
+                            </MDButton>
+                          </TableCell>
                         </TableRow>
                       ))}
                     </TableBody>
@@ -443,10 +520,10 @@ function UpdatePayment() {
                 </TableContainer>
               )}
 
-              {dialogRemaining > 0 && (
+              {(dialogRemaining > 0 || editingPaymentId) && (
                 <MDBox>
                   <MDTypography variant="h6" fontWeight="medium" mb={2}>
-                    Add Payment
+                    {editingPaymentId ? "Edit Payment" : "Add Payment"}
                   </MDTypography>
                   <Grid container spacing={2}>
                     <Grid item xs={12} sm={6} md={3}>

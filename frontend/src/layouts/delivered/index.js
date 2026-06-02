@@ -15,7 +15,7 @@ import Footer from "examples/Footer";
 function Delivered() {
   const [salesData, setSalesData] = useState([]);
   const [searchQuery, setSearchQuery] = useState("");
-  const API = "https://bawarchee.edunextg.co/api";
+  const API = "https://https://bawarchee.edunextg.co/api";
 
   useEffect(() => {
     const fetchSales = async () => {
@@ -66,7 +66,8 @@ function Delivered() {
           )
         );
       } else {
-        alert("Failed to update status.");
+        const data = await response.json().catch(() => ({}));
+        alert(data.error || "Failed to update status.");
       }
     } catch (error) {
       console.error("Error updating status:", error);
@@ -174,27 +175,35 @@ function Delivered() {
                                 <Chip label="Cancelled" color="error" variant="outlined" size="small" />
                               ) : row.packaging_status === 'delivered' ? (
                                 <Chip label="Delivered" color="success" variant="outlined" size="small" />
-                              ) : (
+                              ) : row.packaging_status === 'out_for_delivery' ? (
                                 <Chip label="In Transit" color="warning" variant="outlined" size="small" />
+                              ) : (
+                                <Chip label={row.packaging_status || "Unknown"} color="default" variant="outlined" size="small" />
                               )}
                             </TableCell>
                             <TableCell align="center" sx={{ borderBottom: "1px solid #cbd5e1", py: 2 }}>
-                              <MDBox display="flex" gap={1} justifyContent="center" flexWrap="wrap">
-                                {row.packaging_status === 'out_for_delivery' && (
-                                  <>
-                                    <MDButton color="error" variant="contained" size="small" onClick={() => handleUpdateStatus(row.id, 'cancelled', row.delivery_boy_id, row.vehicle_no)}>
-                                      Cancel
-                                    </MDButton>
-                                    <MDButton color="success" variant="contained" size="small" onClick={() => handleUpdateStatus(row.id, 'delivered', row.delivery_boy_id, row.vehicle_no)}>
-                                      Deliver
-                                    </MDButton>
-                                    <MDButton color="dark" variant="gradient" size="small" onClick={() => handleUpdateStatus(row.id, 'packing_done', row.delivery_boy_id, row.vehicle_no)}>
-                                      Return
-                                    </MDButton>
-                                  </>
-                                )}
-
-                              </MDBox>
+                              {row.packaging_status === 'out_for_delivery' ? (
+                                <MDBox display="flex" gap={1} justifyContent="center" flexWrap="wrap">
+                                  <MDButton color="error" variant="contained" size="small" onClick={() => handleUpdateStatus(row.id, 'cancelled', row.delivery_boy_id, row.vehicle_no)}>
+                                    Cancel
+                                  </MDButton>
+                                  <MDButton color="success" variant="contained" size="small" onClick={() => handleUpdateStatus(row.id, 'delivered', row.delivery_boy_id, row.vehicle_no)}>
+                                    Deliver
+                                  </MDButton>
+                                  <MDButton color="dark" variant="gradient" size="small" onClick={() => handleUpdateStatus(row.id, 'packing_done', row.delivery_boy_id, row.vehicle_no)}>
+                                    Return
+                                  </MDButton>
+                                </MDBox>
+                              ) : (
+                                <MDButton
+                                  color="info"
+                                  variant="outlined"
+                                  size="small"
+                                  onClick={() => handleUpdateStatus(row.id, 'out_for_delivery', row.delivery_boy_id, row.vehicle_no)}
+                                >
+                                  Edit
+                                </MDButton>
+                              )}
                             </TableCell>
                           </TableRow>
                         ))

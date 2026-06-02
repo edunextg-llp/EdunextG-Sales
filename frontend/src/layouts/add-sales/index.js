@@ -49,6 +49,7 @@ function AddSales() {
   const [staffOptions, setStaffOptions] = useState([]);
   const [selectedStaff, setSelectedStaff] = useState(null);
   const [outlets, setOutlets] = useState([]);
+  const [allOutlets, setAllOutlets] = useState([]);
   const [salesData, setSalesData] = useState({});
   const [submittedSummary, setSubmittedSummary] = useState(null);
   const [submitting, setSubmitting] = useState(false);
@@ -58,7 +59,7 @@ function AddSales() {
   const [editForm, setEditForm] = useState({ invoiceNumber: "", price: "" });
   const [savingEdit, setSavingEdit] = useState(false);
 
-  const API = "https://bawarchee.edunextg.co/api";
+  const API = "https://https://bawarchee.edunextg.co/api";
 
   const mapSaleFromApi = (s) => ({
     id: s.id,
@@ -157,10 +158,13 @@ function AddSales() {
     )
     : "";
 
-  const handleSearch = async (query) => {
-    if (!query) return;
+  const fetchStaffOptions = async (query = "") => {
     try {
-      const response = await fetch(`${API}/staff/search?query=${query}`);
+      const endpoint = query.trim()
+        ? `${API}/staff/search?query=${encodeURIComponent(query)}`
+        : `${API}/staff`;
+      const response = await fetch(endpoint);
+      if (!response.ok) return;
       const data = await response.json();
       setStaffOptions(data);
     } catch (error) {
@@ -169,13 +173,22 @@ function AddSales() {
   };
 
   useEffect(() => {
+    fetchStaffOptions();
+  }, []);
+
+  useEffect(() => {
     if (selectedStaff && selectedDate) {
       const fetchAllData = async () => {
         try {
-          const response = await fetch(
-            `${API}/staff/${selectedStaff.id}/outlets-by-date?date=${selectedDate}`
-          );
-          const data = await response.json();
+          const [outletsResponse, allCountersResponse] = await Promise.all([
+            fetch(`${API}/staff/${selectedStaff.id}/outlets-by-date?date=${selectedDate}`),
+            fetch(`${API}/staff/${selectedStaff.id}/all-counters`)
+          ]);
+
+          const data = await outletsResponse.json();
+          const allCounters = await allCountersResponse.json();
+
+          setAllOutlets(allCounters);
           setOutlets(data);
           const initialSales = {};
           data.forEach((outlet) => {
@@ -264,8 +277,8 @@ function AddSales() {
 
     const hasInvalidFormat = validRows.some(d => isNaN(parseFloat(d.price)));
     if (hasInvalidFormat) {
-       alert("Please enter a valid numeric value for the price.");
-       return;
+      alert("Please enter a valid numeric value for the price.");
+      return;
     }
 
     const hasIncomplete = dataList.some(d =>
@@ -307,6 +320,7 @@ function AddSales() {
           return { ...result.summary, sales: newRows };
         });
 
+        // Remove the submitted outlet
         setOutlets((prev) => prev.filter((o) => o.id !== parseInt(outletId, 10)));
         setSalesData((prev) => {
           const next = { ...prev };
@@ -385,9 +399,8 @@ function AddSales() {
           return { ...result.summary, sales: newRows };
         });
 
+        // Remove the submitted outlets
         setOutlets((prev) => prev.filter((o) => !submittedOutletIds.has(o.id)));
-
-        // Remove from salesData
         setSalesData((prev) => {
           const next = { ...prev };
           submittedOutletIds.forEach((id) => delete next[id]);
@@ -535,7 +548,12 @@ function AddSales() {
                           setSelectedStaff(newValue);
                           setSubmittedSummary(null);
                         }}
-                        onInputChange={(event, newInputValue) => handleSearch(newInputValue)}
+                        onOpen={() => {
+                          if (staffOptions.length === 0) {
+                            fetchStaffOptions();
+                          }
+                        }}
+                        onInputChange={(event, newInputValue) => fetchStaffOptions(newInputValue)}
                         renderInput={(params) => (
                           <MDInput {...params} label="Search Staff Name" fullWidth />
                         )}
@@ -571,6 +589,34 @@ function AddSales() {
                         fullWidth
                         value={outletSearch}
                         onChange={(e) => setOutletSearch(e.target.value)}
+                      />
+                    </MDBox>
+                    <MDBox mb={2} maxWidth={400}>
+                      <Autocomplete
+                        options={["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"]}
+                        onChange={(event, newValue) => {
+                          if (newValue) {
+                            const outletsToAdd = allOutlets.filter(
+                              o => o.day === newValue && !outlets.some(existing => existing.id === o.id)
+                            );
+
+                            if (outletsToAdd.length > 0) {
+                              setOutlets([...outlets, ...outletsToAdd]);
+                              setSalesData((prev) => {
+                                const newData = { ...prev };
+                                outletsToAdd.forEach(o => {
+                                  newData[o.id] = [{ invoiceNumber: "", price: "", deliveryBoyId: "", vehicleNo: "" }];
+                                });
+                                return newData;
+                              });
+                            }
+                          }
+                        }}
+                        renderInput={(params) => (
+                          <MDInput {...params} label="Load Outlets by Day" fullWidth />
+                        )}
+                        clearOnBlur
+                        blurOnSelect
                       />
                     </MDBox>
                     <TableContainer
@@ -625,156 +671,156 @@ function AddSales() {
                               </TableCell>
                             </TableRow>
                           ) : (
-                          filteredOutlets.map((outlet, outletIndex) => {
-                            const rows = salesData[outlet.id] || [];
-                            return rows.map((row, index) => {
-                              const rowBorder =
-                                index === rows.length - 1
-                                  ? { borderBottom: "1px solid #e5e7eb" }
-                                  : { borderBottom: "1px solid #f0f0f0" };
-                              return (
-                              <TableRow
-                                key={`${outlet.id}-${index}`}
-                                sx={{
-                                  backgroundColor: index % 2 !== 0 ? "#fafafa" : "inherit",
-                                }}
-                              >
-                                {index === 0 && (
-                                  <TableCell
-                                    rowSpan={rows.length}
-                                    align="center"
+                            filteredOutlets.map((outlet, outletIndex) => {
+                              const rows = salesData[outlet.id] || [];
+                              return rows.map((row, index) => {
+                                const rowBorder =
+                                  index === rows.length - 1
+                                    ? { borderBottom: "1px solid #e5e7eb" }
+                                    : { borderBottom: "1px solid #f0f0f0" };
+                                return (
+                                  <TableRow
+                                    key={`${outlet.id}-${index}`}
                                     sx={{
-                                      ...tableBodySx,
-                                      borderBottom: "1px solid #e5e7eb",
+                                      backgroundColor: index % 2 !== 0 ? "#fafafa" : "inherit",
                                     }}
-                                  >
-                                    {outletIndex + 1}
-                                  </TableCell>
-                                )}
-                                {index === 0 && (
-                                  <TableCell
-                                    rowSpan={rows.length}
-                                    align="left"
-                                    sx={{
-                                      ...tableBodySx,
-                                      borderBottom: "1px solid #e5e7eb",
-                                    }}
-                                  >
-                                    <MDBox display="flex" alignItems="center" gap={1.5}>
-                                      <MDAvatar
-                                        bgColor="light"
-                                        size="sm"
-                                        sx={{ border: "1px solid #e5e7eb", color: "#374151", flexShrink: 0 }}
-                                      >
-                                        <MDTypography variant="caption" fontWeight="medium">
-                                          {outlet.outlet_name.charAt(0)}
-                                        </MDTypography>
-                                      </MDAvatar>
-                                      <MDBox lineHeight={1} minWidth={0}>
-                                        <MDTypography
-                                          display="block"
-                                          variant="button"
-                                          fontWeight="medium"
-                                          color="dark"
-                                          sx={{ fontSize: "0.875rem" }}
-                                        >
-                                          {outlet.outlet_name}
-                                        </MDTypography>
-                                        <MDTypography
-                                          variant="caption"
-                                          sx={{ fontSize: "0.75rem", color: "#6b7280" }}
-                                        >
-                                          {outlet.outlet_erp_id}
-                                        </MDTypography>
-                                      </MDBox>
-                                    </MDBox>
-                                  </TableCell>
-                                )}
-                                <TableCell align="left" sx={{ ...tableBodySx, ...rowBorder }}>
-                                  <MDInput
-                                    type="text"
-                                    placeholder="Invoice..."
-                                    size="small"
-                                    fullWidth
-                                    sx={{ "& .MuiInputBase-root": { height: "36px" } }}
-                                    value={row.invoiceNumber || ""}
-                                    onChange={(e) =>
-                                      handleSalesChange(outlet.id, index, "invoiceNumber", e.target.value)
-                                    }
-                                  />
-                                </TableCell>
-                                <TableCell align="left" sx={{ ...tableBodySx, ...rowBorder }}>
-                                  <MDInput
-                                    type="number"
-                                    placeholder="0.00"
-                                    size="small"
-                                    fullWidth
-                                    disabled={!row.invoiceNumber?.trim()}
-                                    sx={{
-                                      "& .MuiInputBase-root": { height: "36px" },
-                                      "& .Mui-disabled": { opacity: 0.8, backgroundColor: "#f3f4f6" },
-                                    }}
-                                    value={row.price || ""}
-                                    onChange={(e) =>
-                                      handleSalesChange(outlet.id, index, "price", e.target.value)
-                                    }
-                                  />
-                                </TableCell>
-                                <TableCell align="center" sx={{ ...tableBodySx, ...rowBorder }}>
-                                  <MDBox
-                                    display="flex"
-                                    gap={0.5}
-                                    justifyContent="center"
-                                    alignItems="center"
-                                    flexWrap="nowrap"
                                   >
                                     {index === 0 && (
-                                      <MDButton
-                                        variant="gradient"
-                                        color="info"
+                                      <TableCell
+                                        rowSpan={rows.length}
+                                        align="center"
+                                        sx={{
+                                          ...tableBodySx,
+                                          borderBottom: "1px solid #e5e7eb",
+                                        }}
+                                      >
+                                        {outletIndex + 1}
+                                      </TableCell>
+                                    )}
+                                    {index === 0 && (
+                                      <TableCell
+                                        rowSpan={rows.length}
+                                        align="left"
+                                        sx={{
+                                          ...tableBodySx,
+                                          borderBottom: "1px solid #e5e7eb",
+                                        }}
+                                      >
+                                        <MDBox display="flex" alignItems="center" gap={1.5}>
+                                          {/* <MDAvatar
+                                            bgColor="light"
+                                            size="sm"
+                                            sx={{ border: "1px solid #e5e7eb", color: "#374151", flexShrink: 0 }}
+                                          >
+                                            <MDTypography variant="caption" fontWeight="medium">
+                                              {outlet.outlet_name.charAt(0)}
+                                            </MDTypography>
+                                          </MDAvatar> */}
+                                          <MDBox lineHeight={1} minWidth={0}>
+                                            <MDTypography
+                                              display="block"
+                                              variant="button"
+                                              fontWeight="medium"
+                                              color="dark"
+                                              sx={{ fontSize: "0.875rem" }}
+                                            >
+                                              {outlet.outlet_name}
+                                            </MDTypography>
+                                            <MDTypography
+                                              variant="caption"
+                                              sx={{ fontSize: "0.75rem", color: "#6b7280" }}
+                                            >
+                                              {outlet.outlet_erp_id}
+                                            </MDTypography>
+                                          </MDBox>
+                                        </MDBox>
+                                      </TableCell>
+                                    )}
+                                    <TableCell align="left" sx={{ ...tableBodySx, ...rowBorder }}>
+                                      <MDInput
+                                        type="text"
+                                        placeholder="Invoice..."
                                         size="small"
-                                        onClick={() => handleSaveRow(outlet.id)}
-                                        disabled={
-                                          submitting ||
-                                          !rows.some((r) => r.invoiceNumber?.trim() && r.price?.trim())
+                                        fullWidth
+                                        sx={{ "& .MuiInputBase-root": { height: "36px" } }}
+                                        value={row.invoiceNumber || ""}
+                                        onChange={(e) =>
+                                          handleSalesChange(outlet.id, index, "invoiceNumber", e.target.value)
                                         }
-                                        sx={{ minWidth: 64 }}
-                                      >
-                                        Save
-                                      </MDButton>
-                                    )}
-                                    {index === rows.length - 1 && (
-                                      <MDButton
-                                        variant="outlined"
-                                        color="dark"
+                                      />
+                                    </TableCell>
+                                    <TableCell align="left" sx={{ ...tableBodySx, ...rowBorder }}>
+                                      <MDInput
+                                        type="number"
+                                        placeholder="0.00"
                                         size="small"
-                                        iconOnly
-                                        circular
-                                        sx={{ minWidth: 32, width: 32, height: 32 }}
-                                        onClick={() => handleAddRow(outlet.id)}
+                                        fullWidth
+                                        disabled={!row.invoiceNumber?.trim()}
+                                        sx={{
+                                          "& .MuiInputBase-root": { height: "36px" },
+                                          "& .Mui-disabled": { opacity: 0.8, backgroundColor: "#f3f4f6" },
+                                        }}
+                                        value={row.price || ""}
+                                        onChange={(e) =>
+                                          handleSalesChange(outlet.id, index, "price", e.target.value)
+                                        }
+                                      />
+                                    </TableCell>
+                                    <TableCell align="center" sx={{ ...tableBodySx, ...rowBorder }}>
+                                      <MDBox
+                                        display="flex"
+                                        gap={0.5}
+                                        justifyContent="center"
+                                        alignItems="center"
+                                        flexWrap="nowrap"
                                       >
-                                        <Icon>add</Icon>
-                                      </MDButton>
-                                    )}
-                                    {rows.length > 1 && (
-                                      <MDButton
-                                        variant="outlined"
-                                        color="error"
-                                        size="small"
-                                        iconOnly
-                                        circular
-                                        sx={{ minWidth: 32, width: 32, height: 32 }}
-                                        onClick={() => handleRemoveRow(outlet.id, index)}
-                                      >
-                                        <Icon>close</Icon>
-                                      </MDButton>
-                                    )}
-                                  </MDBox>
-                                </TableCell>
-                              </TableRow>
-                              );
-                            });
-                          })
+                                        {index === 0 && (
+                                          <MDButton
+                                            variant="gradient"
+                                            color="info"
+                                            size="small"
+                                            onClick={() => handleSaveRow(outlet.id)}
+                                            disabled={
+                                              submitting ||
+                                              !rows.some((r) => r.invoiceNumber?.trim() && r.price?.trim())
+                                            }
+                                            sx={{ minWidth: 64 }}
+                                          >
+                                            Save
+                                          </MDButton>
+                                        )}
+                                        {index === rows.length - 1 && (
+                                          <MDButton
+                                            variant="outlined"
+                                            color="dark"
+                                            size="small"
+                                            iconOnly
+                                            circular
+                                            sx={{ minWidth: 32, width: 32, height: 32 }}
+                                            onClick={() => handleAddRow(outlet.id)}
+                                          >
+                                            <Icon>add</Icon>
+                                          </MDButton>
+                                        )}
+                                        {rows.length > 1 && (
+                                          <MDButton
+                                            variant="outlined"
+                                            color="error"
+                                            size="small"
+                                            iconOnly
+                                            circular
+                                            sx={{ minWidth: 32, width: 32, height: 32 }}
+                                            onClick={() => handleRemoveRow(outlet.id, index)}
+                                          >
+                                            <Icon>close</Icon>
+                                          </MDButton>
+                                        )}
+                                      </MDBox>
+                                    </TableCell>
+                                  </TableRow>
+                                );
+                              });
+                            })
                           )}
                         </TableBody>
                       </Table>
@@ -803,195 +849,195 @@ function AddSales() {
                 )}
 
                 {submittedSummary && (
-  <MDBox
-    mt={4}
-    p={3}
-    sx={{
-      backgroundColor: "#f8f9fa",
-      borderRadius: "12px",
-      border: "1px solid #dee2e6",
-    }}
-  >
-    <MDBox display="flex" justifyContent="space-between" alignItems="center" mb={2}>
-      <MDTypography variant="h6" fontWeight="bold">
-        Submitted Details
-      </MDTypography>
-      <MDButton
-        variant="outlined"
-        color="dark"
-        size="small"
-        onClick={() => printSalesStickers(submittedSummary.sales)}
-      >
-        <Icon sx={{ mr: 1 }}>label</Icon>
-        Print Stickers
-      </MDButton>
-    </MDBox>
-    <TableContainer
-      sx={{
-        boxShadow: "none",
-        borderTop: "1px solid #e5e7eb",
-        backgroundColor: "transparent",
-      }}
-    >
-      <Table
-        size="small"
-        sx={{
-          tableLayout: "fixed",
-          width: "100%",
-          minWidth: 720,
-          "& .MuiTableCell-root": { overflow: "hidden" },
-        }}
-      >
-        <colgroup>
-          <col style={{ width: "48px" }} />
-          <col style={{ width: "28%" }} />
-          <col style={{ width: "16%" }} />
-          <col style={{ width: "16%" }} />
-          <col style={{ width: "14%" }} />
-          <col style={{ width: "18%" }} />
-        </colgroup>
-        <TableHead sx={{ backgroundColor: "#f9fafb" }}>
-          <TableRow>
-            <TableCell align="center" sx={tableHeadSx}>
-              Sr No
-            </TableCell>
-            <TableCell align="left" sx={tableHeadSx}>
-              Outlet
-            </TableCell>
-            <TableCell align="center" sx={tableHeadSx}>
-              Invoice
-            </TableCell>
-            <TableCell align="center" sx={tableHeadSx}>
-              Sticker
-            </TableCell>
-            <TableCell align="right" sx={tableHeadSx}>
-              Amount
-            </TableCell>
-            <TableCell align="center" sx={tableHeadSx}>
-              Action
-            </TableCell>
-          </TableRow>
-        </TableHead>
-        <TableBody>
-          {submittedSummary.sales.map((row, index) => (
-            <TableRow
-              key={row.id || index}
-              sx={{ "&:last-child td, &:last-child th": { border: 0 } }}
-            >
-              <TableCell align="center" sx={{ ...tableBodySx, borderBottom: "1px solid #e5e7eb" }}>
-                {index + 1}
-              </TableCell>
-
-              <TableCell align="left" sx={{ ...tableBodySx, borderBottom: "1px solid #e5e7eb" }}>
-                <MDBox display="flex" alignItems="center" gap={1.5}>
-                  <MDBox lineHeight={1} minWidth={0}>
-                    <MDTypography
-                      display="block"
-                      variant="button"
-                      fontWeight="medium"
-                      color="dark"
-                      sx={{ fontSize: "0.875rem" }}
+                  <MDBox
+                    mt={4}
+                    p={3}
+                    sx={{
+                      backgroundColor: "#f8f9fa",
+                      borderRadius: "12px",
+                      border: "1px solid #dee2e6",
+                    }}
+                  >
+                    <MDBox display="flex" justifyContent="space-between" alignItems="center" mb={2}>
+                      <MDTypography variant="h6" fontWeight="bold">
+                        Submitted Details
+                      </MDTypography>
+                      <MDButton
+                        variant="outlined"
+                        color="dark"
+                        size="small"
+                        onClick={() => printSalesStickers(submittedSummary.sales)}
+                      >
+                        <Icon sx={{ mr: 1 }}>label</Icon>
+                        Print Stickers
+                      </MDButton>
+                    </MDBox>
+                    <TableContainer
+                      sx={{
+                        boxShadow: "none",
+                        borderTop: "1px solid #e5e7eb",
+                        backgroundColor: "transparent",
+                      }}
                     >
-                      {row.shopName}
-                    </MDTypography>
-                    <MDTypography
-                      variant="caption"
-                      color="text"
-                      sx={{ fontSize: "0.75rem", color: "#6b7280" }}
-                    >
-                      {row.outletErpId || "—"}
-                    </MDTypography>
+                      <Table
+                        size="small"
+                        sx={{
+                          tableLayout: "fixed",
+                          width: "100%",
+                          minWidth: 720,
+                          "& .MuiTableCell-root": { overflow: "hidden" },
+                        }}
+                      >
+                        <colgroup>
+                          <col style={{ width: "48px" }} />
+                          <col style={{ width: "28%" }} />
+                          <col style={{ width: "16%" }} />
+                          <col style={{ width: "16%" }} />
+                          <col style={{ width: "14%" }} />
+                          <col style={{ width: "18%" }} />
+                        </colgroup>
+                        <TableHead sx={{ backgroundColor: "#f9fafb" }}>
+                          <TableRow>
+                            <TableCell align="center" sx={tableHeadSx}>
+                              Sr No
+                            </TableCell>
+                            <TableCell align="left" sx={tableHeadSx}>
+                              Outlet
+                            </TableCell>
+                            <TableCell align="center" sx={tableHeadSx}>
+                              Invoice
+                            </TableCell>
+                            <TableCell align="center" sx={tableHeadSx}>
+                              Sticker
+                            </TableCell>
+                            <TableCell align="right" sx={tableHeadSx}>
+                              Amount
+                            </TableCell>
+                            <TableCell align="center" sx={tableHeadSx}>
+                              Action
+                            </TableCell>
+                          </TableRow>
+                        </TableHead>
+                        <TableBody>
+                          {submittedSummary.sales.map((row, index) => (
+                            <TableRow
+                              key={row.id || index}
+                              sx={{ "&:last-child td, &:last-child th": { border: 0 } }}
+                            >
+                              <TableCell align="center" sx={{ ...tableBodySx, borderBottom: "1px solid #e5e7eb" }}>
+                                {index + 1}
+                              </TableCell>
+
+                              <TableCell align="left" sx={{ ...tableBodySx, borderBottom: "1px solid #e5e7eb" }}>
+                                <MDBox display="flex" alignItems="center" gap={1.5}>
+                                  <MDBox lineHeight={1} minWidth={0}>
+                                    <MDTypography
+                                      display="block"
+                                      variant="button"
+                                      fontWeight="medium"
+                                      color="dark"
+                                      sx={{ fontSize: "0.875rem" }}
+                                    >
+                                      {row.shopName}
+                                    </MDTypography>
+                                    <MDTypography
+                                      variant="caption"
+                                      color="text"
+                                      sx={{ fontSize: "0.75rem", color: "#6b7280" }}
+                                    >
+                                      {row.outletErpId || "—"}
+                                    </MDTypography>
+                                  </MDBox>
+                                </MDBox>
+                              </TableCell>
+
+                              <TableCell
+                                align="center"
+                                sx={{ ...tableBodySx, borderBottom: "1px solid #e5e7eb", fontSize: "0.875rem", color: "#374151" }}
+                              >
+                                {editingSaleId === row.id ? (
+                                  <MDInput
+                                    type="text"
+                                    size="small"
+                                    value={editForm.invoiceNumber}
+                                    onChange={(e) =>
+                                      setEditForm((f) => ({ ...f, invoiceNumber: e.target.value }))
+                                    }
+                                    inputProps={{ style: { textAlign: "center" } }}
+                                    sx={{ width: "100%", maxWidth: 140, mx: "auto" }}
+                                  />
+                                ) : (
+                                  row.invoiceNumber
+                                )}
+                              </TableCell>
+
+                              <TableCell
+                                align="center"
+                                sx={{ ...tableBodySx, borderBottom: "1px solid #e5e7eb", fontSize: "0.875rem", color: "#374151" }}
+                              >
+                                {row.stickerNumber}
+                              </TableCell>
+
+                              <TableCell
+                                align="right"
+                                sx={{
+                                  ...tableBodySx,
+                                  borderBottom: "1px solid #e5e7eb",
+                                  fontSize: "0.875rem",
+                                  fontWeight: 500,
+                                  color: "#111827",
+                                }}
+                              >
+                                {editingSaleId === row.id ? (
+                                  <MDInput
+                                    type="number"
+                                    size="small"
+                                    value={editForm.price}
+                                    onChange={(e) =>
+                                      setEditForm((f) => ({ ...f, price: e.target.value }))
+                                    }
+                                    inputProps={{ style: { textAlign: "right" } }}
+                                    sx={{ width: "100%", maxWidth: 120, ml: "auto" }}
+                                  />
+                                ) : (
+                                  `₹${Number(row.amount).toFixed(2)}`
+                                )}
+                              </TableCell>
+
+                              <TableCell align="center" sx={{ ...tableBodySx, borderBottom: "1px solid #e5e7eb" }}>
+                                {row.id ? (
+                                  <MDBox display="flex" gap={0.5} justifyContent="center" alignItems="center" flexWrap="wrap">
+                                    {editingSaleId === row.id ? (
+                                      <>
+                                        <MDButton variant="gradient" color="info" size="small" onClick={() => saveEditSale(row.id)} disabled={savingEdit}>
+                                          Save
+                                        </MDButton>
+                                        <MDButton variant="outlined" color="dark" size="small" onClick={cancelEditSale}>
+                                          Cancel
+                                        </MDButton>
+                                      </>
+                                    ) : (
+                                      <>
+                                        <MDButton variant="outlined" color="info" size="small" onClick={() => startEditSale(row)}>
+                                          <Icon fontSize="small">edit</Icon>
+                                        </MDButton>
+                                        <MDButton variant="outlined" color="error" size="small" onClick={() => handleDeleteSale(row.id)}>
+                                          <Icon fontSize="small">delete</Icon>
+                                        </MDButton>
+                                      </>
+                                    )}
+                                  </MDBox>
+                                ) : (
+                                  "—"
+                                )}
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </TableContainer>
                   </MDBox>
-                </MDBox>
-              </TableCell>
-
-              <TableCell
-                align="center"
-                sx={{ ...tableBodySx, borderBottom: "1px solid #e5e7eb", fontSize: "0.875rem", color: "#374151" }}
-              >
-                {editingSaleId === row.id ? (
-                  <MDInput
-                    type="text"
-                    size="small"
-                    value={editForm.invoiceNumber}
-                    onChange={(e) =>
-                      setEditForm((f) => ({ ...f, invoiceNumber: e.target.value }))
-                    }
-                    inputProps={{ style: { textAlign: "center" } }}
-                    sx={{ width: "100%", maxWidth: 140, mx: "auto" }}
-                  />
-                ) : (
-                  row.invoiceNumber
                 )}
-              </TableCell>
-
-              <TableCell
-                align="center"
-                sx={{ ...tableBodySx, borderBottom: "1px solid #e5e7eb", fontSize: "0.875rem", color: "#374151" }}
-              >
-                {row.stickerNumber}
-              </TableCell>
-
-              <TableCell
-                align="right"
-                sx={{
-                  ...tableBodySx,
-                  borderBottom: "1px solid #e5e7eb",
-                  fontSize: "0.875rem",
-                  fontWeight: 500,
-                  color: "#111827",
-                }}
-              >
-                {editingSaleId === row.id ? (
-                  <MDInput
-                    type="number"
-                    size="small"
-                    value={editForm.price}
-                    onChange={(e) =>
-                      setEditForm((f) => ({ ...f, price: e.target.value }))
-                    }
-                    inputProps={{ style: { textAlign: "right" } }}
-                    sx={{ width: "100%", maxWidth: 120, ml: "auto" }}
-                  />
-                ) : (
-                  `₹${Number(row.amount).toFixed(2)}`
-                )}
-              </TableCell>
-
-              <TableCell align="center" sx={{ ...tableBodySx, borderBottom: "1px solid #e5e7eb" }}>
-                {row.id ? (
-                  <MDBox display="flex" gap={0.5} justifyContent="center" alignItems="center" flexWrap="wrap">
-                    {editingSaleId === row.id ? (
-                      <>
-                        <MDButton variant="gradient" color="info" size="small" onClick={() => saveEditSale(row.id)} disabled={savingEdit}>
-                          Save
-                        </MDButton>
-                        <MDButton variant="outlined" color="dark" size="small" onClick={cancelEditSale}>
-                          Cancel
-                        </MDButton>
-                      </>
-                    ) : (
-                      <>
-                        <MDButton variant="outlined" color="info" size="small" onClick={() => startEditSale(row)}>
-                          <Icon fontSize="small">edit</Icon>
-                        </MDButton>
-                        <MDButton variant="outlined" color="error" size="small" onClick={() => handleDeleteSale(row.id)}>
-                          <Icon fontSize="small">delete</Icon>
-                        </MDButton>
-                      </>
-                    )}
-                  </MDBox>
-                ) : (
-                  "—"
-                )}
-              </TableCell>
-            </TableRow>
-          ))}
-        </TableBody>
-      </Table>
-    </TableContainer>
-  </MDBox>
-)}
               </MDBox>
             </Card>
           </Grid>

@@ -5,7 +5,10 @@ import Grid from "@mui/material/Grid";
 import Card from "@mui/material/Card";
 import Icon from "@mui/material/Icon";
 import Autocomplete from "@mui/material/Autocomplete";
-import { MenuItem, Select, FormControl, InputLabel } from "@mui/material";
+import InputLabel from "@mui/material/InputLabel";
+import MenuItem from "@mui/material/MenuItem";
+import FormControl from "@mui/material/FormControl";
+import Select from "@mui/material/Select";
 
 // Material Dashboard 2 React components
 import MDBox from "components/MDBox";
@@ -30,19 +33,25 @@ function AddCounter() {
   const [editingOutletId, setEditingOutletId] = useState(null);
   const [editFormData, setEditFormData] = useState({ outletErpId: "", outletName: "", contactNumber: "" });
 
-  const API = "https://bawarchee.edunextg.co/api";
+  const API = "https://https://bawarchee.edunextg.co/api";
 
-  // Search staff
-  const handleSearch = async (query) => {
-    if (!query) return;
+  const fetchStaffOptions = async (query = "") => {
     try {
-      const response = await fetch(`${API}/staff/search?query=${query}`);
+      const endpoint = query.trim()
+        ? `${API}/staff/search?query=${encodeURIComponent(query)}`
+        : `${API}/staff`;
+      const response = await fetch(endpoint);
+      if (!response.ok) return;
       const data = await response.json();
       setStaffOptions(data);
     } catch (error) {
       console.error("Error searching staff:", error);
     }
   };
+
+  useEffect(() => {
+    fetchStaffOptions();
+  }, []);
 
   const fetchSavedOutlets = async (staffId, day) => {
     try {
@@ -211,8 +220,14 @@ function AddCounter() {
                       <Autocomplete
                         options={staffOptions}
                         getOptionLabel={(option) => option.name}
+                        isOptionEqualToValue={(option, value) => option.id === value.id}
                         onChange={(event, newValue) => setSelectedStaff(newValue)}
-                        onInputChange={(event, newInputValue) => handleSearch(newInputValue)}
+                        onOpen={() => {
+                          if (staffOptions.length === 0) {
+                            fetchStaffOptions();
+                          }
+                        }}
+                        onInputChange={(event, newInputValue) => fetchStaffOptions(newInputValue)}
                         renderInput={(params) => (
                           <MDInput {...params} label="Search Staff Name" fullWidth />
                         )}
@@ -248,14 +263,19 @@ function AddCounter() {
                   <MDBox mt={4}>
                     <Grid container spacing={3}>
                       <Grid item xs={12} md={6}>
-                        <FormControl fullWidth>
-                          <InputLabel>Select Day</InputLabel>
+                        <FormControl fullWidth size="small">
+                          <InputLabel id="select-day-label">Select Day</InputLabel>
                           <Select
+                            labelId="select-day-label"
+                            id="select-day"
                             value={selectedDay}
                             label="Select Day"
                             onChange={(e) => setSelectedDay(e.target.value)}
-                            sx={{ height: "45px" }}
+                            sx={{ minHeight: 48, height: 48 }}
                           >
+                            <MenuItem value="">
+                              <em>None</em>
+                            </MenuItem>
                             {days.map((day) => (
                               <MenuItem key={day} value={day}>
                                 {day}
@@ -265,14 +285,19 @@ function AddCounter() {
                         </FormControl>
                       </Grid>
                       <Grid item xs={12} md={6}>
-                        <FormControl fullWidth disabled={!selectedDay}>
-                          <InputLabel>Select Location</InputLabel>
+                        <FormControl fullWidth size="small" disabled={!selectedDay}>
+                          <InputLabel id="select-location-label">Select Location</InputLabel>
                           <Select
+                            labelId="select-location-label"
+                            id="select-location"
                             value={selectedLocation}
                             label="Select Location"
                             onChange={(e) => setSelectedLocation(e.target.value)}
-                            sx={{ height: "45px" }}
+                            sx={{ minHeight: 48 }}
                           >
+                            <MenuItem value="">
+                              <em>None</em>
+                            </MenuItem>
                             {availableLocations.map((loc) => (
                               <MenuItem key={loc.id} value={loc.location_name}>
                                 {loc.location_name}
@@ -306,11 +331,12 @@ function AddCounter() {
                       <MDBox
                         key={index}
                         mb={2}
-                        p={2}
+                        p={3}
                         sx={{
                           backgroundColor: "#f8f9fa",
                           borderRadius: "10px",
                           border: "1px solid #e9ecef",
+                          minHeight: 110,
                         }}
                       >
                         <Grid container spacing={2} alignItems="center">
@@ -318,6 +344,7 @@ function AddCounter() {
                             <MDInput
                               label="ERP Id"
                               fullWidth
+                              InputProps={{ sx: { minHeight: 48 } }}
                               value={outlet.outletErpId}
                               onChange={(e) =>
                                 handleOutletChange(index, "outletErpId", e.target.value)
@@ -328,6 +355,7 @@ function AddCounter() {
                             <MDInput
                               label="Outlet Name"
                               fullWidth
+                              InputProps={{ sx: { minHeight: 48 } }}
                               value={outlet.outletName}
                               onChange={(e) =>
                                 handleOutletChange(index, "outletName", e.target.value)
@@ -338,6 +366,7 @@ function AddCounter() {
                             <MDInput
                               label="Contact"
                               fullWidth
+                              InputProps={{ sx: { minHeight: 48 } }}
                               value={outlet.contactNumber}
                               onChange={(e) =>
                                 handleOutletChange(index, "contactNumber", e.target.value)
@@ -349,6 +378,7 @@ function AddCounter() {
                               color="error"
                               variant="text"
                               fullWidth
+                              sx={{ minHeight: 48 }}
                               onClick={() => removeOutletField(index)}
                             >
                               <Icon sx={{ mr: 1 }}>delete</Icon> Remove

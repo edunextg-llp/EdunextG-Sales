@@ -18,13 +18,13 @@ function Delivery() {
   const [searchQuery, setSearchQuery] = useState("");
   const [detailsModalOpen, setDetailsModalOpen] = useState(false);
   const [activeRowId, setActiveRowId] = useState(null);
-  const API = "https://bawarchee.edunextg.co/api";
+  const API = "https://https://bawarchee.edunextg.co/api";
 
   const handleOpenDetails = (saleId) => {
     setActiveRowId(saleId);
     setDetailsModalOpen(true);
   };
-  
+
   const handleCloseDetails = () => {
     setDetailsModalOpen(false);
     setActiveRowId(null);
@@ -77,10 +77,10 @@ function Delivery() {
     if (!row) return;
     try {
       if ((row.packaging_status === 'out_for_delivery' || row.packaging_status === 'delivered') && (!row.delivery_boy_id || !row.vehicle_no)) {
-         alert("Please assign a Delivery Boy and Vehicle No via 'Assign Details' before marking this item.");
-         return;
+        alert("Please assign a Delivery Boy and Vehicle No via 'Assign Details' before marking this item.");
+        return;
       }
-      
+
       let finalStatus = row.packaging_status || 'packing_done';
 
       const payload = {
@@ -246,9 +246,9 @@ function Delivery() {
                                 </FormControl>
                               </TableCell>
                               <TableCell align="center" sx={{ borderBottom: borderCol, py: 2, color: txColor }}>
-                                  <MDButton color="info" variant="text" size="small" onClick={() => handleOpenDetails(row.id)}>
-                                    {(row.delivery_boy_id && row.vehicle_no) ? "Edit Details" : "Assign Details"}
-                                  </MDButton>
+                                <MDButton color="info" variant="text" size="small" onClick={() => handleOpenDetails(row.id)}>
+                                  {(row.delivery_boy_id && row.vehicle_no) ? "Edit Details" : "Assign Details"}
+                                </MDButton>
                               </TableCell>
                               <TableCell align="center" sx={{ borderBottom: borderCol, py: 2 }}>
                                 <MDButton color="dark" variant="gradient" size="small" onClick={() => handleSaveDelivery(row.id)}>

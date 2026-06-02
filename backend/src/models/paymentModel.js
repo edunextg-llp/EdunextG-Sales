@@ -3,8 +3,11 @@ import db from '../config/db.js';
 class PaymentModel {
     static async getBySaleId(saleId) {
         const [rows] = await db.execute(
-            `SELECT id, sale_id, payment_date, payment_mode, amount,
-                    reference_no, reference_date, credit_days, created_at
+            `SELECT id, sale_id,
+                    DATE_FORMAT(payment_date, '%Y-%m-%d') AS payment_date,
+                    payment_mode, amount, reference_no,
+                    DATE_FORMAT(reference_date, '%Y-%m-%d') AS reference_date,
+                    credit_days, created_at
              FROM sale_payments
              WHERE sale_id = ?
              ORDER BY payment_date ASC, id ASC`,
@@ -172,6 +175,80 @@ class PaymentModel {
                     referenceNo || null,
                     referenceDate || null,
                     creditDays ?? null,
+                ]
+            );
+
+            await PaymentModel.recalculateSaleTotals(connection, saleId);
+            await connection.commit();
+
+            const payments = await PaymentModel.getBySaleId(saleId);
+            const [saleRows] = await db.execute(
+                'SELECT price, paid_amount, balance_amount FROM staff_sales WHERE id = ?',
+                [saleId]
+            );
+
+            return {
+                payments,
+                summary: {
+                    price: parseFloat(saleRows[0].price),
+                    paidAmount: parseFloat(saleRows[0].paid_amount),
+                    balanceAmount: parseFloat(saleRows[0].balance_amount),
+                },
+            };
+        } catch (error) {
+            await connection.rollback();
+            throw error;
+        } finally {
+            connection.release();
+        }
+    }
+
+    static async updatePayment(paymentId, saleId, data) {
+        const { paymentDate, paymentMode, amount, referenceNo, referenceDate, creditDays } = data;
+        const connection = await db.getConnection();
+
+        try {
+            await connection.beginTransaction();
+
+            const price = await PaymentModel.getSalePrice(connection, saleId);
+            if (price === null) {
+                const err = new Error('SALE_NOT_FOUND');
+                throw err;
+            }
+
+            // Exclude this payment from the sum to check remaining balance properly
+            const [rows] = await connection.execute(
+                `SELECT COALESCE(SUM(amount), 0) AS total
+                 FROM sale_payments
+                 WHERE sale_id = ? AND id != ? AND payment_mode IN ('cash', 'upi', 'cheque')`,
+                [saleId, paymentId]
+            );
+            const totalPaidWithoutThis = parseFloat(rows[0].total);
+            const remainingBase = price - totalPaidWithoutThis;
+            const remainingFloat = Math.round(remainingBase * 100) / 100;
+
+            let checkAmount = amount;
+            if (['cash', 'upi', 'cheque'].includes(paymentMode)) {
+                if (checkAmount > remainingFloat + 0.001) {
+                    const err = new Error('EXCEEDS_BALANCE');
+                    err.remaining = remainingFloat;
+                    throw err;
+                }
+            }
+
+            await connection.execute(
+                `UPDATE sale_payments
+                 SET payment_date = ?, payment_mode = ?, amount = ?, reference_no = ?, reference_date = ?, credit_days = ?
+                 WHERE id = ? AND sale_id = ?`,
+                [
+                    paymentDate,
+                    paymentMode,
+                    amount,
+                    referenceNo || null,
+                    referenceDate || null,
+                    creditDays ?? null,
+                    paymentId,
+                    saleId
                 ]
             );
 

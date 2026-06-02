@@ -112,6 +112,14 @@ class StaffModel {
         return rows;
     }
 
+    static async getAllCountersForStaff(staffId) {
+        const [rows] = await db.execute(
+            'SELECT id, outlet_erp_id, outlet_name, contact_number, day FROM staff_counters WHERE staff_id = ?',
+            [staffId]
+        );
+        return rows;
+    }
+
     static async getMissingSalesOutletsForDate(staffId, dayName, date) {
         const [rows] = await db.execute(
             `SELECT c.id, c.outlet_erp_id, c.outlet_name, c.contact_number 

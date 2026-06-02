@@ -55,7 +55,7 @@ function CreateStaff() {
     },
   });
 
-  const API = "https://bawarchee.edunextg.co/api";
+  const API = "https://https://bawarchee.edunextg.co/api";
 
   // Fetch Staff List
   const fetchStaffList = async () => {
@@ -474,9 +474,9 @@ function CreateStaff() {
         <DialogContent dividers>
           {selectedStaffDetails ? (
             <MDBox>
-              <MDTypography variant="subtitle2" fontWeight="bold">Name: <span style={{fontWeight: 400}}>{selectedStaffDetails.name}</span></MDTypography>
-              <MDTypography variant="subtitle2" fontWeight="bold">Company: <span style={{fontWeight: 400}}>{selectedStaffDetails.company_name || '—'}</span></MDTypography>
-              <MDTypography variant="subtitle2" fontWeight="bold" mb={2}>Contact No: <span style={{fontWeight: 400}}>{selectedStaffDetails.contact_no}</span></MDTypography>
+              <MDTypography variant="subtitle2" fontWeight="bold">Name: <span style={{ fontWeight: 400 }}>{selectedStaffDetails.name}</span></MDTypography>
+              <MDTypography variant="subtitle2" fontWeight="bold">Company: <span style={{ fontWeight: 400 }}>{selectedStaffDetails.company_name || '—'}</span></MDTypography>
+              <MDTypography variant="subtitle2" fontWeight="bold" mb={2}>Contact No: <span style={{ fontWeight: 400 }}>{selectedStaffDetails.contact_no}</span></MDTypography>
               <Divider />
               <MDTypography variant="h6" fontWeight="bold" mt={2} mb={1}>Assigned Locations</MDTypography>
               {Object.keys(selectedStaffDetails.assignments || {}).map((day) => {
