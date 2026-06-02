@@ -15,7 +15,7 @@ import Footer from "examples/Footer";
 function Delivered() {
   const [salesData, setSalesData] = useState([]);
   const [searchQuery, setSearchQuery] = useState("");
-  const API = "https://https://bawarchee.edunextg.co/api";
+  const API = "http://localhost:5000/api";
 
   useEffect(() => {
     const fetchSales = async () => {

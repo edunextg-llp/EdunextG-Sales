@@ -18,7 +18,7 @@ function Delivery() {
   const [searchQuery, setSearchQuery] = useState("");
   const [detailsModalOpen, setDetailsModalOpen] = useState(false);
   const [activeRowId, setActiveRowId] = useState(null);
-  const API = "https://https://bawarchee.edunextg.co/api";
+  const API = "http://localhost:5000/api";
 
   const handleOpenDetails = (saleId) => {
     setActiveRowId(saleId);

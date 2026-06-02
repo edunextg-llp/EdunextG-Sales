@@ -61,7 +61,7 @@ function AddSales() {
   const [editForm, setEditForm] = useState({ invoiceNumber: "", price: "" });
   const [savingEdit, setSavingEdit] = useState(false);
 
-  const API = "https://https://bawarchee.edunextg.co/api";
+  const API = "http://localhost:5000/api";
 
   const outletKey = (id) => String(id);
 
@@ -262,7 +262,7 @@ function AddSales() {
         if (outletsResponse.ok) {
           const data = await outletsResponse.json();
           setOutlets(data);
-          
+
           if (allCountersResponse.ok) {
             const allCounters = await allCountersResponse.json();
             setAllOutlets(allCounters);
@@ -429,17 +429,9 @@ function AddSales() {
       if (response.ok) {
         await refreshSubmittedSales();
 
-
-        setSubmittedSummary((prev) => {
-          const newRows = result.summary.sales.map(mapSaleFromSave);
-          if (prev) {
-            return { ...prev, sales: [...prev.sales, ...newRows] };
-          }
-          return { ...result.summary, sales: newRows };
-        });
-
         // Remove the submitted outlet
-        setOutlets((prev) => prev.filter((o) => o.id !== parseInt(outletId, 10)));
+        setOutlets((prev) => prev.filter((o) => outletKey(o.id) !== key));
+        setSearchOutlets((prev) => prev.filter((o) => outletKey(o.id) !== key));
 
         setSalesData((prev) => {
           const next = { ...prev };
@@ -826,9 +818,12 @@ function AddSales() {
                               </TableCell>
                             </TableRow>
                           ) : (
-
-                            filteredOutlets.map((outlet, outletIndex) => {
-                              const rows = salesData[outlet.id] || [];
+                            displayOutlets.map((outlet, outletIndex) => {
+                              const alreadySubmitted = Boolean(
+                                outlet.already_submitted_today === 1 ||
+                                outlet.already_submitted_today === true
+                              );
+                              const rows = salesData[outletKey(outlet.id)] || [];
                               return rows.map((row, index) => {
                                 const rowBorder =
                                   index === rows.length - 1

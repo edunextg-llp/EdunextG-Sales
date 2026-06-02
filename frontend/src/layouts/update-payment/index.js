@@ -87,7 +87,7 @@ function UpdatePayment() {
   const [addingPayment, setAddingPayment] = useState(false);
   const [editingPaymentId, setEditingPaymentId] = useState(null);
 
-  const API = "https://https://bawarchee.edunextg.co/api";
+  const API = "http://localhost:5000/api";
 
   const fetchSales = async () => {
     try {

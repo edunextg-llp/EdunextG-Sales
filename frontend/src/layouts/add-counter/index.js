@@ -33,7 +33,7 @@ function AddCounter() {
   const [editingOutletId, setEditingOutletId] = useState(null);
   const [editFormData, setEditFormData] = useState({ outletErpId: "", outletName: "", contactNumber: "" });
 
-  const API = "https://https://bawarchee.edunextg.co/api";
+  const API = "http://localhost:5000/api";
 
   const fetchStaffOptions = async (query = "") => {
     try {
