@@ -31,7 +31,7 @@ function AddDeliveryBoy() {
   const [deliveryBoys, setDeliveryBoys] = useState([]);
   const [loadingList, setLoadingList] = useState(true);
 
-  const API = "http://localhost:5000/api";
+  const API = "https://bawarchee.edunextg.co/api";
 
   const fetchDeliveryBoys = async () => {
     try {

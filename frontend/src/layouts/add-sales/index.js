@@ -61,7 +61,7 @@ function AddSales() {
   const [editForm, setEditForm] = useState({ invoiceNumber: "", price: "" });
   const [savingEdit, setSavingEdit] = useState(false);
 
-  const API = "http://localhost:5000/api";
+  const API = "https://bawarchee.edunextg.co/api";
 
   const outletKey = (id) => String(id);
 
