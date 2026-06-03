@@ -2,6 +2,7 @@ import StaffModel from '../models/staffModel.js';
 import PaymentModel from '../models/paymentModel.js';
 import CompanyModel from '../models/companyModel.js';
 import DeliveryBoyModel from '../models/deliveryBoyModel.js';
+import ReportModel from '../models/reportModel.js';
 import {
     validateDigitsOnly,
     validateNumeric,
@@ -386,6 +387,26 @@ export const getPendingCredits = async (req, res) => {
         res.status(200).json(credits);
     } catch (error) {
         console.error('Error fetching pending credits:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+};
+
+export const getReports = async (req, res) => {
+    try {
+        const { startDate, endDate } = req.query;
+        const datePattern = /^\d{4}-\d{2}-\d{2}$/;
+
+        if (startDate && !datePattern.test(startDate)) {
+            return res.status(400).json({ error: 'startDate must be YYYY-MM-DD' });
+        }
+        if (endDate && !datePattern.test(endDate)) {
+            return res.status(400).json({ error: 'endDate must be YYYY-MM-DD' });
+        }
+
+        const reports = await ReportModel.getReports(startDate || null, endDate || null);
+        res.status(200).json(reports);
+    } catch (error) {
+        console.error('Error fetching reports:', error);
         res.status(500).json({ error: 'Internal server error' });
     }
 };

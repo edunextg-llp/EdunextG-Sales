@@ -16,6 +16,7 @@ import Credits from "layouts/credits";
 import Packaging from "layouts/packaging";
 import Delivery from "layouts/delivery";
 import Delivered from "layouts/delivered";
+import Reports from "layouts/reports";
 
 // @mui icons
 import Icon from "@mui/material/Icon";
@@ -28,6 +29,14 @@ const routes = [
     icon: <Icon fontSize="small">dashboard</Icon>,
     route: "/dashboard",
     component: <Dashboard />,
+  },
+  {
+    type: "collapse",
+    name: "Reports",
+    key: "reports",
+    icon: <Icon fontSize="small">summarize</Icon>,
+    route: "/reports",
+    component: <Reports />,
   },
   // {
   //   type: "collapse",
@@ -109,6 +118,7 @@ const routes = [
     route: "/update-payment",
     component: <UpdatePayment />,
   },
+ 
   {
     type: "collapse",
     name: "Credits",

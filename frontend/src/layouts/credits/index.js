@@ -22,7 +22,7 @@ import Footer from "examples/Footer";
 function CreditsPage() {
   const [credits, setCredits] = useState([]);
   const [searchQuery, setSearchQuery] = useState("");
-  const API = "https://bawarchee.edunextg.co/api";
+  const API = "http://localhost:5000/api";
 
   const fetchCredits = async () => {
     try {
