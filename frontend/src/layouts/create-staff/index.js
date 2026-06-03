@@ -37,14 +37,22 @@ const tableHeadSx = {
   fontWeight: 600,
   textTransform: "none",
   borderBottom: "1px solid #e5e7eb",
+  px: 2,
   py: 1.5,
   whiteSpace: "nowrap",
   verticalAlign: "middle",
 };
 
 const tableBodySx = {
+  px: 2,
   verticalAlign: "middle",
   py: 1.5,
+};
+
+const tableHeadRowSx = {
+  display: "table-header-group",
+  backgroundColor: "#f9fafb",
+  "& .MuiTableCell-root": { backgroundColor: "#f9fafb" },
 };
 
 function CreateStaff() {
@@ -443,27 +451,35 @@ function CreateStaff() {
                       borderTop: "1px solid #e5e7eb",
                       backgroundColor: "transparent",
                       mt: 2,
+                      overflowX: "auto",
                     }}
                   >
                     <Table
                       sx={{
                         tableLayout: "fixed",
                         width: "100%",
+                        minWidth: 560,
                         "& .MuiTableCell-root": { overflow: "hidden" },
                       }}
                     >
-                      <TableHead sx={{ backgroundColor: "#f9fafb" }}>
+                      <colgroup>
+                        <col style={{ width: "32%" }} />
+                        <col style={{ width: "32%" }} />
+                        <col style={{ width: "18%" }} />
+                        <col style={{ width: "18%" }} />
+                      </colgroup>
+                      <TableHead sx={tableHeadRowSx}>
                         <TableRow>
-                          <TableCell align="left" sx={tableHeadSx}>
+                          <TableCell align="left" sx={{ ...tableHeadSx, width: "32%" }}>
                             Company Name
                           </TableCell>
-                          <TableCell align="left" sx={tableHeadSx}>
+                          <TableCell align="left" sx={{ ...tableHeadSx, width: "32%" }}>
                             Staff Name
                           </TableCell>
-                          <TableCell align="center" sx={tableHeadSx}>
+                          <TableCell align="center" sx={{ ...tableHeadSx, width: "18%" }}>
                             Phone Number
                           </TableCell>
-                          <TableCell align="center" sx={tableHeadSx}>
+                          <TableCell align="center" sx={{ ...tableHeadSx, width: "18%" }}>
                             Action
                           </TableCell>
                         </TableRow>
