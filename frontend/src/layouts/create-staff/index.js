@@ -13,7 +13,6 @@ import {
   TableContainer,
   TableHead,
   TableRow,
-  Paper,
   Dialog,
   DialogTitle,
   DialogContent,
@@ -31,6 +30,22 @@ import MDButton from "components/MDButton";
 import DashboardLayout from "examples/LayoutContainers/DashboardLayout";
 import DashboardNavbar from "examples/Navbars/DashboardNavbar";
 import Footer from "examples/Footer";
+
+const tableHeadSx = {
+  color: "#6b7280",
+  fontSize: "0.75rem",
+  fontWeight: 600,
+  textTransform: "none",
+  borderBottom: "1px solid #e5e7eb",
+  py: 1.5,
+  whiteSpace: "nowrap",
+  verticalAlign: "middle",
+};
+
+const tableBodySx = {
+  verticalAlign: "middle",
+  py: 1.5,
+};
 
 function CreateStaff() {
   const days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
@@ -417,50 +432,79 @@ function CreateStaff() {
                   Employee List
                 </MDTypography>
 
-                <TableContainer component={Paper} sx={{ boxShadow: "none" }}>
-                  <Table>
-                    {/* Table Head */}
-                    <TableHead>
-                      <TableRow>
-                        <TableCell sx={{ fontWeight: "bold" }}>Company Name</TableCell>
-
-                        <TableCell align="center" sx={{ fontWeight: "bold" }}>
-                          Staff Name
-                        </TableCell>
-
-                        <TableCell align="center" sx={{ fontWeight: "bold" }}>
-                          Phone Number
-                        </TableCell>
-
-                        <TableCell align="right" sx={{ fontWeight: "bold" }}>
-                          Action
-                        </TableCell>
-                      </TableRow>
-                    </TableHead>
-
-                    {/* Table Body */}
-                    <TableBody>
-                      {staffList.map((staff) => (
-                        <TableRow key={staff.id}>
-                          <TableCell>{staff.company_name || "—"}</TableCell>
-
-                          <TableCell align="center">{staff.name}</TableCell>
-
-                          <TableCell align="center">{staff.contact_no}</TableCell>
-
-                          <TableCell align="right">
-                            <MDButton variant="text" color="dark" onClick={() => handleView(staff)}>
-                              <Icon>visibility</Icon>&nbsp;View
-                            </MDButton>
-                            <MDButton variant="text" color="info" onClick={() => handleEdit(staff)}>
-                              <Icon>edit</Icon>&nbsp;Edit
-                            </MDButton>
+                {staffList.length === 0 ? (
+                  <MDTypography variant="body2" color="text">
+                    No employees added yet.
+                  </MDTypography>
+                ) : (
+                  <TableContainer
+                    sx={{
+                      boxShadow: "none",
+                      borderTop: "1px solid #e5e7eb",
+                      backgroundColor: "transparent",
+                      mt: 2,
+                    }}
+                  >
+                    <Table
+                      sx={{
+                        tableLayout: "fixed",
+                        width: "100%",
+                        "& .MuiTableCell-root": { overflow: "hidden" },
+                      }}
+                    >
+                      <TableHead sx={{ backgroundColor: "#f9fafb" }}>
+                        <TableRow>
+                          <TableCell align="left" sx={tableHeadSx}>
+                            Company Name
+                          </TableCell>
+                          <TableCell align="left" sx={tableHeadSx}>
+                            Staff Name
+                          </TableCell>
+                          <TableCell align="center" sx={tableHeadSx}>
+                            Phone Number
+                          </TableCell>
+                          <TableCell align="center" sx={tableHeadSx}>
+                            Action
                           </TableCell>
                         </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </TableContainer>
+                      </TableHead>
+                      <TableBody>
+                        {staffList.map((staff) => (
+                          <TableRow key={staff.id}>
+                            <TableCell
+                              align="left"
+                              sx={{ ...tableBodySx, borderBottom: "1px solid #e5e7eb", fontSize: "0.875rem", color: "#374151" }}
+                            >
+                              {staff.company_name || "—"}
+                            </TableCell>
+                            <TableCell
+                              align="left"
+                              sx={{ ...tableBodySx, borderBottom: "1px solid #e5e7eb", fontSize: "0.875rem", color: "#374151" }}
+                            >
+                              {staff.name}
+                            </TableCell>
+                            <TableCell
+                              align="center"
+                              sx={{ ...tableBodySx, borderBottom: "1px solid #e5e7eb", fontSize: "0.875rem", color: "#374151" }}
+                            >
+                              {staff.contact_no}
+                            </TableCell>
+                            <TableCell align="center" sx={{ ...tableBodySx, borderBottom: "1px solid #e5e7eb" }}>
+                              <MDBox display="flex" gap={0.5} justifyContent="center" alignItems="center" flexWrap="wrap">
+                                <MDButton variant="text" color="dark" onClick={() => handleView(staff)}>
+                                  <Icon>visibility</Icon>&nbsp;View
+                                </MDButton>
+                                <MDButton variant="text" color="info" onClick={() => handleEdit(staff)}>
+                                  <Icon>edit</Icon>&nbsp;Edit
+                                </MDButton>
+                              </MDBox>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </TableContainer>
+                )}
               </MDBox>
             </Card>
           </Grid>

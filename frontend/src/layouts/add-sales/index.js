@@ -34,14 +34,22 @@ const tableHeadSx = {
   fontWeight: 600,
   textTransform: "none",
   borderBottom: "1px solid #e5e7eb",
+  px: 2,
   py: 1.5,
   whiteSpace: "nowrap",
   verticalAlign: "middle",
 };
 
 const tableBodySx = {
+  px: 2,
   verticalAlign: "middle",
   py: 1.5,
+};
+
+const tableHeadRowSx = {
+  display: "table-header-group",
+  backgroundColor: "#f9fafb",
+  "& .MuiTableCell-root": { backgroundColor: "#f9fafb" },
 };
 
 function AddSales() {
@@ -762,38 +770,39 @@ function AddSales() {
                         backgroundColor: "transparent",
                         borderTop: "1px solid #e5e7eb",
                         mt: 2,
+                        overflowX: "auto",
                       }}
                     >
                       <Table
                         sx={{
                           tableLayout: "fixed",
                           width: "100%",
-                          minWidth: 900,
+                          minWidth: 720,
                           "& .MuiTableCell-root": { overflow: "hidden" },
                         }}
                       >
                         <colgroup>
-                          <col style={{ width: "56px" }} />
-                          <col style={{ width: "30%" }} />
+                          <col style={{ width: "6%" }} />
+                          <col style={{ width: "34%" }} />
                           <col style={{ width: "20%" }} />
-                          <col style={{ width: "16%" }} />
-                          <col style={{ width: "24%" }} />
+                          <col style={{ width: "14%" }} />
+                          <col style={{ width: "26%" }} />
                         </colgroup>
-                        <TableHead sx={{ backgroundColor: "#f9fafb" }}>
+                        <TableHead sx={tableHeadRowSx}>
                           <TableRow>
-                            <TableCell align="center" sx={{ ...tableHeadSx, width: 56 }}>
+                            <TableCell align="center" sx={{ ...tableHeadSx, width: "6%" }}>
                               Sr No
                             </TableCell>
-                            <TableCell align="left" sx={tableHeadSx}>
+                            <TableCell align="left" sx={{ ...tableHeadSx, width: "34%" }}>
                               Outlet
                             </TableCell>
-                            <TableCell align="left" sx={tableHeadSx}>
+                            <TableCell align="left" sx={{ ...tableHeadSx, width: "20%" }}>
                               Invoice No
                             </TableCell>
-                            <TableCell align="left" sx={tableHeadSx}>
+                            <TableCell align="left" sx={{ ...tableHeadSx, width: "14%" }}>
                               Price
                             </TableCell>
-                            <TableCell align="center" sx={tableHeadSx}>
+                            <TableCell align="center" sx={{ ...tableHeadSx, width: "26%" }}>
                               Action
                             </TableCell>
                           </TableRow>
@@ -801,21 +810,33 @@ function AddSales() {
                         <TableBody>
                           {searchingOutlets ? (
                             <TableRow>
-                              <TableCell colSpan={5} align="center" sx={{ py: 3 }}>
+                              <TableCell sx={{ ...tableBodySx, borderBottom: "1px solid #e5e7eb" }} />
+                              <TableCell
+                                colSpan={3}
+                                align="center"
+                                sx={{ ...tableBodySx, borderBottom: "1px solid #e5e7eb", py: 3 }}
+                              >
                                 <MDTypography variant="body2" color="text">
                                   Searching outlets...
                                 </MDTypography>
                               </TableCell>
+                              <TableCell sx={{ ...tableBodySx, borderBottom: "1px solid #e5e7eb" }} />
                             </TableRow>
                           ) : displayOutlets.length === 0 ? (
                             <TableRow>
-                              <TableCell colSpan={5} align="center" sx={{ py: 3 }}>
+                              <TableCell sx={{ ...tableBodySx, borderBottom: "1px solid #e5e7eb" }} />
+                              <TableCell
+                                colSpan={3}
+                                align="center"
+                                sx={{ ...tableBodySx, borderBottom: "1px solid #e5e7eb", py: 3 }}
+                              >
                                 <MDTypography variant="body2" color="text">
                                   {outletSearch.trim()
                                     ? "No outlets match this search on this staff's routes."
                                     : `No pending outlets for ${dayName}. Use Search Outlet above to find routes from other weekdays.`}
                                 </MDTypography>
                               </TableCell>
+                              <TableCell sx={{ ...tableBodySx, borderBottom: "1px solid #e5e7eb" }} />
                             </TableRow>
                           ) : (
                             displayOutlets.map((outlet, outletIndex) => {
@@ -1037,8 +1058,8 @@ function AddSales() {
                         boxShadow: "none",
                         borderTop: "1px solid #e5e7eb",
                         backgroundColor: "transparent",
+                        overflowX: "auto",
                       }}
-
                     >
                       <Table
                         size="small"
@@ -1050,31 +1071,31 @@ function AddSales() {
                         }}
                       >
                         <colgroup>
-                          <col style={{ width: "48px" }} />
+                          <col style={{ width: "6%" }} />
                           <col style={{ width: "28%" }} />
-                          <col style={{ width: "16%" }} />
-                          <col style={{ width: "16%" }} />
+                          <col style={{ width: "14%" }} />
                           <col style={{ width: "14%" }} />
                           <col style={{ width: "18%" }} />
+                          <col style={{ width: "20%" }} />
                         </colgroup>
-                        <TableHead sx={{ backgroundColor: "#f9fafb" }}>
+                        <TableHead sx={tableHeadRowSx}>
                           <TableRow>
-                            <TableCell align="center" sx={tableHeadSx}>
+                            <TableCell align="center" sx={{ ...tableHeadSx, width: "6%" }}>
                               Sr No
                             </TableCell>
-                            <TableCell align="left" sx={tableHeadSx}>
+                            <TableCell align="left" sx={{ ...tableHeadSx, width: "28%" }}>
                               Outlet
                             </TableCell>
-                            <TableCell align="center" sx={tableHeadSx}>
+                            <TableCell align="center" sx={{ ...tableHeadSx, width: "14%" }}>
                               Invoice
                             </TableCell>
-                            <TableCell align="center" sx={tableHeadSx}>
+                            <TableCell align="center" sx={{ ...tableHeadSx, width: "14%" }}>
                               Sticker
                             </TableCell>
-                            <TableCell align="right" sx={tableHeadSx}>
+                            <TableCell align="right" sx={{ ...tableHeadSx, width: "18%" }}>
                               Amount
                             </TableCell>
-                            <TableCell align="center" sx={tableHeadSx}>
+                            <TableCell align="center" sx={{ ...tableHeadSx, width: "20%" }}>
                               Action
                             </TableCell>
                           </TableRow>
@@ -1125,7 +1146,7 @@ function AddSales() {
                                       setEditForm((f) => ({ ...f, invoiceNumber: e.target.value }))
                                     }
                                     inputProps={{ style: { textAlign: "center" } }}
-                                    sx={{ width: "100%", maxWidth: 140, mx: "auto" }}
+                                    sx={{ width: "100%" }}
                                   />
                                 ) : (
                                   row.invoiceNumber
@@ -1158,7 +1179,7 @@ function AddSales() {
                                       setEditForm((f) => ({ ...f, price: e.target.value }))
                                     }
                                     inputProps={{ style: { textAlign: "right" } }}
-                                    sx={{ width: "100%", maxWidth: 120, ml: "auto" }}
+                                    sx={{ width: "100%" }}
                                   />
                                 ) : (
                                   `₹${Number(row.amount).toFixed(2)}`

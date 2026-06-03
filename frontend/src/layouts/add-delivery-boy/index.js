@@ -3,16 +3,6 @@ import { useState, useEffect } from "react";
 // @mui material components
 import Grid from "@mui/material/Grid";
 import Card from "@mui/material/Card";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableContainer,
-  TableHead,
-  TableRow,
-  Paper,
-} from "@mui/material";
-
 // Material Dashboard 2 React components
 import MDBox from "components/MDBox";
 import MDTypography from "components/MDTypography";
@@ -23,6 +13,7 @@ import MDButton from "components/MDButton";
 import DashboardLayout from "examples/LayoutContainers/DashboardLayout";
 import DashboardNavbar from "examples/Navbars/DashboardNavbar";
 import Footer from "examples/Footer";
+import DataTable from "examples/Tables/DataTable";
 
 function AddDeliveryBoy() {
   const [name, setName] = useState("");
@@ -158,28 +149,38 @@ function AddDeliveryBoy() {
                     No delivery boys added yet.
                   </MDTypography>
                 ) : (
-                  <TableContainer component={Paper} sx={{ boxShadow: "none" }}>
-                    <Table>
-                      <TableHead>
-                        <TableRow>
-                          <TableCell sx={{ fontWeight: "bold" }}>#</TableCell>
-                          <TableCell sx={{ fontWeight: "bold" }}>Name</TableCell>
-                          <TableCell align="center" sx={{ fontWeight: "bold" }}>
-                            Contact Number
-                          </TableCell>
-                        </TableRow>
-                      </TableHead>
-                      <TableBody>
-                        {deliveryBoys.map((boy, index) => (
-                          <TableRow key={boy.id}>
-                            <TableCell>{index + 1}</TableCell>
-                            <TableCell>{boy.name}</TableCell>
-                            <TableCell align="center">{boy.contact_no}</TableCell>
-                          </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
-                  </TableContainer>
+                  <MDBox pt={3}>
+                    <DataTable
+                      table={{
+                        columns: [
+                          { Header: <MDTypography variant="subtitle2" color="dark" fontWeight="bold">#</MDTypography>, accessor: "id", width: "10%", align: "left" },
+                          { Header: <MDTypography variant="subtitle2" color="dark" fontWeight="bold">Name</MDTypography>, accessor: "name", width: "45%", align: "left" },
+                          { Header: <MDTypography variant="subtitle2" color="dark" fontWeight="bold">Contact Number</MDTypography>, accessor: "contact", align: "center" },
+                        ],
+                        rows: deliveryBoys.map((boy, index) => ({
+                          id: (
+                            <MDTypography component="span" variant="caption" color="text" fontWeight="medium">
+                              {index + 1}
+                            </MDTypography>
+                          ),
+                          name: (
+                            <MDTypography component="span" variant="caption" color="text" fontWeight="medium">
+                              {boy.name}
+                            </MDTypography>
+                          ),
+                          contact: (
+                            <MDTypography component="span" variant="caption" color="text" fontWeight="medium">
+                              {boy.contact_no}
+                            </MDTypography>
+                          ),
+                        })),
+                      }}
+                      isSorted={false}
+                      entriesPerPage={false}
+                      showTotalEntries={false}
+                      noEndBorder
+                    />
+                  </MDBox>
                 )}
               </MDBox>
             </Card>

@@ -36,6 +36,24 @@ const PAYMENT_MODE_LABELS = {
   cheque: "Cheque",
 };
 
+const tableHeadSx = {
+  color: "#6b7280",
+  fontSize: "0.75rem",
+  fontWeight: 600,
+  textTransform: "none",
+  borderBottom: "1px solid #e5e7eb",
+  px: 2,
+  py: 1.5,
+  whiteSpace: "nowrap",
+  verticalAlign: "middle",
+};
+
+const tableBodySx = {
+  px: 2,
+  verticalAlign: "middle",
+  py: 1.5,
+};
+
 const getTodayLocalDate = () => {
   const now = new Date();
   const year = now.getFullYear();
@@ -522,43 +540,111 @@ function UpdatePayment() {
                   No payments recorded yet. Add cash/UPI/cheque until balance is ₹0. Credit is recorded separately and does not reduce balance.
                 </MDTypography>
               ) : (
-                <TableContainer component={Paper} sx={{ boxShadow: "none", mb: 3, border: "1px solid #e5e7eb" }}>
-                  <Table size="small">
-                    <TableHead sx={{ backgroundColor: "#f9fafb" }}>
+                <TableContainer
+                  sx={{
+                    boxShadow: "none",
+                    borderTop: "1px solid #e5e7eb",
+                    backgroundColor: "transparent",
+                    mb: 3,
+                    overflowX: "auto",
+                  }}
+                >
+                  <Table
+                    size="small"
+                    sx={{
+                      tableLayout: "fixed",
+                      width: "100%",
+                      minWidth: 520,
+                      "& .MuiTableCell-root": { overflow: "hidden" },
+                    }}
+                  >
+                    <colgroup>
+                      <col style={{ width: "18%" }} />
+                      <col style={{ width: "14%" }} />
+                      <col style={{ width: "16%" }} />
+                      <col style={{ width: "38%" }} />
+                      <col style={{ width: "14%" }} />
+                    </colgroup>
+                    <TableHead
+                      sx={{
+                        display: "table-header-group",
+                        backgroundColor: "#f9fafb",
+                        "& .MuiTableCell-root": { backgroundColor: "#f9fafb" },
+                      }}
+                    >
                       <TableRow>
-                        <TableCell sx={{ fontWeight: "bold" }}>Date</TableCell>
-                        <TableCell sx={{ fontWeight: "bold" }}>Mode</TableCell>
-                        <TableCell align="right" sx={{ fontWeight: "bold" }}>
+                        <TableCell align="left" sx={tableHeadSx}>
+                          Date
+                        </TableCell>
+                        <TableCell align="left" sx={tableHeadSx}>
+                          Mode
+                        </TableCell>
+                        <TableCell align="right" sx={tableHeadSx}>
                           Amount
                         </TableCell>
-                        <TableCell sx={{ fontWeight: "bold" }}>Details</TableCell>
-
-                        <TableCell align="center" sx={{ fontWeight: "bold" }}>Action</TableCell>
-
+                        <TableCell align="left" sx={tableHeadSx}>
+                          Details
+                        </TableCell>
+                        <TableCell align="center" sx={tableHeadSx}>
+                          Action
+                        </TableCell>
                       </TableRow>
                     </TableHead>
                     <TableBody>
                       {payments.map((payment) => (
-
-                        <TableRow key={payment.id} sx={{ backgroundColor: editingPaymentId === payment.id ? "#fff9c4" : "inherit" }}>
-                          <TableCell>{toInputDate(payment.payment_date)}</TableCell>
-
-                          <TableCell>
+                        <TableRow
+                          key={payment.id}
+                          sx={{ backgroundColor: editingPaymentId === payment.id ? "#fff9c4" : "inherit" }}
+                        >
+                          <TableCell
+                            align="left"
+                            sx={{ ...tableBodySx, borderBottom: "1px solid #e5e7eb", fontSize: "0.875rem", color: "#374151" }}
+                          >
+                            {toInputDate(payment.payment_date)}
+                          </TableCell>
+                          <TableCell
+                            align="left"
+                            sx={{ ...tableBodySx, borderBottom: "1px solid #e5e7eb", fontSize: "0.875rem", color: "#374151" }}
+                          >
                             {PAYMENT_MODE_LABELS[payment.payment_mode] || payment.payment_mode}
                           </TableCell>
-                          <TableCell align="right">₹{Number(payment.amount).toFixed(2)}</TableCell>
-                          <TableCell>{formatPaymentDetails(payment)}</TableCell>
-                          <TableCell align="center">
-                            <MDButton
-                              variant="outlined"
-                              color="info"
-                              size="small"
-
-                              onClick={() => startEditPayment(payment)}
-
-                            >
-                              <Icon fontSize="small">edit</Icon>
-                            </MDButton>
+                          <TableCell
+                            align="right"
+                            sx={{
+                              ...tableBodySx,
+                              borderBottom: "1px solid #e5e7eb",
+                              fontSize: "0.875rem",
+                              fontWeight: 500,
+                              color: "#111827",
+                            }}
+                          >
+                            ₹{Number(payment.amount).toFixed(2)}
+                          </TableCell>
+                          <TableCell
+                            align="left"
+                            sx={{
+                              ...tableBodySx,
+                              borderBottom: "1px solid #e5e7eb",
+                              fontSize: "0.875rem",
+                              color: "#374151",
+                              overflow: "hidden",
+                              textOverflow: "ellipsis",
+                              whiteSpace: "nowrap",
+                            }}
+                          >
+                            {formatPaymentDetails(payment)}
+                          </TableCell>
+                          <TableCell align="center" sx={{ ...tableBodySx, borderBottom: "1px solid #e5e7eb" }}>
+                            <MDBox display="flex" justifyContent="center" alignItems="center">
+                              <MDButton
+                                variant="outlined"
+                                color="info"
+                                size="small"
+                                onClick={() => startEditPayment(payment)}
+                              >
+                                <Icon fontSize="small">edit</Icon>
+                              </MDButton>
+                            </MDBox>
                           </TableCell>
                         </TableRow>
                       ))}
