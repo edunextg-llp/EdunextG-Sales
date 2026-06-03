@@ -19,7 +19,7 @@ function Packaging() {
   const [deliveryBoys, setDeliveryBoys] = useState([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
-  const API = "http://localhost:5000/api";
+  const API = "https://bawarchee.edunextg.co/api";
 
   useEffect(() => {
     const fetchDeliveryBoys = async () => {
