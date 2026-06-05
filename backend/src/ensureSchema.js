@@ -79,6 +79,12 @@ export async function ensureSchema() {
 
         await tryQuery(
             connection,
+            `ALTER TABLE staff_sales ADD COLUMN delivery_date DATE NULL`,
+            'delivery_date on staff_sales'
+        );
+
+        await tryQuery(
+            connection,
             `
             ALTER TABLE staff_sales ADD COLUMN packaging_status
             ENUM('not_packing', 'packing', 'packing_done', 'out_for_delivery')

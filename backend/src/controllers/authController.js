@@ -1,15 +1,76 @@
 import jwt from 'jsonwebtoken';
 import bcrypt from 'bcryptjs';
+import crypto from 'crypto';
 import UserModel from '../models/userModel.js';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'super_secret_key_12345';
+const CAPTCHA_TTL_MS = 5 * 60 * 1000;
+const CAPTCHA_CHARS = 'abcdefghkmnpqrstuvwxyzABCDEFGHKMNPQRSTUVWXYZ123456789';
+const CAPTCHA_LENGTH = 6;
+const captchaStore = new Map();
+
+function cleanupExpiredCaptchas() {
+    const now = Date.now();
+    for (const [id, captcha] of captchaStore.entries()) {
+        if (captcha.expiresAt <= now) {
+            captchaStore.delete(id);
+        }
+    }
+}
+
+function createCaptchaChallenge() {
+    cleanupExpiredCaptchas();
+
+    let code = '';
+    for (let i = 0; i < CAPTCHA_LENGTH; i++) {
+        code += CAPTCHA_CHARS[crypto.randomInt(0, CAPTCHA_CHARS.length)];
+    }
+
+    const id = crypto.randomUUID();
+
+    captchaStore.set(id, {
+        answer: code,
+        expiresAt: Date.now() + CAPTCHA_TTL_MS,
+    });
+
+    return {
+        captchaId: id,
+        question: code,
+        expiresInSeconds: CAPTCHA_TTL_MS / 1000,
+    };
+}
+
+function verifyCaptcha(captchaId, captchaAnswer) {
+    cleanupExpiredCaptchas();
+
+    if (!captchaId || captchaAnswer == null) {
+        return false;
+    }
+
+    const captcha = captchaStore.get(captchaId);
+    captchaStore.delete(captchaId);
+
+    if (!captcha) {
+        return false;
+    }
+
+    return String(captchaAnswer).trim() === captcha.answer;
+}
+
+export const getCaptcha = (req, res) => {
+    res.status(200).json(createCaptchaChallenge());
+};
 
 export const login = async (req, res) => {
     try {
-        const { email, password } = req.body;
+        const { email, password, captchaId, captchaAnswer } = req.body;
 
         if (!email || !password) {
             return res.status(400).json({ error: 'Email and password are required' });
+        }
+
+        if (!verifyCaptcha(captchaId, captchaAnswer)) {
+            return res.status(400).json({ error: 'Invalid or expired CAPTCHA. Please try again.' });
         }
 
         const admin = await UserModel.findByEmail(email);

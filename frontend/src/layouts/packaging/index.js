@@ -173,7 +173,7 @@ function Packaging() {
                           Sr No
                         </TableCell>
                         <TableCell sx={{ color: "#6b7280", borderBottom: "1px solid #e5e7eb", py: 1.5, fontWeight: 500 }}>
-                          Staff Name
+                          M.Person Name
                         </TableCell>
                         <TableCell sx={{ color: "#6b7280", borderBottom: "1px solid #e5e7eb", py: 1.5, fontWeight: 500 }}>
                           Outlet Name

@@ -187,6 +187,17 @@ async function initDB() {
 
     try {
         await connection.query(`
+            ALTER TABLE staff_sales ADD COLUMN delivery_date DATE NULL
+        `);
+        console.log('Added delivery_date to staff_sales table');
+    } catch (err) {
+        if (err.code !== 'ER_DUP_FIELDNAME') {
+            console.log('delivery_date column may already exist on staff_sales');
+        }
+    }
+
+    try {
+        await connection.query(`
             ALTER TABLE staff_sales ADD COLUMN packaging_status ENUM('not_packing', 'packing', 'packing_done', 'out_for_delivery') NOT NULL DEFAULT 'not_packing'
         `);
         console.log('Added packaging_status to staff_sales table');

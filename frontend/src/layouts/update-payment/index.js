@@ -153,6 +153,34 @@ function UpdatePayment() {
     return Math.max(0, price - getRemainingBalance(sale));
   };
 
+  const getPaymentRowSx = (sale) => {
+    const price = parseFloat(sale.price) || 0;
+    const balance = getRemainingBalance(sale);
+
+    if (balance <= 0.001) {
+      return {
+        backgroundColor: "#dcfce7",
+        "&:hover": { backgroundColor: "#bbf7d0" },
+      };
+    }
+
+    if (Math.abs(balance - price) <= 0.001) {
+      return {
+        backgroundColor: "#fee2e2",
+        "&:hover": { backgroundColor: "#fecaca" },
+      };
+    }
+
+    if (balance < price) {
+      return {
+        backgroundColor: "#fef3c7",
+        "&:hover": { backgroundColor: "#fde68a" },
+      };
+    }
+
+    return {};
+  };
+
   const fetchPaymentsForSale = async (saleId) => {
     setLoadingPayments(true);
     try {
@@ -443,7 +471,7 @@ function UpdatePayment() {
                             const balance = getRemainingBalance(sale);
                             const paid = getPaidAmount(sale);
                             return (
-                              <TableRow key={sale.id}>
+                              <TableRow key={sale.id} sx={getPaymentRowSx(sale)}>
                                 <TableCell align="center">{index + 1}</TableCell>
                                 <TableCell align="left">{sale.outlet_name}</TableCell>
                                 <TableCell align="center">{sale.invoice_number}</TableCell>

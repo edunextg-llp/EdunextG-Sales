@@ -21,17 +21,11 @@ const globalLimiter = rateLimit({
     message: { error: 'Too many requests from this IP, please try again after 15 minutes' }
 });
 
-const loginLimiter = rateLimit({
-    windowMs: 15 * 60 * 1000, 
-    max: 10, // Max 10 failed/login attempts to prevent brute force
-    message: { error: 'Too many login attempts. Try again later.' }
-});
-
 // Apply general API rate limiting
 app.use('/api/', globalLimiter);
 
 // Routes
-app.use('/api/auth', loginLimiter, authRoutes);
+app.use('/api/auth', authRoutes);
 
 // Protected Routes
 app.use('/api/staff', verifyTokenMiddleware, staffRoutes);

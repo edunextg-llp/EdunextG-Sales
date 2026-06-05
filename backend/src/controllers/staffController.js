@@ -367,13 +367,19 @@ export const deleteSale = async (req, res) => {
 export const updatePackagingStatus = async (req, res) => {
     try {
         const { saleId } = req.params;
-        const { packagingStatus, deliveryBoyId, vehicleNo } = req.body;
+        const { packagingStatus, deliveryBoyId, vehicleNo, deliveryDate } = req.body;
 
         if (!['not_packing', 'packing', 'packing_done', 'out_for_delivery', 'delivered', 'cancelled'].includes(packagingStatus)) {
             return res.status(400).json({ error: 'Invalid packaging status' });
         }
 
-        await StaffModel.updatePackagingStatus(saleId, packagingStatus, deliveryBoyId || null, vehicleNo || null);
+        await StaffModel.updatePackagingStatus(
+            saleId,
+            packagingStatus,
+            deliveryBoyId || null,
+            vehicleNo || null,
+            normalizeDateInput(deliveryDate)
+        );
         res.status(200).json({ message: 'Packaging status updated successfully' });
     } catch (error) {
         console.error('Error updating packaging status:', error);

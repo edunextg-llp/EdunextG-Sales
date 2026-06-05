@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "context/AuthContext";
 
@@ -6,6 +6,8 @@ import { useAuth } from "context/AuthContext";
 import Card from "@mui/material/Card";
 import Switch from "@mui/material/Switch";
 import Grid from "@mui/material/Grid";
+import Icon from "@mui/material/Icon";
+
 // import MuiLink from "@mui/material/Link";
 
 // // @mui icons
@@ -29,6 +31,8 @@ function Basic() {
   const [rememberMe, setRememberMe] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [captcha, setCaptcha] = useState(null);
+  const [captchaAnswer, setCaptchaAnswer] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
@@ -38,16 +42,47 @@ function Basic() {
 
   const handleSetRememberMe = () => setRememberMe(!rememberMe);
 
+  const fetchCaptcha = useCallback(async () => {
+    try {
+      const response = await fetch(`${API}/captcha`);
+      if (response.ok) {
+        const data = await response.json();
+        setCaptcha(data);
+        setCaptchaAnswer("");
+      } else {
+        setCaptcha(null);
+      }
+    } catch (err) {
+      console.error("Error fetching CAPTCHA:", err);
+      setCaptcha(null);
+    }
+  }, [API]);
+
+  useEffect(() => {
+    fetchCaptcha();
+  }, [fetchCaptcha]);
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError("");
+
+    if (!captcha?.captchaId || !captchaAnswer.trim()) {
+      setError("Please solve the CAPTCHA.");
+      return;
+    }
+
     setLoading(true);
 
     try {
       const response = await fetch(`${API}/login`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify({
+          email,
+          password,
+          captchaId: captcha.captchaId,
+          captchaAnswer,
+        }),
       });
 
       if (response.ok) {
@@ -57,6 +92,7 @@ function Basic() {
       } else {
         const err = await response.json().catch(() => ({}));
         setError(err.error || "Invalid login credentials");
+        fetchCaptcha();
       }
     } catch (err) {
       console.error(err);
@@ -108,6 +144,72 @@ function Basic() {
             </MDBox>
             <MDBox mb={2}>
               <MDInput type="password" label="Password" fullWidth value={password} onChange={(e) => setPassword(e.target.value)} required />
+            </MDBox>
+            <MDBox
+              mb={2}
+              p={2}
+              sx={{
+                border: "1px solid #e5e7eb",
+                borderRadius: "8px",
+                backgroundColor: "#f8fafc",
+              }}
+            >
+              <MDBox
+                mb={1.5}
+              >
+                <MDBox>
+                  <MDTypography variant="caption" color="text" fontWeight="medium">
+                    CAPTCHA verification
+                  </MDTypography>
+                </MDBox>
+                <MDBox display="flex" alignItems="center" gap={1} mt={0.75}>
+                  <MDBox
+                    px={2}
+                    py={1}
+                    sx={{
+                      border: "1px dashed #94a3b8",
+                      borderRadius: "8px",
+                      background:
+                        "repeating-linear-gradient(135deg, #ffffff, #ffffff 8px, #eef2ff 8px, #eef2ff 16px)",
+                      minWidth: 172,
+                      textAlign: "center",
+                    }}
+                  >
+                    <MDTypography
+                      variant="h5"
+                      fontWeight="bold"
+                      color="dark"
+                      sx={{
+                        letterSpacing: "0.22em",
+                        fontFamily: "monospace",
+                        userSelect: "none",
+                      }}
+                    >
+                      {captcha?.question || "......"}
+                    </MDTypography>
+                  </MDBox>
+                  <MDButton
+                    variant="outlined"
+                    color="info"
+                    size="small"
+                    onClick={fetchCaptcha}
+                    sx={{ minWidth: 34, width: 34, height: 34, p: 0 }}
+                  >
+                    <Icon fontSize="small">refresh</Icon>
+                  </MDButton>
+                </MDBox>
+              </MDBox>
+              <MDInput
+                type="text"
+                label="Type the code shown above"
+                fullWidth
+                value={captchaAnswer}
+                onChange={(e) => setCaptchaAnswer(e.target.value)}
+                onPaste={(e) => e.preventDefault()}
+                onCopy={(e) => e.preventDefault()}
+                onCut={(e) => e.preventDefault()}
+                required
+              />
             </MDBox>
 
             {error && (

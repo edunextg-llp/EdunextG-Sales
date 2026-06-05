@@ -18,9 +18,31 @@ function Delivery() {
   const [searchQuery, setSearchQuery] = useState("");
   const [detailsModalOpen, setDetailsModalOpen] = useState(false);
   const [activeRowId, setActiveRowId] = useState(null);
-  const API = "https://bawarchee.edunextg.co/api";
+const API = "https://bawarchee.edunextg.co/api";
+
+  const getTodayLocalDate = () => {
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, "0");
+    const day = String(now.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
+  };
+
+  const formatDate = (value) => {
+    if (!value) return "N/A";
+    const parts = String(value).split("-");
+    if (parts.length === 3) return `${parts[2]}-${parts[1]}-${parts[0]}`;
+    return value;
+  };
 
   const handleOpenDetails = (saleId) => {
+    setSalesData((prev) =>
+      prev.map((row) =>
+        row.id === saleId && !row.delivery_date
+          ? { ...row, delivery_date: getTodayLocalDate() }
+          : row
+      )
+    );
     setActiveRowId(saleId);
     setDetailsModalOpen(true);
   };
@@ -76,8 +98,8 @@ function Delivery() {
     const row = salesData.find(r => r.id === saleId);
     if (!row) return;
     try {
-      if ((row.packaging_status === 'out_for_delivery' || row.packaging_status === 'delivered') && (!row.delivery_boy_id || !row.vehicle_no)) {
-        alert("Please assign a Delivery Boy and Vehicle No via 'Assign Details' before marking this item.");
+      if ((row.packaging_status === 'out_for_delivery' || row.packaging_status === 'delivered') && (!row.delivery_boy_id || !row.vehicle_no || !row.delivery_date)) {
+        alert("Please assign a Delivery Boy, Vehicle No, and Delivery Date via 'Assign Details' before marking this item.");
         return;
       }
 
@@ -86,7 +108,8 @@ function Delivery() {
       const payload = {
         packagingStatus: finalStatus,
         deliveryBoyId: row.delivery_boy_id || null,
-        vehicleNo: row.vehicle_no || null
+        vehicleNo: row.vehicle_no || null,
+        deliveryDate: row.delivery_date || null
       };
 
       const response = await fetch(`${API}/staff/sales/${row.id}/packaging`, {
@@ -193,6 +216,9 @@ function Delivery() {
                           Status
                         </TableCell>
                         <TableCell align="center" sx={{ color: "#6b7280", borderBottom: "1px solid #e5e7eb", py: 1.5, fontWeight: 500 }}>
+                          Delivery Date
+                        </TableCell>
+                        <TableCell align="center" sx={{ color: "#6b7280", borderBottom: "1px solid #e5e7eb", py: 1.5, fontWeight: 500 }}>
                           Delivery Details
                         </TableCell>
                         <TableCell align="center" sx={{ color: "#6b7280", borderBottom: "1px solid #e5e7eb", py: 1.5, fontWeight: 500 }}>
@@ -246,8 +272,11 @@ function Delivery() {
                                 </FormControl>
                               </TableCell>
                               <TableCell align="center" sx={{ borderBottom: borderCol, py: 2, color: txColor }}>
+                                {formatDate(row.delivery_date)}
+                              </TableCell>
+                              <TableCell align="center" sx={{ borderBottom: borderCol, py: 2, color: txColor }}>
                                 <MDButton color="info" variant="text" size="small" onClick={() => handleOpenDetails(row.id)}>
-                                  {(row.delivery_boy_id && row.vehicle_no) ? "Edit Details" : "Assign Details"}
+                                  {(row.delivery_boy_id && row.vehicle_no && row.delivery_date) ? "Edit Details" : "Assign Details"}
                                 </MDButton>
                               </TableCell>
                               <TableCell align="center" sx={{ borderBottom: borderCol, py: 2 }}>
@@ -260,7 +289,7 @@ function Delivery() {
                         })
                       ) : (
                         <TableRow>
-                          <TableCell colSpan={9} align="center" sx={{ py: 3, borderBottom: 0 }}>
+                          <TableCell colSpan={10} align="center" sx={{ py: 3, borderBottom: 0 }}>
                             <MDTypography variant="body2" color="text">
                               No deliveries found.
                             </MDTypography>
@@ -310,6 +339,18 @@ function Delivery() {
                   : ""
               }
               onChange={(e) => handleRowChange(activeRowId, "vehicle_no", e.target.value)}
+            />
+            <MDInput
+              type="date"
+              label="Delivery Date"
+              fullWidth
+              InputLabelProps={{ shrink: true }}
+              value={
+                activeRowId
+                  ? salesData.find((r) => r.id === activeRowId)?.delivery_date || ""
+                  : ""
+              }
+              onChange={(e) => handleRowChange(activeRowId, "delivery_date", e.target.value)}
             />
           </MDBox>
         </DialogContent>

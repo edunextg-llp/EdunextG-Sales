@@ -17,6 +17,21 @@ function Delivered() {
   const [searchQuery, setSearchQuery] = useState("");
   const API = "https://bawarchee.edunextg.co/api";
 
+  const getTodayLocalDate = () => {
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, "0");
+    const day = String(now.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
+  };
+
+  const formatDate = (value) => {
+    if (!value) return "N/A";
+    const parts = String(value).split("-");
+    if (parts.length === 3) return `${parts[2]}-${parts[1]}-${parts[0]}`;
+    return value;
+  };
+
   useEffect(() => {
     const fetchSales = async () => {
       try {
@@ -44,12 +59,16 @@ function Delivered() {
     return outletName.includes(search) || outletErpId.includes(search);
   });
 
-  const handleUpdateStatus = async (saleId, newStatus, currentDeliveryBoy, currentVehicle) => {
+  const handleUpdateStatus = async (saleId, newStatus, currentDeliveryBoy, currentVehicle, currentDeliveryDate) => {
     try {
       const payload = {
         packagingStatus: newStatus,
         deliveryBoyId: currentDeliveryBoy || null,
-        vehicleNo: currentVehicle || null
+        vehicleNo: currentVehicle || null,
+        deliveryDate:
+          newStatus === 'out_for_delivery' || newStatus === 'delivered' || newStatus === 'cancelled'
+            ? currentDeliveryDate || getTodayLocalDate()
+            : null
       };
 
       const response = await fetch(`${API}/staff/sales/${saleId}/packaging`, {
@@ -62,7 +81,9 @@ function Delivered() {
         // Find local index and mutate state instantly to avoid roundtrip UI jumps
         setSalesData((prevData) =>
           prevData.map((row) =>
-            row.id === saleId ? { ...row, packaging_status: newStatus } : row
+            row.id === saleId
+              ? { ...row, packaging_status: newStatus, delivery_date: payload.deliveryDate }
+              : row
           )
         );
       } else {
@@ -137,6 +158,9 @@ function Delivered() {
                           Vehicle
                         </TableCell>
                         <TableCell align="center" sx={{ color: "#6b7280", borderBottom: "1px solid #e5e7eb", py: 1.5, fontWeight: 500 }}>
+                          Delivery Date
+                        </TableCell>
+                        <TableCell align="center" sx={{ color: "#6b7280", borderBottom: "1px solid #e5e7eb", py: 1.5, fontWeight: 500 }}>
                           Status
                         </TableCell>
                         <TableCell align="center" sx={{ color: "#6b7280", borderBottom: "1px solid #e5e7eb", py: 1.5, fontWeight: 500 }}>
@@ -170,6 +194,9 @@ function Delivered() {
                             <TableCell align="center" sx={{ borderBottom: "1px solid #cbd5e1", py: 2, color: '#334155' }}>
                               {row.vehicle_no || 'N/A'}
                             </TableCell>
+                            <TableCell align="center" sx={{ borderBottom: "1px solid #cbd5e1", py: 2, color: '#334155' }}>
+                              {formatDate(row.delivery_date)}
+                            </TableCell>
                             <TableCell align="center" sx={{ borderBottom: "1px solid #cbd5e1", py: 2 }}>
                               {row.packaging_status === 'cancelled' ? (
                                 <Chip label="Cancelled" color="error" variant="outlined" size="small" />
@@ -184,13 +211,13 @@ function Delivered() {
                             <TableCell align="center" sx={{ borderBottom: "1px solid #cbd5e1", py: 2 }}>
                               {row.packaging_status === 'out_for_delivery' ? (
                                 <MDBox display="flex" gap={1} justifyContent="center" flexWrap="wrap">
-                                  <MDButton color="error" variant="contained" size="small" onClick={() => handleUpdateStatus(row.id, 'cancelled', row.delivery_boy_id, row.vehicle_no)}>
+                                  <MDButton color="error" variant="contained" size="small" onClick={() => handleUpdateStatus(row.id, 'cancelled', row.delivery_boy_id, row.vehicle_no, row.delivery_date)}>
                                     Cancel
                                   </MDButton>
-                                  <MDButton color="success" variant="contained" size="small" onClick={() => handleUpdateStatus(row.id, 'delivered', row.delivery_boy_id, row.vehicle_no)}>
+                                  <MDButton color="success" variant="contained" size="small" onClick={() => handleUpdateStatus(row.id, 'delivered', row.delivery_boy_id, row.vehicle_no, row.delivery_date)}>
                                     Deliver
                                   </MDButton>
-                                  <MDButton color="dark" variant="gradient" size="small" onClick={() => handleUpdateStatus(row.id, 'packing_done', row.delivery_boy_id, row.vehicle_no)}>
+                                  <MDButton color="dark" variant="gradient" size="small" onClick={() => handleUpdateStatus(row.id, 'packing_done', row.delivery_boy_id, row.vehicle_no, row.delivery_date)}>
                                     Return
                                   </MDButton>
                                 </MDBox>
@@ -199,7 +226,7 @@ function Delivered() {
                                   color="info"
                                   variant="outlined"
                                   size="small"
-                                  onClick={() => handleUpdateStatus(row.id, 'out_for_delivery', row.delivery_boy_id, row.vehicle_no)}
+                                  onClick={() => handleUpdateStatus(row.id, 'out_for_delivery', row.delivery_boy_id, row.vehicle_no, row.delivery_date)}
                                 >
                                   Edit
                                 </MDButton>
@@ -209,7 +236,7 @@ function Delivered() {
                         ))
                       ) : (
                         <TableRow>
-                          <TableCell colSpan={10} align="center" sx={{ py: 3, borderBottom: 0 }}>
+                          <TableCell colSpan={11} align="center" sx={{ py: 3, borderBottom: 0 }}>
                             <MDTypography variant="body2" color="text">
                               No delivered items found.
                             </MDTypography>

@@ -100,6 +100,7 @@ function AddSales() {
     amount: s.price,
     deliveryBoyName: s.delivery_boy_name || "",
     vehicleNo: s.vehicle_no || "",
+    staffName: s.staff_name || selectedStaff?.name || "",
   });
 
   const displayOutlets = useMemo(() => {
@@ -1072,30 +1073,34 @@ function AddSales() {
                       >
                         <colgroup>
                           <col style={{ width: "6%" }} />
-                          <col style={{ width: "28%" }} />
-                          <col style={{ width: "14%" }} />
-                          <col style={{ width: "14%" }} />
+                          <col style={{ width: "24%" }} />
                           <col style={{ width: "18%" }} />
-                          <col style={{ width: "20%" }} />
+                          <col style={{ width: "13%" }} />
+                          <col style={{ width: "13%" }} />
+                          <col style={{ width: "14%" }} />
+                          <col style={{ width: "12%" }} />
                         </colgroup>
                         <TableHead sx={tableHeadRowSx}>
                           <TableRow>
                             <TableCell align="center" sx={{ ...tableHeadSx, width: "6%" }}>
                               Sr No
                             </TableCell>
-                            <TableCell align="left" sx={{ ...tableHeadSx, width: "28%" }}>
+                            <TableCell align="left" sx={{ ...tableHeadSx, width: "24%" }}>
                               Outlet
                             </TableCell>
-                            <TableCell align="center" sx={{ ...tableHeadSx, width: "14%" }}>
+                            <TableCell align="left" sx={{ ...tableHeadSx, width: "18%" }}>
+                              Marketing Person
+                            </TableCell>
+                            <TableCell align="center" sx={{ ...tableHeadSx, width: "13%" }}>
                               Invoice
                             </TableCell>
-                            <TableCell align="center" sx={{ ...tableHeadSx, width: "14%" }}>
+                            <TableCell align="center" sx={{ ...tableHeadSx, width: "13%" }}>
                               Sticker
                             </TableCell>
-                            <TableCell align="right" sx={{ ...tableHeadSx, width: "18%" }}>
+                            <TableCell align="right" sx={{ ...tableHeadSx, width: "14%" }}>
                               Amount
                             </TableCell>
-                            <TableCell align="center" sx={{ ...tableHeadSx, width: "20%" }}>
+                            <TableCell align="center" sx={{ ...tableHeadSx, width: "12%" }}>
                               Action
                             </TableCell>
                           </TableRow>
@@ -1131,6 +1136,13 @@ function AddSales() {
                                     </MDTypography>
                                   </MDBox>
                                 </MDBox>
+                              </TableCell>
+
+                              <TableCell
+                                align="left"
+                                sx={{ ...tableBodySx, borderBottom: "1px solid #e5e7eb", fontSize: "0.875rem", color: "#374151" }}
+                              >
+                                {row.staffName || "N/A"}
                               </TableCell>
 
                               <TableCell
