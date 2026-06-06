@@ -88,6 +88,20 @@ function CreditsPage() {
     return date.toLocaleDateString("en-GB");
   };
 
+  const getCreditRowSx = (credit) => {
+    if (credit.remarks?.trim()) {
+      return {
+        backgroundColor: "#dcfce7",
+        "&:hover": { backgroundColor: "#bbf7d0" },
+      };
+    }
+
+    return {
+      backgroundColor: "#fff",
+      "&:hover": { backgroundColor: "#f8fafc" },
+    };
+  };
+
   const openEditRemarks = (credit) => {
     setRemarksText(credit.remarks || "");
     setRemarksDialog({ open: true, mode: "edit", credit });
@@ -227,7 +241,7 @@ function CreditsPage() {
                     </TableHead>
                     <TableBody>
                       {filteredCredits.map((credit, index) => (
-                        <TableRow key={credit.id}>
+                        <TableRow key={credit.id} sx={getCreditRowSx(credit)}>
                           <TableCell align="center">{index + 1}</TableCell>
                           <TableCell align="left">{credit.outlet_name}</TableCell>
                           <TableCell align="center">{credit.contact_number || "N/A"}</TableCell>
