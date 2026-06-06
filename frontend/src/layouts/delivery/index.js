@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import Grid from "@mui/material/Grid";
 import Card from "@mui/material/Card";
 import { Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper, FormControl, Select, MenuItem, Dialog, DialogTitle, DialogContent, DialogActions } from "@mui/material";
@@ -11,6 +11,12 @@ import MDButton from "components/MDButton";
 import DashboardLayout from "examples/LayoutContainers/DashboardLayout";
 import DashboardNavbar from "examples/Navbars/DashboardNavbar";
 import Footer from "examples/Footer";
+import {
+  enhanceDeliveryRow,
+  isDeliveryRowDirty,
+  mergeSalesRows,
+  useSalesPolling,
+} from "utils/salesSync";
 
 function Delivery() {
   const [salesData, setSalesData] = useState([]);
@@ -19,7 +25,8 @@ function Delivery() {
   const [detailsModalOpen, setDetailsModalOpen] = useState(false);
   const [activeRowId, setActiveRowId] = useState(null);
   const [historyDialog, setHistoryDialog] = useState({ open: false, sale: null, history: [] });
-const API = "https://bawarchee.edunextg.co/api";
+  const [savingSaleIds, setSavingSaleIds] = useState(new Set());
+  const API = "https://bawarchee.edunextg.co/api";
 
   const statusLabels = {
     not_packing: "Not Packing",
@@ -52,16 +59,11 @@ const API = "https://bawarchee.edunextg.co/api";
     return `${formatDate(datePart)}${timePart ? ` ${timePart.slice(0, 5)}` : ""}`;
   };
 
-  const toDateInputValue = (value) => {
-    if (!value) return "";
-    return String(value).split("T")[0].split(" ")[0];
-  };
-
   const handleOpenDetails = (saleId) => {
     setSalesData((prev) =>
       prev.map((row) =>
         row.id === saleId && !row.delivery_date
-          ? { ...row, delivery_date: getTodayLocalDate() }
+          ? { ...row, delivery_date: getTodayLocalDate(), _localDirty: true }
           : row
       )
     );
@@ -89,80 +91,83 @@ const API = "https://bawarchee.edunextg.co/api";
     fetchDeliveryBoys();
   }, []);
 
-  const fetchSales = async () => {
+  const fetchSales = useCallback(async ({ silent = false } = {}) => {
     try {
       const response = await fetch(`${API}/staff/sales/by-date`);
       if (response.ok) {
         const data = await response.json();
-        const enhancedData = data.map(r => ({
-          ...r,
-          original_packaging_status: r.packaging_status,
-          status_update_date: toDateInputValue(r.status_updated_at),
-          status_update_date_changed: false,
-        }));
-        setSalesData(enhancedData);
-      } else {
+        setSalesData((prev) =>
+          mergeSalesRows(data, prev, enhanceDeliveryRow, isDeliveryRowDirty)
+        );
+      } else if (!silent) {
         setSalesData([]);
       }
     } catch (error) {
-      console.error("Error fetching global sales:", error);
+      if (!silent) {
+        console.error("Error fetching global sales:", error);
+      }
     }
-  };
+  }, [API]);
 
   useEffect(() => {
     fetchSales();
-  }, []);
+  }, [fetchSales]);
+
+  useSalesPolling(fetchSales);
 
   const handleRowChange = (saleId, field, value) => {
     const newData = [...salesData];
     const index = newData.findIndex(r => r.id === saleId);
     if (index === -1) return;
-    newData[index] = { ...newData[index], [field]: value };
-    if (field === "packaging_status" && value !== newData[index].original_packaging_status) {
-      newData[index].status_update_date = "";
-      newData[index].status_update_date_changed = false;
-    }
-    if (field === "status_update_date") {
-      newData[index].status_update_date_changed = true;
-    }
+    newData[index] = { ...newData[index], [field]: value, _localDirty: true };
     setSalesData(newData);
   };
 
   const handleSaveDelivery = async (saleId) => {
     const row = salesData.find(r => r.id === saleId);
-    if (!row) return;
+    if (!row || savingSaleIds.has(saleId)) return;
+
+    if ((row.packaging_status === "out_for_delivery" || row.packaging_status === "delivered") && (!row.delivery_boy_id || !row.vehicle_no || !row.delivery_date)) {
+      alert("Please assign a Delivery Boy, Vehicle No, and Delivery Date via 'Assign Details' before marking this item.");
+      return;
+    }
+
+    setSavingSaleIds((prev) => new Set(prev).add(saleId));
+
     try {
-      if ((row.packaging_status === 'out_for_delivery' || row.packaging_status === 'delivered') && (!row.delivery_boy_id || !row.vehicle_no || !row.delivery_date)) {
-        alert("Please assign a Delivery Boy, Vehicle No, and Delivery Date via 'Assign Details' before marking this item.");
-        return;
-      }
-
-      if (
-        row.original_packaging_status !== row.packaging_status &&
-        (!row.status_update_date || !row.status_update_date_changed)
-      ) {
-        alert("Please choose Status Date.");
-        return;
-      }
-
-      let finalStatus = row.packaging_status || 'packing_done';
+      const finalStatus = row.packaging_status || "packing_done";
 
       const payload = {
         packagingStatus: finalStatus,
         deliveryBoyId: row.delivery_boy_id || null,
         vehicleNo: row.vehicle_no || null,
         deliveryDate: row.delivery_date || null,
-        statusDate: row.status_update_date || null,
+        expectedStatus: row.original_packaging_status,
       };
 
       const response = await fetch(`${API}/staff/sales/${row.id}/packaging`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload)
+        body: JSON.stringify(payload),
       });
 
       if (response.ok) {
-        alert("Delivery status updated!");
+        const data = await response.json();
+        const updated = enhanceDeliveryRow(data.sale);
+        if (updated.packaging_status !== "packing_done") {
+          setSalesData((prev) => prev.filter((item) => item.id !== saleId));
+        } else {
+          setSalesData((prev) =>
+            prev.map((item) =>
+              item.id === saleId
+                ? { ...updated, packing_date: item.packing_date || updated.packing_date }
+                : item
+            )
+          );
+        }
+      } else if (response.status === 409) {
+        const err = await response.json().catch(() => ({}));
+        alert(err.error || "This record was updated by another user.");
         fetchSales();
       } else {
         const err = await response.json().catch(() => ({}));
@@ -171,6 +176,12 @@ const API = "https://bawarchee.edunextg.co/api";
     } catch (error) {
       console.error("Error saving delivery info:", error);
       alert("Error saving delivery status.");
+    } finally {
+      setSavingSaleIds((prev) => {
+        const next = new Set(prev);
+        next.delete(saleId);
+        return next;
+      });
     }
   };
 
@@ -279,7 +290,7 @@ const API = "https://bawarchee.edunextg.co/api";
                           Delivery Date
                         </TableCell>
                         <TableCell align="center" sx={{ color: "#6b7280", borderBottom: "1px solid #e5e7eb", py: 1.5, fontWeight: 500 }}>
-                          Status Date
+                          Packing Date
                         </TableCell>
                         <TableCell align="center" sx={{ color: "#6b7280", borderBottom: "1px solid #e5e7eb", py: 1.5, fontWeight: 500 }}>
                           Delivery Details
@@ -338,16 +349,7 @@ const API = "https://bawarchee.edunextg.co/api";
                                 {formatDate(row.delivery_date)}
                               </TableCell>
                               <TableCell align="center" sx={{ borderBottom: borderCol, py: 2, color: txColor }}>
-                                <MDInput
-                                  type="date"
-                                  value={row.status_update_date || ""}
-                                  onChange={(e) =>
-                                    handleRowChange(row.id, "status_update_date", e.target.value)
-                                  }
-                                  size="small"
-                                  InputLabelProps={{ shrink: true }}
-                                  sx={{ width: 150, backgroundColor: "#fff" }}
-                                />
+                                {formatDate(row.packing_date)}
                               </TableCell>
                               <TableCell align="center" sx={{ borderBottom: borderCol, py: 2, color: txColor }}>
                                 <MDButton color="info" variant="text" size="small" onClick={() => handleOpenDetails(row.id)}>
@@ -356,8 +358,14 @@ const API = "https://bawarchee.edunextg.co/api";
                               </TableCell>
                               <TableCell align="center" sx={{ borderBottom: borderCol, py: 2 }}>
                                 <MDBox display="flex" gap={1} justifyContent="center" flexWrap="wrap">
-                                  <MDButton color="dark" variant="gradient" size="small" onClick={() => handleSaveDelivery(row.id)}>
-                                    Save
+                                  <MDButton
+                                    color="dark"
+                                    variant="gradient"
+                                    size="small"
+                                    disabled={savingSaleIds.has(row.id)}
+                                    onClick={() => handleSaveDelivery(row.id)}
+                                  >
+                                    {savingSaleIds.has(row.id) ? "Saving..." : "Save"}
                                   </MDButton>
                                   <MDButton color="info" variant="outlined" size="small" onClick={() => handleViewHistory(row.id)}>
                                     View

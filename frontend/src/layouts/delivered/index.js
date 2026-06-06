@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import Grid from "@mui/material/Grid";
 import Card from "@mui/material/Card";
 import {
@@ -10,10 +10,6 @@ import {
   TableRow,
   Paper,
   Chip,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
 } from "@mui/material";
 
 import MDBox from "components/MDBox";
@@ -24,21 +20,13 @@ import MDButton from "components/MDButton";
 import DashboardLayout from "examples/LayoutContainers/DashboardLayout";
 import DashboardNavbar from "examples/Navbars/DashboardNavbar";
 import Footer from "examples/Footer";
+import { useSalesPolling } from "utils/salesSync";
 
 function Delivered() {
   const [salesData, setSalesData] = useState([]);
   const [searchQuery, setSearchQuery] = useState("");
-  const [historyDialog, setHistoryDialog] = useState({ open: false, sale: null, history: [] });
+  const [updatingSaleIds, setUpdatingSaleIds] = useState(new Set());
   const API = "https://bawarchee.edunextg.co/api";
-
-  const statusLabels = {
-    not_packing: "Not Packing",
-    packing: "Packing In Progress",
-    packing_done: "Packing Done",
-    out_for_delivery: "Out for Delivery",
-    delivered: "Delivered",
-    cancelled: "Cancelled",
-  };
 
   const getTodayLocalDate = () => {
     const now = new Date();
@@ -56,52 +44,27 @@ function Delivered() {
     return value;
   };
 
-  const formatDateTime = (value) => {
-    if (!value) return "N/A";
-    const [datePart, timePart = ""] = String(value).split(/[T ]/);
-    return `${formatDate(datePart)}${timePart ? ` ${timePart.slice(0, 5)}` : ""}`;
-  };
-
-  const toDateInputValue = (value) => {
-    if (!value) return "";
-    return String(value).split("T")[0].split(" ")[0];
-  };
-
-  useEffect(() => {
-    const fetchSales = async () => {
-      try {
-        const response = await fetch(`${API}/staff/sales/by-date`);
-        if (response.ok) {
-          const data = await response.json();
-          setSalesData(data.map((row) => ({
-            ...row,
-            status_update_date: toDateInputValue(row.status_updated_at),
-            status_update_date_changed: false,
-          })));
-        } else {
-          setSalesData([]);
-        }
-      } catch (error) {
+  const fetchSales = useCallback(async ({ silent = false } = {}) => {
+    try {
+      const response = await fetch(`${API}/staff/sales/by-date`);
+      if (response.ok) {
+        const data = await response.json();
+        setSalesData(data);
+      } else if (!silent) {
+        setSalesData([]);
+      }
+    } catch (error) {
+      if (!silent) {
         console.error("Error fetching global sales:", error);
       }
-    };
-    fetchSales();
-  }, []);
+    }
+  }, [API]);
 
-  const handleRowChange = (saleId, field, value) => {
-    setSalesData((prevData) =>
-      prevData.map((row) =>
-        row.id === saleId
-          ? {
-              ...row,
-              [field]: value,
-              status_update_date_changed:
-                field === "status_update_date" ? true : row.status_update_date_changed,
-            }
-          : row
-      )
-    );
-  };
+  useEffect(() => {
+    fetchSales();
+  }, [fetchSales]);
+
+  useSalesPolling(fetchSales);
 
   const filteredSales = salesData.filter((row) => {
     const st = row.packaging_status;
@@ -115,72 +78,53 @@ function Delivered() {
   });
 
   const handleUpdateStatus = async (saleId, newStatus, currentDeliveryBoy, currentVehicle, currentDeliveryDate) => {
-    try {
-      const rowForUpdate = salesData.find((row) => row.id === saleId);
-      if (
-        rowForUpdate?.packaging_status !== newStatus &&
-        (!rowForUpdate?.status_update_date || !rowForUpdate?.status_update_date_changed)
-      ) {
-        alert("Please choose Status Date.");
-        return;
-      }
+    if (updatingSaleIds.has(saleId)) return;
 
+    const currentRow = salesData.find((row) => row.id === saleId);
+    if (!currentRow) return;
+
+    setUpdatingSaleIds((prev) => new Set(prev).add(saleId));
+
+    try {
       const payload = {
         packagingStatus: newStatus,
         deliveryBoyId: currentDeliveryBoy || null,
         vehicleNo: currentVehicle || null,
         deliveryDate:
-          newStatus === 'out_for_delivery' || newStatus === 'delivered' || newStatus === 'cancelled'
+          newStatus === "out_for_delivery" || newStatus === "delivered" || newStatus === "cancelled"
             ? currentDeliveryDate || getTodayLocalDate()
             : null,
-        statusDate: rowForUpdate?.status_update_date || null,
+        expectedStatus: currentRow.packaging_status,
       };
 
       const response = await fetch(`${API}/staff/sales/${saleId}/packaging`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload)
+        body: JSON.stringify(payload),
       });
 
       if (response.ok) {
-        const data = await response.json().catch(() => ({}));
-        // Find local index and mutate state instantly to avoid roundtrip UI jumps
+        const data = await response.json();
+        const updated = data.sale;
         setSalesData((prevData) =>
-          prevData.map((row) =>
-            row.id === saleId
-              ? {
-                  ...row,
-                  packaging_status: newStatus,
-                  delivery_date: payload.deliveryDate,
-                  status_updated_at: data.sale?.status_updated_at || row.status_updated_at,
-                  status_update_date: toDateInputValue(data.sale?.status_updated_at) || row.status_update_date,
-                  status_update_date_changed: false,
-                }
-              : row
-          )
+          prevData.map((row) => (row.id === saleId ? { ...row, ...updated } : row))
         );
+      } else if (response.status === 409) {
+        const err = await response.json().catch(() => ({}));
+        alert(err.error || "This record was updated by another user.");
+        fetchSales();
       } else {
         const data = await response.json().catch(() => ({}));
         alert(data.error || "Failed to update status.");
       }
     } catch (error) {
       console.error("Error updating status:", error);
-    }
-  };
-
-  const handleViewHistory = async (saleId) => {
-    try {
-      const response = await fetch(`${API}/staff/sales/${saleId}/status-history`);
-      if (response.ok) {
-        const data = await response.json();
-        setHistoryDialog({ open: true, sale: data.sale, history: data.history || [] });
-      } else {
-        const err = await response.json().catch(() => ({}));
-        alert(err.error || "Failed to load status dates.");
-      }
-    } catch (error) {
-      console.error("Error loading status history:", error);
-      alert("Error loading status dates.");
+    } finally {
+      setUpdatingSaleIds((prev) => {
+        const next = new Set(prev);
+        next.delete(saleId);
+        return next;
+      });
     }
   };
 
@@ -253,9 +197,6 @@ function Delivered() {
                           Status
                         </TableCell>
                         <TableCell align="center" sx={{ color: "#6b7280", borderBottom: "1px solid #e5e7eb", py: 1.5, fontWeight: 500 }}>
-                          Status Date
-                        </TableCell>
-                        <TableCell align="center" sx={{ color: "#6b7280", borderBottom: "1px solid #e5e7eb", py: 1.5, fontWeight: 500 }}>
                           Action
                         </TableCell>
                       </TableRow>
@@ -300,18 +241,6 @@ function Delivered() {
                                 <Chip label={row.packaging_status || "Unknown"} color="default" variant="outlined" size="small" />
                               )}
                             </TableCell>
-                            <TableCell align="center" sx={{ borderBottom: "1px solid #cbd5e1", py: 2, color: '#334155' }}>
-                              <MDInput
-                                type="date"
-                                value={row.status_update_date || ""}
-                                onChange={(e) =>
-                                  handleRowChange(row.id, "status_update_date", e.target.value)
-                                }
-                                size="small"
-                                InputLabelProps={{ shrink: true }}
-                                sx={{ width: 150, backgroundColor: "#fff" }}
-                              />
-                            </TableCell>
                             <TableCell align="center" sx={{ borderBottom: "1px solid #cbd5e1", py: 2 }}>
                               {row.packaging_status === 'out_for_delivery' ? (
                                 <MDBox display="flex" gap={1} justifyContent="center" flexWrap="wrap">
@@ -324,31 +253,23 @@ function Delivered() {
                                   <MDButton color="dark" variant="gradient" size="small" onClick={() => handleUpdateStatus(row.id, 'packing_done', row.delivery_boy_id, row.vehicle_no, row.delivery_date)}>
                                     Return
                                   </MDButton>
-                                  <MDButton color="info" variant="outlined" size="small" onClick={() => handleViewHistory(row.id)}>
-                                    View
-                                  </MDButton>
                                 </MDBox>
                               ) : (
-                                <MDBox display="flex" gap={1} justifyContent="center" flexWrap="wrap">
-                                  <MDButton
-                                    color="info"
-                                    variant="outlined"
-                                    size="small"
-                                    onClick={() => handleUpdateStatus(row.id, 'out_for_delivery', row.delivery_boy_id, row.vehicle_no, row.delivery_date)}
-                                  >
-                                    Edit
-                                  </MDButton>
-                                  <MDButton color="dark" variant="outlined" size="small" onClick={() => handleViewHistory(row.id)}>
-                                    View
-                                  </MDButton>
-                                </MDBox>
+                                <MDButton
+                                  color="info"
+                                  variant="outlined"
+                                  size="small"
+                                  onClick={() => handleUpdateStatus(row.id, 'out_for_delivery', row.delivery_boy_id, row.vehicle_no, row.delivery_date)}
+                                >
+                                  Edit
+                                </MDButton>
                               )}
                             </TableCell>
                           </TableRow>
                         ))
                       ) : (
                         <TableRow>
-                          <TableCell colSpan={12} align="center" sx={{ py: 3, borderBottom: 0 }}>
+                          <TableCell colSpan={11} align="center" sx={{ py: 3, borderBottom: 0 }}>
                             <MDTypography variant="body2" color="text">
                               No delivered items found.
                             </MDTypography>
@@ -364,56 +285,6 @@ function Delivered() {
         </Grid>
       </MDBox>
       <Footer />
-
-      <Dialog
-        open={historyDialog.open}
-        onClose={() => setHistoryDialog({ open: false, sale: null, history: [] })}
-        fullWidth
-        maxWidth="sm"
-      >
-        <DialogTitle>Status Update Dates</DialogTitle>
-        <DialogContent dividers>
-          <MDBox mb={2}>
-            <MDTypography variant="button" fontWeight="medium">
-              Invoice: {historyDialog.sale?.invoice_number || "N/A"}
-            </MDTypography>
-            <MDTypography variant="body2" color="text">
-              Invoice Date: {formatDate(historyDialog.sale?.sale_date)}
-            </MDTypography>
-            <MDTypography variant="body2" color="text">
-              Outlet: {historyDialog.sale?.outlet_name || "N/A"}
-            </MDTypography>
-          </MDBox>
-          <Table size="small">
-            <TableHead sx={{ display: "table-header-group" }}>
-              <TableRow>
-                <TableCell>Status</TableCell>
-                <TableCell align="center">Update Date</TableCell>
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {historyDialog.history.map((item) => (
-                <TableRow key={item.id}>
-                  <TableCell>{statusLabels[item.status] || item.status}</TableCell>
-                  <TableCell align="center">{formatDateTime(item.changed_at)}</TableCell>
-                </TableRow>
-              ))}
-              {historyDialog.history.length === 0 && (
-                <TableRow>
-                  <TableCell colSpan={2} align="center">
-                    No status update dates found.
-                  </TableCell>
-                </TableRow>
-              )}
-            </TableBody>
-          </Table>
-        </DialogContent>
-        <DialogActions>
-          <MDButton color="dark" onClick={() => setHistoryDialog({ open: false, sale: null, history: [] })}>
-            Close
-          </MDButton>
-        </DialogActions>
-      </Dialog>
     </DashboardLayout>
   );
 }

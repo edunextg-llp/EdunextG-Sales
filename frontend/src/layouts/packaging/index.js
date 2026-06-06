@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import Grid from "@mui/material/Grid";
 import Card from "@mui/material/Card";
 // import Icon from "@mui/material/Icon";
@@ -27,6 +27,12 @@ import MDButton from "components/MDButton";
 import DashboardLayout from "examples/LayoutContainers/DashboardLayout";
 import DashboardNavbar from "examples/Navbars/DashboardNavbar";
 import Footer from "examples/Footer";
+import {
+  enhancePackagingRow,
+  isPackagingRowDirty,
+  mergeSalesRows,
+  useSalesPolling,
+} from "utils/salesSync";
 
 function Packaging() {
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split("T")[0]);
@@ -35,6 +41,7 @@ function Packaging() {
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [historyDialog, setHistoryDialog] = useState({ open: false, sale: null, history: [] });
+  const [savingSaleIds, setSavingSaleIds] = useState(new Set());
   const API = "https://bawarchee.edunextg.co/api";
 
   const statusLabels = {
@@ -60,11 +67,6 @@ function Packaging() {
     return `${formatDate(datePart)}${timePart ? ` ${timePart.slice(0, 5)}` : ""}`;
   };
 
-  const toDateInputValue = (value) => {
-    if (!value) return "";
-    return String(value).split("T")[0].split(" ")[0];
-  };
-
   useEffect(() => {
     const fetchDeliveryBoys = async () => {
       try {
@@ -80,30 +82,30 @@ function Packaging() {
     fetchDeliveryBoys();
   }, []);
 
-  const fetchSales = async () => {
+  const fetchSales = useCallback(async ({ silent = false } = {}) => {
     try {
       const response = await fetch(`${API}/staff/sales/by-date`);
       if (response.ok) {
         const data = await response.json();
-        const enhancedData = data.map(r => ({
-          ...r,
-          original_packaging_status: r.packaging_status,
-          status_update_date: toDateInputValue(r.status_updated_at),
-          status_update_date_changed: false,
-        }));
-        setSalesData(enhancedData);
-      } else {
+        setSalesData((prev) =>
+          mergeSalesRows(data, prev, enhancePackagingRow, isPackagingRowDirty)
+        );
+      } else if (!silent) {
         console.error("Failed to fetch sales for packaging");
         setSalesData([]);
       }
     } catch (error) {
-      console.error("Error fetching global sales:", error);
+      if (!silent) {
+        console.error("Error fetching global sales:", error);
+      }
     }
-  };
+  }, [API]);
 
   useEffect(() => {
     fetchSales();
-  }, [selectedDate]);
+  }, [selectedDate, fetchSales]);
+
+  useSalesPolling(fetchSales);
 
   const handleRowChange = (saleId, field, value) => {
     const newData = [...salesData];
@@ -122,29 +124,38 @@ function Packaging() {
 
   const handleSavePackaging = async (saleId) => {
     const row = salesData.find(r => r.id === saleId);
-    if (!row) return;
+    if (!row || savingSaleIds.has(saleId)) return;
+
+    if (
+      row.original_packaging_status !== row.packaging_status &&
+      (!row.status_update_date || !row.status_update_date_changed)
+    ) {
+      alert("Please choose Status Date.");
+      return;
+    }
+
+    setSavingSaleIds((prev) => new Set(prev).add(saleId));
+
     try {
       const payload = {
-        packagingStatus: row.packaging_status || 'not_packing',
+        packagingStatus: row.packaging_status || "not_packing",
         statusDate: row.status_update_date || null,
+        expectedStatus: row.original_packaging_status,
       };
-
-      if (
-        row.original_packaging_status !== row.packaging_status &&
-        (!row.status_update_date || !row.status_update_date_changed)
-      ) {
-        alert("Please choose Status Date.");
-        return;
-      }
 
       const response = await fetch(`${API}/staff/sales/${row.id}/packaging`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload)
+        body: JSON.stringify(payload),
       });
 
       if (response.ok) {
-        alert("Packaging status updated!");
+        const data = await response.json();
+        const updated = enhancePackagingRow(data.sale);
+        setSalesData((prev) => prev.map((item) => (item.id === saleId ? updated : item)));
+      } else if (response.status === 409) {
+        const err = await response.json().catch(() => ({}));
+        alert(err.error || "This record was updated by another user.");
         fetchSales();
       } else {
         const err = await response.json().catch(() => ({}));
@@ -153,6 +164,12 @@ function Packaging() {
     } catch (error) {
       console.error("Error saving packaging:", error);
       alert("Error saving packaging status.");
+    } finally {
+      setSavingSaleIds((prev) => {
+        const next = new Set(prev);
+        next.delete(saleId);
+        return next;
+      });
     }
   };
 
@@ -342,9 +359,15 @@ function Packaging() {
                               </TableCell>
                               <TableCell align="center" sx={{ borderBottom: borderCol, py: 2 }}>
                                 <MDBox display="flex" gap={1} justifyContent="center" flexWrap="wrap">
-                                  <MDButton color="dark" variant="gradient" size="small" onClick={() => handleSavePackaging(row.id)}>
-                                    Save
-                                  </MDButton>
+                                <MDButton
+                                  color="dark"
+                                  variant="gradient"
+                                  size="small"
+                                  disabled={savingSaleIds.has(row.id)}
+                                  onClick={() => handleSavePackaging(row.id)}
+                                >
+                                  {savingSaleIds.has(row.id) ? "Saving..." : "Save"}
+                                </MDButton>
                                   <MDButton color="info" variant="outlined" size="small" onClick={() => handleViewHistory(row.id)}>
                                     View
                                   </MDButton>

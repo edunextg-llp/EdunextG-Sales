@@ -322,6 +322,7 @@ class StaffModel {
                     ss.sticker_number, ss.packaging_status, ss.delivery_boy_id, ss.vehicle_no,
                     DATE_FORMAT(ss.delivery_date, '%Y-%m-%d') AS delivery_date,
                     DATE_FORMAT(ssh.status_updated_at, '%Y-%m-%d %H:%i:%s') AS status_updated_at,
+                    DATE_FORMAT(ssh.packing_date, '%Y-%m-%d') AS packing_date,
                     ss.paid_amount, ss.balance_amount, ss.payment_mode,
                     sc.outlet_name, sc.outlet_erp_id, s.name as staff_name, DATE_FORMAT(ss.sale_date, '%d-%m-%Y') as formatted_date,
                     db.name as delivery_boy_name
@@ -330,7 +331,9 @@ class StaffModel {
              LEFT JOIN staff s ON ss.staff_id = s.id
              LEFT JOIN delivery_boys db ON ss.delivery_boy_id = db.id
              LEFT JOIN (
-                 SELECT sale_id, MAX(changed_at) AS status_updated_at
+                 SELECT sale_id,
+                        MAX(changed_at) AS status_updated_at,
+                        MIN(CASE WHEN status = 'packing_done' THEN changed_at END) AS packing_date
                  FROM staff_sale_status_history
                  GROUP BY sale_id
              ) ssh ON ssh.sale_id = ss.id
@@ -487,11 +490,19 @@ class StaffModel {
             }
 
             if (currentStatus !== status) {
-                await connection.execute(
-                    `INSERT INTO staff_sale_status_history (sale_id, status, changed_at)
-                     VALUES (?, ?, ?)`,
-                    [saleId, status, `${statusDate} 00:00:00`]
-                );
+                if (statusDate) {
+                    await connection.execute(
+                        `INSERT INTO staff_sale_status_history (sale_id, status, changed_at)
+                         VALUES (?, ?, ?)`,
+                        [saleId, status, `${statusDate} 00:00:00`]
+                    );
+                } else {
+                    await connection.execute(
+                        `INSERT INTO staff_sale_status_history (sale_id, status, changed_at)
+                         VALUES (?, ?, NOW())`,
+                        [saleId, status]
+                    );
+                }
             }
 
             await connection.commit();

@@ -437,7 +437,7 @@ export const deleteSale = async (req, res) => {
 export const updatePackagingStatus = async (req, res) => {
     try {
         const { saleId } = req.params;
-        const { packagingStatus, deliveryBoyId, vehicleNo, deliveryDate, statusDate } = req.body;
+        const { packagingStatus, deliveryBoyId, vehicleNo, deliveryDate, statusDate, expectedStatus } = req.body;
 
         if (!['not_packing', 'packing', 'packing_done', 'out_for_delivery', 'delivered', 'cancelled'].includes(packagingStatus)) {
             return res.status(400).json({ error: 'Invalid packaging status' });
@@ -448,10 +448,14 @@ export const updatePackagingStatus = async (req, res) => {
             return res.status(404).json({ error: 'Sale not found' });
         }
 
-        const normalizedStatusDate = normalizeDateInput(statusDate);
-        if (currentStatus !== packagingStatus && !normalizedStatusDate) {
-            return res.status(400).json({ error: 'Status Date is required when updating status.' });
+        if (expectedStatus && currentStatus !== expectedStatus) {
+            return res.status(409).json({
+                error: 'This record was updated by another user. Data has been refreshed.',
+                currentStatus,
+            });
         }
+
+        const normalizedStatusDate = normalizeDateInput(statusDate);
 
         await StaffModel.updatePackagingStatus(
             saleId,
