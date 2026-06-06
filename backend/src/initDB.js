@@ -319,11 +319,21 @@ async function initDB() {
             reference_no VARCHAR(100) NULL,
             reference_date DATE NULL,
             credit_days INT NULL,
+            remarks TEXT NULL,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (sale_id) REFERENCES staff_sales(id) ON DELETE CASCADE
         );
     `);
     console.log('Sale payments table created');
+
+    try {
+        await connection.query(`
+            ALTER TABLE sale_payments ADD COLUMN remarks TEXT NULL
+        `);
+        console.log('Added remarks column to sale_payments');
+    } catch (err) {
+        console.log('remarks column on sale_payments already exists or skipped');
+    }
 
     try {
         await connection.query(`

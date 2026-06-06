@@ -104,6 +104,7 @@ export async function ensureSchema() {
                 reference_no VARCHAR(100) NULL,
                 reference_date DATE NULL,
                 credit_days INT NULL,
+                remarks TEXT NULL,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY (sale_id) REFERENCES staff_sales(id) ON DELETE CASCADE
             );
@@ -133,6 +134,12 @@ export async function ensureSchema() {
             connection,
             `ALTER TABLE staff_sales ADD COLUMN vehicle_no VARCHAR(50) NULL`,
             'vehicle_no on staff_sales'
+        );
+
+        await tryQuery(
+            connection,
+            `ALTER TABLE sale_payments ADD COLUMN remarks TEXT NULL`,
+            'remarks on sale_payments'
         );
 
         await tryQuery(

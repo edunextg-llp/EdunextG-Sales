@@ -255,6 +255,22 @@ class ReportModel {
         return toNumberRows(rows);
     }
 
+    static async getCreditDuesSummary() {
+        const [[row]] = await db.execute(
+            `SELECT COALESCE(SUM(sp.amount), 0) AS total_credit_dues,
+                    COUNT(*) AS credit_dues_count
+             FROM sale_payments sp
+             JOIN staff_sales ss ON sp.sale_id = ss.id
+             WHERE sp.payment_mode = 'credit'
+               AND ss.balance_amount > 0`
+        );
+
+        return {
+            total_credit_dues: parseFloat(row.total_credit_dues) || 0,
+            credit_dues_count: Number(row.credit_dues_count) || 0,
+        };
+    }
+
     static async getReports(startDate, endDate) {
         const [
             summary,
@@ -265,6 +281,7 @@ class ReportModel {
             salesByPeriod,
             chequeReports,
             duesReport,
+            creditDuesSummary,
         ] = await Promise.all([
             ReportModel.getSummary(startDate, endDate),
             ReportModel.getCollectionByMode(startDate, endDate),
@@ -274,6 +291,7 @@ class ReportModel {
             ReportModel.getSalesByPeriod(startDate, endDate),
             ReportModel.getChequeReports(startDate, endDate),
             ReportModel.getDuesReport(),
+            ReportModel.getCreditDuesSummary(),
         ]);
 
         return {
@@ -285,6 +303,7 @@ class ReportModel {
             salesByPeriod,
             chequeReports,
             duesReport,
+            creditDuesSummary,
         };
     }
 }

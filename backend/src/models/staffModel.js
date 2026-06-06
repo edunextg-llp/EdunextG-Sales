@@ -324,12 +324,18 @@ class StaffModel {
                     DATE_FORMAT(ssh.status_updated_at, '%Y-%m-%d %H:%i:%s') AS status_updated_at,
                     DATE_FORMAT(ssh.packing_date, '%Y-%m-%d') AS packing_date,
                     ss.paid_amount, ss.balance_amount, ss.payment_mode,
+                    COALESCE(sp.payment_count, 0) AS payment_count,
                     sc.outlet_name, sc.outlet_erp_id, s.name as staff_name, DATE_FORMAT(ss.sale_date, '%d-%m-%Y') as formatted_date,
                     db.name as delivery_boy_name
              FROM staff_sales ss
              LEFT JOIN staff_counters sc ON ss.outlet_id = sc.id
              LEFT JOIN staff s ON ss.staff_id = s.id
              LEFT JOIN delivery_boys db ON ss.delivery_boy_id = db.id
+             LEFT JOIN (
+                 SELECT sale_id, COUNT(*) AS payment_count
+                 FROM sale_payments
+                 GROUP BY sale_id
+             ) sp ON sp.sale_id = ss.id
              LEFT JOIN (
                  SELECT sale_id,
                         MAX(changed_at) AS status_updated_at,
@@ -534,7 +540,7 @@ class StaffModel {
     static async getPendingCredits() {
         const [rows] = await db.execute(
             `SELECT sp.id, sp.amount AS balance_amount, sp.payment_date AS sale_date, sp.credit_days,
-                    ss.invoice_number, sc.outlet_name, s.name AS staff_name
+                    sp.remarks, ss.invoice_number, sc.outlet_name, sc.contact_number, s.name AS staff_name
              FROM sale_payments sp
              JOIN staff_sales ss ON sp.sale_id = ss.id
              LEFT JOIN staff_counters sc ON ss.outlet_id = sc.id
@@ -543,6 +549,16 @@ class StaffModel {
              ORDER BY sp.payment_date ASC`
         );
         return rows;
+    }
+
+    static async updateCreditRemarks(paymentId, remarks) {
+        const [result] = await db.execute(
+            `UPDATE sale_payments
+             SET remarks = ?
+             WHERE id = ? AND payment_mode = 'credit'`,
+            [remarks?.trim() || null, paymentId]
+        );
+        return result.affectedRows > 0;
     }
 }
 

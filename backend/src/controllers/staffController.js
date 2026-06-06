@@ -502,6 +502,27 @@ export const getPendingCredits = async (req, res) => {
     }
 };
 
+export const updateCreditRemarks = async (req, res) => {
+    try {
+        const { paymentId } = req.params;
+        const { remarks } = req.body;
+
+        if (remarks !== undefined && remarks !== null && typeof remarks !== 'string') {
+            return res.status(400).json({ error: 'Remarks must be text.' });
+        }
+
+        const updated = await StaffModel.updateCreditRemarks(paymentId, remarks);
+        if (!updated) {
+            return res.status(404).json({ error: 'Credit payment not found.' });
+        }
+
+        res.status(200).json({ message: 'Remarks saved successfully', remarks: remarks?.trim() || null });
+    } catch (error) {
+        console.error('Error updating credit remarks:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+};
+
 export const getReports = async (req, res) => {
     try {
         const { startDate, endDate } = req.query;

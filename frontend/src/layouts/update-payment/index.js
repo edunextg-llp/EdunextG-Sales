@@ -36,6 +36,14 @@ const PAYMENT_MODE_LABELS = {
   cheque: "Cheque",
 };
 
+const CASH_DENOMINATIONS = [500, 200, 100, 50, 20, 10];
+
+const emptyCashNotes = () =>
+  CASH_DENOMINATIONS.reduce((notes, denomination) => {
+    notes[denomination] = "";
+    return notes;
+  }, {});
+
 const tableHeadSx = {
   color: "#6b7280",
   fontSize: "0.75rem",
@@ -66,6 +74,7 @@ const emptyPaymentForm = () => ({
   paymentDate: getTodayLocalDate(),
   paymentMode: "cash",
   amount: "",
+  cashNotes: emptyCashNotes(),
   referenceNo: "",
   referenceDate: "",
   creditDays: "",
@@ -157,6 +166,15 @@ function UpdatePayment() {
   const getPaymentRowSx = (sale) => {
     const price = parseFloat(sale.price) || 0;
     const balance = getRemainingBalance(sale);
+    const paid = getPaidAmount(sale);
+    const hasPaymentActivity = (Number(sale.payment_count) || 0) > 0 || paid > 0;
+
+    if (!hasPaymentActivity) {
+      return {
+        backgroundColor: "#fff",
+        "&:hover": { backgroundColor: "#f8fafc" },
+      };
+    }
 
     if (balance <= 0.001) {
       return {
@@ -197,6 +215,7 @@ function UpdatePayment() {
                 ...sale,
                 paid_amount: data.summary.paidAmount,
                 balance_amount: data.summary.balanceAmount,
+                payment_count: data.payments?.length || 0,
               }
               : sale
           )
@@ -233,6 +252,7 @@ function UpdatePayment() {
       paymentDate: paymentDt || getTodayLocalDate(),
       paymentMode: payment.payment_mode,
       amount: String(payment.amount),
+      cashNotes: emptyCashNotes(),
       referenceNo: payment.reference_no || "",
       referenceDate: formattedDate,
       creditDays: payment.credit_days ? String(payment.credit_days) : "",
@@ -246,7 +266,43 @@ function UpdatePayment() {
   };
 
   const handlePaymentFormChange = (field, value) => {
-    setPaymentForm((prev) => ({ ...prev, [field]: value }));
+    setPaymentForm((prev) => {
+      if (field === "paymentMode") {
+        return {
+          ...prev,
+          paymentMode: value,
+          amount: value === "cash" ? "" : prev.amount,
+          cashNotes: value === "cash" ? emptyCashNotes() : prev.cashNotes,
+          referenceNo: "",
+          referenceDate: "",
+          creditDays: "",
+        };
+      }
+
+      return { ...prev, [field]: value };
+    });
+  };
+
+  const calculateCashAmount = (cashNotes = paymentForm.cashNotes) =>
+    CASH_DENOMINATIONS.reduce(
+      (total, denomination) => total + denomination * (parseInt(cashNotes[denomination], 10) || 0),
+      0
+    );
+
+  const handleCashNoteChange = (denomination, value) => {
+    const count = value === "" ? "" : Math.max(0, parseInt(value, 10) || 0);
+
+    setPaymentForm((prev) => {
+      const cashNotes = {
+        ...prev.cashNotes,
+        [denomination]: count,
+      };
+      return {
+        ...prev,
+        cashNotes,
+        amount: String(calculateCashAmount(cashNotes) || ""),
+      };
+    });
   };
 
   const formatPaymentDetails = (payment) => {
@@ -267,6 +323,17 @@ function UpdatePayment() {
 
   const validatePaymentForm = () => {
     const amount = parseFloat(paymentForm.amount);
+
+    if (paymentForm.paymentMode === "cash") {
+      const hasCashCount = CASH_DENOMINATIONS.some(
+        (denomination) => (parseInt(paymentForm.cashNotes[denomination], 10) || 0) > 0
+      );
+      if (!hasCashCount) {
+        alert("Please enter cash note count.");
+        return null;
+      }
+    }
+
     if (!paymentForm.paymentDate || !paymentForm.amount || Number.isNaN(amount) || amount <= 0) {
       alert("Please enter a valid date and amount.");
 
@@ -356,6 +423,7 @@ function UpdatePayment() {
                 ...sale,
                 paid_amount: data.summary.paidAmount,
                 balance_amount: data.summary.balanceAmount,
+                payment_count: data.payments?.length || 0,
               }
               : sale
           )
@@ -733,9 +801,40 @@ function UpdatePayment() {
                         }
                         fullWidth
                         value={paymentForm.amount}
+                        disabled={paymentForm.paymentMode === "cash"}
                         onChange={(e) => handlePaymentFormChange("amount", e.target.value)}
                       />
                     </Grid>
+                    {paymentForm.paymentMode === "cash" && (
+                      <Grid item xs={12}>
+                        <MDBox
+                          display="grid"
+                          sx={{
+                            gridTemplateColumns: {
+                              xs: "repeat(2, minmax(0, 1fr))",
+                              sm: "repeat(3, minmax(0, 1fr))",
+                              md: "repeat(6, minmax(0, 1fr))",
+                            },
+                          }}
+                          gap={1.5}
+                        >
+                          {CASH_DENOMINATIONS.map((denomination) => (
+                            <MDInput
+                              key={denomination}
+                              type="number"
+                              label={`₹${denomination} Count`}
+                              value={paymentForm.cashNotes[denomination] || ""}
+                              onChange={(e) => handleCashNoteChange(denomination, e.target.value)}
+                              inputProps={{ min: 0, step: 1 }}
+                              fullWidth
+                            />
+                          ))}
+                        </MDBox>
+                        <MDTypography variant="caption" color="text" display="block" mt={1}>
+                          Cash amount auto-calculates from note count.
+                        </MDTypography>
+                      </Grid>
+                    )}
                     {paymentForm.paymentMode === "upi" && (
                       <Grid item xs={12} sm={6} md={3}>
                         <MDInput

@@ -6,6 +6,7 @@ router.post('/', staffController.createStaff);
 router.get('/', staffController.getStaff);
 router.get('/search', staffController.searchStaff);
 router.get('/credits/pending', staffController.getPendingCredits);
+router.put('/credits/:paymentId/remarks', staffController.updateCreditRemarks);
 router.get('/sales/by-date', staffController.getAllSalesByDate);
 router.get('/reports', staffController.getReports);
 router.get('/:id', staffController.getStaffFullDetails);

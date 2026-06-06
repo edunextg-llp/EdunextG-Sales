@@ -31,6 +31,7 @@ const API = "https://bawarchee.edunextg.co/api";
 
 const emptyReportData = {
   summary: { total_sales: 0, total_collection: 0, total_outstanding: 0 },
+  creditDuesSummary: { total_credit_dues: 0, credit_dues_count: 0 },
   collectionByMode: [],
   todayCollection: [],
   monthlyCollection: [],
@@ -67,11 +68,7 @@ function money(value) {
 }
 
 function shortMoney(value) {
-  const amount = Number(value || 0);
-  if (amount >= 10000000) return `Rs. ${(amount / 10000000).toFixed(2)} Cr`;
-  if (amount >= 100000) return `Rs. ${(amount / 100000).toFixed(2)} L`;
-  if (amount >= 1000) return `Rs. ${(amount / 1000).toFixed(1)} K`;
-  return money(amount);
+  return money(value);
 }
 
 function sumRows(rows, field = "total_amount") {
@@ -606,6 +603,9 @@ function Dashboard() {
     (row) => row.report_status === "alarm"
   ).length;
 
+  const totalCreditDues = Number(reportData.creditDuesSummary?.total_credit_dues) || 0;
+  const creditDuesCount = Number(reportData.creditDuesSummary?.credit_dues_count) || 0;
+
   return (
     <DashboardLayout>
       <DashboardNavbar />
@@ -654,6 +654,21 @@ function Dashboard() {
             <Grid item xs={12} md={6} lg={3}>
               <MDBox mb={1.5}>
                 <ComplexStatisticsCard
+                  color="error"
+                  icon="credit_card"
+                  title="Total Credit Dues"
+                  count={shortMoney(totalCreditDues)}
+                  percentage={{
+                    color: creditDuesCount > 0 ? "error" : "success",
+                    amount: creditDuesCount,
+                    label: "open credit entries",
+                  }}
+                />
+              </MDBox>
+            </Grid>
+            <Grid item xs={12} md={6} lg={3}>
+              <MDBox mb={1.5}>
+                <ComplexStatisticsCard
                   color="warning"
                   icon="account_balance_wallet"
                   title="Outstanding"
@@ -661,7 +676,7 @@ function Dashboard() {
                   percentage={{
                     color: "warning",
                     amount: "",
-                    label: `${reportData.duesReport.length} credit dues`,
+                    label: "Unpaid invoice balance",
                   }}
                 />
               </MDBox>
@@ -712,7 +727,7 @@ function Dashboard() {
               <MDBox mb={3}>
                 <PaymentModePieChart
                   data={collectionModePieData}
-                  title="Total Collection Split"
+                  title="Total Collection"
                   icon="donut_small"
                   iconColor="warning"
                 />
@@ -768,11 +783,11 @@ function Dashboard() {
                 <MDTypography variant="h6" fontWeight="medium">
                   Credit Dues
                 </MDTypography>
-                <MDTypography variant="h3" color={reportData.duesReport.length > 0 ? "error" : "success"}>
-                  {reportData.duesReport.length}
+                <MDTypography variant="h3" color={totalCreditDues > 0 ? "error" : "success"}>
+                  {shortMoney(totalCreditDues)}
                 </MDTypography>
                 <MDTypography variant="body2" color="text">
-                  Open dues between 1 and 30 credit days.
+                  {creditDuesCount} open credit {creditDuesCount === 1 ? "entry" : "entries"} with unpaid balance.
                 </MDTypography>
               </MDBox>
             </Card>
