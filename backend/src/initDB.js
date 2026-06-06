@@ -44,6 +44,7 @@ async function initDB() {
             id INT AUTO_INCREMENT PRIMARY KEY,
             name VARCHAR(255) NOT NULL,
             contact_no VARCHAR(20) NOT NULL,
+            staff_type ENUM('distributor', 'cnf') NOT NULL DEFAULT 'distributor',
             company_id INT NULL,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE SET NULL
@@ -64,12 +65,39 @@ async function initDB() {
         }
     }
 
+    await connection.query(`
+        CREATE TABLE IF NOT EXISTS staff_companies (
+            staff_id INT NOT NULL,
+            company_id INT NOT NULL,
+            PRIMARY KEY (staff_id, company_id),
+            FOREIGN KEY (staff_id) REFERENCES staff(id) ON DELETE CASCADE,
+            FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE CASCADE
+        );
+    `);
+    console.log('Staff companies table created');
+
+    await connection.query(`
+        INSERT IGNORE INTO staff_companies (staff_id, company_id)
+        SELECT id, company_id FROM staff WHERE company_id IS NOT NULL
+    `);
+
+    try {
+        await connection.query(`
+            ALTER TABLE staff ADD COLUMN staff_type ENUM('distributor', 'cnf') NOT NULL DEFAULT 'distributor'
+        `);
+        console.log('Added staff_type to staff table');
+    } catch (err) {
+        if (err.code !== 'ER_DUP_FIELDNAME') {
+            console.log('staff_type column may already exist on staff');
+        }
+    }
+
     // Create Staff Locations table
     await connection.query(`
         CREATE TABLE IF NOT EXISTS staff_locations (
             id INT AUTO_INCREMENT PRIMARY KEY,
             staff_id INT NOT NULL,
-            day ENUM('Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday') NOT NULL,
+            day ENUM('Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'CNF') NOT NULL,
             location_name VARCHAR(255) NOT NULL,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (staff_id) REFERENCES staff(id) ON DELETE CASCADE
@@ -82,7 +110,7 @@ async function initDB() {
         CREATE TABLE IF NOT EXISTS staff_counters (
             id INT AUTO_INCREMENT PRIMARY KEY,
             staff_id INT NOT NULL,
-            day ENUM('Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday') NOT NULL,
+            day ENUM('Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'CNF') NOT NULL,
             outlet_erp_id VARCHAR(50) NOT NULL,
             outlet_name VARCHAR(255) NOT NULL,
             contact_number VARCHAR(20) NOT NULL,
@@ -91,6 +119,18 @@ async function initDB() {
         );
     `);
     console.log('Staff Counters table created');
+
+    try {
+        await connection.query(`
+            ALTER TABLE staff_locations MODIFY COLUMN day ENUM('Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'CNF') NOT NULL
+        `);
+        await connection.query(`
+            ALTER TABLE staff_counters MODIFY COLUMN day ENUM('Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'CNF') NOT NULL
+        `);
+        console.log('Updated staff route day enums');
+    } catch (err) {
+        console.log('staff route day enums may already be updated');
+    }
 
     // Create Staff Sales table
     await connection.query(`
@@ -155,10 +195,41 @@ async function initDB() {
             id INT AUTO_INCREMENT PRIMARY KEY,
             name VARCHAR(255) NOT NULL,
             contact_no VARCHAR(20) NOT NULL,
+            company_id INT NULL,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            ,FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE SET NULL
         );
     `);
     console.log('Delivery boys table created');
+
+    try {
+        await connection.query(`
+            ALTER TABLE delivery_boys ADD COLUMN company_id INT NULL,
+            ADD CONSTRAINT fk_delivery_boys_company
+                FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE SET NULL
+        `);
+        console.log('Added company_id to delivery_boys table');
+    } catch (err) {
+        if (err.code !== 'ER_DUP_FIELDNAME' && err.code !== 'ER_CANT_CREATE_TABLE') {
+            console.log('company_id column may already exist on delivery_boys');
+        }
+    }
+
+    await connection.query(`
+        CREATE TABLE IF NOT EXISTS delivery_boy_companies (
+            delivery_boy_id INT NOT NULL,
+            company_id INT NOT NULL,
+            PRIMARY KEY (delivery_boy_id, company_id),
+            FOREIGN KEY (delivery_boy_id) REFERENCES delivery_boys(id) ON DELETE CASCADE,
+            FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE CASCADE
+        );
+    `);
+    console.log('Delivery boy companies table created');
+
+    await connection.query(`
+        INSERT IGNORE INTO delivery_boy_companies (delivery_boy_id, company_id)
+        SELECT id, company_id FROM delivery_boys WHERE company_id IS NOT NULL
+    `);
 
     try {
         await connection.query(`
@@ -216,6 +287,27 @@ async function initDB() {
     } catch (err) {
         console.error('Error modifying packaging_status ENUM:', err);
     }
+
+    await connection.query(`
+        CREATE TABLE IF NOT EXISTS staff_sale_status_history (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            sale_id INT NOT NULL,
+            status ENUM('not_packing', 'packing', 'packing_done', 'out_for_delivery', 'delivered', 'cancelled') NOT NULL,
+            changed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (sale_id) REFERENCES staff_sales(id) ON DELETE CASCADE,
+            INDEX idx_sale_status_history_sale_id (sale_id)
+        );
+    `);
+    console.log('Staff sale status history table created');
+
+    await connection.query(`
+        INSERT INTO staff_sale_status_history (sale_id, status, changed_at)
+        SELECT ss.id, ss.packaging_status, COALESCE(ss.created_at, CURRENT_TIMESTAMP)
+        FROM staff_sales ss
+        WHERE NOT EXISTS (
+            SELECT 1 FROM staff_sale_status_history ssh WHERE ssh.sale_id = ss.id
+        )
+    `);
 
     await connection.query(`
         CREATE TABLE IF NOT EXISTS sale_payments (

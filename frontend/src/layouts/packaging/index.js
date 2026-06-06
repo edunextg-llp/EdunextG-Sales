@@ -2,7 +2,22 @@ import { useState, useEffect } from "react";
 import Grid from "@mui/material/Grid";
 import Card from "@mui/material/Card";
 // import Icon from "@mui/material/Icon";
-import { Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper, FormControl, Select, MenuItem } from "@mui/material";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
+  Paper,
+  FormControl,
+  Select,
+  MenuItem,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+} from "@mui/material";
 
 import MDBox from "components/MDBox";
 import MDTypography from "components/MDTypography";
@@ -19,7 +34,31 @@ function Packaging() {
   const [deliveryBoys, setDeliveryBoys] = useState([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
+  const [historyDialog, setHistoryDialog] = useState({ open: false, sale: null, history: [] });
   const API = "https://bawarchee.edunextg.co/api";
+
+  const statusLabels = {
+    not_packing: "Not Packing",
+    packing: "Packing In Progress",
+    packing_done: "Packing Done",
+    out_for_delivery: "Out for Delivery",
+    delivered: "Delivered",
+    cancelled: "Cancelled",
+  };
+
+  const formatDate = (value) => {
+    if (!value) return "N/A";
+    const dateOnly = String(value).split("T")[0].split(" ")[0];
+    const parts = dateOnly.split("-");
+    if (parts.length === 3) return `${parts[2]}-${parts[1]}-${parts[0]}`;
+    return value;
+  };
+
+  const formatDateTime = (value) => {
+    if (!value) return "N/A";
+    const [datePart, timePart = ""] = String(value).split(/[T ]/);
+    return `${formatDate(datePart)}${timePart ? ` ${timePart.slice(0, 5)}` : ""}`;
+  };
 
   useEffect(() => {
     const fetchDeliveryBoys = async () => {
@@ -91,6 +130,22 @@ function Packaging() {
     }
   };
 
+  const handleViewHistory = async (saleId) => {
+    try {
+      const response = await fetch(`${API}/staff/sales/${saleId}/status-history`);
+      if (response.ok) {
+        const data = await response.json();
+        setHistoryDialog({ open: true, sale: data.sale, history: data.history || [] });
+      } else {
+        const err = await response.json().catch(() => ({}));
+        alert(err.error || "Failed to load status dates.");
+      }
+    } catch (error) {
+      console.error("Error loading status history:", error);
+      alert("Error loading status dates.");
+    }
+  };
+
   const getRowColor = (status) => {
     if (status === 'packing_done') return '#dcfce7'; // green
     if (status === 'packing') return '#fef08a'; // yellow
@@ -114,7 +169,8 @@ function Packaging() {
     const search = searchQuery.toLowerCase();
     const outletName = row.outlet_name ? row.outlet_name.toLowerCase() : "";
     const outletErpId = row.outlet_erp_id ? row.outlet_erp_id.toLowerCase() : "";
-    return outletName.includes(search) || outletErpId.includes(search);
+    const staffName = row.staff_name ? row.staff_name.toLowerCase() : "";
+    return outletName.includes(search) || outletErpId.includes(search) || staffName.includes(search);
   });
 
   return (
@@ -134,7 +190,7 @@ function Packaging() {
                   <Grid item xs={12} md={3}>
                     <MDInput
                       type="text"
-                      label="Search by Outlet Name or ID"
+                      label="Search by Outlet Name, ID, or Staff Name"
                       fullWidth
                       value={searchQuery}
                       onChange={(e) => setSearchQuery(e.target.value)}
@@ -173,7 +229,7 @@ function Packaging() {
                           Sr No
                         </TableCell>
                         <TableCell sx={{ color: "#6b7280", borderBottom: "1px solid #e5e7eb", py: 1.5, fontWeight: 500 }}>
-                          M.Person Name
+                          Staff Name
                         </TableCell>
                         <TableCell sx={{ color: "#6b7280", borderBottom: "1px solid #e5e7eb", py: 1.5, fontWeight: 500 }}>
                           Outlet Name
@@ -192,6 +248,9 @@ function Packaging() {
                         </TableCell>
                         <TableCell align="center" sx={{ color: "#6b7280", borderBottom: "1px solid #e5e7eb", py: 1.5, fontWeight: 500 }}>
                           Status
+                        </TableCell>
+                        <TableCell align="center" sx={{ color: "#6b7280", borderBottom: "1px solid #e5e7eb", py: 1.5, fontWeight: 500 }}>
+                          Status Date
                         </TableCell>
                         <TableCell align="center" sx={{ color: "#6b7280", borderBottom: "1px solid #e5e7eb", py: 1.5, fontWeight: 500 }}>
                           Action
@@ -243,17 +302,25 @@ function Packaging() {
                                   </Select>
                                 </FormControl>
                               </TableCell>
+                              <TableCell align="center" sx={{ borderBottom: borderCol, py: 2, color: txColor }}>
+                                {formatDateTime(row.status_updated_at)}
+                              </TableCell>
                               <TableCell align="center" sx={{ borderBottom: borderCol, py: 2 }}>
-                                <MDButton color="dark" variant="gradient" size="small" onClick={() => handleSavePackaging(row.id)}>
-                                  Save
-                                </MDButton>
+                                <MDBox display="flex" gap={1} justifyContent="center" flexWrap="wrap">
+                                  <MDButton color="dark" variant="gradient" size="small" onClick={() => handleSavePackaging(row.id)}>
+                                    Save
+                                  </MDButton>
+                                  <MDButton color="info" variant="outlined" size="small" onClick={() => handleViewHistory(row.id)}>
+                                    View
+                                  </MDButton>
+                                </MDBox>
                               </TableCell>
                             </TableRow>
                           )
                         })
                       ) : (
                         <TableRow>
-                          <TableCell colSpan={8} align="center" sx={{ py: 3, borderBottom: 0 }}>
+                          <TableCell colSpan={9} align="center" sx={{ py: 3, borderBottom: 0 }}>
                             <MDTypography variant="body2" color="text">
                               No sales found.
                             </MDTypography>
@@ -269,6 +336,56 @@ function Packaging() {
         </Grid>
       </MDBox>
       <Footer />
+
+      <Dialog
+        open={historyDialog.open}
+        onClose={() => setHistoryDialog({ open: false, sale: null, history: [] })}
+        fullWidth
+        maxWidth="sm"
+      >
+        <DialogTitle>Status Update Dates</DialogTitle>
+        <DialogContent dividers>
+          <MDBox mb={2}>
+            <MDTypography variant="button" fontWeight="medium">
+              Invoice: {historyDialog.sale?.invoice_number || "N/A"}
+            </MDTypography>
+            <MDTypography variant="body2" color="text">
+              Invoice Date: {formatDate(historyDialog.sale?.sale_date)}
+            </MDTypography>
+            <MDTypography variant="body2" color="text">
+              Outlet: {historyDialog.sale?.outlet_name || "N/A"}
+            </MDTypography>
+          </MDBox>
+          <Table size="small">
+            <TableHead sx={{ display: "table-header-group" }}>
+              <TableRow>
+                <TableCell>Status</TableCell>
+                <TableCell align="center">Update Date</TableCell>
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {historyDialog.history.map((item) => (
+                <TableRow key={item.id}>
+                  <TableCell>{statusLabels[item.status] || item.status}</TableCell>
+                  <TableCell align="center">{formatDateTime(item.changed_at)}</TableCell>
+                </TableRow>
+              ))}
+              {historyDialog.history.length === 0 && (
+                <TableRow>
+                  <TableCell colSpan={2} align="center">
+                    No status update dates found.
+                  </TableCell>
+                </TableRow>
+              )}
+            </TableBody>
+          </Table>
+        </DialogContent>
+        <DialogActions>
+          <MDButton color="dark" onClick={() => setHistoryDialog({ open: false, sale: null, history: [] })}>
+            Close
+          </MDButton>
+        </DialogActions>
+      </Dialog>
     </DashboardLayout>
   );
 }

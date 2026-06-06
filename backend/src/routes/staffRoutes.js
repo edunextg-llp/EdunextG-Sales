@@ -21,6 +21,7 @@ router.put('/counter/:counterId', staffController.editCounter);
 router.delete('/counter/:counterId', staffController.deleteCounter);
 router.put('/sales/:saleId/payment', staffController.updatePaymentMode);
 router.get('/sales/:saleId/payments', staffController.getSalePayments);
+router.get('/sales/:saleId/status-history', staffController.getSaleStatusHistory);
 router.post('/sales/:saleId/payments', staffController.addSalePayment);
 
 router.put('/sales/:saleId/payments/:paymentId', staffController.editSalePayment);

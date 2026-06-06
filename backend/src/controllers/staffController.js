@@ -10,11 +10,21 @@ import {
     validateRequiredText,
 } from '../utils/validation.js';
 
-async function resolveCompanyId(companyName) {
-    if (!companyName || !String(companyName).trim()) {
-        return null;
+async function resolveCompanyIds(companyNames, fallbackCompanyName) {
+    const names = Array.isArray(companyNames)
+        ? companyNames
+        : String(fallbackCompanyName || '')
+            .split(',')
+            .map(name => name.trim());
+
+    const uniqueNames = [...new Set(names.map(name => String(name || '').trim()).filter(Boolean))];
+    const companyIds = [];
+
+    for (const companyName of uniqueNames) {
+        companyIds.push(await CompanyModel.findOrCreateByName(companyName));
     }
-    return CompanyModel.findOrCreateByName(String(companyName).trim());
+
+    return companyIds;
 }
 
 function normalizeDateInput(value) {
@@ -38,17 +48,25 @@ function normalizeDateInput(value) {
 
 export const createStaff = async (req, res) => {
     try {
-        const { name, contactNo, companyName, assignments } = req.body;
+        const { name, contactNo, companyName, companyNames, staffType = 'distributor', assignments = {} } = req.body;
+        const normalizedStaffType = staffType === 'cnf' ? 'cnf' : 'distributor';
 
         const contactValidation = validateDigitsOnly(contactNo, 'Contact number');
         if (!contactValidation.valid) {
             return res.status(400).json({ error: contactValidation.error });
         }
 
-        const companyId = await resolveCompanyId(companyName);
+        const companyIds = await resolveCompanyIds(companyNames, companyName);
+        const companyId = companyIds[0] || null;
 
         // Create staff entry
-        const staffId = await StaffModel.create(name, contactValidation.value, companyId);
+        const staffId = await StaffModel.create(
+            name,
+            contactValidation.value,
+            companyId,
+            normalizedStaffType
+        );
+        await StaffModel.setCompanies(staffId, companyIds);
 
         // Add location assignments
         // assignments: { Monday: [{ locationName: "..." }], Tuesday: [...] }
@@ -99,6 +117,9 @@ export const addCounter = async (req, res) => {
         const { day, location, counters } = req.body;
 
         if (Array.isArray(counters)) {
+            const erpIds = new Set();
+            const outletNames = new Set();
+
             for (let i = 0; i < counters.length; i++) {
                 const counter = counters[i];
                 const contactValidation = validateDigitsOnly(
@@ -108,8 +129,28 @@ export const addCounter = async (req, res) => {
                 if (!contactValidation.valid) {
                     return res.status(400).json({ error: contactValidation.error });
                 }
+
+                const outletErpId = String(counter.outletErpId || '').trim();
+                const outletName = String(counter.outletName || '').trim();
+                const normalizedErpId = outletErpId.toLowerCase();
+                const normalizedOutletName = outletName.toLowerCase();
+
+                if (erpIds.has(normalizedErpId) || outletNames.has(normalizedOutletName)) {
+                    return res.status(400).json({ error: 'Same ERP Id or Outlet Name already exists in this entry.' });
+                }
+
+                const duplicateCounter = await StaffModel.findDuplicateCounter(id, outletErpId, outletName);
+                if (duplicateCounter) {
+                    return res.status(400).json({ error: 'Same ERP Id or Outlet Name already exists.' });
+                }
+
+                erpIds.add(normalizedErpId);
+                outletNames.add(normalizedOutletName);
+
                 await StaffModel.addCounter(id, day, location, {
                     ...counter,
+                    outletErpId,
+                    outletName,
                     contactNumber: contactValidation.value,
                 });
             }
@@ -142,7 +183,7 @@ export const getStaffFullDetails = async (req, res) => {
         
         // Structure assignments back to the format frontend expects
         const assignments = {
-            Monday: [], Tuesday: [], Wednesday: [], Thursday: [], Friday: [], Saturday: []
+            Monday: [], Tuesday: [], Wednesday: [], Thursday: [], Friday: [], Saturday: [], CNF: []
         };
         locations.forEach(loc => {
             if (assignments[loc.day]) {
@@ -150,7 +191,11 @@ export const getStaffFullDetails = async (req, res) => {
             }
         });
 
-        res.status(200).json({ ...staff, assignments });
+        const companies = staff.company_name
+            ? staff.company_name.split(',').map(name => name.trim()).filter(Boolean)
+            : [];
+
+        res.status(200).json({ ...staff, companies, assignments });
     } catch (error) {
         res.status(500).json({ error: 'Internal server error' });
     }
@@ -159,17 +204,20 @@ export const getStaffFullDetails = async (req, res) => {
 export const updateStaff = async (req, res) => {
     try {
         const { id } = req.params;
-        const { name, contactNo, companyName, assignments } = req.body;
+        const { name, contactNo, companyName, companyNames, staffType = 'distributor', assignments = {} } = req.body;
+        const normalizedStaffType = staffType === 'cnf' ? 'cnf' : 'distributor';
 
         const contactValidation = validateDigitsOnly(contactNo, 'Contact number');
         if (!contactValidation.valid) {
             return res.status(400).json({ error: contactValidation.error });
         }
 
-        const companyId = await resolveCompanyId(companyName);
+        const companyIds = await resolveCompanyIds(companyNames, companyName);
+        const companyId = companyIds[0] || null;
 
         // Update staff info
-        await StaffModel.update(id, name, contactValidation.value, companyId);
+        await StaffModel.update(id, name, contactValidation.value, companyId, normalizedStaffType);
+        await StaffModel.setCompanies(id, companyIds);
 
         // Replace locations
         await StaffModel.deleteLocations(id);
@@ -230,6 +278,7 @@ export const recordSales = async (req, res) => {
 
         const deliveryBoyCache = new Map();
         const validatedSales = [];
+        const invoiceNumbers = new Set();
         for (let i = 0; i < sales.length; i++) {
             const item = sales[i];
             const outletValidation = validatePositiveInteger(item.outletId, `Sale ${i + 1} outlet ID`);
@@ -247,6 +296,18 @@ export const recordSales = async (req, res) => {
             if (!priceValidation.valid) {
                 return res.status(400).json({ error: priceValidation.error });
             }
+
+            const normalizedInvoice = invoiceValidation.value.toLowerCase();
+            if (invoiceNumbers.has(normalizedInvoice)) {
+                return res.status(400).json({ error: 'Same invoice number already exists in this entry.' });
+            }
+
+            const duplicateInvoice = await StaffModel.findSaleByInvoice(id, invoiceValidation.value);
+            if (duplicateInvoice) {
+                return res.status(400).json({ error: 'Same invoice number already exists.' });
+            }
+            invoiceNumbers.add(normalizedInvoice);
+
             let deliveryBoyId = null;
             let deliveryBoyName = '';
             if (item.deliveryBoyId) {
@@ -323,6 +384,15 @@ export const updateSale = async (req, res) => {
             return res.status(404).json({ error: 'Sale not found' });
         }
 
+        const duplicateInvoice = await StaffModel.findSaleByInvoice(
+            existing.staff_id,
+            invoiceValidation.value,
+            saleId
+        );
+        if (duplicateInvoice) {
+            return res.status(400).json({ error: 'Same invoice number already exists.' });
+        }
+
         const updated = await StaffModel.updateSale(
             saleId,
             invoiceValidation.value,
@@ -380,9 +450,29 @@ export const updatePackagingStatus = async (req, res) => {
             vehicleNo || null,
             normalizeDateInput(deliveryDate)
         );
-        res.status(200).json({ message: 'Packaging status updated successfully' });
+        const updated = await StaffModel.getSaleById(saleId);
+        res.status(200).json({
+            message: 'Packaging status updated successfully',
+            sale: updated,
+        });
     } catch (error) {
         console.error('Error updating packaging status:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+};
+
+export const getSaleStatusHistory = async (req, res) => {
+    try {
+        const { saleId } = req.params;
+        const details = await StaffModel.getSaleStatusHistory(saleId);
+
+        if (!details) {
+            return res.status(404).json({ error: 'Sale not found' });
+        }
+
+        res.status(200).json(details);
+    } catch (error) {
+        console.error('Error fetching sale status history:', error);
         res.status(500).json({ error: 'Internal server error' });
     }
 };
@@ -461,8 +551,29 @@ export const editCounter = async (req, res) => {
     try {
         const { counterId } = req.params;
         const { outletErpId, outletName, contactNumber } = req.body;
-        
-        await StaffModel.editCounter(counterId, { outletErpId, outletName, contactNumber });
+        const existingCounter = await StaffModel.getCounterById(counterId);
+        if (!existingCounter) {
+            return res.status(404).json({ error: 'Counter not found' });
+        }
+
+        const normalizedOutletErpId = String(outletErpId || '').trim();
+        const normalizedOutletName = String(outletName || '').trim();
+        const duplicateCounter = await StaffModel.findDuplicateCounter(
+            existingCounter.staff_id,
+            normalizedOutletErpId,
+            normalizedOutletName,
+            counterId
+        );
+
+        if (duplicateCounter) {
+            return res.status(400).json({ error: 'Same ERP Id or Outlet Name already exists.' });
+        }
+
+        await StaffModel.editCounter(counterId, {
+            outletErpId: normalizedOutletErpId,
+            outletName: normalizedOutletName,
+            contactNumber,
+        });
         res.status(200).json({ message: 'Counter updated successfully' });
     } catch (error) {
         console.error('Error editing counter:', error);

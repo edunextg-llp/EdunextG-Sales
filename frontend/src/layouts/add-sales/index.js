@@ -6,6 +6,10 @@ import Card from "@mui/material/Card";
 import Icon from "@mui/material/Icon";
 import Autocomplete from "@mui/material/Autocomplete";
 import {
+  FormControl,
+  InputLabel,
+  MenuItem,
+  Select,
   Table,
   TableBody,
   TableCell,
@@ -55,6 +59,8 @@ const tableHeadRowSx = {
 function AddSales() {
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split("T")[0]);
   const [staffOptions, setStaffOptions] = useState([]);
+  const [selectedStaffType, setSelectedStaffType] = useState("");
+  const [selectedCompanyName, setSelectedCompanyName] = useState("");
   const [selectedStaff, setSelectedStaff] = useState(null);
   const [outlets, setOutlets] = useState([]);
   const [allOutlets, setAllOutlets] = useState([]);
@@ -70,8 +76,30 @@ function AddSales() {
   const [savingEdit, setSavingEdit] = useState(false);
 
   const API = "https://bawarchee.edunextg.co/api";
+  const isCnfStaff = selectedStaff?.staff_type === "cnf";
 
   const outletKey = (id) => String(id);
+
+  const getStaffCompanies = (staff) =>
+    String(staff?.company_name || "")
+      .split(",")
+      .map((company) => company.trim())
+      .filter(Boolean);
+
+  const companyOptions = [
+    ...new Set(
+      staffOptions
+        .filter((staff) => !selectedStaffType || (staff.staff_type || "distributor") === selectedStaffType)
+        .flatMap(getStaffCompanies)
+    ),
+  ].sort((a, b) => a.localeCompare(b));
+
+  const filteredStaffOptions = staffOptions.filter((staff) => {
+    const matchesType = !selectedStaffType || (staff.staff_type || "distributor") === selectedStaffType;
+    const matchesCompany =
+      !selectedCompanyName || getStaffCompanies(staff).includes(selectedCompanyName);
+    return matchesType && matchesCompany;
+  });
 
   const mergeOutletsById = (...lists) => {
     const map = new Map();
@@ -83,6 +111,22 @@ function AddSales() {
 
   const rowHasDraft = (row) =>
     Boolean(row?.invoiceNumber?.trim() || row?.price?.toString().trim());
+
+  const normalizeInvoice = (value) => String(value || "").trim().toLowerCase();
+
+  const hasDuplicateInvoiceNumbers = (invoiceNumbers, excludeSaleId = null) => {
+    const normalizedInvoices = invoiceNumbers.map(normalizeInvoice).filter(Boolean);
+    const hasDuplicateInEntry = normalizedInvoices.some(
+      (invoiceNumber, index) => normalizedInvoices.indexOf(invoiceNumber) !== index
+    );
+    const hasDuplicateSubmitted = (submittedSummary?.sales || []).some(
+      (sale) =>
+        sale.id !== excludeSaleId &&
+        normalizedInvoices.includes(normalizeInvoice(sale.invoiceNumber))
+    );
+
+    return hasDuplicateInEntry || hasDuplicateSubmitted;
+  };
 
   const outletHasDraft = (id) => {
     const rows = salesData[outletKey(id)] || [];
@@ -242,6 +286,17 @@ function AddSales() {
 
     fetchStaffOptions();
   }, []);
+
+  useEffect(() => {
+    setSelectedCompanyName("");
+    setSelectedStaff(null);
+    setOutletSearch("");
+  }, [selectedStaffType]);
+
+  useEffect(() => {
+    setSelectedStaff(null);
+    setOutletSearch("");
+  }, [selectedCompanyName]);
 
   useEffect(() => {
     if (!selectedStaff || !selectedDate) {
@@ -415,6 +470,10 @@ function AddSales() {
       alert("Please complete partially filled rows or remove them.");
       return;
     }
+    if (hasDuplicateInvoiceNumbers(validRows.map((d) => d.invoiceNumber))) {
+      alert("Same invoice number already exists. Please use a unique invoice number.");
+      return;
+    }
 
     const payload = {
       date: selectedDate,
@@ -497,6 +556,10 @@ function AddSales() {
       alert("Some rows are partially filled or invalid. Please provide both an invoice number and numeric price, or clear/remove the row.");
       return;
     }
+    if (hasDuplicateInvoiceNumbers(allSales.map((sale) => sale.invoiceNumber))) {
+      alert("Same invoice number already exists. Please use unique invoice numbers.");
+      return;
+    }
 
     const payload = {
       date: selectedDate,
@@ -560,6 +623,10 @@ function AddSales() {
     const price = parseFloat(editForm.price);
     if (Number.isNaN(price)) {
       alert("Please enter a valid price.");
+      return;
+    }
+    if (hasDuplicateInvoiceNumbers([editForm.invoiceNumber], saleId)) {
+      alert("Same invoice number already exists. Please use a unique invoice number.");
       return;
     }
 
@@ -649,7 +716,7 @@ function AddSales() {
               </MDBox>
               <MDBox pb={3} px={3}>
                 <Grid container spacing={3}>
-                  <Grid item xs={12} md={4}>
+                  <Grid item xs={12} md={3}>
                     <MDBox mb={2}>
                       <MDInput
                         type="date"
@@ -664,10 +731,58 @@ function AddSales() {
                       />
                     </MDBox>
                   </Grid>
-                  <Grid item xs={12} md={4}>
+
+                  <Grid item xs={12} md={3}>
+                    <FormControl fullWidth size="small">
+                      <InputLabel id="sales-staff-type-label">Staff Type</InputLabel>
+                      <Select
+                        labelId="sales-staff-type-label"
+                        value={selectedStaffType}
+                        label="Staff Type"
+                        onChange={(e) => setSelectedStaffType(e.target.value)}
+                        sx={{ minHeight: 48, height: 48 }}
+                      >
+                        <MenuItem value="">
+                          <em>Select Staff Type</em>
+                        </MenuItem>
+                        <MenuItem value="distributor">Distributor</MenuItem>
+                        <MenuItem value="cnf">CNF</MenuItem>
+                      </Select>
+                    </FormControl>
+                  </Grid>
+
+                  <Grid item xs={12} md={3}>
+                    <FormControl fullWidth size="small" disabled={!selectedStaffType}>
+                      <InputLabel id="sales-company-label">Company Name</InputLabel>
+                      <Select
+                        labelId="sales-company-label"
+                        value={selectedCompanyName}
+                        label="Company Name"
+                        onChange={(e) => setSelectedCompanyName(e.target.value)}
+                        sx={{ minHeight: 48, height: 48 }}
+                      >
+                        <MenuItem value="">
+                          <em>Select Company</em>
+                        </MenuItem>
+                        {companyOptions.map((companyName) => (
+                          <MenuItem key={companyName} value={companyName}>
+                            {companyName}
+                          </MenuItem>
+                        ))}
+                        {selectedStaffType && companyOptions.length === 0 && (
+                          <MenuItem disabled>
+                            No {selectedStaffType === "cnf" ? "CNF" : "Distributor"} company found
+                          </MenuItem>
+                        )}
+                      </Select>
+                    </FormControl>
+                  </Grid>
+
+                  <Grid item xs={12} md={3}>
                     <MDBox mb={2}>
                       <Autocomplete
-                        options={staffOptions}
+                        options={filteredStaffOptions}
+                        value={selectedStaff}
                         getOptionLabel={(option) => option.name}
                         isOptionEqualToValue={(option, value) => option.id === value.id}
                         onChange={(event, newValue) => {
@@ -681,6 +796,7 @@ function AddSales() {
                           }
                         }}
                         onInputChange={(event, newInputValue) => fetchStaffOptions(newInputValue)}
+                        disabled={!selectedStaffType || !selectedCompanyName}
                         renderInput={(params) => (
                           <MDInput {...params} label="Search Staff Name" fullWidth />
                         )}
@@ -722,7 +838,7 @@ function AddSales() {
                         }}
                       >
                         <MDTypography variant="button" fontWeight="bold" color="info">
-                          {dayName}
+                          {isCnfStaff ? "CNF" : dayName}
                         </MDTypography>
                       </MDBox>
                     </MDBox>
@@ -736,34 +852,36 @@ function AddSales() {
                         onChange={(e) => setOutletSearch(e.target.value)}
                       />
                     </MDBox>
-                    <MDBox mb={2} maxWidth={400}>
-                      <Autocomplete
-                        options={["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"]}
-                        onChange={(event, newValue) => {
-                          if (newValue) {
-                            const outletsToAdd = allOutlets.filter(
-                              o => o.day === newValue && !outlets.some(existing => existing.id === o.id)
-                            );
+                    {!isCnfStaff && (
+                      <MDBox mb={2} maxWidth={400}>
+                        <Autocomplete
+                          options={["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"]}
+                          onChange={(event, newValue) => {
+                            if (newValue) {
+                              const outletsToAdd = allOutlets.filter(
+                                o => o.day === newValue && !outlets.some(existing => existing.id === o.id)
+                              );
 
-                            if (outletsToAdd.length > 0) {
-                              setOutlets([...outlets, ...outletsToAdd]);
-                              setSalesData((prev) => {
-                                const newData = { ...prev };
-                                outletsToAdd.forEach(o => {
-                                  newData[o.id] = [{ invoiceNumber: "", price: "", deliveryBoyId: "", vehicleNo: "" }];
+                              if (outletsToAdd.length > 0) {
+                                setOutlets([...outlets, ...outletsToAdd]);
+                                setSalesData((prev) => {
+                                  const newData = { ...prev };
+                                  outletsToAdd.forEach(o => {
+                                    newData[o.id] = [{ invoiceNumber: "", price: "", deliveryBoyId: "", vehicleNo: "" }];
+                                  });
+                                  return newData;
                                 });
-                                return newData;
-                              });
+                              }
                             }
-                          }
-                        }}
-                        renderInput={(params) => (
-                          <MDInput {...params} label="Load Outlets by Day" fullWidth />
-                        )}
-                        clearOnBlur
-                        blurOnSelect
-                      />
-                    </MDBox>
+                          }}
+                          renderInput={(params) => (
+                            <MDInput {...params} label="Load Outlets by Day" fullWidth />
+                          )}
+                          clearOnBlur
+                          blurOnSelect
+                        />
+                      </MDBox>
+                    )}
 
                     <TableContainer
                       sx={{
@@ -784,26 +902,30 @@ function AddSales() {
                       >
                         <colgroup>
                           <col style={{ width: "6%" }} />
-                          <col style={{ width: "34%" }} />
-                          <col style={{ width: "20%" }} />
-                          <col style={{ width: "14%" }} />
-                          <col style={{ width: "26%" }} />
+                          <col style={{ width: "24%" }} />
+                          <col style={{ width: "18%" }} />
+                          <col style={{ width: "18%" }} />
+                          <col style={{ width: "12%" }} />
+                          <col style={{ width: "22%" }} />
                         </colgroup>
                         <TableHead sx={tableHeadRowSx}>
                           <TableRow>
                             <TableCell align="center" sx={{ ...tableHeadSx, width: "6%" }}>
                               Sr No
                             </TableCell>
-                            <TableCell align="left" sx={{ ...tableHeadSx, width: "34%" }}>
+                            <TableCell align="left" sx={{ ...tableHeadSx, width: "24%" }}>
                               Outlet
                             </TableCell>
-                            <TableCell align="left" sx={{ ...tableHeadSx, width: "20%" }}>
+                            <TableCell align="left" sx={{ ...tableHeadSx, width: "18%" }}>
+                              Staff Name
+                            </TableCell>
+                            <TableCell align="left" sx={{ ...tableHeadSx, width: "18%" }}>
                               Invoice No
                             </TableCell>
-                            <TableCell align="left" sx={{ ...tableHeadSx, width: "14%" }}>
+                            <TableCell align="left" sx={{ ...tableHeadSx, width: "12%" }}>
                               Price
                             </TableCell>
-                            <TableCell align="center" sx={{ ...tableHeadSx, width: "26%" }}>
+                            <TableCell align="center" sx={{ ...tableHeadSx, width: "22%" }}>
                               Action
                             </TableCell>
                           </TableRow>
@@ -813,7 +935,7 @@ function AddSales() {
                             <TableRow>
                               <TableCell sx={{ ...tableBodySx, borderBottom: "1px solid #e5e7eb" }} />
                               <TableCell
-                                colSpan={3}
+                                colSpan={4}
                                 align="center"
                                 sx={{ ...tableBodySx, borderBottom: "1px solid #e5e7eb", py: 3 }}
                               >
@@ -827,7 +949,7 @@ function AddSales() {
                             <TableRow>
                               <TableCell sx={{ ...tableBodySx, borderBottom: "1px solid #e5e7eb" }} />
                               <TableCell
-                                colSpan={3}
+                                colSpan={4}
                                 align="center"
                                 sx={{ ...tableBodySx, borderBottom: "1px solid #e5e7eb", py: 3 }}
                               >
@@ -861,18 +983,15 @@ function AddSales() {
                                   >
 
 
-                                    {index === 0 && (
-                                      <TableCell
-                                        rowSpan={rows.length}
-                                        align="center"
-                                        sx={{
-                                          ...tableBodySx,
-                                          borderBottom: "1px solid #e5e7eb",
-                                        }}
-                                      >
-                                        {outletIndex + 1}
-                                      </TableCell>
-                                    )}
+                                    <TableCell
+                                      align="center"
+                                      sx={{
+                                        ...tableBodySx,
+                                        ...rowBorder,
+                                      }}
+                                    >
+                                      {index === 0 ? outletIndex + 1 : `${outletIndex + 1}.${index + 1}`}
+                                    </TableCell>
                                     {index === 0 && (
                                       <TableCell
                                         rowSpan={rows.length}
@@ -910,6 +1029,20 @@ function AddSales() {
                                             </MDTypography>
                                           </MDBox>
                                         </MDBox>
+                                      </TableCell>
+                                    )}
+                                    {index === 0 && (
+                                      <TableCell
+                                        rowSpan={rows.length}
+                                        align="left"
+                                        sx={{
+                                          ...tableBodySx,
+                                          borderBottom: "1px solid #e5e7eb",
+                                          fontSize: "0.875rem",
+                                          color: "#374151",
+                                        }}
+                                      >
+                                        {selectedStaff?.name || "N/A"}
                                       </TableCell>
                                     )}
                                     <TableCell align="left" sx={{ ...tableBodySx, ...rowBorder }}>
@@ -1023,8 +1156,9 @@ function AddSales() {
                 {showNoDayOutletsHint && (
                   <MDBox mt={2} textAlign="center">
                     <MDTypography variant="body2" color="text">
-                      No outlets on {dayName} for this staff. Search by outlet name in the box above to
-                      record a sale from another weekday&apos;s route.
+                      {isCnfStaff
+                        ? "No CNF outlets for this staff. Search by outlet name in the box above."
+                        : `No outlets on ${dayName} for this staff. Search by outlet name in the box above to record a sale from another weekday's route.`}
                     </MDTypography>
                   </MDBox>
                 )}

@@ -129,7 +129,8 @@ function UpdatePayment() {
     const search = searchQuery.toLowerCase();
     const outletName = row.outlet_name ? row.outlet_name.toLowerCase() : "";
     const outletErpId = row.outlet_erp_id ? row.outlet_erp_id.toLowerCase() : "";
-    return outletName.includes(search) || outletErpId.includes(search);
+    const staffName = row.staff_name ? row.staff_name.toLowerCase() : "";
+    return outletName.includes(search) || outletErpId.includes(search) || staffName.includes(search);
   });
 
   const getRemainingBalance = (sale) => {
@@ -422,7 +423,7 @@ function UpdatePayment() {
                   <Grid item xs={12} md={4}>
                     <MDInput
                       type="text"
-                      label="Search by Outlet Name or ID"
+                      label="Search by Outlet Name, ID, or Staff Name"
                       fullWidth
                       value={searchQuery}
                       onChange={(e) => setSearchQuery(e.target.value)}
@@ -473,7 +474,14 @@ function UpdatePayment() {
                             return (
                               <TableRow key={sale.id} sx={getPaymentRowSx(sale)}>
                                 <TableCell align="center">{index + 1}</TableCell>
-                                <TableCell align="left">{sale.outlet_name}</TableCell>
+                                <TableCell align="left">
+                                  <MDTypography variant="button" fontWeight="medium" color="dark">
+                                    {sale.outlet_name}
+                                  </MDTypography>
+                                  <MDTypography display="block" variant="caption" color="text">
+                                    Staff: {sale.staff_name || "N/A"}
+                                  </MDTypography>
+                                </TableCell>
                                 <TableCell align="center">{sale.invoice_number}</TableCell>
                                 <TableCell align="center">
                                   ₹{Number(sale.price).toFixed(2)}

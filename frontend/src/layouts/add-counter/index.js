@@ -23,7 +23,10 @@ import Footer from "examples/Footer";
 
 function AddCounter() {
   const days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+  const cnfRouteDay = "CNF";
   const [staffOptions, setStaffOptions] = useState([]);
+  const [selectedStaffType, setSelectedStaffType] = useState("");
+  const [selectedCompanyName, setSelectedCompanyName] = useState("");
   const [selectedStaff, setSelectedStaff] = useState(null);
   const [selectedDay, setSelectedDay] = useState("");
   const [availableLocations, setAvailableLocations] = useState([]);
@@ -34,6 +37,31 @@ function AddCounter() {
   const [editFormData, setEditFormData] = useState({ outletErpId: "", outletName: "", contactNumber: "" });
 
   const API = "https://bawarchee.edunextg.co/api";
+  const isCnfStaff = selectedStaff?.staff_type === "cnf";
+  const routeDay = isCnfStaff ? cnfRouteDay : selectedDay;
+
+  const getStaffCompanies = (staff) =>
+    String(staff?.company_name || "")
+      .split(",")
+      .map((company) => company.trim())
+      .filter(Boolean);
+
+  const companyOptions = [
+    ...new Set(
+      staffOptions
+        .filter((staff) => !selectedStaffType || (staff.staff_type || "distributor") === selectedStaffType)
+        .flatMap(getStaffCompanies)
+    ),
+  ].sort((a, b) => a.localeCompare(b));
+
+  const filteredStaffOptions = staffOptions.filter((staff) => {
+    const matchesType = !selectedStaffType || (staff.staff_type || "distributor") === selectedStaffType;
+    const matchesCompany =
+      !selectedCompanyName || getStaffCompanies(staff).includes(selectedCompanyName);
+    return matchesType && matchesCompany;
+  });
+
+  const normalizeText = (value) => String(value || "").trim().toLowerCase();
 
   const fetchStaffOptions = async (query = "") => {
     try {
@@ -53,6 +81,15 @@ function AddCounter() {
     fetchStaffOptions();
   }, []);
 
+  useEffect(() => {
+    setSelectedCompanyName("");
+    setSelectedStaff(null);
+  }, [selectedStaffType]);
+
+  useEffect(() => {
+    setSelectedStaff(null);
+  }, [selectedCompanyName]);
+
   const fetchSavedOutlets = async (staffId, day) => {
     try {
       const response = await fetch(`${API}/staff/${staffId}/outlets-by-day?day=${day}`);
@@ -63,13 +100,35 @@ function AddCounter() {
     }
   };
 
-  // Fetch locations when staff or day changes
   useEffect(() => {
-    if (selectedStaff && selectedDay) {
+    if (!selectedStaff) {
+      setSelectedDay("");
+      setSelectedLocation("");
+      setAvailableLocations([]);
+      setOutlets([]);
+      setSavedOutlets([]);
+      return;
+    }
+
+    setSelectedLocation("");
+    setAvailableLocations([]);
+    setOutlets([]);
+    setSavedOutlets([]);
+
+    if (selectedStaff.staff_type === "cnf") {
+      setSelectedDay(cnfRouteDay);
+    } else if (selectedDay === cnfRouteDay) {
+      setSelectedDay("");
+    }
+  }, [selectedStaff, selectedDay]);
+
+  // Fetch locations when staff or route day changes
+  useEffect(() => {
+    if (selectedStaff && routeDay) {
       const fetchLocations = async () => {
         try {
           const response = await fetch(
-            `${API}/staff/${selectedStaff.id}/locations?day=${selectedDay}`
+            `${API}/staff/${selectedStaff.id}/locations?day=${routeDay}`
           );
           const data = await response.json();
           setAvailableLocations(data);
@@ -79,12 +138,12 @@ function AddCounter() {
         }
       };
       fetchLocations();
-      fetchSavedOutlets(selectedStaff.id, selectedDay);
+      fetchSavedOutlets(selectedStaff.id, routeDay);
     } else {
       setAvailableLocations([]);
       setSavedOutlets([]);
     }
-  }, [selectedStaff, selectedDay]);
+  }, [selectedStaff, routeDay]);
 
   const addOutletField = () => {
     setOutlets([...outlets, { outletErpId: "", outletName: "", contactNumber: "" }]);
@@ -103,8 +162,24 @@ function AddCounter() {
   };
 
   const handleSubmit = async () => {
-    if (!selectedStaff || !selectedDay || !selectedLocation || outlets.length === 0) {
+    if (!selectedStaff || !routeDay || !selectedLocation || outlets.length === 0) {
       alert("Please fill in all details and add at least one outlet.");
+      return;
+    }
+
+    const erpIds = outlets.map((outlet) => normalizeText(outlet.outletErpId)).filter(Boolean);
+    const outletNames = outlets.map((outlet) => normalizeText(outlet.outletName)).filter(Boolean);
+    const savedErpIds = new Set(savedOutlets.map((outlet) => normalizeText(outlet.outlet_erp_id)));
+    const savedOutletNames = new Set(savedOutlets.map((outlet) => normalizeText(outlet.outlet_name)));
+    const hasDuplicateErp =
+      erpIds.some((erpId, index) => erpIds.indexOf(erpId) !== index) ||
+      erpIds.some((erpId) => savedErpIds.has(erpId));
+    const hasDuplicateName =
+      outletNames.some((outletName, index) => outletNames.indexOf(outletName) !== index) ||
+      outletNames.some((outletName) => savedOutletNames.has(outletName));
+
+    if (hasDuplicateErp || hasDuplicateName) {
+      alert("Same ERP Id or Outlet Name already exists. Please use unique outlet details.");
       return;
     }
 
@@ -115,7 +190,7 @@ function AddCounter() {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          day: selectedDay,
+          day: routeDay,
           location: selectedLocation,
           counters: outlets,
         }),
@@ -125,7 +200,7 @@ function AddCounter() {
         alert("Outlets added successfully!");
         setOutlets([]);
         setSelectedLocation("");
-        fetchSavedOutlets(selectedStaff.id, selectedDay);
+        fetchSavedOutlets(selectedStaff.id, routeDay);
       } else {
         const err = await response.json().catch(() => ({}));
         alert(err.error || "Failed to add outlets.");
@@ -144,7 +219,7 @@ function AddCounter() {
       });
       if (response.ok) {
         alert("Outlet deleted successfully!");
-        fetchSavedOutlets(selectedStaff.id, selectedDay);
+        fetchSavedOutlets(selectedStaff.id, routeDay);
       } else {
         alert("Failed to delete outlet.");
       }
@@ -168,6 +243,20 @@ function AddCounter() {
   };
 
   const handleSaveEdit = async (counterId) => {
+    const editErpId = normalizeText(editFormData.outletErpId);
+    const editOutletName = normalizeText(editFormData.outletName);
+    const hasDuplicateSavedOutlet = savedOutlets.some(
+      (outlet) =>
+        outlet.id !== counterId &&
+        (normalizeText(outlet.outlet_erp_id) === editErpId ||
+          normalizeText(outlet.outlet_name) === editOutletName)
+    );
+
+    if (hasDuplicateSavedOutlet) {
+      alert("Same ERP Id or Outlet Name already exists. Please use unique outlet details.");
+      return;
+    }
+
     try {
       const response = await fetch(`${API}/staff/counter/${counterId}`, {
         method: "PUT",
@@ -180,7 +269,7 @@ function AddCounter() {
       if (response.ok) {
         alert("Outlet updated successfully!");
         setEditingOutletId(null);
-        fetchSavedOutlets(selectedStaff.id, selectedDay);
+        fetchSavedOutlets(selectedStaff.id, routeDay);
       } else {
         const err = await response.json().catch(() => ({}));
         alert(err.error || "Failed to update outlet.");
@@ -215,10 +304,57 @@ function AddCounter() {
               </MDBox>
               <MDBox pt={4} pb={3} px={3}>
                 <Grid container spacing={3}>
-                  <Grid item xs={12} md={6}>
+                  <Grid item xs={12} md={4}>
+                    <FormControl fullWidth size="small">
+                      <InputLabel id="staff-type-filter-label">Staff Type</InputLabel>
+                      <Select
+                        labelId="staff-type-filter-label"
+                        value={selectedStaffType}
+                        label="Staff Type"
+                        onChange={(e) => setSelectedStaffType(e.target.value)}
+                        sx={{ minHeight: 48, height: 48 }}
+                      >
+                        <MenuItem value="">
+                          <em>Select Staff Type</em>
+                        </MenuItem>
+                        <MenuItem value="distributor">Distributor</MenuItem>
+                        <MenuItem value="cnf">CNF</MenuItem>
+                      </Select>
+                    </FormControl>
+                  </Grid>
+
+                  <Grid item xs={12} md={4}>
+                    <FormControl fullWidth size="small" disabled={!selectedStaffType}>
+                      <InputLabel id="company-filter-label">Company Name</InputLabel>
+                      <Select
+                        labelId="company-filter-label"
+                        value={selectedCompanyName}
+                        label="Company Name"
+                        onChange={(e) => setSelectedCompanyName(e.target.value)}
+                        sx={{ minHeight: 48, height: 48 }}
+                      >
+                        <MenuItem value="">
+                          <em>Select Company</em>
+                        </MenuItem>
+                        {companyOptions.map((companyName) => (
+                          <MenuItem key={companyName} value={companyName}>
+                            {companyName}
+                          </MenuItem>
+                        ))}
+                        {selectedStaffType && companyOptions.length === 0 && (
+                          <MenuItem disabled>
+                            No {selectedStaffType === "cnf" ? "CNF" : "Distributor"} company found
+                          </MenuItem>
+                        )}
+                      </Select>
+                    </FormControl>
+                  </Grid>
+
+                  <Grid item xs={12} md={4}>
                     <MDBox mb={2}>
                       <Autocomplete
-                        options={staffOptions}
+                        options={filteredStaffOptions}
+                        value={selectedStaff}
                         getOptionLabel={(option) => option.name}
                         isOptionEqualToValue={(option, value) => option.id === value.id}
                         onChange={(event, newValue) => setSelectedStaff(newValue)}
@@ -228,6 +364,7 @@ function AddCounter() {
                           }
                         }}
                         onInputChange={(event, newInputValue) => fetchStaffOptions(newInputValue)}
+                        disabled={!selectedStaffType || !selectedCompanyName}
                         renderInput={(params) => (
                           <MDInput {...params} label="Search Staff Name" fullWidth />
                         )}
@@ -254,6 +391,9 @@ function AddCounter() {
                         <MDTypography variant="body2">
                           Contact: {selectedStaff.contact_no}
                         </MDTypography>
+                        <MDTypography variant="body2">
+                          Type: {isCnfStaff ? "CNF" : "Distributor"}
+                        </MDTypography>
                       </MDBox>
                     </Grid>
                   )}
@@ -262,30 +402,32 @@ function AddCounter() {
                 {selectedStaff && (
                   <MDBox mt={4}>
                     <Grid container spacing={3}>
-                      <Grid item xs={12} md={6}>
-                        <FormControl fullWidth size="small">
-                          <InputLabel id="select-day-label">Select Day</InputLabel>
-                          <Select
-                            labelId="select-day-label"
-                            id="select-day"
-                            value={selectedDay}
-                            label="Select Day"
-                            onChange={(e) => setSelectedDay(e.target.value)}
-                            sx={{ minHeight: 48, height: 48 }}
-                          >
-                            <MenuItem value="">
-                              <em>None</em>
-                            </MenuItem>
-                            {days.map((day) => (
-                              <MenuItem key={day} value={day}>
-                                {day}
+                      {!isCnfStaff && (
+                        <Grid item xs={12} md={6}>
+                          <FormControl fullWidth size="small">
+                            <InputLabel id="select-day-label">Select Day</InputLabel>
+                            <Select
+                              labelId="select-day-label"
+                              id="select-day"
+                              value={selectedDay}
+                              label="Select Day"
+                              onChange={(e) => setSelectedDay(e.target.value)}
+                              sx={{ minHeight: 48, height: 48 }}
+                            >
+                              <MenuItem value="">
+                                <em>None</em>
                               </MenuItem>
-                            ))}
-                          </Select>
-                        </FormControl>
-                      </Grid>
+                              {days.map((day) => (
+                                <MenuItem key={day} value={day}>
+                                  {day}
+                                </MenuItem>
+                              ))}
+                            </Select>
+                          </FormControl>
+                        </Grid>
+                      )}
                       <Grid item xs={12} md={6}>
-                        <FormControl fullWidth size="small" disabled={!selectedDay}>
+                        <FormControl fullWidth size="small" disabled={!routeDay}>
                           <InputLabel id="select-location-label">Select Location</InputLabel>
                           <Select
                             labelId="select-location-label"
@@ -303,8 +445,12 @@ function AddCounter() {
                                 {loc.location_name}
                               </MenuItem>
                             ))}
-                            {selectedDay && availableLocations.length === 0 && (
-                              <MenuItem disabled>No locations assigned for this day</MenuItem>
+                            {routeDay && availableLocations.length === 0 && (
+                              <MenuItem disabled>
+                                {isCnfStaff
+                                  ? "No CNF locations assigned"
+                                  : "No locations assigned for this day"}
+                              </MenuItem>
                             )}
                           </Select>
                         </FormControl>
@@ -398,7 +544,9 @@ function AddCounter() {
 
                 {savedOutlets.length > 0 && (
                   <MDBox mt={5}>
-                    <MDTypography variant="h6" mb={2}>Saved Outlets for {selectedDay}</MDTypography>
+                    <MDTypography variant="h6" mb={2}>
+                      Saved Outlets for {isCnfStaff ? "CNF" : selectedDay}
+                    </MDTypography>
                     {savedOutlets.map((saved) => (
                       <MDBox
                         key={saved.id}

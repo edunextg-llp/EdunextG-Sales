@@ -18,6 +18,10 @@ import {
   DialogContent,
   DialogActions,
   Divider,
+  FormControl,
+  InputLabel,
+  MenuItem,
+  Select,
 } from "@mui/material";
 
 // Material Dashboard 2 React components
@@ -55,11 +59,24 @@ const tableHeadRowSx = {
   "& .MuiTableCell-root": { backgroundColor: "#f9fafb" },
 };
 
-function CreateStaff() {
-  const days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+const routeDays = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+const cnfRouteDay = "CNF";
 
+const createEmptyAssignments = () => ({
+  Monday: [],
+  Tuesday: [],
+  Wednesday: [],
+  Thursday: [],
+  Friday: [],
+  Saturday: [],
+  CNF: [],
+});
+
+function CreateStaff() {
   const [activeTab, setActiveTab] = useState(0);
   const [staffList, setStaffList] = useState([]);
+  const [staffTypeFilter, setStaffTypeFilter] = useState("all");
+  const [employeeSearchInput, setEmployeeSearchInput] = useState("");
   const [editingStaffId, setEditingStaffId] = useState(null);
   const [viewModalOpen, setViewModalOpen] = useState(false);
   const [selectedStaffDetails, setSelectedStaffDetails] = useState(null);
@@ -68,14 +85,8 @@ function CreateStaff() {
     name: "",
     contactNo: "",
     companyName: "",
-    assignments: {
-      Monday: [],
-      Tuesday: [],
-      Wednesday: [],
-      Thursday: [],
-      Friday: [],
-      Saturday: [],
-    },
+    staffType: "distributor",
+    assignments: createEmptyAssignments(),
   });
 
   const API = "https://bawarchee.edunextg.co/api";
@@ -122,9 +133,47 @@ function CreateStaff() {
     }));
   };
 
+  const handleStaffTypeChange = (e) => {
+    const staffType = e.target.value;
+
+    setFormData((prev) => ({
+      ...prev,
+      staffType,
+      assignments: {
+        ...createEmptyAssignments(),
+        ...prev.assignments,
+      },
+    }));
+    setActiveTab(0);
+  };
+
+  const filteredStaffList =
+    staffList.filter((staff) => {
+      const matchesType =
+        staffTypeFilter === "all" || (staff.staff_type || "distributor") === staffTypeFilter;
+      const searchText = employeeSearchInput.trim().toLowerCase();
+      const matchesSearch =
+        !searchText ||
+        [staff.name, staff.company_name, staff.contact_no]
+          .filter(Boolean)
+          .some((value) => String(value).toLowerCase().includes(searchText));
+
+      return matchesType && matchesSearch;
+    });
+
+  const getCompanyNames = () => [
+    ...new Set(
+      String(formData.companyName || "")
+        .split(",")
+        .map((name) => name.trim())
+        .filter(Boolean)
+    ),
+  ];
+
   // Add Location
   const addLocation = (day) => {
     const updatedAssignments = { ...formData.assignments };
+    updatedAssignments[day] = updatedAssignments[day] || [];
 
     updatedAssignments[day].push({
       locationName: "",
@@ -139,6 +188,7 @@ function CreateStaff() {
   // Remove Location
   const removeLocation = (day, locIndex) => {
     const updatedAssignments = { ...formData.assignments };
+    updatedAssignments[day] = updatedAssignments[day] || [];
 
     updatedAssignments[day].splice(locIndex, 1);
 
@@ -151,6 +201,7 @@ function CreateStaff() {
   // Location Change
   const handleLocationChange = (day, locIndex, value) => {
     const updatedAssignments = { ...formData.assignments };
+    updatedAssignments[day] = updatedAssignments[day] || [];
 
     updatedAssignments[day][locIndex].locationName = value;
 
@@ -188,13 +239,10 @@ function CreateStaff() {
         name: data.name || "",
         contactNo: data.contact_no || "",
         companyName: data.company_name || "",
-        assignments: data.assignments || {
-          Monday: [],
-          Tuesday: [],
-          Wednesday: [],
-          Thursday: [],
-          Friday: [],
-          Saturday: [],
+        staffType: data.staff_type || "distributor",
+        assignments: {
+          ...createEmptyAssignments(),
+          ...(data.assignments || {}),
         },
       });
 
@@ -216,17 +264,12 @@ function CreateStaff() {
       name: "",
       contactNo: "",
       companyName: "",
-      assignments: {
-        Monday: [],
-        Tuesday: [],
-        Wednesday: [],
-        Thursday: [],
-        Friday: [],
-        Saturday: [],
-      },
+      staffType: "distributor",
+      assignments: createEmptyAssignments(),
     });
 
     setEditingStaffId(null);
+    setActiveTab(0);
   };
 
   // Submit
@@ -235,13 +278,29 @@ function CreateStaff() {
       const url = editingStaffId ? `${API}/staff/${editingStaffId}` : `${API}/staff`;
 
       const method = editingStaffId ? "PUT" : "POST";
+      const companyNames = getCompanyNames();
+      const activeAssignments =
+        formData.staffType === "cnf"
+          ? { [cnfRouteDay]: formData.assignments[cnfRouteDay] || [] }
+          : routeDays.reduce(
+              (acc, day) => ({
+                ...acc,
+                [day]: formData.assignments[day] || [],
+              }),
+              {}
+            );
 
       const response = await fetch(url, {
         method: method,
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify(formData),
+        body: JSON.stringify({
+          ...formData,
+          companyNames,
+          companyName: formData.companyName,
+          assignments: activeAssignments,
+        }),
       });
 
       if (response.ok) {
@@ -287,6 +346,24 @@ function CreateStaff() {
               <MDBox pt={4} pb={3} px={3}>
                 <MDBox component="form" role="form">
                   <Grid container spacing={3}>
+                    <Grid item xs={12} md={6}>
+                      <MDBox mb={2}>
+                        <FormControl fullWidth size="small">
+                          <InputLabel id="staff-type-label">Staff Type</InputLabel>
+                          <Select
+                            labelId="staff-type-label"
+                            value={formData.staffType}
+                            label="Staff Type"
+                            onChange={handleStaffTypeChange}
+                            sx={{ minHeight: 44 }}
+                          >
+                            <MenuItem value="distributor">Distributor</MenuItem>
+                            <MenuItem value="cnf">CNF</MenuItem>
+                          </Select>
+                        </FormControl>
+                      </MDBox>
+                    </Grid>
+
                     {/* Company Name */}
                     <Grid item xs={12} md={6}>
                       <MDBox mb={2}>
@@ -297,6 +374,7 @@ function CreateStaff() {
                           fullWidth
                           value={formData.companyName}
                           onChange={handleInputChange}
+                          helperText="Use comma for multiple companies"
                         />
                       </MDBox>
                     </Grid>
@@ -336,21 +414,88 @@ function CreateStaff() {
                       Location Assignments
                     </MDTypography>
 
-                    <MDBox sx={{ borderBottom: 1, borderColor: "divider" }}>
-                      <Tabs
-                        value={activeTab}
-                        onChange={handleTabChange}
-                        variant="scrollable"
-                        scrollButtons="auto"
-                      >
-                        {days.map((day) => (
-                          <Tab key={day} label={day} />
-                        ))}
-                      </Tabs>
-                    </MDBox>
+                    {formData.staffType === "distributor" ? (
+                      <>
+                        <MDBox sx={{ borderBottom: 1, borderColor: "divider" }}>
+                          <Tabs
+                            value={activeTab}
+                            onChange={handleTabChange}
+                            variant="scrollable"
+                            scrollButtons="auto"
+                          >
+                            {routeDays.map((day) => (
+                              <Tab key={day} label={day} />
+                            ))}
+                          </Tabs>
+                        </MDBox>
 
-                    {days.map((day, index) => (
-                      <MDBox key={day} hidden={activeTab !== index} py={3}>
+                        {routeDays.map((day, index) => (
+                          <MDBox key={day} hidden={activeTab !== index} py={3}>
+                            <MDBox
+                              display="flex"
+                              flexDirection={{ xs: "column", sm: "row" }}
+                              justifyContent="space-between"
+                              alignItems={{ xs: "flex-start", sm: "center" }}
+                              mb={2}
+                              gap={2}
+                            >
+                              <MDTypography variant="subtitle2" color="text">
+                                Assigned Locations for {day}
+                              </MDTypography>
+
+                              <MDButton
+                                variant="gradient"
+                                color="dark"
+                                size="small"
+                                onClick={() => addLocation(day)}
+                              >
+                                <Icon sx={{ mr: 1 }}>add</Icon>
+                                Add Location
+                              </MDButton>
+                            </MDBox>
+
+                            {(formData.assignments[day] || []).map((loc, locIndex) => (
+                              <MDBox
+                                key={locIndex}
+                                mb={2}
+                                p={2}
+                                sx={{
+                                  backgroundColor: "#f8f9fa",
+                                  borderRadius: "10px",
+                                  border: "1px solid #e9ecef",
+                                }}
+                              >
+                                <Grid container spacing={2} alignItems="center">
+                                  <Grid item xs={12} sm={9}>
+                                    <MDInput
+                                      label="Location Name"
+                                      fullWidth
+                                      value={loc.locationName}
+                                      onChange={(e) =>
+                                        handleLocationChange(day, locIndex, e.target.value)
+                                      }
+                                    />
+                                  </Grid>
+
+                                  <Grid item xs={12} sm={3}>
+                                    <MDButton
+                                      color="error"
+                                      variant="text"
+                                      fullWidth
+                                      onClick={() => removeLocation(day, locIndex)}
+                                    >
+                                      <Icon sx={{ mr: 1 }}>delete</Icon>
+                                      Remove
+                                    </MDButton>
+                                  </Grid>
+                                </Grid>
+                              </MDBox>
+                            ))}
+                          </MDBox>
+                        ))}
+                      </>
+                    ) : (
+                      <MDBox py={3}>
                         <MDBox
                           display="flex"
                           flexDirection={{ xs: "column", sm: "row" }}
@@ -360,21 +505,21 @@ function CreateStaff() {
                           gap={2}
                         >
                           <MDTypography variant="subtitle2" color="text">
-                            Assigned Locations for {day}
+                            Assigned CNF Locations
                           </MDTypography>
 
                           <MDButton
                             variant="gradient"
                             color="dark"
                             size="small"
-                            onClick={() => addLocation(day)}
+                            onClick={() => addLocation(cnfRouteDay)}
                           >
                             <Icon sx={{ mr: 1 }}>add</Icon>
                             Add Location
                           </MDButton>
                         </MDBox>
 
-                        {formData.assignments[day].map((loc, locIndex) => (
+                        {(formData.assignments[cnfRouteDay] || []).map((loc, locIndex) => (
                           <MDBox
                             key={locIndex}
                             mb={2}
@@ -392,7 +537,7 @@ function CreateStaff() {
                                   fullWidth
                                   value={loc.locationName}
                                   onChange={(e) =>
-                                    handleLocationChange(day, locIndex, e.target.value)
+                                    handleLocationChange(cnfRouteDay, locIndex, e.target.value)
                                   }
                                 />
                               </Grid>
@@ -402,7 +547,7 @@ function CreateStaff() {
                                   color="error"
                                   variant="text"
                                   fullWidth
-                                  onClick={() => removeLocation(day, locIndex)}
+                                  onClick={() => removeLocation(cnfRouteDay, locIndex)}
                                 >
                                   <Icon sx={{ mr: 1 }}>delete</Icon>
                                   Remove
@@ -412,7 +557,7 @@ function CreateStaff() {
                           </MDBox>
                         ))}
                       </MDBox>
-                    ))}
+                    )}
                   </MDBox>
 
                   {/* Buttons */}
@@ -436,13 +581,56 @@ function CreateStaff() {
           <Grid item xs={12} mt={4}>
             <Card>
               <MDBox p={3}>
-                <MDTypography variant="h5" fontWeight="medium" mb={3}>
-                  Employee List
-                </MDTypography>
+                <MDBox
+                  display="flex"
+                  flexDirection={{ xs: "column", sm: "row" }}
+                  justifyContent="space-between"
+                  alignItems={{ xs: "stretch", sm: "center" }}
+                  gap={2}
+                  mb={3}
+                >
+                  <MDTypography variant="h5" fontWeight="medium">
+                    Employee List
+                  </MDTypography>
+
+                  <MDBox
+                    display="flex"
+                    flexDirection={{ xs: "column", md: "row" }}
+                    alignItems={{ xs: "stretch", md: "center" }}
+                    gap={1.5}
+                    sx={{ width: { xs: "100%", sm: "auto" } }}
+                  >
+                    <MDInput
+                      type="text"
+                      label="Search Employee"
+                      value={employeeSearchInput}
+                      onChange={(e) => setEmployeeSearchInput(e.target.value)}
+                      sx={{ minWidth: { xs: "100%", md: 240 } }}
+                    />
+                    <FormControl size="small" sx={{ minWidth: { xs: "100%", md: 220 } }}>
+                      <InputLabel id="staff-type-filter-label">Staff Type</InputLabel>
+                      <Select
+                        labelId="staff-type-filter-label"
+                        value={staffTypeFilter}
+                        label="Staff Type"
+                        onChange={(e) => setStaffTypeFilter(e.target.value)}
+                        sx={{ minHeight: 44 }}
+                      >
+                        <MenuItem value="all">All Staff</MenuItem>
+                        <MenuItem value="distributor">Distributor</MenuItem>
+                        <MenuItem value="cnf">CNF</MenuItem>
+                      </Select>
+                    </FormControl>
+                  </MDBox>
+                </MDBox>
 
                 {staffList.length === 0 ? (
                   <MDTypography variant="body2" color="text">
                     No employees added yet.
+                  </MDTypography>
+                ) : filteredStaffList.length === 0 ? (
+                  <MDTypography variant="body2" color="text">
+                    No staff found for this search.
                   </MDTypography>
                 ) : (
                   <TableContainer
@@ -458,23 +646,27 @@ function CreateStaff() {
                       sx={{
                         tableLayout: "fixed",
                         width: "100%",
-                        minWidth: 560,
+                        minWidth: 680,
                         "& .MuiTableCell-root": { overflow: "hidden" },
                       }}
                     >
                       <colgroup>
-                        <col style={{ width: "32%" }} />
-                        <col style={{ width: "32%" }} />
+                        <col style={{ width: "26%" }} />
+                        <col style={{ width: "26%" }} />
+                        <col style={{ width: "12%" }} />
                         <col style={{ width: "18%" }} />
                         <col style={{ width: "18%" }} />
                       </colgroup>
                       <TableHead sx={tableHeadRowSx}>
                         <TableRow>
-                          <TableCell align="left" sx={{ ...tableHeadSx, width: "32%" }}>
+                          <TableCell align="left" sx={{ ...tableHeadSx, width: "26%" }}>
                             Company Name
                           </TableCell>
-                          <TableCell align="left" sx={{ ...tableHeadSx, width: "32%" }}>
+                          <TableCell align="left" sx={{ ...tableHeadSx, width: "26%" }}>
                             Staff Name
+                          </TableCell>
+                          <TableCell align="center" sx={{ ...tableHeadSx, width: "12%" }}>
+                            Type
                           </TableCell>
                           <TableCell align="center" sx={{ ...tableHeadSx, width: "18%" }}>
                             Phone Number
@@ -485,7 +677,7 @@ function CreateStaff() {
                         </TableRow>
                       </TableHead>
                       <TableBody>
-                        {staffList.map((staff) => (
+                        {filteredStaffList.map((staff) => (
                           <TableRow key={staff.id}>
                             <TableCell
                               align="left"
@@ -498,6 +690,12 @@ function CreateStaff() {
                               sx={{ ...tableBodySx, borderBottom: "1px solid #e5e7eb", fontSize: "0.875rem", color: "#374151" }}
                             >
                               {staff.name}
+                            </TableCell>
+                            <TableCell
+                              align="center"
+                              sx={{ ...tableBodySx, borderBottom: "1px solid #e5e7eb", fontSize: "0.875rem", color: "#374151" }}
+                            >
+                              {(staff.staff_type || "distributor") === "cnf" ? "CNF" : "Distributor"}
                             </TableCell>
                             <TableCell
                               align="center"
@@ -536,6 +734,12 @@ function CreateStaff() {
             <MDBox>
               <MDTypography variant="subtitle2" fontWeight="bold">Name: <span style={{ fontWeight: 400 }}>{selectedStaffDetails.name}</span></MDTypography>
               <MDTypography variant="subtitle2" fontWeight="bold">Company: <span style={{ fontWeight: 400 }}>{selectedStaffDetails.company_name || '—'}</span></MDTypography>
+              <MDTypography variant="subtitle2" fontWeight="bold">
+                Type:{" "}
+                <span style={{ fontWeight: 400 }}>
+                  {(selectedStaffDetails.staff_type || "distributor") === "cnf" ? "CNF" : "Distributor"}
+                </span>
+              </MDTypography>
               <MDTypography variant="subtitle2" fontWeight="bold" mb={2}>Contact No: <span style={{ fontWeight: 400 }}>{selectedStaffDetails.contact_no}</span></MDTypography>
               <Divider />
               <MDTypography variant="h6" fontWeight="bold" mt={2} mb={1}>Assigned Locations</MDTypography>

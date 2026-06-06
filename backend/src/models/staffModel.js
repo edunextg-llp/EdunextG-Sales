@@ -2,12 +2,24 @@ import db from '../config/db.js';
 import { formatStickerNumber } from '../utils/stickerNumber.js';
 
 class StaffModel {
-    static async create(name, contactNo, companyId = null) {
+    static async create(name, contactNo, companyId = null, staffType = 'distributor') {
         const [result] = await db.execute(
-            'INSERT INTO staff (name, contact_no, company_id) VALUES (?, ?, ?)',
-            [name, contactNo, companyId]
+            'INSERT INTO staff (name, contact_no, company_id, staff_type) VALUES (?, ?, ?, ?)',
+            [name, contactNo, companyId, staffType]
         );
         return result.insertId;
+    }
+
+    static async setCompanies(staffId, companyIds = []) {
+        await db.execute('DELETE FROM staff_companies WHERE staff_id = ?', [staffId]);
+
+        const uniqueCompanyIds = [...new Set(companyIds.filter(Boolean))];
+        for (const companyId of uniqueCompanyIds) {
+            await db.execute(
+                'INSERT IGNORE INTO staff_companies (staff_id, company_id) VALUES (?, ?)',
+                [staffId, companyId]
+            );
+        }
     }
 
     static async addLocation(staffId, day, locationName) {
@@ -27,9 +39,16 @@ class StaffModel {
 
     static async searchByName(query) {
         const [rows] = await db.execute(
-            `SELECT s.id, s.name, s.contact_no, c.name AS company_name
+            `SELECT s.id, s.name, s.contact_no, s.staff_type,
+                    COALESCE(sc.company_names, c.name) AS company_name
              FROM staff s
              LEFT JOIN companies c ON s.company_id = c.id
+             LEFT JOIN (
+                 SELECT sc.staff_id, GROUP_CONCAT(c2.name ORDER BY c2.name SEPARATOR ', ') AS company_names
+                 FROM staff_companies sc
+                 INNER JOIN companies c2 ON c2.id = sc.company_id
+                 GROUP BY sc.staff_id
+             ) sc ON sc.staff_id = s.id
              WHERE s.name LIKE ?`,
             [`%${query}%`]
         );
@@ -38,9 +57,19 @@ class StaffModel {
 
     static async getDetails(id) {
         const [rows] = await db.execute(
-            `SELECT s.id, s.name, s.contact_no, s.company_id, c.name AS company_name
+            `SELECT s.id, s.name, s.contact_no, s.company_id, s.staff_type,
+                    COALESCE(sc.company_names, c.name) AS company_name,
+                    sc.company_ids
              FROM staff s
              LEFT JOIN companies c ON s.company_id = c.id
+             LEFT JOIN (
+                 SELECT sc.staff_id,
+                        GROUP_CONCAT(c2.name ORDER BY c2.name SEPARATOR ', ') AS company_names,
+                        GROUP_CONCAT(c2.id ORDER BY c2.name) AS company_ids
+                 FROM staff_companies sc
+                 INNER JOIN companies c2 ON c2.id = sc.company_id
+                 GROUP BY sc.staff_id
+             ) sc ON sc.staff_id = s.id
              WHERE s.id = ?`,
             [id]
         );
@@ -55,6 +84,35 @@ class StaffModel {
             'INSERT INTO staff_counters (staff_id, day, outlet_erp_id, outlet_name, contact_number) VALUES (?, ?, ?, ?, ?)',
             [staffId, day, outletErpId, outletName, contactNumber]
         );
+    }
+
+    static async findDuplicateCounter(staffId, outletErpId, outletName, excludeCounterId = null) {
+        const params = [staffId, outletErpId, outletName];
+        let excludeClause = '';
+
+        if (excludeCounterId) {
+            excludeClause = ' AND id <> ?';
+            params.push(excludeCounterId);
+        }
+
+        const [rows] = await db.execute(
+            `SELECT id, outlet_erp_id, outlet_name
+             FROM staff_counters
+             WHERE staff_id = ?
+               AND (LOWER(outlet_erp_id) = LOWER(?) OR LOWER(outlet_name) = LOWER(?))
+               ${excludeClause}
+             LIMIT 1`,
+            params
+        );
+        return rows[0] || null;
+    }
+
+    static async getCounterById(counterId) {
+        const [rows] = await db.execute(
+            'SELECT id, staff_id, outlet_erp_id, outlet_name, contact_number FROM staff_counters WHERE id = ?',
+            [counterId]
+        );
+        return rows[0] || null;
     }
 
     static async editCounter(counterId, counterData) {
@@ -72,10 +130,10 @@ class StaffModel {
         );
     }
 
-    static async update(id, name, contactNo, companyId = null) {
+    static async update(id, name, contactNo, companyId = null, staffType = 'distributor') {
         await db.execute(
-            'UPDATE staff SET name = ?, contact_no = ?, company_id = ? WHERE id = ?',
-            [name, contactNo, companyId, id]
+            'UPDATE staff SET name = ?, contact_no = ?, company_id = ?, staff_type = ? WHERE id = ?',
+            [name, contactNo, companyId, staffType, id]
         );
     }
 
@@ -96,9 +154,19 @@ class StaffModel {
 
     static async getAll() {
         const [rows] = await db.execute(
-            `SELECT s.id, s.name, s.contact_no, s.company_id, c.name AS company_name
+            `SELECT s.id, s.name, s.contact_no, s.company_id, s.staff_type,
+                    COALESCE(sc.company_names, c.name) AS company_name,
+                    sc.company_ids
              FROM staff s
              LEFT JOIN companies c ON s.company_id = c.id
+             LEFT JOIN (
+                 SELECT sc.staff_id,
+                        GROUP_CONCAT(c2.name ORDER BY c2.name SEPARATOR ', ') AS company_names,
+                        GROUP_CONCAT(c2.id ORDER BY c2.name) AS company_ids
+                 FROM staff_companies sc
+                 INNER JOIN companies c2 ON c2.id = sc.company_id
+                 GROUP BY sc.staff_id
+             ) sc ON sc.staff_id = s.id
              ORDER BY s.name`
         );
         return rows;
@@ -124,7 +192,9 @@ class StaffModel {
         const [rows] = await db.execute(
             `SELECT c.id, c.outlet_erp_id, c.outlet_name, c.contact_number 
              FROM staff_counters c
-             WHERE c.staff_id = ? AND c.day = ?
+             INNER JOIN staff s ON s.id = c.staff_id
+             WHERE c.staff_id = ?
+               AND (c.day = ? OR (s.staff_type = 'cnf' AND c.day = 'CNF'))
                AND c.id NOT IN (
                    SELECT outlet_id FROM staff_sales 
                    WHERE staff_id = ? AND sale_date = ?
@@ -210,9 +280,21 @@ class StaffModel {
                      WHERE staff_id = ? AND outlet_id = ? AND sale_date = ? AND invoice_number = ?`,
                     [staffId, item.outletId, date, item.invoiceNumber]
                 );
+                const saleId = saleRows[0]?.id;
+
+                if (saleId) {
+                    await connection.execute(
+                        `INSERT INTO staff_sale_status_history (sale_id, status, changed_at)
+                         SELECT ?, 'not_packing', NOW()
+                         WHERE NOT EXISTS (
+                             SELECT 1 FROM staff_sale_status_history WHERE sale_id = ?
+                         )`,
+                        [saleId, saleId]
+                    );
+                }
 
                 stickers.push({
-                    saleId: saleRows[0]?.id,
+                    saleId,
                     stickerNumber,
                     shopName: outletRows[0]?.outlet_name || 'Unknown Shop',
                     outletErpId: outletRows[0]?.outlet_erp_id || '',
@@ -239,6 +321,7 @@ class StaffModel {
             SELECT ss.id, ss.staff_id, ss.outlet_id, ss.sale_date, ss.price, ss.invoice_number, 
                     ss.sticker_number, ss.packaging_status, ss.delivery_boy_id, ss.vehicle_no,
                     DATE_FORMAT(ss.delivery_date, '%Y-%m-%d') AS delivery_date,
+                    DATE_FORMAT(ssh.status_updated_at, '%Y-%m-%d %H:%i:%s') AS status_updated_at,
                     ss.paid_amount, ss.balance_amount, ss.payment_mode,
                     sc.outlet_name, sc.outlet_erp_id, s.name as staff_name, DATE_FORMAT(ss.sale_date, '%d-%m-%Y') as formatted_date,
                     db.name as delivery_boy_name
@@ -246,6 +329,11 @@ class StaffModel {
              LEFT JOIN staff_counters sc ON ss.outlet_id = sc.id
              LEFT JOIN staff s ON ss.staff_id = s.id
              LEFT JOIN delivery_boys db ON ss.delivery_boy_id = db.id
+             LEFT JOIN (
+                 SELECT sale_id, MAX(changed_at) AS status_updated_at
+                 FROM staff_sale_status_history
+                 GROUP BY sale_id
+             ) ssh ON ssh.sale_id = ss.id
         `;
         const params = [];
         
@@ -267,12 +355,18 @@ class StaffModel {
                     ss.reference_no, ss.reference_date, ss.credit_days, ss.vehicle_no,
                     DATE_FORMAT(ss.delivery_date, '%Y-%m-%d') AS delivery_date,
                     ss.packaging_status,
+                    DATE_FORMAT(ssh.status_updated_at, '%Y-%m-%d %H:%i:%s') AS status_updated_at,
                     sc.outlet_name, sc.outlet_erp_id, s.name AS staff_name,
                     db.name as delivery_boy_name
              FROM staff_sales ss
              LEFT JOIN staff_counters sc ON ss.outlet_id = sc.id
              LEFT JOIN staff s ON ss.staff_id = s.id
              LEFT JOIN delivery_boys db ON ss.delivery_boy_id = db.id
+             LEFT JOIN (
+                 SELECT sale_id, MAX(changed_at) AS status_updated_at
+                 FROM staff_sale_status_history
+                 GROUP BY sale_id
+             ) ssh ON ssh.sale_id = ss.id
              WHERE ss.staff_id = ? AND ss.sale_date = ?`,
             [staffId, date]
         );
@@ -282,15 +376,42 @@ class StaffModel {
     static async getSaleById(saleId) {
         const [rows] = await db.execute(
             `SELECT ss.id, ss.staff_id, ss.outlet_id, ss.sale_date, ss.price, ss.invoice_number,
-                    ss.sticker_number, ss.paid_amount, ss.balance_amount,
+                    ss.sticker_number, ss.paid_amount, ss.balance_amount, ss.packaging_status,
                     DATE_FORMAT(ss.delivery_date, '%Y-%m-%d') AS delivery_date,
-                    sc.outlet_name, sc.outlet_erp_id,
+                    DATE_FORMAT(ssh.status_updated_at, '%Y-%m-%d %H:%i:%s') AS status_updated_at,
+                    sc.outlet_name, sc.outlet_erp_id, s.name AS staff_name,
                     db.name AS delivery_boy_name, ss.vehicle_no
              FROM staff_sales ss
              LEFT JOIN staff_counters sc ON ss.outlet_id = sc.id
+             LEFT JOIN staff s ON ss.staff_id = s.id
              LEFT JOIN delivery_boys db ON ss.delivery_boy_id = db.id
+             LEFT JOIN (
+                 SELECT sale_id, MAX(changed_at) AS status_updated_at
+                 FROM staff_sale_status_history
+                 GROUP BY sale_id
+             ) ssh ON ssh.sale_id = ss.id
              WHERE ss.id = ?`,
             [saleId]
+        );
+        return rows[0] || null;
+    }
+
+    static async findSaleByInvoice(staffId, invoiceNumber, excludeSaleId = null) {
+        const params = [staffId, invoiceNumber];
+        let excludeClause = '';
+
+        if (excludeSaleId) {
+            excludeClause = ' AND id <> ?';
+            params.push(excludeSaleId);
+        }
+
+        const [rows] = await db.execute(
+            `SELECT id, invoice_number
+             FROM staff_sales
+             WHERE staff_id = ? AND LOWER(invoice_number) = LOWER(?)
+             ${excludeClause}
+             LIMIT 1`,
+            params
         );
         return rows[0] || null;
     }
@@ -332,22 +453,63 @@ class StaffModel {
     }
 
     static async updatePackagingStatus(saleId, status, deliveryBoyId, vehicleNo, deliveryDate = null) {
-        if (status === 'out_for_delivery' || status === 'delivered' || status === 'cancelled') {
-            await db.execute(
-                `UPDATE staff_sales 
-                 SET packaging_status = ?, delivery_boy_id = ?, vehicle_no = ?, delivery_date = ?
-                 WHERE id = ?`,
-                [status, deliveryBoyId, vehicleNo, deliveryDate, saleId]
+        const connection = await db.getConnection();
+
+        try {
+            await connection.beginTransaction();
+            const [currentRows] = await connection.execute(
+                'SELECT packaging_status FROM staff_sales WHERE id = ? FOR UPDATE',
+                [saleId]
             );
-        } else {
-            // Keep existing delivery assignment if required, or clear it. We'll clear it for simplicity.
-            await db.execute(
-                `UPDATE staff_sales 
-                 SET packaging_status = ?, delivery_boy_id = NULL, vehicle_no = NULL, delivery_date = NULL
-                 WHERE id = ?`,
-                [status, saleId]
-            );
+            const currentStatus = currentRows[0]?.packaging_status;
+
+            if (status === 'out_for_delivery' || status === 'delivered' || status === 'cancelled') {
+                await connection.execute(
+                    `UPDATE staff_sales 
+                     SET packaging_status = ?, delivery_boy_id = ?, vehicle_no = ?, delivery_date = ?
+                     WHERE id = ?`,
+                    [status, deliveryBoyId, vehicleNo, deliveryDate, saleId]
+                );
+            } else {
+                await connection.execute(
+                    `UPDATE staff_sales 
+                     SET packaging_status = ?, delivery_boy_id = NULL, vehicle_no = NULL, delivery_date = NULL
+                     WHERE id = ?`,
+                    [status, saleId]
+                );
+            }
+
+            if (currentStatus !== status) {
+                await connection.execute(
+                    'INSERT INTO staff_sale_status_history (sale_id, status) VALUES (?, ?)',
+                    [saleId, status]
+                );
+            }
+
+            await connection.commit();
+        } catch (error) {
+            await connection.rollback();
+            throw error;
+        } finally {
+            connection.release();
         }
+    }
+
+    static async getSaleStatusHistory(saleId) {
+        const sale = await StaffModel.getSaleById(saleId);
+        if (!sale) {
+            return null;
+        }
+
+        const [history] = await db.execute(
+            `SELECT id, status, DATE_FORMAT(changed_at, '%Y-%m-%d %H:%i:%s') AS changed_at
+             FROM staff_sale_status_history
+             WHERE sale_id = ?
+             ORDER BY changed_at ASC, id ASC`,
+            [saleId]
+        );
+
+        return { sale, history };
     }
 
     static async getPendingCredits() {

@@ -37,6 +37,64 @@ export async function ensureSchema() {
         `);
 
         await connection.query(`
+            CREATE TABLE IF NOT EXISTS staff_companies (
+                staff_id INT NOT NULL,
+                company_id INT NOT NULL,
+                PRIMARY KEY (staff_id, company_id),
+                FOREIGN KEY (staff_id) REFERENCES staff(id) ON DELETE CASCADE,
+                FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE CASCADE
+            );
+        `);
+
+        await connection.query(`
+            INSERT IGNORE INTO staff_companies (staff_id, company_id)
+            SELECT id, company_id FROM staff WHERE company_id IS NOT NULL
+        `);
+
+        await tryQuery(
+            connection,
+            `ALTER TABLE staff ADD COLUMN staff_type ENUM('distributor', 'cnf') NOT NULL DEFAULT 'distributor'`,
+            'staff_type on staff'
+        );
+
+        await tryQuery(
+            connection,
+            `ALTER TABLE staff_locations MODIFY COLUMN day ENUM('Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'CNF') NOT NULL`,
+            'CNF route day on staff_locations'
+        );
+
+        await tryQuery(
+            connection,
+            `ALTER TABLE staff_counters MODIFY COLUMN day ENUM('Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'CNF') NOT NULL`,
+            'CNF route day on staff_counters'
+        );
+
+        await tryQuery(
+            connection,
+            `
+            ALTER TABLE delivery_boys ADD COLUMN company_id INT NULL,
+            ADD CONSTRAINT fk_delivery_boys_company
+                FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE SET NULL
+        `,
+            'company_id on delivery_boys'
+        );
+
+        await connection.query(`
+            CREATE TABLE IF NOT EXISTS delivery_boy_companies (
+                delivery_boy_id INT NOT NULL,
+                company_id INT NOT NULL,
+                PRIMARY KEY (delivery_boy_id, company_id),
+                FOREIGN KEY (delivery_boy_id) REFERENCES delivery_boys(id) ON DELETE CASCADE,
+                FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE CASCADE
+            );
+        `);
+
+        await connection.query(`
+            INSERT IGNORE INTO delivery_boy_companies (delivery_boy_id, company_id)
+            SELECT id, company_id FROM delivery_boys WHERE company_id IS NOT NULL
+        `);
+
+        await connection.query(`
             CREATE TABLE IF NOT EXISTS sale_payments (
                 id INT AUTO_INCREMENT PRIMARY KEY,
                 sale_id INT NOT NULL,
@@ -102,6 +160,26 @@ export async function ensureSchema() {
         `,
             'packaging_status enum values'
         );
+
+        await connection.query(`
+            CREATE TABLE IF NOT EXISTS staff_sale_status_history (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                sale_id INT NOT NULL,
+                status ENUM('not_packing', 'packing', 'packing_done', 'out_for_delivery', 'delivered', 'cancelled') NOT NULL,
+                changed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (sale_id) REFERENCES staff_sales(id) ON DELETE CASCADE,
+                INDEX idx_sale_status_history_sale_id (sale_id)
+            );
+        `);
+
+        await connection.query(`
+            INSERT INTO staff_sale_status_history (sale_id, status, changed_at)
+            SELECT ss.id, ss.packaging_status, COALESCE(ss.created_at, CURRENT_TIMESTAMP)
+            FROM staff_sales ss
+            WHERE NOT EXISTS (
+                SELECT 1 FROM staff_sale_status_history ssh WHERE ssh.sale_id = ss.id
+            )
+        `);
 
         await connection.query(`
             UPDATE staff_sales SET paid_amount = 0 WHERE paid_amount IS NULL

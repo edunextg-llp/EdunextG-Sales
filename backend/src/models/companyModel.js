@@ -20,6 +20,16 @@ class CompanyModel {
         const [rows] = await db.execute('SELECT id, name FROM companies ORDER BY name');
         return rows;
     }
+
+    static async getAssignedToStaff() {
+        const [rows] = await db.execute(`
+            SELECT DISTINCT c.id, c.name
+            FROM companies c
+            INNER JOIN staff_companies sc ON sc.company_id = c.id
+            ORDER BY c.name
+        `);
+        return rows;
+    }
 }
 
 export default CompanyModel;

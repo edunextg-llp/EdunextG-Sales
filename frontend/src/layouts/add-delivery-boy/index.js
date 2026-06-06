@@ -3,6 +3,11 @@ import { useState, useEffect } from "react";
 // @mui material components
 import Grid from "@mui/material/Grid";
 import Card from "@mui/material/Card";
+import FormControl from "@mui/material/FormControl";
+import InputLabel from "@mui/material/InputLabel";
+import MenuItem from "@mui/material/MenuItem";
+import OutlinedInput from "@mui/material/OutlinedInput";
+import Select from "@mui/material/Select";
 // Material Dashboard 2 React components
 import MDBox from "components/MDBox";
 import MDTypography from "components/MDTypography";
@@ -18,11 +23,25 @@ import DataTable from "examples/Tables/DataTable";
 function AddDeliveryBoy() {
   const [name, setName] = useState("");
   const [contactNo, setContactNo] = useState("");
+  const [companyIds, setCompanyIds] = useState([]);
+  const [companyOptions, setCompanyOptions] = useState([]);
   const [submitting, setSubmitting] = useState(false);
   const [deliveryBoys, setDeliveryBoys] = useState([]);
   const [loadingList, setLoadingList] = useState(true);
 
   const API = "https://bawarchee.edunextg.co/api";
+
+  const fetchCompanyOptions = async () => {
+    try {
+      const response = await fetch(`${API}/delivery-boy/companies`);
+      if (response.ok) {
+        const data = await response.json();
+        setCompanyOptions(data);
+      }
+    } catch (error) {
+      console.error("Error fetching staff assigned companies:", error);
+    }
+  };
 
   const fetchDeliveryBoys = async () => {
     try {
@@ -39,12 +58,13 @@ function AddDeliveryBoy() {
   };
 
   useEffect(() => {
+    fetchCompanyOptions();
     fetchDeliveryBoys();
   }, []);
 
   const handleSubmit = async () => {
-    if (!name.trim() || !contactNo.trim()) {
-      alert("Please enter both Name and Contact Number.");
+    if (companyIds.length === 0 || !name.trim() || !contactNo.trim()) {
+      alert("Please choose Company Name and enter both Name and Contact Number.");
       return;
     }
 
@@ -55,11 +75,12 @@ function AddDeliveryBoy() {
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ name, contactNo }),
+        body: JSON.stringify({ name, contactNo, companyIds }),
       });
 
       if (response.ok) {
         alert("Delivery Boy created successfully!");
+        setCompanyIds([]);
         setName("");
         setContactNo("");
         await fetchDeliveryBoys();
@@ -99,6 +120,38 @@ function AddDeliveryBoy() {
               </MDBox>
               <MDBox pt={4} pb={3} px={3}>
                 <MDBox component="form" role="form">
+                  <MDBox mb={2}>
+                    <FormControl fullWidth size="small">
+                      <InputLabel id="delivery-company-label">Company Name</InputLabel>
+                      <Select
+                        labelId="delivery-company-label"
+                        multiple
+                        value={companyIds}
+                        label="Company Name"
+                        onChange={(e) => {
+                          const value = e.target.value;
+                          setCompanyIds(typeof value === "string" ? value.split(",") : value);
+                        }}
+                        input={<OutlinedInput label="Company Name" />}
+                        renderValue={(selected) =>
+                          selected
+                            .map((id) => companyOptions.find((company) => company.id === id)?.name)
+                            .filter(Boolean)
+                            .join(", ")
+                        }
+                        sx={{ minHeight: 44 }}
+                      >
+                        {companyOptions.map((company) => (
+                          <MenuItem key={company.id} value={company.id}>
+                            {company.name}
+                          </MenuItem>
+                        ))}
+                        {companyOptions.length === 0 && (
+                          <MenuItem disabled>No staff company assigned</MenuItem>
+                        )}
+                      </Select>
+                    </FormControl>
+                  </MDBox>
                   <MDBox mb={2}>
                     <MDInput
                       type="text"
@@ -154,7 +207,8 @@ function AddDeliveryBoy() {
                       table={{
                         columns: [
                           { Header: <MDTypography variant="subtitle2" color="dark" fontWeight="bold">#</MDTypography>, accessor: "id", width: "10%", align: "left" },
-                          { Header: <MDTypography variant="subtitle2" color="dark" fontWeight="bold">Name</MDTypography>, accessor: "name", width: "45%", align: "left" },
+                          { Header: <MDTypography variant="subtitle2" color="dark" fontWeight="bold">Company</MDTypography>, accessor: "company", width: "30%", align: "left" },
+                          { Header: <MDTypography variant="subtitle2" color="dark" fontWeight="bold">Name</MDTypography>, accessor: "name", width: "30%", align: "left" },
                           { Header: <MDTypography variant="subtitle2" color="dark" fontWeight="bold">Contact Number</MDTypography>, accessor: "contact", align: "center" },
                         ],
                         rows: deliveryBoys.map((boy, index) => ({
@@ -166,6 +220,11 @@ function AddDeliveryBoy() {
                           name: (
                             <MDTypography component="span" variant="caption" color="text" fontWeight="medium">
                               {boy.name}
+                            </MDTypography>
+                          ),
+                          company: (
+                            <MDTypography component="span" variant="caption" color="text" fontWeight="medium">
+                              {boy.company_name || "—"}
                             </MDTypography>
                           ),
                           contact: (

@@ -125,6 +125,9 @@ function CreditsPage() {
                   <Table size="small">
                     <TableHead sx={{ display: "table-header-group" }}>
                       <TableRow>
+                        <TableCell align="center" sx={{ fontWeight: "bold" }}>
+                          Sr No
+                        </TableCell>
                         <TableCell align="left" sx={{ fontWeight: "bold" }}>
                           Outlet Name
                         </TableCell>
@@ -149,8 +152,9 @@ function CreditsPage() {
                       </TableRow>
                     </TableHead>
                     <TableBody>
-                      {filteredCredits.map((credit) => (
+                      {filteredCredits.map((credit, index) => (
                         <TableRow key={credit.id}>
+                          <TableCell align="center">{index + 1}</TableCell>
                           <TableCell align="left">{credit.outlet_name}</TableCell>
                           <TableCell align="center">{credit.invoice_number}</TableCell>
                           <TableCell align="center">{credit.staff_name}</TableCell>
