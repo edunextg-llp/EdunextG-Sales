@@ -60,6 +60,11 @@ function Packaging() {
     return `${formatDate(datePart)}${timePart ? ` ${timePart.slice(0, 5)}` : ""}`;
   };
 
+  const toDateInputValue = (value) => {
+    if (!value) return "";
+    return String(value).split("T")[0].split(" ")[0];
+  };
+
   useEffect(() => {
     const fetchDeliveryBoys = async () => {
       try {
@@ -80,7 +85,12 @@ function Packaging() {
       const response = await fetch(`${API}/staff/sales/by-date`);
       if (response.ok) {
         const data = await response.json();
-        const enhancedData = data.map(r => ({ ...r, original_packaging_status: r.packaging_status }));
+        const enhancedData = data.map(r => ({
+          ...r,
+          original_packaging_status: r.packaging_status,
+          status_update_date: toDateInputValue(r.status_updated_at),
+          status_update_date_changed: false,
+        }));
         setSalesData(enhancedData);
       } else {
         console.error("Failed to fetch sales for packaging");
@@ -100,6 +110,13 @@ function Packaging() {
     const index = newData.findIndex(r => r.id === saleId);
     if (index === -1) return;
     newData[index] = { ...newData[index], [field]: value };
+    if (field === "packaging_status" && value !== newData[index].original_packaging_status) {
+      newData[index].status_update_date = "";
+      newData[index].status_update_date_changed = false;
+    }
+    if (field === "status_update_date") {
+      newData[index].status_update_date_changed = true;
+    }
     setSalesData(newData);
   };
 
@@ -109,7 +126,16 @@ function Packaging() {
     try {
       const payload = {
         packagingStatus: row.packaging_status || 'not_packing',
+        statusDate: row.status_update_date || null,
       };
+
+      if (
+        row.original_packaging_status !== row.packaging_status &&
+        (!row.status_update_date || !row.status_update_date_changed)
+      ) {
+        alert("Please choose Status Date.");
+        return;
+      }
 
       const response = await fetch(`${API}/staff/sales/${row.id}/packaging`, {
         method: "PUT",
@@ -303,7 +329,16 @@ function Packaging() {
                                 </FormControl>
                               </TableCell>
                               <TableCell align="center" sx={{ borderBottom: borderCol, py: 2, color: txColor }}>
-                                {formatDateTime(row.status_updated_at)}
+                                <MDInput
+                                  type="date"
+                                  value={row.status_update_date || ""}
+                                  onChange={(e) =>
+                                    handleRowChange(row.id, "status_update_date", e.target.value)
+                                  }
+                                  size="small"
+                                  InputLabelProps={{ shrink: true }}
+                                  sx={{ width: 150, backgroundColor: "#fff" }}
+                                />
                               </TableCell>
                               <TableCell align="center" sx={{ borderBottom: borderCol, py: 2 }}>
                                 <MDBox display="flex" gap={1} justifyContent="center" flexWrap="wrap">

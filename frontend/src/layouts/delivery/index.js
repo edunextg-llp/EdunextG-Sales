@@ -52,6 +52,11 @@ const API = "https://bawarchee.edunextg.co/api";
     return `${formatDate(datePart)}${timePart ? ` ${timePart.slice(0, 5)}` : ""}`;
   };
 
+  const toDateInputValue = (value) => {
+    if (!value) return "";
+    return String(value).split("T")[0].split(" ")[0];
+  };
+
   const handleOpenDetails = (saleId) => {
     setSalesData((prev) =>
       prev.map((row) =>
@@ -89,7 +94,12 @@ const API = "https://bawarchee.edunextg.co/api";
       const response = await fetch(`${API}/staff/sales/by-date`);
       if (response.ok) {
         const data = await response.json();
-        const enhancedData = data.map(r => ({ ...r, original_packaging_status: r.packaging_status }));
+        const enhancedData = data.map(r => ({
+          ...r,
+          original_packaging_status: r.packaging_status,
+          status_update_date: toDateInputValue(r.status_updated_at),
+          status_update_date_changed: false,
+        }));
         setSalesData(enhancedData);
       } else {
         setSalesData([]);
@@ -108,6 +118,13 @@ const API = "https://bawarchee.edunextg.co/api";
     const index = newData.findIndex(r => r.id === saleId);
     if (index === -1) return;
     newData[index] = { ...newData[index], [field]: value };
+    if (field === "packaging_status" && value !== newData[index].original_packaging_status) {
+      newData[index].status_update_date = "";
+      newData[index].status_update_date_changed = false;
+    }
+    if (field === "status_update_date") {
+      newData[index].status_update_date_changed = true;
+    }
     setSalesData(newData);
   };
 
@@ -120,13 +137,22 @@ const API = "https://bawarchee.edunextg.co/api";
         return;
       }
 
+      if (
+        row.original_packaging_status !== row.packaging_status &&
+        (!row.status_update_date || !row.status_update_date_changed)
+      ) {
+        alert("Please choose Status Date.");
+        return;
+      }
+
       let finalStatus = row.packaging_status || 'packing_done';
 
       const payload = {
         packagingStatus: finalStatus,
         deliveryBoyId: row.delivery_boy_id || null,
         vehicleNo: row.vehicle_no || null,
-        deliveryDate: row.delivery_date || null
+        deliveryDate: row.delivery_date || null,
+        statusDate: row.status_update_date || null,
       };
 
       const response = await fetch(`${API}/staff/sales/${row.id}/packaging`, {
@@ -312,7 +338,16 @@ const API = "https://bawarchee.edunextg.co/api";
                                 {formatDate(row.delivery_date)}
                               </TableCell>
                               <TableCell align="center" sx={{ borderBottom: borderCol, py: 2, color: txColor }}>
-                                {formatDateTime(row.status_updated_at)}
+                                <MDInput
+                                  type="date"
+                                  value={row.status_update_date || ""}
+                                  onChange={(e) =>
+                                    handleRowChange(row.id, "status_update_date", e.target.value)
+                                  }
+                                  size="small"
+                                  InputLabelProps={{ shrink: true }}
+                                  sx={{ width: 150, backgroundColor: "#fff" }}
+                                />
                               </TableCell>
                               <TableCell align="center" sx={{ borderBottom: borderCol, py: 2, color: txColor }}>
                                 <MDButton color="info" variant="text" size="small" onClick={() => handleOpenDetails(row.id)}>

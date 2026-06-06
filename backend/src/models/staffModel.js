@@ -452,7 +452,14 @@ class StaffModel {
         return rows[0] ? rows[0].packaging_status : null;
     }
 
-    static async updatePackagingStatus(saleId, status, deliveryBoyId, vehicleNo, deliveryDate = null) {
+    static async updatePackagingStatus(
+        saleId,
+        status,
+        deliveryBoyId,
+        vehicleNo,
+        deliveryDate = null,
+        statusDate = null
+    ) {
         const connection = await db.getConnection();
 
         try {
@@ -481,8 +488,9 @@ class StaffModel {
 
             if (currentStatus !== status) {
                 await connection.execute(
-                    'INSERT INTO staff_sale_status_history (sale_id, status) VALUES (?, ?)',
-                    [saleId, status]
+                    `INSERT INTO staff_sale_status_history (sale_id, status, changed_at)
+                     VALUES (?, ?, ?)`,
+                    [saleId, status, `${statusDate} 00:00:00`]
                 );
             }
 

@@ -62,13 +62,22 @@ function Delivered() {
     return `${formatDate(datePart)}${timePart ? ` ${timePart.slice(0, 5)}` : ""}`;
   };
 
+  const toDateInputValue = (value) => {
+    if (!value) return "";
+    return String(value).split("T")[0].split(" ")[0];
+  };
+
   useEffect(() => {
     const fetchSales = async () => {
       try {
         const response = await fetch(`${API}/staff/sales/by-date`);
         if (response.ok) {
           const data = await response.json();
-          setSalesData(data);
+          setSalesData(data.map((row) => ({
+            ...row,
+            status_update_date: toDateInputValue(row.status_updated_at),
+            status_update_date_changed: false,
+          })));
         } else {
           setSalesData([]);
         }
@@ -78,6 +87,21 @@ function Delivered() {
     };
     fetchSales();
   }, []);
+
+  const handleRowChange = (saleId, field, value) => {
+    setSalesData((prevData) =>
+      prevData.map((row) =>
+        row.id === saleId
+          ? {
+              ...row,
+              [field]: value,
+              status_update_date_changed:
+                field === "status_update_date" ? true : row.status_update_date_changed,
+            }
+          : row
+      )
+    );
+  };
 
   const filteredSales = salesData.filter((row) => {
     const st = row.packaging_status;
@@ -92,6 +116,15 @@ function Delivered() {
 
   const handleUpdateStatus = async (saleId, newStatus, currentDeliveryBoy, currentVehicle, currentDeliveryDate) => {
     try {
+      const rowForUpdate = salesData.find((row) => row.id === saleId);
+      if (
+        rowForUpdate?.packaging_status !== newStatus &&
+        (!rowForUpdate?.status_update_date || !rowForUpdate?.status_update_date_changed)
+      ) {
+        alert("Please choose Status Date.");
+        return;
+      }
+
       const payload = {
         packagingStatus: newStatus,
         deliveryBoyId: currentDeliveryBoy || null,
@@ -99,7 +132,8 @@ function Delivered() {
         deliveryDate:
           newStatus === 'out_for_delivery' || newStatus === 'delivered' || newStatus === 'cancelled'
             ? currentDeliveryDate || getTodayLocalDate()
-            : null
+            : null,
+        statusDate: rowForUpdate?.status_update_date || null,
       };
 
       const response = await fetch(`${API}/staff/sales/${saleId}/packaging`, {
@@ -119,6 +153,8 @@ function Delivered() {
                   packaging_status: newStatus,
                   delivery_date: payload.deliveryDate,
                   status_updated_at: data.sale?.status_updated_at || row.status_updated_at,
+                  status_update_date: toDateInputValue(data.sale?.status_updated_at) || row.status_update_date,
+                  status_update_date_changed: false,
                 }
               : row
           )
@@ -265,7 +301,16 @@ function Delivered() {
                               )}
                             </TableCell>
                             <TableCell align="center" sx={{ borderBottom: "1px solid #cbd5e1", py: 2, color: '#334155' }}>
-                              {formatDateTime(row.status_updated_at)}
+                              <MDInput
+                                type="date"
+                                value={row.status_update_date || ""}
+                                onChange={(e) =>
+                                  handleRowChange(row.id, "status_update_date", e.target.value)
+                                }
+                                size="small"
+                                InputLabelProps={{ shrink: true }}
+                                sx={{ width: 150, backgroundColor: "#fff" }}
+                              />
                             </TableCell>
                             <TableCell align="center" sx={{ borderBottom: "1px solid #cbd5e1", py: 2 }}>
                               {row.packaging_status === 'out_for_delivery' ? (
