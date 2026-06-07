@@ -28,6 +28,7 @@ function AddDeliveryBoy() {
   const [submitting, setSubmitting] = useState(false);
   const [deliveryBoys, setDeliveryBoys] = useState([]);
   const [loadingList, setLoadingList] = useState(true);
+  const [editingId, setEditingId] = useState(null);
 
   const API = "https://bawarchee.edunextg.co/api";
 
@@ -62,6 +63,26 @@ function AddDeliveryBoy() {
     fetchDeliveryBoys();
   }, []);
 
+  const resetForm = () => {
+    setCompanyIds([]);
+    setName("");
+    setContactNo("");
+    setEditingId(null);
+  };
+
+  const parseCompanyIds = (boy) =>
+    String(boy.company_ids || boy.company_id || "")
+      .split(",")
+      .map((id) => Number(id))
+      .filter((id) => Number.isInteger(id) && id > 0);
+
+  const startEditDeliveryBoy = (boy) => {
+    setEditingId(boy.id);
+    setName(boy.name || "");
+    setContactNo(boy.contact_no || "");
+    setCompanyIds(parseCompanyIds(boy));
+  };
+
   const handleSubmit = async () => {
     if (companyIds.length === 0 || !name.trim() || !contactNo.trim()) {
       alert("Please choose Company Name and enter both Name and Contact Number.");
@@ -70,29 +91,59 @@ function AddDeliveryBoy() {
 
     setSubmitting(true);
     try {
-      const response = await fetch(`${API}/delivery-boy`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ name, contactNo, companyIds }),
-      });
+      const response = await fetch(
+        editingId ? `${API}/delivery-boy/${editingId}` : `${API}/delivery-boy`,
+        {
+          method: editingId ? "PUT" : "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ name, contactNo, companyIds }),
+        }
+      );
 
       if (response.ok) {
-        alert("Delivery Boy created successfully!");
-        setCompanyIds([]);
-        setName("");
-        setContactNo("");
+        alert(`Delivery Boy ${editingId ? "updated" : "created"} successfully!`);
+        resetForm();
         await fetchDeliveryBoys();
       } else {
         const err = await response.json().catch(() => ({}));
-        alert(err.error || "Failed to create Delivery Boy.");
+        alert(err.error || `Failed to ${editingId ? "update" : "create"} Delivery Boy.`);
       }
     } catch (error) {
-      console.error("Error creating Delivery Boy:", error);
+      console.error(`Error ${editingId ? "updating" : "creating"} Delivery Boy:`, error);
       alert("Error submitting form.");
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const handleDeleteDeliveryBoy = async (boy) => {
+    if (!window.confirm(`Delete delivery boy "${boy.name}"?`)) {
+      return;
+    }
+
+    try {
+      const response = await fetch(`${API}/delivery-boy/${boy.id}`, {
+        method: "DELETE",
+        headers: {
+          "Content-Type": "application/json",
+        },
+      });
+
+      if (response.ok) {
+        alert("Delivery Boy deleted successfully!");
+        if (editingId === boy.id) {
+          resetForm();
+        }
+        await fetchDeliveryBoys();
+      } else {
+        const err = await response.json().catch(() => ({}));
+        alert(err.error || "Failed to delete Delivery Boy.");
+      }
+    } catch (error) {
+      console.error("Error deleting Delivery Boy:", error);
+      alert("Error deleting Delivery Boy.");
     }
   };
 
@@ -115,7 +166,7 @@ function AddDeliveryBoy() {
                 textAlign="center"
               >
                 <MDTypography variant="h4" fontWeight="medium" color="white" mt={1}>
-                  Create Delivery Boy
+                  {editingId ? "Edit Delivery Boy" : "Create Delivery Boy"}
                 </MDTypography>
               </MDBox>
               <MDBox pt={4} pb={3} px={3}>
@@ -178,9 +229,28 @@ function AddDeliveryBoy() {
                       onClick={handleSubmit}
                       disabled={submitting}
                     >
-                      {submitting ? "Creating..." : "Create Delivery Boy"}
+                      {submitting
+                        ? editingId
+                          ? "Updating..."
+                          : "Creating..."
+                        : editingId
+                          ? "Update Delivery Boy"
+                          : "Create Delivery Boy"}
                     </MDButton>
                   </MDBox>
+                  {editingId && (
+                    <MDBox mt={1} mb={1}>
+                      <MDButton
+                        variant="outlined"
+                        color="dark"
+                        fullWidth
+                        onClick={resetForm}
+                        disabled={submitting}
+                      >
+                        Cancel Edit
+                      </MDButton>
+                    </MDBox>
+                  )}
                 </MDBox>
               </MDBox>
             </Card>
@@ -210,6 +280,7 @@ function AddDeliveryBoy() {
                           { Header: <MDTypography variant="subtitle2" color="dark" fontWeight="bold">Company</MDTypography>, accessor: "company", width: "30%", align: "left" },
                           { Header: <MDTypography variant="subtitle2" color="dark" fontWeight="bold">Name</MDTypography>, accessor: "name", width: "30%", align: "left" },
                           { Header: <MDTypography variant="subtitle2" color="dark" fontWeight="bold">Contact Number</MDTypography>, accessor: "contact", align: "center" },
+                          { Header: <MDTypography variant="subtitle2" color="dark" fontWeight="bold">Action</MDTypography>, accessor: "action", align: "center" },
                         ],
                         rows: deliveryBoys.map((boy, index) => ({
                           id: (
@@ -231,6 +302,26 @@ function AddDeliveryBoy() {
                             <MDTypography component="span" variant="caption" color="text" fontWeight="medium">
                               {boy.contact_no}
                             </MDTypography>
+                          ),
+                          action: (
+                            <MDBox display="flex" gap={1} justifyContent="center" flexWrap="wrap">
+                              <MDButton
+                                variant="outlined"
+                                color="info"
+                                size="small"
+                                onClick={() => startEditDeliveryBoy(boy)}
+                              >
+                                Edit
+                              </MDButton>
+                              <MDButton
+                                variant="outlined"
+                                color="error"
+                                size="small"
+                                onClick={() => handleDeleteDeliveryBoy(boy)}
+                              >
+                                Delete
+                              </MDButton>
+                            </MDBox>
                           ),
                         })),
                       }}

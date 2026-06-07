@@ -77,6 +77,9 @@ function Delivered() {
     return outletName.includes(search) || outletErpId.includes(search) || staffName.includes(search);
   });
 
+  const deliveredTotal = filteredSales.filter((row) => row.packaging_status === "delivered").length;
+  const cancelledTotal = filteredSales.filter((row) => row.packaging_status === "cancelled").length;
+
   const handleUpdateStatus = async (saleId, newStatus, currentDeliveryBoy, currentVehicle, currentDeliveryDate) => {
     if (updatingSaleIds.has(saleId)) return;
 
@@ -150,6 +153,36 @@ function Delivered() {
                       value={searchQuery}
                       onChange={(e) => setSearchQuery(e.target.value)}
                     />
+                  </Grid>
+                  <Grid item xs={12} md={8}>
+                    <MDBox display="flex" gap={2} justifyContent={{ xs: "flex-start", md: "flex-end" }} flexWrap="wrap">
+                      <MDBox
+                        px={2}
+                        py={1.25}
+                        borderRadius="lg"
+                        sx={{ backgroundColor: "#f0fdf4", border: "1px solid #bbf7d0" }}
+                      >
+                        <MDTypography variant="caption" color="text">
+                          Total Delivered
+                        </MDTypography>
+                        <MDTypography variant="h5" color="success" fontWeight="bold">
+                          {deliveredTotal}
+                        </MDTypography>
+                      </MDBox>
+                      <MDBox
+                        px={2}
+                        py={1.25}
+                        borderRadius="lg"
+                        sx={{ backgroundColor: "#fef2f2", border: "1px solid #fecaca" }}
+                      >
+                        <MDTypography variant="caption" color="text">
+                          Total Cancel
+                        </MDTypography>
+                        <MDTypography variant="h5" color="error" fontWeight="bold">
+                          {cancelledTotal}
+                        </MDTypography>
+                      </MDBox>
+                    </MDBox>
                   </Grid>
                 </Grid>
 

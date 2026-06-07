@@ -32,8 +32,19 @@ function CreditsPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [remarksDialog, setRemarksDialog] = useState({ open: false, mode: "edit", credit: null });
   const [remarksText, setRemarksText] = useState("");
+  const [remarksDate, setRemarksDate] = useState("");
+  const [remarksHistory, setRemarksHistory] = useState([]);
+  const [loadingRemarks, setLoadingRemarks] = useState(false);
   const [savingRemarks, setSavingRemarks] = useState(false);
   const API = "https://bawarchee.edunextg.co/api";
+
+  const getTodayLocalDate = () => {
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, "0");
+    const day = String(now.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
+  };
 
   const fetchCredits = async () => {
     try {
@@ -89,7 +100,7 @@ function CreditsPage() {
   };
 
   const getCreditRowSx = (credit) => {
-    if (credit.remarks?.trim()) {
+    if ((Number(credit.remarks_count) || 0) > 0 || credit.remarks?.trim()) {
       return {
         backgroundColor: "#dcfce7",
         "&:hover": { backgroundColor: "#bbf7d0" },
@@ -103,21 +114,51 @@ function CreditsPage() {
   };
 
   const openEditRemarks = (credit) => {
-    setRemarksText(credit.remarks || "");
+    setRemarksText("");
+    setRemarksDate(getTodayLocalDate());
+    setRemarksHistory([]);
     setRemarksDialog({ open: true, mode: "edit", credit });
   };
 
-  const openViewRemarks = (credit) => {
+  const openViewRemarks = async (credit) => {
     setRemarksDialog({ open: true, mode: "view", credit });
+    setRemarksHistory([]);
+    setLoadingRemarks(true);
+    try {
+      const response = await fetch(`${API}/staff/credits/${credit.id}/remarks`);
+      if (response.ok) {
+        const data = await response.json();
+        setRemarksHistory(data);
+      } else {
+        const err = await response.json().catch(() => ({}));
+        alert(err.error || "Failed to load remarks.");
+      }
+    } catch (error) {
+      console.error("Error loading remarks:", error);
+      alert("Error loading remarks.");
+    } finally {
+      setLoadingRemarks(false);
+    }
   };
 
   const closeRemarksDialog = () => {
     setRemarksDialog({ open: false, mode: "edit", credit: null });
     setRemarksText("");
+    setRemarksDate("");
+    setRemarksHistory([]);
+    setLoadingRemarks(false);
   };
 
   const handleSaveRemarks = async () => {
     if (!remarksDialog.credit) return;
+    if (!remarksDate) {
+      alert("Please choose remarks date.");
+      return;
+    }
+    if (!remarksText.trim()) {
+      alert("Please enter remarks.");
+      return;
+    }
 
     setSavingRemarks(true);
     try {
@@ -126,16 +167,22 @@ function CreditsPage() {
         {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ remarks: remarksText }),
+          body: JSON.stringify({ remarks: remarksText, remarkDate: remarksDate }),
         }
       );
 
       if (response.ok) {
         const data = await response.json();
+        const savedRemark = data.remark;
         setCredits((prev) =>
           prev.map((credit) =>
             credit.id === remarksDialog.credit.id
-              ? { ...credit, remarks: data.remarks }
+              ? {
+                  ...credit,
+                  remarks: savedRemark?.remarks || remarksText.trim(),
+                  remarks_count: (Number(credit.remarks_count) || 0) + 1,
+                  latest_remark_date: savedRemark?.remark_date || remarksDate,
+                }
               : credit
           )
         );
@@ -168,6 +215,11 @@ function CreditsPage() {
     );
   });
 
+  const totalCreditDuesAmount = filteredCredits.reduce(
+    (total, credit) => total + (Number(credit.balance_amount) || 0),
+    0
+  );
+
   return (
     <DashboardLayout>
       <MDBox pt={6} pb={3}>
@@ -190,13 +242,34 @@ function CreditsPage() {
               </MDBox>
 
               <MDBox px={3} pt={3} pb={1}>
-                <MDInput
-                  type="text"
-                  label="Search Outlet, Contact, Invoice, or Staff..."
-                  sx={{ width: { xs: "100%", md: "35%", lg: "25%" } }}
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                />
+                <Grid container spacing={2} alignItems="center">
+                  <Grid item xs={12} md={5} lg={4}>
+                    <MDInput
+                      type="text"
+                      label="Search Outlet, Contact, Invoice, or Staff..."
+                      fullWidth
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                    />
+                  </Grid>
+                  <Grid item xs={12} md={7} lg={8}>
+                    <MDBox display="flex" justifyContent={{ xs: "flex-start", md: "flex-end" }}>
+                      <MDBox
+                        px={2}
+                        py={1.25}
+                        borderRadius="lg"
+                        sx={{ backgroundColor: "#fef2f2", border: "1px solid #fecaca" }}
+                      >
+                        <MDTypography variant="caption" color="text">
+                          Total Credit Dues Amount
+                        </MDTypography>
+                        <MDTypography variant="h5" color="error" fontWeight="bold">
+                          ₹{totalCreditDuesAmount.toFixed(2)}
+                        </MDTypography>
+                      </MDBox>
+                    </MDBox>
+                  </Grid>
+                </Grid>
               </MDBox>
 
               <MDBox pb={4} px={3}>
@@ -270,12 +343,12 @@ function CreditsPage() {
                               >
                                 Remarks
                               </MDButton>
-                              <Tooltip title={credit.remarks ? "View remarks" : "No remarks yet"}>
+                              <Tooltip title={(Number(credit.remarks_count) || 0) > 0 ? "View remarks" : "No remarks yet"}>
                                 <span>
                                   <IconButton
                                     size="small"
-                                    color={credit.remarks ? "info" : "default"}
-                                    disabled={!credit.remarks}
+                                    color={(Number(credit.remarks_count) || 0) > 0 ? "info" : "default"}
+                                    disabled={(Number(credit.remarks_count) || 0) === 0}
                                     onClick={() => openViewRemarks(credit)}
                                   >
                                     <Icon fontSize="small">visibility</Icon>
@@ -321,20 +394,61 @@ function CreditsPage() {
             </MDBox>
           )}
           {remarksDialog.mode === "view" ? (
-            <MDTypography variant="body2" color="text" sx={{ whiteSpace: "pre-wrap" }}>
-              {remarksDialog.credit?.remarks || "No remarks added."}
-            </MDTypography>
+            loadingRemarks ? (
+              <MDTypography variant="body2" color="text">
+                Loading remarks...
+              </MDTypography>
+            ) : remarksHistory.length > 0 ? (
+              <Table size="small">
+                <TableHead sx={{ display: "table-header-group" }}>
+                  <TableRow>
+                    <TableCell align="center" sx={{ fontWeight: "bold", width: 120 }}>
+                      Date
+                    </TableCell>
+                    <TableCell align="left" sx={{ fontWeight: "bold" }}>
+                      Remarks
+                    </TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {remarksHistory.map((item) => (
+                    <TableRow key={item.id}>
+                      <TableCell align="center">{formatDate(item.remark_date)}</TableCell>
+                      <TableCell align="left" sx={{ whiteSpace: "pre-wrap" }}>
+                        {item.remarks}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            ) : (
+              <MDTypography variant="body2" color="text">
+                No remarks added.
+              </MDTypography>
+            )
           ) : (
-            <MDInput
-              type="text"
-              label="Remarks"
-              fullWidth
-              multiline
-              rows={4}
-              value={remarksText}
-              onChange={(e) => setRemarksText(e.target.value)}
-              placeholder="Enter follow-up notes, payment promise, etc."
-            />
+            <MDBox>
+              <MDBox mb={2}>
+                <MDInput
+                  type="date"
+                  label="Remarks Date"
+                  fullWidth
+                  InputLabelProps={{ shrink: true }}
+                  value={remarksDate}
+                  onChange={(e) => setRemarksDate(e.target.value)}
+                />
+              </MDBox>
+              <MDInput
+                type="text"
+                label="Remarks"
+                fullWidth
+                multiline
+                rows={4}
+                value={remarksText}
+                onChange={(e) => setRemarksText(e.target.value)}
+                placeholder="Enter follow-up notes, payment promise, etc."
+              />
+            </MDBox>
           )}
         </DialogContent>
         <DialogActions>

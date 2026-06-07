@@ -505,20 +505,51 @@ export const getPendingCredits = async (req, res) => {
 export const updateCreditRemarks = async (req, res) => {
     try {
         const { paymentId } = req.params;
-        const { remarks } = req.body;
+        const { remarks, remarkDate } = req.body;
 
         if (remarks !== undefined && remarks !== null && typeof remarks !== 'string') {
             return res.status(400).json({ error: 'Remarks must be text.' });
         }
+        if (!remarks || !remarks.trim()) {
+            return res.status(400).json({ error: 'Remarks are required.' });
+        }
 
-        const updated = await StaffModel.updateCreditRemarks(paymentId, remarks);
-        if (!updated) {
+        const normalizedRemarkDate = normalizeDateInput(remarkDate);
+        if (!normalizedRemarkDate || !/^\d{4}-\d{2}-\d{2}$/.test(normalizedRemarkDate)) {
+            return res.status(400).json({ error: 'Remark date is required.' });
+        }
+
+        const savedRemark = await StaffModel.addCreditRemark(
+            paymentId,
+            remarks,
+            normalizedRemarkDate
+        );
+        if (!savedRemark) {
             return res.status(404).json({ error: 'Credit payment not found.' });
         }
 
-        res.status(200).json({ message: 'Remarks saved successfully', remarks: remarks?.trim() || null });
+        res.status(200).json({
+            message: 'Remarks saved successfully',
+            remark: savedRemark,
+        });
     } catch (error) {
         console.error('Error updating credit remarks:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+};
+
+export const getCreditRemarks = async (req, res) => {
+    try {
+        const { paymentId } = req.params;
+        const remarks = await StaffModel.getCreditRemarks(paymentId);
+
+        if (!remarks) {
+            return res.status(404).json({ error: 'Credit payment not found.' });
+        }
+
+        res.status(200).json(remarks);
+    } catch (error) {
+        console.error('Error fetching credit remarks:', error);
         res.status(500).json({ error: 'Internal server error' });
     }
 };

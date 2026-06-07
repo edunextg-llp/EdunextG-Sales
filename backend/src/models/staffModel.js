@@ -540,25 +540,91 @@ class StaffModel {
     static async getPendingCredits() {
         const [rows] = await db.execute(
             `SELECT sp.id, sp.amount AS balance_amount, sp.payment_date AS sale_date, sp.credit_days,
-                    sp.remarks, ss.invoice_number, sc.outlet_name, sc.contact_number, s.name AS staff_name
+                    COALESCE(cpr.latest_remarks, sp.remarks) AS remarks,
+                    COALESCE(cpr.remarks_count, CASE WHEN sp.remarks IS NULL OR TRIM(sp.remarks) = '' THEN 0 ELSE 1 END) AS remarks_count,
+                    DATE_FORMAT(cpr.latest_remark_date, '%Y-%m-%d') AS latest_remark_date,
+                    ss.invoice_number, sc.outlet_name, sc.contact_number, s.name AS staff_name
              FROM sale_payments sp
              JOIN staff_sales ss ON sp.sale_id = ss.id
              LEFT JOIN staff_counters sc ON ss.outlet_id = sc.id
              LEFT JOIN staff s ON ss.staff_id = s.id
+             LEFT JOIN (
+                 SELECT r.payment_id,
+                        COUNT(*) AS remarks_count,
+                        SUBSTRING_INDEX(
+                            GROUP_CONCAT(r.remarks ORDER BY r.remark_date DESC, r.id DESC SEPARATOR '\n'),
+                            '\n',
+                            1
+                        ) AS latest_remarks,
+                        MAX(r.remark_date) AS latest_remark_date
+                 FROM credit_payment_remarks r
+                 GROUP BY r.payment_id
+             ) cpr ON cpr.payment_id = sp.id
              WHERE sp.payment_mode = 'credit'
              ORDER BY sp.payment_date ASC`
         );
         return rows;
     }
 
-    static async updateCreditRemarks(paymentId, remarks) {
-        const [result] = await db.execute(
-            `UPDATE sale_payments
-             SET remarks = ?
-             WHERE id = ? AND payment_mode = 'credit'`,
-            [remarks?.trim() || null, paymentId]
+    static async addCreditRemark(paymentId, remarks, remarkDate) {
+        const cleanRemarks = remarks?.trim() || null;
+        if (!cleanRemarks) {
+            return null;
+        }
+
+        const connection = await db.getConnection();
+
+        try {
+            await connection.beginTransaction();
+            const [paymentRows] = await connection.execute(
+                `SELECT id FROM sale_payments WHERE id = ? AND payment_mode = 'credit' FOR UPDATE`,
+                [paymentId]
+            );
+
+            if (!paymentRows[0]) {
+                await connection.rollback();
+                return null;
+            }
+
+            const [insertResult] = await connection.execute(
+                `INSERT INTO credit_payment_remarks (payment_id, remark_date, remarks)
+                 VALUES (?, ?, ?)`,
+                [paymentId, remarkDate, cleanRemarks]
+            );
+
+            await connection.execute(
+                `UPDATE sale_payments SET remarks = ? WHERE id = ?`,
+                [cleanRemarks, paymentId]
+            );
+
+            await connection.commit();
+            return { id: insertResult.insertId, remark_date: remarkDate, remarks: cleanRemarks };
+        } catch (error) {
+            await connection.rollback();
+            throw error;
+        } finally {
+            connection.release();
+        }
+    }
+
+    static async getCreditRemarks(paymentId) {
+        const [paymentRows] = await db.execute(
+            `SELECT id FROM sale_payments WHERE id = ? AND payment_mode = 'credit'`,
+            [paymentId]
         );
-        return result.affectedRows > 0;
+        if (!paymentRows[0]) {
+            return null;
+        }
+
+        const [rows] = await db.execute(
+            `SELECT id, DATE_FORMAT(remark_date, '%Y-%m-%d') AS remark_date, remarks,
+                    DATE_FORMAT(created_at, '%Y-%m-%d %H:%i:%s') AS created_at
+             FROM credit_payment_remarks
+             WHERE payment_id = ?
+             ORDER BY remark_date DESC, id DESC`,
+            [paymentId]
+        );
+        return rows;
     }
 }
 

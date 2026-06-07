@@ -335,6 +335,31 @@ async function initDB() {
         console.log('remarks column on sale_payments already exists or skipped');
     }
 
+    await connection.query(`
+        CREATE TABLE IF NOT EXISTS credit_payment_remarks (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            payment_id INT NOT NULL,
+            remark_date DATE NOT NULL,
+            remarks TEXT NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (payment_id) REFERENCES sale_payments(id) ON DELETE CASCADE,
+            INDEX idx_credit_payment_remarks_payment_id (payment_id)
+        );
+    `);
+    console.log('Credit payment remarks table created');
+
+    await connection.query(`
+        INSERT INTO credit_payment_remarks (payment_id, remark_date, remarks, created_at)
+        SELECT id, payment_date, remarks, COALESCE(created_at, CURRENT_TIMESTAMP)
+        FROM sale_payments
+        WHERE payment_mode = 'credit'
+          AND remarks IS NOT NULL
+          AND TRIM(remarks) <> ''
+          AND NOT EXISTS (
+              SELECT 1 FROM credit_payment_remarks cpr WHERE cpr.payment_id = sale_payments.id
+          )
+    `);
+
     try {
         await connection.query(`
             UPDATE staff_sales ss

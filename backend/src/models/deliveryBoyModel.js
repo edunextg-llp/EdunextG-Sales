@@ -63,6 +63,19 @@ class DeliveryBoyModel {
         );
         return rows[0];
     }
+
+    static async update(id, name, contactNo, companyId = null) {
+        const [result] = await db.execute(
+            'UPDATE delivery_boys SET name = ?, contact_no = ?, company_id = ? WHERE id = ?',
+            [name, contactNo, companyId, id]
+        );
+        return result.affectedRows > 0;
+    }
+
+    static async delete(id) {
+        const [result] = await db.execute('DELETE FROM delivery_boys WHERE id = ?', [id]);
+        return result.affectedRows > 0;
+    }
 }
 
 export default DeliveryBoyModel;
