@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import PropTypes from "prop-types";
 import { BarChart } from "@mui/x-charts";
 import Grid from "@mui/material/Grid";
@@ -6,6 +6,10 @@ import Card from "@mui/material/Card";
 import Chip from "@mui/material/Chip";
 import Icon from "@mui/material/Icon";
 import {
+  FormControl,
+  InputLabel,
+  MenuItem,
+  Select,
   Table,
   TableBody,
   TableCell,
@@ -18,7 +22,6 @@ import {
 import MDBox from "components/MDBox";
 import MDTypography from "components/MDTypography";
 import MDInput from "components/MDInput";
-import MDButton from "components/MDButton";
 
 import DashboardLayout from "examples/LayoutContainers/DashboardLayout";
 import DashboardNavbar from "examples/Navbars/DashboardNavbar";
@@ -35,6 +38,10 @@ const defaultReportData = {
   salesByPeriod: { weekly: [], monthly: [], quarterly: [], yearly: [] },
   chequeReports: [],
   duesReport: [],
+  staffSalesSummary: [],
+  staffMonthlySales: [],
+  companySalesSummary: [],
+  companyMonthlySales: [],
 };
 
 const paymentLabels = {
@@ -65,13 +72,28 @@ const tableBodySx = {
   whiteSpace: "nowrap",
 };
 
-function localDate(offsetDays = 0) {
-  const date = new Date();
-  date.setDate(date.getDate() + offsetDays);
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
+function getFinancialYearOptions() {
+  const now = new Date();
+  const currentYear = now.getFullYear();
+  const currentMonth = now.getMonth() + 1;
+  const startYear = currentMonth >= 4 ? currentYear : currentYear - 1;
+
+  return Array.from({ length: 6 }, (_, index) => {
+    const year = startYear - index;
+    return {
+      value: `${year}-${year + 1}`,
+      label: `${year}-${year + 1}`,
+      startDate: `${year}-04-01`,
+      endDate: `${year + 1}-03-31`,
+    };
+  });
+}
+
+function getStaffCompanyIds(staff) {
+  return String(staff?.company_ids || staff?.company_id || "")
+    .split(",")
+    .map((id) => Number(id))
+    .filter((id) => Number.isInteger(id) && id > 0);
 }
 
 function formatMoney(value) {
@@ -87,10 +109,6 @@ function formatDate(value) {
 
 function sumRows(rows, field = "total_amount") {
   return rows.reduce((total, row) => total + (Number(row[field]) || 0), 0);
-}
-
-function reverseRecent(rows, limit = 8) {
-  return [...rows].slice(0, limit).reverse();
 }
 
 const DEMO_YEARLY_YEARS = [2022, 2023, 2024, 2025];
@@ -301,17 +319,74 @@ function SalesPeriodRows({ rows, valueLabel }) {
 }
 
 function Reports() {
-  const [startDate, setStartDate] = useState(localDate(-30));
-  const [endDate, setEndDate] = useState(localDate());
+  const financialYearOptions = useMemo(() => getFinancialYearOptions(), []);
+  const [selectedFinancialYear, setSelectedFinancialYear] = useState(financialYearOptions[0].value);
+  const selectedFinancialYearOption = financialYearOptions.find(
+    (option) => option.value === selectedFinancialYear
+  );
+  const [startDate, setStartDate] = useState(selectedFinancialYearOption.startDate);
+  const [endDate, setEndDate] = useState(selectedFinancialYearOption.endDate);
+  const [staffOptions, setStaffOptions] = useState([]);
+  const [selectedCompanyId, setSelectedCompanyId] = useState("");
+  const [selectedStaffId, setSelectedStaffId] = useState("");
   const [reportData, setReportData] = useState(defaultReportData);
   const [loading, setLoading] = useState(false);
 
-  const fetchReports = async () => {
+  const companyOptions = useMemo(() => {
+    const companies = new Map();
+    staffOptions.forEach((staff) => {
+      const ids = getStaffCompanyIds(staff);
+      const names = String(staff.company_name || "")
+        .split(",")
+        .map((name) => name.trim())
+        .filter(Boolean);
+
+      ids.forEach((id, index) => {
+        if (!companies.has(id)) {
+          companies.set(id, names[index] || names[0] || `Company ${id}`);
+        }
+      });
+    });
+
+    return [...companies.entries()]
+      .map(([id, name]) => ({ id, name }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [staffOptions]);
+
+  const filteredStaffOptions = useMemo(
+    () =>
+      staffOptions.filter((staff) => {
+        if (!selectedCompanyId) return true;
+        return getStaffCompanyIds(staff).includes(Number(selectedCompanyId));
+      }),
+    [staffOptions, selectedCompanyId]
+  );
+
+  const selectedCompanyName =
+    companyOptions.find((company) => company.id === Number(selectedCompanyId))?.name || "All Companies";
+  const selectedStaffName =
+    staffOptions.find((staff) => staff.id === Number(selectedStaffId))?.name || "All Staff";
+
+  const fetchStaffOptions = useCallback(async () => {
+    try {
+      const response = await fetch(`${API}/staff`);
+      if (response.ok) {
+        const data = await response.json();
+        setStaffOptions(data);
+      }
+    } catch (error) {
+      console.error("Error fetching staff options:", error);
+    }
+  }, []);
+
+  const fetchReports = useCallback(async () => {
     setLoading(true);
     try {
       const params = new URLSearchParams();
       if (startDate) params.set("startDate", startDate);
       if (endDate) params.set("endDate", endDate);
+      if (selectedCompanyId) params.set("companyId", selectedCompanyId);
+      if (selectedStaffId) params.set("staffId", selectedStaffId);
       const response = await fetch(`${API}/staff/reports?${params.toString()}`);
 
       if (response.ok) {
@@ -326,12 +401,33 @@ function Reports() {
     } finally {
       setLoading(false);
     }
+  }, [endDate, selectedCompanyId, selectedStaffId, startDate]);
+
+  const handleFinancialYearChange = (value) => {
+    const option = financialYearOptions.find((item) => item.value === value);
+    setSelectedFinancialYear(value);
+    if (option) {
+      setStartDate(option.startDate);
+      setEndDate(option.endDate);
+    }
+  };
+
+  const handleCompanyChange = (value) => {
+    setSelectedCompanyId(value);
+    setSelectedStaffId("");
   };
 
   useEffect(() => {
-    fetchReports();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    fetchStaffOptions();
+  }, [fetchStaffOptions]);
+
+  useEffect(() => {
+    const timeoutId = setTimeout(() => {
+      fetchReports();
+    }, 250);
+
+    return () => clearTimeout(timeoutId);
+  }, [fetchReports]);
 
   const todayTotal = useMemo(() => sumRows(reportData.todayCollection), [reportData.todayCollection]);
   const yearlyCollectionRows = useMemo(
@@ -349,7 +445,7 @@ function Reports() {
             <Card>
               <MDBox p={3}>
                 <Grid container spacing={2} alignItems="center">
-                  <Grid item xs={12} md={5}>
+                  <Grid item xs={12} md={4}>
                     <MDTypography variant="h4" fontWeight="medium" color="dark">
                       Reports
                     </MDTypography>
@@ -357,7 +453,63 @@ function Reports() {
                       Sales, collection, cheque, and dues reports for accounts.
                     </MDTypography>
                   </Grid>
-                  <Grid item xs={12} sm={6} md={2.5}>
+                  <Grid item xs={12} sm={6} md={2}>
+                    <FormControl size="small" fullWidth>
+                      <InputLabel id="financial-year-label">Financial Year</InputLabel>
+                      <Select
+                        labelId="financial-year-label"
+                        value={selectedFinancialYear}
+                        label="Financial Year"
+                        onChange={(event) => handleFinancialYearChange(event.target.value)}
+                        sx={{ height: 44 }}
+                      >
+                        {financialYearOptions.map((option) => (
+                          <MenuItem key={option.value} value={option.value}>
+                            {option.label}
+                          </MenuItem>
+                        ))}
+                      </Select>
+                    </FormControl>
+                  </Grid>
+                  <Grid item xs={12} sm={6} md={2}>
+                    <FormControl size="small" fullWidth>
+                      <InputLabel id="report-company-label">Company</InputLabel>
+                      <Select
+                        labelId="report-company-label"
+                        value={selectedCompanyId}
+                        label="Company"
+                        onChange={(event) => handleCompanyChange(event.target.value)}
+                        sx={{ height: 44 }}
+                      >
+                        <MenuItem value="">All Companies</MenuItem>
+                        {companyOptions.map((company) => (
+                          <MenuItem key={company.id} value={company.id}>
+                            {company.name}
+                          </MenuItem>
+                        ))}
+                      </Select>
+                    </FormControl>
+                  </Grid>
+                  <Grid item xs={12} sm={6} md={2}>
+                    <FormControl size="small" fullWidth>
+                      <InputLabel id="report-staff-label">Staff</InputLabel>
+                      <Select
+                        labelId="report-staff-label"
+                        value={selectedStaffId}
+                        label="Staff"
+                        onChange={(event) => setSelectedStaffId(event.target.value)}
+                        sx={{ height: 44 }}
+                      >
+                        <MenuItem value="">All Staff</MenuItem>
+                        {filteredStaffOptions.map((staff) => (
+                          <MenuItem key={staff.id} value={staff.id}>
+                            {staff.name}
+                          </MenuItem>
+                        ))}
+                      </Select>
+                    </FormControl>
+                  </Grid>
+                  <Grid item xs={12} sm={6} md={2}>
                     <MDInput
                       type="date"
                       label="From Date"
@@ -367,7 +519,7 @@ function Reports() {
                       onChange={(event) => setStartDate(event.target.value)}
                     />
                   </Grid>
-                  <Grid item xs={12} sm={6} md={2.5}>
+                  <Grid item xs={12} sm={6} md={2}>
                     <MDInput
                       type="date"
                       label="To Date"
@@ -377,18 +529,15 @@ function Reports() {
                       onChange={(event) => setEndDate(event.target.value)}
                     />
                   </Grid>
-                  <Grid item xs={12} md={2}>
-                    <MDButton
-                      variant="gradient"
-                      color="info"
-                      fullWidth
-                      onClick={fetchReports}
-                      disabled={loading}
-                    >
-                      <Icon sx={{ mr: 1 }}>search</Icon>
-                      {loading ? "Loading" : "Apply"}
-                    </MDButton>
-                  </Grid>
+                  {loading && (
+                    <Grid item xs={12} md={2}>
+                      <MDBox display="flex" alignItems="center" height="44px">
+                        <MDTypography variant="button" color="text">
+                          Loading...
+                        </MDTypography>
+                      </MDBox>
+                    </Grid>
+                  )}
                 </Grid>
               </MDBox>
             </Card>
@@ -425,6 +574,151 @@ function Reports() {
               value={formatMoney(todayTotal)}
               color="dark"
             />
+          </Grid>
+
+          <Grid item xs={12} md={6}>
+            <SummaryCard
+              icon="person"
+              title={`Overall Staff Sales - ${selectedStaffName}`}
+              value={formatMoney(sumRows(reportData.staffSalesSummary, "total_sales"))}
+              color="info"
+            />
+          </Grid>
+          <Grid item xs={12} md={6}>
+            <SummaryCard
+              icon="business"
+              title={`Total Company Sales - ${selectedCompanyName}`}
+              value={formatMoney(sumRows(reportData.companySalesSummary, "total_sales"))}
+              color="success"
+            />
+          </Grid>
+
+          <Grid item xs={12} lg={6}>
+            <ReportTable
+              title="Month Wise Sales Of Staff"
+              empty={!reportData.staffMonthlySales.length}
+              minWidth={640}
+            >
+              <TableHead sx={{ display: "table-header-group" }}>
+                <TableRow>
+                  <TableCell sx={tableHeadSx}>Month</TableCell>
+                  <TableCell sx={tableHeadSx}>Staff</TableCell>
+                  <TableCell align="center" sx={tableHeadSx}>
+                    Bills
+                  </TableCell>
+                  <TableCell align="right" sx={tableHeadSx}>
+                    Total Sales
+                  </TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {reportData.staffMonthlySales.map((row) => (
+                  <TableRow key={`${row.period}-${row.staff_id}`}>
+                    <TableCell sx={tableBodySx}>{row.period}</TableCell>
+                    <TableCell sx={tableBodySx}>{row.staff_name || "N/A"}</TableCell>
+                    <TableCell align="center" sx={tableBodySx}>
+                      {row.count}
+                    </TableCell>
+                    <TableCell align="right" sx={tableBodySx}>
+                      {formatMoney(row.total_sales)}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </ReportTable>
+          </Grid>
+
+          <Grid item xs={12} lg={6}>
+            <ReportTable
+              title="Monthly Sales Of Company"
+              empty={!reportData.companyMonthlySales.length}
+              minWidth={640}
+            >
+              <TableHead sx={{ display: "table-header-group" }}>
+                <TableRow>
+                  <TableCell sx={tableHeadSx}>Month</TableCell>
+                  <TableCell sx={tableHeadSx}>Company</TableCell>
+                  <TableCell align="center" sx={tableHeadSx}>
+                    Bills
+                  </TableCell>
+                  <TableCell align="right" sx={tableHeadSx}>
+                    Total Sales
+                  </TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {reportData.companyMonthlySales.map((row) => (
+                  <TableRow key={`${row.period}-${row.company_id}`}>
+                    <TableCell sx={tableBodySx}>{row.period}</TableCell>
+                    <TableCell sx={tableBodySx}>{row.company_name || "N/A"}</TableCell>
+                    <TableCell align="center" sx={tableBodySx}>
+                      {row.count}
+                    </TableCell>
+                    <TableCell align="right" sx={tableBodySx}>
+                      {formatMoney(row.total_sales)}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </ReportTable>
+          </Grid>
+
+          <Grid item xs={12} lg={6}>
+            <ReportTable title="Overall Sales Of Staff" empty={!reportData.staffSalesSummary.length} minWidth={560}>
+              <TableHead sx={{ display: "table-header-group" }}>
+                <TableRow>
+                  <TableCell sx={tableHeadSx}>Staff</TableCell>
+                  <TableCell align="center" sx={tableHeadSx}>
+                    Bills
+                  </TableCell>
+                  <TableCell align="right" sx={tableHeadSx}>
+                    Total Sales
+                  </TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {reportData.staffSalesSummary.map((row) => (
+                  <TableRow key={row.staff_id}>
+                    <TableCell sx={tableBodySx}>{row.staff_name || "N/A"}</TableCell>
+                    <TableCell align="center" sx={tableBodySx}>
+                      {row.count}
+                    </TableCell>
+                    <TableCell align="right" sx={tableBodySx}>
+                      {formatMoney(row.total_sales)}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </ReportTable>
+          </Grid>
+
+          <Grid item xs={12} lg={6}>
+            <ReportTable title="Total Sales Of Company" empty={!reportData.companySalesSummary.length} minWidth={560}>
+              <TableHead sx={{ display: "table-header-group" }}>
+                <TableRow>
+                  <TableCell sx={tableHeadSx}>Company</TableCell>
+                  <TableCell align="center" sx={tableHeadSx}>
+                    Bills
+                  </TableCell>
+                  <TableCell align="right" sx={tableHeadSx}>
+                    Total Sales
+                  </TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {reportData.companySalesSummary.map((row) => (
+                  <TableRow key={row.company_id}>
+                    <TableCell sx={tableBodySx}>{row.company_name || "N/A"}</TableCell>
+                    <TableCell align="center" sx={tableBodySx}>
+                      {row.count}
+                    </TableCell>
+                    <TableCell align="right" sx={tableBodySx}>
+                      {formatMoney(row.total_sales)}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </ReportTable>
           </Grid>
 
           <Grid item xs={12} lg={5}>

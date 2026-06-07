@@ -47,15 +47,48 @@ class ReportModel {
         };
     }
 
-    static async getSummary(startDate, endDate) {
-        const salesWhere = ReportModel.buildDateWhere('sale_date', startDate, endDate);
+    static buildSalesWhere(alias, startDate, endDate, companyId = null, staffId = null) {
+        const clauses = [];
+        const params = [];
+
+        if (startDate) {
+            clauses.push(`${alias}.sale_date >= ?`);
+            params.push(startDate);
+        }
+        if (endDate) {
+            clauses.push(`${alias}.sale_date <= ?`);
+            params.push(endDate);
+        }
+        if (companyId) {
+            clauses.push(`EXISTS (
+                SELECT 1
+                FROM staff s_filter
+                LEFT JOIN staff_companies sc_filter ON sc_filter.staff_id = s_filter.id
+                WHERE s_filter.id = ${alias}.staff_id
+                  AND (s_filter.company_id = ? OR sc_filter.company_id = ?)
+            )`);
+            params.push(companyId, companyId);
+        }
+        if (staffId) {
+            clauses.push(`${alias}.staff_id = ?`);
+            params.push(staffId);
+        }
+
+        return {
+            sql: clauses.length ? `WHERE ${clauses.join(' AND ')}` : '',
+            params,
+        };
+    }
+
+    static async getSummary(startDate, endDate, companyId = null, staffId = null) {
+        const salesWhere = ReportModel.buildSalesWhere('ss', startDate, endDate, companyId, staffId);
         const paymentWhere = ReportModel.buildDateWhere('payment_date', startDate, endDate);
 
         const [[salesSummary], [collectionSummary]] = await Promise.all([
             db.execute(
                 `SELECT COALESCE(SUM(price), 0) AS total_sales,
                         COALESCE(SUM(balance_amount), 0) AS total_outstanding
-                 FROM staff_sales
+                 FROM staff_sales ss
                  ${salesWhere.sql}`,
                 salesWhere.params
             ).then(([rows]) => rows),
@@ -135,8 +168,8 @@ class ReportModel {
         return toNumberRows(rows);
     }
 
-    static async getSalesByPeriod(startDate, endDate) {
-        const dateWhere = ReportModel.buildDateWhere('sale_date', startDate, endDate);
+    static async getSalesByPeriod(startDate, endDate, companyId = null, staffId = null) {
+        const dateWhere = ReportModel.buildSalesWhere('ss', startDate, endDate, companyId, staffId);
         const filterSql = dateWhere.sql;
 
         const [weekly, monthly, quarterly, yearly] = await Promise.all([
@@ -145,9 +178,9 @@ class ReportModel {
                         COALESCE(SUM(price), 0) AS total_sales,
                         COUNT(*) AS count
                  FROM (
-                    SELECT DATE_FORMAT(DATE_SUB(sale_date, INTERVAL WEEKDAY(sale_date) DAY), '%Y-%m-%d') AS period,
-                           price
-                    FROM staff_sales
+                    SELECT DATE_FORMAT(DATE_SUB(ss.sale_date, INTERVAL WEEKDAY(ss.sale_date) DAY), '%Y-%m-%d') AS period,
+                           ss.price
+                    FROM staff_sales ss
                     ${filterSql}
                  ) period_sales
                  GROUP BY period
@@ -160,9 +193,9 @@ class ReportModel {
                         COALESCE(SUM(price), 0) AS total_sales,
                         COUNT(*) AS count
                  FROM (
-                    SELECT DATE_FORMAT(sale_date, '%Y-%m') AS period,
-                           price
-                    FROM staff_sales
+                    SELECT DATE_FORMAT(ss.sale_date, '%Y-%m') AS period,
+                           ss.price
+                    FROM staff_sales ss
                     ${filterSql}
                  ) period_sales
                  GROUP BY period
@@ -175,11 +208,11 @@ class ReportModel {
                         COALESCE(SUM(price), 0) AS total_sales,
                         COUNT(*) AS count
                  FROM (
-                    SELECT CONCAT(YEAR(sale_date), '-Q', QUARTER(sale_date)) AS period,
-                           YEAR(sale_date) AS period_year,
-                           QUARTER(sale_date) AS period_quarter,
-                           price
-                    FROM staff_sales
+                    SELECT CONCAT(YEAR(ss.sale_date), '-Q', QUARTER(ss.sale_date)) AS period,
+                           YEAR(ss.sale_date) AS period_year,
+                           QUARTER(ss.sale_date) AS period_quarter,
+                           ss.price
+                    FROM staff_sales ss
                     ${filterSql}
                  ) period_sales
                  GROUP BY period, period_year, period_quarter
@@ -192,9 +225,9 @@ class ReportModel {
                         COALESCE(SUM(price), 0) AS total_sales,
                         COUNT(*) AS count
                  FROM (
-                    SELECT YEAR(sale_date) AS period,
-                           price
-                    FROM staff_sales
+                    SELECT YEAR(ss.sale_date) AS period,
+                           ss.price
+                    FROM staff_sales ss
                     ${filterSql}
                  ) period_sales
                  GROUP BY period
@@ -205,6 +238,91 @@ class ReportModel {
         ]);
 
         return { weekly, monthly, quarterly, yearly };
+    }
+
+    static async getStaffSalesSummary(startDate, endDate, companyId = null, staffId = null) {
+        const salesWhere = ReportModel.buildSalesWhere('ss', startDate, endDate, companyId, staffId);
+        const [rows] = await db.execute(
+            `SELECT ss.staff_id, s.name AS staff_name,
+                    COALESCE(SUM(ss.price), 0) AS total_sales,
+                    COUNT(*) AS count
+             FROM staff_sales ss
+             LEFT JOIN staff s ON s.id = ss.staff_id
+             ${salesWhere.sql}
+             GROUP BY ss.staff_id, s.name
+             ORDER BY total_sales DESC, s.name ASC`,
+            salesWhere.params
+        );
+        return toNumberRows(rows);
+    }
+
+    static async getStaffMonthlySales(startDate, endDate, companyId = null, staffId = null) {
+        const salesWhere = ReportModel.buildSalesWhere('ss', startDate, endDate, companyId, staffId);
+        const [rows] = await db.execute(
+            `SELECT DATE_FORMAT(ss.sale_date, '%Y-%m') AS period,
+                    ss.staff_id,
+                    s.name AS staff_name,
+                    COALESCE(SUM(ss.price), 0) AS total_sales,
+                    COUNT(*) AS count
+             FROM staff_sales ss
+             LEFT JOIN staff s ON s.id = ss.staff_id
+             ${salesWhere.sql}
+             GROUP BY DATE_FORMAT(ss.sale_date, '%Y-%m'), ss.staff_id, s.name
+             ORDER BY period DESC, s.name ASC`,
+            salesWhere.params
+        );
+        return toNumberRows(rows);
+    }
+
+    static async getCompanySalesSummary(startDate, endDate, companyId = null, staffId = null) {
+        const salesWhere = ReportModel.buildSalesWhere('ss', startDate, endDate, companyId, staffId);
+        const [rows] = await db.execute(
+            `SELECT company_id, company_name,
+                    COALESCE(SUM(price), 0) AS total_sales,
+                    COUNT(*) AS count
+             FROM (
+                 SELECT DISTINCT ss.id AS sale_id,
+                        ss.price,
+                        c.id AS company_id,
+                        c.name AS company_name
+                 FROM staff_sales ss
+                 LEFT JOIN staff s ON s.id = ss.staff_id
+                 LEFT JOIN staff_companies sc ON sc.staff_id = s.id
+                 LEFT JOIN companies c ON c.id = COALESCE(sc.company_id, s.company_id)
+                 ${salesWhere.sql}
+             ) company_sales
+             WHERE company_id IS NOT NULL
+             GROUP BY company_id, company_name
+             ORDER BY total_sales DESC, company_name ASC`,
+            salesWhere.params
+        );
+        return toNumberRows(rows);
+    }
+
+    static async getCompanyMonthlySales(startDate, endDate, companyId = null, staffId = null) {
+        const salesWhere = ReportModel.buildSalesWhere('ss', startDate, endDate, companyId, staffId);
+        const [rows] = await db.execute(
+            `SELECT period, company_id, company_name,
+                    COALESCE(SUM(price), 0) AS total_sales,
+                    COUNT(*) AS count
+             FROM (
+                 SELECT DISTINCT ss.id AS sale_id,
+                        DATE_FORMAT(ss.sale_date, '%Y-%m') AS period,
+                        ss.price,
+                        c.id AS company_id,
+                        c.name AS company_name
+                 FROM staff_sales ss
+                 LEFT JOIN staff s ON s.id = ss.staff_id
+                 LEFT JOIN staff_companies sc ON sc.staff_id = s.id
+                 LEFT JOIN companies c ON c.id = COALESCE(sc.company_id, s.company_id)
+                 ${salesWhere.sql}
+             ) company_sales
+             WHERE company_id IS NOT NULL
+             GROUP BY period, company_id, company_name
+             ORDER BY period DESC, company_name ASC`,
+            salesWhere.params
+        );
+        return toNumberRows(rows);
     }
 
     static async getChequeReports(startDate, endDate) {
@@ -271,7 +389,9 @@ class ReportModel {
         };
     }
 
-    static async getReports(startDate, endDate) {
+    static async getReports(startDate, endDate, filters = {}) {
+        const companyId = filters.companyId || null;
+        const staffId = filters.staffId || null;
         const [
             summary,
             collectionByMode,
@@ -282,16 +402,24 @@ class ReportModel {
             chequeReports,
             duesReport,
             creditDuesSummary,
+            staffSalesSummary,
+            staffMonthlySales,
+            companySalesSummary,
+            companyMonthlySales,
         ] = await Promise.all([
-            ReportModel.getSummary(startDate, endDate),
+            ReportModel.getSummary(startDate, endDate, companyId, staffId),
             ReportModel.getCollectionByMode(startDate, endDate),
             ReportModel.getTodayCollection(),
             ReportModel.getMonthlyCollection(startDate, endDate),
             ReportModel.getYearlyCollection(startDate, endDate),
-            ReportModel.getSalesByPeriod(startDate, endDate),
+            ReportModel.getSalesByPeriod(startDate, endDate, companyId, staffId),
             ReportModel.getChequeReports(startDate, endDate),
             ReportModel.getDuesReport(),
             ReportModel.getCreditDuesSummary(),
+            ReportModel.getStaffSalesSummary(startDate, endDate, companyId, staffId),
+            ReportModel.getStaffMonthlySales(startDate, endDate, companyId, staffId),
+            ReportModel.getCompanySalesSummary(startDate, endDate, companyId, staffId),
+            ReportModel.getCompanyMonthlySales(startDate, endDate, companyId, staffId),
         ]);
 
         return {
@@ -304,6 +432,10 @@ class ReportModel {
             chequeReports,
             duesReport,
             creditDuesSummary,
+            staffSalesSummary,
+            staffMonthlySales,
+            companySalesSummary,
+            companyMonthlySales,
         };
     }
 }

@@ -556,7 +556,7 @@ export const getCreditRemarks = async (req, res) => {
 
 export const getReports = async (req, res) => {
     try {
-        const { startDate, endDate } = req.query;
+        const { startDate, endDate, companyId, staffId } = req.query;
         const datePattern = /^\d{4}-\d{2}-\d{2}$/;
 
         if (startDate && !datePattern.test(startDate)) {
@@ -566,7 +566,20 @@ export const getReports = async (req, res) => {
             return res.status(400).json({ error: 'endDate must be YYYY-MM-DD' });
         }
 
-        const reports = await ReportModel.getReports(startDate || null, endDate || null);
+        const parsedCompanyId = companyId ? Number(companyId) : null;
+        const parsedStaffId = staffId ? Number(staffId) : null;
+
+        if (companyId && (!Number.isInteger(parsedCompanyId) || parsedCompanyId <= 0)) {
+            return res.status(400).json({ error: 'companyId must be a positive integer' });
+        }
+        if (staffId && (!Number.isInteger(parsedStaffId) || parsedStaffId <= 0)) {
+            return res.status(400).json({ error: 'staffId must be a positive integer' });
+        }
+
+        const reports = await ReportModel.getReports(startDate || null, endDate || null, {
+            companyId: parsedCompanyId,
+            staffId: parsedStaffId,
+        });
         res.status(200).json(reports);
     } catch (error) {
         console.error('Error fetching reports:', error);
