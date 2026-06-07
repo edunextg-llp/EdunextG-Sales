@@ -16,8 +16,8 @@ app.use(bodyParser.urlencoded({ extended: true }));
 
 // Rate Limiters
 const globalLimiter = rateLimit({
-    windowMs: 15 * 60 * 1000, // 15 minutes
-    max: 200, // Limit each IP to 200 requests per `window`
+    windowMs: 3 * 60 * 1000, // 15 minutes
+    max: 200000, // Limit each IP to 200 requests per `window`
     message: { error: 'Too many requests from this IP, please try again after 15 minutes' }
 });
 
