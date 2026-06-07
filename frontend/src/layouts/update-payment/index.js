@@ -36,11 +36,16 @@ const PAYMENT_MODE_LABELS = {
   cheque: "Cheque",
 };
 
-const CASH_DENOMINATIONS = [500, 200, 100, 50, 20, 10];
+const CASH_NOTE_DENOMINATIONS = [500, 200, 100, 50, 20, 10];
+const CASH_COIN_DENOMINATIONS = [20, 10, 5, 2, 1];
+const CASH_DENOMINATIONS = [
+  ...CASH_NOTE_DENOMINATIONS.map((denomination) => ({ key: `note_${denomination}`, denomination })),
+  ...CASH_COIN_DENOMINATIONS.map((denomination) => ({ key: `coin_${denomination}`, denomination })),
+];
 
 const emptyCashNotes = () =>
-  CASH_DENOMINATIONS.reduce((notes, denomination) => {
-    notes[denomination] = "";
+  CASH_DENOMINATIONS.reduce((notes, item) => {
+    notes[item.key] = "";
     return notes;
   }, {});
 
@@ -285,7 +290,7 @@ function UpdatePayment() {
 
   const calculateCashAmount = (cashNotes = paymentForm.cashNotes) =>
     CASH_DENOMINATIONS.reduce(
-      (total, denomination) => total + denomination * (parseInt(cashNotes[denomination], 10) || 0),
+      (total, item) => total + item.denomination * (parseInt(cashNotes[item.key], 10) || 0),
       0
     );
 
@@ -326,7 +331,7 @@ function UpdatePayment() {
 
     if (paymentForm.paymentMode === "cash") {
       const hasCashCount = CASH_DENOMINATIONS.some(
-        (denomination) => (parseInt(paymentForm.cashNotes[denomination], 10) || 0) > 0
+        (item) => (parseInt(paymentForm.cashNotes[item.key], 10) || 0) > 0
       );
       if (!hasCashCount) {
         alert("Please enter cash note count.");
@@ -807,6 +812,9 @@ function UpdatePayment() {
                     </Grid>
                     {paymentForm.paymentMode === "cash" && (
                       <Grid item xs={12}>
+                        <MDTypography variant="button" fontWeight="medium" color="dark" display="block" mb={1}>
+                          Notes
+                        </MDTypography>
                         <MDBox
                           display="grid"
                           sx={{
@@ -818,20 +826,46 @@ function UpdatePayment() {
                           }}
                           gap={1.5}
                         >
-                          {CASH_DENOMINATIONS.map((denomination) => (
+                          {CASH_NOTE_DENOMINATIONS.map((denomination) => (
                             <MDInput
-                              key={denomination}
+                              key={`note-${denomination}`}
                               type="number"
-                              label={`₹${denomination} Count`}
-                              value={paymentForm.cashNotes[denomination] || ""}
-                              onChange={(e) => handleCashNoteChange(denomination, e.target.value)}
+                              label={`₹${denomination} Note`}
+                              value={paymentForm.cashNotes[`note_${denomination}`] || ""}
+                              onChange={(e) => handleCashNoteChange(`note_${denomination}`, e.target.value)}
+                              inputProps={{ min: 0, step: 1 }}
+                              fullWidth
+                            />
+                          ))}
+                        </MDBox>
+                        <MDTypography variant="button" fontWeight="medium" color="dark" display="block" mt={2} mb={1}>
+                          Coins
+                        </MDTypography>
+                        <MDBox
+                          display="grid"
+                          sx={{
+                            gridTemplateColumns: {
+                              xs: "repeat(2, minmax(0, 1fr))",
+                              sm: "repeat(3, minmax(0, 1fr))",
+                              md: "repeat(5, minmax(0, 1fr))",
+                            },
+                          }}
+                          gap={1.5}
+                        >
+                          {CASH_COIN_DENOMINATIONS.map((denomination) => (
+                            <MDInput
+                              key={`coin-${denomination}`}
+                              type="number"
+                              label={`₹${denomination} Coin`}
+                              value={paymentForm.cashNotes[`coin_${denomination}`] || ""}
+                              onChange={(e) => handleCashNoteChange(`coin_${denomination}`, e.target.value)}
                               inputProps={{ min: 0, step: 1 }}
                               fullWidth
                             />
                           ))}
                         </MDBox>
                         <MDTypography variant="caption" color="text" display="block" mt={1}>
-                          Cash amount auto-calculates from note count.
+                          Cash amount auto-calculates from note and coin count.
                         </MDTypography>
                       </Grid>
                     )}
