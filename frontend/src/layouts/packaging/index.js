@@ -33,6 +33,7 @@ import {
   mergeSalesRows,
   useSalesPolling,
 } from "utils/salesSync";
+import { formatBpSaleId } from "utils/saleId";
 
 function Packaging() {
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split("T")[0]);
@@ -213,7 +214,13 @@ function Packaging() {
     const outletName = row.outlet_name ? row.outlet_name.toLowerCase() : "";
     const outletErpId = row.outlet_erp_id ? row.outlet_erp_id.toLowerCase() : "";
     const staffName = row.staff_name ? row.staff_name.toLowerCase() : "";
-    return outletName.includes(search) || outletErpId.includes(search) || staffName.includes(search);
+    const saleId = formatBpSaleId(row).toLowerCase();
+    return (
+      outletName.includes(search) ||
+      outletErpId.includes(search) ||
+      staffName.includes(search) ||
+      saleId.includes(search)
+    );
   });
 
   return (
@@ -233,7 +240,7 @@ function Packaging() {
                   <Grid item xs={12} md={3}>
                     <MDInput
                       type="text"
-                      label="Search by Outlet Name, ID, or Staff Name"
+                      label="Search by Outlet Name, ID, Staff Name, or Sale ID"
                       fullWidth
                       value={searchQuery}
                       onChange={(e) => setSearchQuery(e.target.value)}
@@ -284,6 +291,9 @@ function Packaging() {
                           Date
                         </TableCell> */}
                         <TableCell align="center" sx={{ color: "#6b7280", borderBottom: "1px solid #e5e7eb", py: 1.5, fontWeight: 500 }}>
+                          Sale ID
+                        </TableCell>
+                        <TableCell align="center" sx={{ color: "#6b7280", borderBottom: "1px solid #e5e7eb", py: 1.5, fontWeight: 500 }}>
                           Invoice No
                         </TableCell>
                         <TableCell align="right" sx={{ color: "#6b7280", borderBottom: "1px solid #e5e7eb", py: 1.5, fontWeight: 500 }}>
@@ -325,6 +335,9 @@ function Packaging() {
                               </TableCell>
                               <TableCell sx={{ borderBottom: borderCol, py: 2, color: txColor }}>
                                 {row.outlet_erp_id}
+                              </TableCell>
+                              <TableCell align="center" sx={{ borderBottom: borderCol, py: 2, color: txColor, fontWeight: "bold" }}>
+                                {formatBpSaleId(row)}
                               </TableCell>
                               <TableCell align="center" sx={{ borderBottom: borderCol, py: 2, color: txColor }}>
                                 {row.invoice_number}
@@ -378,7 +391,7 @@ function Packaging() {
                         })
                       ) : (
                         <TableRow>
-                          <TableCell colSpan={9} align="center" sx={{ py: 3, borderBottom: 0 }}>
+                          <TableCell colSpan={10} align="center" sx={{ py: 3, borderBottom: 0 }}>
                             <MDTypography variant="body2" color="text">
                               No sales found.
                             </MDTypography>
@@ -405,6 +418,9 @@ function Packaging() {
         <DialogContent dividers>
           <MDBox mb={2}>
             <MDTypography variant="button" fontWeight="medium">
+              Sale ID: {historyDialog.sale ? formatBpSaleId(historyDialog.sale) : "N/A"}
+            </MDTypography>
+            <MDTypography display="block" variant="button" fontWeight="medium">
               Invoice: {historyDialog.sale?.invoice_number || "N/A"}
             </MDTypography>
             <MDTypography variant="body2" color="text">

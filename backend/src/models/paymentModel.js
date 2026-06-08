@@ -3,7 +3,7 @@ import db from '../config/db.js';
 class PaymentModel {
     static async getBySaleId(saleId) {
         const [rows] = await db.execute(
-            `SELECT id, sale_id,
+            `SELECT id, sale_id, parent_credit_payment_id,
                     DATE_FORMAT(payment_date, '%Y-%m-%d') AS payment_date,
                     payment_mode, amount, reference_no,
                     DATE_FORMAT(reference_date, '%Y-%m-%d') AS reference_date,
@@ -44,10 +44,46 @@ class PaymentModel {
         return parseFloat(rows[0].total);
     }
 
+    static async getCreditRemaining(connection, saleId, creditPaymentId, excludePaymentId = null) {
+        const [creditRows] = await connection.execute(
+            `SELECT id, amount
+             FROM sale_payments
+             WHERE id = ? AND sale_id = ? AND payment_mode = 'credit'
+             FOR UPDATE`,
+            [creditPaymentId, saleId]
+        );
+
+        if (!creditRows.length) {
+            const err = new Error('CREDIT_PAYMENT_NOT_FOUND');
+            throw err;
+        }
+
+        const params = [creditPaymentId];
+        let excludeClause = '';
+        if (excludePaymentId != null) {
+            excludeClause = ' AND id <> ?';
+            params.push(excludePaymentId);
+        }
+
+        const [childRows] = await connection.execute(
+            `SELECT COALESCE(SUM(amount), 0) AS total
+             FROM sale_payments
+             WHERE parent_credit_payment_id = ?
+               AND payment_mode IN ('cash', 'upi', 'cheque')${excludeClause}`,
+            params
+        );
+
+        const creditAmount = parseFloat(creditRows[0].amount) || 0;
+        const childPaid = parseFloat(childRows[0].total) || 0;
+        return Math.max(0, Math.round((creditAmount - childPaid) * 100) / 100);
+    }
+
     static async buildPaymentResponse(saleId) {
         const payments = await PaymentModel.getBySaleId(saleId);
         const [saleRows] = await db.execute(
-            'SELECT price, paid_amount, balance_amount FROM staff_sales WHERE id = ?',
+            `SELECT id, CONCAT('BP', id) AS bp_sale_id,
+                    price, paid_amount, balance_amount
+             FROM staff_sales WHERE id = ?`,
             [saleId]
         );
 
@@ -57,6 +93,8 @@ class PaymentModel {
                 price: parseFloat(saleRows[0].price),
                 paidAmount: parseFloat(saleRows[0].paid_amount),
                 balanceAmount: parseFloat(saleRows[0].balance_amount),
+                saleId: saleRows[0].id,
+                bpSaleId: saleRows[0].bp_sale_id,
             },
         };
     }
@@ -102,7 +140,8 @@ class PaymentModel {
 
     static async getSaleSummary(saleId) {
         const [rows] = await db.execute(
-            `SELECT id, price, paid_amount, balance_amount, invoice_number
+            `SELECT id, CONCAT('BP', id) AS bp_sale_id,
+                    price, paid_amount, balance_amount, invoice_number
              FROM staff_sales WHERE id = ?`,
             [saleId]
         );
@@ -145,6 +184,7 @@ class PaymentModel {
                 balance_amount: Math.max(0, Math.round((price - paidAmount) * 100) / 100),
                 payment_mode: lastMode,
                 invoice_number: sale.invoice_number,
+                bp_sale_id: sale.bp_sale_id,
             };
         }
 
@@ -161,11 +201,12 @@ class PaymentModel {
             paid_amount: paidAmount,
             balance_amount: balanceAmount,
             invoice_number: sale.invoice_number,
+            bp_sale_id: sale.bp_sale_id,
         };
     }
 
     static async addPayment(saleId, data) {
-        const { paymentDate, paymentMode, amount, referenceNo, referenceDate, creditDays } = data;
+        const { paymentDate, paymentMode, amount, referenceNo, referenceDate, creditDays, parentCreditPaymentId } = data;
         const connection = await db.getConnection();
 
         try {
@@ -186,15 +227,36 @@ class PaymentModel {
                 throw err;
             }
 
+            let parentCreditId = null;
+            if (parentCreditPaymentId) {
+                if (paymentMode === 'credit') {
+                    const err = new Error('CREDIT_CHILD_CANNOT_BE_CREDIT');
+                    throw err;
+                }
+
+                parentCreditId = parseInt(parentCreditPaymentId, 10);
+                const creditRemaining = await PaymentModel.getCreditRemaining(
+                    connection,
+                    saleId,
+                    parentCreditId
+                );
+                if (amount > creditRemaining + 0.001) {
+                    const err = new Error('EXCEEDS_CREDIT_BALANCE');
+                    err.remaining = creditRemaining;
+                    throw err;
+                }
+            }
+
             await connection.execute(
                 `INSERT INTO sale_payments
-                 (sale_id, payment_date, payment_mode, amount, reference_no, reference_date, credit_days)
-                 VALUES (?, ?, ?, ?, ?, ?, ?)`,
+                 (sale_id, payment_date, payment_mode, amount, parent_credit_payment_id, reference_no, reference_date, credit_days)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
                 [
                     saleId,
                     paymentDate,
                     paymentMode,
                     amount,
+                    parentCreditId,
                     referenceNo || null,
                     referenceDate || null,
                     creditDays ?? null,
@@ -311,6 +373,29 @@ class PaymentModel {
                 }
             }
 
+            const [existingPaymentRows] = await connection.execute(
+                'SELECT parent_credit_payment_id FROM sale_payments WHERE id = ? AND sale_id = ?',
+                [paymentId, saleId]
+            );
+            const parentCreditPaymentId = existingPaymentRows[0]?.parent_credit_payment_id;
+            if (parentCreditPaymentId && paymentMode === 'credit') {
+                const err = new Error('CREDIT_CHILD_CANNOT_BE_CREDIT');
+                throw err;
+            }
+            if (parentCreditPaymentId && ['cash', 'upi', 'cheque'].includes(paymentMode)) {
+                const creditRemaining = await PaymentModel.getCreditRemaining(
+                    connection,
+                    saleId,
+                    parentCreditPaymentId,
+                    paymentId
+                );
+                if (checkAmount > creditRemaining + 0.001) {
+                    const err = new Error('EXCEEDS_CREDIT_BALANCE');
+                    err.remaining = creditRemaining;
+                    throw err;
+                }
+            }
+
             await connection.execute(
                 `UPDATE sale_payments
                  SET payment_date = ?, payment_mode = ?, amount = ?, reference_no = ?, reference_date = ?, credit_days = ?
@@ -332,7 +417,9 @@ class PaymentModel {
 
             const payments = await PaymentModel.getBySaleId(saleId);
             const [saleRows] = await db.execute(
-                'SELECT price, paid_amount, balance_amount FROM staff_sales WHERE id = ?',
+                `SELECT id, CONCAT('BP', id) AS bp_sale_id,
+                        price, paid_amount, balance_amount
+                 FROM staff_sales WHERE id = ?`,
                 [saleId]
             );
 
@@ -342,6 +429,8 @@ class PaymentModel {
                     price: parseFloat(saleRows[0].price),
                     paidAmount: parseFloat(saleRows[0].paid_amount),
                     balanceAmount: parseFloat(saleRows[0].balance_amount),
+                    saleId: saleRows[0].id,
+                    bpSaleId: saleRows[0].bp_sale_id,
                 },
             };
         } catch (error) {

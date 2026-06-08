@@ -34,7 +34,12 @@ function AddCounter() {
   const [outlets, setOutlets] = useState([]);
   const [savedOutlets, setSavedOutlets] = useState([]);
   const [editingOutletId, setEditingOutletId] = useState(null);
-  const [editFormData, setEditFormData] = useState({ outletErpId: "", outletName: "", contactNumber: "" });
+  const [editFormData, setEditFormData] = useState({
+    outletErpId: "",
+    outletName: "",
+    contactNumber: "",
+    googleLocation: "",
+  });
 
   const API = "https://bawarchee.edunextg.co/api";
   const isCnfStaff = selectedStaff?.staff_type === "cnf";
@@ -146,7 +151,7 @@ function AddCounter() {
   }, [selectedStaff, routeDay]);
 
   const addOutletField = () => {
-    setOutlets([...outlets, { outletErpId: "", outletName: "", contactNumber: "" }]);
+    setOutlets([...outlets, { outletErpId: "", outletName: "", contactNumber: "", googleLocation: "" }]);
   };
 
   const removeOutletField = (index) => {
@@ -169,6 +174,7 @@ function AddCounter() {
 
     const erpIds = outlets.map((outlet) => normalizeText(outlet.outletErpId)).filter(Boolean);
     const outletNames = outlets.map((outlet) => normalizeText(outlet.outletName)).filter(Boolean);
+    const missingGoogleLocation = outlets.some((outlet) => !String(outlet.googleLocation || "").trim());
     const savedErpIds = new Set(savedOutlets.map((outlet) => normalizeText(outlet.outlet_erp_id)));
     const savedOutletNames = new Set(savedOutlets.map((outlet) => normalizeText(outlet.outlet_name)));
     const hasDuplicateErp =
@@ -180,6 +186,11 @@ function AddCounter() {
 
     if (hasDuplicateErp || hasDuplicateName) {
       alert("Same ERP Id or Outlet Name already exists. Please use unique outlet details.");
+      return;
+    }
+
+    if (missingGoogleLocation) {
+      alert("Please enter Google Location for every outlet.");
       return;
     }
 
@@ -234,12 +245,13 @@ function AddCounter() {
       outletErpId: outlet.outlet_erp_id,
       outletName: outlet.outlet_name,
       contactNumber: outlet.contact_number,
+      googleLocation: outlet.google_location || "",
     });
   };
 
   const handleCancelEdit = () => {
     setEditingOutletId(null);
-    setEditFormData({ outletErpId: "", outletName: "", contactNumber: "" });
+    setEditFormData({ outletErpId: "", outletName: "", contactNumber: "", googleLocation: "" });
   };
 
   const handleSaveEdit = async (counterId) => {
@@ -254,6 +266,11 @@ function AddCounter() {
 
     if (hasDuplicateSavedOutlet) {
       alert("Same ERP Id or Outlet Name already exists. Please use unique outlet details.");
+      return;
+    }
+
+    if (!String(editFormData.googleLocation || "").trim()) {
+      alert("Please enter Google Location.");
       return;
     }
 
@@ -519,7 +536,18 @@ function AddCounter() {
                               }
                             />
                           </Grid>
-                          <Grid item xs={12} sm={6} md={2}>
+                          <Grid item xs={12} sm={6} md={3}>
+                            <MDInput
+                              label="Google Location"
+                              fullWidth
+                              InputProps={{ sx: { minHeight: 48 } }}
+                              value={outlet.googleLocation}
+                              onChange={(e) =>
+                                handleOutletChange(index, "googleLocation", e.target.value)
+                              }
+                            />
+                          </Grid>
+                          <Grid item xs={12} sm={6} md={12}>
                             <MDButton
                               color="error"
                               variant="text"
@@ -584,7 +612,15 @@ function AddCounter() {
                                 onChange={(e) => setEditFormData({ ...editFormData, contactNumber: e.target.value })}
                               />
                             </Grid>
-                            <Grid item xs={12} md={2}>
+                            <Grid item xs={12} sm={6} md={3}>
+                              <MDInput
+                                label="Google Location"
+                                fullWidth
+                                value={editFormData.googleLocation}
+                                onChange={(e) => setEditFormData({ ...editFormData, googleLocation: e.target.value })}
+                              />
+                            </Grid>
+                            <Grid item xs={12} md={12}>
                               <MDBox display="flex" flexDirection="column" gap={1}>
                                 <MDButton color="success" variant="gradient" size="small" onClick={() => handleSaveEdit(saved.id)}>
                                   Save
@@ -612,7 +648,26 @@ function AddCounter() {
                                 {saved.contact_number}
                               </MDTypography>
                             </Grid>
-                            <Grid item xs={12} md={2}>
+                            <Grid item xs={12} sm={6} md={3}>
+                              {saved.google_location ? (
+                                <MDTypography
+                                  component="a"
+                                  href={saved.google_location}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  variant="body2"
+                                  fontWeight="medium"
+                                  color="info"
+                                >
+                                  Google Location
+                                </MDTypography>
+                              ) : (
+                                <MDTypography variant="body2" color="text">
+                                  No Google Location
+                                </MDTypography>
+                              )}
+                            </Grid>
+                            <Grid item xs={12} md={12}>
                               <MDBox display="flex" gap={1}>
                                 <MDButton color="info" variant="text" size="small" onClick={() => handleEditClick(saved)}>
                                   <Icon>edit</Icon> Edit

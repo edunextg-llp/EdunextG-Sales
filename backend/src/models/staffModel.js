@@ -77,12 +77,12 @@ class StaffModel {
     }
 
     static async addCounter(staffId, day, location, counterData) {
-        const { outletErpId, outletName, contactNumber } = counterData;
+        const { outletErpId, outletName, contactNumber, googleLocation } = counterData;
         await db.execute(
             // `staff_counters` schema (see initDB.js) does not include a `location` column.
             // Frontend still sends `location`, but we ignore it here and store outlets by (staff_id, day).
-            'INSERT INTO staff_counters (staff_id, day, outlet_erp_id, outlet_name, contact_number) VALUES (?, ?, ?, ?, ?)',
-            [staffId, day, outletErpId, outletName, contactNumber]
+            'INSERT INTO staff_counters (staff_id, day, outlet_erp_id, outlet_name, contact_number, google_location) VALUES (?, ?, ?, ?, ?, ?)',
+            [staffId, day, outletErpId, outletName, contactNumber, googleLocation || null]
         );
     }
 
@@ -109,17 +109,17 @@ class StaffModel {
 
     static async getCounterById(counterId) {
         const [rows] = await db.execute(
-            'SELECT id, staff_id, outlet_erp_id, outlet_name, contact_number FROM staff_counters WHERE id = ?',
+            'SELECT id, staff_id, outlet_erp_id, outlet_name, contact_number, google_location FROM staff_counters WHERE id = ?',
             [counterId]
         );
         return rows[0] || null;
     }
 
     static async editCounter(counterId, counterData) {
-        const { outletErpId, outletName, contactNumber } = counterData;
+        const { outletErpId, outletName, contactNumber, googleLocation } = counterData;
         await db.execute(
-            'UPDATE staff_counters SET outlet_erp_id = ?, outlet_name = ?, contact_number = ? WHERE id = ?',
-            [outletErpId, outletName, contactNumber, counterId]
+            'UPDATE staff_counters SET outlet_erp_id = ?, outlet_name = ?, contact_number = ?, google_location = ? WHERE id = ?',
+            [outletErpId, outletName, contactNumber, googleLocation || null, counterId]
         );
     }
 
@@ -174,7 +174,7 @@ class StaffModel {
 
     static async getOutletsForStaffAndDay(staffId, dayName) {
         const [rows] = await db.execute(
-            'SELECT id, outlet_erp_id, outlet_name, contact_number FROM staff_counters WHERE staff_id = ? AND day = ?',
+            'SELECT id, outlet_erp_id, outlet_name, contact_number, google_location FROM staff_counters WHERE staff_id = ? AND day = ?',
             [staffId, dayName]
         );
         return rows;
@@ -182,7 +182,7 @@ class StaffModel {
 
     static async getAllCountersForStaff(staffId) {
         const [rows] = await db.execute(
-            'SELECT id, outlet_erp_id, outlet_name, contact_number, day FROM staff_counters WHERE staff_id = ?',
+            'SELECT id, outlet_erp_id, outlet_name, contact_number, google_location, day FROM staff_counters WHERE staff_id = ?',
             [staffId]
         );
         return rows;
@@ -190,7 +190,7 @@ class StaffModel {
 
     static async getMissingSalesOutletsForDate(staffId, dayName, date) {
         const [rows] = await db.execute(
-            `SELECT c.id, c.outlet_erp_id, c.outlet_name, c.contact_number 
+            `SELECT c.id, c.outlet_erp_id, c.outlet_name, c.contact_number, c.google_location 
              FROM staff_counters c
              INNER JOIN staff s ON s.id = c.staff_id
              WHERE c.staff_id = ?
@@ -318,7 +318,8 @@ class StaffModel {
 
     static async getAllSalesByDate(date) {
         let query = `
-            SELECT ss.id, ss.staff_id, ss.outlet_id, ss.sale_date, ss.price, ss.invoice_number, 
+            SELECT ss.id, CONCAT('BP', ss.id) AS bp_sale_id,
+                    ss.staff_id, ss.outlet_id, ss.sale_date, ss.price, ss.invoice_number, 
                     ss.sticker_number, ss.packaging_status, ss.delivery_boy_id, ss.vehicle_no,
                     DATE_FORMAT(ss.delivery_date, '%Y-%m-%d') AS delivery_date,
                     DATE_FORMAT(ssh.status_updated_at, '%Y-%m-%d %H:%i:%s') AS status_updated_at,
@@ -359,7 +360,8 @@ class StaffModel {
 
     static async getSalesByDate(staffId, date) {
         const [rows] = await db.execute(
-            `SELECT ss.id, ss.staff_id, ss.outlet_id, ss.sale_date, ss.price, ss.invoice_number, 
+            `SELECT ss.id, CONCAT('BP', ss.id) AS bp_sale_id,
+                    ss.staff_id, ss.outlet_id, ss.sale_date, ss.price, ss.invoice_number, 
                     ss.sticker_number, ss.payment_mode, ss.paid_amount, ss.balance_amount, 
                     ss.reference_no, ss.reference_date, ss.credit_days, ss.vehicle_no,
                     DATE_FORMAT(ss.delivery_date, '%Y-%m-%d') AS delivery_date,
@@ -384,7 +386,8 @@ class StaffModel {
 
     static async getSaleById(saleId) {
         const [rows] = await db.execute(
-            `SELECT ss.id, ss.staff_id, ss.outlet_id, ss.sale_date, ss.price, ss.invoice_number,
+            `SELECT ss.id, CONCAT('BP', ss.id) AS bp_sale_id,
+                    ss.staff_id, ss.outlet_id, ss.sale_date, ss.price, ss.invoice_number,
                     ss.sticker_number, ss.paid_amount, ss.balance_amount, ss.packaging_status,
                     DATE_FORMAT(ss.delivery_date, '%Y-%m-%d') AS delivery_date,
                     DATE_FORMAT(ssh.status_updated_at, '%Y-%m-%d %H:%i:%s') AS status_updated_at,
@@ -539,15 +542,38 @@ class StaffModel {
 
     static async getPendingCredits() {
         const [rows] = await db.execute(
-            `SELECT sp.id, sp.amount AS balance_amount, sp.payment_date AS sale_date, sp.credit_days,
+            `SELECT sp.id, sp.sale_id, CONCAT('BP', ss.id) AS bp_sale_id,
+                    sp.amount AS credit_amount,
+                    GREATEST(0, sp.amount - COALESCE(credit_paid.paid_amount, 0)) AS balance_amount,
+                    sp.payment_date AS sale_date, sp.credit_days,
                     COALESCE(cpr.latest_remarks, sp.remarks) AS remarks,
                     COALESCE(cpr.remarks_count, CASE WHEN sp.remarks IS NULL OR TRIM(sp.remarks) = '' THEN 0 ELSE 1 END) AS remarks_count,
                     DATE_FORMAT(cpr.latest_remark_date, '%Y-%m-%d') AS latest_remark_date,
-                    ss.invoice_number, sc.outlet_name, sc.contact_number, s.name AS staff_name
+                    ss.invoice_number, sc.outlet_name, sc.contact_number,
+                    s.id AS staff_id, s.name AS staff_name,
+                    COALESCE(staff_company.company_names, c.name) AS company_name,
+                    COALESCE(staff_company.company_ids, s.company_id) AS company_ids
              FROM sale_payments sp
              JOIN staff_sales ss ON sp.sale_id = ss.id
              LEFT JOIN staff_counters sc ON ss.outlet_id = sc.id
              LEFT JOIN staff s ON ss.staff_id = s.id
+             LEFT JOIN companies c ON s.company_id = c.id
+             LEFT JOIN (
+                 SELECT parent_credit_payment_id,
+                        SUM(amount) AS paid_amount
+                 FROM sale_payments
+                 WHERE parent_credit_payment_id IS NOT NULL
+                   AND payment_mode IN ('cash', 'upi', 'cheque')
+                 GROUP BY parent_credit_payment_id
+             ) credit_paid ON credit_paid.parent_credit_payment_id = sp.id
+             LEFT JOIN (
+                 SELECT sc.staff_id,
+                        GROUP_CONCAT(c2.name ORDER BY c2.name SEPARATOR ', ') AS company_names,
+                        GROUP_CONCAT(c2.id ORDER BY c2.name) AS company_ids
+                 FROM staff_companies sc
+                 INNER JOIN companies c2 ON c2.id = sc.company_id
+                 GROUP BY sc.staff_id
+             ) staff_company ON staff_company.staff_id = s.id
              LEFT JOIN (
                  SELECT r.payment_id,
                         COUNT(*) AS remarks_count,
@@ -561,6 +587,7 @@ class StaffModel {
                  GROUP BY r.payment_id
              ) cpr ON cpr.payment_id = sp.id
              WHERE sp.payment_mode = 'credit'
+             HAVING balance_amount > 0
              ORDER BY sp.payment_date ASC`
         );
         return rows;

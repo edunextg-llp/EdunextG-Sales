@@ -21,6 +21,7 @@ import DashboardLayout from "examples/LayoutContainers/DashboardLayout";
 import DashboardNavbar from "examples/Navbars/DashboardNavbar";
 import Footer from "examples/Footer";
 import { useSalesPolling } from "utils/salesSync";
+import { formatBpSaleId } from "utils/saleId";
 
 function Delivered() {
   const [salesData, setSalesData] = useState([]);
@@ -74,7 +75,13 @@ function Delivered() {
     const outletName = row.outlet_name ? row.outlet_name.toLowerCase() : "";
     const outletErpId = row.outlet_erp_id ? row.outlet_erp_id.toLowerCase() : "";
     const staffName = row.staff_name ? row.staff_name.toLowerCase() : "";
-    return outletName.includes(search) || outletErpId.includes(search) || staffName.includes(search);
+    const saleId = formatBpSaleId(row).toLowerCase();
+    return (
+      outletName.includes(search) ||
+      outletErpId.includes(search) ||
+      staffName.includes(search) ||
+      saleId.includes(search)
+    );
   });
 
   const deliveredTotal = filteredSales.filter((row) => row.packaging_status === "delivered").length;
@@ -148,7 +155,7 @@ function Delivered() {
                   <Grid item xs={12} md={4}>
                     <MDInput
                       type="text"
-                      label="Search by Outlet Name, ID, or Staff Name"
+                      label="Search by Outlet Name, ID, Staff Name, or Sale ID"
                       fullWidth
                       value={searchQuery}
                       onChange={(e) => setSearchQuery(e.target.value)}
@@ -212,6 +219,9 @@ function Delivered() {
                           ERP ID
                         </TableCell>
                         <TableCell align="center" sx={{ color: "#6b7280", borderBottom: "1px solid #e5e7eb", py: 1.5, fontWeight: 500 }}>
+                          Sale ID
+                        </TableCell>
+                        <TableCell align="center" sx={{ color: "#6b7280", borderBottom: "1px solid #e5e7eb", py: 1.5, fontWeight: 500 }}>
                           Invoice No
                         </TableCell>
                         <TableCell align="right" sx={{ color: "#6b7280", borderBottom: "1px solid #e5e7eb", py: 1.5, fontWeight: 500 }}>
@@ -250,6 +260,7 @@ function Delivered() {
                             <TableCell sx={{ borderBottom: "1px solid #cbd5e1", py: 2 }}>{row.staff_name}</TableCell>
                             <TableCell sx={{ borderBottom: "1px solid #cbd5e1", py: 2, fontWeight: "medium" }}>{row.outlet_name}</TableCell>
                             <TableCell sx={{ borderBottom: "1px solid #cbd5e1", py: 2 }}>{row.outlet_erp_id}</TableCell>
+                            <TableCell align="center" sx={{ borderBottom: "1px solid #cbd5e1", py: 2, fontWeight: "bold" }}>{formatBpSaleId(row)}</TableCell>
                             <TableCell align="center" sx={{ borderBottom: "1px solid #cbd5e1", py: 2 }}>{row.invoice_number}</TableCell>
                             <TableCell align="right" sx={{ borderBottom: "1px solid #cbd5e1", py: 2, fontWeight: "bold" }}>
                               ₹{Number(row.price).toFixed(2)}
@@ -302,7 +313,7 @@ function Delivered() {
                         ))
                       ) : (
                         <TableRow>
-                          <TableCell colSpan={11} align="center" sx={{ py: 3, borderBottom: 0 }}>
+                          <TableCell colSpan={12} align="center" sx={{ py: 3, borderBottom: 0 }}>
                             <MDTypography variant="body2" color="text">
                               No delivered items found.
                             </MDTypography>

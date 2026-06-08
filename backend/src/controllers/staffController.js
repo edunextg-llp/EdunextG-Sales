@@ -132,8 +132,13 @@ export const addCounter = async (req, res) => {
 
                 const outletErpId = String(counter.outletErpId || '').trim();
                 const outletName = String(counter.outletName || '').trim();
+                const googleLocation = String(counter.googleLocation || '').trim();
                 const normalizedErpId = outletErpId.toLowerCase();
                 const normalizedOutletName = outletName.toLowerCase();
+
+                if (!googleLocation) {
+                    return res.status(400).json({ error: `Counter ${i + 1} Google Location is required.` });
+                }
 
                 if (erpIds.has(normalizedErpId) || outletNames.has(normalizedOutletName)) {
                     return res.status(400).json({ error: 'Same ERP Id or Outlet Name already exists in this entry.' });
@@ -152,6 +157,7 @@ export const addCounter = async (req, res) => {
                     outletErpId,
                     outletName,
                     contactNumber: contactValidation.value,
+                    googleLocation,
                 });
             }
         }
@@ -630,7 +636,7 @@ export const fetchSalesByDate = async (req, res) => {
 export const editCounter = async (req, res) => {
     try {
         const { counterId } = req.params;
-        const { outletErpId, outletName, contactNumber } = req.body;
+        const { outletErpId, outletName, contactNumber, googleLocation } = req.body;
         const existingCounter = await StaffModel.getCounterById(counterId);
         if (!existingCounter) {
             return res.status(404).json({ error: 'Counter not found' });
@@ -638,6 +644,12 @@ export const editCounter = async (req, res) => {
 
         const normalizedOutletErpId = String(outletErpId || '').trim();
         const normalizedOutletName = String(outletName || '').trim();
+        const normalizedGoogleLocation = String(googleLocation || '').trim();
+
+        if (!normalizedGoogleLocation) {
+            return res.status(400).json({ error: 'Google Location is required.' });
+        }
+
         const duplicateCounter = await StaffModel.findDuplicateCounter(
             existingCounter.staff_id,
             normalizedOutletErpId,
@@ -653,6 +665,7 @@ export const editCounter = async (req, res) => {
             outletErpId: normalizedOutletErpId,
             outletName: normalizedOutletName,
             contactNumber,
+            googleLocation: normalizedGoogleLocation,
         });
         res.status(200).json({ message: 'Counter updated successfully' });
     } catch (error) {
@@ -706,7 +719,7 @@ export const getSalePayments = async (req, res) => {
 export const addSalePayment = async (req, res) => {
     try {
         const { saleId } = req.params;
-        const { paymentDate, paymentMode, amount, referenceNo, referenceDate, creditDays } = req.body;
+        const { paymentDate, paymentMode, amount, referenceNo, referenceDate, creditDays, parentCreditPaymentId } = req.body;
 
         if (!paymentDate) {
             return res.status(400).json({ error: 'Payment date is required' });
@@ -730,6 +743,19 @@ export const addSalePayment = async (req, res) => {
         }
 
         const mode = String(paymentMode).toLowerCase();
+        let normalizedParentCreditPaymentId = null;
+        if (parentCreditPaymentId) {
+            const parentValidation = validatePositiveInteger(parentCreditPaymentId, 'Credit payment reference');
+            if (!parentValidation.valid) {
+                return res.status(400).json({ error: parentValidation.error });
+            }
+            normalizedParentCreditPaymentId = parentValidation.value;
+        }
+
+        if (normalizedParentCreditPaymentId && mode === 'credit') {
+            return res.status(400).json({ error: 'Cannot add credit payment inside another credit entry.' });
+        }
+
         if (mode === 'credit') {
             const daysValidation = validatePositiveInteger(creditDays, 'Credit days');
             if (!daysValidation.valid) {
@@ -751,6 +777,7 @@ export const addSalePayment = async (req, res) => {
             referenceNo: referenceNo || null,
             referenceDate: formattedRefDate,
             creditDays: mode === 'credit' ? parseInt(creditDays, 10) : null,
+            parentCreditPaymentId: normalizedParentCreditPaymentId,
         });
 
 
@@ -766,6 +793,17 @@ export const addSalePayment = async (req, res) => {
             return res.status(400).json({
                 error: `Amount exceeds remaining balance (₹${error.remaining.toFixed(2)} left)`,
             });
+        }
+        if (error.message === 'CREDIT_PAYMENT_NOT_FOUND') {
+            return res.status(404).json({ error: 'Credit payment reference not found' });
+        }
+        if (error.message === 'EXCEEDS_CREDIT_BALANCE') {
+            return res.status(400).json({
+                error: `Amount exceeds remaining credit amount (â‚¹${error.remaining.toFixed(2)} left)`,
+            });
+        }
+        if (error.message === 'CREDIT_CHILD_CANNOT_BE_CREDIT') {
+            return res.status(400).json({ error: 'Cannot add credit payment inside another credit entry.' });
         }
         console.error('Error adding sale payment:', error);
         res.status(500).json({ error: 'Internal server error' });
@@ -846,6 +884,17 @@ export const editSalePayment = async (req, res) => {
             return res.status(400).json({
                 error: `Amount exceeds remaining balance (₹${error.remaining.toFixed(2)} left)`,
             });
+        }
+        if (error.message === 'CREDIT_PAYMENT_NOT_FOUND') {
+            return res.status(404).json({ error: 'Credit payment reference not found' });
+        }
+        if (error.message === 'EXCEEDS_CREDIT_BALANCE') {
+            return res.status(400).json({
+                error: `Amount exceeds remaining credit amount (â‚¹${error.remaining.toFixed(2)} left)`,
+            });
+        }
+        if (error.message === 'CREDIT_CHILD_CANNOT_BE_CREDIT') {
+            return res.status(400).json({ error: 'Cannot change this credit payment entry into credit.' });
         }
         console.error('Error updating sale payment:', error);
         res.status(500).json({ error: 'Internal server error' });

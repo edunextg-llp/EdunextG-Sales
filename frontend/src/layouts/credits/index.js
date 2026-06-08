@@ -14,6 +14,10 @@ import {
   DialogActions,
   IconButton,
   Tooltip,
+  FormControl,
+  InputLabel,
+  Select,
+  MenuItem,
 } from "@mui/material";
 import Grid from "@mui/material/Grid";
 import Card from "@mui/material/Card";
@@ -26,10 +30,13 @@ import MDButton from "components/MDButton";
 
 import DashboardLayout from "examples/LayoutContainers/DashboardLayout";
 import Footer from "examples/Footer";
+import { formatBpSaleId } from "utils/saleId";
 
 function CreditsPage() {
   const [credits, setCredits] = useState([]);
   const [searchQuery, setSearchQuery] = useState("");
+  const [selectedCompanyId, setSelectedCompanyId] = useState("");
+  const [selectedStaffId, setSelectedStaffId] = useState("");
   const [remarksDialog, setRemarksDialog] = useState({ open: false, mode: "edit", credit: null });
   const [remarksText, setRemarksText] = useState("");
   const [remarksDate, setRemarksDate] = useState("");
@@ -111,6 +118,67 @@ function CreditsPage() {
       backgroundColor: "#fff",
       "&:hover": { backgroundColor: "#f8fafc" },
     };
+  };
+
+  const getCreditCompanyIds = (credit) =>
+    String(credit?.company_ids || "")
+      .split(",")
+      .map((id) => Number(id))
+      .filter((id) => Number.isInteger(id) && id > 0);
+
+  const companyOptions = React.useMemo(() => {
+    const companies = new Map();
+
+    credits.forEach((credit) => {
+      const ids = getCreditCompanyIds(credit);
+      const names = String(credit.company_name || "")
+        .split(",")
+        .map((name) => name.trim())
+        .filter(Boolean);
+
+      ids.forEach((id, index) => {
+        if (!companies.has(id)) {
+          companies.set(id, names[index] || names[0] || `Company ${id}`);
+        }
+      });
+    });
+
+    return [...companies.entries()]
+      .map(([id, name]) => ({ id, name }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [credits]);
+
+  const staffOptions = React.useMemo(() => {
+    const staff = new Map();
+
+    credits.forEach((credit) => {
+      if (!credit.staff_id) return;
+      if (selectedCompanyId && !getCreditCompanyIds(credit).includes(Number(selectedCompanyId))) {
+        return;
+      }
+      if (!staff.has(credit.staff_id)) {
+        staff.set(credit.staff_id, credit.staff_name || `Staff ${credit.staff_id}`);
+      }
+    });
+
+    return [...staff.entries()]
+      .map(([id, name]) => ({ id, name }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [credits, selectedCompanyId]);
+
+  const selectedCompanyName =
+    companyOptions.find((company) => company.id === Number(selectedCompanyId))?.name || "";
+  const selectedStaffName =
+    staffOptions.find((staff) => staff.id === Number(selectedStaffId))?.name || "";
+  const totalCreditLabel = selectedStaffName
+    ? `${selectedStaffName} Credit Dues Amount`
+    : selectedCompanyName
+      ? `${selectedCompanyName} Credit Dues Amount`
+      : "Total Credit Dues Amount";
+
+  const handleCompanyChange = (value) => {
+    setSelectedCompanyId(value);
+    setSelectedStaffId("");
   };
 
   const openEditRemarks = (credit) => {
@@ -200,18 +268,27 @@ function CreditsPage() {
   };
 
   const filteredCredits = credits.filter((credit) => {
+    if (selectedCompanyId && !getCreditCompanyIds(credit).includes(Number(selectedCompanyId))) {
+      return false;
+    }
+    if (selectedStaffId && Number(credit.staff_id) !== Number(selectedStaffId)) {
+      return false;
+    }
+
     const search = searchQuery.toLowerCase();
     const outletName = credit.outlet_name ? credit.outlet_name.toLowerCase() : "";
     const contactNumber = credit.contact_number ? credit.contact_number.toLowerCase() : "";
     const invoiceNum = credit.invoice_number ? credit.invoice_number.toLowerCase() : "";
     const staffName = credit.staff_name ? credit.staff_name.toLowerCase() : "";
     const remarks = credit.remarks ? credit.remarks.toLowerCase() : "";
+    const saleId = formatBpSaleId(credit).toLowerCase();
     return (
       outletName.includes(search) ||
       contactNumber.includes(search) ||
       invoiceNum.includes(search) ||
       staffName.includes(search) ||
-      remarks.includes(search)
+      remarks.includes(search) ||
+      saleId.includes(search)
     );
   });
 
@@ -243,16 +320,55 @@ function CreditsPage() {
 
               <MDBox px={3} pt={3} pb={1}>
                 <Grid container spacing={2} alignItems="center">
-                  <Grid item xs={12} md={5} lg={4}>
+                <Grid item xs={12} md={6} lg={3}>
                     <MDInput
                       type="text"
-                      label="Search Outlet, Contact, Invoice, or Staff..."
+                      label="Search Outlet, Contact, Invoice, Staff, or Sale ID..."
                       fullWidth
                       value={searchQuery}
                       onChange={(e) => setSearchQuery(e.target.value)}
                     />
                   </Grid>
-                  <Grid item xs={12} md={7} lg={8}>
+                  <Grid item xs={12} md={6} lg={3}>
+                    <FormControl size="small" fullWidth>
+                      <InputLabel id="credit-company-filter-label">Company</InputLabel>
+                      <Select
+                        labelId="credit-company-filter-label"
+                        value={selectedCompanyId}
+                        label="Company"
+                        onChange={(e) => handleCompanyChange(e.target.value)}
+                        sx={{ height: 44 }}
+                      >
+                        <MenuItem value="">All Companies</MenuItem>
+                        {companyOptions.map((company) => (
+                          <MenuItem key={company.id} value={company.id}>
+                            {company.name}
+                          </MenuItem>
+                        ))}
+                      </Select>
+                    </FormControl>
+                  </Grid>
+                  <Grid item xs={12} md={6} lg={3}>
+                    <FormControl size="small" fullWidth>
+                      <InputLabel id="credit-staff-filter-label">Staff</InputLabel>
+                      <Select
+                        labelId="credit-staff-filter-label"
+                        value={selectedStaffId}
+                        label="Staff"
+                        onChange={(e) => setSelectedStaffId(e.target.value)}
+                        sx={{ height: 44 }}
+                      >
+                        <MenuItem value="">All Staff</MenuItem>
+                        {staffOptions.map((staff) => (
+                          <MenuItem key={staff.id} value={staff.id}>
+                            {staff.name}
+                          </MenuItem>
+                        ))}
+                      </Select>
+                    </FormControl>
+                  </Grid>
+                 
+                  <Grid item xs={12} md={6} lg={3}>
                     <MDBox display="flex" justifyContent={{ xs: "flex-start", md: "flex-end" }}>
                       <MDBox
                         px={2}
@@ -261,7 +377,7 @@ function CreditsPage() {
                         sx={{ backgroundColor: "#fef2f2", border: "1px solid #fecaca" }}
                       >
                         <MDTypography variant="caption" color="text">
-                          Total Credit Dues Amount
+                          {totalCreditLabel}
                         </MDTypography>
                         <MDTypography variant="h5" color="error" fontWeight="bold">
                           ₹{totalCreditDuesAmount.toFixed(2)}
@@ -288,6 +404,9 @@ function CreditsPage() {
                         </TableCell>
                         <TableCell align="center" sx={{ fontWeight: "bold" }}>
                           Contact No
+                        </TableCell>
+                        <TableCell align="center" sx={{ fontWeight: "bold" }}>
+                          Sale ID
                         </TableCell>
                         <TableCell align="center" sx={{ fontWeight: "bold" }}>
                           Invoice No
@@ -318,6 +437,7 @@ function CreditsPage() {
                           <TableCell align="center">{index + 1}</TableCell>
                           <TableCell align="left">{credit.outlet_name}</TableCell>
                           <TableCell align="center">{credit.contact_number || "N/A"}</TableCell>
+                          <TableCell align="center">{formatBpSaleId(credit)}</TableCell>
                           <TableCell align="center">{credit.invoice_number}</TableCell>
                           <TableCell align="center">{credit.staff_name}</TableCell>
                           <TableCell
@@ -389,7 +509,7 @@ function CreditsPage() {
           {remarksDialog.credit && (
             <MDBox mb={2}>
               <MDTypography variant="button" fontWeight="medium">
-                {remarksDialog.credit.outlet_name} — {remarksDialog.credit.invoice_number}
+                {remarksDialog.credit.outlet_name} - {formatBpSaleId(remarksDialog.credit)} - {remarksDialog.credit.invoice_number}
               </MDTypography>
             </MDBox>
           )}

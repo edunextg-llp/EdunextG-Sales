@@ -114,6 +114,7 @@ async function initDB() {
             outlet_erp_id VARCHAR(50) NOT NULL,
             outlet_name VARCHAR(255) NOT NULL,
             contact_number VARCHAR(20) NOT NULL,
+            google_location TEXT NULL,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (staff_id) REFERENCES staff(id) ON DELETE CASCADE
         );
@@ -130,6 +131,15 @@ async function initDB() {
         console.log('Updated staff route day enums');
     } catch (err) {
         console.log('staff route day enums may already be updated');
+    }
+
+    try {
+        await connection.query(`
+            ALTER TABLE staff_counters ADD COLUMN google_location TEXT NULL
+        `);
+        console.log('Added google_location to staff_counters table');
+    } catch (err) {
+        console.log('google_location column may already exist on staff_counters');
     }
 
     // Create Staff Sales table
@@ -316,6 +326,7 @@ async function initDB() {
             payment_date DATE NOT NULL,
             payment_mode ENUM('cash', 'upi', 'credit', 'cheque') NOT NULL,
             amount DECIMAL(10, 2) NOT NULL,
+            parent_credit_payment_id INT NULL,
             reference_no VARCHAR(100) NULL,
             reference_date DATE NULL,
             credit_days INT NULL,
@@ -333,6 +344,15 @@ async function initDB() {
         console.log('Added remarks column to sale_payments');
     } catch (err) {
         console.log('remarks column on sale_payments already exists or skipped');
+    }
+
+    try {
+        await connection.query(`
+            ALTER TABLE sale_payments ADD COLUMN parent_credit_payment_id INT NULL
+        `);
+        console.log('Added parent_credit_payment_id column to sale_payments');
+    } catch (err) {
+        console.log('parent_credit_payment_id column on sale_payments already exists or skipped');
     }
 
     await connection.query(`

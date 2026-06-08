@@ -71,6 +71,12 @@ export async function ensureSchema() {
 
         await tryQuery(
             connection,
+            `ALTER TABLE staff_counters ADD COLUMN google_location TEXT NULL`,
+            'google_location on staff_counters'
+        );
+
+        await tryQuery(
+            connection,
             `
             ALTER TABLE delivery_boys ADD COLUMN company_id INT NULL,
             ADD CONSTRAINT fk_delivery_boys_company
@@ -101,6 +107,7 @@ export async function ensureSchema() {
                 payment_date DATE NOT NULL,
                 payment_mode ENUM('cash', 'upi', 'credit', 'cheque') NOT NULL,
                 amount DECIMAL(10, 2) NOT NULL,
+                parent_credit_payment_id INT NULL,
                 reference_no VARCHAR(100) NULL,
                 reference_date DATE NULL,
                 credit_days INT NULL,
@@ -140,6 +147,12 @@ export async function ensureSchema() {
             connection,
             `ALTER TABLE sale_payments ADD COLUMN remarks TEXT NULL`,
             'remarks on sale_payments'
+        );
+
+        await tryQuery(
+            connection,
+            `ALTER TABLE sale_payments ADD COLUMN parent_credit_payment_id INT NULL`,
+            'parent_credit_payment_id on sale_payments'
         );
 
         await connection.query(`

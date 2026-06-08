@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { Fragment, useState, useEffect } from "react";
 import Grid from "@mui/material/Grid";
 import Card from "@mui/material/Card";
 import Icon from "@mui/material/Icon";
@@ -28,6 +28,7 @@ import MDButton from "components/MDButton";
 import DashboardLayout from "examples/LayoutContainers/DashboardLayout";
 import DashboardNavbar from "examples/Navbars/DashboardNavbar";
 import Footer from "examples/Footer";
+import { formatBpSaleId } from "utils/saleId";
 
 const PAYMENT_MODE_LABELS = {
   cash: "Cash",
@@ -118,6 +119,7 @@ function UpdatePayment() {
   const [loadingPayments, setLoadingPayments] = useState(false);
   const [addingPayment, setAddingPayment] = useState(false);
   const [editingPaymentId, setEditingPaymentId] = useState(null);
+  const [activeCreditPayment, setActiveCreditPayment] = useState(null);
 
   const API = "https://bawarchee.edunextg.co/api";
 
@@ -144,7 +146,13 @@ function UpdatePayment() {
     const outletName = row.outlet_name ? row.outlet_name.toLowerCase() : "";
     const outletErpId = row.outlet_erp_id ? row.outlet_erp_id.toLowerCase() : "";
     const staffName = row.staff_name ? row.staff_name.toLowerCase() : "";
-    return outletName.includes(search) || outletErpId.includes(search) || staffName.includes(search);
+    const saleId = formatBpSaleId(row).toLowerCase();
+    return (
+      outletName.includes(search) ||
+      outletErpId.includes(search) ||
+      staffName.includes(search) ||
+      saleId.includes(search)
+    );
   });
 
   const getRemainingBalance = (sale) => {
@@ -245,11 +253,13 @@ function UpdatePayment() {
     setPaymentSummary(null);
     setPaymentForm(emptyPaymentForm());
     setEditingPaymentId(null);
+    setActiveCreditPayment(null);
   };
 
 
   const startEditPayment = (payment) => {
     setEditingPaymentId(payment.id);
+    setActiveCreditPayment(null);
     const formattedDate = toInputDate(payment.reference_date);
     const paymentDt = toInputDate(payment.payment_date);
 
@@ -266,8 +276,18 @@ function UpdatePayment() {
 
   const cancelEditPayment = () => {
     setEditingPaymentId(null);
+    setActiveCreditPayment(null);
     setPaymentForm(emptyPaymentForm());
 
+  };
+
+  const startAddAgainstCredit = (payment) => {
+    setEditingPaymentId(null);
+    setActiveCreditPayment(payment);
+    setPaymentForm({
+      ...emptyPaymentForm(),
+      paymentMode: "cash",
+    });
   };
 
   const handlePaymentFormChange = (field, value) => {
@@ -326,6 +346,18 @@ function UpdatePayment() {
     return "—";
   };
 
+  const getCreditChildPayments = (creditPayment) =>
+    payments.filter((payment) => Number(payment.parent_credit_payment_id) === Number(creditPayment.id));
+
+  const getCreditRemainingAmount = (creditPayment) => {
+    const creditAmount = parseFloat(creditPayment?.amount) || 0;
+    const paidAgainstCredit = getCreditChildPayments(creditPayment).reduce(
+      (sum, payment) => sum + (parseFloat(payment.amount) || 0),
+      0
+    );
+    return Math.max(0, Math.round((creditAmount - paidAgainstCredit) * 100) / 100);
+  };
+
   const validatePaymentForm = () => {
     const amount = parseFloat(paymentForm.amount);
 
@@ -361,6 +393,14 @@ function UpdatePayment() {
 
     }
 
+    if (activeCreditPayment && ["cash", "upi", "cheque"].includes(paymentForm.paymentMode)) {
+      const creditRemaining = getCreditRemainingAmount(activeCreditPayment);
+      if (amount > creditRemaining + 0.001) {
+        alert(`Amount cannot exceed remaining credit amount (Rs. ${creditRemaining.toFixed(2)}).`);
+        return null;
+      }
+    }
+
     if (paymentForm.paymentMode === "credit" && !paymentForm.creditDays) {
       alert("Please enter credit days.");
       return null;
@@ -390,6 +430,7 @@ function UpdatePayment() {
       referenceDate: paymentForm.referenceDate || null,
       creditDays:
         paymentForm.paymentMode === "credit" ? parseInt(paymentForm.creditDays, 10) : null,
+      parentCreditPaymentId: activeCreditPayment?.id || null,
     };
   };
 
@@ -420,6 +461,7 @@ function UpdatePayment() {
         setPayments(data.payments);
         setPaymentSummary(data.summary);
         setEditingPaymentId(null);
+        setActiveCreditPayment(null);
         setPaymentForm(emptyPaymentForm());
         setSalesData((prev) =>
           prev.map((sale) =>
@@ -464,10 +506,18 @@ function UpdatePayment() {
   })();
 
   const showPaymentForm = dialogRemaining > 0 || editingPaymentId;
+  const topLevelPayments = payments.filter((payment) => !payment.parent_credit_payment_id);
 
   const totalCreditOnAccount = payments
     .filter((p) => p.payment_mode === "credit")
     .reduce((sum, p) => sum + (parseFloat(p.amount) || 0), 0);
+  const totalPaidAgainstCredit = payments
+    .filter((p) => p.parent_credit_payment_id && ["cash", "upi", "cheque"].includes(p.payment_mode))
+    .reduce((sum, p) => sum + (parseFloat(p.amount) || 0), 0);
+  const remainingCreditOnAccount = Math.max(0, totalCreditOnAccount - totalPaidAgainstCredit);
+  const activeCreditRemaining = activeCreditPayment
+    ? getCreditRemainingAmount(activeCreditPayment)
+    : dialogRemaining;
 
   return (
     <DashboardLayout>
@@ -496,7 +546,7 @@ function UpdatePayment() {
                   <Grid item xs={12} md={4}>
                     <MDInput
                       type="text"
-                      label="Search by Outlet Name, ID, or Staff Name"
+                      label="Search by Outlet Name, ID, Staff Name, or Sale ID"
                       fullWidth
                       value={searchQuery}
                       onChange={(e) => setSearchQuery(e.target.value)}
@@ -521,6 +571,9 @@ function UpdatePayment() {
                           </TableCell>
                           <TableCell align="left" sx={{ fontWeight: "bold" }}>
                             Outlet Name
+                          </TableCell>
+                          <TableCell align="center" sx={{ fontWeight: "bold" }}>
+                            Sale ID
                           </TableCell>
                           <TableCell align="center" sx={{ fontWeight: "bold" }}>
                             Invoice No
@@ -555,6 +608,7 @@ function UpdatePayment() {
                                     Staff: {sale.staff_name || "N/A"}
                                   </MDTypography>
                                 </TableCell>
+                                <TableCell align="center">{formatBpSaleId(sale)}</TableCell>
                                 <TableCell align="center">{sale.invoice_number}</TableCell>
                                 <TableCell align="center">
                                   ₹{Number(sale.price).toFixed(2)}
@@ -584,7 +638,7 @@ function UpdatePayment() {
                           })
                         ) : (
                           <TableRow>
-                            <TableCell colSpan={7} align="center" sx={{ py: 4 }}>
+                            <TableCell colSpan={8} align="center" sx={{ py: 4 }}>
                               <MDTypography variant="body2" color="text">
                                 No delivered items found matching your search.
                               </MDTypography>
@@ -617,6 +671,9 @@ function UpdatePayment() {
                 sx={{ backgroundColor: "#f8f9fa", borderRadius: "10px", border: "1px solid #e9ecef" }}
               >
                 <MDTypography variant="body2">
+                  <strong>Sale ID:</strong> {formatBpSaleId(paymentDialogSale)}
+                </MDTypography>
+                <MDTypography variant="body2">
                   <strong>Invoice:</strong> {paymentDialogSale.invoice_number}
                 </MDTypography>
                 <MDTypography variant="body2">
@@ -631,7 +688,7 @@ function UpdatePayment() {
                 </MDTypography>
                 {totalCreditOnAccount > 0 && (
                   <MDTypography variant="body2" color="text">
-                    <strong>On credit:</strong> ₹{totalCreditOnAccount.toFixed(2)} (does not reduce balance)
+                    <strong>Credit remaining:</strong> ₹{remainingCreditOnAccount.toFixed(2)} of ₹{totalCreditOnAccount.toFixed(2)}
                   </MDTypography>
                 )}
               </MDBox>
@@ -671,8 +728,8 @@ function UpdatePayment() {
                       <col style={{ width: "18%" }} />
                       <col style={{ width: "14%" }} />
                       <col style={{ width: "16%" }} />
-                      <col style={{ width: "38%" }} />
-                      <col style={{ width: "14%" }} />
+                      <col style={{ width: "34%" }} />
+                      <col style={{ width: "18%" }} />
                     </colgroup>
                     <TableHead
                       sx={{
@@ -700,9 +757,13 @@ function UpdatePayment() {
                       </TableRow>
                     </TableHead>
                     <TableBody>
-                      {payments.map((payment) => (
-                        <TableRow
-                          key={payment.id}
+                      {topLevelPayments.map((payment) => {
+                        const creditChildren = payment.payment_mode === "credit" ? getCreditChildPayments(payment) : [];
+                        const creditRemaining = payment.payment_mode === "credit" ? getCreditRemainingAmount(payment) : 0;
+
+                        return (
+                          <Fragment key={payment.id}>
+                            <TableRow
                           sx={{ backgroundColor: editingPaymentId === payment.id ? "#fff9c4" : "inherit" }}
                         >
                           <TableCell
@@ -741,10 +802,23 @@ function UpdatePayment() {
                               whiteSpace: "nowrap",
                             }}
                           >
-                            {formatPaymentDetails(payment)}
+                            {payment.payment_mode === "credit"
+                              ? `${formatPaymentDetails(payment)} - Remaining: ₹${creditRemaining.toFixed(2)}`
+                              : formatPaymentDetails(payment)}
                           </TableCell>
                           <TableCell align="center" sx={{ ...tableBodySx, borderBottom: "1px solid #e5e7eb" }}>
-                            <MDBox display="flex" justifyContent="center" alignItems="center">
+                            <MDBox display="flex" justifyContent="center" alignItems="center" gap={0.75}>
+                              {payment.payment_mode === "credit" && (
+                                <MDButton
+                                  variant="gradient"
+                                  color="success"
+                                  size="small"
+                                  disabled={creditRemaining <= 0 || dialogRemaining <= 0}
+                                  onClick={() => startAddAgainstCredit(payment)}
+                                >
+                                  Add
+                                </MDButton>
+                              )}
                               <MDButton
                                 variant="outlined"
                                 color="info"
@@ -755,8 +829,39 @@ function UpdatePayment() {
                               </MDButton>
                             </MDBox>
                           </TableCell>
-                        </TableRow>
-                      ))}
+                            </TableRow>
+                            {creditChildren.map((childPayment) => (
+                              <TableRow
+                                key={childPayment.id}
+                                sx={{ backgroundColor: editingPaymentId === childPayment.id ? "#fff9c4" : "#f8fafc" }}
+                              >
+                                <TableCell align="left" sx={{ ...tableBodySx, pl: 4, borderBottom: "1px solid #e5e7eb", fontSize: "0.8125rem", color: "#475569" }}>
+                                  {toInputDate(childPayment.payment_date)}
+                                </TableCell>
+                                <TableCell align="left" sx={{ ...tableBodySx, borderBottom: "1px solid #e5e7eb", fontSize: "0.8125rem", color: "#475569" }}>
+                                  {PAYMENT_MODE_LABELS[childPayment.payment_mode] || childPayment.payment_mode}
+                                </TableCell>
+                                <TableCell align="right" sx={{ ...tableBodySx, borderBottom: "1px solid #e5e7eb", fontSize: "0.8125rem", fontWeight: 500, color: "#111827" }}>
+                                  ₹{Number(childPayment.amount).toFixed(2)}
+                                </TableCell>
+                                <TableCell align="left" sx={{ ...tableBodySx, borderBottom: "1px solid #e5e7eb", fontSize: "0.8125rem", color: "#475569", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                                  Against credit #{payment.id} - {formatPaymentDetails(childPayment)}
+                                </TableCell>
+                                <TableCell align="center" sx={{ ...tableBodySx, borderBottom: "1px solid #e5e7eb" }}>
+                                  <MDButton
+                                    variant="outlined"
+                                    color="info"
+                                    size="small"
+                                    onClick={() => startEditPayment(childPayment)}
+                                  >
+                                    <Icon fontSize="small">edit</Icon>
+                                  </MDButton>
+                                </TableCell>
+                              </TableRow>
+                            ))}
+                          </Fragment>
+                        );
+                      })}
                     </TableBody>
                   </Table>
                 </TableContainer>
@@ -766,7 +871,11 @@ function UpdatePayment() {
               {(dialogRemaining > 0 || editingPaymentId) && (
                 <MDBox>
                   <MDTypography variant="h6" fontWeight="medium" mb={2}>
-                    {editingPaymentId ? "Edit Payment" : "Add Payment"}
+                    {editingPaymentId
+                      ? "Edit Payment"
+                      : activeCreditPayment
+                        ? `Add Payment Against Credit - ${activeCreditPayment.credit_days || ""} Days`
+                        : "Add Payment"}
                   </MDTypography>
 
                   <Grid container spacing={2}>
@@ -792,7 +901,7 @@ function UpdatePayment() {
                           <MenuItem value="cash">Cash</MenuItem>
                           <MenuItem value="upi">UPI</MenuItem>
                           <MenuItem value="cheque">Cheque</MenuItem>
-                          <MenuItem value="credit">Credit</MenuItem>
+                          {!activeCreditPayment && <MenuItem value="credit">Credit</MenuItem>}
                         </Select>
                       </FormControl>
                     </Grid>
@@ -802,7 +911,7 @@ function UpdatePayment() {
                         label={
                           editingPaymentId
                             ? `Amount (max ₹${maxPayableOnEdit.toFixed(2)})`
-                            : `Amount (max ₹${dialogRemaining.toFixed(2)})`
+                            : `Amount (max ₹${activeCreditRemaining.toFixed(2)})`
                         }
                         fullWidth
                         value={paymentForm.amount}
@@ -937,6 +1046,16 @@ function UpdatePayment() {
                           : "Add Payment"}
                     </MDButton>
                     {editingPaymentId && (
+                      <MDButton
+                        variant="outlined"
+                        color="dark"
+                        onClick={cancelEditPayment}
+                        disabled={addingPayment}
+                      >
+                        Cancel
+                      </MDButton>
+                    )}
+                    {activeCreditPayment && (
                       <MDButton
                         variant="outlined"
                         color="dark"
