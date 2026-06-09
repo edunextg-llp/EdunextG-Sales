@@ -294,6 +294,15 @@ function Delivery() {
                           Price
                         </TableCell>
                         <TableCell align="center" sx={{ color: "#6b7280", borderBottom: "1px solid #e5e7eb", py: 1.5, fontWeight: 500 }}>
+                          No. of Item
+                        </TableCell>
+                        <TableCell align="center" sx={{ color: "#6b7280", borderBottom: "1px solid #e5e7eb", py: 1.5, fontWeight: 500 }}>
+                          Packing Item
+                        </TableCell>
+                        <TableCell align="center" sx={{ color: "#6b7280", borderBottom: "1px solid #e5e7eb", py: 1.5, fontWeight: 500 }}>
+                          No. of Box
+                        </TableCell>
+                        <TableCell align="center" sx={{ color: "#6b7280", borderBottom: "1px solid #e5e7eb", py: 1.5, fontWeight: 500 }}>
                           Status
                         </TableCell>
                         <TableCell align="center" sx={{ color: "#6b7280", borderBottom: "1px solid #e5e7eb", py: 1.5, fontWeight: 500 }}>
@@ -346,6 +355,15 @@ function Delivery() {
                                 ₹{Number(row.price).toFixed(2)}
                               </TableCell>
                               <TableCell align="center" sx={{ borderBottom: borderCol, py: 2, color: txColor }}>
+                                {row.item_count || "N/A"}
+                              </TableCell>
+                              <TableCell align="center" sx={{ borderBottom: borderCol, py: 2, color: txColor }}>
+                                {row.packed_item_count || row.item_count || "N/A"}
+                              </TableCell>
+                              <TableCell align="center" sx={{ borderBottom: borderCol, py: 2, color: txColor }}>
+                                {row.box_count || "N/A"}
+                              </TableCell>
+                              <TableCell align="center" sx={{ borderBottom: borderCol, py: 2, color: txColor }}>
                                 <FormControl size="small" sx={{ minWidth: 160 }}>
                                   <Select
                                     value={row.packaging_status === 'packing_done' ? '' : row.packaging_status}
@@ -390,7 +408,7 @@ function Delivery() {
                         })
                       ) : (
                         <TableRow>
-                          <TableCell colSpan={12} align="center" sx={{ py: 3, borderBottom: 0 }}>
+                          <TableCell colSpan={15} align="center" sx={{ py: 3, borderBottom: 0 }}>
                             <MDTypography variant="body2" color="text">
                               No deliveries found.
                             </MDTypography>

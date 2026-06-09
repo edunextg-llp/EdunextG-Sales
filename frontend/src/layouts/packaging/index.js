@@ -135,6 +135,22 @@ function Packaging() {
       return;
     }
 
+    const packedItemCount = parseInt(row.packed_item_count, 10);
+    const originalItemCount = Number(row.item_count || 0);
+    const boxCount = parseInt(row.box_count, 10);
+    if (Number.isNaN(packedItemCount) || packedItemCount <= 0) {
+      alert("Please enter Packing Item.");
+      return;
+    }
+    if (originalItemCount > 0 && packedItemCount > originalItemCount) {
+      alert("Packing Item cannot be more than No. of Item.");
+      return;
+    }
+    if (Number.isNaN(boxCount) || boxCount <= 0) {
+      alert("Please enter No. of Box.");
+      return;
+    }
+
     setSavingSaleIds((prev) => new Set(prev).add(saleId));
 
     try {
@@ -142,6 +158,8 @@ function Packaging() {
         packagingStatus: row.packaging_status || "not_packing",
         statusDate: row.status_update_date || null,
         expectedStatus: row.original_packaging_status,
+        packedItemCount,
+        boxCount,
       };
 
       const response = await fetch(`${API}/staff/sales/${row.id}/packaging`, {
@@ -204,7 +222,7 @@ function Packaging() {
 
   const filteredSales = salesData.filter((row) => {
     const status = row.original_packaging_status || row.packaging_status || 'not_packing';
-    if (status === 'out_for_delivery' || status === 'delivered') return false; // moves to Delivery Sections
+    if (status === 'packing_done' || status === 'out_for_delivery' || status === 'delivered') return false;
 
     if (statusFilter !== "all" && status !== statusFilter) {
       return false;
@@ -300,6 +318,15 @@ function Packaging() {
                           Price
                         </TableCell>
                         <TableCell align="center" sx={{ color: "#6b7280", borderBottom: "1px solid #e5e7eb", py: 1.5, fontWeight: 500 }}>
+                          No. of Item
+                        </TableCell>
+                        <TableCell align="center" sx={{ color: "#6b7280", borderBottom: "1px solid #e5e7eb", py: 1.5, fontWeight: 500 }}>
+                          Packing Item
+                        </TableCell>
+                        <TableCell align="center" sx={{ color: "#6b7280", borderBottom: "1px solid #e5e7eb", py: 1.5, fontWeight: 500 }}>
+                          No. of Box
+                        </TableCell>
+                        <TableCell align="center" sx={{ color: "#6b7280", borderBottom: "1px solid #e5e7eb", py: 1.5, fontWeight: 500 }}>
                           Status
                         </TableCell>
                         <TableCell align="center" sx={{ color: "#6b7280", borderBottom: "1px solid #e5e7eb", py: 1.5, fontWeight: 500 }}>
@@ -344,6 +371,33 @@ function Packaging() {
                               </TableCell>
                               <TableCell align="right" sx={{ borderBottom: borderCol, py: 2, color: txColor, fontWeight: "bold" }}>
                                 ₹{Number(row.price).toFixed(2)}
+                              </TableCell>
+                              <TableCell align="center" sx={{ borderBottom: borderCol, py: 2, color: txColor }}>
+                                {row.item_count || "N/A"}
+                              </TableCell>
+                              <TableCell align="center" sx={{ borderBottom: borderCol, py: 2, color: txColor }}>
+                                <MDInput
+                                  type="number"
+                                  value={row.packed_item_count || ""}
+                                  onChange={(e) =>
+                                    handleRowChange(row.id, "packed_item_count", e.target.value)
+                                  }
+                                  size="small"
+                                  inputProps={{ min: 1, max: row.item_count || undefined, style: { textAlign: "center" } }}
+                                  sx={{ width: 110, backgroundColor: "#fff" }}
+                                />
+                              </TableCell>
+                              <TableCell align="center" sx={{ borderBottom: borderCol, py: 2, color: txColor }}>
+                                <MDInput
+                                  type="number"
+                                  value={row.box_count || ""}
+                                  onChange={(e) =>
+                                    handleRowChange(row.id, "box_count", e.target.value)
+                                  }
+                                  size="small"
+                                  inputProps={{ min: 1, style: { textAlign: "center" } }}
+                                  sx={{ width: 100, backgroundColor: "#fff" }}
+                                />
                               </TableCell>
                               <TableCell align="center" sx={{ borderBottom: borderCol, py: 2, color: txColor }}>
                                 <FormControl size="small" sx={{ minWidth: 140 }}>
@@ -391,7 +445,7 @@ function Packaging() {
                         })
                       ) : (
                         <TableRow>
-                          <TableCell colSpan={10} align="center" sx={{ py: 3, borderBottom: 0 }}>
+                          <TableCell colSpan={13} align="center" sx={{ py: 3, borderBottom: 0 }}>
                             <MDTypography variant="body2" color="text">
                               No sales found.
                             </MDTypography>

@@ -302,6 +302,10 @@ export const recordSales = async (req, res) => {
             if (!priceValidation.valid) {
                 return res.status(400).json({ error: priceValidation.error });
             }
+            const itemCountValidation = validatePositiveInteger(item.itemCount, `Sale ${i + 1} no. of item`);
+            if (!itemCountValidation.valid) {
+                return res.status(400).json({ error: itemCountValidation.error });
+            }
 
             const normalizedInvoice = invoiceValidation.value.toLowerCase();
             if (invoiceNumbers.has(normalizedInvoice)) {
@@ -342,6 +346,7 @@ export const recordSales = async (req, res) => {
             validatedSales.push({
                 outletId: outletValidation.value,
                 invoiceNumber: invoiceValidation.value,
+                itemCount: itemCountValidation.value,
                 price: priceValidation.value,
                 deliveryBoyId,
                 vehicleNo,
@@ -374,7 +379,7 @@ export const recordSales = async (req, res) => {
 export const updateSale = async (req, res) => {
     try {
         const { saleId } = req.params;
-        const { invoiceNumber, price } = req.body;
+        const { invoiceNumber, price, itemCount } = req.body;
 
         const invoiceValidation = validateRequiredText(invoiceNumber, 'Invoice number');
         if (!invoiceValidation.valid) {
@@ -383,6 +388,10 @@ export const updateSale = async (req, res) => {
         const priceValidation = validateNumeric(price, 'Price');
         if (!priceValidation.valid) {
             return res.status(400).json({ error: priceValidation.error });
+        }
+        const itemCountValidation = validatePositiveInteger(itemCount, 'No. of item');
+        if (!itemCountValidation.valid) {
+            return res.status(400).json({ error: itemCountValidation.error });
         }
 
         const existing = await StaffModel.getSaleById(saleId);
@@ -402,7 +411,8 @@ export const updateSale = async (req, res) => {
         const updated = await StaffModel.updateSale(
             saleId,
             invoiceValidation.value,
-            priceValidation.value
+            priceValidation.value,
+            itemCountValidation.value
         );
 
         res.status(200).json({
@@ -412,6 +422,7 @@ export const updateSale = async (req, res) => {
                 shopName: updated.outlet_name,
                 outletErpId: updated.outlet_erp_id || '',
                 invoiceNumber: updated.invoice_number,
+                itemCount: updated.item_count,
                 stickerNumber: updated.sticker_number,
                 amount: updated.price,
                 deliveryBoyName: updated.delivery_boy_name || '',
@@ -443,7 +454,7 @@ export const deleteSale = async (req, res) => {
 export const updatePackagingStatus = async (req, res) => {
     try {
         const { saleId } = req.params;
-        const { packagingStatus, deliveryBoyId, vehicleNo, deliveryDate, statusDate, expectedStatus } = req.body;
+        const { packagingStatus, deliveryBoyId, vehicleNo, deliveryDate, statusDate, expectedStatus, packedItemCount, boxCount } = req.body;
 
         if (!['not_packing', 'packing', 'packing_done', 'out_for_delivery', 'delivered', 'cancelled'].includes(packagingStatus)) {
             return res.status(400).json({ error: 'Invalid packaging status' });
@@ -461,7 +472,33 @@ export const updatePackagingStatus = async (req, res) => {
             });
         }
 
+        const existingSale = await StaffModel.getSaleById(saleId);
         const normalizedStatusDate = normalizeDateInput(statusDate);
+        const hasPackedItemCount = Object.prototype.hasOwnProperty.call(req.body, 'packedItemCount');
+        const hasBoxCount = Object.prototype.hasOwnProperty.call(req.body, 'boxCount');
+        let normalizedPackedItemCount =
+            existingSale?.packed_item_count || existingSale?.item_count || null;
+        let normalizedBoxCount = existingSale?.box_count || null;
+
+        if (hasPackedItemCount) {
+            const packedValidation = validatePositiveInteger(packedItemCount, 'Packing item');
+            if (!packedValidation.valid) {
+                return res.status(400).json({ error: packedValidation.error });
+            }
+            normalizedPackedItemCount = packedValidation.value;
+        }
+
+        if (existingSale?.item_count && normalizedPackedItemCount && normalizedPackedItemCount > Number(existingSale.item_count)) {
+            return res.status(400).json({ error: 'Packing item cannot be more than no. of item.' });
+        }
+
+        if (hasBoxCount) {
+            const boxValidation = validatePositiveInteger(boxCount, 'No. of box');
+            if (!boxValidation.valid) {
+                return res.status(400).json({ error: boxValidation.error });
+            }
+            normalizedBoxCount = boxValidation.value;
+        }
 
         await StaffModel.updatePackagingStatus(
             saleId,
@@ -469,7 +506,9 @@ export const updatePackagingStatus = async (req, res) => {
             deliveryBoyId || null,
             vehicleNo || null,
             normalizeDateInput(deliveryDate),
-            normalizedStatusDate
+            normalizedStatusDate,
+            normalizedPackedItemCount,
+            normalizedBoxCount
         );
         const updated = await StaffModel.getSaleById(saleId);
         res.status(200).json({

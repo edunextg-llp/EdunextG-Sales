@@ -221,7 +221,7 @@ class StaffModel {
     }
 
     static async saveSales(staffId, date, salesData) {
-        // salesData: [{ outletId, invoiceNumber, price }] -> returns sticker print data
+        // salesData: [{ outletId, itemCount, invoiceNumber, price }] -> returns sticker print data
         const connection = await db.getConnection();
 
         try {
@@ -242,9 +242,11 @@ class StaffModel {
 
                 await connection.execute(
                     `INSERT INTO staff_sales
-                     (staff_id, outlet_id, sale_date, invoice_number, price, sticker_number, payment_mode, delivery_boy_id, vehicle_no, paid_amount, balance_amount)
-                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?)
+                     (staff_id, outlet_id, sale_date, item_count, packed_item_count, invoice_number, price, sticker_number, payment_mode, delivery_boy_id, vehicle_no, paid_amount, balance_amount)
+                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?)
                      ON DUPLICATE KEY UPDATE
+                       item_count = VALUES(item_count),
+                       packed_item_count = VALUES(packed_item_count),
                        invoice_number = VALUES(invoice_number),
                        price = VALUES(price),
                        payment_mode = VALUES(payment_mode),
@@ -255,6 +257,8 @@ class StaffModel {
                         staffId,
                         item.outletId,
                         date,
+                        item.itemCount,
+                        item.itemCount,
                         item.invoiceNumber,
                         item.price,
                         stickerNumber,
@@ -299,6 +303,7 @@ class StaffModel {
                     shopName: outletRows[0]?.outlet_name || 'Unknown Shop',
                     outletErpId: outletRows[0]?.outlet_erp_id || '',
                     invoiceNumber: item.invoiceNumber,
+                    itemCount: item.itemCount,
                     amount: item.price,
                     paymentMode: item.paymentMode,
                     deliveryBoyName: deliveryBoyRows[0]?.name || '',
@@ -319,7 +324,7 @@ class StaffModel {
     static async getAllSalesByDate(date) {
         let query = `
             SELECT ss.id, CONCAT('BP', ss.id) AS bp_sale_id,
-                    ss.staff_id, ss.outlet_id, ss.sale_date, ss.price, ss.invoice_number, 
+                    ss.staff_id, ss.outlet_id, ss.sale_date, ss.item_count, ss.packed_item_count, ss.box_count, ss.price, ss.invoice_number, 
                     ss.sticker_number, ss.packaging_status, ss.delivery_boy_id, ss.vehicle_no,
                     DATE_FORMAT(ss.delivery_date, '%Y-%m-%d') AS delivery_date,
                     DATE_FORMAT(ssh.status_updated_at, '%Y-%m-%d %H:%i:%s') AS status_updated_at,
@@ -361,7 +366,7 @@ class StaffModel {
     static async getSalesByDate(staffId, date) {
         const [rows] = await db.execute(
             `SELECT ss.id, CONCAT('BP', ss.id) AS bp_sale_id,
-                    ss.staff_id, ss.outlet_id, ss.sale_date, ss.price, ss.invoice_number, 
+                    ss.staff_id, ss.outlet_id, ss.sale_date, ss.item_count, ss.packed_item_count, ss.box_count, ss.price, ss.invoice_number, 
                     ss.sticker_number, ss.payment_mode, ss.paid_amount, ss.balance_amount, 
                     ss.reference_no, ss.reference_date, ss.credit_days, ss.vehicle_no,
                     DATE_FORMAT(ss.delivery_date, '%Y-%m-%d') AS delivery_date,
@@ -387,7 +392,7 @@ class StaffModel {
     static async getSaleById(saleId) {
         const [rows] = await db.execute(
             `SELECT ss.id, CONCAT('BP', ss.id) AS bp_sale_id,
-                    ss.staff_id, ss.outlet_id, ss.sale_date, ss.price, ss.invoice_number,
+                    ss.staff_id, ss.outlet_id, ss.sale_date, ss.item_count, ss.packed_item_count, ss.box_count, ss.price, ss.invoice_number,
                     ss.sticker_number, ss.paid_amount, ss.balance_amount, ss.packaging_status,
                     DATE_FORMAT(ss.delivery_date, '%Y-%m-%d') AS delivery_date,
                     DATE_FORMAT(ssh.status_updated_at, '%Y-%m-%d %H:%i:%s') AS status_updated_at,
@@ -428,13 +433,14 @@ class StaffModel {
         return rows[0] || null;
     }
 
-    static async updateSale(saleId, invoiceNumber, price) {
+    static async updateSale(saleId, invoiceNumber, price, itemCount) {
         await db.execute(
             `UPDATE staff_sales
-             SET invoice_number = ?, price = ?,
+             SET invoice_number = ?, price = ?, item_count = ?,
+                 packed_item_count = IF(packed_item_count IS NULL OR packed_item_count > ?, ?, packed_item_count),
                  balance_amount = IF(paid_amount = 0, ?, balance_amount)
              WHERE id = ?`,
-            [invoiceNumber, price, price, saleId]
+            [invoiceNumber, price, itemCount, itemCount, itemCount, price, saleId]
         );
         return StaffModel.getSaleById(saleId);
     }
@@ -470,7 +476,9 @@ class StaffModel {
         deliveryBoyId,
         vehicleNo,
         deliveryDate = null,
-        statusDate = null
+        statusDate = null,
+        packedItemCount = null,
+        boxCount = null
     ) {
         const connection = await db.getConnection();
 
@@ -485,16 +493,18 @@ class StaffModel {
             if (status === 'out_for_delivery' || status === 'delivered' || status === 'cancelled') {
                 await connection.execute(
                     `UPDATE staff_sales 
-                     SET packaging_status = ?, delivery_boy_id = ?, vehicle_no = ?, delivery_date = ?
+                     SET packaging_status = ?, delivery_boy_id = ?, vehicle_no = ?, delivery_date = ?,
+                         packed_item_count = ?, box_count = ?
                      WHERE id = ?`,
-                    [status, deliveryBoyId, vehicleNo, deliveryDate, saleId]
+                    [status, deliveryBoyId, vehicleNo, deliveryDate, packedItemCount, boxCount, saleId]
                 );
             } else {
                 await connection.execute(
                     `UPDATE staff_sales 
-                     SET packaging_status = ?, delivery_boy_id = NULL, vehicle_no = NULL, delivery_date = NULL
+                     SET packaging_status = ?, delivery_boy_id = NULL, vehicle_no = NULL, delivery_date = NULL,
+                         packed_item_count = ?, box_count = ?
                      WHERE id = ?`,
-                    [status, saleId]
+                    [status, packedItemCount, boxCount, saleId]
                 );
             }
 

@@ -145,6 +145,24 @@ export async function ensureSchema() {
 
         await tryQuery(
             connection,
+            `ALTER TABLE staff_sales ADD COLUMN item_count INT NOT NULL DEFAULT 0`,
+            'item_count on staff_sales'
+        );
+
+        await tryQuery(
+            connection,
+            `ALTER TABLE staff_sales ADD COLUMN packed_item_count INT NULL`,
+            'packed_item_count on staff_sales'
+        );
+
+        await tryQuery(
+            connection,
+            `ALTER TABLE staff_sales ADD COLUMN box_count INT NULL`,
+            'box_count on staff_sales'
+        );
+
+        await tryQuery(
+            connection,
             `ALTER TABLE sale_payments ADD COLUMN remarks TEXT NULL`,
             'remarks on sale_payments'
         );

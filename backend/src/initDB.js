@@ -150,6 +150,9 @@ async function initDB() {
             outlet_id INT NOT NULL,
             sale_date DATE NOT NULL,
             invoice_number VARCHAR(100) NOT NULL,
+            item_count INT NOT NULL DEFAULT 0,
+            packed_item_count INT NULL,
+            box_count INT NULL,
             price DECIMAL(10, 2) NOT NULL,
             sticker_number VARCHAR(20) NULL UNIQUE,
             payment_mode ENUM('cash', 'upi') NOT NULL DEFAULT 'cash',
@@ -344,6 +347,39 @@ async function initDB() {
         console.log('Added remarks column to sale_payments');
     } catch (err) {
         console.log('remarks column on sale_payments already exists or skipped');
+    }
+
+    try {
+        await connection.query(`
+            ALTER TABLE staff_sales ADD COLUMN item_count INT NOT NULL DEFAULT 0
+        `);
+        console.log('Added item_count to staff_sales table');
+    } catch (err) {
+        if (err.code !== 'ER_DUP_FIELDNAME') {
+            console.log('item_count column may already exist on staff_sales');
+        }
+    }
+
+    try {
+        await connection.query(`
+            ALTER TABLE staff_sales ADD COLUMN packed_item_count INT NULL
+        `);
+        console.log('Added packed_item_count to staff_sales table');
+    } catch (err) {
+        if (err.code !== 'ER_DUP_FIELDNAME') {
+            console.log('packed_item_count column may already exist on staff_sales');
+        }
+    }
+
+    try {
+        await connection.query(`
+            ALTER TABLE staff_sales ADD COLUMN box_count INT NULL
+        `);
+        console.log('Added box_count to staff_sales table');
+    } catch (err) {
+        if (err.code !== 'ER_DUP_FIELDNAME') {
+            console.log('box_count column may already exist on staff_sales');
+        }
     }
 
     try {

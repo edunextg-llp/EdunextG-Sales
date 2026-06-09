@@ -228,6 +228,15 @@ function Delivered() {
                           Price
                         </TableCell>
                         <TableCell align="center" sx={{ color: "#6b7280", borderBottom: "1px solid #e5e7eb", py: 1.5, fontWeight: 500 }}>
+                          No. of Item
+                        </TableCell>
+                        <TableCell align="center" sx={{ color: "#6b7280", borderBottom: "1px solid #e5e7eb", py: 1.5, fontWeight: 500 }}>
+                          Packing Item
+                        </TableCell>
+                        <TableCell align="center" sx={{ color: "#6b7280", borderBottom: "1px solid #e5e7eb", py: 1.5, fontWeight: 500 }}>
+                          No. of Box
+                        </TableCell>
+                        <TableCell align="center" sx={{ color: "#6b7280", borderBottom: "1px solid #e5e7eb", py: 1.5, fontWeight: 500 }}>
                           Delivery Boy
                         </TableCell>
                         <TableCell align="center" sx={{ color: "#6b7280", borderBottom: "1px solid #e5e7eb", py: 1.5, fontWeight: 500 }}>
@@ -264,6 +273,15 @@ function Delivered() {
                             <TableCell align="center" sx={{ borderBottom: "1px solid #cbd5e1", py: 2 }}>{row.invoice_number}</TableCell>
                             <TableCell align="right" sx={{ borderBottom: "1px solid #cbd5e1", py: 2, fontWeight: "bold" }}>
                               ₹{Number(row.price).toFixed(2)}
+                            </TableCell>
+                            <TableCell align="center" sx={{ borderBottom: "1px solid #cbd5e1", py: 2, color: '#334155' }}>
+                              {row.item_count || "N/A"}
+                            </TableCell>
+                            <TableCell align="center" sx={{ borderBottom: "1px solid #cbd5e1", py: 2, color: '#334155' }}>
+                              {row.packed_item_count || row.item_count || "N/A"}
+                            </TableCell>
+                            <TableCell align="center" sx={{ borderBottom: "1px solid #cbd5e1", py: 2, color: '#334155' }}>
+                              {row.box_count || "N/A"}
                             </TableCell>
                             <TableCell align="center" sx={{ borderBottom: "1px solid #cbd5e1", py: 2, color: '#334155' }}>
                               {row.delivery_boy_name || 'N/A'}
@@ -313,7 +331,7 @@ function Delivered() {
                         ))
                       ) : (
                         <TableRow>
-                          <TableCell colSpan={12} align="center" sx={{ py: 3, borderBottom: 0 }}>
+                          <TableCell colSpan={15} align="center" sx={{ py: 3, borderBottom: 0 }}>
                             <MDTypography variant="body2" color="text">
                               No delivered items found.
                             </MDTypography>

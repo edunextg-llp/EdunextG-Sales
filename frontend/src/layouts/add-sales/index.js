@@ -72,11 +72,12 @@ function AddSales() {
   const [searchOutlets, setSearchOutlets] = useState([]);
   const [searchingOutlets, setSearchingOutlets] = useState(false);
   const [editingSaleId, setEditingSaleId] = useState(null);
-  const [editForm, setEditForm] = useState({ invoiceNumber: "", price: "" });
+  const [editForm, setEditForm] = useState({ itemCount: "", invoiceNumber: "", price: "" });
   const [savingEdit, setSavingEdit] = useState(false);
 
   const API = "https://bawarchee.edunextg.co/api";
   const isCnfStaff = selectedStaff?.staff_type === "cnf";
+  const emptySaleRow = { itemCount: "", invoiceNumber: "", price: "", deliveryBoyId: "", vehicleNo: "" };
 
   const outletKey = (id) => String(id);
 
@@ -110,7 +111,7 @@ function AddSales() {
   };
 
   const rowHasDraft = (row) =>
-    Boolean(row?.invoiceNumber?.trim() || row?.price?.toString().trim());
+    Boolean(row?.itemCount?.toString().trim() || row?.invoiceNumber?.trim() || row?.price?.toString().trim());
 
   const normalizeInvoice = (value) => String(value || "").trim().toLowerCase();
 
@@ -138,6 +139,7 @@ function AddSales() {
     outletId: s.outlet_id,
     shopName: s.outlet_name,
     outletErpId: s.outlet_erp_id || "",
+    itemCount: s.item_count ?? s.itemCount ?? "",
     invoiceNumber: s.invoice_number,
     stickerNumber: s.sticker_number,
     paymentMode: s.payment_mode,
@@ -161,7 +163,13 @@ function AddSales() {
     () =>
       Object.values(salesData).some((dataList) =>
         (dataList || []).some(
-          (d) => d.invoiceNumber?.trim() && d.price?.toString().trim() && !Number.isNaN(parseFloat(d.price))
+          (d) =>
+            d.itemCount?.toString().trim() &&
+            d.invoiceNumber?.trim() &&
+            d.price?.toString().trim() &&
+            !Number.isNaN(parseInt(d.itemCount, 10)) &&
+            parseInt(d.itemCount, 10) > 0 &&
+            !Number.isNaN(parseFloat(d.price))
         )
       ),
     [salesData]
@@ -227,7 +235,7 @@ function AddSales() {
         const initialSales = {};
         data.forEach((outlet) => {
           initialSales[outletKey(outlet.id)] = [
-            { invoiceNumber: "", price: "", deliveryBoyId: "", vehicleNo: "" },
+            { ...emptySaleRow },
           ];
         });
         setSalesData(initialSales);
@@ -335,7 +343,7 @@ function AddSales() {
           const initialSales = {};
           data.forEach((outlet) => {
             initialSales[outletKey(outlet.id)] = [
-              { invoiceNumber: "", price: "", deliveryBoyId: "", vehicleNo: "" },
+              { ...emptySaleRow },
             ];
           });
           setSalesData(initialSales);
@@ -382,7 +390,7 @@ function AddSales() {
               const key = outletKey(outlet.id);
               if (!next[key]) {
                 next[key] = [
-                  { invoiceNumber: "", price: "", deliveryBoyId: "", vehicleNo: "" },
+                  { ...emptySaleRow },
                 ];
               }
             });
@@ -403,7 +411,7 @@ function AddSales() {
     const key = outletKey(outletId);
     setSalesData((prev) => {
       const existing = prev[key] || [
-        { invoiceNumber: "", price: "", deliveryBoyId: "", vehicleNo: "" },
+        { ...emptySaleRow },
       ];
       const outletSales = [...existing];
       outletSales[index] = { ...outletSales[index], [field]: value };
@@ -419,8 +427,8 @@ function AddSales() {
     setSalesData((prev) => ({
       ...prev,
       [key]: [
-        ...(prev[key] || [{ invoiceNumber: "", price: "", deliveryBoyId: "", vehicleNo: "" }]),
-        { invoiceNumber: "", price: "", deliveryBoyId: "", vehicleNo: "" },
+        ...(prev[key] || [{ ...emptySaleRow }]),
+        { ...emptySaleRow },
       ],
     }));
   };
@@ -432,7 +440,7 @@ function AddSales() {
       if (outletSales.length <= 1) {
         return {
           ...prev,
-          [key]: [{ invoiceNumber: "", price: "", deliveryBoyId: "", vehicleNo: "" }],
+          [key]: [{ ...emptySaleRow }],
         };
       }
       outletSales.splice(index, 1);
@@ -447,24 +455,37 @@ function AddSales() {
     const key = outletKey(outletId);
     const dataList = salesData[key] || [];
     const validRows = dataList.filter(
-      (d) => d.invoiceNumber?.trim() && d.price?.toString().trim() && !Number.isNaN(parseFloat(d.price))
+      (d) =>
+        d.itemCount?.toString().trim() &&
+        d.invoiceNumber?.trim() &&
+        d.price?.toString().trim() &&
+        !Number.isNaN(parseInt(d.itemCount, 10)) &&
+        parseInt(d.itemCount, 10) > 0 &&
+        !Number.isNaN(parseFloat(d.price))
     );
 
     if (validRows.length === 0) {
-      alert("Please enter at least one valid invoice number and price.");
+      alert("Please enter at least one valid no. of item, invoice number, and price.");
       return;
     }
 
-    const hasInvalidFormat = validRows.some(d => isNaN(parseFloat(d.price)));
+    const hasInvalidFormat = validRows.some(
+      (d) => Number.isNaN(parseInt(d.itemCount, 10)) || Number.isNaN(parseFloat(d.price))
+    );
     if (hasInvalidFormat) {
-      alert("Please enter a valid numeric value for the price.");
+      alert("Please enter valid numeric values for no. of item and price.");
       return;
     }
 
     const hasIncomplete = dataList.some(
       (d) =>
-        (d.invoiceNumber?.trim() && !d.price?.toString().trim()) ||
-        (!d.invoiceNumber?.trim() && d.price?.toString().trim())
+        rowHasDraft(d) &&
+        (!d.itemCount?.toString().trim() ||
+          !d.invoiceNumber?.trim() ||
+          !d.price?.toString().trim() ||
+          Number.isNaN(parseInt(d.itemCount, 10)) ||
+          parseInt(d.itemCount, 10) <= 0 ||
+          Number.isNaN(parseFloat(d.price)))
     );
     if (hasIncomplete) {
       alert("Please complete partially filled rows or remove them.");
@@ -479,6 +500,7 @@ function AddSales() {
       date: selectedDate,
       sales: validRows.map(d => ({
         outletId: parseInt(outletId, 10),
+        itemCount: parseInt(d.itemCount, 10),
         invoiceNumber: d.invoiceNumber.trim(),
         price: parseFloat(d.price),
       }))
@@ -525,12 +547,15 @@ function AddSales() {
     let hasError = false;
 
     Object.entries(salesData).forEach(([key, dataList]) => {
-      const filledRows = dataList.filter((d) => d.invoiceNumber?.trim() || d.price?.toString().trim());
+      const filledRows = dataList.filter(rowHasDraft);
       if (filledRows.length > 0) {
         const incomplete = filledRows.some(
           (d) =>
             !d.invoiceNumber?.trim() ||
+            !d.itemCount?.toString().trim() ||
             !d.price?.toString().trim() ||
+            Number.isNaN(parseInt(d.itemCount, 10)) ||
+            parseInt(d.itemCount, 10) <= 0 ||
             Number.isNaN(parseFloat(d.price))
         );
         if (incomplete) {
@@ -540,6 +565,7 @@ function AddSales() {
           filledRows.forEach((d) => {
             allSales.push({
               outletId: parseInt(key, 10),
+              itemCount: parseInt(d.itemCount, 10),
               invoiceNumber: d.invoiceNumber.trim(),
               price: parseFloat(d.price)
             });
@@ -549,11 +575,11 @@ function AddSales() {
     });
 
     if (!selectedStaff || !selectedDate || allSales.length === 0) {
-      alert("Please select staff, date, and enter at least one valid invoice and price.");
+      alert("Please select staff, date, and enter at least one valid no. of item, invoice, and price.");
       return;
     }
     if (hasError) {
-      alert("Some rows are partially filled or invalid. Please provide both an invoice number and numeric price, or clear/remove the row.");
+      alert("Some rows are partially filled or invalid. Please provide no. of item, invoice number, and numeric price, or clear/remove the row.");
       return;
     }
     if (hasDuplicateInvoiceNumbers(allSales.map((sale) => sale.invoiceNumber))) {
@@ -605,6 +631,7 @@ function AddSales() {
   const startEditSale = (row) => {
     setEditingSaleId(row.id);
     setEditForm({
+      itemCount: String(row.itemCount ?? ""),
       invoiceNumber: row.invoiceNumber || "",
       price: String(row.amount ?? ""),
     });
@@ -612,15 +639,20 @@ function AddSales() {
 
   const cancelEditSale = () => {
     setEditingSaleId(null);
-    setEditForm({ invoiceNumber: "", price: "" });
+    setEditForm({ itemCount: "", invoiceNumber: "", price: "" });
   };
 
   const saveEditSale = async (saleId) => {
-    if (!editForm.invoiceNumber.trim() || !editForm.price.trim()) {
-      alert("Invoice number and price are required.");
+    if (!editForm.itemCount.toString().trim() || !editForm.invoiceNumber.trim() || !editForm.price.trim()) {
+      alert("No. of item, invoice number, and price are required.");
       return;
     }
+    const itemCount = parseInt(editForm.itemCount, 10);
     const price = parseFloat(editForm.price);
+    if (Number.isNaN(itemCount) || itemCount <= 0) {
+      alert("Please enter a valid no. of item.");
+      return;
+    }
     if (Number.isNaN(price)) {
       alert("Please enter a valid price.");
       return;
@@ -637,6 +669,7 @@ function AddSales() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           invoiceNumber: editForm.invoiceNumber.trim(),
+          itemCount,
           price,
         }),
       });
@@ -867,7 +900,7 @@ function AddSales() {
                                 setSalesData((prev) => {
                                   const newData = { ...prev };
                                   outletsToAdd.forEach(o => {
-                                    newData[o.id] = [{ invoiceNumber: "", price: "", deliveryBoyId: "", vehicleNo: "" }];
+                                    newData[o.id] = [{ ...emptySaleRow }];
                                   });
                                   return newData;
                                 });
@@ -902,30 +935,34 @@ function AddSales() {
                       >
                         <colgroup>
                           <col style={{ width: "6%" }} />
-                          <col style={{ width: "24%" }} />
-                          <col style={{ width: "18%" }} />
-                          <col style={{ width: "18%" }} />
-                          <col style={{ width: "12%" }} />
                           <col style={{ width: "22%" }} />
+                          <col style={{ width: "16%" }} />
+                          <col style={{ width: "12%" }} />
+                          <col style={{ width: "16%" }} />
+                          <col style={{ width: "12%" }} />
+                          <col style={{ width: "16%" }} />
                         </colgroup>
                         <TableHead sx={tableHeadRowSx}>
                           <TableRow>
                             <TableCell align="center" sx={{ ...tableHeadSx, width: "6%" }}>
                               Sr No
                             </TableCell>
-                            <TableCell align="left" sx={{ ...tableHeadSx, width: "24%" }}>
+                            <TableCell align="left" sx={{ ...tableHeadSx, width: "22%" }}>
                               Outlet
                             </TableCell>
-                            <TableCell align="left" sx={{ ...tableHeadSx, width: "18%" }}>
+                            <TableCell align="left" sx={{ ...tableHeadSx, width: "16%" }}>
                               Staff Name
                             </TableCell>
-                            <TableCell align="left" sx={{ ...tableHeadSx, width: "18%" }}>
+                            <TableCell align="left" sx={{ ...tableHeadSx, width: "12%" }}>
+                              No. of Item
+                            </TableCell>
+                            <TableCell align="left" sx={{ ...tableHeadSx, width: "16%" }}>
                               Invoice No
                             </TableCell>
                             <TableCell align="left" sx={{ ...tableHeadSx, width: "12%" }}>
                               Price
                             </TableCell>
-                            <TableCell align="center" sx={{ ...tableHeadSx, width: "22%" }}>
+                            <TableCell align="center" sx={{ ...tableHeadSx, width: "16%" }}>
                               Action
                             </TableCell>
                           </TableRow>
@@ -935,7 +972,7 @@ function AddSales() {
                             <TableRow>
                               <TableCell sx={{ ...tableBodySx, borderBottom: "1px solid #e5e7eb" }} />
                               <TableCell
-                                colSpan={4}
+                                colSpan={5}
                                 align="center"
                                 sx={{ ...tableBodySx, borderBottom: "1px solid #e5e7eb", py: 3 }}
                               >
@@ -949,7 +986,7 @@ function AddSales() {
                             <TableRow>
                               <TableCell sx={{ ...tableBodySx, borderBottom: "1px solid #e5e7eb" }} />
                               <TableCell
-                                colSpan={4}
+                                colSpan={5}
                                 align="center"
                                 sx={{ ...tableBodySx, borderBottom: "1px solid #e5e7eb", py: 3 }}
                               >
@@ -1047,6 +1084,20 @@ function AddSales() {
                                     )}
                                     <TableCell align="left" sx={{ ...tableBodySx, ...rowBorder }}>
                                       <MDInput
+                                        type="number"
+                                        placeholder="Items"
+                                        size="small"
+                                        fullWidth
+                                        inputProps={{ min: 1 }}
+                                        sx={{ "& .MuiInputBase-root": { height: "36px" } }}
+                                        value={row.itemCount || ""}
+                                        onChange={(e) =>
+                                          handleSalesChange(outlet.id, index, "itemCount", e.target.value)
+                                        }
+                                      />
+                                    </TableCell>
+                                    <TableCell align="left" sx={{ ...tableBodySx, ...rowBorder }}>
+                                      <MDInput
                                         type="text"
                                         placeholder="Invoice..."
                                         size="small"
@@ -1094,7 +1145,12 @@ function AddSales() {
                                             onClick={() => handleSaveRow(outlet.id)}
                                             disabled={
                                               submitting ||
-                                              !rows.some((r) => r.invoiceNumber?.trim() && r.price?.trim())
+                                              !rows.some(
+                                                (r) =>
+                                                  r.itemCount?.toString().trim() &&
+                                                  r.invoiceNumber?.trim() &&
+                                                  r.price?.trim()
+                                              )
                                             }
                                             sx={{ minWidth: 64 }}
                                           >
@@ -1207,34 +1263,38 @@ function AddSales() {
                       >
                         <colgroup>
                           <col style={{ width: "6%" }} />
-                          <col style={{ width: "24%" }} />
-                          <col style={{ width: "18%" }} />
+                          <col style={{ width: "22%" }} />
+                          <col style={{ width: "16%" }} />
+                          <col style={{ width: "11%" }} />
                           <col style={{ width: "13%" }} />
-                          <col style={{ width: "13%" }} />
-                          <col style={{ width: "14%" }} />
                           <col style={{ width: "12%" }} />
+                          <col style={{ width: "12%" }} />
+                          <col style={{ width: "8%" }} />
                         </colgroup>
                         <TableHead sx={tableHeadRowSx}>
                           <TableRow>
                             <TableCell align="center" sx={{ ...tableHeadSx, width: "6%" }}>
                               Sr No
                             </TableCell>
-                            <TableCell align="left" sx={{ ...tableHeadSx, width: "24%" }}>
+                            <TableCell align="left" sx={{ ...tableHeadSx, width: "22%" }}>
                               Outlet
                             </TableCell>
-                            <TableCell align="left" sx={{ ...tableHeadSx, width: "18%" }}>
+                            <TableCell align="left" sx={{ ...tableHeadSx, width: "16%" }}>
                               Marketing Person
+                            </TableCell>
+                            <TableCell align="center" sx={{ ...tableHeadSx, width: "11%" }}>
+                              No. of Item
                             </TableCell>
                             <TableCell align="center" sx={{ ...tableHeadSx, width: "13%" }}>
                               Invoice
                             </TableCell>
-                            <TableCell align="center" sx={{ ...tableHeadSx, width: "13%" }}>
+                            <TableCell align="center" sx={{ ...tableHeadSx, width: "12%" }}>
                               Sticker
                             </TableCell>
-                            <TableCell align="right" sx={{ ...tableHeadSx, width: "14%" }}>
+                            <TableCell align="right" sx={{ ...tableHeadSx, width: "12%" }}>
                               Amount
                             </TableCell>
-                            <TableCell align="center" sx={{ ...tableHeadSx, width: "12%" }}>
+                            <TableCell align="center" sx={{ ...tableHeadSx, width: "8%" }}>
                               Action
                             </TableCell>
                           </TableRow>
@@ -1277,6 +1337,26 @@ function AddSales() {
                                 sx={{ ...tableBodySx, borderBottom: "1px solid #e5e7eb", fontSize: "0.875rem", color: "#374151" }}
                               >
                                 {row.staffName || "N/A"}
+                              </TableCell>
+
+                              <TableCell
+                                align="center"
+                                sx={{ ...tableBodySx, borderBottom: "1px solid #e5e7eb", fontSize: "0.875rem", color: "#374151" }}
+                              >
+                                {editingSaleId === row.id ? (
+                                  <MDInput
+                                    type="number"
+                                    size="small"
+                                    value={editForm.itemCount}
+                                    onChange={(e) =>
+                                      setEditForm((f) => ({ ...f, itemCount: e.target.value }))
+                                    }
+                                    inputProps={{ min: 1, style: { textAlign: "center" } }}
+                                    sx={{ width: "100%" }}
+                                  />
+                                ) : (
+                                  row.itemCount || "N/A"
+                                )}
                               </TableCell>
 
                               <TableCell
