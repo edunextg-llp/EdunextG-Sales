@@ -608,6 +608,16 @@ export const getBankDeposits = async (req, res) => {
     }
 };
 
+export const searchDeliveredStores = async (req, res) => {
+    try {
+        const stores = await StaffModel.searchDeliveredStores(req.query.search || '');
+        res.status(200).json(stores);
+    } catch (error) {
+        console.error('Error searching delivered stores:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+};
+
 export const createBankDeposit = async (req, res) => {
     try {
         const {

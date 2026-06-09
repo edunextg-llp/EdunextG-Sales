@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import Grid from "@mui/material/Grid";
 import Card from "@mui/material/Card";
 import Icon from "@mui/material/Icon";
+import Autocomplete from "@mui/material/Autocomplete";
 import {
   FormControl,
   MenuItem,
@@ -85,6 +86,8 @@ const formatDate = (value) => {
 function BankDeposit() {
   const [form, setForm] = useState(emptyForm());
   const [deposits, setDeposits] = useState([]);
+  const [storeOptions, setStoreOptions] = useState([]);
+  const [loadingStores, setLoadingStores] = useState(false);
   const [saving, setSaving] = useState(false);
   const API = "https://bawarchee.edunextg.co/api";
 
@@ -112,6 +115,29 @@ function BankDeposit() {
   useEffect(() => {
     fetchDeposits();
   }, []);
+
+  useEffect(() => {
+    const timer = setTimeout(async () => {
+      setLoadingStores(true);
+      try {
+        const params = new URLSearchParams();
+        if (form.storeName.trim()) {
+          params.set("search", form.storeName.trim());
+        }
+        const response = await fetch(`${API}/staff/bank-deposits/stores?${params.toString()}`);
+        if (response.ok) {
+          const data = await response.json();
+          setStoreOptions(data);
+        }
+      } catch (error) {
+        console.error("Error fetching delivered stores:", error);
+      } finally {
+        setLoadingStores(false);
+      }
+    }, 300);
+
+    return () => clearTimeout(timer);
+  }, [form.storeName]);
 
   const handleFormChange = (field, value) => {
     setForm((prev) => ({
@@ -247,11 +273,44 @@ function BankDeposit() {
                     />
                   </Grid>
                   <Grid item xs={12} md={4}>
-                    <MDInput
-                      label="Store Name"
-                      fullWidth
+                    <Autocomplete
+                      freeSolo
+                      options={storeOptions}
+                      loading={loadingStores}
                       value={form.storeName}
-                      onChange={(e) => handleFormChange("storeName", e.target.value)}
+                      inputValue={form.storeName}
+                      getOptionLabel={(option) =>
+                        typeof option === "string" ? option : option.store_name || ""
+                      }
+                      isOptionEqualToValue={(option, value) =>
+                        option.store_name === (typeof value === "string" ? value : value?.store_name)
+                      }
+                      onInputChange={(event, value) => handleFormChange("storeName", value || "")}
+                      onChange={(event, value) =>
+                        handleFormChange(
+                          "storeName",
+                          typeof value === "string" ? value : value?.store_name || ""
+                        )
+                      }
+                      renderOption={(props, option) => (
+                        <li {...props} key={`${option.store_name}-${option.outlet_erp_id || ""}`}>
+                          <MDBox>
+                            <MDTypography variant="button" fontWeight="medium">
+                              {option.store_name}
+                            </MDTypography>
+                            <MDTypography variant="caption" color="text" display="block">
+                              {option.outlet_erp_id || "No ERP"} · Delivered: {option.delivered_count}
+                            </MDTypography>
+                          </MDBox>
+                        </li>
+                      )}
+                      renderInput={(params) => (
+                        <MDInput
+                          {...params}
+                          label="Store Name"
+                          fullWidth
+                        />
+                      )}
                     />
                   </Grid>
                   <Grid item xs={12} md={4}>

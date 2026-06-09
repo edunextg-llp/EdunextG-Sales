@@ -603,6 +603,32 @@ class StaffModel {
         return rows;
     }
 
+    static async searchDeliveredStores(search = '') {
+        const params = [];
+        let where = `WHERE ss.packaging_status = 'delivered'`;
+
+        if (String(search || '').trim()) {
+            where += ` AND (sc.outlet_name LIKE ? OR sc.outlet_erp_id LIKE ?)`;
+            const term = `%${String(search).trim()}%`;
+            params.push(term, term);
+        }
+
+        const [rows] = await db.execute(
+            `SELECT sc.outlet_name AS store_name,
+                    sc.outlet_erp_id,
+                    MAX(ss.delivery_date) AS latest_delivery_date,
+                    COUNT(ss.id) AS delivered_count
+             FROM staff_sales ss
+             INNER JOIN staff_counters sc ON ss.outlet_id = sc.id
+             ${where}
+             GROUP BY sc.id, sc.outlet_name, sc.outlet_erp_id
+             ORDER BY latest_delivery_date DESC, sc.outlet_name ASC
+             LIMIT 50`,
+            params
+        );
+        return rows;
+    }
+
     static async addCreditRemark(paymentId, remarks, remarkDate) {
         const cleanRemarks = remarks?.trim() || null;
         if (!cleanRemarks) {
