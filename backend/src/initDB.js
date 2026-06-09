@@ -409,17 +409,57 @@ async function initDB() {
             id INT AUTO_INCREMENT PRIMARY KEY,
             deposit_date DATE NOT NULL,
             bank_name VARCHAR(255) NOT NULL,
+            account_name VARCHAR(255) NULL,
             branch_name VARCHAR(255) NOT NULL,
             bank_account_no VARCHAR(100) NOT NULL,
+            ifsc_code VARCHAR(50) NULL,
+            depositor_name VARCHAR(255) NULL,
             store_name VARCHAR(255) NOT NULL,
             deposit_mode ENUM('cash', 'cheque') NOT NULL,
             amount DECIMAL(10, 2) NOT NULL DEFAULT 0.00,
             cheque_no VARCHAR(100) NULL,
+            cheque_date DATE NULL,
             cash_details TEXT NULL,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
     `);
     console.log('Bank deposits table created');
+
+    try {
+        await connection.query(`
+            ALTER TABLE bank_deposits ADD COLUMN account_name VARCHAR(255) NULL
+        `);
+        console.log('Added account_name to bank_deposits');
+    } catch (err) {
+        if (err.code !== 'ER_DUP_FIELDNAME') console.log('account_name column may already exist on bank_deposits');
+    }
+
+    try {
+        await connection.query(`
+            ALTER TABLE bank_deposits ADD COLUMN ifsc_code VARCHAR(50) NULL
+        `);
+        console.log('Added ifsc_code to bank_deposits');
+    } catch (err) {
+        if (err.code !== 'ER_DUP_FIELDNAME') console.log('ifsc_code column may already exist on bank_deposits');
+    }
+
+    try {
+        await connection.query(`
+            ALTER TABLE bank_deposits ADD COLUMN cheque_date DATE NULL
+        `);
+        console.log('Added cheque_date to bank_deposits');
+    } catch (err) {
+        if (err.code !== 'ER_DUP_FIELDNAME') console.log('cheque_date column may already exist on bank_deposits');
+    }
+
+    try {
+        await connection.query(`
+            ALTER TABLE bank_deposits ADD COLUMN depositor_name VARCHAR(255) NULL
+        `);
+        console.log('Added depositor_name to bank_deposits');
+    } catch (err) {
+        if (err.code !== 'ER_DUP_FIELDNAME') console.log('depositor_name column may already exist on bank_deposits');
+    }
 
     await connection.query(`
         INSERT INTO credit_payment_remarks (payment_id, remark_date, remarks, created_at)

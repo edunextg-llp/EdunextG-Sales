@@ -190,16 +190,44 @@ export async function ensureSchema() {
                 id INT AUTO_INCREMENT PRIMARY KEY,
                 deposit_date DATE NOT NULL,
                 bank_name VARCHAR(255) NOT NULL,
+                account_name VARCHAR(255) NULL,
                 branch_name VARCHAR(255) NOT NULL,
                 bank_account_no VARCHAR(100) NOT NULL,
+                ifsc_code VARCHAR(50) NULL,
+                depositor_name VARCHAR(255) NULL,
                 store_name VARCHAR(255) NOT NULL,
                 deposit_mode ENUM('cash', 'cheque') NOT NULL,
                 amount DECIMAL(10, 2) NOT NULL DEFAULT 0.00,
                 cheque_no VARCHAR(100) NULL,
+                cheque_date DATE NULL,
                 cash_details TEXT NULL,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
         `);
+
+        await tryQuery(
+            connection,
+            `ALTER TABLE bank_deposits ADD COLUMN account_name VARCHAR(255) NULL`,
+            'account_name on bank_deposits'
+        );
+
+        await tryQuery(
+            connection,
+            `ALTER TABLE bank_deposits ADD COLUMN ifsc_code VARCHAR(50) NULL`,
+            'ifsc_code on bank_deposits'
+        );
+
+        await tryQuery(
+            connection,
+            `ALTER TABLE bank_deposits ADD COLUMN cheque_date DATE NULL`,
+            'cheque_date on bank_deposits'
+        );
+
+        await tryQuery(
+            connection,
+            `ALTER TABLE bank_deposits ADD COLUMN depositor_name VARCHAR(255) NULL`,
+            'depositor_name on bank_deposits'
+        );
 
         await connection.query(`
             INSERT INTO credit_payment_remarks (payment_id, remark_date, remarks, created_at)

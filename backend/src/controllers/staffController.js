@@ -623,12 +623,16 @@ export const createBankDeposit = async (req, res) => {
         const {
             depositDate,
             bankName,
+            accountName,
             branchName,
             bankAccountNo,
+            ifscCode,
+            depositorName,
             storeName,
             depositMode,
             amount,
             chequeNo,
+            chequeDate,
             cashDetails = {},
         } = req.body;
 
@@ -643,8 +647,8 @@ export const createBankDeposit = async (req, res) => {
         if (!branchValidation.valid) return res.status(400).json({ error: branchValidation.error });
         const accountValidation = validateRequiredText(bankAccountNo, 'Bank account no');
         if (!accountValidation.valid) return res.status(400).json({ error: accountValidation.error });
-        const storeValidation = validateRequiredText(storeName, 'Store name');
-        if (!storeValidation.valid) return res.status(400).json({ error: storeValidation.error });
+        const depositorValidation = validateRequiredText(depositorName, 'Depositor name');
+        if (!depositorValidation.valid) return res.status(400).json({ error: depositorValidation.error });
 
         const mode = String(depositMode || '').toLowerCase();
         if (!['cash', 'cheque'].includes(mode)) {
@@ -653,7 +657,9 @@ export const createBankDeposit = async (req, res) => {
 
         let depositAmount = 0;
         let normalizedChequeNo = null;
+        let normalizedChequeDate = null;
         let normalizedCashDetails = null;
+        let normalizedStoreName = '';
 
         if (mode === 'cash') {
             const hasCashCount = BANK_DEPOSIT_DENOMINATIONS.some((item) => {
@@ -679,14 +685,21 @@ export const createBankDeposit = async (req, res) => {
             }
             depositAmount = calculateCashDepositAmount(normalizedCashDetails);
         } else {
+            const storeValidation = validateRequiredText(storeName, 'Store name');
+            if (!storeValidation.valid) return res.status(400).json({ error: storeValidation.error });
             const chequeValidation = validateRequiredText(chequeNo, 'Cheque no');
             if (!chequeValidation.valid) {
                 return res.status(400).json({ error: chequeValidation.error });
+            }
+            normalizedChequeDate = normalizeDateInput(chequeDate);
+            if (!normalizedChequeDate) {
+                return res.status(400).json({ error: 'Cheque date is required' });
             }
             const amountValidation = validateNumeric(amount, 'Cheque amount');
             if (!amountValidation.valid) {
                 return res.status(400).json({ error: amountValidation.error });
             }
+            normalizedStoreName = storeValidation.value;
             normalizedChequeNo = chequeValidation.value;
             depositAmount = amountValidation.value;
         }
@@ -694,18 +707,139 @@ export const createBankDeposit = async (req, res) => {
         const deposit = await BankDepositModel.create({
             depositDate: normalizedDepositDate,
             bankName: bankValidation.value,
+            accountName: accountName ? String(accountName).trim() : null,
             branchName: branchValidation.value,
             bankAccountNo: accountValidation.value,
-            storeName: storeValidation.value,
+            ifscCode: ifscCode ? String(ifscCode).trim() : null,
+            depositorName: depositorValidation.value,
+            storeName: normalizedStoreName,
             depositMode: mode,
             amount: depositAmount,
             chequeNo: normalizedChequeNo,
+            chequeDate: normalizedChequeDate,
             cashDetails: normalizedCashDetails,
         });
 
         res.status(201).json({ message: 'Bank deposit saved successfully', deposit });
     } catch (error) {
         console.error('Error creating bank deposit:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+};
+
+export const updateBankDeposit = async (req, res) => {
+    try {
+        const { depositId } = req.params;
+        const existing = await BankDepositModel.getById(depositId);
+        if (!existing) {
+            return res.status(404).json({ error: 'Bank deposit not found' });
+        }
+
+        const {
+            depositDate,
+            bankName,
+            accountName,
+            branchName,
+            bankAccountNo,
+            ifscCode,
+            depositorName,
+            storeName,
+            depositMode,
+            amount,
+            chequeNo,
+            chequeDate,
+            cashDetails = {},
+        } = req.body;
+
+        const normalizedDepositDate = normalizeDateInput(depositDate);
+        if (!normalizedDepositDate) return res.status(400).json({ error: 'Deposit date is required' });
+        const bankValidation = validateRequiredText(bankName, 'Bank name');
+        if (!bankValidation.valid) return res.status(400).json({ error: bankValidation.error });
+        const branchValidation = validateRequiredText(branchName, 'Branch name');
+        if (!branchValidation.valid) return res.status(400).json({ error: branchValidation.error });
+        const accountValidation = validateRequiredText(bankAccountNo, 'Bank account no');
+        if (!accountValidation.valid) return res.status(400).json({ error: accountValidation.error });
+        const depositorValidation = validateRequiredText(depositorName, 'Depositor name');
+        if (!depositorValidation.valid) return res.status(400).json({ error: depositorValidation.error });
+
+        const mode = String(depositMode || '').toLowerCase();
+        if (!['cash', 'cheque'].includes(mode)) {
+            return res.status(400).json({ error: 'Deposit mode must be cash or cheque' });
+        }
+
+        let depositAmount = 0;
+        let normalizedChequeNo = null;
+        let normalizedChequeDate = null;
+        let normalizedCashDetails = null;
+        let normalizedStoreName = '';
+
+        if (mode === 'cash') {
+            const hasCashCount = BANK_DEPOSIT_DENOMINATIONS.some((item) => {
+                const count = parseInt(cashDetails[item.key] || 0, 10);
+                return !Number.isNaN(count) && count > 0;
+            });
+            if (!hasCashCount) return res.status(400).json({ error: 'Please enter cash note or coin count.' });
+
+            normalizedCashDetails = {};
+            for (const item of BANK_DEPOSIT_DENOMINATIONS) {
+                const rawCount = cashDetails[item.key] ?? '';
+                if (rawCount === '') {
+                    normalizedCashDetails[item.key] = 0;
+                    continue;
+                }
+                const normalizedCount = String(rawCount).trim();
+                if (!/^\d+$/.test(normalizedCount)) {
+                    return res.status(400).json({ error: `${item.key.replace('_', ' ')} must contain numbers only` });
+                }
+                normalizedCashDetails[item.key] = parseInt(normalizedCount, 10);
+            }
+            depositAmount = calculateCashDepositAmount(normalizedCashDetails);
+        } else {
+            const storeValidation = validateRequiredText(storeName, 'Store name');
+            if (!storeValidation.valid) return res.status(400).json({ error: storeValidation.error });
+            const chequeValidation = validateRequiredText(chequeNo, 'Cheque no');
+            if (!chequeValidation.valid) return res.status(400).json({ error: chequeValidation.error });
+            normalizedChequeDate = normalizeDateInput(chequeDate);
+            if (!normalizedChequeDate) return res.status(400).json({ error: 'Cheque date is required' });
+            const amountValidation = validateNumeric(amount, 'Cheque amount');
+            if (!amountValidation.valid) return res.status(400).json({ error: amountValidation.error });
+            normalizedStoreName = storeValidation.value;
+            normalizedChequeNo = chequeValidation.value;
+            depositAmount = amountValidation.value;
+        }
+
+        const deposit = await BankDepositModel.update(depositId, {
+            depositDate: normalizedDepositDate,
+            bankName: bankValidation.value,
+            accountName: accountName ? String(accountName).trim() : null,
+            branchName: branchValidation.value,
+            bankAccountNo: accountValidation.value,
+            ifscCode: ifscCode ? String(ifscCode).trim() : null,
+            depositorName: depositorValidation.value,
+            storeName: normalizedStoreName,
+            depositMode: mode,
+            amount: depositAmount,
+            chequeNo: normalizedChequeNo,
+            chequeDate: normalizedChequeDate,
+            cashDetails: normalizedCashDetails,
+        });
+
+        res.status(200).json({ message: 'Bank deposit updated successfully', deposit });
+    } catch (error) {
+        console.error('Error updating bank deposit:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+};
+
+export const deleteBankDeposit = async (req, res) => {
+    try {
+        const deleted = await BankDepositModel.delete(req.params.depositId);
+        if (!deleted) {
+            return res.status(404).json({ error: 'Bank deposit not found' });
+        }
+        res.status(200).json({ message: 'Bank deposit deleted successfully' });
+    } catch (error) {
+        console.error('Error deleting bank deposit:', error);
         res.status(500).json({ error: 'Internal server error' });
     }
 };
