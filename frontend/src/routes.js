@@ -13,6 +13,7 @@ import AddSales from "layouts/add-sales";
 import AddDeliveryBoy from "layouts/add-delivery-boy";
 import UpdatePayment from "layouts/update-payment";
 import Credits from "layouts/credits";
+import BankDeposit from "layouts/bank-deposit";
 import Packaging from "layouts/packaging";
 import Delivery from "layouts/delivery";
 import Delivered from "layouts/delivered";
@@ -126,6 +127,14 @@ const routes = [
     icon: <Icon fontSize="small">price_change</Icon>,
     route: "/credits",
     component: <Credits />,
+  },
+  {
+    type: "collapse",
+    name: "Bank Deposit",
+    key: "bank-deposit",
+    icon: <Icon fontSize="small">account_balance</Icon>,
+    route: "/bank-deposit",
+    component: <BankDeposit />,
   },
   // {
   //   type: "collapse",

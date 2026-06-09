@@ -3,6 +3,7 @@ import PaymentModel from '../models/paymentModel.js';
 import CompanyModel from '../models/companyModel.js';
 import DeliveryBoyModel from '../models/deliveryBoyModel.js';
 import ReportModel from '../models/reportModel.js';
+import BankDepositModel from '../models/bankDepositModel.js';
 import {
     validateDigitsOnly,
     validateNumeric,
@@ -44,6 +45,20 @@ function normalizeDateInput(value) {
     }
 
     return String(value);
+}
+
+const BANK_DEPOSIT_NOTE_DENOMINATIONS = [500, 200, 100, 50, 20, 10];
+const BANK_DEPOSIT_COIN_DENOMINATIONS = [20, 10, 5, 2, 1];
+const BANK_DEPOSIT_DENOMINATIONS = [
+    ...BANK_DEPOSIT_NOTE_DENOMINATIONS.map(value => ({ key: `note_${value}`, value })),
+    ...BANK_DEPOSIT_COIN_DENOMINATIONS.map(value => ({ key: `coin_${value}`, value })),
+];
+
+function calculateCashDepositAmount(cashDetails = {}) {
+    return BANK_DEPOSIT_DENOMINATIONS.reduce((total, item) => {
+        const count = parseInt(cashDetails[item.key] || 0, 10);
+        return total + item.value * (Number.isNaN(count) ? 0 : count);
+    }, 0);
 }
 
 export const createStaff = async (req, res) => {
@@ -579,6 +594,108 @@ export const updateCreditRemarks = async (req, res) => {
         });
     } catch (error) {
         console.error('Error updating credit remarks:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+};
+
+export const getBankDeposits = async (req, res) => {
+    try {
+        const deposits = await BankDepositModel.getRecent();
+        res.status(200).json(deposits);
+    } catch (error) {
+        console.error('Error fetching bank deposits:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+};
+
+export const createBankDeposit = async (req, res) => {
+    try {
+        const {
+            depositDate,
+            bankName,
+            branchName,
+            bankAccountNo,
+            storeName,
+            depositMode,
+            amount,
+            chequeNo,
+            cashDetails = {},
+        } = req.body;
+
+        const normalizedDepositDate = normalizeDateInput(depositDate);
+        if (!normalizedDepositDate) {
+            return res.status(400).json({ error: 'Deposit date is required' });
+        }
+
+        const bankValidation = validateRequiredText(bankName, 'Bank name');
+        if (!bankValidation.valid) return res.status(400).json({ error: bankValidation.error });
+        const branchValidation = validateRequiredText(branchName, 'Branch name');
+        if (!branchValidation.valid) return res.status(400).json({ error: branchValidation.error });
+        const accountValidation = validateRequiredText(bankAccountNo, 'Bank account no');
+        if (!accountValidation.valid) return res.status(400).json({ error: accountValidation.error });
+        const storeValidation = validateRequiredText(storeName, 'Store name');
+        if (!storeValidation.valid) return res.status(400).json({ error: storeValidation.error });
+
+        const mode = String(depositMode || '').toLowerCase();
+        if (!['cash', 'cheque'].includes(mode)) {
+            return res.status(400).json({ error: 'Deposit mode must be cash or cheque' });
+        }
+
+        let depositAmount = 0;
+        let normalizedChequeNo = null;
+        let normalizedCashDetails = null;
+
+        if (mode === 'cash') {
+            const hasCashCount = BANK_DEPOSIT_DENOMINATIONS.some((item) => {
+                const count = parseInt(cashDetails[item.key] || 0, 10);
+                return !Number.isNaN(count) && count > 0;
+            });
+            if (!hasCashCount) {
+                return res.status(400).json({ error: 'Please enter cash note or coin count.' });
+            }
+
+            normalizedCashDetails = {};
+            for (const item of BANK_DEPOSIT_DENOMINATIONS) {
+                const rawCount = cashDetails[item.key] ?? '';
+                if (rawCount === '') {
+                    normalizedCashDetails[item.key] = 0;
+                    continue;
+                }
+                const normalizedCount = String(rawCount).trim();
+                if (!/^\d+$/.test(normalizedCount)) {
+                    return res.status(400).json({ error: `${item.key.replace('_', ' ')} must contain numbers only` });
+                }
+                normalizedCashDetails[item.key] = parseInt(normalizedCount, 10);
+            }
+            depositAmount = calculateCashDepositAmount(normalizedCashDetails);
+        } else {
+            const chequeValidation = validateRequiredText(chequeNo, 'Cheque no');
+            if (!chequeValidation.valid) {
+                return res.status(400).json({ error: chequeValidation.error });
+            }
+            const amountValidation = validateNumeric(amount, 'Cheque amount');
+            if (!amountValidation.valid) {
+                return res.status(400).json({ error: amountValidation.error });
+            }
+            normalizedChequeNo = chequeValidation.value;
+            depositAmount = amountValidation.value;
+        }
+
+        const deposit = await BankDepositModel.create({
+            depositDate: normalizedDepositDate,
+            bankName: bankValidation.value,
+            branchName: branchValidation.value,
+            bankAccountNo: accountValidation.value,
+            storeName: storeValidation.value,
+            depositMode: mode,
+            amount: depositAmount,
+            chequeNo: normalizedChequeNo,
+            cashDetails: normalizedCashDetails,
+        });
+
+        res.status(201).json({ message: 'Bank deposit saved successfully', deposit });
+    } catch (error) {
+        console.error('Error creating bank deposit:', error);
         res.status(500).json({ error: 'Internal server error' });
     }
 };
