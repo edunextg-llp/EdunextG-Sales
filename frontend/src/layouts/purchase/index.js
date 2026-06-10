@@ -74,7 +74,7 @@ function Purchase() {
   const [purchases, setPurchases] = useState([]);
   const [sellerDirectory, setSellerDirectory] = useState([]);
   const [loadingSellers, setLoadingSellers] = useState(false);
-  const API = "http://localhost:5000/api";
+  const API = "https://bawarchee.edunextg.co/api";
 
   const totals = useMemo(() => {
     const grossAmount = numberValue(form.grossAmount);
