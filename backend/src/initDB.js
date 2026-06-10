@@ -508,11 +508,41 @@ async function initDB() {
             seller_name VARCHAR(255) NOT NULL UNIQUE,
             address TEXT NULL,
             city VARCHAR(100) NULL,
+            state VARCHAR(100) NULL,
             gstin VARCHAR(50) NULL,
+            pan_no VARCHAR(50) NULL,
+            in_code VARCHAR(50) NULL,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
     `);
     console.log('Purchase sellers table created');
+
+    try {
+        await connection.query(`
+            ALTER TABLE purchase_sellers ADD COLUMN state VARCHAR(100) NULL
+        `);
+        console.log('Added state to purchase_sellers');
+    } catch (err) {
+        if (err.code !== 'ER_DUP_FIELDNAME') console.log('state column may already exist on purchase_sellers');
+    }
+
+    try {
+        await connection.query(`
+            ALTER TABLE purchase_sellers ADD COLUMN pan_no VARCHAR(50) NULL
+        `);
+        console.log('Added pan_no to purchase_sellers');
+    } catch (err) {
+        if (err.code !== 'ER_DUP_FIELDNAME') console.log('pan_no column may already exist on purchase_sellers');
+    }
+
+    try {
+        await connection.query(`
+            ALTER TABLE purchase_sellers ADD COLUMN in_code VARCHAR(50) NULL
+        `);
+        console.log('Added in_code to purchase_sellers');
+    } catch (err) {
+        if (err.code !== 'ER_DUP_FIELDNAME') console.log('in_code column may already exist on purchase_sellers');
+    }
 
     try {
         await connection.query(`

@@ -5,6 +5,9 @@ import Card from "@mui/material/Card";
 import Icon from "@mui/material/Icon";
 import Autocomplete from "@mui/material/Autocomplete";
 import {
+  FormControl,
+  MenuItem,
+  Select,
   Table,
   TableBody,
   TableCell,
@@ -27,8 +30,14 @@ const emptyForm = () => ({
   sellerName: "",
   address: "",
   city: "",
+  state: "",
   gstin: "",
+  panNo: "",
+  inCode: "",
   invoiceNumber: "",
+  ewayBillNo: "",
+  ewayBillDate: "",
+  invoiceDate: "",
   salesOrderNumber: "",
   fssaiNumber: "",
   grossAmount: "",
@@ -40,6 +49,45 @@ const emptyForm = () => ({
   cgstAmount: "",
   sgstAmount: "",
 });
+
+const INDIAN_STATES = [
+  "Andhra Pradesh",
+  "Arunachal Pradesh",
+  "Assam",
+  "Bihar",
+  "Chhattisgarh",
+  "Delhi",
+  "Goa",
+  "Gujarat",
+  "Haryana",
+  "Himachal Pradesh",
+  "Jammu and Kashmir",
+  "Jharkhand",
+  "Karnataka",
+  "Kerala",
+  "Madhya Pradesh",
+  "Maharashtra",
+  "Manipur",
+  "Meghalaya",
+  "Mizoram",
+  "Nagaland",
+  "Odisha",
+  "Punjab",
+  "Rajasthan",
+  "Sikkim",
+  "Tamil Nadu",
+  "Telangana",
+  "Tripura",
+  "Uttar Pradesh",
+  "Uttarakhand",
+  "West Bengal",
+  "Andaman and Nicobar Islands",
+  "Chandigarh",
+  "Dadra and Nagar Haveli and Daman and Diu",
+  "Ladakh",
+  "Lakshadweep",
+  "Puducherry",
+];
 
 const money = (value) =>
   `Rs. ${Number(value || 0).toLocaleString("en-IN", {
@@ -82,10 +130,9 @@ function Purchase() {
     const primaryDiscountValue = numberValue(form.primaryDiscountValue);
     const secondaryDiscountValue = numberValue(form.secondaryDiscountValue);
     const cashDiscountValue = numberValue(form.cashDiscountValue);
-    const manualTaxableValue = numberValue(form.taxableValue);
     const totalDiscount =
       traderDiscountValue + primaryDiscountValue + secondaryDiscountValue + cashDiscountValue;
-    const taxableValue = form.taxableValue === "" ? Math.max(grossAmount - totalDiscount, 0) : manualTaxableValue;
+    const taxableValue = Math.max(grossAmount - totalDiscount, 0);
     const cgstAmount = numberValue(form.cgstAmount);
     const sgstAmount = numberValue(form.sgstAmount);
     const totalGstAmount = cgstAmount + sgstAmount;
@@ -122,7 +169,10 @@ function Purchase() {
             sellerName: seller.seller_name || "",
             address: seller.address || "",
             city: seller.city || "",
+            state: seller.state || "",
             gstin: seller.gstin || "",
+            panNo: seller.pan_no || "",
+            inCode: seller.in_code || "",
           }))
         );
       }
@@ -144,7 +194,10 @@ function Purchase() {
       sellerName: seller.sellerName || "",
       address: seller.address || "",
       city: seller.city || "",
+      state: seller.state || "",
       gstin: seller.gstin || "",
+      panNo: seller.panNo || "",
+      inCode: seller.inCode || "",
     }));
   };
 
@@ -160,7 +213,10 @@ function Purchase() {
         sellerName: form.sellerName.trim(),
         address: form.address.trim(),
         city: form.city.trim(),
+        state: form.state.trim(),
         gstin: form.gstin.trim().toUpperCase(),
+        panNo: form.panNo.trim().toUpperCase(),
+        inCode: form.inCode.trim(),
       }),
     });
 
@@ -178,7 +234,10 @@ function Purchase() {
           sellerName: seller.seller_name || "",
           address: seller.address || "",
           city: seller.city || "",
+          state: seller.state || "",
           gstin: seller.gstin || "",
+          panNo: seller.pan_no || "",
+          inCode: seller.in_code || "",
         };
         return [
           nextSeller,
@@ -300,6 +359,23 @@ function Purchase() {
                       onChange={(e) => handleChange("city", e.target.value)}
                     />
                   </Grid>
+                  <Grid item xs={12} md={2}>
+                    <FormControl size="small" fullWidth>
+                      <Select
+                        displayEmpty
+                        value={form.state}
+                        onChange={(e) => handleChange("state", e.target.value)}
+                        sx={{ height: 44, backgroundColor: "#fff" }}
+                      >
+                        <MenuItem value="" disabled>Choose State</MenuItem>
+                        {INDIAN_STATES.map((state) => (
+                          <MenuItem key={state} value={state}>
+                            {state}
+                          </MenuItem>
+                        ))}
+                      </Select>
+                    </FormControl>
+                  </Grid>
                   <Grid item xs={12} md={3}>
                     <MDInput
                       label="GSTIN"
@@ -308,18 +384,62 @@ function Purchase() {
                       onChange={(e) => handleChange("gstin", e.target.value.toUpperCase())}
                     />
                   </Grid>
+                  <Grid item xs={12} md={2}>
+                    <MDInput
+                      label="PAN No"
+                      fullWidth
+                      value={form.panNo}
+                      onChange={(e) => handleChange("panNo", e.target.value.toUpperCase())}
+                    />
+                  </Grid>
+                  <Grid item xs={12} md={2}>
+                    <MDInput
+                      label="IN Code"
+                      fullWidth
+                      value={form.inCode}
+                      onChange={(e) => handleChange("inCode", e.target.value)}
+                    />
+                  </Grid>
 
                   <Grid item xs={12} mt={1}>
                     <MDTypography variant="button" fontWeight="medium" color="dark">
                       Invoice Details
                     </MDTypography>
                   </Grid>
-                  <Grid item xs={12} md={4}>
+                  <Grid item xs={12} md={3}>
                     <MDInput
                       label="Invoice Number"
                       fullWidth
                       value={form.invoiceNumber}
                       onChange={(e) => handleChange("invoiceNumber", e.target.value)}
+                    />
+                  </Grid>
+                  <Grid item xs={12} md={3}>
+                    <MDInput
+                      label="E-Way Bill No"
+                      fullWidth
+                      value={form.ewayBillNo}
+                      onChange={(e) => handleChange("ewayBillNo", e.target.value)}
+                    />
+                  </Grid>
+                  <Grid item xs={12} md={3}>
+                    <MDInput
+                      type="date"
+                      label="E-Way Bill Date"
+                      fullWidth
+                      value={form.ewayBillDate}
+                      onChange={(e) => handleChange("ewayBillDate", e.target.value)}
+                      InputLabelProps={{ shrink: true }}
+                    />
+                  </Grid>
+                  <Grid item xs={12} md={3}>
+                    <MDInput
+                      type="date"
+                      label="Invoice Date"
+                      fullWidth
+                      value={form.invoiceDate}
+                      onChange={(e) => handleChange("invoiceDate", e.target.value)}
+                      InputLabelProps={{ shrink: true }}
                     />
                   </Grid>
                   <Grid item xs={12} md={4}>
@@ -399,10 +519,8 @@ function Purchase() {
                       type="number"
                       label="Taxable Value"
                       fullWidth
-                      placeholder={money(totals.taxableValue)}
-                      value={form.taxableValue}
-                      onChange={(e) => handleChange("taxableValue", e.target.value)}
-                      inputProps={{ min: 0, step: "0.01" }}
+                      value={totals.taxableValue ? totals.taxableValue.toFixed(2) : ""}
+                      InputProps={{ readOnly: true }}
                     />
                   </Grid>
                   <Grid item xs={12} md={3}>
@@ -497,8 +615,12 @@ function Purchase() {
                           <TableCell sx={tableHeadSx}>Sr No</TableCell>
                           <TableCell sx={tableHeadSx}>Seller</TableCell>
                           <TableCell sx={tableHeadSx}>City</TableCell>
+                          <TableCell sx={tableHeadSx}>State</TableCell>
                           <TableCell sx={tableHeadSx}>GSTIN</TableCell>
+                          <TableCell sx={tableHeadSx}>PAN</TableCell>
                           <TableCell sx={tableHeadSx}>Invoice</TableCell>
+                          <TableCell sx={tableHeadSx}>Invoice Date</TableCell>
+                          <TableCell sx={tableHeadSx}>E-Way Bill</TableCell>
                           <TableCell sx={tableHeadSx}>Sales Order</TableCell>
                           <TableCell sx={tableHeadSx}>FSSAI</TableCell>
                           <TableCell align="right" sx={tableHeadSx}>Taxable</TableCell>
@@ -513,8 +635,12 @@ function Purchase() {
                             <TableCell sx={tableBodySx}>{index + 1}</TableCell>
                             <TableCell sx={tableBodySx}>{purchase.sellerName}</TableCell>
                             <TableCell sx={tableBodySx}>{purchase.city || "N/A"}</TableCell>
+                            <TableCell sx={tableBodySx}>{purchase.state || "N/A"}</TableCell>
                             <TableCell sx={tableBodySx}>{purchase.gstin || "N/A"}</TableCell>
+                            <TableCell sx={tableBodySx}>{purchase.panNo || "N/A"}</TableCell>
                             <TableCell sx={tableBodySx}>{purchase.invoiceNumber}</TableCell>
+                            <TableCell sx={tableBodySx}>{purchase.invoiceDate || "N/A"}</TableCell>
+                            <TableCell sx={tableBodySx}>{purchase.ewayBillNo || "N/A"}</TableCell>
                             <TableCell sx={tableBodySx}>{purchase.salesOrderNumber || "N/A"}</TableCell>
                             <TableCell sx={tableBodySx}>{purchase.fssaiNumber || "N/A"}</TableCell>
                             <TableCell align="right" sx={tableBodySx}>{money(purchase.taxableValue)}</TableCell>

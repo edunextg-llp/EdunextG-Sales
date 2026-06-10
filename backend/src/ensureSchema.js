@@ -261,10 +261,31 @@ export async function ensureSchema() {
                 seller_name VARCHAR(255) NOT NULL UNIQUE,
                 address TEXT NULL,
                 city VARCHAR(100) NULL,
+                state VARCHAR(100) NULL,
                 gstin VARCHAR(50) NULL,
+                pan_no VARCHAR(50) NULL,
+                in_code VARCHAR(50) NULL,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
         `);
+
+        await tryQuery(
+            connection,
+            `ALTER TABLE purchase_sellers ADD COLUMN state VARCHAR(100) NULL`,
+            'state on purchase_sellers'
+        );
+
+        await tryQuery(
+            connection,
+            `ALTER TABLE purchase_sellers ADD COLUMN pan_no VARCHAR(50) NULL`,
+            'pan_no on purchase_sellers'
+        );
+
+        await tryQuery(
+            connection,
+            `ALTER TABLE purchase_sellers ADD COLUMN in_code VARCHAR(50) NULL`,
+            'in_code on purchase_sellers'
+        );
 
         await tryQuery(
             connection,

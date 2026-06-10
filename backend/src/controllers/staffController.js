@@ -713,7 +713,10 @@ export const savePurchaseSeller = async (req, res) => {
             sellerName: sellerValidation.value,
             address: req.body.address ? String(req.body.address).trim() : '',
             city: req.body.city ? String(req.body.city).trim() : '',
+            state: req.body.state ? String(req.body.state).trim() : '',
             gstin: req.body.gstin ? String(req.body.gstin).trim().toUpperCase() : '',
+            panNo: req.body.panNo ? String(req.body.panNo).trim().toUpperCase() : '',
+            inCode: req.body.inCode ? String(req.body.inCode).trim() : '',
         });
 
         res.status(200).json({ message: 'Purchase seller saved successfully', seller });

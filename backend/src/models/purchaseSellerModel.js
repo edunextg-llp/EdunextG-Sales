@@ -2,16 +2,19 @@ import db from '../config/db.js';
 
 class PurchaseSellerModel {
     static async upsert(data) {
-        const { sellerName, address, city, gstin } = data;
+        const { sellerName, address, city, state, gstin, panNo, inCode } = data;
 
         const [result] = await db.execute(
-            `INSERT INTO purchase_sellers (seller_name, address, city, gstin)
-             VALUES (?, ?, ?, ?)
+            `INSERT INTO purchase_sellers (seller_name, address, city, state, gstin, pan_no, in_code)
+             VALUES (?, ?, ?, ?, ?, ?, ?)
              ON DUPLICATE KEY UPDATE
                address = VALUES(address),
                city = VALUES(city),
-               gstin = VALUES(gstin)`,
-            [sellerName, address || null, city || null, gstin || null]
+               state = VALUES(state),
+               gstin = VALUES(gstin),
+               pan_no = VALUES(pan_no),
+               in_code = VALUES(in_code)`,
+            [sellerName, address || null, city || null, state || null, gstin || null, panNo || null, inCode || null]
         );
 
         const sellerId = result.insertId || (await PurchaseSellerModel.findByName(sellerName))?.id;
@@ -20,7 +23,7 @@ class PurchaseSellerModel {
 
     static async findByName(sellerName) {
         const [rows] = await db.execute(
-            `SELECT id, seller_name, address, city, gstin
+            `SELECT id, seller_name, address, city, state, gstin, pan_no, in_code
              FROM purchase_sellers
              WHERE LOWER(seller_name) = LOWER(?)
              LIMIT 1`,
@@ -31,7 +34,7 @@ class PurchaseSellerModel {
 
     static async getById(id) {
         const [rows] = await db.execute(
-            `SELECT id, seller_name, address, city, gstin
+            `SELECT id, seller_name, address, city, state, gstin, pan_no, in_code
              FROM purchase_sellers
              WHERE id = ?`,
             [id]
@@ -47,7 +50,7 @@ class PurchaseSellerModel {
             : '';
 
         const [rows] = await db.execute(
-            `SELECT id, seller_name, address, city, gstin
+            `SELECT id, seller_name, address, city, state, gstin, pan_no, in_code
              FROM purchase_sellers
              ${where}
              ORDER BY seller_name ASC
