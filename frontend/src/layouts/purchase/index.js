@@ -183,8 +183,49 @@ function Purchase() {
     }
   };
 
+  const mapPurchaseFromApi = (purchase) => ({
+    id: purchase.id,
+    sellerName: purchase.seller_name || "",
+    address: purchase.address || "",
+    city: purchase.city || "",
+    state: purchase.state || "",
+    gstin: purchase.gstin || "",
+    panNo: purchase.pan_no || "",
+    inCode: purchase.in_code || "",
+    invoiceNumber: purchase.invoice_number || "",
+    ewayBillNo: purchase.eway_bill_no || "",
+    ewayBillDate: purchase.eway_bill_date || "",
+    invoiceDate: purchase.invoice_date || "",
+    salesOrderNumber: purchase.sales_order_number || "",
+    fssaiNumber: purchase.fssai_number || "",
+    grossAmount: purchase.gross_amount,
+    traderDiscountValue: purchase.trader_discount_value,
+    primaryDiscountValue: purchase.primary_discount_value,
+    secondaryDiscountValue: purchase.secondary_discount_value,
+    cashDiscountValue: purchase.cash_discount_value,
+    taxableValue: purchase.taxable_value,
+    cgstAmount: purchase.cgst_amount,
+    sgstAmount: purchase.sgst_amount,
+    totalGstAmount: purchase.total_gst_amount,
+    roundOff: purchase.round_off,
+    roundedTotal: purchase.rounded_total,
+  });
+
+  const fetchPurchases = async () => {
+    try {
+      const response = await fetch(`${API}/staff/purchases`);
+      if (response.ok) {
+        const data = await response.json();
+        setPurchases(data.map(mapPurchaseFromApi));
+      }
+    } catch (error) {
+      console.error("Error fetching purchases:", error);
+    }
+  };
+
   useEffect(() => {
     fetchSellers();
+    fetchPurchases();
   }, []);
 
   const fillSellerDetails = (seller) => {
@@ -205,8 +246,8 @@ function Purchase() {
     setForm(emptyForm());
   };
 
-  const saveSellerToDb = async () => {
-    const response = await fetch(`${API}/staff/purchase-sellers`, {
+  const savePurchaseToDb = async () => {
+    const response = await fetch(`${API}/staff/purchases`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -217,27 +258,40 @@ function Purchase() {
         gstin: form.gstin.trim().toUpperCase(),
         panNo: form.panNo.trim().toUpperCase(),
         inCode: form.inCode.trim(),
+        invoiceNumber: form.invoiceNumber.trim(),
+        ewayBillNo: form.ewayBillNo.trim(),
+        ewayBillDate: form.ewayBillDate || null,
+        invoiceDate: form.invoiceDate || null,
+        salesOrderNumber: form.salesOrderNumber.trim(),
+        fssaiNumber: form.fssaiNumber.trim(),
+        grossAmount: form.grossAmount || 0,
+        traderDiscountValue: form.traderDiscountValue || 0,
+        primaryDiscountValue: form.primaryDiscountValue || 0,
+        secondaryDiscountValue: form.secondaryDiscountValue || 0,
+        cashDiscountValue: form.cashDiscountValue || 0,
+        cgstAmount: form.cgstAmount || 0,
+        sgstAmount: form.sgstAmount || 0,
       }),
     });
 
     if (!response.ok) {
       const err = await response.json().catch(() => ({}));
-      throw new Error(err.error || "Failed to save seller details.");
+      throw new Error(err.error || "Failed to save purchase.");
     }
 
     const data = await response.json();
-    const seller = data.seller;
-    if (seller) {
+    const purchase = data.purchase ? mapPurchaseFromApi(data.purchase) : null;
+    if (purchase) {
       setSellerDirectory((prev) => {
         const nextSeller = {
-          id: seller.id,
-          sellerName: seller.seller_name || "",
-          address: seller.address || "",
-          city: seller.city || "",
-          state: seller.state || "",
-          gstin: seller.gstin || "",
-          panNo: seller.pan_no || "",
-          inCode: seller.in_code || "",
+          id: data.purchase.seller_id || purchase.sellerName,
+          sellerName: purchase.sellerName,
+          address: purchase.address,
+          city: purchase.city,
+          state: purchase.state,
+          gstin: purchase.gstin,
+          panNo: purchase.panNo,
+          inCode: purchase.inCode,
         };
         return [
           nextSeller,
@@ -245,6 +299,7 @@ function Purchase() {
         ];
       });
     }
+    return purchase;
   };
 
   const handleSave = async () => {
@@ -257,24 +312,17 @@ function Purchase() {
       return;
     }
 
+    let savedPurchase;
     try {
-      await saveSellerToDb();
+      savedPurchase = await savePurchaseToDb();
     } catch (error) {
       alert(error.message);
       return;
     }
 
-    setPurchases((prev) => [
-      {
-        id: Date.now(),
-        ...form,
-        taxableValue: totals.taxableValue,
-        totalGstAmount: totals.totalGstAmount,
-        roundOff: totals.roundOff,
-        roundedTotal: totals.roundedTotal,
-      },
-      ...prev,
-    ]);
+    if (savedPurchase) {
+      setPurchases((prev) => [savedPurchase, ...prev]);
+    }
     handleReset();
   };
 

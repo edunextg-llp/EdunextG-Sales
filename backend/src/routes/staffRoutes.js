@@ -15,6 +15,8 @@ router.put('/bank-deposits/:depositId', staffController.updateBankDeposit);
 router.delete('/bank-deposits/:depositId', staffController.deleteBankDeposit);
 router.get('/purchase-sellers', staffController.searchPurchaseSellers);
 router.post('/purchase-sellers', staffController.savePurchaseSeller);
+router.get('/purchases', staffController.getPurchases);
+router.post('/purchases', staffController.createPurchase);
 router.get('/sales/by-date', staffController.getAllSalesByDate);
 router.get('/reports', staffController.getReports);
 router.get('/:id', staffController.getStaffFullDetails);

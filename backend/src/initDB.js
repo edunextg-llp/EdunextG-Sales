@@ -544,6 +544,34 @@ async function initDB() {
         if (err.code !== 'ER_DUP_FIELDNAME') console.log('in_code column may already exist on purchase_sellers');
     }
 
+    await connection.query(`
+        CREATE TABLE IF NOT EXISTS purchase_entries (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            seller_id INT NOT NULL,
+            invoice_number VARCHAR(100) NOT NULL,
+            eway_bill_no VARCHAR(100) NULL,
+            eway_bill_date DATE NULL,
+            invoice_date DATE NULL,
+            sales_order_number VARCHAR(100) NULL,
+            fssai_number VARCHAR(100) NULL,
+            gross_amount DECIMAL(12, 2) NOT NULL DEFAULT 0.00,
+            trader_discount_value DECIMAL(12, 2) NOT NULL DEFAULT 0.00,
+            primary_discount_value DECIMAL(12, 2) NOT NULL DEFAULT 0.00,
+            secondary_discount_value DECIMAL(12, 2) NOT NULL DEFAULT 0.00,
+            cash_discount_value DECIMAL(12, 2) NOT NULL DEFAULT 0.00,
+            taxable_value DECIMAL(12, 2) NOT NULL DEFAULT 0.00,
+            cgst_amount DECIMAL(12, 2) NOT NULL DEFAULT 0.00,
+            sgst_amount DECIMAL(12, 2) NOT NULL DEFAULT 0.00,
+            total_gst_amount DECIMAL(12, 2) NOT NULL DEFAULT 0.00,
+            round_off DECIMAL(12, 2) NOT NULL DEFAULT 0.00,
+            rounded_total DECIMAL(12, 2) NOT NULL DEFAULT 0.00,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (seller_id) REFERENCES purchase_sellers(id) ON DELETE RESTRICT,
+            INDEX idx_purchase_entries_seller_id (seller_id)
+        );
+    `);
+    console.log('Purchase entries table created');
+
     try {
         await connection.query(`
             ALTER TABLE bank_deposits ADD COLUMN deposit_ref_no VARCHAR(20) NULL UNIQUE

@@ -5,6 +5,7 @@ import DeliveryBoyModel from '../models/deliveryBoyModel.js';
 import ReportModel from '../models/reportModel.js';
 import BankDepositModel from '../models/bankDepositModel.js';
 import PurchaseSellerModel from '../models/purchaseSellerModel.js';
+import PurchaseModel from '../models/purchaseModel.js';
 import {
     validateDigitsOnly,
     validateNumeric,
@@ -722,6 +723,82 @@ export const savePurchaseSeller = async (req, res) => {
         res.status(200).json({ message: 'Purchase seller saved successfully', seller });
     } catch (error) {
         console.error('Error saving purchase seller:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+};
+
+export const getPurchases = async (req, res) => {
+    try {
+        const purchases = await PurchaseModel.getRecent();
+        res.status(200).json(purchases);
+    } catch (error) {
+        console.error('Error fetching purchases:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+};
+
+export const createPurchase = async (req, res) => {
+    try {
+        const sellerValidation = validateRequiredText(req.body.sellerName, 'Seller name');
+        if (!sellerValidation.valid) return res.status(400).json({ error: sellerValidation.error });
+        const invoiceValidation = validateRequiredText(req.body.invoiceNumber, 'Invoice number');
+        if (!invoiceValidation.valid) return res.status(400).json({ error: invoiceValidation.error });
+
+        const grossValidation = validateNumeric(req.body.grossAmount || 0, 'Gross amount');
+        if (!grossValidation.valid) return res.status(400).json({ error: grossValidation.error });
+        const traderDiscountValidation = validateNumeric(req.body.traderDiscountValue || 0, 'Trader discount');
+        if (!traderDiscountValidation.valid) return res.status(400).json({ error: traderDiscountValidation.error });
+        const primaryDiscountValidation = validateNumeric(req.body.primaryDiscountValue || 0, 'Primary discount');
+        if (!primaryDiscountValidation.valid) return res.status(400).json({ error: primaryDiscountValidation.error });
+        const secondaryDiscountValidation = validateNumeric(req.body.secondaryDiscountValue || 0, 'Secondary discount');
+        if (!secondaryDiscountValidation.valid) return res.status(400).json({ error: secondaryDiscountValidation.error });
+        const cashDiscountValidation = validateNumeric(req.body.cashDiscountValue || 0, 'Cash discount');
+        if (!cashDiscountValidation.valid) return res.status(400).json({ error: cashDiscountValidation.error });
+        const cgstValidation = validateNumeric(req.body.cgstAmount || 0, 'CGST amount');
+        if (!cgstValidation.valid) return res.status(400).json({ error: cgstValidation.error });
+        const sgstValidation = validateNumeric(req.body.sgstAmount || 0, 'SGST amount');
+        if (!sgstValidation.valid) return res.status(400).json({ error: sgstValidation.error });
+
+        const totalDiscount =
+            traderDiscountValidation.value +
+            primaryDiscountValidation.value +
+            secondaryDiscountValidation.value +
+            cashDiscountValidation.value;
+        const taxableValue = Math.max(grossValidation.value - totalDiscount, 0);
+        const totalGstAmount = cgstValidation.value + sgstValidation.value;
+        const roundedTotal = Math.round(taxableValue + totalGstAmount);
+        const roundOff = roundedTotal - (taxableValue + totalGstAmount);
+
+        const purchase = await PurchaseModel.create({
+            sellerName: sellerValidation.value,
+            address: req.body.address ? String(req.body.address).trim() : '',
+            city: req.body.city ? String(req.body.city).trim() : '',
+            state: req.body.state ? String(req.body.state).trim() : '',
+            gstin: req.body.gstin ? String(req.body.gstin).trim().toUpperCase() : '',
+            panNo: req.body.panNo ? String(req.body.panNo).trim().toUpperCase() : '',
+            inCode: req.body.inCode ? String(req.body.inCode).trim() : '',
+            invoiceNumber: invoiceValidation.value,
+            ewayBillNo: req.body.ewayBillNo ? String(req.body.ewayBillNo).trim() : '',
+            ewayBillDate: normalizeDateInput(req.body.ewayBillDate),
+            invoiceDate: normalizeDateInput(req.body.invoiceDate),
+            salesOrderNumber: req.body.salesOrderNumber ? String(req.body.salesOrderNumber).trim() : '',
+            fssaiNumber: req.body.fssaiNumber ? String(req.body.fssaiNumber).trim() : '',
+            grossAmount: grossValidation.value,
+            traderDiscountValue: traderDiscountValidation.value,
+            primaryDiscountValue: primaryDiscountValidation.value,
+            secondaryDiscountValue: secondaryDiscountValidation.value,
+            cashDiscountValue: cashDiscountValidation.value,
+            taxableValue,
+            cgstAmount: cgstValidation.value,
+            sgstAmount: sgstValidation.value,
+            totalGstAmount,
+            roundOff,
+            roundedTotal,
+        });
+
+        res.status(201).json({ message: 'Purchase saved successfully', purchase });
+    } catch (error) {
+        console.error('Error saving purchase:', error);
         res.status(500).json({ error: 'Internal server error' });
     }
 };
