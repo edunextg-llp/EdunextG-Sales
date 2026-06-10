@@ -4,6 +4,7 @@ import CompanyModel from '../models/companyModel.js';
 import DeliveryBoyModel from '../models/deliveryBoyModel.js';
 import ReportModel from '../models/reportModel.js';
 import BankDepositModel from '../models/bankDepositModel.js';
+import PurchaseSellerModel from '../models/purchaseSellerModel.js';
 import {
     validateDigitsOnly,
     validateNumeric,
@@ -689,6 +690,35 @@ export const searchDeliveredStores = async (req, res) => {
         res.status(200).json(stores);
     } catch (error) {
         console.error('Error searching delivered stores:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+};
+
+export const searchPurchaseSellers = async (req, res) => {
+    try {
+        const sellers = await PurchaseSellerModel.search(req.query.search || '');
+        res.status(200).json(sellers);
+    } catch (error) {
+        console.error('Error searching purchase sellers:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+};
+
+export const savePurchaseSeller = async (req, res) => {
+    try {
+        const sellerValidation = validateRequiredText(req.body.sellerName, 'Seller name');
+        if (!sellerValidation.valid) return res.status(400).json({ error: sellerValidation.error });
+
+        const seller = await PurchaseSellerModel.upsert({
+            sellerName: sellerValidation.value,
+            address: req.body.address ? String(req.body.address).trim() : '',
+            city: req.body.city ? String(req.body.city).trim() : '',
+            gstin: req.body.gstin ? String(req.body.gstin).trim().toUpperCase() : '',
+        });
+
+        res.status(200).json({ message: 'Purchase seller saved successfully', seller });
+    } catch (error) {
+        console.error('Error saving purchase seller:', error);
         res.status(500).json({ error: 'Internal server error' });
     }
 };

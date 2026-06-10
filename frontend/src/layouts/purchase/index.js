@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import Grid from "@mui/material/Grid";
 import Card from "@mui/material/Card";
@@ -41,8 +41,6 @@ const emptyForm = () => ({
   sgstAmount: "",
 });
 
-const SELLER_STORAGE_KEY = "purchaseSellerDirectory";
-
 const money = (value) =>
   `Rs. ${Number(value || 0).toLocaleString("en-IN", {
     minimumFractionDigits: 2,
@@ -74,13 +72,9 @@ const tableBodySx = {
 function Purchase() {
   const [form, setForm] = useState(emptyForm());
   const [purchases, setPurchases] = useState([]);
-  const [sellerDirectory, setSellerDirectory] = useState(() => {
-    try {
-      return JSON.parse(localStorage.getItem(SELLER_STORAGE_KEY) || "[]");
-    } catch (error) {
-      return [];
-    }
-  });
+  const [sellerDirectory, setSellerDirectory] = useState([]);
+  const [loadingSellers, setLoadingSellers] = useState(false);
+  const API = "http://localhost:5000/api";
 
   const totals = useMemo(() => {
     const grossAmount = numberValue(form.grossAmount);
@@ -114,24 +108,34 @@ function Purchase() {
     }));
   };
 
-  const updateSellerDirectory = (seller) => {
-    const normalizedSeller = {
-      sellerName: seller.sellerName.trim(),
-      address: seller.address.trim(),
-      city: seller.city.trim(),
-      gstin: seller.gstin.trim().toUpperCase(),
-    };
-
-    setSellerDirectory((prev) => {
-      const sellerKey = normalizedSeller.sellerName.toLowerCase();
-      const next = [
-        normalizedSeller,
-        ...prev.filter((item) => item.sellerName.toLowerCase() !== sellerKey),
-      ];
-      localStorage.setItem(SELLER_STORAGE_KEY, JSON.stringify(next));
-      return next;
-    });
+  const fetchSellers = async (search = "") => {
+    setLoadingSellers(true);
+    try {
+      const params = new URLSearchParams();
+      if (search.trim()) params.set("search", search.trim());
+      const response = await fetch(`${API}/staff/purchase-sellers?${params.toString()}`);
+      if (response.ok) {
+        const data = await response.json();
+        setSellerDirectory(
+          data.map((seller) => ({
+            id: seller.id,
+            sellerName: seller.seller_name || "",
+            address: seller.address || "",
+            city: seller.city || "",
+            gstin: seller.gstin || "",
+          }))
+        );
+      }
+    } catch (error) {
+      console.error("Error fetching purchase sellers:", error);
+    } finally {
+      setLoadingSellers(false);
+    }
   };
+
+  useEffect(() => {
+    fetchSellers();
+  }, []);
 
   const fillSellerDetails = (seller) => {
     if (!seller) return;
@@ -148,13 +152,56 @@ function Purchase() {
     setForm(emptyForm());
   };
 
-  const handleSave = () => {
+  const saveSellerToDb = async () => {
+    const response = await fetch(`${API}/staff/purchase-sellers`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        sellerName: form.sellerName.trim(),
+        address: form.address.trim(),
+        city: form.city.trim(),
+        gstin: form.gstin.trim().toUpperCase(),
+      }),
+    });
+
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({}));
+      throw new Error(err.error || "Failed to save seller details.");
+    }
+
+    const data = await response.json();
+    const seller = data.seller;
+    if (seller) {
+      setSellerDirectory((prev) => {
+        const nextSeller = {
+          id: seller.id,
+          sellerName: seller.seller_name || "",
+          address: seller.address || "",
+          city: seller.city || "",
+          gstin: seller.gstin || "",
+        };
+        return [
+          nextSeller,
+          ...prev.filter((item) => item.id !== nextSeller.id && item.sellerName !== nextSeller.sellerName),
+        ];
+      });
+    }
+  };
+
+  const handleSave = async () => {
     if (!form.sellerName.trim()) {
       alert("Seller name is required.");
       return;
     }
     if (!form.invoiceNumber.trim()) {
       alert("Invoice number is required.");
+      return;
+    }
+
+    try {
+      await saveSellerToDb();
+    } catch (error) {
+      alert(error.message);
       return;
     }
 
@@ -169,7 +216,6 @@ function Purchase() {
       },
       ...prev,
     ]);
-    updateSellerDirectory(form);
     handleReset();
   };
 
@@ -197,6 +243,7 @@ function Purchase() {
                     <Autocomplete
                       freeSolo
                       options={sellerDirectory}
+                      loading={loadingSellers}
                       value={form.sellerName}
                       inputValue={form.sellerName}
                       getOptionLabel={(option) =>
@@ -205,7 +252,10 @@ function Purchase() {
                       isOptionEqualToValue={(option, value) =>
                         option.sellerName === (typeof value === "string" ? value : value?.sellerName)
                       }
-                      onInputChange={(event, value) => handleChange("sellerName", value || "")}
+                      onInputChange={(event, value, reason) => {
+                        handleChange("sellerName", value || "");
+                        if (reason === "input") fetchSellers(value || "");
+                      }}
                       onChange={(event, value) => {
                         if (typeof value === "string") {
                           handleChange("sellerName", value);

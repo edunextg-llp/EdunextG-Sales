@@ -255,6 +255,17 @@ export async function ensureSchema() {
             );
         `);
 
+        await connection.query(`
+            CREATE TABLE IF NOT EXISTS purchase_sellers (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                seller_name VARCHAR(255) NOT NULL UNIQUE,
+                address TEXT NULL,
+                city VARCHAR(100) NULL,
+                gstin VARCHAR(50) NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+        `);
+
         await tryQuery(
             connection,
             `ALTER TABLE bank_deposits ADD COLUMN deposit_ref_no VARCHAR(20) NULL UNIQUE`,

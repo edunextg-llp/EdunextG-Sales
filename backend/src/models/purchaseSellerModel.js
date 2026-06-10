@@ -1,0 +1,61 @@
+import db from '../config/db.js';
+
+class PurchaseSellerModel {
+    static async upsert(data) {
+        const { sellerName, address, city, gstin } = data;
+
+        const [result] = await db.execute(
+            `INSERT INTO purchase_sellers (seller_name, address, city, gstin)
+             VALUES (?, ?, ?, ?)
+             ON DUPLICATE KEY UPDATE
+               address = VALUES(address),
+               city = VALUES(city),
+               gstin = VALUES(gstin)`,
+            [sellerName, address || null, city || null, gstin || null]
+        );
+
+        const sellerId = result.insertId || (await PurchaseSellerModel.findByName(sellerName))?.id;
+        return PurchaseSellerModel.getById(sellerId);
+    }
+
+    static async findByName(sellerName) {
+        const [rows] = await db.execute(
+            `SELECT id, seller_name, address, city, gstin
+             FROM purchase_sellers
+             WHERE LOWER(seller_name) = LOWER(?)
+             LIMIT 1`,
+            [sellerName]
+        );
+        return rows[0] || null;
+    }
+
+    static async getById(id) {
+        const [rows] = await db.execute(
+            `SELECT id, seller_name, address, city, gstin
+             FROM purchase_sellers
+             WHERE id = ?`,
+            [id]
+        );
+        return rows[0] || null;
+    }
+
+    static async search(search = '') {
+        const query = String(search || '').trim();
+        const params = query ? [`%${query}%`, `%${query}%`, `%${query}%`] : [];
+        const where = query
+            ? 'WHERE seller_name LIKE ? OR city LIKE ? OR gstin LIKE ?'
+            : '';
+
+        const [rows] = await db.execute(
+            `SELECT id, seller_name, address, city, gstin
+             FROM purchase_sellers
+             ${where}
+             ORDER BY seller_name ASC
+             LIMIT 20`,
+            params
+        );
+        return rows;
+    }
+}
+
+export default PurchaseSellerModel;

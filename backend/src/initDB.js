@@ -502,6 +502,18 @@ async function initDB() {
     `);
     console.log('Bank deposits table created');
 
+    await connection.query(`
+        CREATE TABLE IF NOT EXISTS purchase_sellers (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            seller_name VARCHAR(255) NOT NULL UNIQUE,
+            address TEXT NULL,
+            city VARCHAR(100) NULL,
+            gstin VARCHAR(50) NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+    `);
+    console.log('Purchase sellers table created');
+
     try {
         await connection.query(`
             ALTER TABLE bank_deposits ADD COLUMN deposit_ref_no VARCHAR(20) NULL UNIQUE
