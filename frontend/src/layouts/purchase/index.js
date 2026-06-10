@@ -3,6 +3,7 @@ import { useMemo, useState } from "react";
 import Grid from "@mui/material/Grid";
 import Card from "@mui/material/Card";
 import Icon from "@mui/material/Icon";
+import Autocomplete from "@mui/material/Autocomplete";
 import {
   Table,
   TableBody,
@@ -32,10 +33,15 @@ const emptyForm = () => ({
   fssaiNumber: "",
   grossAmount: "",
   traderDiscountValue: "",
+  primaryDiscountValue: "",
+  secondaryDiscountValue: "",
+  cashDiscountValue: "",
   taxableValue: "",
   cgstAmount: "",
   sgstAmount: "",
 });
+
+const SELLER_STORAGE_KEY = "purchaseSellerDirectory";
 
 const money = (value) =>
   `Rs. ${Number(value || 0).toLocaleString("en-IN", {
@@ -68,12 +74,24 @@ const tableBodySx = {
 function Purchase() {
   const [form, setForm] = useState(emptyForm());
   const [purchases, setPurchases] = useState([]);
+  const [sellerDirectory, setSellerDirectory] = useState(() => {
+    try {
+      return JSON.parse(localStorage.getItem(SELLER_STORAGE_KEY) || "[]");
+    } catch (error) {
+      return [];
+    }
+  });
 
   const totals = useMemo(() => {
     const grossAmount = numberValue(form.grossAmount);
     const traderDiscountValue = numberValue(form.traderDiscountValue);
+    const primaryDiscountValue = numberValue(form.primaryDiscountValue);
+    const secondaryDiscountValue = numberValue(form.secondaryDiscountValue);
+    const cashDiscountValue = numberValue(form.cashDiscountValue);
     const manualTaxableValue = numberValue(form.taxableValue);
-    const taxableValue = form.taxableValue === "" ? Math.max(grossAmount - traderDiscountValue, 0) : manualTaxableValue;
+    const totalDiscount =
+      traderDiscountValue + primaryDiscountValue + secondaryDiscountValue + cashDiscountValue;
+    const taxableValue = form.taxableValue === "" ? Math.max(grossAmount - totalDiscount, 0) : manualTaxableValue;
     const cgstAmount = numberValue(form.cgstAmount);
     const sgstAmount = numberValue(form.sgstAmount);
     const totalGstAmount = cgstAmount + sgstAmount;
@@ -93,6 +111,36 @@ function Purchase() {
     setForm((prev) => ({
       ...prev,
       [field]: value,
+    }));
+  };
+
+  const updateSellerDirectory = (seller) => {
+    const normalizedSeller = {
+      sellerName: seller.sellerName.trim(),
+      address: seller.address.trim(),
+      city: seller.city.trim(),
+      gstin: seller.gstin.trim().toUpperCase(),
+    };
+
+    setSellerDirectory((prev) => {
+      const sellerKey = normalizedSeller.sellerName.toLowerCase();
+      const next = [
+        normalizedSeller,
+        ...prev.filter((item) => item.sellerName.toLowerCase() !== sellerKey),
+      ];
+      localStorage.setItem(SELLER_STORAGE_KEY, JSON.stringify(next));
+      return next;
+    });
+  };
+
+  const fillSellerDetails = (seller) => {
+    if (!seller) return;
+    setForm((prev) => ({
+      ...prev,
+      sellerName: seller.sellerName || "",
+      address: seller.address || "",
+      city: seller.city || "",
+      gstin: seller.gstin || "",
     }));
   };
 
@@ -121,6 +169,7 @@ function Purchase() {
       },
       ...prev,
     ]);
+    updateSellerDirectory(form);
     handleReset();
   };
 
@@ -145,11 +194,44 @@ function Purchase() {
                     </MDTypography>
                   </Grid>
                   <Grid item xs={12} md={3}>
-                    <MDInput
-                      label="Seller Name"
-                      fullWidth
+                    <Autocomplete
+                      freeSolo
+                      options={sellerDirectory}
                       value={form.sellerName}
-                      onChange={(e) => handleChange("sellerName", e.target.value)}
+                      inputValue={form.sellerName}
+                      getOptionLabel={(option) =>
+                        typeof option === "string" ? option : option.sellerName || ""
+                      }
+                      isOptionEqualToValue={(option, value) =>
+                        option.sellerName === (typeof value === "string" ? value : value?.sellerName)
+                      }
+                      onInputChange={(event, value) => handleChange("sellerName", value || "")}
+                      onChange={(event, value) => {
+                        if (typeof value === "string") {
+                          handleChange("sellerName", value);
+                        } else {
+                          fillSellerDetails(value);
+                        }
+                      }}
+                      renderOption={(props, option) => (
+                        <li {...props} key={`${option.sellerName}-${option.gstin}`}>
+                          <MDBox>
+                            <MDTypography variant="button" fontWeight="medium">
+                              {option.sellerName}
+                            </MDTypography>
+                            <MDTypography variant="caption" color="text" display="block">
+                              {option.city || "No city"} | {option.gstin || "No GSTIN"}
+                            </MDTypography>
+                          </MDBox>
+                        </li>
+                      )}
+                      renderInput={(params) => (
+                        <MDInput
+                          {...params}
+                          label="Seller Name"
+                          fullWidth
+                        />
+                      )}
                     />
                   </Grid>
                   <Grid item xs={12} md={4}>
@@ -229,6 +311,36 @@ function Purchase() {
                       fullWidth
                       value={form.traderDiscountValue}
                       onChange={(e) => handleChange("traderDiscountValue", e.target.value)}
+                      inputProps={{ min: 0, step: "0.01" }}
+                    />
+                  </Grid>
+                  <Grid item xs={12} md={3}>
+                    <MDInput
+                      type="number"
+                      label="Primary Discount Value"
+                      fullWidth
+                      value={form.primaryDiscountValue}
+                      onChange={(e) => handleChange("primaryDiscountValue", e.target.value)}
+                      inputProps={{ min: 0, step: "0.01" }}
+                    />
+                  </Grid>
+                  <Grid item xs={12} md={3}>
+                    <MDInput
+                      type="number"
+                      label="Secondary Discount Value"
+                      fullWidth
+                      value={form.secondaryDiscountValue}
+                      onChange={(e) => handleChange("secondaryDiscountValue", e.target.value)}
+                      inputProps={{ min: 0, step: "0.01" }}
+                    />
+                  </Grid>
+                  <Grid item xs={12} md={3}>
+                    <MDInput
+                      type="number"
+                      label="Cash Discount Value"
+                      fullWidth
+                      value={form.cashDiscountValue}
+                      onChange={(e) => handleChange("cashDiscountValue", e.target.value)}
                       inputProps={{ min: 0, step: "0.01" }}
                     />
                   </Grid>
