@@ -44,7 +44,7 @@ import ReportsBarChart from "examples/Charts/BarCharts/ReportsBarChart";
 import ReportsLineChart from "examples/Charts/LineCharts/ReportsLineChart";
 import ComplexStatisticsCard from "examples/Cards/StatisticsCards/ComplexStatisticsCard";
 
-const API = "https://bawarchee.edunextg.co/api";
+const API = "http://localhost:5000/api";
 
 const emptyReportData = {
   summary: { total_sales: 0, total_collection: 0, total_outstanding: 0 },

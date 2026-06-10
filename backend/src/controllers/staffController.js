@@ -471,7 +471,7 @@ export const updatePackagingStatus = async (req, res) => {
         const { saleId } = req.params;
         const { packagingStatus, deliveryBoyId, vehicleNo, deliveryDate, statusDate, expectedStatus, packedItemCount, boxCount } = req.body;
 
-        if (!['not_packing', 'packing', 'packing_done', 'out_for_delivery', 'delivered', 'cancelled'].includes(packagingStatus)) {
+        if (!['not_packing', 'packing', 'packing_done', 'out_for_delivery', 'delivered', 'cancelled', 'returned'].includes(packagingStatus)) {
             return res.status(400).json({ error: 'Invalid packaging status' });
         }
 

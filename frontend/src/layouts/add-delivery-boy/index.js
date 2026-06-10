@@ -30,7 +30,7 @@ function AddDeliveryBoy() {
   const [loadingList, setLoadingList] = useState(true);
   const [editingId, setEditingId] = useState(null);
 
-  const API = "https://bawarchee.edunextg.co/api";
+  const API = "http://localhost:5000/api";
 
   const fetchCompanyOptions = async () => {
     try {
@@ -280,6 +280,8 @@ function AddDeliveryBoy() {
                           { Header: <MDTypography variant="subtitle2" color="dark" fontWeight="bold">Company</MDTypography>, accessor: "company", width: "30%", align: "left" },
                           { Header: <MDTypography variant="subtitle2" color="dark" fontWeight="bold">Name</MDTypography>, accessor: "name", width: "30%", align: "left" },
                           { Header: <MDTypography variant="subtitle2" color="dark" fontWeight="bold">Contact Number</MDTypography>, accessor: "contact", align: "center" },
+                          { Header: <MDTypography variant="subtitle2" color="dark" fontWeight="bold">Login ID</MDTypography>, accessor: "loginId", align: "center" },
+                          { Header: <MDTypography variant="subtitle2" color="dark" fontWeight="bold">Passcode</MDTypography>, accessor: "passcode", align: "center" },
                           { Header: <MDTypography variant="subtitle2" color="dark" fontWeight="bold">Action</MDTypography>, accessor: "action", align: "center" },
                         ],
                         rows: deliveryBoys.map((boy, index) => ({
@@ -301,6 +303,16 @@ function AddDeliveryBoy() {
                           contact: (
                             <MDTypography component="span" variant="caption" color="text" fontWeight="medium">
                               {boy.contact_no}
+                            </MDTypography>
+                          ),
+                          loginId: (
+                            <MDTypography component="span" variant="caption" color="text" fontWeight="bold">
+                              {boy.delivery_login_id || "N/A"}
+                            </MDTypography>
+                          ),
+                          passcode: (
+                            <MDTypography component="span" variant="caption" color="text" fontWeight="bold">
+                              {boy.delivery_passcode || "N/A"}
                             </MDTypography>
                           ),
                           action: (

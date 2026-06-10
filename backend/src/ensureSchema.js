@@ -85,6 +85,43 @@ export async function ensureSchema() {
             'company_id on delivery_boys'
         );
 
+        await tryQuery(
+            connection,
+            `ALTER TABLE delivery_boys ADD COLUMN delivery_login_id VARCHAR(20) NULL UNIQUE`,
+            'delivery_login_id on delivery_boys'
+        );
+
+        await tryQuery(
+            connection,
+            `ALTER TABLE delivery_boys ADD COLUMN delivery_passcode VARCHAR(20) NULL`,
+            'delivery_passcode on delivery_boys'
+        );
+
+        await connection.query(`
+            UPDATE delivery_boys db
+            JOIN (
+                SELECT missing.id,
+                       CONCAT('BFPDB', LPAD(existing.max_ref + ROW_NUMBER() OVER (ORDER BY missing.id), 3, '0')) AS generated_login_id
+                FROM (
+                    SELECT id
+                    FROM delivery_boys
+                    WHERE delivery_login_id IS NULL OR delivery_login_id = ''
+                ) missing
+                CROSS JOIN (
+                    SELECT COALESCE(MAX(CAST(SUBSTRING(delivery_login_id, 6) AS UNSIGNED)), 0) AS max_ref
+                    FROM delivery_boys
+                    WHERE delivery_login_id LIKE 'BFPDB%'
+                ) existing
+            ) seq ON seq.id = db.id
+            SET db.delivery_login_id = seq.generated_login_id
+        `);
+
+        await connection.query(`
+            UPDATE delivery_boys
+            SET delivery_passcode = RIGHT(CONCAT('000000', contact_no), 6)
+            WHERE delivery_passcode IS NULL OR delivery_passcode = ''
+        `);
+
         await connection.query(`
             CREATE TABLE IF NOT EXISTS delivery_boy_companies (
                 delivery_boy_id INT NOT NULL,
@@ -310,7 +347,7 @@ export async function ensureSchema() {
             connection,
             `
             ALTER TABLE staff_sales MODIFY COLUMN packaging_status
-            ENUM('not_packing', 'packing', 'packing_done', 'out_for_delivery', 'delivered', 'cancelled')
+            ENUM('not_packing', 'packing', 'packing_done', 'out_for_delivery', 'delivered', 'cancelled', 'returned')
             NOT NULL DEFAULT 'not_packing'
         `,
             'packaging_status enum values'
@@ -320,12 +357,22 @@ export async function ensureSchema() {
             CREATE TABLE IF NOT EXISTS staff_sale_status_history (
                 id INT AUTO_INCREMENT PRIMARY KEY,
                 sale_id INT NOT NULL,
-                status ENUM('not_packing', 'packing', 'packing_done', 'out_for_delivery', 'delivered', 'cancelled') NOT NULL,
+                status ENUM('not_packing', 'packing', 'packing_done', 'out_for_delivery', 'delivered', 'cancelled', 'returned') NOT NULL,
                 changed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY (sale_id) REFERENCES staff_sales(id) ON DELETE CASCADE,
                 INDEX idx_sale_status_history_sale_id (sale_id)
             );
         `);
+
+        await tryQuery(
+            connection,
+            `
+            ALTER TABLE staff_sale_status_history MODIFY COLUMN status
+            ENUM('not_packing', 'packing', 'packing_done', 'out_for_delivery', 'delivered', 'cancelled', 'returned')
+            NOT NULL
+        `,
+            'staff_sale_status_history status enum values'
+        );
 
         await connection.query(`
             INSERT INTO staff_sale_status_history (sale_id, status, changed_at)

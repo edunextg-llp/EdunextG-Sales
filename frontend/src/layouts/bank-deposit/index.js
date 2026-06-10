@@ -114,7 +114,7 @@ function BankDeposit() {
   const [loadingStores, setLoadingStores] = useState(false);
   const [editingDepositId, setEditingDepositId] = useState(null);
   const [saving, setSaving] = useState(false);
-  const API = "https://bawarchee.edunextg.co/api";
+  const API = "http://localhost:5000/api";
 
   const cashAmount = useMemo(
     () =>

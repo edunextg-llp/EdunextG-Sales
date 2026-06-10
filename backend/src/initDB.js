@@ -208,6 +208,8 @@ async function initDB() {
             id INT AUTO_INCREMENT PRIMARY KEY,
             name VARCHAR(255) NOT NULL,
             contact_no VARCHAR(20) NOT NULL,
+            delivery_login_id VARCHAR(20) NULL UNIQUE,
+            delivery_passcode VARCHAR(20) NULL,
             company_id INT NULL,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             ,FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE SET NULL
@@ -227,6 +229,53 @@ async function initDB() {
             console.log('company_id column may already exist on delivery_boys');
         }
     }
+
+    try {
+        await connection.query(`
+            ALTER TABLE delivery_boys ADD COLUMN delivery_login_id VARCHAR(20) NULL UNIQUE
+        `);
+        console.log('Added delivery_login_id to delivery_boys table');
+    } catch (err) {
+        if (err.code !== 'ER_DUP_FIELDNAME') {
+            console.log('delivery_login_id column may already exist on delivery_boys');
+        }
+    }
+
+    try {
+        await connection.query(`
+            ALTER TABLE delivery_boys ADD COLUMN delivery_passcode VARCHAR(20) NULL
+        `);
+        console.log('Added delivery_passcode to delivery_boys table');
+    } catch (err) {
+        if (err.code !== 'ER_DUP_FIELDNAME') {
+            console.log('delivery_passcode column may already exist on delivery_boys');
+        }
+    }
+
+    await connection.query(`
+        UPDATE delivery_boys db
+        JOIN (
+            SELECT missing.id,
+                   CONCAT('BFPDB', LPAD(existing.max_ref + ROW_NUMBER() OVER (ORDER BY missing.id), 3, '0')) AS generated_login_id
+            FROM (
+                SELECT id
+                FROM delivery_boys
+                WHERE delivery_login_id IS NULL OR delivery_login_id = ''
+            ) missing
+            CROSS JOIN (
+                SELECT COALESCE(MAX(CAST(SUBSTRING(delivery_login_id, 6) AS UNSIGNED)), 0) AS max_ref
+                FROM delivery_boys
+                WHERE delivery_login_id LIKE 'BFPDB%'
+            ) existing
+        ) seq ON seq.id = db.id
+        SET db.delivery_login_id = seq.generated_login_id
+    `);
+
+    await connection.query(`
+        UPDATE delivery_boys
+        SET delivery_passcode = RIGHT(CONCAT('000000', contact_no), 6)
+        WHERE delivery_passcode IS NULL OR delivery_passcode = ''
+    `);
 
     await connection.query(`
         CREATE TABLE IF NOT EXISTS delivery_boy_companies (
@@ -294,7 +343,7 @@ async function initDB() {
     // Modify existing enum to ensure terminal states are available
     try {
         await connection.query(`
-            ALTER TABLE staff_sales MODIFY COLUMN packaging_status ENUM('not_packing', 'packing', 'packing_done', 'out_for_delivery', 'delivered', 'cancelled') NOT NULL DEFAULT 'not_packing'
+            ALTER TABLE staff_sales MODIFY COLUMN packaging_status ENUM('not_packing', 'packing', 'packing_done', 'out_for_delivery', 'delivered', 'cancelled', 'returned') NOT NULL DEFAULT 'not_packing'
         `);
         console.log('Ensured packaging_status ENUM includes all delivery endpoints');
     } catch (err) {
@@ -305,13 +354,22 @@ async function initDB() {
         CREATE TABLE IF NOT EXISTS staff_sale_status_history (
             id INT AUTO_INCREMENT PRIMARY KEY,
             sale_id INT NOT NULL,
-            status ENUM('not_packing', 'packing', 'packing_done', 'out_for_delivery', 'delivered', 'cancelled') NOT NULL,
+            status ENUM('not_packing', 'packing', 'packing_done', 'out_for_delivery', 'delivered', 'cancelled', 'returned') NOT NULL,
             changed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (sale_id) REFERENCES staff_sales(id) ON DELETE CASCADE,
             INDEX idx_sale_status_history_sale_id (sale_id)
         );
     `);
     console.log('Staff sale status history table created');
+
+    try {
+        await connection.query(`
+            ALTER TABLE staff_sale_status_history MODIFY COLUMN status ENUM('not_packing', 'packing', 'packing_done', 'out_for_delivery', 'delivered', 'cancelled', 'returned') NOT NULL
+        `);
+        console.log('Ensured status history ENUM includes returned');
+    } catch (err) {
+        console.log('Status history ENUM may already include returned');
+    }
 
     await connection.query(`
         INSERT INTO staff_sale_status_history (sale_id, status, changed_at)

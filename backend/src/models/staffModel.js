@@ -490,7 +490,7 @@ class StaffModel {
             );
             const currentStatus = currentRows[0]?.packaging_status;
 
-            if (status === 'out_for_delivery' || status === 'delivered' || status === 'cancelled') {
+            if (status === 'out_for_delivery' || status === 'delivered' || status === 'cancelled' || status === 'returned') {
                 await connection.execute(
                     `UPDATE staff_sales 
                      SET packaging_status = ?, delivery_boy_id = ?, vehicle_no = ?, delivery_date = ?,

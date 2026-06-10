@@ -29,7 +29,7 @@ app.use('/api/auth', authRoutes);
 
 // Protected Routes
 app.use('/api/staff', verifyTokenMiddleware, staffRoutes);
-app.use('/api/delivery-boy', verifyTokenMiddleware, deliveryBoyRoutes);
+app.use('/api/delivery-boy', deliveryBoyRoutes);
 
 // Basic health check
 app.get('/', (req, res) => {

@@ -27,7 +27,7 @@ function Delivered() {
   const [salesData, setSalesData] = useState([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [updatingSaleIds, setUpdatingSaleIds] = useState(new Set());
-  const API = "https://bawarchee.edunextg.co/api";
+  const API = "http://localhost:5000/api";
 
   const getTodayLocalDate = () => {
     const now = new Date();
@@ -69,7 +69,7 @@ function Delivered() {
 
   const filteredSales = salesData.filter((row) => {
     const st = row.packaging_status;
-    if (st !== 'out_for_delivery' && st !== 'delivered' && st !== 'cancelled') return false;
+    if (st !== 'out_for_delivery' && st !== 'delivered' && st !== 'cancelled' && st !== 'returned') return false;
 
     const search = searchQuery.toLowerCase();
     const outletName = row.outlet_name ? row.outlet_name.toLowerCase() : "";
@@ -86,6 +86,7 @@ function Delivered() {
 
   const deliveredTotal = filteredSales.filter((row) => row.packaging_status === "delivered").length;
   const cancelledTotal = filteredSales.filter((row) => row.packaging_status === "cancelled").length;
+  const returnedTotal = filteredSales.filter((row) => row.packaging_status === "returned").length;
 
   const handleUpdateStatus = async (saleId, newStatus, currentDeliveryBoy, currentVehicle, currentDeliveryDate) => {
     if (updatingSaleIds.has(saleId)) return;
@@ -101,7 +102,7 @@ function Delivered() {
         deliveryBoyId: currentDeliveryBoy || null,
         vehicleNo: currentVehicle || null,
         deliveryDate:
-          newStatus === "out_for_delivery" || newStatus === "delivered" || newStatus === "cancelled"
+          newStatus === "out_for_delivery" || newStatus === "delivered" || newStatus === "cancelled" || newStatus === "returned"
             ? currentDeliveryDate || getTodayLocalDate()
             : null,
         expectedStatus: currentRow.packaging_status,
@@ -189,6 +190,19 @@ function Delivered() {
                           {cancelledTotal}
                         </MDTypography>
                       </MDBox>
+                      <MDBox
+                        px={2}
+                        py={1.25}
+                        borderRadius="lg"
+                        sx={{ backgroundColor: "#fff7ed", border: "1px solid #fed7aa" }}
+                      >
+                        <MDTypography variant="caption" color="text">
+                          Total Returned
+                        </MDTypography>
+                        <MDTypography variant="h5" color="warning" fontWeight="bold">
+                          {returnedTotal}
+                        </MDTypography>
+                      </MDBox>
                     </MDBox>
                   </Grid>
                 </Grid>
@@ -259,7 +273,7 @@ function Delivered() {
                           <TableRow
                             key={row.id}
                             sx={{
-                              backgroundColor: row.packaging_status === 'cancelled' ? '#fef2f2' : row.packaging_status === 'delivered' ? '#f0fdf4' : '#f8fafc',
+                              backgroundColor: row.packaging_status === 'cancelled' ? '#fef2f2' : row.packaging_status === 'returned' ? '#fff7ed' : row.packaging_status === 'delivered' ? '#f0fdf4' : '#f8fafc',
                               "&:last-child td, &:last-child th": { border: 0 }
                             }}
                           >
@@ -295,6 +309,8 @@ function Delivered() {
                             <TableCell align="center" sx={{ borderBottom: "1px solid #cbd5e1", py: 2 }}>
                               {row.packaging_status === 'cancelled' ? (
                                 <Chip label="Cancelled" color="error" variant="outlined" size="small" />
+                              ) : row.packaging_status === 'returned' ? (
+                                <Chip label="Returned" color="warning" variant="outlined" size="small" />
                               ) : row.packaging_status === 'delivered' ? (
                                 <Chip label="Delivered" color="success" variant="outlined" size="small" />
                               ) : row.packaging_status === 'out_for_delivery' ? (
@@ -312,7 +328,7 @@ function Delivered() {
                                   <MDButton color="success" variant="contained" size="small" onClick={() => handleUpdateStatus(row.id, 'delivered', row.delivery_boy_id, row.vehicle_no, row.delivery_date)}>
                                     Deliver
                                   </MDButton>
-                                  <MDButton color="dark" variant="gradient" size="small" onClick={() => handleUpdateStatus(row.id, 'packing_done', row.delivery_boy_id, row.vehicle_no, row.delivery_date)}>
+                                  <MDButton color="dark" variant="gradient" size="small" onClick={() => handleUpdateStatus(row.id, 'returned', row.delivery_boy_id, row.vehicle_no, row.delivery_date)}>
                                     Return
                                   </MDButton>
                                 </MDBox>
