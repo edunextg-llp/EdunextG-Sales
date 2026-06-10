@@ -10,6 +10,7 @@ import Dashboard from "layouts/dashboard";
 import CreateStaff from "layouts/create-staff";
 import AddCounter from "layouts/add-counter";
 import AddSales from "layouts/add-sales";
+import Purchase from "layouts/purchase";
 import AddDeliveryBoy from "layouts/add-delivery-boy";
 import UpdatePayment from "layouts/update-payment";
 import Credits from "layouts/credits";
@@ -70,6 +71,14 @@ const routes = [
     icon: <Icon fontSize="small">local_shipping</Icon>,
     route: "/add-delivery-boy",
     component: <AddDeliveryBoy />,
+  },
+  {
+    type: "collapse",
+    name: "Purchase",
+    key: "purchase",
+    icon: <Icon fontSize="small">receipt_long</Icon>,
+    route: "/purchase",
+    component: <Purchase />,
   },
   {
     type: "collapse",
