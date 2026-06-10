@@ -4,10 +4,15 @@ import crypto from 'crypto';
 import UserModel from '../models/userModel.js';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'super_secret_key_12345';
+const JWT_REFRESH_SECRET = process.env.JWT_REFRESH_SECRET || `${JWT_SECRET}_refresh`;
 const CAPTCHA_TTL_MS = 5 * 60 * 1000;
 const CAPTCHA_CHARS = 'abcdefghkmnpqrstuvwxyzABCDEFGHKMNPQRSTUVWXYZ123456789';
 const CAPTCHA_LENGTH = 6;
 const captchaStore = new Map();
+
+const ACCESS_TOKEN_EXPIRES_IN = '15m';
+const SESSION_REFRESH_TOKEN_EXPIRES_IN = '7h';
+const REMEMBER_REFRESH_TOKEN_EXPIRES_IN = '30d';
 
 function cleanupExpiredCaptchas() {
     const now = Date.now();
@@ -63,7 +68,7 @@ export const getCaptcha = (req, res) => {
 
 export const login = async (req, res) => {
     try {
-        const { email, password, captchaId, captchaAnswer } = req.body;
+        const { email, password, captchaId, captchaAnswer, rememberMe = false } = req.body;
 
         if (!email || !password) {
             return res.status(400).json({ error: 'Email and password are required' });
@@ -83,20 +88,55 @@ export const login = async (req, res) => {
             return res.status(401).json({ error: 'Invalid email or password' });
         }
 
+        const tokenPayload = { id: admin.id, email: admin.email, role: 'admin' };
         const token = jwt.sign(
-            { id: admin.id, email: admin.email, role: 'admin' },
+            tokenPayload,
             JWT_SECRET,
-            { expiresIn: '7h' }
+            { expiresIn: ACCESS_TOKEN_EXPIRES_IN }
+        );
+        const refreshToken = jwt.sign(
+            tokenPayload,
+            JWT_REFRESH_SECRET,
+            { expiresIn: rememberMe ? REMEMBER_REFRESH_TOKEN_EXPIRES_IN : SESSION_REFRESH_TOKEN_EXPIRES_IN }
         );
 
         res.status(200).json({
             message: 'Login successful',
             token,
+            refreshToken,
+            expiresIn: ACCESS_TOKEN_EXPIRES_IN,
+            refreshExpiresIn: rememberMe ? REMEMBER_REFRESH_TOKEN_EXPIRES_IN : SESSION_REFRESH_TOKEN_EXPIRES_IN,
             user: { id: admin.id, username: admin.username, email: admin.email }
         });
     } catch (error) {
         console.error('Login error:', error);
         res.status(500).json({ error: 'Internal server error' });
+    }
+};
+
+export const refreshToken = async (req, res) => {
+    try {
+        const { refreshToken: providedRefreshToken } = req.body;
+
+        if (!providedRefreshToken) {
+            return res.status(400).json({ error: 'Refresh token is required' });
+        }
+
+        const decoded = jwt.verify(providedRefreshToken, JWT_REFRESH_SECRET);
+        const token = jwt.sign(
+            { id: decoded.id, email: decoded.email, role: decoded.role },
+            JWT_SECRET,
+            { expiresIn: ACCESS_TOKEN_EXPIRES_IN }
+        );
+
+        res.status(200).json({
+            message: 'Token refreshed successfully',
+            token,
+            expiresIn: ACCESS_TOKEN_EXPIRES_IN,
+            user: { id: decoded.id, email: decoded.email, role: decoded.role }
+        });
+    } catch (error) {
+        return res.status(401).json({ error: 'Invalid or expired refresh token.' });
     }
 };
 

@@ -82,12 +82,13 @@ function Basic() {
           password,
           captchaId: captcha.captchaId,
           captchaAnswer,
+          rememberMe,
         }),
       });
 
       if (response.ok) {
         const data = await response.json();
-        login(data.user, data.token);
+        login(data.user, data.token, data.refreshToken, rememberMe);
         navigate("/dashboard", { replace: true });
       } else {
         const err = await response.json().catch(() => ({}));

@@ -2,15 +2,39 @@ import React, { createContext, useContext, useState, useEffect } from "react";
 
 const AuthContext = createContext(null);
 
+const AUTH_KEYS = {
+  token: "auth_token",
+  refreshToken: "auth_refresh_token",
+  user: "auth_user",
+  remember: "auth_remember",
+};
+
+const API_BASE = "https://bawarchee.edunextg.co/api";
+
+const getStorage = () => {
+  const remember = localStorage.getItem(AUTH_KEYS.remember) === "true";
+  return remember ? localStorage : sessionStorage;
+};
+
+const getStoredValue = (key) => localStorage.getItem(key) || sessionStorage.getItem(key);
+
+const clearAuthStorage = () => {
+  [localStorage, sessionStorage].forEach((storage) => {
+    storage.removeItem(AUTH_KEYS.token);
+    storage.removeItem(AUTH_KEYS.refreshToken);
+    storage.removeItem(AUTH_KEYS.user);
+  });
+  localStorage.removeItem(AUTH_KEYS.remember);
+};
+
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [token, setToken] = useState(null);
   const [isReady, setIsReady] = useState(false);
 
   useEffect(() => {
-    // Check local storage on initial load
-    const storedToken = localStorage.getItem("auth_token");
-    const storedUser = localStorage.getItem("auth_user");
+    const storedToken = getStoredValue(AUTH_KEYS.token);
+    const storedUser = getStoredValue(AUTH_KEYS.user);
     if (storedToken && storedUser) {
       setToken(storedToken);
       setUser(JSON.parse(storedUser));
@@ -21,9 +45,10 @@ export const AuthProvider = ({ children }) => {
     const originalFetch = window.fetch;
     window.fetch = async function (...args) {
       let [resource, config] = args;
+      const url = typeof resource === "string" ? resource : resource?.url || "";
 
-      const currentToken = localStorage.getItem("auth_token");
-      if (resource.includes("https://bawarchee.edunextg.co/api") && !resource.includes("/api/auth/login")) {
+      const currentToken = getStoredValue(AUTH_KEYS.token);
+      if (url.includes(API_BASE) && !url.includes("/api/auth/")) {
         config = config || {};
         config.headers = config.headers || {};
         if (currentToken) {
@@ -33,13 +58,38 @@ export const AuthProvider = ({ children }) => {
 
       const response = await originalFetch(resource, config);
 
-      // Auto-logout if token is expired or unauthorized
+      if (response.status === 401 && currentToken && url.includes(API_BASE) && !url.includes("/api/auth/")) {
+        const storedRefreshToken = getStoredValue(AUTH_KEYS.refreshToken);
+        if (storedRefreshToken) {
+          const refreshResponse = await originalFetch(`${API_BASE}/auth/refresh`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ refreshToken: storedRefreshToken }),
+          });
+
+          if (refreshResponse.ok) {
+            const refreshData = await refreshResponse.json();
+            const storage = getStorage();
+            storage.setItem(AUTH_KEYS.token, refreshData.token);
+            setToken(refreshData.token);
+
+            const retryConfig = {
+              ...(config || {}),
+              headers: {
+                ...((config && config.headers) || {}),
+                Authorization: `Bearer ${refreshData.token}`,
+              },
+            };
+            return originalFetch(resource, retryConfig);
+          }
+        }
+      }
+
       if (response.status === 401 || response.status === 403) {
         if (currentToken) {
           setUser(null);
           setToken(null);
-          localStorage.removeItem("auth_token");
-          localStorage.removeItem("auth_user");
+          clearAuthStorage();
           window.location.href = "/authentication/sign-in";
         }
       }
@@ -53,18 +103,21 @@ export const AuthProvider = ({ children }) => {
     };
   }, []);
 
-  const login = (userData, authToken) => {
+  const login = (userData, authToken, refreshToken, rememberMe = false) => {
     setUser(userData);
     setToken(authToken);
-    localStorage.setItem("auth_token", authToken);
-    localStorage.setItem("auth_user", JSON.stringify(userData));
+    clearAuthStorage();
+    localStorage.setItem(AUTH_KEYS.remember, rememberMe ? "true" : "false");
+    const storage = rememberMe ? localStorage : sessionStorage;
+    storage.setItem(AUTH_KEYS.token, authToken);
+    storage.setItem(AUTH_KEYS.refreshToken, refreshToken);
+    storage.setItem(AUTH_KEYS.user, JSON.stringify(userData));
   };
 
   const logout = () => {
     setUser(null);
     setToken(null);
-    localStorage.removeItem("auth_token");
-    localStorage.removeItem("auth_user");
+    clearAuthStorage();
   };
 
   useEffect(() => {
@@ -72,9 +125,10 @@ export const AuthProvider = ({ children }) => {
 
     const resetTimer = () => {
       clearTimeout(inactivityTimer);
-      // 7 hours inactivity
+      const rememberMe = localStorage.getItem(AUTH_KEYS.remember) === "true";
+      if (rememberMe) return;
       inactivityTimer = setTimeout(() => {
-        if (localStorage.getItem("auth_token")) {
+        if (getStoredValue(AUTH_KEYS.token)) {
           logout();
           window.location.href = "/authentication/sign-in";
         }
