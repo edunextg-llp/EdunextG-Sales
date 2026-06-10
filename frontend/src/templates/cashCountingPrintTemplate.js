@@ -56,6 +56,22 @@ const cashCountingPrintTemplate = String.raw`<!DOCTYPE html>
         text-transform: uppercase;
       }
 
+      .company-address {
+        max-width: 720px;
+        margin: 8px auto 0;
+        color: #111827;
+        font-size: 10.5px;
+        font-weight: 600;
+      }
+
+      .company-legal {
+        margin-top: 5px;
+        color: #111827;
+        font-size: 10.5px;
+        font-weight: 700;
+        word-spacing: 4px;
+      }
+
       .document-title {
         margin: 14px 0 12px;
         padding: 8px 10px;
@@ -192,11 +208,17 @@ const cashCountingPrintTemplate = String.raw`<!DOCTYPE html>
       <header class="letterhead">
         <h1 class="company-name"><%= companyName %></h1>
         <div class="company-subtitle"><%= companySubtitle %></div>
+        <div class="company-address"><%= companyAddress %></div>
+        <div class="company-legal"><%= companyLegal %></div>
       </header>
 
       <section class="document-title">Cash Counting Sheet</section>
 
       <section class="details-grid">
+        <div class="field">
+          <div class="field-label">Deposit ID</div>
+          <div class="field-value"><%= depositRefNo %></div>
+        </div>
         <div class="field">
           <div class="field-label">Date</div>
           <div class="field-value"><%= depositDate %></div>

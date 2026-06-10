@@ -188,6 +188,7 @@ export async function ensureSchema() {
         await connection.query(`
             CREATE TABLE IF NOT EXISTS bank_deposits (
                 id INT AUTO_INCREMENT PRIMARY KEY,
+                deposit_ref_no VARCHAR(20) NULL UNIQUE,
                 deposit_date DATE NOT NULL,
                 bank_name VARCHAR(255) NOT NULL,
                 account_name VARCHAR(255) NULL,
@@ -203,6 +204,54 @@ export async function ensureSchema() {
                 cash_details TEXT NULL,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
+        `);
+
+        await tryQuery(
+            connection,
+            `ALTER TABLE bank_deposits ADD COLUMN deposit_ref_no VARCHAR(20) NULL UNIQUE`,
+            'deposit_ref_no on bank_deposits'
+        );
+
+        await connection.query(`
+            UPDATE bank_deposits bd
+            JOIN (
+                SELECT missing.id,
+                       CONCAT('BFPCA', LPAD(existing.max_ref + ROW_NUMBER() OVER (ORDER BY missing.id), 3, '0')) AS generated_ref
+                FROM (
+                    SELECT id
+                    FROM bank_deposits
+                    WHERE deposit_mode = 'cash'
+                      AND (deposit_ref_no IS NULL OR deposit_ref_no = '')
+                ) missing
+                CROSS JOIN (
+                    SELECT COALESCE(MAX(CAST(SUBSTRING(deposit_ref_no, 6) AS UNSIGNED)), 0) AS max_ref
+                    FROM bank_deposits
+                    WHERE deposit_mode = 'cash'
+                      AND deposit_ref_no LIKE 'BFPCA%'
+                ) existing
+            ) seq ON seq.id = bd.id
+            SET bd.deposit_ref_no = seq.generated_ref
+        `);
+
+        await connection.query(`
+            UPDATE bank_deposits bd
+            JOIN (
+                SELECT missing.id,
+                       CONCAT('BFPCQ', LPAD(existing.max_ref + ROW_NUMBER() OVER (ORDER BY missing.id), 3, '0')) AS generated_ref
+                FROM (
+                    SELECT id
+                    FROM bank_deposits
+                    WHERE deposit_mode = 'cheque'
+                      AND (deposit_ref_no IS NULL OR deposit_ref_no = '')
+                ) missing
+                CROSS JOIN (
+                    SELECT COALESCE(MAX(CAST(SUBSTRING(deposit_ref_no, 6) AS UNSIGNED)), 0) AS max_ref
+                    FROM bank_deposits
+                    WHERE deposit_mode = 'cheque'
+                      AND deposit_ref_no LIKE 'BFPCQ%'
+                ) existing
+            ) seq ON seq.id = bd.id
+            SET bd.deposit_ref_no = seq.generated_ref
         `);
 
         await tryQuery(

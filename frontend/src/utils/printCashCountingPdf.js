@@ -67,7 +67,11 @@ export function printCashCountingPdf(cashCountingData) {
   const html = ejs.render(cashCountingPrintTemplate, {
     companyName: "BAWARCHEE FOOD PACKAGING PRIVATE LIMITED",
     companySubtitle: "Cash Deposit / Cash Counting Print",
+    companyAddress:
+      "Head Office: Holding No. 82, 121 Aswini Dutta Road, South Dum Dum, PO - Dum Dum, PS - Baguiati, South Dum Dum Municipality, Distt - North 24 Paragnas, West Bengal - 700028",
+    companyLegal: "CIN: U15549WB2021PTC245833    GSTN: 19AAJCB9178Q1ZJ    PAN NUMBER: AAJCB9178Q",
     ...cashCountingData,
+    depositRefNo: cashCountingData.depositRefNo || "Generated after save",
     noteRows: printableRows.filter((row) => row.type === "Note"),
     coinRows: printableRows.filter((row) => row.type === "Coin"),
     totalAmount: formatMoneyForPrint(cashCountingData.total),

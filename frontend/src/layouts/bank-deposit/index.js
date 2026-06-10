@@ -382,6 +382,7 @@ function BankDeposit() {
     }
 
     const total = rows.reduce((sum, row) => sum + row.total, 0);
+    const depositRefNo = deposit?.deposit_ref_no || "Generated after save";
     const printDate = deposit?.deposit_date || form.depositDate;
     const depositorName = deposit?.depositor_name || form.depositorName;
     const bankName = deposit?.bank_name || form.bankName;
@@ -390,6 +391,7 @@ function BankDeposit() {
     const ifscCode = deposit?.ifsc_code || form.ifscCode;
 
     printCashCountingPdf({
+      depositRefNo,
       depositDate: formatDate(printDate),
       depositorName: depositorName || "N/A",
       bankName: bankName || "N/A",
@@ -712,9 +714,10 @@ function BankDeposit() {
                     <TableHead sx={{ display: "table-header-group", backgroundColor: "#f9fafb" }}>
                       <TableRow>
                         <TableCell sx={tableHeadSx}>Sr No</TableCell>
+                        <TableCell sx={tableHeadSx}>Deposit ID</TableCell>
                         <TableCell sx={tableHeadSx}>Date</TableCell>
                         <TableCell sx={tableHeadSx}>Bank</TableCell>
-                        <TableCell sx={tableHeadSx}>Account Name</TableCell>
+                        {/* <TableCell sx={tableHeadSx}>Account Name</TableCell> */}
                         <TableCell sx={tableHeadSx}>Branch</TableCell>
                         <TableCell sx={tableHeadSx}>Bank No</TableCell>
                         <TableCell sx={tableHeadSx}>IFSC</TableCell>
@@ -732,9 +735,12 @@ function BankDeposit() {
                         deposits.map((deposit, index) => (
                           <TableRow key={deposit.id}>
                             <TableCell sx={tableBodySx}>{index + 1}</TableCell>
+                            <TableCell sx={{ ...tableBodySx, fontWeight: 700 }}>
+                              {deposit.deposit_ref_no || "N/A"}
+                            </TableCell>
                             <TableCell sx={tableBodySx}>{formatDate(deposit.deposit_date)}</TableCell>
                             <TableCell sx={tableBodySx}>{deposit.bank_name}</TableCell>
-                            <TableCell sx={tableBodySx}>{deposit.account_name || "N/A"}</TableCell>
+                            {/* <TableCell sx={tableBodySx}>{deposit.account_name || "N/A"}</TableCell> */}
                             <TableCell sx={tableBodySx}>{deposit.branch_name}</TableCell>
                             <TableCell sx={tableBodySx}>{deposit.bank_account_no}</TableCell>
                             <TableCell sx={tableBodySx}>{deposit.ifsc_code || "N/A"}</TableCell>
