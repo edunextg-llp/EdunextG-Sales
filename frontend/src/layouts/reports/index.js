@@ -27,7 +27,7 @@ import DashboardLayout from "examples/LayoutContainers/DashboardLayout";
 import DashboardNavbar from "examples/Navbars/DashboardNavbar";
 import Footer from "examples/Footer";
 
-const API = "http://localhost:5000/api";
+const API = "https://bawarchee.edunextg.co/api";
 
 const defaultReportData = {
   summary: { total_sales: 0, total_collection: 0, total_outstanding: 0 },

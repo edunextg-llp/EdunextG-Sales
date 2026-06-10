@@ -27,7 +27,7 @@ function Delivered() {
   const [salesData, setSalesData] = useState([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [updatingSaleIds, setUpdatingSaleIds] = useState(new Set());
-  const API = "http://localhost:5000/api";
+  const API = "https://bawarchee.edunextg.co/api";
 
   const getTodayLocalDate = () => {
     const now = new Date();

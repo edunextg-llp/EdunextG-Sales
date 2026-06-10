@@ -61,6 +61,81 @@ function calculateCashDepositAmount(cashDetails = {}) {
     }, 0);
 }
 
+function normalizeBankDepositCashDetails(cashDetails = {}) {
+    const hasCashCount = BANK_DEPOSIT_DENOMINATIONS.some((item) => {
+        const count = parseInt(cashDetails[item.key] || 0, 10);
+        return !Number.isNaN(count) && count > 0;
+    });
+    if (!hasCashCount) {
+        return { error: 'Please enter cash note or coin count.' };
+    }
+
+    const normalizedCashDetails = {};
+    for (const item of BANK_DEPOSIT_DENOMINATIONS) {
+        const rawCount = cashDetails[item.key] ?? '';
+        if (rawCount === '') {
+            normalizedCashDetails[item.key] = 0;
+            continue;
+        }
+        const normalizedCount = String(rawCount).trim();
+        if (!/^\d+$/.test(normalizedCount)) {
+            return { error: `${item.key.replace('_', ' ')} must contain numbers only` };
+        }
+        normalizedCashDetails[item.key] = parseInt(normalizedCount, 10);
+    }
+
+    return {
+        cashDetails: normalizedCashDetails,
+        amount: calculateCashDepositAmount(normalizedCashDetails),
+    };
+}
+
+function normalizeBankDepositChequeDetails(reqBody) {
+    const {
+        chequeDetails,
+        storeName,
+        chequeNo,
+        chequeDate,
+        amount,
+    } = reqBody;
+
+    const rawCheques = Array.isArray(chequeDetails) && chequeDetails.length
+        ? chequeDetails
+        : [{ storeName, chequeNo, chequeDate, amount }];
+
+    const normalizedCheques = [];
+    for (let index = 0; index < rawCheques.length; index += 1) {
+        const cheque = rawCheques[index] || {};
+        const rowLabel = `Cheque ${index + 1}`;
+        const storeValidation = validateRequiredText(cheque.storeName, `${rowLabel} store name`);
+        if (!storeValidation.valid) return { error: storeValidation.error };
+        const chequeValidation = validateRequiredText(cheque.chequeNo, `${rowLabel} cheque no`);
+        if (!chequeValidation.valid) return { error: chequeValidation.error };
+        const normalizedChequeDate = normalizeDateInput(cheque.chequeDate);
+        if (!normalizedChequeDate) return { error: `${rowLabel} cheque date is required` };
+        const amountValidation = validateNumeric(cheque.amount, `${rowLabel} amount`);
+        if (!amountValidation.valid) return { error: amountValidation.error };
+        if (amountValidation.value <= 0) return { error: `${rowLabel} amount must be greater than zero` };
+
+        normalizedCheques.push({
+            storeName: storeValidation.value,
+            chequeNo: chequeValidation.value,
+            chequeDate: normalizedChequeDate,
+            amount: amountValidation.value,
+        });
+    }
+
+    const firstCheque = normalizedCheques[0];
+    const extraCount = normalizedCheques.length - 1;
+    return {
+        chequeDetails: normalizedCheques,
+        storeName: `${firstCheque.storeName}${extraCount > 0 ? ` (+${extraCount} more)` : ''}`,
+        chequeNo: `${firstCheque.chequeNo}${extraCount > 0 ? ` (+${extraCount} more)` : ''}`,
+        chequeDate: firstCheque.chequeDate,
+        amount: normalizedCheques.reduce((total, cheque) => total + cheque.amount, 0),
+    };
+}
+
 export const createStaff = async (req, res) => {
     try {
         const { name, contactNo, companyName, companyNames, staffType = 'distributor', assignments = {} } = req.body;
@@ -633,6 +708,7 @@ export const createBankDeposit = async (req, res) => {
             amount,
             chequeNo,
             chequeDate,
+            chequeDetails = [],
             cashDetails = {},
         } = req.body;
 
@@ -662,46 +738,24 @@ export const createBankDeposit = async (req, res) => {
         let normalizedStoreName = '';
 
         if (mode === 'cash') {
-            const hasCashCount = BANK_DEPOSIT_DENOMINATIONS.some((item) => {
-                const count = parseInt(cashDetails[item.key] || 0, 10);
-                return !Number.isNaN(count) && count > 0;
-            });
-            if (!hasCashCount) {
-                return res.status(400).json({ error: 'Please enter cash note or coin count.' });
-            }
-
-            normalizedCashDetails = {};
-            for (const item of BANK_DEPOSIT_DENOMINATIONS) {
-                const rawCount = cashDetails[item.key] ?? '';
-                if (rawCount === '') {
-                    normalizedCashDetails[item.key] = 0;
-                    continue;
-                }
-                const normalizedCount = String(rawCount).trim();
-                if (!/^\d+$/.test(normalizedCount)) {
-                    return res.status(400).json({ error: `${item.key.replace('_', ' ')} must contain numbers only` });
-                }
-                normalizedCashDetails[item.key] = parseInt(normalizedCount, 10);
-            }
-            depositAmount = calculateCashDepositAmount(normalizedCashDetails);
+            const cashResult = normalizeBankDepositCashDetails(cashDetails);
+            if (cashResult.error) return res.status(400).json({ error: cashResult.error });
+            normalizedCashDetails = cashResult.cashDetails;
+            depositAmount = cashResult.amount;
         } else {
-            const storeValidation = validateRequiredText(storeName, 'Store name');
-            if (!storeValidation.valid) return res.status(400).json({ error: storeValidation.error });
-            const chequeValidation = validateRequiredText(chequeNo, 'Cheque no');
-            if (!chequeValidation.valid) {
-                return res.status(400).json({ error: chequeValidation.error });
-            }
-            normalizedChequeDate = normalizeDateInput(chequeDate);
-            if (!normalizedChequeDate) {
-                return res.status(400).json({ error: 'Cheque date is required' });
-            }
-            const amountValidation = validateNumeric(amount, 'Cheque amount');
-            if (!amountValidation.valid) {
-                return res.status(400).json({ error: amountValidation.error });
-            }
-            normalizedStoreName = storeValidation.value;
-            normalizedChequeNo = chequeValidation.value;
-            depositAmount = amountValidation.value;
+            const chequeResult = normalizeBankDepositChequeDetails({
+                chequeDetails,
+                storeName,
+                chequeNo,
+                chequeDate,
+                amount,
+            });
+            if (chequeResult.error) return res.status(400).json({ error: chequeResult.error });
+            normalizedStoreName = chequeResult.storeName;
+            normalizedChequeNo = chequeResult.chequeNo;
+            normalizedChequeDate = chequeResult.chequeDate;
+            normalizedCashDetails = { cheques: chequeResult.chequeDetails };
+            depositAmount = chequeResult.amount;
         }
 
         const deposit = await BankDepositModel.create({
@@ -748,6 +802,7 @@ export const updateBankDeposit = async (req, res) => {
             amount,
             chequeNo,
             chequeDate,
+            chequeDetails = [],
             cashDetails = {},
         } = req.body;
 
@@ -774,38 +829,24 @@ export const updateBankDeposit = async (req, res) => {
         let normalizedStoreName = '';
 
         if (mode === 'cash') {
-            const hasCashCount = BANK_DEPOSIT_DENOMINATIONS.some((item) => {
-                const count = parseInt(cashDetails[item.key] || 0, 10);
-                return !Number.isNaN(count) && count > 0;
-            });
-            if (!hasCashCount) return res.status(400).json({ error: 'Please enter cash note or coin count.' });
-
-            normalizedCashDetails = {};
-            for (const item of BANK_DEPOSIT_DENOMINATIONS) {
-                const rawCount = cashDetails[item.key] ?? '';
-                if (rawCount === '') {
-                    normalizedCashDetails[item.key] = 0;
-                    continue;
-                }
-                const normalizedCount = String(rawCount).trim();
-                if (!/^\d+$/.test(normalizedCount)) {
-                    return res.status(400).json({ error: `${item.key.replace('_', ' ')} must contain numbers only` });
-                }
-                normalizedCashDetails[item.key] = parseInt(normalizedCount, 10);
-            }
-            depositAmount = calculateCashDepositAmount(normalizedCashDetails);
+            const cashResult = normalizeBankDepositCashDetails(cashDetails);
+            if (cashResult.error) return res.status(400).json({ error: cashResult.error });
+            normalizedCashDetails = cashResult.cashDetails;
+            depositAmount = cashResult.amount;
         } else {
-            const storeValidation = validateRequiredText(storeName, 'Store name');
-            if (!storeValidation.valid) return res.status(400).json({ error: storeValidation.error });
-            const chequeValidation = validateRequiredText(chequeNo, 'Cheque no');
-            if (!chequeValidation.valid) return res.status(400).json({ error: chequeValidation.error });
-            normalizedChequeDate = normalizeDateInput(chequeDate);
-            if (!normalizedChequeDate) return res.status(400).json({ error: 'Cheque date is required' });
-            const amountValidation = validateNumeric(amount, 'Cheque amount');
-            if (!amountValidation.valid) return res.status(400).json({ error: amountValidation.error });
-            normalizedStoreName = storeValidation.value;
-            normalizedChequeNo = chequeValidation.value;
-            depositAmount = amountValidation.value;
+            const chequeResult = normalizeBankDepositChequeDetails({
+                chequeDetails,
+                storeName,
+                chequeNo,
+                chequeDate,
+                amount,
+            });
+            if (chequeResult.error) return res.status(400).json({ error: chequeResult.error });
+            normalizedStoreName = chequeResult.storeName;
+            normalizedChequeNo = chequeResult.chequeNo;
+            normalizedChequeDate = chequeResult.chequeDate;
+            normalizedCashDetails = { cheques: chequeResult.chequeDetails };
+            depositAmount = chequeResult.amount;
         }
 
         const deposit = await BankDepositModel.update(depositId, {

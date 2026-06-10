@@ -25,6 +25,7 @@ import DashboardLayout from "examples/LayoutContainers/DashboardLayout";
 import DashboardNavbar from "examples/Navbars/DashboardNavbar";
 import Footer from "examples/Footer";
 import { printCashCountingPdf } from "utils/printCashCountingPdf";
+import { printChequeDepositPdf } from "utils/printChequeDepositPdf";
 
 const CASH_NOTE_DENOMINATIONS = [500, 200, 100, 50, 20, 10];
 const CASH_COIN_DENOMINATIONS = [20, 10, 5, 2, 1];
@@ -58,6 +59,13 @@ const emptyCashDetails = () =>
     return details;
   }, {});
 
+const emptyChequeRow = () => ({
+  storeName: "",
+  chequeNo: "",
+  chequeDate: "",
+  amount: "",
+});
+
 const getTodayLocalDate = () => {
   const now = new Date();
   const year = now.getFullYear();
@@ -79,6 +87,7 @@ const emptyForm = () => ({
   amount: "",
   chequeNo: "",
   chequeDate: "",
+  chequeDetails: [emptyChequeRow()],
   cashDetails: emptyCashDetails(),
 });
 
@@ -107,6 +116,44 @@ const formatDate = (value) => {
   return parts.length === 3 ? `${parts[2]}-${parts[1]}-${parts[0]}` : value;
 };
 
+const parseChequeDetails = (deposit) => {
+  if (deposit?.cash_details) {
+    try {
+      const details = JSON.parse(deposit.cash_details);
+      if (Array.isArray(details?.cheques) && details.cheques.length) {
+        return details.cheques.map((cheque) => ({
+          storeName: cheque.storeName || "",
+          chequeNo: cheque.chequeNo || "",
+          chequeDate: cheque.chequeDate || "",
+          amount: cheque.amount === undefined || cheque.amount === null ? "" : String(cheque.amount),
+        }));
+      }
+    } catch (error) {
+      // Fall back to legacy columns below.
+    }
+  }
+
+  if (deposit?.deposit_mode === "cheque") {
+    return [
+      {
+        storeName: deposit.store_name || "",
+        chequeNo: deposit.cheque_no || "",
+        chequeDate: deposit.cheque_date || "",
+        amount: deposit.amount === undefined || deposit.amount === null ? "" : String(deposit.amount),
+      },
+    ];
+  }
+
+  return [emptyChequeRow()];
+};
+
+const chequeDisplayText = (deposit, field) => {
+  const rows = parseChequeDetails(deposit).filter((row) => row[field]);
+  if (!rows.length) return "N/A";
+  if (rows.length === 1) return rows[0][field];
+  return `${rows.length} cheques`;
+};
+
 function BankDeposit() {
   const [form, setForm] = useState(emptyForm());
   const [deposits, setDeposits] = useState([]);
@@ -114,7 +161,7 @@ function BankDeposit() {
   const [loadingStores, setLoadingStores] = useState(false);
   const [editingDepositId, setEditingDepositId] = useState(null);
   const [saving, setSaving] = useState(false);
-  const API = "http://localhost:5000/api";
+  const API = "https://bawarchee.edunextg.co/api";
 
   const cashAmount = useMemo(
     () =>
@@ -123,6 +170,15 @@ function BankDeposit() {
         0
       ),
     [form.cashDetails]
+  );
+
+  const chequeAmount = useMemo(
+    () =>
+      form.chequeDetails.reduce(
+        (total, cheque) => total + (Number.isNaN(parseFloat(cheque.amount)) ? 0 : parseFloat(cheque.amount)),
+        0
+      ),
+    [form.chequeDetails]
   );
 
   const cashDepositTotal = useMemo(
@@ -203,7 +259,15 @@ function BankDeposit() {
             chequeNo: value === "cash" ? "" : prev.chequeNo,
             chequeDate: value === "cash" ? "" : prev.chequeDate,
             storeName: value === "cash" ? "" : prev.storeName,
+            chequeDetails: value === "cash" ? [emptyChequeRow()] : prev.chequeDetails,
             cashDetails: value === "cash" ? emptyCashDetails() : prev.cashDetails,
+          }
+        : {}),
+      ...(field === "storeName"
+        ? {
+            chequeDetails: prev.chequeDetails.map((cheque, index) =>
+              index === 0 ? { ...cheque, storeName: value } : cheque
+            ),
           }
         : {}),
     }));
@@ -231,6 +295,33 @@ function BankDeposit() {
     }));
   };
 
+  const handleChequeChange = (index, field, value) => {
+    setForm((prev) => ({
+      ...prev,
+      ...(index === 0 && field === "storeName" ? { storeName: value } : {}),
+      chequeDetails: prev.chequeDetails.map((cheque, chequeIndex) =>
+        chequeIndex === index ? { ...cheque, [field]: value } : cheque
+      ),
+    }));
+  };
+
+  const addChequeRow = () => {
+    setForm((prev) => ({
+      ...prev,
+      chequeDetails: [...prev.chequeDetails, emptyChequeRow()],
+    }));
+  };
+
+  const removeChequeRow = (index) => {
+    setForm((prev) => ({
+      ...prev,
+      chequeDetails:
+        prev.chequeDetails.length === 1
+          ? [emptyChequeRow()]
+          : prev.chequeDetails.filter((_, chequeIndex) => chequeIndex !== index),
+    }));
+  };
+
   const validateForm = () => {
     if (!form.depositDate) return "Deposit date is required.";
     if (!form.bankName.trim()) return "Bank name is required.";
@@ -241,11 +332,15 @@ function BankDeposit() {
       return "Please enter cash note or coin count.";
     }
     if (form.depositMode === "cheque") {
-      if (!form.storeName.trim()) return "Store name is required.";
-      if (!form.chequeNo.trim()) return "Cheque no is required.";
-      if (!form.chequeDate) return "Cheque date is required.";
-      if (!form.amount || Number.isNaN(parseFloat(form.amount)) || parseFloat(form.amount) <= 0) {
-        return "Cheque amount is required.";
+      for (let index = 0; index < form.chequeDetails.length; index += 1) {
+        const cheque = form.chequeDetails[index];
+        const label = `Cheque ${index + 1}`;
+        if (!cheque.storeName.trim()) return `${label} store name is required.`;
+        if (!cheque.chequeNo.trim()) return `${label} no is required.`;
+        if (!cheque.chequeDate) return `${label} date is required.`;
+        if (!cheque.amount || Number.isNaN(parseFloat(cheque.amount)) || parseFloat(cheque.amount) <= 0) {
+          return `${label} amount is required.`;
+        }
       }
     }
     return "";
@@ -268,11 +363,20 @@ function BankDeposit() {
         bankAccountNo: form.bankAccountNo.trim(),
         ifscCode: form.ifscCode.trim(),
         depositorName: form.depositorName.trim(),
-        storeName: form.depositMode === "cheque" ? form.storeName.trim() : "",
+        storeName: form.depositMode === "cheque" ? form.chequeDetails[0]?.storeName.trim() || "" : "",
         depositMode: form.depositMode,
-        amount: form.depositMode === "cash" ? cashAmount : parseFloat(form.amount),
-        chequeNo: form.depositMode === "cheque" ? form.chequeNo.trim() : null,
-        chequeDate: form.depositMode === "cheque" ? form.chequeDate : null,
+        amount: form.depositMode === "cash" ? cashAmount : chequeAmount,
+        chequeNo: form.depositMode === "cheque" ? form.chequeDetails[0]?.chequeNo.trim() || "" : null,
+        chequeDate: form.depositMode === "cheque" ? form.chequeDetails[0]?.chequeDate || "" : null,
+        chequeDetails:
+          form.depositMode === "cheque"
+            ? form.chequeDetails.map((cheque) => ({
+                storeName: cheque.storeName.trim(),
+                chequeNo: cheque.chequeNo.trim(),
+                chequeDate: cheque.chequeDate,
+                amount: parseFloat(cheque.amount),
+              }))
+            : [],
         cashDetails: form.depositMode === "cash" ? form.cashDetails : null,
       };
 
@@ -327,6 +431,7 @@ function BankDeposit() {
       amount: deposit.deposit_mode === "cheque" ? String(deposit.amount || "") : "",
       chequeNo: deposit.cheque_no || "",
       chequeDate: deposit.cheque_date || "",
+      chequeDetails: parseChequeDetails(deposit),
       cashDetails,
     });
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -391,6 +496,43 @@ function BankDeposit() {
     const ifscCode = deposit?.ifsc_code || form.ifscCode;
 
     printCashCountingPdf({
+      depositRefNo,
+      depositDate: formatDate(printDate),
+      depositorName: depositorName || "N/A",
+      bankName: bankName || "N/A",
+      branchName: branchName || "N/A",
+      bankAccountNo: bankAccountNo || "N/A",
+      ifscCode: ifscCode || "N/A",
+      rows,
+      total,
+    });
+  };
+
+  const printChequeDetails = (deposit = null) => {
+    const rows = (deposit ? parseChequeDetails(deposit) : form.chequeDetails)
+      .filter((cheque) => cheque.storeName || cheque.chequeNo || cheque.chequeDate || cheque.amount)
+      .map((cheque) => ({
+        storeName: cheque.storeName || "N/A",
+        chequeNo: cheque.chequeNo || "N/A",
+        chequeDate: formatDate(cheque.chequeDate),
+        amount: parseFloat(cheque.amount) || 0,
+      }));
+
+    if (!rows.length) {
+      alert("Please enter cheque details.");
+      return;
+    }
+
+    const total = rows.reduce((sum, row) => sum + row.amount, 0);
+    const depositRefNo = deposit?.deposit_ref_no || "Generated after save";
+    const printDate = deposit?.deposit_date || form.depositDate;
+    const depositorName = deposit?.depositor_name || form.depositorName;
+    const bankName = deposit?.bank_name || form.bankName;
+    const bankAccountNo = deposit?.bank_account_no || form.bankAccountNo;
+    const branchName = deposit?.branch_name || form.branchName;
+    const ifscCode = deposit?.ifsc_code || form.ifscCode;
+
+    printChequeDepositPdf({
       depositRefNo,
       depositDate: formatDate(printDate),
       depositorName: depositorName || "N/A",
@@ -582,7 +724,7 @@ function BankDeposit() {
                       sx={{ border: "1px solid #d2d6da", borderRadius: 1, backgroundColor: "#f8fafc" }}
                     >
                       <MDTypography variant="button" fontWeight="medium" color="dark">
-                        Total: {formatMoney(form.depositMode === "cash" ? cashAmount : form.amount)}
+                        Total: {formatMoney(form.depositMode === "cash" ? cashAmount : chequeAmount)}
                       </MDTypography>
                     </MDBox>
                   </Grid>
@@ -645,36 +787,71 @@ function BankDeposit() {
                   )}
 
                   {form.depositMode === "cheque" && (
-                    <>
-                      <Grid item xs={12} md={4}>
-                        <MDInput
-                          label="Cheque No"
-                          fullWidth
-                          value={form.chequeNo}
-                          onChange={(e) => handleFormChange("chequeNo", e.target.value)}
-                        />
-                      </Grid>
-                      <Grid item xs={12} md={4}>
-                        <MDInput
-                          type="date"
-                          label="Cheque Date"
-                          fullWidth
-                          value={form.chequeDate}
-                          onChange={(e) => handleFormChange("chequeDate", e.target.value)}
-                          InputLabelProps={{ shrink: true }}
-                        />
-                      </Grid>
-                      <Grid item xs={12} md={4}>
-                        <MDInput
-                          type="number"
-                          label="Cheque Amount"
-                          fullWidth
-                          value={form.amount}
-                          onChange={(e) => handleFormChange("amount", e.target.value)}
-                          inputProps={{ min: 0, step: "0.01" }}
-                        />
-                      </Grid>
-                    </>
+                    <Grid item xs={12}>
+                      <MDBox display="flex" alignItems="center" justifyContent="space-between" mb={1}>
+                        <MDTypography variant="button" fontWeight="medium" color="dark">
+                          Cheque Details
+                        </MDTypography>
+                        <MDButton color="info" variant="outlined" size="small" onClick={addChequeRow}>
+                          <Icon sx={{ mr: 1 }}>add</Icon>
+                          Add Cheque
+                        </MDButton>
+                      </MDBox>
+                      <MDBox display="flex" flexDirection="column" gap={1.5}>
+                        {form.chequeDetails.map((cheque, index) => (
+                          <Grid container spacing={1.5} key={`cheque-row-${index}`}>
+                            <Grid item xs={12} md={3}>
+                              <MDInput
+                                label="Store Name"
+                                fullWidth
+                                value={cheque.storeName}
+                                onChange={(e) => handleChequeChange(index, "storeName", e.target.value)}
+                              />
+                            </Grid>
+                            <Grid item xs={12} md={3}>
+                              <MDInput
+                                label="Cheque No"
+                                fullWidth
+                                value={cheque.chequeNo}
+                                onChange={(e) => handleChequeChange(index, "chequeNo", e.target.value)}
+                              />
+                            </Grid>
+                            <Grid item xs={12} md={2}>
+                              <MDInput
+                                type="date"
+                                label="Cheque Date"
+                                fullWidth
+                                value={cheque.chequeDate}
+                                onChange={(e) => handleChequeChange(index, "chequeDate", e.target.value)}
+                                InputLabelProps={{ shrink: true }}
+                              />
+                            </Grid>
+                            <Grid item xs={12} md={2}>
+                              <MDInput
+                                type="number"
+                                label="Amount"
+                                fullWidth
+                                value={cheque.amount}
+                                onChange={(e) => handleChequeChange(index, "amount", e.target.value)}
+                                inputProps={{ min: 0, step: "0.01" }}
+                              />
+                            </Grid>
+                            <Grid item xs={12} md={2}>
+                              <MDButton
+                                color="error"
+                                variant="outlined"
+                                fullWidth
+                                sx={{ height: 44 }}
+                                onClick={() => removeChequeRow(index)}
+                              >
+                                <Icon sx={{ mr: 1 }}>delete</Icon>
+                                Remove
+                              </MDButton>
+                            </Grid>
+                          </Grid>
+                        ))}
+                      </MDBox>
+                    </Grid>
                   )}
 
                   <Grid item xs={12}>
@@ -683,6 +860,12 @@ function BankDeposit() {
                         <MDButton color="success" variant="outlined" onClick={() => printCashDetails()} sx={{ mr: 1 }}>
                           <Icon sx={{ mr: 1 }}>picture_as_pdf</Icon>
                           Print Cash PDF
+                        </MDButton>
+                      )}
+                      {form.depositMode === "cheque" && (
+                        <MDButton color="warning" variant="outlined" onClick={() => printChequeDetails()} sx={{ mr: 1 }}>
+                          <Icon sx={{ mr: 1 }}>picture_as_pdf</Icon>
+                          Print Cheque PDF
                         </MDButton>
                       )}
                       <MDButton color="info" variant="gradient" onClick={handleSubmit} disabled={saving}>
@@ -745,11 +928,15 @@ function BankDeposit() {
                             <TableCell sx={tableBodySx}>{deposit.bank_account_no}</TableCell>
                             <TableCell sx={tableBodySx}>{deposit.ifsc_code || "N/A"}</TableCell>
                             <TableCell sx={tableBodySx}>{deposit.depositor_name || "N/A"}</TableCell>
-                            <TableCell sx={tableBodySx}>{deposit.store_name || "N/A"}</TableCell>
+                            <TableCell sx={tableBodySx}>
+                              {deposit.deposit_mode === "cheque" ? chequeDisplayText(deposit, "storeName") : deposit.store_name || "N/A"}
+                            </TableCell>
                             <TableCell sx={tableBodySx}>
                               {deposit.deposit_mode === "cash" ? "Cash" : "Cheque"}
                             </TableCell>
-                            <TableCell sx={tableBodySx}>{deposit.cheque_no || "N/A"}</TableCell>
+                            <TableCell sx={tableBodySx}>
+                              {deposit.deposit_mode === "cheque" ? chequeDisplayText(deposit, "chequeNo") : deposit.cheque_no || "N/A"}
+                            </TableCell>
                             <TableCell sx={tableBodySx}>{formatDate(deposit.cheque_date)}</TableCell>
                             <TableCell align="right" sx={{ ...tableBodySx, fontWeight: 600 }}>
                               {formatMoney(deposit.amount)}
@@ -758,6 +945,11 @@ function BankDeposit() {
                               <MDBox display="flex" gap={1} justifyContent="center">
                                 {deposit.deposit_mode === "cash" && (
                                   <MDButton color="success" variant="outlined" size="small" onClick={() => printCashDetails(deposit)}>
+                                    Print
+                                  </MDButton>
+                                )}
+                                {deposit.deposit_mode === "cheque" && (
+                                  <MDButton color="warning" variant="outlined" size="small" onClick={() => printChequeDetails(deposit)}>
                                     Print
                                   </MDButton>
                                 )}

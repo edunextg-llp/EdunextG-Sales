@@ -9,7 +9,7 @@ https://bawarchee.edunextg.co/api
 For local development:
 
 ```text
-http://localhost:5000/api
+https://bawarchee.edunextg.co/api
 ```
 
 ## Delivery Boy Credentials

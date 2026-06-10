@@ -41,7 +41,7 @@ function AddCounter() {
     googleLocation: "",
   });
 
-  const API = "http://localhost:5000/api";
+  const API = "https://bawarchee.edunextg.co/api";
   const isCnfStaff = selectedStaff?.staff_type === "cnf";
   const routeDay = isCnfStaff ? cnfRouteDay : selectedDay;
 
@@ -587,8 +587,8 @@ function AddCounter() {
                         }}
                       >
                         {editingOutletId === saved.id ? (
-                          <Grid container spacing={2} alignItems="center">
-                            <Grid item xs={12} sm={6} md={3}>
+                          <Grid container spacing={1.5} alignItems="center">
+                            <Grid item xs={12} sm={6} md={2}>
                               <MDInput
                                 label="ERP Id"
                                 fullWidth
@@ -596,7 +596,7 @@ function AddCounter() {
                                 onChange={(e) => setEditFormData({ ...editFormData, outletErpId: e.target.value })}
                               />
                             </Grid>
-                            <Grid item xs={12} sm={6} md={4}>
+                            <Grid item xs={12} sm={6} md={3}>
                               <MDInput
                                 label="Outlet Name"
                                 fullWidth
@@ -604,7 +604,7 @@ function AddCounter() {
                                 onChange={(e) => setEditFormData({ ...editFormData, outletName: e.target.value })}
                               />
                             </Grid>
-                            <Grid item xs={12} sm={6} md={3}>
+                            <Grid item xs={12} sm={6} md={2}>
                               <MDInput
                                 label="Contact"
                                 fullWidth
@@ -620,8 +620,8 @@ function AddCounter() {
                                 onChange={(e) => setEditFormData({ ...editFormData, googleLocation: e.target.value })}
                               />
                             </Grid>
-                            <Grid item xs={12} md={12}>
-                              <MDBox display="flex" flexDirection="column" gap={1}>
+                            <Grid item xs={12} md={2}>
+                              <MDBox display="flex" gap={1} justifyContent={{ xs: "flex-start", md: "flex-end" }}>
                                 <MDButton color="success" variant="gradient" size="small" onClick={() => handleSaveEdit(saved.id)}>
                                   Save
                                 </MDButton>
@@ -632,18 +632,18 @@ function AddCounter() {
                             </Grid>
                           </Grid>
                         ) : (
-                          <Grid container spacing={2} alignItems="center">
-                            <Grid item xs={12} sm={6} md={3}>
+                          <Grid container spacing={1.5} alignItems="center">
+                            <Grid item xs={12} sm={6} md={2}>
                               <MDTypography variant="body2" fontWeight="medium">
                                 {saved.outlet_erp_id}
                               </MDTypography>
                             </Grid>
-                            <Grid item xs={12} sm={6} md={4}>
+                            <Grid item xs={12} sm={6} md={3}>
                               <MDTypography variant="body2" fontWeight="medium">
                                 {saved.outlet_name}
                               </MDTypography>
                             </Grid>
-                            <Grid item xs={12} sm={6} md={3}>
+                            <Grid item xs={12} sm={6} md={2}>
                               <MDTypography variant="body2" fontWeight="medium">
                                 {saved.contact_number}
                               </MDTypography>
@@ -659,16 +659,18 @@ function AddCounter() {
                                   fontWeight="medium"
                                   color="info"
                                 >
+                                  <Icon fontSize="small" sx={{ mr: 0.5, verticalAlign: "middle" }}>map</Icon>
                                   Google Location
                                 </MDTypography>
                               ) : (
-                                <MDTypography variant="body2" color="text">
+                                <MDTypography variant="body2" color="text" display="flex" alignItems="center" gap={0.5}>
+                                  <Icon fontSize="small">map</Icon>
                                   No Google Location
                                 </MDTypography>
                               )}
                             </Grid>
-                            <Grid item xs={12} md={12}>
-                              <MDBox display="flex" gap={1}>
+                            <Grid item xs={12} md={2}>
+                              <MDBox display="flex" gap={1} justifyContent={{ xs: "flex-start", md: "flex-end" }}>
                                 <MDButton color="info" variant="text" size="small" onClick={() => handleEditClick(saved)}>
                                   <Icon>edit</Icon> Edit
                                 </MDButton>
