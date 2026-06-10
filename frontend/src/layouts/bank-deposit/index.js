@@ -24,6 +24,7 @@ import MDButton from "components/MDButton";
 import DashboardLayout from "examples/LayoutContainers/DashboardLayout";
 import DashboardNavbar from "examples/Navbars/DashboardNavbar";
 import Footer from "examples/Footer";
+import { printCashCountingPdf } from "utils/printCashCountingPdf";
 
 const CASH_NOTE_DENOMINATIONS = [500, 200, 100, 50, 20, 10];
 const CASH_COIN_DENOMINATIONS = [20, 10, 5, 2, 1];
@@ -357,6 +358,7 @@ function BankDeposit() {
     CASH_DENOMINATIONS.map((item) => {
       const count = parseInt(cashDetails[item.key], 10) || 0;
       return {
+        type: item.key.startsWith("note_") ? "Note" : "Coin",
         denomination: item.denomination,
         count,
         total: item.denomination * count,
@@ -384,52 +386,19 @@ function BankDeposit() {
     const depositorName = deposit?.depositor_name || form.depositorName;
     const bankName = deposit?.bank_name || form.bankName;
     const bankAccountNo = deposit?.bank_account_no || form.bankAccountNo;
-    const rowsHtml = rows
-      .map(
-        (row) => `
-          <tr>
-            <td>${row.denomination}</td>
-            <td>${row.count}</td>
-            <td>${row.denomination} x ${row.count} = ${row.total}</td>
-          </tr>`
-      )
-      .join("");
-    const printWindow = window.open("", "_blank", "width=720,height=720");
-    if (!printWindow) return;
+    const branchName = deposit?.branch_name || form.branchName;
+    const ifscCode = deposit?.ifsc_code || form.ifscCode;
 
-    printWindow.document.write(`
-      <html>
-        <head>
-          <title>Cash Deposit Details</title>
-          <style>
-            body { font-family: Arial, sans-serif; padding: 24px; color: #111827; }
-            h2 { margin: 0 0 12px; }
-            p { margin: 4px 0; }
-            table { width: 100%; border-collapse: collapse; margin-top: 18px; }
-            th, td { border: 1px solid #d1d5db; padding: 10px; text-align: left; }
-            th { background: #f3f4f6; }
-            .total { text-align: right; font-size: 18px; font-weight: 700; margin-top: 16px; }
-          </style>
-        </head>
-        <body>
-          <h2>Cash Deposit Details</h2>
-          <p><strong>Date:</strong> ${formatDate(printDate)}</p>
-          <p><strong>Depositor:</strong> ${depositorName || "N/A"}</p>
-          <p><strong>Bank:</strong> ${bankName || "N/A"}</p>
-          <p><strong>Account No:</strong> ${bankAccountNo || "N/A"}</p>
-          <table>
-            <thead>
-              <tr><th>Denomination</th><th>Count</th><th>Calculation</th></tr>
-            </thead>
-            <tbody>${rowsHtml}</tbody>
-          </table>
-          <div class="total">Total: Rs. ${total.toFixed(2)}</div>
-        </body>
-      </html>
-    `);
-    printWindow.document.close();
-    printWindow.focus();
-    printWindow.print();
+    printCashCountingPdf({
+      depositDate: formatDate(printDate),
+      depositorName: depositorName || "N/A",
+      bankName: bankName || "N/A",
+      branchName: branchName || "N/A",
+      bankAccountNo: bankAccountNo || "N/A",
+      ifscCode: ifscCode || "N/A",
+      rows,
+      total,
+    });
   };
 
   return (
@@ -708,6 +677,12 @@ function BankDeposit() {
 
                   <Grid item xs={12}>
                     <MDBox display="flex" justifyContent="flex-end">
+                      {form.depositMode === "cash" && (
+                        <MDButton color="success" variant="outlined" onClick={() => printCashDetails()} sx={{ mr: 1 }}>
+                          <Icon sx={{ mr: 1 }}>picture_as_pdf</Icon>
+                          Print Cash PDF
+                        </MDButton>
+                      )}
                       <MDButton color="info" variant="gradient" onClick={handleSubmit} disabled={saving}>
                         <Icon sx={{ mr: 1 }}>account_balance</Icon>
                         {saving ? "Saving..." : editingDepositId ? "Update Deposit" : "Save Deposit"}
