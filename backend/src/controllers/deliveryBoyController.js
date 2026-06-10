@@ -47,13 +47,16 @@ export const createDeliveryBoy = async (req, res) => {
         }
         const parsedCompanyIds = companyParse.companyIds;
 
-        const deliveryBoyId = await DeliveryBoyModel.create(
+        const createdDeliveryBoy = await DeliveryBoyModel.create(
             nameValidation.value,
             contactValidation.value,
             parsedCompanyIds[0]
         );
-        await DeliveryBoyModel.setCompanies(deliveryBoyId, parsedCompanyIds);
-        res.status(201).json({ message: 'Delivery Boy created successfully', deliveryBoyId });
+        await DeliveryBoyModel.setCompanies(createdDeliveryBoy.deliveryBoyId, parsedCompanyIds);
+        res.status(201).json({
+            message: 'Delivery Boy created successfully',
+            ...createdDeliveryBoy,
+        });
     } catch (error) {
         console.error('Error creating delivery boy:', error);
         res.status(500).json({ error: 'Internal server error' });
@@ -111,6 +114,28 @@ export const updateDeliveryBoy = async (req, res) => {
     }
 };
 
+export const generateDeliveryBoyCredentials = async (req, res) => {
+    try {
+        const deliveryBoyId = Number(req.params.id);
+        if (!Number.isInteger(deliveryBoyId) || deliveryBoyId <= 0) {
+            return res.status(400).json({ error: 'Delivery Boy id must be a positive integer' });
+        }
+
+        const credentials = await DeliveryBoyModel.generateCredentials(deliveryBoyId);
+        if (!credentials) {
+            return res.status(404).json({ error: 'Delivery Boy not found' });
+        }
+
+        res.status(200).json({
+            message: 'Delivery Boy credentials generated successfully',
+            ...credentials,
+        });
+    } catch (error) {
+        console.error('Error generating delivery boy credentials:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+};
+
 export const deleteDeliveryBoy = async (req, res) => {
     try {
         const { id } = req.params;
@@ -139,18 +164,19 @@ export const getDeliveryBoys = async (req, res) => {
 
 export const mobileLogin = async (req, res) => {
     try {
-        const loginValidation = validateRequiredText(req.body.deliveryLoginId, 'Delivery login ID');
-        if (!loginValidation.valid) {
-            return res.status(400).json({ error: loginValidation.error });
+        const deliveryLoginId = String(req.body.deliveryLoginId || '').trim();
+        const passcode = String(req.body.passcode || '').trim();
+        if (!deliveryLoginId || !passcode) {
+            return res.status(400).json({ error: 'Delivery login ID and passcode are required' });
         }
-        const passValidation = validateRequiredText(req.body.passcode, 'Passcode');
-        if (!passValidation.valid) {
-            return res.status(400).json({ error: passValidation.error });
+
+        if (!/^BFPDB\d{3,}$/.test(deliveryLoginId) || !/^\d{6}$/.test(passcode)) {
+            return res.status(401).json({ error: 'Invalid delivery login ID or passcode' });
         }
 
         const deliveryBoy = await DeliveryBoyModel.getByLogin(
-            loginValidation.value,
-            passValidation.value
+            deliveryLoginId,
+            passcode
         );
 
         if (!deliveryBoy) {
@@ -159,7 +185,7 @@ export const mobileLogin = async (req, res) => {
 
         const token = jwt.sign(
             {
-                type: 'delivery_boy',
+                role: 'delivery_boy',
                 deliveryBoyId: deliveryBoy.id,
                 deliveryLoginId: deliveryBoy.delivery_login_id,
             },

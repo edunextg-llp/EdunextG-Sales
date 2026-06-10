@@ -1,34 +1,44 @@
 import db from '../config/db.js';
+import bcrypt from 'bcryptjs';
+import { formatDeliveryLoginId, generateDeliveryPasscode } from '../utils/deliveryCredentials.js';
 
 class DeliveryBoyModel {
-    static async generateLoginId(connection = db) {
-        const prefix = 'BFPDB';
-        const [rows] = await connection.execute(
-            `SELECT delivery_login_id
-             FROM delivery_boys
-             WHERE delivery_login_id LIKE ?
-             ORDER BY CAST(SUBSTRING(delivery_login_id, ?) AS UNSIGNED) DESC
-             LIMIT 1`,
-            [`${prefix}%`, prefix.length + 1]
-        );
-        const lastNumber = rows[0]?.delivery_login_id
-            ? parseInt(String(rows[0].delivery_login_id).slice(prefix.length), 10)
-            : 0;
-        return `${prefix}${String((Number.isNaN(lastNumber) ? 0 : lastNumber) + 1).padStart(3, '0')}`;
+    static formatLoginId(id) {
+        return formatDeliveryLoginId(id);
     }
 
     static generatePasscode() {
-        return String(Math.floor(100000 + Math.random() * 900000));
+        return generateDeliveryPasscode();
     }
 
     static async create(name, contactNo, companyId = null) {
-        const deliveryLoginId = await DeliveryBoyModel.generateLoginId();
         const deliveryPasscode = DeliveryBoyModel.generatePasscode();
-        const [result] = await db.execute(
-            'INSERT INTO delivery_boys (name, contact_no, company_id, delivery_login_id, delivery_passcode) VALUES (?, ?, ?, ?, ?)',
-            [name, contactNo, companyId, deliveryLoginId, deliveryPasscode]
-        );
-        return result.insertId;
+        const passcodeHash = await bcrypt.hash(deliveryPasscode, 10);
+        const connection = await db.getConnection();
+
+        try {
+            await connection.beginTransaction();
+            const [result] = await connection.execute(
+                'INSERT INTO delivery_boys (name, contact_no, company_id, delivery_passcode_hash) VALUES (?, ?, ?, ?)',
+                [name, contactNo, companyId, passcodeHash]
+            );
+            const deliveryLoginId = DeliveryBoyModel.formatLoginId(result.insertId);
+            await connection.execute(
+                'UPDATE delivery_boys SET delivery_login_id = ? WHERE id = ?',
+                [deliveryLoginId, result.insertId]
+            );
+            await connection.commit();
+            return {
+                deliveryBoyId: result.insertId,
+                deliveryLoginId,
+                passcode: deliveryPasscode,
+            };
+        } catch (error) {
+            await connection.rollback();
+            throw error;
+        } finally {
+            connection.release();
+        }
     }
 
     static async setCompanies(deliveryBoyId, companyIds = []) {
@@ -47,7 +57,7 @@ class DeliveryBoyModel {
 
     static async getAll() {
         const [rows] = await db.execute(
-            `SELECT db.id, db.name, db.contact_no, db.company_id, db.delivery_login_id, db.delivery_passcode,
+            `SELECT db.id, db.name, db.contact_no, db.company_id, db.delivery_login_id,
                     COALESCE(dbc.company_names, c.name) AS company_name,
                     dbc.company_ids
              FROM delivery_boys db
@@ -67,7 +77,7 @@ class DeliveryBoyModel {
 
     static async getById(id) {
         const [rows] = await db.execute(
-            `SELECT db.id, db.name, db.contact_no, db.company_id, db.delivery_login_id, db.delivery_passcode,
+            `SELECT db.id, db.name, db.contact_no, db.company_id, db.delivery_login_id,
                     COALESCE(dbc.company_names, c.name) AS company_name,
                     dbc.company_ids
              FROM delivery_boys db
@@ -88,13 +98,24 @@ class DeliveryBoyModel {
 
     static async getByLogin(loginId, passcode) {
         const [rows] = await db.execute(
-            `SELECT id, name, contact_no, delivery_login_id
+            `SELECT id, name, contact_no, delivery_login_id, delivery_passcode_hash
              FROM delivery_boys
-             WHERE delivery_login_id = ? AND delivery_passcode = ?
+             WHERE delivery_login_id = ?
              LIMIT 1`,
-            [loginId, passcode]
+            [loginId]
         );
-        return rows[0] || null;
+        const deliveryBoy = rows[0] || null;
+        if (!deliveryBoy?.delivery_passcode_hash) {
+            return null;
+        }
+
+        const passcodeMatches = await bcrypt.compare(passcode, deliveryBoy.delivery_passcode_hash);
+        if (!passcodeMatches) {
+            return null;
+        }
+
+        const { delivery_passcode_hash: _hash, ...safeDeliveryBoy } = deliveryBoy;
+        return safeDeliveryBoy;
     }
 
     static async update(id, name, contactNo, companyId = null) {
@@ -103,6 +124,30 @@ class DeliveryBoyModel {
             [name, contactNo, companyId, id]
         );
         return result.affectedRows > 0;
+    }
+
+    static async generateCredentials(id) {
+        const deliveryBoy = await DeliveryBoyModel.getById(id);
+        if (!deliveryBoy) {
+            return null;
+        }
+
+        const deliveryLoginId = DeliveryBoyModel.formatLoginId(id);
+        const passcode = DeliveryBoyModel.generatePasscode();
+        const passcodeHash = await bcrypt.hash(passcode, 10);
+
+        await db.execute(
+            `UPDATE delivery_boys
+             SET delivery_login_id = ?, delivery_passcode_hash = ?
+             WHERE id = ?`,
+            [deliveryLoginId, passcodeHash, id]
+        );
+
+        return {
+            deliveryBoyId: Number(id),
+            deliveryLoginId,
+            passcode,
+        };
     }
 
     static async delete(id) {

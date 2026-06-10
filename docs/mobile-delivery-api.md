@@ -16,20 +16,76 @@ http://localhost:5000/api
 
 Each delivery boy has:
 
-- `delivery_login_id`: generated as `BFPDB001`, `BFPDB002`, etc.
-- `delivery_passcode`: generated 6-digit passcode for new delivery boys.
+- `delivery_login_id`: derived from DB id, for example id `1` becomes `BFPDB001`.
+- `passcode`: random 6-digit numeric string.
 
-Existing delivery boys are backfilled with:
+Passcodes are stored hashed in `delivery_passcode_hash`. They are returned only once when a delivery boy is created or when credentials are regenerated from the CLI.
 
-- `delivery_login_id`: generated sequence.
-- `delivery_passcode`: last 6 digits of contact number.
+Generate credentials for existing delivery boys:
 
-Admin can fetch credentials from:
+```bash
+cd backend
+npm run generate-delivery-credentials
+npm run generate-delivery-credentials -- --reset
+```
+
+Admin can fetch delivery boys from:
 
 ```http
 GET /delivery-boy
 Authorization: Bearer <admin_token>
 ```
+
+List responses include `delivery_login_id`, but never include passcodes.
+
+Create delivery boy:
+
+```http
+POST /delivery-boy
+Authorization: Bearer <admin_token>
+Content-Type: application/json
+```
+
+```json
+{
+  "name": "Rahul",
+  "contactNo": "9876543210",
+  "companyIds": [1]
+}
+```
+
+Success `201`:
+
+```json
+{
+  "message": "Delivery Boy created successfully",
+  "deliveryBoyId": 1,
+  "deliveryLoginId": "BFPDB001",
+  "passcode": "123456"
+}
+```
+
+Save the passcode from this response. It is not returned again by list/profile APIs.
+
+Generate or reset credentials for an existing delivery boy:
+
+```http
+POST /delivery-boy/:id/credentials
+Authorization: Bearer <admin_token>
+```
+
+Success `200`:
+
+```json
+{
+  "message": "Delivery Boy credentials generated successfully",
+  "deliveryBoyId": 1,
+  "deliveryLoginId": "BFPDB001",
+  "passcode": "654321"
+}
+```
+
+This replaces the old passcode. Save the new passcode from this response.
 
 ## Login
 

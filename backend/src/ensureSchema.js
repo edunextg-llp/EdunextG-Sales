@@ -1,5 +1,6 @@
 import mysql from 'mysql2/promise';
 import dotenv from 'dotenv';
+import bcrypt from 'bcryptjs';
 
 dotenv.config();
 
@@ -94,33 +95,44 @@ export async function ensureSchema() {
         await tryQuery(
             connection,
             `ALTER TABLE delivery_boys ADD COLUMN delivery_passcode VARCHAR(20) NULL`,
-            'delivery_passcode on delivery_boys'
+            'legacy delivery_passcode on delivery_boys'
+        );
+
+        await tryQuery(
+            connection,
+            `ALTER TABLE delivery_boys ADD COLUMN delivery_passcode_hash VARCHAR(255) NULL`,
+            'delivery_passcode_hash on delivery_boys'
         );
 
         await connection.query(`
-            UPDATE delivery_boys db
-            JOIN (
-                SELECT missing.id,
-                       CONCAT('BFPDB', LPAD(existing.max_ref + ROW_NUMBER() OVER (ORDER BY missing.id), 3, '0')) AS generated_login_id
-                FROM (
-                    SELECT id
-                    FROM delivery_boys
-                    WHERE delivery_login_id IS NULL OR delivery_login_id = ''
-                ) missing
-                CROSS JOIN (
-                    SELECT COALESCE(MAX(CAST(SUBSTRING(delivery_login_id, 6) AS UNSIGNED)), 0) AS max_ref
-                    FROM delivery_boys
-                    WHERE delivery_login_id LIKE 'BFPDB%'
-                ) existing
-            ) seq ON seq.id = db.id
-            SET db.delivery_login_id = seq.generated_login_id
+            UPDATE delivery_boys
+            SET delivery_login_id = CONCAT('BFPDBTMP', id)
+            WHERE delivery_login_id IS NULL
+               OR delivery_login_id = ''
+               OR delivery_login_id <> CONCAT('BFPDB', LPAD(id, 3, '0'))
         `);
 
         await connection.query(`
             UPDATE delivery_boys
-            SET delivery_passcode = RIGHT(CONCAT('000000', contact_no), 6)
-            WHERE delivery_passcode IS NULL OR delivery_passcode = ''
+            SET delivery_login_id = CONCAT('BFPDB', LPAD(id, 3, '0'))
+            WHERE delivery_login_id LIKE 'BFPDBTMP%'
         `);
+
+        const [legacyPasscodeRows] = await connection.query(`
+            SELECT id, delivery_passcode
+            FROM delivery_boys
+            WHERE delivery_passcode_hash IS NULL
+              AND delivery_passcode IS NOT NULL
+              AND delivery_passcode <> ''
+        `);
+
+        for (const row of legacyPasscodeRows) {
+            const passcodeHash = await bcrypt.hash(String(row.delivery_passcode), 10);
+            await connection.query(
+                `UPDATE delivery_boys SET delivery_passcode_hash = ? WHERE id = ?`,
+                [passcodeHash, row.id]
+            );
+        }
 
         await connection.query(`
             CREATE TABLE IF NOT EXISTS delivery_boy_companies (

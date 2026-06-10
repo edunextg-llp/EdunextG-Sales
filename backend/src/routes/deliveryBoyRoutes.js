@@ -17,7 +17,7 @@ function verifyDeliveryBoyToken(req, res, next) {
             token,
             process.env.DELIVERY_JWT_SECRET || process.env.JWT_SECRET || 'delivery-secret'
         );
-        if (decoded.type !== 'delivery_boy' || !decoded.deliveryBoyId) {
+        if (decoded.role !== 'delivery_boy' || !decoded.deliveryBoyId) {
             return res.status(401).json({ error: 'Invalid delivery token.' });
         }
         req.deliveryBoyId = decoded.deliveryBoyId;
@@ -35,6 +35,7 @@ router.put('/mobile/items/:saleId/status', verifyDeliveryBoyToken, deliveryBoyCo
 router.post('/', verifyTokenMiddleware, deliveryBoyController.createDeliveryBoy);
 router.get('/companies', verifyTokenMiddleware, deliveryBoyController.getStaffAssignedCompanies);
 router.get('/', verifyTokenMiddleware, deliveryBoyController.getDeliveryBoys);
+router.post('/:id/credentials', verifyTokenMiddleware, deliveryBoyController.generateDeliveryBoyCredentials);
 router.put('/:id', verifyTokenMiddleware, deliveryBoyController.updateDeliveryBoy);
 router.delete('/:id', verifyTokenMiddleware, deliveryBoyController.deleteDeliveryBoy);
 
