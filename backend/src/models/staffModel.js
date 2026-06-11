@@ -560,7 +560,7 @@ class StaffModel {
                     COALESCE(cpr.latest_remarks, sp.remarks) AS remarks,
                     COALESCE(cpr.remarks_count, CASE WHEN sp.remarks IS NULL OR TRIM(sp.remarks) = '' THEN 0 ELSE 1 END) AS remarks_count,
                     DATE_FORMAT(cpr.latest_remark_date, '%Y-%m-%d') AS latest_remark_date,
-                    ss.invoice_number, sc.outlet_name, sc.contact_number,
+                    ss.invoice_number, sc.outlet_name, sc.outlet_erp_id, sc.contact_number,
                     s.id AS staff_id, s.name AS staff_name,
                     COALESCE(staff_company.company_names, c.name) AS company_name,
                     COALESCE(staff_company.company_ids, s.company_id) AS company_ids

@@ -61,7 +61,14 @@ const emptyReportData = {
 const emptyPurchaseReportData = {
   summary: {
     total_purchase: 0,
+    total_gross_amount: 0,
+    total_trader_discount: 0,
+    total_primary_discount: 0,
+    total_secondary_discount: 0,
+    total_cash_discount: 0,
     total_taxable_value: 0,
+    total_cgst_amount: 0,
+    total_sgst_amount: 0,
     total_gst_amount: 0,
     total_invoices: 0,
     seller_count: 0,
@@ -798,6 +805,79 @@ function Dashboard() {
 
   const monthlyPurchaseRows = purchaseReportData.purchasesByPeriod?.monthly || [];
   const yearlyPurchaseRows = purchaseReportData.purchasesByPeriod?.yearly || [];
+  const purchaseSummaryCards = [
+    {
+      color: "info",
+      icon: "payments",
+      title: "Total Gross",
+      count: shortMoney(purchaseReportData.summary.total_gross_amount),
+      label: "Gross purchase value",
+    },
+    {
+      color: "error",
+      icon: "local_offer",
+      title: "Trader Discount",
+      count: shortMoney(purchaseReportData.summary.total_trader_discount),
+      label: "Trader discount total",
+    },
+    {
+      color: "error",
+      icon: "discount",
+      title: "Primary Discount",
+      count: shortMoney(purchaseReportData.summary.total_primary_discount),
+      label: "Primary discount total",
+    },
+    {
+      color: "error",
+      icon: "sell",
+      title: "Secondary Discount",
+      count: shortMoney(purchaseReportData.summary.total_secondary_discount),
+      label: "Secondary discount total",
+    },
+    {
+      color: "error",
+      icon: "money_off",
+      title: "Cash Discount",
+      count: shortMoney(purchaseReportData.summary.total_cash_discount),
+      label: "Cash discount total",
+    },
+    {
+      color: "warning",
+      icon: "summarize",
+      title: "Taxable Value",
+      count: shortMoney(purchaseReportData.summary.total_taxable_value),
+      label: "After discounts",
+    },
+    {
+      color: "success",
+      icon: "percent",
+      title: "Total SGST",
+      count: shortMoney(purchaseReportData.summary.total_sgst_amount),
+      label: "SGST amount",
+    },
+    {
+      color: "success",
+      icon: "percent",
+      title: "Total CGST",
+      count: shortMoney(purchaseReportData.summary.total_cgst_amount),
+      label: "CGST amount",
+    },
+    {
+      color: "success",
+      icon: "receipt",
+      title: "Total GST",
+      count: shortMoney(purchaseReportData.summary.total_gst_amount),
+      label: "SGST + CGST",
+    },
+    {
+      color: "dark",
+      icon: "receipt_long",
+      title: "Total Amount",
+      count: shortMoney(purchaseReportData.summary.total_purchase),
+      amount: purchaseReportData.summary.total_invoices,
+      label: "purchase invoices",
+    },
+  ];
 
   const weeklySalesChart = {
     labels: weeklySalesRows.map((row) => row.period),
@@ -831,67 +911,23 @@ function Dashboard() {
 
         <MDBox mt={4}>
           <Grid container spacing={3}>
-            <Grid item xs={12} md={6} lg={3}>
-              <MDBox mb={1.5}>
-                <ComplexStatisticsCard
-                  color="info"
-                  icon="receipt_long"
-                  title="Total Purchase"
-                  count={shortMoney(purchaseReportData.summary.total_purchase)}
-                  percentage={{
-                    color: "info",
-                    amount: purchaseReportData.summary.total_invoices,
-                    label: "purchase invoices",
-                  }}
-                />
-              </MDBox>
-            </Grid>
-           
-            <Grid item xs={12} md={6} lg={3}>
-              <MDBox mb={1.5}>
-                <ComplexStatisticsCard
-                  color="error"
-                  icon="summarize"
-                  title="Taxable Value"
-                  count={shortMoney(purchaseReportData.summary.total_taxable_value)}
-                  percentage={{
-                    color: "info",
-                    amount: "",
-                    label: "Before GST",
-                  }}
-                />
-              </MDBox>
-            </Grid>
-            <Grid item xs={12} md={6} lg={3}>
-              <MDBox mb={1.5}>
-                <ComplexStatisticsCard
-                  color="warning"
-                  icon="percent"
-                  title="GST Amount"
-                  count={shortMoney(purchaseReportData.summary.total_gst_amount)}
-                  percentage={{
-                    color: "warning",
-                    amount: "",
-                    label: "CGST + SGST",
-                  }}
-                />
-              </MDBox>
-            </Grid>
-            <Grid item xs={12} md={6} lg={3}>
-              <MDBox mb={1.5}>
-                <ComplexStatisticsCard
-                  color="dark"
-                  icon="today"
-                  title="Today Purchase"
-                  count={shortMoney(purchaseReportData.summary.today_purchase)}
-                  percentage={{
-                    color: "info",
-                    amount: purchaseReportData.summary.today_invoices,
-                    label: "today invoices",
-                  }}
-                />
-              </MDBox>
-            </Grid>
+            {purchaseSummaryCards.map((card) => (
+              <Grid item xs={12} md={6} lg={3} key={card.title}>
+                <MDBox mb={1.5}>
+                  <ComplexStatisticsCard
+                    color={card.color}
+                    icon={card.icon}
+                    title={card.title}
+                    count={card.count}
+                    percentage={{
+                      color: card.color,
+                      amount: card.amount ?? "",
+                      label: card.label,
+                    }}
+                  />
+                </MDBox>
+              </Grid>
+            ))}
             <Grid item xs={12} md={4}>
             <Card>
               <MDBox p={3}>

@@ -734,39 +734,39 @@ export const getPurchases = async (req, res) => {
     }
 };
 
-export const createPurchase = async (req, res) => {
-    try {
-        const sellerValidation = validateRequiredText(req.body.sellerName, 'Seller name');
-        if (!sellerValidation.valid) return res.status(400).json({ error: sellerValidation.error });
-        const invoiceValidation = validateRequiredText(req.body.invoiceNumber, 'Invoice number');
-        if (!invoiceValidation.valid) return res.status(400).json({ error: invoiceValidation.error });
+function buildPurchasePayload(req) {
+    const sellerValidation = validateRequiredText(req.body.sellerName, 'Seller name');
+    if (!sellerValidation.valid) return { error: sellerValidation.error };
+    const invoiceValidation = validateRequiredText(req.body.invoiceNumber, 'Invoice number');
+    if (!invoiceValidation.valid) return { error: invoiceValidation.error };
 
-        const grossValidation = validateNumeric(req.body.grossAmount || 0, 'Gross amount');
-        if (!grossValidation.valid) return res.status(400).json({ error: grossValidation.error });
-        const traderDiscountValidation = validateNumeric(req.body.traderDiscountValue || 0, 'Trader discount');
-        if (!traderDiscountValidation.valid) return res.status(400).json({ error: traderDiscountValidation.error });
-        const primaryDiscountValidation = validateNumeric(req.body.primaryDiscountValue || 0, 'Primary discount');
-        if (!primaryDiscountValidation.valid) return res.status(400).json({ error: primaryDiscountValidation.error });
-        const secondaryDiscountValidation = validateNumeric(req.body.secondaryDiscountValue || 0, 'Secondary discount');
-        if (!secondaryDiscountValidation.valid) return res.status(400).json({ error: secondaryDiscountValidation.error });
-        const cashDiscountValidation = validateNumeric(req.body.cashDiscountValue || 0, 'Cash discount');
-        if (!cashDiscountValidation.valid) return res.status(400).json({ error: cashDiscountValidation.error });
-        const cgstValidation = validateNumeric(req.body.cgstAmount || 0, 'CGST amount');
-        if (!cgstValidation.valid) return res.status(400).json({ error: cgstValidation.error });
-        const sgstValidation = validateNumeric(req.body.sgstAmount || 0, 'SGST amount');
-        if (!sgstValidation.valid) return res.status(400).json({ error: sgstValidation.error });
+    const grossValidation = validateNumeric(req.body.grossAmount || 0, 'Gross amount');
+    if (!grossValidation.valid) return { error: grossValidation.error };
+    const traderDiscountValidation = validateNumeric(req.body.traderDiscountValue || 0, 'Trader discount');
+    if (!traderDiscountValidation.valid) return { error: traderDiscountValidation.error };
+    const primaryDiscountValidation = validateNumeric(req.body.primaryDiscountValue || 0, 'Primary discount');
+    if (!primaryDiscountValidation.valid) return { error: primaryDiscountValidation.error };
+    const secondaryDiscountValidation = validateNumeric(req.body.secondaryDiscountValue || 0, 'Secondary discount');
+    if (!secondaryDiscountValidation.valid) return { error: secondaryDiscountValidation.error };
+    const cashDiscountValidation = validateNumeric(req.body.cashDiscountValue || 0, 'Cash discount');
+    if (!cashDiscountValidation.valid) return { error: cashDiscountValidation.error };
+    const cgstValidation = validateNumeric(req.body.cgstAmount || 0, 'CGST amount');
+    if (!cgstValidation.valid) return { error: cgstValidation.error };
+    const sgstValidation = validateNumeric(req.body.sgstAmount || 0, 'SGST amount');
+    if (!sgstValidation.valid) return { error: sgstValidation.error };
 
-        const totalDiscount =
-            traderDiscountValidation.value +
-            primaryDiscountValidation.value +
-            secondaryDiscountValidation.value +
-            cashDiscountValidation.value;
-        const taxableValue = Math.max(grossValidation.value - totalDiscount, 0);
-        const totalGstAmount = cgstValidation.value + sgstValidation.value;
-        const roundedTotal = Math.round(taxableValue + totalGstAmount);
-        const roundOff = roundedTotal - (taxableValue + totalGstAmount);
+    const totalDiscount =
+        traderDiscountValidation.value +
+        primaryDiscountValidation.value +
+        secondaryDiscountValidation.value +
+        cashDiscountValidation.value;
+    const taxableValue = Math.max(grossValidation.value - totalDiscount, 0);
+    const totalGstAmount = cgstValidation.value + sgstValidation.value;
+    const roundedTotal = Math.round(taxableValue + totalGstAmount);
+    const roundOff = roundedTotal - (taxableValue + totalGstAmount);
 
-        const purchase = await PurchaseModel.create({
+    return {
+        payload: {
             sellerName: sellerValidation.value,
             address: req.body.address ? String(req.body.address).trim() : '',
             city: req.body.city ? String(req.body.city).trim() : '',
@@ -791,11 +791,61 @@ export const createPurchase = async (req, res) => {
             totalGstAmount,
             roundOff,
             roundedTotal,
-        });
+        },
+    };
+}
+
+export const createPurchase = async (req, res) => {
+    try {
+        const { payload, error } = buildPurchasePayload(req);
+        if (error) return res.status(400).json({ error });
+
+        const purchase = await PurchaseModel.create(payload);
 
         res.status(201).json({ message: 'Purchase saved successfully', purchase });
     } catch (error) {
         console.error('Error saving purchase:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+};
+
+export const updatePurchase = async (req, res) => {
+    try {
+        const purchaseId = Number(req.params.purchaseId);
+        if (!Number.isInteger(purchaseId) || purchaseId <= 0) {
+            return res.status(400).json({ error: 'purchaseId must be a positive integer' });
+        }
+
+        const { payload, error } = buildPurchasePayload(req);
+        if (error) return res.status(400).json({ error });
+
+        const purchase = await PurchaseModel.update(purchaseId, payload);
+        if (!purchase) {
+            return res.status(404).json({ error: 'Purchase not found' });
+        }
+
+        res.status(200).json({ message: 'Purchase updated successfully', purchase });
+    } catch (error) {
+        console.error('Error updating purchase:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+};
+
+export const deletePurchase = async (req, res) => {
+    try {
+        const purchaseId = Number(req.params.purchaseId);
+        if (!Number.isInteger(purchaseId) || purchaseId <= 0) {
+            return res.status(400).json({ error: 'purchaseId must be a positive integer' });
+        }
+
+        const deleted = await PurchaseModel.delete(purchaseId);
+        if (!deleted) {
+            return res.status(404).json({ error: 'Purchase not found' });
+        }
+
+        res.status(200).json({ message: 'Purchase deleted successfully' });
+    } catch (error) {
+        console.error('Error deleting purchase:', error);
         res.status(500).json({ error: 'Internal server error' });
     }
 };

@@ -130,6 +130,7 @@ function Purchase() {
   const [sellerDirectory, setSellerDirectory] = useState([]);
   const [loadingSellers, setLoadingSellers] = useState(false);
   const [gstManuallyEdited, setGstManuallyEdited] = useState(false);
+  const [editingPurchaseId, setEditingPurchaseId] = useState(null);
   const API = "https://bawarchee.edunextg.co/api";
 
   const totals = useMemo(() => {
@@ -282,36 +283,43 @@ function Purchase() {
   const handleReset = () => {
     setForm(emptyForm());
     setGstManuallyEdited(false);
+    setEditingPurchaseId(null);
   };
 
+  const buildPurchasePayload = () => ({
+    sellerName: form.sellerName.trim(),
+    address: form.address.trim(),
+    city: form.city.trim(),
+    state: form.state.trim(),
+    gstin: form.gstin.trim().toUpperCase(),
+    panNo: form.panNo.trim().toUpperCase(),
+    pinCode: form.pinCode.trim(),
+    inCode: form.pinCode.trim(),
+    invoiceNumber: form.invoiceNumber.trim(),
+    ewayBillNo: form.ewayBillNo.trim(),
+    ewayBillDate: form.ewayBillDate || null,
+    invoiceDate: form.invoiceDate || null,
+    salesOrderNumber: form.salesOrderNumber.trim(),
+    fssaiNumber: form.fssaiNumber.trim(),
+    grossAmount: form.grossAmount || 0,
+    traderDiscountValue: form.traderDiscountValue || 0,
+    primaryDiscountValue: form.primaryDiscountValue || 0,
+    secondaryDiscountValue: form.secondaryDiscountValue || 0,
+    cashDiscountValue: form.cashDiscountValue || 0,
+    cgstAmount: form.cgstAmount || 0,
+    sgstAmount: form.sgstAmount || 0,
+  });
+
   const savePurchaseToDb = async () => {
-    const response = await fetch(`${API}/staff/purchases`, {
-      method: "POST",
+    const isEditing = Boolean(editingPurchaseId);
+    const response = await fetch(
+      isEditing ? `${API}/staff/purchases/${editingPurchaseId}` : `${API}/staff/purchases`,
+      {
+      method: isEditing ? "PUT" : "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        sellerName: form.sellerName.trim(),
-        address: form.address.trim(),
-        city: form.city.trim(),
-        state: form.state.trim(),
-        gstin: form.gstin.trim().toUpperCase(),
-        panNo: form.panNo.trim().toUpperCase(),
-        pinCode: form.pinCode.trim(),
-        inCode: form.pinCode.trim(),
-        invoiceNumber: form.invoiceNumber.trim(),
-        ewayBillNo: form.ewayBillNo.trim(),
-        ewayBillDate: form.ewayBillDate || null,
-        invoiceDate: form.invoiceDate || null,
-        salesOrderNumber: form.salesOrderNumber.trim(),
-        fssaiNumber: form.fssaiNumber.trim(),
-        grossAmount: form.grossAmount || 0,
-        traderDiscountValue: form.traderDiscountValue || 0,
-        primaryDiscountValue: form.primaryDiscountValue || 0,
-        secondaryDiscountValue: form.secondaryDiscountValue || 0,
-        cashDiscountValue: form.cashDiscountValue || 0,
-        cgstAmount: form.cgstAmount || 0,
-        sgstAmount: form.sgstAmount || 0,
-      }),
-    });
+      body: JSON.stringify(buildPurchasePayload()),
+      }
+    );
 
     if (!response.ok) {
       const err = await response.json().catch(() => ({}));
@@ -360,9 +368,64 @@ function Purchase() {
     }
 
     if (savedPurchase) {
-      setPurchases((prev) => [savedPurchase, ...prev]);
+      setPurchases((prev) =>
+        editingPurchaseId
+          ? prev.map((purchase) => (purchase.id === savedPurchase.id ? savedPurchase : purchase))
+          : [savedPurchase, ...prev]
+      );
     }
     handleReset();
+  };
+
+  const handleEditPurchase = (purchase) => {
+    setEditingPurchaseId(purchase.id);
+    setGstManuallyEdited(true);
+    setForm({
+      sellerName: purchase.sellerName || "",
+      address: purchase.address || "",
+      city: purchase.city || "",
+      state: purchase.state || "",
+      gstin: purchase.gstin || "",
+      panNo: purchase.panNo || "",
+      pinCode: purchase.pinCode || "",
+      invoiceNumber: purchase.invoiceNumber || "",
+      ewayBillNo: purchase.ewayBillNo || "",
+      ewayBillDate: purchase.ewayBillDate || "",
+      invoiceDate: purchase.invoiceDate || "",
+      salesOrderNumber: purchase.salesOrderNumber || "",
+      fssaiNumber: purchase.fssaiNumber || "",
+      grossAmount: normalizeAmountInput(purchase.grossAmount),
+      traderDiscountValue: normalizeAmountInput(purchase.traderDiscountValue),
+      primaryDiscountValue: normalizeAmountInput(purchase.primaryDiscountValue),
+      secondaryDiscountValue: normalizeAmountInput(purchase.secondaryDiscountValue),
+      cashDiscountValue: normalizeAmountInput(purchase.cashDiscountValue),
+      taxableValue: normalizeAmountInput(purchase.taxableValue),
+      cgstAmount: normalizeAmountInput(purchase.cgstAmount),
+      sgstAmount: normalizeAmountInput(purchase.sgstAmount),
+    });
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
+  const handleDeletePurchase = async (purchase) => {
+    if (!window.confirm(`Delete purchase invoice ${purchase.invoiceNumber}?`)) return;
+
+    try {
+      const response = await fetch(`${API}/staff/purchases/${purchase.id}`, {
+        method: "DELETE",
+      });
+      if (response.ok) {
+        setPurchases((prev) => prev.filter((item) => item.id !== purchase.id));
+        if (editingPurchaseId === purchase.id) {
+          handleReset();
+        }
+      } else {
+        const err = await response.json().catch(() => ({}));
+        alert(err.error || "Failed to delete purchase.");
+      }
+    } catch (error) {
+      console.error("Error deleting purchase:", error);
+      alert("Error deleting purchase.");
+    }
   };
 
   return (
@@ -682,8 +745,8 @@ function Purchase() {
                         Reset
                       </MDButton>
                       <MDButton color="info" variant="gradient" onClick={handleSave}>
-                        <Icon sx={{ mr: 1 }}>receipt_long</Icon>
-                        Save Purchase
+                        <Icon sx={{ mr: 1 }}>{editingPurchaseId ? "save" : "receipt_long"}</Icon>
+                        {editingPurchaseId ? "Update Purchase" : "Save Purchase"}
                       </MDButton>
                     </MDBox>
                   </Grid>
@@ -702,7 +765,7 @@ function Purchase() {
                 </MDBox>
                 <MDBox px={3} pb={3}>
                   <TableContainer component={Paper} sx={{ boxShadow: "none", border: "1px solid #e5e7eb" }}>
-                    <Table sx={{ minWidth: 1080 }}>
+                    <Table sx={{ minWidth: 1180 }}>
                       <TableHead sx={{ display: "table-header-group", backgroundColor: "#f9fafb" }}>
                         <TableRow>
                           <TableCell sx={tableHeadSx}>Sr No</TableCell>
@@ -720,6 +783,7 @@ function Purchase() {
                           <TableCell align="right" sx={tableHeadSx}>GST</TableCell>
                           <TableCell align="right" sx={tableHeadSx}>Round Off</TableCell>
                           <TableCell align="right" sx={tableHeadSx}>Total</TableCell>
+                          <TableCell align="center" sx={tableHeadSx}>Action</TableCell>
                         </TableRow>
                       </TableHead>
                       <TableBody>
@@ -741,6 +805,26 @@ function Purchase() {
                             <TableCell align="right" sx={tableBodySx}>{money(purchase.roundOff)}</TableCell>
                             <TableCell align="right" sx={{ ...tableBodySx, fontWeight: 700 }}>
                               {money(purchase.roundedTotal)}
+                            </TableCell>
+                            <TableCell align="center" sx={tableBodySx}>
+                              <MDBox display="flex" gap={0.75} justifyContent="center">
+                                <MDButton
+                                  color="info"
+                                  variant="text"
+                                  size="small"
+                                  onClick={() => handleEditPurchase(purchase)}
+                                >
+                                  <Icon>edit</Icon>
+                                </MDButton>
+                                <MDButton
+                                  color="error"
+                                  variant="text"
+                                  size="small"
+                                  onClick={() => handleDeletePurchase(purchase)}
+                                >
+                                  <Icon>delete</Icon>
+                                </MDButton>
+                              </MDBox>
                             </TableCell>
                           </TableRow>
                         ))}

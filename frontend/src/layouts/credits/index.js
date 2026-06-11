@@ -106,6 +106,14 @@ function CreditsPage() {
     return date.toLocaleDateString("en-GB");
   };
 
+  const escapeHtml = (value) =>
+    String(value ?? "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#039;");
+
   const getCreditRowSx = (credit) => {
     if ((Number(credit.remarks_count) || 0) > 0 || credit.remarks?.trim()) {
       return {
@@ -302,6 +310,89 @@ function CreditsPage() {
     0
   );
 
+  const showPrintButton = Boolean(selectedCompanyId || selectedStaffId);
+
+  const handlePrintPdf = () => {
+    const companyLabel = selectedCompanyName || "All Companies";
+    const staffLabel = selectedStaffName || "All Staff";
+    const generatedOn = new Date().toLocaleString("en-GB");
+    const rowsHtml = filteredCredits
+      .map(
+        (credit, index) => `
+          <tr>
+            <td>${index + 1}</td>
+            <td>${escapeHtml(credit.outlet_name || "N/A")}</td>
+            <td>${escapeHtml(credit.outlet_erp_id || "N/A")}</td>
+            <td class="right">Rs. ${Number(credit.balance_amount || 0).toFixed(2)}</td>
+            <td>${escapeHtml(formatDate(credit.sale_date))}</td>
+            <td>${escapeHtml(calcDueDate(credit.sale_date, credit.credit_days))}</td>
+          </tr>
+        `
+      )
+      .join("");
+
+    const printWindow = window.open("", "_blank", "width=1100,height=800");
+    if (!printWindow) {
+      alert("Please allow popups to print the report.");
+      return;
+    }
+
+    printWindow.document.write(`
+      <!doctype html>
+      <html>
+        <head>
+          <title>Pending Credits Report</title>
+          <style>
+            body { font-family: Arial, sans-serif; color: #111827; margin: 28px; }
+            h1 { font-size: 22px; margin: 0 0 12px; }
+            .meta { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 24px; margin-bottom: 18px; font-size: 13px; }
+            .meta strong { display: inline-block; min-width: 110px; }
+            table { width: 100%; border-collapse: collapse; font-size: 12px; }
+            th, td { border: 1px solid #d1d5db; padding: 8px; text-align: left; }
+            th { background: #f3f4f6; font-weight: 700; }
+            .right { text-align: right; }
+            .total { margin-top: 14px; text-align: right; font-size: 16px; font-weight: 700; }
+            .empty { padding: 24px; text-align: center; color: #6b7280; border: 1px solid #d1d5db; }
+            @media print {
+              body { margin: 16mm; }
+              button { display: none; }
+            }
+          </style>
+        </head>
+        <body>
+          <h1>Pending Credits Report</h1>
+          <div class="meta">
+            <div><strong>Company:</strong> ${escapeHtml(companyLabel)}</div>
+            <div><strong>Staff:</strong> ${escapeHtml(staffLabel)}</div>
+            <div><strong>Generated:</strong> ${escapeHtml(generatedOn)}</div>
+            <div><strong>Total Balance:</strong> Rs. ${totalCreditDuesAmount.toFixed(2)}</div>
+          </div>
+          ${
+            filteredCredits.length > 0
+              ? `<table>
+                  <thead>
+                    <tr>
+                      <th>Sr No</th>
+                      <th>Outlet Name</th>
+                      <th>ERP ID</th>
+                      <th class="right">Outstanding Balance</th>
+                      <th>Issue Date</th>
+                      <th>Due Date</th>
+                    </tr>
+                  </thead>
+                  <tbody>${rowsHtml}</tbody>
+                </table>`
+              : `<div class="empty">No outstanding credits found for this filter.</div>`
+          }
+          <div class="total">Total Balance: Rs. ${totalCreditDuesAmount.toFixed(2)}</div>
+        </body>
+      </html>
+    `);
+    printWindow.document.close();
+    printWindow.focus();
+    printWindow.print();
+  };
+
   return (
     <DashboardLayout>
       <MDBox pt={6} pb={3}>
@@ -372,6 +463,21 @@ function CreditsPage() {
                       </Select>
                     </FormControl>
                   </Grid>
+                  {showPrintButton && (
+                    <Grid item xs={12} md={6} lg={3}>
+                      <MDButton
+                        color="dark"
+                        variant="outlined"
+                        fullWidth
+                        onClick={handlePrintPdf}
+                        disabled={filteredCredits.length === 0}
+                        sx={{ height: 44 }}
+                      >
+                        <Icon sx={{ mr: 1 }}>print</Icon>
+                        Print PDF
+                      </MDButton>
+                    </Grid>
+                  )}
                  
                   <Grid item xs={12} md={6} lg={3}>
                     <MDBox display="flex" justifyContent={{ xs: "flex-start", md: "flex-end" }}>
@@ -408,6 +514,9 @@ function CreditsPage() {
                           Outlet Name
                         </TableCell>
                         <TableCell align="center" sx={{ fontWeight: "bold" }}>
+                          ERP ID
+                        </TableCell>
+                        <TableCell align="center" sx={{ fontWeight: "bold" }}>
                           Contact No
                         </TableCell>
                         <TableCell align="center" sx={{ fontWeight: "bold" }}>
@@ -441,6 +550,7 @@ function CreditsPage() {
                         <TableRow key={credit.id} sx={getCreditRowSx(credit)}>
                           <TableCell align="center">{index + 1}</TableCell>
                           <TableCell align="left">{credit.outlet_name}</TableCell>
+                          <TableCell align="center">{credit.outlet_erp_id || "N/A"}</TableCell>
                           <TableCell align="center">{credit.contact_number || "N/A"}</TableCell>
                           <TableCell align="center">{formatBpSaleId(credit)}</TableCell>
                           <TableCell align="center">{credit.invoice_number}</TableCell>

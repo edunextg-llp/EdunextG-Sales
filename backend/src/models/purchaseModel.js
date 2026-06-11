@@ -56,6 +56,68 @@ class PurchaseModel {
         return PurchaseModel.getById(result.insertId);
     }
 
+    static async update(id, data) {
+        const seller = await PurchaseSellerModel.upsert(data);
+
+        const [result] = await db.execute(
+            `UPDATE purchase_entries
+             SET seller_id = ?,
+                 invoice_number = ?,
+                 eway_bill_no = ?,
+                 eway_bill_date = ?,
+                 invoice_date = ?,
+                 sales_order_number = ?,
+                 fssai_number = ?,
+                 gross_amount = ?,
+                 trader_discount_value = ?,
+                 primary_discount_value = ?,
+                 secondary_discount_value = ?,
+                 cash_discount_value = ?,
+                 taxable_value = ?,
+                 cgst_amount = ?,
+                 sgst_amount = ?,
+                 total_gst_amount = ?,
+                 round_off = ?,
+                 rounded_total = ?
+             WHERE id = ?`,
+            [
+                seller.id,
+                data.invoiceNumber,
+                data.ewayBillNo || null,
+                data.ewayBillDate || null,
+                data.invoiceDate || null,
+                data.salesOrderNumber || null,
+                data.fssaiNumber || null,
+                data.grossAmount,
+                data.traderDiscountValue,
+                data.primaryDiscountValue,
+                data.secondaryDiscountValue,
+                data.cashDiscountValue,
+                data.taxableValue,
+                data.cgstAmount,
+                data.sgstAmount,
+                data.totalGstAmount,
+                data.roundOff,
+                data.roundedTotal,
+                id,
+            ]
+        );
+
+        if (result.affectedRows === 0) {
+            return null;
+        }
+
+        return PurchaseModel.getById(id);
+    }
+
+    static async delete(id) {
+        const [result] = await db.execute(
+            'DELETE FROM purchase_entries WHERE id = ?',
+            [id]
+        );
+        return result.affectedRows > 0;
+    }
+
     static async getById(id) {
         const [rows] = await db.execute(
             `SELECT pe.id, pe.seller_id, pe.invoice_number, pe.eway_bill_no,
@@ -102,7 +164,14 @@ class PurchaseModel {
         const [[summary], [todaySummary]] = await Promise.all([
             db.execute(
                 `SELECT COALESCE(SUM(pe.rounded_total), 0) AS total_purchase,
+                        COALESCE(SUM(pe.gross_amount), 0) AS total_gross_amount,
+                        COALESCE(SUM(pe.trader_discount_value), 0) AS total_trader_discount,
+                        COALESCE(SUM(pe.primary_discount_value), 0) AS total_primary_discount,
+                        COALESCE(SUM(pe.secondary_discount_value), 0) AS total_secondary_discount,
+                        COALESCE(SUM(pe.cash_discount_value), 0) AS total_cash_discount,
                         COALESCE(SUM(pe.taxable_value), 0) AS total_taxable_value,
+                        COALESCE(SUM(pe.cgst_amount), 0) AS total_cgst_amount,
+                        COALESCE(SUM(pe.sgst_amount), 0) AS total_sgst_amount,
                         COALESCE(SUM(pe.total_gst_amount), 0) AS total_gst_amount,
                         COUNT(*) AS total_invoices,
                         COUNT(DISTINCT pe.seller_id) AS seller_count,
@@ -121,7 +190,14 @@ class PurchaseModel {
 
         return {
             total_purchase: parseFloat(summary.total_purchase) || 0,
+            total_gross_amount: parseFloat(summary.total_gross_amount) || 0,
+            total_trader_discount: parseFloat(summary.total_trader_discount) || 0,
+            total_primary_discount: parseFloat(summary.total_primary_discount) || 0,
+            total_secondary_discount: parseFloat(summary.total_secondary_discount) || 0,
+            total_cash_discount: parseFloat(summary.total_cash_discount) || 0,
             total_taxable_value: parseFloat(summary.total_taxable_value) || 0,
+            total_cgst_amount: parseFloat(summary.total_cgst_amount) || 0,
+            total_sgst_amount: parseFloat(summary.total_sgst_amount) || 0,
             total_gst_amount: parseFloat(summary.total_gst_amount) || 0,
             total_invoices: Number(summary.total_invoices) || 0,
             seller_count: Number(summary.seller_count) || 0,
