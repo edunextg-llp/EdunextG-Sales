@@ -2,7 +2,8 @@ import db from '../config/db.js';
 
 class PurchaseSellerModel {
     static async upsert(data) {
-        const { sellerName, address, city, state, gstin, panNo, inCode } = data;
+        const { sellerName, address, city, state, gstin, panNo } = data;
+        const pinCode = data.pinCode ?? data.inCode;
 
         const [result] = await db.execute(
             `INSERT INTO purchase_sellers (seller_name, address, city, state, gstin, pan_no, in_code)
@@ -14,7 +15,7 @@ class PurchaseSellerModel {
                gstin = VALUES(gstin),
                pan_no = VALUES(pan_no),
                in_code = VALUES(in_code)`,
-            [sellerName, address || null, city || null, state || null, gstin || null, panNo || null, inCode || null]
+            [sellerName, address || null, city || null, state || null, gstin || null, panNo || null, pinCode || null]
         );
 
         const sellerId = result.insertId || (await PurchaseSellerModel.findByName(sellerName))?.id;

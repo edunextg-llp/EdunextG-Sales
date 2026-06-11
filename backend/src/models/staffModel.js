@@ -86,8 +86,8 @@ class StaffModel {
         );
     }
 
-    static async findDuplicateCounter(staffId, outletErpId, outletName, excludeCounterId = null) {
-        const params = [staffId, outletErpId, outletName];
+    static async findDuplicateCounter(staffId, outletErpId, excludeCounterId = null) {
+        const params = [staffId, outletErpId];
         let excludeClause = '';
 
         if (excludeCounterId) {
@@ -99,7 +99,7 @@ class StaffModel {
             `SELECT id, outlet_erp_id, outlet_name
              FROM staff_counters
              WHERE staff_id = ?
-               AND (LOWER(outlet_erp_id) = LOWER(?) OR LOWER(outlet_name) = LOWER(?))
+               AND LOWER(outlet_erp_id) = LOWER(?)
                ${excludeClause}
              LIMIT 1`,
             params

@@ -30,7 +30,7 @@ export function validateNumeric(value, fieldName, { required = true } = {}) {
     }
 
     const normalized = String(value).trim();
-    if (!/^\d+(\.\d+)?$/.test(normalized)) {
+    if (!/^(?:\d+(?:\.\d*)?|\.\d+)$/.test(normalized)) {
         return { valid: false, error: `${fieldName} must be a valid number` };
     }
 

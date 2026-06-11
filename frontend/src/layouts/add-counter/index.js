@@ -173,19 +173,14 @@ function AddCounter() {
     }
 
     const erpIds = outlets.map((outlet) => normalizeText(outlet.outletErpId)).filter(Boolean);
-    const outletNames = outlets.map((outlet) => normalizeText(outlet.outletName)).filter(Boolean);
     const missingGoogleLocation = outlets.some((outlet) => !String(outlet.googleLocation || "").trim());
     const savedErpIds = new Set(savedOutlets.map((outlet) => normalizeText(outlet.outlet_erp_id)));
-    const savedOutletNames = new Set(savedOutlets.map((outlet) => normalizeText(outlet.outlet_name)));
     const hasDuplicateErp =
       erpIds.some((erpId, index) => erpIds.indexOf(erpId) !== index) ||
       erpIds.some((erpId) => savedErpIds.has(erpId));
-    const hasDuplicateName =
-      outletNames.some((outletName, index) => outletNames.indexOf(outletName) !== index) ||
-      outletNames.some((outletName) => savedOutletNames.has(outletName));
 
-    if (hasDuplicateErp || hasDuplicateName) {
-      alert("Same ERP Id or Outlet Name already exists. Please use unique outlet details.");
+    if (hasDuplicateErp) {
+      alert("Same ERP Id already exists. Please use a unique ERP Id.");
       return;
     }
 
@@ -256,16 +251,14 @@ function AddCounter() {
 
   const handleSaveEdit = async (counterId) => {
     const editErpId = normalizeText(editFormData.outletErpId);
-    const editOutletName = normalizeText(editFormData.outletName);
     const hasDuplicateSavedOutlet = savedOutlets.some(
       (outlet) =>
         outlet.id !== counterId &&
-        (normalizeText(outlet.outlet_erp_id) === editErpId ||
-          normalizeText(outlet.outlet_name) === editOutletName)
+        normalizeText(outlet.outlet_erp_id) === editErpId
     );
 
     if (hasDuplicateSavedOutlet) {
-      alert("Same ERP Id or Outlet Name already exists. Please use unique outlet details.");
+      alert("Same ERP Id already exists. Please use a unique ERP Id.");
       return;
     }
 

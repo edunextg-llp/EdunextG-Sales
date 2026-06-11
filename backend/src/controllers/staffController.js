@@ -210,7 +210,6 @@ export const addCounter = async (req, res) => {
 
         if (Array.isArray(counters)) {
             const erpIds = new Set();
-            const outletNames = new Set();
 
             for (let i = 0; i < counters.length; i++) {
                 const counter = counters[i];
@@ -226,23 +225,21 @@ export const addCounter = async (req, res) => {
                 const outletName = String(counter.outletName || '').trim();
                 const googleLocation = String(counter.googleLocation || '').trim();
                 const normalizedErpId = outletErpId.toLowerCase();
-                const normalizedOutletName = outletName.toLowerCase();
 
                 if (!googleLocation) {
                     return res.status(400).json({ error: `Counter ${i + 1} Google Location is required.` });
                 }
 
-                if (erpIds.has(normalizedErpId) || outletNames.has(normalizedOutletName)) {
-                    return res.status(400).json({ error: 'Same ERP Id or Outlet Name already exists in this entry.' });
+                if (erpIds.has(normalizedErpId)) {
+                    return res.status(400).json({ error: 'Same ERP Id already exists in this entry.' });
                 }
 
-                const duplicateCounter = await StaffModel.findDuplicateCounter(id, outletErpId, outletName);
+                const duplicateCounter = await StaffModel.findDuplicateCounter(id, outletErpId);
                 if (duplicateCounter) {
-                    return res.status(400).json({ error: 'Same ERP Id or Outlet Name already exists.' });
+                    return res.status(400).json({ error: 'Same ERP Id already exists.' });
                 }
 
                 erpIds.add(normalizedErpId);
-                outletNames.add(normalizedOutletName);
 
                 await StaffModel.addCounter(id, day, location, {
                     ...counter,
@@ -717,7 +714,7 @@ export const savePurchaseSeller = async (req, res) => {
             state: req.body.state ? String(req.body.state).trim() : '',
             gstin: req.body.gstin ? String(req.body.gstin).trim().toUpperCase() : '',
             panNo: req.body.panNo ? String(req.body.panNo).trim().toUpperCase() : '',
-            inCode: req.body.inCode ? String(req.body.inCode).trim() : '',
+            pinCode: req.body.pinCode || req.body.inCode ? String(req.body.pinCode || req.body.inCode).trim() : '',
         });
 
         res.status(200).json({ message: 'Purchase seller saved successfully', seller });
@@ -776,7 +773,7 @@ export const createPurchase = async (req, res) => {
             state: req.body.state ? String(req.body.state).trim() : '',
             gstin: req.body.gstin ? String(req.body.gstin).trim().toUpperCase() : '',
             panNo: req.body.panNo ? String(req.body.panNo).trim().toUpperCase() : '',
-            inCode: req.body.inCode ? String(req.body.inCode).trim() : '',
+            pinCode: req.body.pinCode || req.body.inCode ? String(req.body.pinCode || req.body.inCode).trim() : '',
             invoiceNumber: invoiceValidation.value,
             ewayBillNo: req.body.ewayBillNo ? String(req.body.ewayBillNo).trim() : '',
             ewayBillDate: normalizeDateInput(req.body.ewayBillDate),
@@ -799,6 +796,26 @@ export const createPurchase = async (req, res) => {
         res.status(201).json({ message: 'Purchase saved successfully', purchase });
     } catch (error) {
         console.error('Error saving purchase:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+};
+
+export const getPurchaseReports = async (req, res) => {
+    try {
+        const { startDate, endDate } = req.query;
+        const datePattern = /^\d{4}-\d{2}-\d{2}$/;
+
+        if (startDate && !datePattern.test(startDate)) {
+            return res.status(400).json({ error: 'startDate must be YYYY-MM-DD' });
+        }
+        if (endDate && !datePattern.test(endDate)) {
+            return res.status(400).json({ error: 'endDate must be YYYY-MM-DD' });
+        }
+
+        const reports = await PurchaseModel.getReports(startDate || null, endDate || null);
+        res.status(200).json(reports);
+    } catch (error) {
+        console.error('Error fetching purchase reports:', error);
         res.status(500).json({ error: 'Internal server error' });
     }
 };
@@ -1104,12 +1121,11 @@ export const editCounter = async (req, res) => {
         const duplicateCounter = await StaffModel.findDuplicateCounter(
             existingCounter.staff_id,
             normalizedOutletErpId,
-            normalizedOutletName,
             counterId
         );
 
         if (duplicateCounter) {
-            return res.status(400).json({ error: 'Same ERP Id or Outlet Name already exists.' });
+            return res.status(400).json({ error: 'Same ERP Id already exists.' });
         }
 
         await StaffModel.editCounter(counterId, {

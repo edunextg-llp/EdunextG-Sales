@@ -33,13 +33,13 @@ const emptyForm = () => ({
   state: "",
   gstin: "",
   panNo: "",
-  inCode: "",
+  pinCode: "",
+  fssaiNumber: "",
   invoiceNumber: "",
   ewayBillNo: "",
   ewayBillDate: "",
   invoiceDate: "",
   salesOrderNumber: "",
-  fssaiNumber: "",
   grossAmount: "",
   traderDiscountValue: "",
   primaryDiscountValue: "",
@@ -100,6 +100,13 @@ const numberValue = (value) => {
   return Number.isNaN(parsed) ? 0 : parsed;
 };
 
+const formatAmountInput = (value) => Number(value || 0).toFixed(2);
+
+const normalizeAmountInput = (value) => {
+  const parsed = parseFloat(value);
+  return Number.isNaN(parsed) ? "" : parsed.toFixed(2);
+};
+
 const tableHeadSx = {
   color: "#6b7280",
   fontSize: "0.75rem",
@@ -122,6 +129,7 @@ function Purchase() {
   const [purchases, setPurchases] = useState([]);
   const [sellerDirectory, setSellerDirectory] = useState([]);
   const [loadingSellers, setLoadingSellers] = useState(false);
+  const [gstManuallyEdited, setGstManuallyEdited] = useState(false);
   const API = "https://bawarchee.edunextg.co/api";
 
   const totals = useMemo(() => {
@@ -155,6 +163,35 @@ function Purchase() {
     }));
   };
 
+  const handleGstChange = (field, value) => {
+    setGstManuallyEdited(true);
+    handleChange(field, value);
+  };
+
+  const handleAmountBlur = (field) => {
+    setForm((prev) => ({
+      ...prev,
+      [field]: normalizeAmountInput(prev[field]),
+    }));
+  };
+
+  useEffect(() => {
+    if (gstManuallyEdited) return;
+
+    const splitGstAmount = totals.taxableValue * 0.05;
+    setForm((prev) => {
+      const nextGstValue = splitGstAmount > 0 ? formatAmountInput(splitGstAmount) : "";
+      if (prev.cgstAmount === nextGstValue && prev.sgstAmount === nextGstValue) {
+        return prev;
+      }
+      return {
+        ...prev,
+        cgstAmount: nextGstValue,
+        sgstAmount: nextGstValue,
+      };
+    });
+  }, [gstManuallyEdited, totals.taxableValue]);
+
   const fetchSellers = async (search = "") => {
     setLoadingSellers(true);
     try {
@@ -172,7 +209,7 @@ function Purchase() {
             state: seller.state || "",
             gstin: seller.gstin || "",
             panNo: seller.pan_no || "",
-            inCode: seller.in_code || "",
+            pinCode: seller.pin_code || seller.in_code || "",
           }))
         );
       }
@@ -191,7 +228,7 @@ function Purchase() {
     state: purchase.state || "",
     gstin: purchase.gstin || "",
     panNo: purchase.pan_no || "",
-    inCode: purchase.in_code || "",
+    pinCode: purchase.pin_code || purchase.in_code || "",
     invoiceNumber: purchase.invoice_number || "",
     ewayBillNo: purchase.eway_bill_no || "",
     ewayBillDate: purchase.eway_bill_date || "",
@@ -238,12 +275,13 @@ function Purchase() {
       state: seller.state || "",
       gstin: seller.gstin || "",
       panNo: seller.panNo || "",
-      inCode: seller.inCode || "",
+      pinCode: seller.pinCode || "",
     }));
   };
 
   const handleReset = () => {
     setForm(emptyForm());
+    setGstManuallyEdited(false);
   };
 
   const savePurchaseToDb = async () => {
@@ -257,7 +295,8 @@ function Purchase() {
         state: form.state.trim(),
         gstin: form.gstin.trim().toUpperCase(),
         panNo: form.panNo.trim().toUpperCase(),
-        inCode: form.inCode.trim(),
+        pinCode: form.pinCode.trim(),
+        inCode: form.pinCode.trim(),
         invoiceNumber: form.invoiceNumber.trim(),
         ewayBillNo: form.ewayBillNo.trim(),
         ewayBillDate: form.ewayBillDate || null,
@@ -291,7 +330,7 @@ function Purchase() {
           state: purchase.state,
           gstin: purchase.gstin,
           panNo: purchase.panNo,
-          inCode: purchase.inCode,
+          pinCode: purchase.pinCode,
         };
         return [
           nextSeller,
@@ -442,10 +481,18 @@ function Purchase() {
                   </Grid>
                   <Grid item xs={12} md={2}>
                     <MDInput
-                      label="IN Code"
+                      label="Pin Code"
                       fullWidth
-                      value={form.inCode}
-                      onChange={(e) => handleChange("inCode", e.target.value)}
+                      value={form.pinCode}
+                      onChange={(e) => handleChange("pinCode", e.target.value)}
+                    />
+                  </Grid>
+                  <Grid item xs={12} md={3}>
+                    <MDInput
+                      label="FSSAI Number"
+                      fullWidth
+                      value={form.fssaiNumber}
+                      onChange={(e) => handleChange("fssaiNumber", e.target.value)}
                     />
                   </Grid>
 
@@ -498,15 +545,6 @@ function Purchase() {
                       onChange={(e) => handleChange("salesOrderNumber", e.target.value)}
                     />
                   </Grid>
-                  <Grid item xs={12} md={4}>
-                    <MDInput
-                      label="FSSAI Number"
-                      fullWidth
-                      value={form.fssaiNumber}
-                      onChange={(e) => handleChange("fssaiNumber", e.target.value)}
-                    />
-                  </Grid>
-
                   <Grid item xs={12} mt={1}>
                     <MDTypography variant="button" fontWeight="medium" color="dark">
                       Invoice Summary
@@ -519,6 +557,7 @@ function Purchase() {
                       fullWidth
                       value={form.grossAmount}
                       onChange={(e) => handleChange("grossAmount", e.target.value)}
+                      onBlur={() => handleAmountBlur("grossAmount")}
                       inputProps={{ min: 0, step: "0.01" }}
                     />
                   </Grid>
@@ -529,6 +568,7 @@ function Purchase() {
                       fullWidth
                       value={form.traderDiscountValue}
                       onChange={(e) => handleChange("traderDiscountValue", e.target.value)}
+                      onBlur={() => handleAmountBlur("traderDiscountValue")}
                       inputProps={{ min: 0, step: "0.01" }}
                     />
                   </Grid>
@@ -539,6 +579,7 @@ function Purchase() {
                       fullWidth
                       value={form.primaryDiscountValue}
                       onChange={(e) => handleChange("primaryDiscountValue", e.target.value)}
+                      onBlur={() => handleAmountBlur("primaryDiscountValue")}
                       inputProps={{ min: 0, step: "0.01" }}
                     />
                   </Grid>
@@ -549,6 +590,7 @@ function Purchase() {
                       fullWidth
                       value={form.secondaryDiscountValue}
                       onChange={(e) => handleChange("secondaryDiscountValue", e.target.value)}
+                      onBlur={() => handleAmountBlur("secondaryDiscountValue")}
                       inputProps={{ min: 0, step: "0.01" }}
                     />
                   </Grid>
@@ -559,6 +601,7 @@ function Purchase() {
                       fullWidth
                       value={form.cashDiscountValue}
                       onChange={(e) => handleChange("cashDiscountValue", e.target.value)}
+                      onBlur={() => handleAmountBlur("cashDiscountValue")}
                       inputProps={{ min: 0, step: "0.01" }}
                     />
                   </Grid>
@@ -574,20 +617,22 @@ function Purchase() {
                   <Grid item xs={12} md={3}>
                     <MDInput
                       type="number"
-                      label="CGST Amount"
+                      label="CGST Amount (5%)"
                       fullWidth
                       value={form.cgstAmount}
-                      onChange={(e) => handleChange("cgstAmount", e.target.value)}
+                      onChange={(e) => handleGstChange("cgstAmount", e.target.value)}
+                      onBlur={() => handleAmountBlur("cgstAmount")}
                       inputProps={{ min: 0, step: "0.01" }}
                     />
                   </Grid>
                   <Grid item xs={12} md={3}>
                     <MDInput
                       type="number"
-                      label="SGST Amount"
+                      label="SGST Amount (5%)"
                       fullWidth
                       value={form.sgstAmount}
-                      onChange={(e) => handleChange("sgstAmount", e.target.value)}
+                      onChange={(e) => handleGstChange("sgstAmount", e.target.value)}
+                      onBlur={() => handleAmountBlur("sgstAmount")}
                       inputProps={{ min: 0, step: "0.01" }}
                     />
                   </Grid>
