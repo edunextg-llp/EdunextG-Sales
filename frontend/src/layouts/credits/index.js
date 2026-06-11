@@ -268,6 +268,11 @@ function CreditsPage() {
   };
 
   const filteredCredits = credits.filter((credit) => {
+    const saleBalance = Number(credit.sale_balance_amount ?? credit.saleBalanceAmount);
+    if (!Number.isNaN(saleBalance) && saleBalance <= 0) {
+      return false;
+    }
+
     if (selectedCompanyId && !getCreditCompanyIds(credit).includes(Number(selectedCompanyId))) {
       return false;
     }

@@ -556,6 +556,7 @@ class StaffModel {
                     sp.amount AS credit_amount,
                     GREATEST(0, sp.amount - COALESCE(credit_paid.paid_amount, 0)) AS balance_amount,
                     sp.payment_date AS sale_date, sp.credit_days,
+                    ss.balance_amount AS sale_balance_amount,
                     COALESCE(cpr.latest_remarks, sp.remarks) AS remarks,
                     COALESCE(cpr.remarks_count, CASE WHEN sp.remarks IS NULL OR TRIM(sp.remarks) = '' THEN 0 ELSE 1 END) AS remarks_count,
                     DATE_FORMAT(cpr.latest_remark_date, '%Y-%m-%d') AS latest_remark_date,
@@ -597,6 +598,7 @@ class StaffModel {
                  GROUP BY r.payment_id
              ) cpr ON cpr.payment_id = sp.id
              WHERE sp.payment_mode = 'credit'
+               AND ss.balance_amount > 0
              HAVING balance_amount > 0
              ORDER BY sp.payment_date ASC`
         );
