@@ -36,6 +36,7 @@ import {
 // Material Dashboard 2 React components
 import MDBox from "components/MDBox";
 import MDTypography from "components/MDTypography";
+import MDButton from "components/MDButton";
 // Material Dashboard 2 React example components
 import DashboardLayout from "examples/LayoutContainers/DashboardLayout";
 import DashboardNavbar from "examples/Navbars/DashboardNavbar";
@@ -609,6 +610,15 @@ PaymentModePieChart.propTypes = {
   iconColor: PropTypes.string,
 };
 
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
 function PurchasePeriodTable({ title, rows, periodLabel }) {
   return (
     <Card sx={{ height: "100%" }}>
@@ -743,6 +753,92 @@ function Dashboard() {
     () => buildPaymentModePieData(reportData.todayCollection),
     [reportData.todayCollection]
   );
+
+  const todayCollectionDetails = reportData.todayCollectionDetails || [];
+
+  const handlePrintTodayCollection = () => {
+    const cashTotal = todayCollectionDetails.reduce((total, row) => total + (Number(row.cash_amount) || 0), 0);
+    const chequeTotal = todayCollectionDetails.reduce((total, row) => total + (Number(row.cheque_amount) || 0), 0);
+    const onlineTotal = todayCollectionDetails.reduce((total, row) => total + (Number(row.upi_amount) || 0), 0);
+    const grandTotal = cashTotal + chequeTotal + onlineTotal;
+    const todayLabel = new Date().toLocaleDateString("en-GB");
+    const rowsHtml = todayCollectionDetails
+      .map(
+        (row, index) => `
+          <tr>
+            <td>${index + 1}</td>
+            <td>${escapeHtml(row.staff_name || "N/A")}</td>
+            <td>${escapeHtml(row.outlet_name || "N/A")}</td>
+            <td class="right">Rs. ${Number(row.cash_amount || 0).toFixed(2)}</td>
+            <td class="right">Rs. ${Number(row.upi_amount || 0).toFixed(2)}</td>
+            <td class="right">Rs. ${Number(row.cheque_amount || 0).toFixed(2)}</td>
+            <td class="right">Rs. ${Number(row.total_amount || 0).toFixed(2)}</td>
+          </tr>
+        `
+      )
+      .join("");
+
+    const printWindow = window.open("", "_blank", "width=1100,height=800");
+    if (!printWindow) {
+      alert("Please allow popups to print the report.");
+      return;
+    }
+
+    printWindow.document.write(`
+      <!doctype html>
+      <html>
+        <head>
+          <title>Today Collection Report</title>
+          <style>
+            body { font-family: Arial, sans-serif; color: #111827; margin: 28px; }
+            h1 { font-size: 22px; margin: 0 0 6px; }
+            .sub { color: #4b5563; margin-bottom: 18px; font-size: 13px; }
+            table { width: 100%; border-collapse: collapse; font-size: 12px; }
+            th, td { border: 1px solid #d1d5db; padding: 8px; text-align: left; }
+            th { background: #f3f4f6; font-weight: 700; }
+            .right { text-align: right; }
+            .totals { margin-top: 16px; display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+            .box { border: 1px solid #d1d5db; padding: 10px; }
+            .label { color: #6b7280; font-size: 12px; }
+            .value { font-weight: 700; font-size: 16px; margin-top: 4px; }
+            .empty { padding: 24px; text-align: center; color: #6b7280; border: 1px solid #d1d5db; }
+            @media print { body { margin: 16mm; } }
+          </style>
+        </head>
+        <body>
+          <h1>Today Collection Report</h1>
+          <div class="sub">Date: ${escapeHtml(todayLabel)} | Staff and outlet wise cash, online, and cheque collection</div>
+          ${
+            todayCollectionDetails.length > 0
+              ? `<table>
+                  <thead>
+                    <tr>
+                      <th>Sr No</th>
+                      <th>Staff</th>
+                      <th>Outlet</th>
+                      <th class="right">Cash</th>
+                      <th class="right">Online</th>
+                      <th class="right">Cheque</th>
+                      <th class="right">Total</th>
+                    </tr>
+                  </thead>
+                  <tbody>${rowsHtml}</tbody>
+                </table>`
+              : `<div class="empty">No today collection found.</div>`
+          }
+          <div class="totals">
+            <div class="box"><div class="label">Total Cash</div><div class="value">Rs. ${cashTotal.toFixed(2)}</div></div>
+            <div class="box"><div class="label">Total Cheque</div><div class="value">Rs. ${chequeTotal.toFixed(2)}</div></div>
+            <div class="box"><div class="label">Total Online</div><div class="value">Rs. ${onlineTotal.toFixed(2)}</div></div>
+            <div class="box"><div class="label">Grand Total</div><div class="value">Rs. ${grandTotal.toFixed(2)}</div></div>
+          </div>
+        </body>
+      </html>
+    `);
+    printWindow.document.close();
+    printWindow.focus();
+    printWindow.print();
+  };
 
   const monthlySalesChart = useMemo(() => {
     const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -943,7 +1039,7 @@ function Dashboard() {
               </MDBox>
             </Card>
           </Grid>
-          <Grid item xs={12} md={4}>
+          {/* <Grid item xs={12} md={4}>
             <Card>
               <MDBox p={3}>
                 <MDTypography variant="h6" fontWeight="medium">
@@ -957,7 +1053,7 @@ function Dashboard() {
                 </MDTypography>
               </MDBox>
             </Card>
-          </Grid>
+          </Grid> */}
           </Grid>
           
         </MDBox>
@@ -1108,7 +1204,7 @@ function Dashboard() {
               </FormControl>
             </Grid>
           </Grid>
-          <Grid container spacing={3}>
+          {/* <Grid container spacing={3}>
             <Grid item xs={12} lg={6} display="flex">
               <MDBox mb={3} width="100%">
                 <PurchasePeriodTable
@@ -1128,7 +1224,7 @@ function Dashboard() {
                 />
               </MDBox>
             </Grid>
-          </Grid>
+          </Grid> */}
         </MDBox>
 
         <Grid container spacing={3}>
@@ -1307,6 +1403,18 @@ function Dashboard() {
                   icon="today"
                   iconColor="success"
                 />
+                <MDBox mt={1}>
+                  <MDButton
+                    color="dark"
+                    variant="outlined"
+                    fullWidth
+                    onClick={handlePrintTodayCollection}
+                    disabled={todayCollectionDetails.length === 0}
+                  >
+                    <Icon sx={{ mr: 1 }}>print</Icon>
+                    Print Today Collection
+                  </MDButton>
+                </MDBox>
               </MDBox>
             </Grid>
           </Grid>

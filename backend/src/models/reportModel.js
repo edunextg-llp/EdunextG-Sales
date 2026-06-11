@@ -132,6 +132,29 @@ class ReportModel {
         return toNumberRows(rows);
     }
 
+    static async getTodayCollectionDetails() {
+        const [rows] = await db.execute(
+            `SELECT s.id AS staff_id,
+                    s.name AS staff_name,
+                    sc.id AS outlet_id,
+                    sc.outlet_name,
+                    sc.outlet_erp_id,
+                    COALESCE(SUM(CASE WHEN sp.payment_mode = 'cash' THEN sp.amount ELSE 0 END), 0) AS cash_amount,
+                    COALESCE(SUM(CASE WHEN sp.payment_mode = 'upi' THEN sp.amount ELSE 0 END), 0) AS upi_amount,
+                    COALESCE(SUM(CASE WHEN sp.payment_mode = 'cheque' THEN sp.amount ELSE 0 END), 0) AS cheque_amount,
+                    COALESCE(SUM(sp.amount), 0) AS total_amount
+             FROM sale_payments sp
+             JOIN staff_sales ss ON ss.id = sp.sale_id
+             LEFT JOIN staff s ON s.id = ss.staff_id
+             LEFT JOIN staff_counters sc ON sc.id = ss.outlet_id
+             WHERE sp.payment_date = CURDATE()
+               AND sp.payment_mode IN ('cash', 'upi', 'cheque')
+             GROUP BY s.id, s.name, sc.id, sc.outlet_name, sc.outlet_erp_id
+             ORDER BY s.name ASC, sc.outlet_name ASC`
+        );
+        return toNumberRows(rows);
+    }
+
     static async getMonthlyCollection(startDate, endDate) {
         const dateWhere = ReportModel.buildDateWhere('payment_date', startDate, endDate);
         const [rows] = await db.execute(
@@ -396,6 +419,7 @@ class ReportModel {
             summary,
             collectionByMode,
             todayCollection,
+            todayCollectionDetails,
             monthlyCollection,
             yearlyCollection,
             salesByPeriod,
@@ -410,6 +434,7 @@ class ReportModel {
             ReportModel.getSummary(startDate, endDate, companyId, staffId),
             ReportModel.getCollectionByMode(startDate, endDate),
             ReportModel.getTodayCollection(),
+            ReportModel.getTodayCollectionDetails(),
             ReportModel.getMonthlyCollection(startDate, endDate),
             ReportModel.getYearlyCollection(startDate, endDate),
             ReportModel.getSalesByPeriod(startDate, endDate, companyId, staffId),
@@ -426,6 +451,7 @@ class ReportModel {
             summary,
             collectionByMode,
             todayCollection,
+            todayCollectionDetails,
             monthlyCollection,
             yearlyCollection,
             salesByPeriod,
