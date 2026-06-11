@@ -10,6 +10,10 @@ import {
   TableRow,
   Paper,
   Chip,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
 } from "@mui/material";
 
 import MDBox from "components/MDBox";
@@ -27,6 +31,7 @@ function Delivered() {
   const [salesData, setSalesData] = useState([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [updatingSaleIds, setUpdatingSaleIds] = useState(new Set());
+  const [cancelReportOpen, setCancelReportOpen] = useState(false);
   const API = "https://bawarchee.edunextg.co/api";
 
   const getTodayLocalDate = () => {
@@ -87,6 +92,11 @@ function Delivered() {
   const deliveredTotal = filteredSales.filter((row) => row.packaging_status === "delivered").length;
   const cancelledTotal = filteredSales.filter((row) => row.packaging_status === "cancelled").length;
   const returnedTotal = filteredSales.filter((row) => row.packaging_status === "returned").length;
+  const cancelledSales = filteredSales.filter((row) => row.packaging_status === "cancelled");
+  const cancelledAmount = cancelledSales.reduce(
+    (total, row) => total + (Number(row.price) || 0),
+    0
+  );
 
   const handleUpdateStatus = async (saleId, newStatus, currentDeliveryBoy, currentVehicle, currentDeliveryDate) => {
     if (updatingSaleIds.has(saleId)) return;
@@ -181,7 +191,8 @@ function Delivered() {
                         px={2}
                         py={1.25}
                         borderRadius="lg"
-                        sx={{ backgroundColor: "#fef2f2", border: "1px solid #fecaca" }}
+                        onClick={() => setCancelReportOpen(true)}
+                        sx={{ backgroundColor: "#fef2f2", border: "1px solid #fecaca", cursor: "pointer" }}
                       >
                         <MDTypography variant="caption" color="text">
                           Total Cancel
@@ -362,6 +373,57 @@ function Delivered() {
           </Grid>
         </Grid>
       </MDBox>
+      <Dialog open={cancelReportOpen} onClose={() => setCancelReportOpen(false)} fullWidth maxWidth="md">
+        <DialogTitle>Cancelled Invoice Report</DialogTitle>
+        <DialogContent dividers>
+          <MDBox display="flex" justifyContent="space-between" alignItems="center" mb={2} flexWrap="wrap" gap={1}>
+            <MDTypography variant="body2" color="text">
+              Cancelled invoices in the current list.
+            </MDTypography>
+            <MDTypography variant="h6" color="error" fontWeight="bold">
+              Total Cancel Amount: ₹{cancelledAmount.toFixed(2)}
+            </MDTypography>
+          </MDBox>
+          <TableContainer component={Paper} sx={{ boxShadow: "none", border: "1px solid #fecaca" }}>
+            <Table size="small">
+              <TableHead sx={{ display: "table-header-group", backgroundColor: "#fef2f2" }}>
+                <TableRow>
+                  <TableCell sx={{ fontWeight: 700 }}>Sr No</TableCell>
+                  <TableCell sx={{ fontWeight: 700 }}>Outlet Name</TableCell>
+                  <TableCell align="center" sx={{ fontWeight: 700 }}>Invoice No</TableCell>
+                  <TableCell align="right" sx={{ fontWeight: 700 }}>Cancel Amount</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {cancelledSales.map((row, index) => (
+                  <TableRow key={`cancelled-${row.id}`}>
+                    <TableCell>{index + 1}</TableCell>
+                    <TableCell>{row.outlet_name || "N/A"}</TableCell>
+                    <TableCell align="center">{row.invoice_number || "N/A"}</TableCell>
+                    <TableCell align="right" sx={{ fontWeight: 700 }}>
+                      ₹{Number(row.price || 0).toFixed(2)}
+                    </TableCell>
+                  </TableRow>
+                ))}
+                {cancelledSales.length === 0 && (
+                  <TableRow>
+                    <TableCell colSpan={4} align="center" sx={{ py: 3 }}>
+                      <MDTypography variant="body2" color="text">
+                        No cancelled invoices found.
+                      </MDTypography>
+                    </TableCell>
+                  </TableRow>
+                )}
+              </TableBody>
+            </Table>
+          </TableContainer>
+        </DialogContent>
+        <DialogActions>
+          <MDButton color="dark" variant="outlined" onClick={() => setCancelReportOpen(false)}>
+            Close
+          </MDButton>
+        </DialogActions>
+      </Dialog>
       <Footer />
     </DashboardLayout>
   );
