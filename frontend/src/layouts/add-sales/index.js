@@ -149,44 +149,24 @@ function AddSales() {
     staffName: s.staff_name || selectedStaff?.name || "",
   });
 
-  const mapSaleFromSaveResponse = (s) => ({
-    id: s.id != null ? Number(s.id) : s.saleId != null ? Number(s.saleId) : null,
-    outletId: s.outletId ?? s.outlet_id,
-    shopName: s.shopName || s.outlet_name || "Unknown Shop",
-    outletErpId: s.outletErpId || s.outlet_erp_id || "",
-    itemCount: s.itemCount ?? s.item_count ?? "",
-    invoiceNumber: s.invoiceNumber || s.invoice_number || "",
-    stickerNumber: s.stickerNumber || s.sticker_number || "",
-    paymentMode: s.paymentMode || s.payment_mode || "",
-    amount: s.amount ?? s.price ?? 0,
-    deliveryBoyName: s.deliveryBoyName || s.delivery_boy_name || "",
-    vehicleNo: s.vehicleNo || s.vehicle_no || "",
-    staffName: s.staffName || selectedStaff?.name || "",
-  });
-
-  const mergeSubmittedSales = (existingSales, incomingSales) => {
-    const merged = new Map();
-    [...existingSales, ...incomingSales].forEach((sale) => {
-      const key = sale.id
-        ? `id:${sale.id}`
-        : `invoice:${sale.outletId || ""}:${normalizeInvoice(sale.invoiceNumber)}`;
-      merged.set(key, sale);
-    });
-    return Array.from(merged.values());
-  };
-
-  const addSubmittedSalesFromSave = (summary) => {
-    const savedSales = (summary?.sales || []).map(mapSaleFromSaveResponse);
-    if (!savedSales.length || !selectedStaff || !selectedDate) return;
-
-    setSubmittedSummary((prev) => {
-      const existingSales = prev?.date === selectedDate ? prev.sales || [] : [];
-      return buildSubmittedSummary(
-        selectedStaff,
-        selectedDate,
-        mergeSubmittedSales(existingSales, savedSales)
+  const refreshSubmittedSales = async () => {
+    if (!selectedStaff || !selectedDate) return;
+    try {
+      const salesRes = await fetch(
+        `${API}/staff/${selectedStaff.id}/sales-by-date?date=${selectedDate}`
       );
-    });
+      if (!salesRes.ok) return;
+      const salesDataList = await salesRes.json();
+      if (salesDataList.length > 0) {
+        setSubmittedSummary(
+          buildSubmittedSummary(selectedStaff, selectedDate, salesDataList.map(mapSaleFromApi))
+        );
+      } else {
+        setSubmittedSummary(null);
+      }
+    } catch (error) {
+      console.error("Error refreshing submitted sales:", error);
+    }
   };
 
   const displayOutlets = useMemo(() => {
@@ -536,8 +516,7 @@ function AddSales() {
       });
 
       if (response.ok) {
-        const data = await response.json().catch(() => ({}));
-        addSubmittedSalesFromSave(data.summary);
+        await refreshSubmittedSales();
 
         // Remove the submitted outlet
         setOutlets((prev) => prev.filter((o) => outletKey(o.id) !== key));
@@ -623,8 +602,7 @@ function AddSales() {
       });
 
       if (response.ok) {
-        const data = await response.json().catch(() => ({}));
-        addSubmittedSalesFromSave(data.summary);
+        await refreshSubmittedSales();
 
         // Remove the submitted outlets
         setOutlets((prev) => prev.filter((o) => !submittedOutletIds.has(o.id)));

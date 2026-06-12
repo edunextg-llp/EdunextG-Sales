@@ -11,7 +11,12 @@ async function tryQuery(connection, sql, label) {
             console.log(label);
         }
     } catch (err) {
-        if (err.code === 'ER_DUP_FIELDNAME' || err.code === 'ER_CANT_CREATE_TABLE') {
+        if (
+            err.code === 'ER_DUP_FIELDNAME' ||
+            err.code === 'ER_CANT_CREATE_TABLE' ||
+            err.code === 'ER_DUP_KEYNAME' ||
+            err.code === 'ER_CANT_DROP_FIELD_OR_KEY'
+        ) {
             return;
         }
         console.warn(`Schema step skipped (${label || 'query'}):`, err.message);
@@ -190,6 +195,24 @@ export async function ensureSchema() {
             connection,
             `ALTER TABLE staff_sales ADD COLUMN vehicle_no VARCHAR(50) NULL`,
             'vehicle_no on staff_sales'
+        );
+
+        await tryQuery(
+            connection,
+            `ALTER TABLE staff_sales ADD COLUMN invoice_number VARCHAR(100) NOT NULL DEFAULT ''`,
+            'invoice_number on staff_sales'
+        );
+
+        // Allow multiple invoices per outlet per day (was: one row per staff/outlet/date).
+        await tryQuery(
+            connection,
+            'ALTER TABLE staff_sales DROP INDEX unique_sale',
+            'drop old unique_sale on staff_sales'
+        );
+        await tryQuery(
+            connection,
+            'ALTER TABLE staff_sales ADD UNIQUE KEY unique_sale (staff_id, outlet_id, sale_date, invoice_number)',
+            'unique_sale with invoice_number on staff_sales'
         );
 
         await tryQuery(

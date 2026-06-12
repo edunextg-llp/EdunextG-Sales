@@ -461,6 +461,12 @@ export const recordSales = async (req, res) => {
         });
     } catch (error) {
         console.error('Error recording sales:', error);
+        if (error.code === 'ER_DUP_ENTRY') {
+            return res.status(400).json({
+                error:
+                    'Could not save multiple invoices for the same outlet. Restart the backend server so the database migration can run, or run: npm run update-schema',
+            });
+        }
         res.status(500).json({ error: 'Internal server error' });
     }
 };

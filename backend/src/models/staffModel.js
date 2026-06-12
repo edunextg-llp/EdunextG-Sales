@@ -230,44 +230,59 @@ class StaffModel {
 
             for (const item of salesData) {
                 const [existing] = await connection.execute(
-                    `SELECT sticker_number FROM staff_sales
+                    `SELECT id, sticker_number FROM staff_sales
                      WHERE staff_id = ? AND outlet_id = ? AND sale_date = ? AND invoice_number = ?`,
                     [staffId, item.outletId, date, item.invoiceNumber]
                 );
 
-                let stickerNumber = existing[0]?.sticker_number;
-                if (!stickerNumber) {
-                    stickerNumber = await StaffModel.getNextStickerNumber(connection);
-                }
+                let saleId = existing[0]?.id ?? null;
+                let stickerNumber = existing[0]?.sticker_number ?? null;
 
-                await connection.execute(
-                    `INSERT INTO staff_sales
-                     (staff_id, outlet_id, sale_date, item_count, packed_item_count, invoice_number, price, sticker_number, payment_mode, delivery_boy_id, vehicle_no, paid_amount, balance_amount)
-                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?)
-                     ON DUPLICATE KEY UPDATE
-                       item_count = VALUES(item_count),
-                       packed_item_count = VALUES(packed_item_count),
-                       invoice_number = VALUES(invoice_number),
-                       price = VALUES(price),
-                       payment_mode = VALUES(payment_mode),
-                       delivery_boy_id = VALUES(delivery_boy_id),
-                       vehicle_no = VALUES(vehicle_no),
-                       balance_amount = IF(staff_sales.paid_amount = 0, VALUES(price), staff_sales.balance_amount)`,
-                    [
-                        staffId,
-                        item.outletId,
-                        date,
-                        item.itemCount,
-                        item.itemCount,
-                        item.invoiceNumber,
-                        item.price,
-                        stickerNumber,
-                        item.paymentMode,
-                        item.deliveryBoyId,
-                        item.vehicleNo,
-                        item.price,
-                    ]
-                );
+                if (saleId) {
+                    await connection.execute(
+                        `UPDATE staff_sales
+                         SET item_count = ?,
+                             packed_item_count = ?,
+                             price = ?,
+                             payment_mode = ?,
+                             delivery_boy_id = ?,
+                             vehicle_no = ?,
+                             balance_amount = IF(paid_amount = 0, ?, balance_amount)
+                         WHERE id = ?`,
+                        [
+                            item.itemCount,
+                            item.itemCount,
+                            item.price,
+                            item.paymentMode,
+                            item.deliveryBoyId,
+                            item.vehicleNo,
+                            item.price,
+                            saleId,
+                        ]
+                    );
+                } else {
+                    stickerNumber = await StaffModel.getNextStickerNumber(connection);
+                    const [insertResult] = await connection.execute(
+                        `INSERT INTO staff_sales
+                         (staff_id, outlet_id, sale_date, item_count, packed_item_count, invoice_number, price, sticker_number, payment_mode, delivery_boy_id, vehicle_no, paid_amount, balance_amount)
+                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?)`,
+                        [
+                            staffId,
+                            item.outletId,
+                            date,
+                            item.itemCount,
+                            item.itemCount,
+                            item.invoiceNumber,
+                            item.price,
+                            stickerNumber,
+                            item.paymentMode,
+                            item.deliveryBoyId,
+                            item.vehicleNo,
+                            item.price,
+                        ]
+                    );
+                    saleId = insertResult.insertId;
+                }
 
                 const [outletRows] = await connection.execute(
                     'SELECT outlet_name, outlet_erp_id FROM staff_counters WHERE id = ?',
@@ -278,13 +293,6 @@ class StaffModel {
                     'SELECT name FROM delivery_boys WHERE id = ?',
                     [item.deliveryBoyId]
                 );
-
-                const [saleRows] = await connection.execute(
-                    `SELECT id FROM staff_sales
-                     WHERE staff_id = ? AND outlet_id = ? AND sale_date = ? AND invoice_number = ?`,
-                    [staffId, item.outletId, date, item.invoiceNumber]
-                );
-                const saleId = saleRows[0]?.id;
 
                 if (saleId) {
                     await connection.execute(
@@ -299,6 +307,7 @@ class StaffModel {
 
                 stickers.push({
                     saleId,
+                    outletId: item.outletId,
                     stickerNumber,
                     shopName: outletRows[0]?.outlet_name || 'Unknown Shop',
                     outletErpId: outletRows[0]?.outlet_erp_id || '',
