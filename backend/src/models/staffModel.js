@@ -331,7 +331,7 @@ class StaffModel {
                     DATE_FORMAT(ssh.packing_date, '%Y-%m-%d') AS packing_date,
                     ss.paid_amount, ss.balance_amount, ss.payment_mode,
                     COALESCE(sp.payment_count, 0) AS payment_count,
-                    sc.outlet_name, sc.outlet_erp_id, s.name as staff_name, DATE_FORMAT(ss.sale_date, '%d-%m-%Y') as formatted_date,
+                    sc.outlet_name, sc.outlet_erp_id, sc.google_location, s.name as staff_name, DATE_FORMAT(ss.sale_date, '%d-%m-%Y') as formatted_date,
                     db.name as delivery_boy_name
              FROM staff_sales ss
              LEFT JOIN staff_counters sc ON ss.outlet_id = sc.id

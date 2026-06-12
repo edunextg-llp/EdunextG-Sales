@@ -27,6 +27,15 @@ import Footer from "examples/Footer";
 import { useSalesPolling } from "utils/salesSync";
 import { formatBpSaleId } from "utils/saleId";
 
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
 function Delivered() {
   const [salesData, setSalesData] = useState([]);
   const [searchQuery, setSearchQuery] = useState("");
@@ -97,6 +106,81 @@ function Delivered() {
     (total, row) => total + (Number(row.price) || 0),
     0
   );
+
+  const handleDownloadCancelReport = () => {
+    const rowsHtml = cancelledSales
+      .map(
+        (row, index) => `
+          <tr>
+            <td>${index + 1}</td>
+            <td>${escapeHtml(row.staff_name || "N/A")}</td>
+            <td>${escapeHtml(row.delivery_boy_name || "N/A")}</td>
+            <td>${escapeHtml(formatDate(row.delivery_date || row.status_updated_at || row.sale_date))}</td>
+            <td>${escapeHtml(row.outlet_erp_id || "N/A")}</td>
+            <td>${escapeHtml(row.outlet_name || "N/A")}</td>
+            <td>${escapeHtml(row.google_location || "N/A")}</td>
+            <td>${escapeHtml(row.invoice_number || "N/A")}</td>
+            <td class="right">Rs. ${Number(row.price || 0).toFixed(2)}</td>
+          </tr>
+        `
+      )
+      .join("");
+
+    const printWindow = window.open("", "_blank", "width=1200,height=800");
+    if (!printWindow) {
+      alert("Please allow popups to download the report.");
+      return;
+    }
+
+    printWindow.document.write(`
+      <!doctype html>
+      <html>
+        <head>
+          <title>Cancelled Invoice Report</title>
+          <style>
+            body { font-family: Arial, sans-serif; color: #111827; margin: 28px; }
+            h1 { font-size: 22px; margin: 0 0 6px; }
+            .sub { color: #4b5563; margin-bottom: 14px; font-size: 13px; }
+            .total { display: inline-block; border: 1px solid #fecaca; background: #fef2f2; color: #991b1b; padding: 10px 12px; border-radius: 6px; font-weight: 700; margin-bottom: 16px; }
+            table { width: 100%; border-collapse: collapse; font-size: 11px; }
+            th, td { border: 1px solid #d1d5db; padding: 7px; text-align: left; vertical-align: top; }
+            th { background: #fef2f2; font-weight: 700; color: #7f1d1d; }
+            .right { text-align: right; white-space: nowrap; }
+            .empty { padding: 24px; text-align: center; color: #6b7280; border: 1px solid #d1d5db; }
+            @media print { body { margin: 12mm; } }
+          </style>
+        </head>
+        <body>
+          <h1>Cancelled Invoice Report</h1>
+          <div class="sub">Cancelled invoices in the current list.</div>
+          <div class="total">Total Cancel Amount: Rs. ${cancelledAmount.toFixed(2)}</div>
+          ${
+            cancelledSales.length > 0
+              ? `<table>
+                  <thead>
+                    <tr>
+                      <th>Sr No</th>
+                      <th>Staff Name</th>
+                      <th>Delivery Boy</th>
+                      <th>Cancel Date</th>
+                      <th>ERP ID</th>
+                      <th>Outlet Name</th>
+                      <th>Outlet Location</th>
+                      <th>Invoice No</th>
+                      <th class="right">Cancel Amount</th>
+                    </tr>
+                  </thead>
+                  <tbody>${rowsHtml}</tbody>
+                </table>`
+              : `<div class="empty">No cancelled invoices found.</div>`
+          }
+        </body>
+      </html>
+    `);
+    printWindow.document.close();
+    printWindow.focus();
+    printWindow.print();
+  };
 
   const handleUpdateStatus = async (saleId, newStatus, currentDeliveryBoy, currentVehicle, currentDeliveryDate) => {
     if (updatingSaleIds.has(saleId)) return;
