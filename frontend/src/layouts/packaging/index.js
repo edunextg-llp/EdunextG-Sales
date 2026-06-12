@@ -43,7 +43,7 @@ function Packaging() {
   const [statusFilter, setStatusFilter] = useState("all");
   const [historyDialog, setHistoryDialog] = useState({ open: false, sale: null, history: [] });
   const [savingSaleIds, setSavingSaleIds] = useState(new Set());
-  const API = "https://bawarchee.edunextg.co/api";
+  const API = "https://bawarchee.eunextg.co/api";
 
   const statusLabels = {
     not_packing: "Not Packing",

@@ -15,6 +15,7 @@ import Typography from "@mui/material/Typography";
 import Grid from "@mui/material/Grid";
 import Card from "@mui/material/Card";
 import Icon from "@mui/material/Icon";
+import TextField from "@mui/material/TextField";
 import {
   Dialog,
   DialogTitle,
@@ -45,7 +46,7 @@ import ReportsBarChart from "examples/Charts/BarCharts/ReportsBarChart";
 import ReportsLineChart from "examples/Charts/LineCharts/ReportsLineChart";
 import ComplexStatisticsCard from "examples/Cards/StatisticsCards/ComplexStatisticsCard";
 
-const API = "https://bawarchee.edunextg.co/api";
+const API = "https://bawarchee.eunextg.co/api";
 
 const emptyReportData = {
   summary: { total_sales: 0, total_collection: 0, total_outstanding: 0 },
@@ -154,6 +155,14 @@ function formatDate(value) {
   const parts = dateOnly.split("-");
   if (parts.length === 3) return `${parts[2]}-${parts[1]}-${parts[0]}`;
   return value;
+}
+
+function getTodayLocalDate() {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, "0");
+  const day = String(now.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
 }
 
 function sumRows(rows, field = "total_amount") {
@@ -675,6 +684,7 @@ function Dashboard() {
   const [reportData, setReportData] = useState(emptyReportData);
   const [purchaseReportData, setPurchaseReportData] = useState(emptyPurchaseReportData);
   const [chequeDialogOpen, setChequeDialogOpen] = useState(false);
+  const [collectionPrintDate, setCollectionPrintDate] = useState(getTodayLocalDate());
 
   const monthOptions = useMemo(
     () => getMonthOptions(selectedFinancialYear),
@@ -754,83 +764,123 @@ function Dashboard() {
     [reportData.todayCollection]
   );
 
-  const todayCollectionDetails = reportData.todayCollectionDetails || [];
-
-  const handlePrintTodayCollection = () => {
-    const cashTotal = todayCollectionDetails.reduce((total, row) => total + (Number(row.cash_amount) || 0), 0);
-    const chequeTotal = todayCollectionDetails.reduce((total, row) => total + (Number(row.cheque_amount) || 0), 0);
-    const onlineTotal = todayCollectionDetails.reduce((total, row) => total + (Number(row.upi_amount) || 0), 0);
+  const writeCollectionPrintReport = (printWindow, details, periodLabel) => {
+    const cashTotal = details.reduce((total, row) => total + (Number(row.cash_amount) || 0), 0);
+    const chequeTotal = details.reduce((total, row) => total + (Number(row.cheque_amount) || 0), 0);
+    const onlineTotal = details.reduce((total, row) => total + (Number(row.upi_amount) || 0), 0);
     const grandTotal = cashTotal + chequeTotal + onlineTotal;
-    const todayLabel = new Date().toLocaleDateString("en-GB");
-    const rowsHtml = todayCollectionDetails
+    const amountBoxClass = (value) => `box ${Number(value || 0) > 0 ? "box-active" : ""}`;
+    const staffGroups = details.reduce((groups, row) => {
+      const staffKey = row.staff_id || row.staff_name || "unknown";
+      if (!groups.has(staffKey)) {
+        groups.set(staffKey, {
+          staffName: row.staff_name || "N/A",
+          rows: [],
+          cash: 0,
+          online: 0,
+          cheque: 0,
+          total: 0,
+        });
+      }
+
+      const group = groups.get(staffKey);
+      group.rows.push(row);
+      group.cash += Number(row.cash_amount) || 0;
+      group.online += Number(row.upi_amount) || 0;
+      group.cheque += Number(row.cheque_amount) || 0;
+      group.total += Number(row.total_amount) || 0;
+      return groups;
+    }, new Map());
+
+    const staffBoxesHtml = [...staffGroups.values()]
       .map(
-        (row, index) => `
-          <tr>
-            <td>${index + 1}</td>
-            <td>${escapeHtml(row.staff_name || "N/A")}</td>
-            <td>${escapeHtml(row.outlet_name || "N/A")}</td>
-            <td class="right">Rs. ${Number(row.cash_amount || 0).toFixed(2)}</td>
-            <td class="right">Rs. ${Number(row.upi_amount || 0).toFixed(2)}</td>
-            <td class="right">Rs. ${Number(row.cheque_amount || 0).toFixed(2)}</td>
-            <td class="right">Rs. ${Number(row.total_amount || 0).toFixed(2)}</td>
-          </tr>
+        (staffGroup) => `
+          <section class="staff-card">
+            <div class="staff-header">
+              <h2>${escapeHtml(staffGroup.staffName)}</h2>
+              <span>${staffGroup.rows.length} outlet${staffGroup.rows.length === 1 ? "" : "s"}</span>
+            </div>
+            <div class="totals staff-totals">
+              <div class="${amountBoxClass(staffGroup.cash)}"><div class="label">Cash</div><div class="value">Rs. ${staffGroup.cash.toFixed(2)}</div></div>
+              <div class="${amountBoxClass(staffGroup.online)}"><div class="label">Online</div><div class="value">Rs. ${staffGroup.online.toFixed(2)}</div></div>
+              <div class="${amountBoxClass(staffGroup.cheque)}"><div class="label">Cheque</div><div class="value">Rs. ${staffGroup.cheque.toFixed(2)}</div></div>
+              <div class="${amountBoxClass(staffGroup.total)}"><div class="label">Total</div><div class="value">Rs. ${staffGroup.total.toFixed(2)}</div></div>
+            </div>
+            <table>
+              <thead>
+                <tr>
+                  <th>Sr No</th>
+                  <th>Outlet</th>
+                  <th class="right">Cash</th>
+                  <th class="right">Online</th>
+                  <th class="right">Cheque</th>
+                  <th class="right">Total</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${staffGroup.rows
+                  .map(
+                    (row, index) => `
+                      <tr>
+                        <td>${index + 1}</td>
+                        <td>${escapeHtml(row.outlet_name || "N/A")}</td>
+                        <td class="right">Rs. ${Number(row.cash_amount || 0).toFixed(2)}</td>
+                        <td class="right">Rs. ${Number(row.upi_amount || 0).toFixed(2)}</td>
+                        <td class="right">Rs. ${Number(row.cheque_amount || 0).toFixed(2)}</td>
+                        <td class="right">Rs. ${Number(row.total_amount || 0).toFixed(2)}</td>
+                      </tr>
+                    `
+                  )
+                  .join("")}
+              </tbody>
+            </table>
+          </section>
         `
       )
       .join("");
-
-    const printWindow = window.open("", "_blank", "width=1100,height=800");
-    if (!printWindow) {
-      alert("Please allow popups to print the report.");
-      return;
-    }
 
     printWindow.document.write(`
       <!doctype html>
       <html>
         <head>
-          <title>Today Collection Report</title>
+          <title>Collection Report</title>
           <style>
             body { font-family: Arial, sans-serif; color: #111827; margin: 28px; }
             h1 { font-size: 22px; margin: 0 0 6px; }
+            h2 { font-size: 16px; margin: 0; }
             .sub { color: #4b5563; margin-bottom: 18px; font-size: 13px; }
             table { width: 100%; border-collapse: collapse; font-size: 12px; }
             th, td { border: 1px solid #d1d5db; padding: 8px; text-align: left; }
             th { background: #f3f4f6; font-weight: 700; }
             .right { text-align: right; }
             .totals { margin-top: 16px; display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
-            .box { border: 1px solid #d1d5db; padding: 10px; }
+            .box { border: 1px solid #d1d5db; padding: 10px; border-radius: 6px; background: #fff; }
+            .box-active { border-color: #1d4ed8; background: #eff6ff; }
             .label { color: #6b7280; font-size: 12px; }
+            .box-active .label { color: #1e40af; }
             .value { font-weight: 700; font-size: 16px; margin-top: 4px; }
+            .box-active .value { color: #1d4ed8; }
+            .staff-card { border: 1px solid #d1d5db; border-radius: 8px; padding: 14px; margin-top: 16px; break-inside: avoid; }
+            .staff-header { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 10px; }
+            .staff-header span { color: #6b7280; font-size: 12px; }
+            .staff-totals { margin: 0 0 12px; }
             .empty { padding: 24px; text-align: center; color: #6b7280; border: 1px solid #d1d5db; }
             @media print { body { margin: 16mm; } }
           </style>
         </head>
         <body>
-          <h1>Today Collection Report</h1>
-          <div class="sub">Date: ${escapeHtml(todayLabel)} | Staff and outlet wise cash, online, and cheque collection</div>
+          <h1>Collection Report</h1>
+          <div class="sub">Period: ${escapeHtml(periodLabel)} | Staff and outlet wise cash, online, and cheque collection</div>
           ${
-            todayCollectionDetails.length > 0
-              ? `<table>
-                  <thead>
-                    <tr>
-                      <th>Sr No</th>
-                      <th>Staff</th>
-                      <th>Outlet</th>
-                      <th class="right">Cash</th>
-                      <th class="right">Online</th>
-                      <th class="right">Cheque</th>
-                      <th class="right">Total</th>
-                    </tr>
-                  </thead>
-                  <tbody>${rowsHtml}</tbody>
-                </table>`
-              : `<div class="empty">No today collection found.</div>`
+            details.length > 0
+              ? staffBoxesHtml
+              : `<div class="empty">No collection found for this period.</div>`
           }
           <div class="totals">
-            <div class="box"><div class="label">Total Cash</div><div class="value">Rs. ${cashTotal.toFixed(2)}</div></div>
-            <div class="box"><div class="label">Total Cheque</div><div class="value">Rs. ${chequeTotal.toFixed(2)}</div></div>
-            <div class="box"><div class="label">Total Online</div><div class="value">Rs. ${onlineTotal.toFixed(2)}</div></div>
-            <div class="box"><div class="label">Grand Total</div><div class="value">Rs. ${grandTotal.toFixed(2)}</div></div>
+            <div class="${amountBoxClass(cashTotal)}"><div class="label">Total Cash</div><div class="value">Rs. ${cashTotal.toFixed(2)}</div></div>
+            <div class="${amountBoxClass(chequeTotal)}"><div class="label">Total Cheque</div><div class="value">Rs. ${chequeTotal.toFixed(2)}</div></div>
+            <div class="${amountBoxClass(onlineTotal)}"><div class="label">Total Online</div><div class="value">Rs. ${onlineTotal.toFixed(2)}</div></div>
+            <div class="${amountBoxClass(grandTotal)}"><div class="label">Grand Total</div><div class="value">Rs. ${grandTotal.toFixed(2)}</div></div>
           </div>
         </body>
       </html>
@@ -838,6 +888,45 @@ function Dashboard() {
     printWindow.document.close();
     printWindow.focus();
     printWindow.print();
+  };
+
+  const handlePrintTodayCollection = async () => {
+    if (!collectionPrintDate) {
+      alert("Please choose a date.");
+      return;
+    }
+
+    const printWindow = window.open("", "_blank", "width=1100,height=800");
+    if (!printWindow) {
+      alert("Please allow popups to print the report.");
+      return;
+    }
+
+    printWindow.document.write("<p style=\"font-family: Arial, sans-serif; padding: 24px;\">Preparing collection report...</p>");
+    printWindow.document.close();
+
+    try {
+      const params = new URLSearchParams({
+        startDate: collectionPrintDate,
+        endDate: collectionPrintDate,
+      });
+      const response = await fetch(`${API}/staff/reports?${params.toString()}`);
+      if (!response.ok) {
+        throw new Error("Failed to fetch collection report.");
+      }
+
+      const data = await response.json();
+      writeCollectionPrintReport(
+        printWindow,
+        data.todayCollectionDetails || [],
+        formatDate(collectionPrintDate)
+      );
+    } catch (error) {
+      console.error("Error printing collection report:", error);
+      printWindow.document.open();
+      printWindow.document.write("<p style=\"font-family: Arial, sans-serif; padding: 24px;\">Unable to load collection report.</p>");
+      printWindow.document.close();
+    }
   };
 
   const monthlySalesChart = useMemo(() => {
@@ -1395,28 +1484,40 @@ function Dashboard() {
                 />
               </MDBox>
             </Grid>
-             <Grid item xs={12} md={6} lg={4} display="flex">
-              <MDBox mb={3} width="100%" height={380}>
-                <PaymentModePieChart
-                  data={todayCollectionPieData}
-                  title="today collection"
-                  icon="today"
-                  iconColor="success"
-                />
-                <MDBox mt={1}>
-                  <MDButton
-                    color="dark"
-                    variant="outlined"
-                    fullWidth
-                    onClick={handlePrintTodayCollection}
-                    disabled={todayCollectionDetails.length === 0}
-                  >
-                    <Icon sx={{ mr: 1 }}>print</Icon>
-                    Print Today Collection
-                  </MDButton>
-                </MDBox>
-              </MDBox>
-            </Grid>
+            <Grid item xs={12} md={6} lg={4} display="flex">
+  <MDBox
+    mb={3}
+    width="100%"
+  >
+    <PaymentModePieChart
+      data={todayCollectionPieData}
+      title={reportStartDate || reportEndDate ? "selected period collection" : "today collection"}
+      icon="today"
+      iconColor="success"
+    />
+    <MDBox mt={1} display="flex" gap={1} alignItems="center">
+      <TextField
+        type="date"
+        size="small"
+        label="Report Date"
+        value={collectionPrintDate}
+        onChange={(event) => setCollectionPrintDate(event.target.value)}
+        InputLabelProps={{ shrink: true }}
+        sx={{ flex: 1, backgroundColor: "#fff", borderRadius: 1 }}
+      />
+      <MDButton
+        color="dark"
+        variant="contained"
+        size="small"
+        onClick={handlePrintTodayCollection}
+        disabled={!collectionPrintDate}
+        sx={{ minWidth: 44, p: 1.2 }}
+      >
+        <Icon>print</Icon>
+      </MDButton>
+    </MDBox>
+  </MDBox>
+</Grid>
           </Grid>
         </MDBox>
 

@@ -43,7 +43,7 @@ function CreditsPage() {
   const [remarksHistory, setRemarksHistory] = useState([]);
   const [loadingRemarks, setLoadingRemarks] = useState(false);
   const [savingRemarks, setSavingRemarks] = useState(false);
-  const API = "https://bawarchee.edunextg.co/api";
+  const API = "https://bawarchee.eunextg.co/api";
 
   const getTodayLocalDate = () => {
     const now = new Date();
@@ -464,7 +464,7 @@ function CreditsPage() {
                     </FormControl>
                   </Grid>
                   {showPrintButton && (
-                    <Grid item xs={12} md={6} lg={3}>
+                    <Grid item xs={6} md={4} lg={2}>
                       <MDButton
                         color="dark"
                         variant="outlined"

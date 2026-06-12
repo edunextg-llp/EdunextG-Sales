@@ -32,7 +32,7 @@ function Delivered() {
   const [searchQuery, setSearchQuery] = useState("");
   const [updatingSaleIds, setUpdatingSaleIds] = useState(new Set());
   const [cancelReportOpen, setCancelReportOpen] = useState(false);
-  const API = "https://bawarchee.edunextg.co/api";
+  const API = "https://bawarchee.eunextg.co/api";
 
   const getTodayLocalDate = () => {
     const now = new Date();

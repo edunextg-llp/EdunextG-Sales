@@ -120,19 +120,21 @@ class ReportModel {
         return toNumberRows(rows);
     }
 
-    static async getTodayCollection() {
+    static async getTodayCollection(startDate, endDate) {
+        const dateWhere = ReportModel.buildDateWhere('payment_date', startDate, endDate);
         const [rows] = await db.execute(
             `SELECT payment_mode, COALESCE(SUM(amount), 0) AS total_amount, COUNT(*) AS count
              FROM sale_payments
-             WHERE payment_date = CURDATE()
-               AND payment_mode IN ('cash', 'upi', 'cheque')
+             ${dateWhere.sql ? `${dateWhere.sql} AND` : 'WHERE payment_date = CURDATE() AND'} payment_mode IN ('cash', 'upi', 'cheque')
              GROUP BY payment_mode
-             ORDER BY FIELD(payment_mode, 'cash', 'upi', 'cheque')`
+             ORDER BY FIELD(payment_mode, 'cash', 'upi', 'cheque')`,
+            dateWhere.params
         );
         return toNumberRows(rows);
     }
 
-    static async getTodayCollectionDetails() {
+    static async getTodayCollectionDetails(startDate, endDate) {
+        const dateWhere = ReportModel.buildDateWhere('sp.payment_date', startDate, endDate);
         const [rows] = await db.execute(
             `SELECT s.id AS staff_id,
                     s.name AS staff_name,
@@ -147,10 +149,10 @@ class ReportModel {
              JOIN staff_sales ss ON ss.id = sp.sale_id
              LEFT JOIN staff s ON s.id = ss.staff_id
              LEFT JOIN staff_counters sc ON sc.id = ss.outlet_id
-             WHERE sp.payment_date = CURDATE()
-               AND sp.payment_mode IN ('cash', 'upi', 'cheque')
+             ${dateWhere.sql ? `${dateWhere.sql} AND` : 'WHERE sp.payment_date = CURDATE() AND'} sp.payment_mode IN ('cash', 'upi', 'cheque')
              GROUP BY s.id, s.name, sc.id, sc.outlet_name, sc.outlet_erp_id
-             ORDER BY s.name ASC, sc.outlet_name ASC`
+             ORDER BY s.name ASC, sc.outlet_name ASC`,
+            dateWhere.params
         );
         return toNumberRows(rows);
     }
@@ -368,6 +370,35 @@ class ReportModel {
              LEFT JOIN staff_counters sc ON ss.outlet_id = sc.id
              LEFT JOIN staff s ON ss.staff_id = s.id
              ${dateWhere.sql ? `${dateWhere.sql} AND` : 'WHERE'} sp.payment_mode = 'cheque'
+               AND NOT EXISTS (
+                   SELECT 1
+                   FROM bank_deposits bd
+                   WHERE bd.deposit_mode = 'cheque'
+                     AND (
+                         (
+                             TRIM(bd.cheque_no) COLLATE utf8mb4_unicode_ci = TRIM(sp.reference_no) COLLATE utf8mb4_unicode_ci
+                             AND bd.cheque_date = sp.reference_date
+                             AND ABS(COALESCE(bd.amount, 0) - COALESCE(sp.amount, 0)) < 0.01
+                         )
+                         OR (
+                             JSON_VALID(bd.cash_details)
+                             AND EXISTS (
+                                 SELECT 1
+                                 FROM JSON_TABLE(
+                                     bd.cash_details,
+                                     '$.cheques[*]' COLUMNS (
+                                         cheque_no VARCHAR(100) PATH '$.chequeNo' NULL ON EMPTY NULL ON ERROR,
+                                         cheque_date DATE PATH '$.chequeDate' NULL ON EMPTY NULL ON ERROR,
+                                         amount DECIMAL(10, 2) PATH '$.amount' NULL ON EMPTY NULL ON ERROR
+                                     )
+                                 ) deposited_cheque
+                                 WHERE TRIM(deposited_cheque.cheque_no) COLLATE utf8mb4_unicode_ci = TRIM(sp.reference_no) COLLATE utf8mb4_unicode_ci
+                                   AND deposited_cheque.cheque_date = sp.reference_date
+                                   AND ABS(COALESCE(deposited_cheque.amount, 0) - COALESCE(sp.amount, 0)) < 0.01
+                             )
+                         )
+                     )
+               )
              ORDER BY sp.reference_date ASC, sp.id DESC`,
             dateWhere.params
         );
@@ -433,8 +464,8 @@ class ReportModel {
         ] = await Promise.all([
             ReportModel.getSummary(startDate, endDate, companyId, staffId),
             ReportModel.getCollectionByMode(startDate, endDate),
-            ReportModel.getTodayCollection(),
-            ReportModel.getTodayCollectionDetails(),
+            ReportModel.getTodayCollection(startDate, endDate),
+            ReportModel.getTodayCollectionDetails(startDate, endDate),
             ReportModel.getMonthlyCollection(startDate, endDate),
             ReportModel.getYearlyCollection(startDate, endDate),
             ReportModel.getSalesByPeriod(startDate, endDate, companyId, staffId),
