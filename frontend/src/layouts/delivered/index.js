@@ -132,6 +132,7 @@ function Delivered() {
       return;
     }
 
+    printWindow.document.open();
     printWindow.document.write(`
       <!doctype html>
       <html>
@@ -503,6 +504,9 @@ function Delivered() {
           </TableContainer>
         </DialogContent>
         <DialogActions>
+          <MDButton color="error" variant="contained" onClick={handleDownloadCancelReport}>
+            Download PDF
+          </MDButton>
           <MDButton color="dark" variant="outlined" onClick={() => setCancelReportOpen(false)}>
             Close
           </MDButton>

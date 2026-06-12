@@ -158,7 +158,7 @@ async function initDB() {
             sticker_number VARCHAR(20) NULL UNIQUE,
             payment_mode ENUM('cash', 'upi') NOT NULL DEFAULT 'cash',
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            UNIQUE KEY unique_sale (staff_id, outlet_id, sale_date),
+            UNIQUE KEY unique_sale (staff_id, outlet_id, sale_date, invoice_number),
             FOREIGN KEY (staff_id) REFERENCES staff(id) ON DELETE CASCADE,
             FOREIGN KEY (outlet_id) REFERENCES staff_counters(id) ON DELETE CASCADE
         );
@@ -201,6 +201,27 @@ async function initDB() {
     } catch (err) {
         if (err.code !== 'ER_DUP_FIELDNAME') {
             console.log('Credit tracking columns may already exist on staff_sales');
+        }
+    }
+
+    // Allow multiple invoices per outlet per day (unique by invoice number, not outlet alone).
+    try {
+        await connection.query('ALTER TABLE staff_sales DROP INDEX unique_sale');
+        console.log('Dropped old unique_sale index on staff_sales');
+    } catch (err) {
+        if (err.code !== 'ER_CANT_DROP_FIELD_OR_KEY') {
+            console.log('unique_sale index may already be updated on staff_sales');
+        }
+    }
+
+    try {
+        await connection.query(
+            'ALTER TABLE staff_sales ADD UNIQUE KEY unique_sale (staff_id, outlet_id, sale_date, invoice_number)'
+        );
+        console.log('Added unique_sale index (staff_id, outlet_id, sale_date, invoice_number) on staff_sales');
+    } catch (err) {
+        if (err.code !== 'ER_DUP_KEYNAME') {
+            console.log('unique_sale index with invoice_number may already exist on staff_sales');
         }
     }
 

@@ -6,7 +6,8 @@
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "dev": "nodemon src/index.js",
-    "generate-delivery-credentials": "node src/scripts/generateDeliveryCredentials.js"
+    "generate-delivery-credentials": "node src/scripts/generateDeliveryCredentials.js",
+    "update-schema": "node updateSchema.js"
   },
   "keywords": [],
   "author": "",
