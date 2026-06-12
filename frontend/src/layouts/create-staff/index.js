@@ -89,7 +89,7 @@ function CreateStaff() {
     assignments: createEmptyAssignments(),
   });
 
-  const API = "https://bawarchee.eunextg.co/api";
+  const API = "https://bawarchee.edunextg.co/api";
 
   // Fetch Staff List
   const fetchStaffList = async () => {

@@ -43,7 +43,7 @@ function CreditsPage() {
   const [remarksHistory, setRemarksHistory] = useState([]);
   const [loadingRemarks, setLoadingRemarks] = useState(false);
   const [savingRemarks, setSavingRemarks] = useState(false);
-  const API = "https://bawarchee.eunextg.co/api";
+  const API = "https://bawarchee.edunextg.co/api";
 
   const getTodayLocalDate = () => {
     const now = new Date();
