@@ -2,6 +2,7 @@ import db from '../config/db.js';
 
 const moneyFields = [
     'total_sales',
+    'total_paid',
     'total_collection',
     'total_outstanding',
     'amount',
@@ -87,6 +88,7 @@ class ReportModel {
         const [[salesSummary], [collectionSummary]] = await Promise.all([
             db.execute(
                 `SELECT COALESCE(SUM(price), 0) AS total_sales,
+                        COALESCE(SUM(paid_amount), 0) AS total_paid,
                         COALESCE(SUM(balance_amount), 0) AS total_outstanding
                  FROM staff_sales ss
                  ${salesWhere.sql}`,
@@ -102,6 +104,7 @@ class ReportModel {
 
         return {
             total_sales: parseFloat(salesSummary.total_sales) || 0,
+            total_paid: parseFloat(salesSummary.total_paid) || 0,
             total_collection: parseFloat(collectionSummary.total_collection) || 0,
             total_outstanding: parseFloat(salesSummary.total_outstanding) || 0,
         };

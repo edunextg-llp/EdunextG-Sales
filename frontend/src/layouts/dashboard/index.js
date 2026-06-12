@@ -49,7 +49,7 @@ import ComplexStatisticsCard from "examples/Cards/StatisticsCards/ComplexStatist
 const API = "https://bawarchee.edunextg.co/api";
 
 const emptyReportData = {
-  summary: { total_sales: 0, total_collection: 0, total_outstanding: 0 },
+  summary: { total_sales: 0, total_paid: 0, total_collection: 0, total_outstanding: 0 },
   creditDuesSummary: { total_credit_dues: 0, credit_dues_count: 0 },
   collectionByMode: [],
   todayCollection: [],
@@ -1415,6 +1415,21 @@ function Dashboard() {
                     color: "info",
                     amount: "",
                     label: "All sales",
+                  }}
+                />
+              </MDBox>
+            </Grid>
+            <Grid item xs={12} md={6} lg={3}>
+              <MDBox mb={1.5}>
+                <ComplexStatisticsCard
+                  color="success"
+                  icon="payments"
+                  title="Total Paid"
+                  count={shortMoney(reportData.summary.total_paid)}
+                  percentage={{
+                    color: "success",
+                    amount: "",
+                    label: "Paid invoice amount",
                   }}
                 />
               </MDBox>
