@@ -685,6 +685,11 @@ function Dashboard() {
   const [purchaseReportData, setPurchaseReportData] = useState(emptyPurchaseReportData);
   const [chequeDialogOpen, setChequeDialogOpen] = useState(false);
   const [collectionPrintDate, setCollectionPrintDate] = useState(getTodayLocalDate());
+  const [collectionDateReportData, setCollectionDateReportData] = useState({
+    todayCollection: [],
+    todayCollectionDetails: [],
+  });
+  const [collectionDateLoading, setCollectionDateLoading] = useState(false);
 
   const monthOptions = useMemo(
     () => getMonthOptions(selectedFinancialYear),
@@ -738,11 +743,62 @@ function Dashboard() {
     }
   };
 
+  const fetchCollectionDateReport = async (date) => {
+    if (!date) {
+      return { todayCollection: [], todayCollectionDetails: [] };
+    }
+
+    const params = new URLSearchParams({
+      startDate: date,
+      endDate: date,
+    });
+    const response = await fetch(`${API}/staff/reports?${params.toString()}`);
+    if (!response.ok) {
+      throw new Error("Failed to fetch collection report.");
+    }
+
+    const data = await response.json();
+    return {
+      todayCollection: data.todayCollection || [],
+      todayCollectionDetails: data.todayCollectionDetails || [],
+    };
+  };
+
   useEffect(() => {
     fetchReports();
     fetchPurchaseReports();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [reportStartDate, reportEndDate]);
+
+  useEffect(() => {
+    let ignore = false;
+
+    const loadCollectionDateReport = async () => {
+      setCollectionDateLoading(true);
+      try {
+        const data = await fetchCollectionDateReport(collectionPrintDate);
+        if (!ignore) {
+          setCollectionDateReportData(data);
+        }
+      } catch (error) {
+        console.error("Error fetching collection date report:", error);
+        if (!ignore) {
+          setCollectionDateReportData({ todayCollection: [], todayCollectionDetails: [] });
+        }
+      } finally {
+        if (!ignore) {
+          setCollectionDateLoading(false);
+        }
+      }
+    };
+
+    loadCollectionDateReport();
+
+    return () => {
+      ignore = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [collectionPrintDate]);
 
   const handleFinancialYearChange = (value) => {
     setSelectedFinancialYear(value);
@@ -760,8 +816,8 @@ function Dashboard() {
   );
 
   const todayCollectionPieData = useMemo(
-    () => buildPaymentModePieData(reportData.todayCollection),
-    [reportData.todayCollection]
+    () => buildPaymentModePieData(collectionDateReportData.todayCollection),
+    [collectionDateReportData.todayCollection]
   );
 
   const writeCollectionPrintReport = (printWindow, details, periodLabel) => {
@@ -906,16 +962,10 @@ function Dashboard() {
     printWindow.document.close();
 
     try {
-      const params = new URLSearchParams({
-        startDate: collectionPrintDate,
-        endDate: collectionPrintDate,
-      });
-      const response = await fetch(`${API}/staff/reports?${params.toString()}`);
-      if (!response.ok) {
-        throw new Error("Failed to fetch collection report.");
-      }
-
-      const data = await response.json();
+      const data =
+        collectionDateReportData.todayCollectionDetails.length > 0 || collectionDateReportData.todayCollection.length > 0
+          ? collectionDateReportData
+          : await fetchCollectionDateReport(collectionPrintDate);
       writeCollectionPrintReport(
         printWindow,
         data.todayCollectionDetails || [],
@@ -1491,10 +1541,15 @@ function Dashboard() {
   >
     <PaymentModePieChart
       data={todayCollectionPieData}
-      title={reportStartDate || reportEndDate ? "selected period collection" : "today collection"}
+      title={`collection ${formatDate(collectionPrintDate)}`}
       icon="today"
       iconColor="success"
     />
+    {collectionDateLoading && (
+      <MDTypography variant="caption" color="text" display="block" mt={1}>
+        Loading collection for selected date...
+      </MDTypography>
+    )}
     <MDBox mt={1} display="flex" gap={1} alignItems="center">
       <TextField
         type="date"
@@ -1510,7 +1565,7 @@ function Dashboard() {
         variant="contained"
         size="small"
         onClick={handlePrintTodayCollection}
-        disabled={!collectionPrintDate}
+        disabled={!collectionPrintDate || collectionDateLoading}
         sx={{ minWidth: 44, p: 1.2 }}
       >
         <Icon>print</Icon>
