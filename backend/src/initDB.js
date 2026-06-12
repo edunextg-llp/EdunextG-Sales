@@ -204,26 +204,8 @@ async function initDB() {
         }
     }
 
-    // Allow multiple invoices per outlet per day (unique by invoice number, not outlet alone).
-    try {
-        await connection.query('ALTER TABLE staff_sales DROP INDEX unique_sale');
-        console.log('Dropped old unique_sale index on staff_sales');
-    } catch (err) {
-        if (err.code !== 'ER_CANT_DROP_FIELD_OR_KEY') {
-            console.log('unique_sale index may already be updated on staff_sales');
-        }
-    }
-
-    try {
-        await connection.query(
-            'ALTER TABLE staff_sales ADD UNIQUE KEY unique_sale (staff_id, outlet_id, sale_date, invoice_number)'
-        );
-        console.log('Added unique_sale index (staff_id, outlet_id, sale_date, invoice_number) on staff_sales');
-    } catch (err) {
-        if (err.code !== 'ER_DUP_KEYNAME') {
-            console.log('unique_sale index with invoice_number may already exist on staff_sales');
-        }
-    }
+    const { migrateStaffSalesUniqueIndex } = await import('./migrations/migrateStaffSalesUniqueIndex.js');
+    await migrateStaffSalesUniqueIndex(connection);
 
     await connection.query(`
         CREATE TABLE IF NOT EXISTS delivery_boys (

@@ -1,6 +1,7 @@
 import mysql from 'mysql2/promise';
 import dotenv from 'dotenv';
 import bcrypt from 'bcryptjs';
+import { migrateStaffSalesUniqueIndex } from './migrations/migrateStaffSalesUniqueIndex.js';
 
 dotenv.config();
 
@@ -203,17 +204,7 @@ export async function ensureSchema() {
             'invoice_number on staff_sales'
         );
 
-        // Allow multiple invoices per outlet per day (was: one row per staff/outlet/date).
-        await tryQuery(
-            connection,
-            'ALTER TABLE staff_sales DROP INDEX unique_sale',
-            'drop old unique_sale on staff_sales'
-        );
-        await tryQuery(
-            connection,
-            'ALTER TABLE staff_sales ADD UNIQUE KEY unique_sale (staff_id, outlet_id, sale_date, invoice_number)',
-            'unique_sale with invoice_number on staff_sales'
-        );
+        await migrateStaffSalesUniqueIndex(connection);
 
         await tryQuery(
             connection,
