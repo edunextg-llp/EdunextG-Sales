@@ -74,6 +74,18 @@ const getTodayLocalDate = () => {
   return `${year}-${month}-${day}`;
 };
 
+const getMonthStartDate = () => {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, "0");
+  return `${year}-${month}-01`;
+};
+
+const toComparableDate = (value) => {
+  if (!value) return "";
+  return String(value).split("T")[0].split(" ")[0];
+};
+
 const emptyForm = () => ({
   depositDate: getTodayLocalDate(),
   bankName: "",
@@ -161,6 +173,8 @@ function BankDeposit() {
   const [loadingStores, setLoadingStores] = useState(false);
   const [editingDepositId, setEditingDepositId] = useState(null);
   const [saving, setSaving] = useState(false);
+  const [depositTotalStartDate, setDepositTotalStartDate] = useState(() => getMonthStartDate());
+  const [depositTotalEndDate, setDepositTotalEndDate] = useState(() => getTodayLocalDate());
   const API = "https://bawarchee.edunextg.co/api";
 
   const cashAmount = useMemo(
@@ -181,20 +195,30 @@ function BankDeposit() {
     [form.chequeDetails]
   );
 
+  const depositsInTotalRange = useMemo(() => {
+    return deposits.filter((deposit) => {
+      const depositDate = toComparableDate(deposit.deposit_date);
+      if (!depositDate) return false;
+      if (depositTotalStartDate && depositDate < depositTotalStartDate) return false;
+      if (depositTotalEndDate && depositDate > depositTotalEndDate) return false;
+      return true;
+    });
+  }, [deposits, depositTotalStartDate, depositTotalEndDate]);
+
   const cashDepositTotal = useMemo(
     () =>
-      deposits
+      depositsInTotalRange
         .filter((deposit) => deposit.deposit_mode === "cash")
         .reduce((total, deposit) => total + Number(deposit.amount || 0), 0),
-    [deposits]
+    [depositsInTotalRange]
   );
 
   const chequeDepositTotal = useMemo(
     () =>
-      deposits
+      depositsInTotalRange
         .filter((deposit) => deposit.deposit_mode === "cheque")
         .reduce((total, deposit) => total + Number(deposit.amount || 0), 0),
-    [deposits]
+    [depositsInTotalRange]
   );
 
   const fetchDeposits = async () => {
@@ -550,11 +574,48 @@ function BankDeposit() {
       <DashboardNavbar />
       <MDBox pt={6} pb={3}>
         <Grid container spacing={3}>
+          <Grid item xs={12}>
+            <Card>
+              <MDBox p={3}>
+                <MDTypography variant="h6" fontWeight="medium" color="dark" mb={2}>
+                  Deposit Totals
+                </MDTypography>
+                <Grid container spacing={2} alignItems="center">
+                  <Grid item xs={12} sm={4} md={3}>
+                    <MDInput
+                      type="date"
+                      label="From Date"
+                      fullWidth
+                      value={depositTotalStartDate}
+                      onChange={(e) => setDepositTotalStartDate(e.target.value)}
+                    />
+                  </Grid>
+                  <Grid item xs={12} sm={4} md={3}>
+                    <MDInput
+                      type="date"
+                      label="To Date"
+                      fullWidth
+                      value={depositTotalEndDate}
+                      onChange={(e) => setDepositTotalEndDate(e.target.value)}
+                    />
+                  </Grid>
+                  <Grid item xs={12} sm={4} md={6}>
+                    <MDTypography variant="caption" color="text">
+                      Totals below are calculated for deposits between the selected dates.
+                    </MDTypography>
+                  </Grid>
+                </Grid>
+              </MDBox>
+            </Card>
+          </Grid>
           <Grid item xs={12} md={6}>
             <Card>
               <MDBox p={3}>
                 <MDTypography variant="button" color="text" fontWeight="medium">
                   Total Cash Deposit
+                </MDTypography>
+                <MDTypography variant="caption" color="text" display="block" mb={1}>
+                  {formatDate(depositTotalStartDate)} to {formatDate(depositTotalEndDate)}
                 </MDTypography>
                 <MDTypography variant="h4" fontWeight="bold" color="success">
                   {formatMoney(cashDepositTotal)}
@@ -567,6 +628,9 @@ function BankDeposit() {
               <MDBox p={3}>
                 <MDTypography variant="button" color="text" fontWeight="medium">
                   Total Cheque Deposit
+                </MDTypography>
+                <MDTypography variant="caption" color="text" display="block" mb={1}>
+                  {formatDate(depositTotalStartDate)} to {formatDate(depositTotalEndDate)}
                 </MDTypography>
                 <MDTypography variant="h4" fontWeight="bold" color="warning">
                   {formatMoney(chequeDepositTotal)}

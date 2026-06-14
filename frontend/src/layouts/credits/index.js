@@ -318,19 +318,23 @@ function CreditsPage() {
     const staffLabel = selectedStaffName || "All Staff";
     const generatedOn = new Date().toLocaleString("en-GB");
     const rowsHtml = filteredCredits
-      .map(
-        (credit, index) => `
-          <tr>
-            <td>${index + 1}</td>
-            <td>${escapeHtml(credit.outlet_name || "N/A")}</td>
-            <td>${escapeHtml(credit.outlet_erp_id || "N/A")}</td>
-            <td class="right">Rs. ${Number(credit.balance_amount || 0).toFixed(2)}</td>
-            <td>${escapeHtml(formatDate(credit.sale_date))}</td>
-            <td>${escapeHtml(calcDueDate(credit.sale_date, credit.credit_days))}</td>
-          </tr>
-        `
-      )
-      .join("");
+    .map(
+      (credit, index) => `
+        <tr>
+          <td>${index + 1}</td>
+          
+          <td>${escapeHtml(formatBpSaleId(credit))}</td>
+          <td>${escapeHtml(credit.invoice_number || "N/A")}</td>
+          <td>${escapeHtml(credit.outlet_name || "N/A")}</td>
+          <td>${escapeHtml(credit.outlet_erp_id || "N/A")}</td>
+          <td class="right">Rs. ${Number(credit.balance_amount || 0).toFixed(2)}</td>
+          <td>${escapeHtml(formatDate(credit.sale_date))}</td>
+          <td>${escapeHtml(calcDueDate(credit.sale_date, credit.credit_days))}</td>
+        </tr>
+      `
+    )
+    .join("");
+
 
     const printWindow = window.open("", "_blank", "width=1100,height=800");
     if (!printWindow) {
@@ -370,19 +374,23 @@ function CreditsPage() {
           </div>
           ${
             filteredCredits.length > 0
-              ? `<table>
-                  <thead>
-                    <tr>
-                      <th>Sr No</th>
-                      <th>Outlet Name</th>
-                      <th>ERP ID</th>
-                      <th class="right">Outstanding Balance</th>
-                      <th>Issue Date</th>
-                      <th>Due Date</th>
-                    </tr>
-                  </thead>
-                  <tbody>${rowsHtml}</tbody>
-                </table>`
+              ? ` <table>
+        <thead>
+          <tr>
+            <th>Sr No</th>
+            <th>BP Sale ID</th>
+            <th>Invoice No</th>
+            <th>Outlet Name</th>
+            <th>ERP ID</th>
+            <th class="right">Outstanding Balance</th>
+            <th>Issue Date</th>
+            <th>Due Date</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${rowsHtml}
+        </tbody>
+      </table>`
               : `<div class="empty">No outstanding credits found for this filter.</div>`
           }
           <div class="total">Total Balance: Rs. ${totalCreditDuesAmount.toFixed(2)}</div>

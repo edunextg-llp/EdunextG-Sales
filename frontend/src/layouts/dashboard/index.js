@@ -1071,6 +1071,13 @@ function Dashboard() {
     },
     {
       color: "error",
+      icon: "sell",
+      // title: "Trader Discount+Primary Discount+Secondary Discount",
+      count: shortMoney(purchaseReportData.summary.total_trader_discount + purchaseReportData.summary.total_primary_discount + purchaseReportData.summary.total_secondary_discount),
+      label: "Trader discount + primary discount + secondary discount total",
+    },
+    {
+      color: "error",
       icon: "money_off",
       title: "Cash Discount",
       count: shortMoney(purchaseReportData.summary.total_cash_discount),
@@ -1112,6 +1119,14 @@ function Dashboard() {
       amount: purchaseReportData.summary.total_invoices,
       label: "purchase invoices",
     },
+    {
+      color:"dark",
+      icon:"store",
+      title: "Purchase Sellers",
+      count: (purchaseReportData.summary.seller_count),
+      // amount: purchaseReportData.summary.seller_count,
+      label: "Sellers included in the selected period.",
+    }
   ];
 
   const weeklySalesChart = {
@@ -1163,7 +1178,7 @@ function Dashboard() {
                 </MDBox>
               </Grid>
             ))}
-            <Grid item xs={12} md={4}>
+            {/* <Grid item xs={12} md={4}>
             <Card>
               <MDBox p={3}>
                 <MDTypography variant="h6" fontWeight="medium">
@@ -1177,7 +1192,7 @@ function Dashboard() {
                 </MDTypography>
               </MDBox>
             </Card>
-          </Grid>
+          </Grid> */}
           {/* <Grid item xs={12} md={4}>
             <Card>
               <MDBox p={3}>

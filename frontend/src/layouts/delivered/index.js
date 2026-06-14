@@ -113,9 +113,10 @@ function Delivered() {
         (row, index) => `
           <tr>
             <td>${index + 1}</td>
+            <td>${escapeHtml(formatBpSaleId(row))}</td>
             <td>${escapeHtml(row.staff_name || "N/A")}</td>
-            <td>${escapeHtml(row.delivery_boy_name || "N/A")}</td>
-            <td>${escapeHtml(formatDate(row.delivery_date || row.status_updated_at || row.sale_date))}</td>
+            <td>${escapeHtml(formatDate(row.sale_date))}</td>
+            <td>${escapeHtml(formatDate(row.delivery_date || row.status_updated_at))}</td>
             <td>${escapeHtml(row.outlet_erp_id || "N/A")}</td>
             <td>${escapeHtml(row.outlet_name || "N/A")}</td>
             <td>${escapeHtml(row.google_location || "N/A")}</td>
@@ -161,8 +162,9 @@ function Delivered() {
                   <thead>
                     <tr>
                       <th>Sr No</th>
+                      <th>Sale ID</th>
                       <th>Staff Name</th>
-                      <th>Delivery Boy</th>
+                      <th>Invoice Date</th>
                       <th>Cancel Date</th>
                       <th>ERP ID</th>
                       <th>Outlet Name</th>
@@ -212,9 +214,14 @@ function Delivered() {
       if (response.ok) {
         const data = await response.json();
         const updated = data.sale;
-        setSalesData((prevData) =>
-          prevData.map((row) => (row.id === saleId ? { ...row, ...updated } : row))
-        );
+        if (newStatus === "packing_done") {
+          // Returned to Delivery section — remove from Delivered Items list.
+          setSalesData((prevData) => prevData.filter((row) => row.id !== saleId));
+        } else {
+          setSalesData((prevData) =>
+            prevData.map((row) => (row.id === saleId ? { ...row, ...updated } : row))
+          );
+        }
       } else if (response.status === 409) {
         const err = await response.json().catch(() => ({}));
         alert(err.error || "This record was updated by another user.");
@@ -424,7 +431,7 @@ function Delivered() {
                                   <MDButton color="success" variant="contained" size="small" onClick={() => handleUpdateStatus(row.id, 'delivered', row.delivery_boy_id, row.vehicle_no, row.delivery_date)}>
                                     Deliver
                                   </MDButton>
-                                  <MDButton color="dark" variant="gradient" size="small" onClick={() => handleUpdateStatus(row.id, 'returned', row.delivery_boy_id, row.vehicle_no, row.delivery_date)}>
+                                  <MDButton color="dark" variant="gradient" size="small" onClick={() => handleUpdateStatus(row.id, 'packing_done', row.delivery_boy_id, row.vehicle_no, row.delivery_date)}>
                                     Return
                                   </MDButton>
                                 </MDBox>
@@ -474,7 +481,9 @@ function Delivered() {
               <TableHead sx={{ display: "table-header-group", backgroundColor: "#fef2f2" }}>
                 <TableRow>
                   <TableCell sx={{ fontWeight: 700 }}>Sr No</TableCell>
+                  <TableCell align="center" sx={{ fontWeight: 700 }}>Sale ID</TableCell>
                   <TableCell sx={{ fontWeight: 700 }}>Outlet Name</TableCell>
+                  <TableCell align="center" sx={{ fontWeight: 700 }}>Invoice Date</TableCell>
                   <TableCell align="center" sx={{ fontWeight: 700 }}>Invoice No</TableCell>
                   <TableCell align="right" sx={{ fontWeight: 700 }}>Cancel Amount</TableCell>
                 </TableRow>
@@ -483,7 +492,11 @@ function Delivered() {
                 {cancelledSales.map((row, index) => (
                   <TableRow key={`cancelled-${row.id}`}>
                     <TableCell>{index + 1}</TableCell>
+                    <TableCell align="center" sx={{ fontWeight: "bold" }}>
+                      {formatBpSaleId(row)}
+                    </TableCell>
                     <TableCell>{row.outlet_name || "N/A"}</TableCell>
+                    <TableCell align="center">{formatDate(row.sale_date)}</TableCell>
                     <TableCell align="center">{row.invoice_number || "N/A"}</TableCell>
                     <TableCell align="right" sx={{ fontWeight: 700 }}>
                       ₹{Number(row.price || 0).toFixed(2)}
@@ -492,7 +505,7 @@ function Delivered() {
                 ))}
                 {cancelledSales.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={4} align="center" sx={{ py: 3 }}>
+                    <TableCell colSpan={6} align="center" sx={{ py: 3 }}>
                       <MDTypography variant="body2" color="text">
                         No cancelled invoices found.
                       </MDTypography>
