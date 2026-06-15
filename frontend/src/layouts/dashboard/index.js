@@ -854,7 +854,7 @@ function Dashboard() {
           <section class="staff-card">
             <div class="staff-header">
               <h2>${escapeHtml(staffGroup.staffName)}</h2>
-              <span>${staffGroup.rows.length} outlet${staffGroup.rows.length === 1 ? "" : "s"}</span>
+              <span>${staffGroup.rows.length} invoice${staffGroup.rows.length === 1 ? "" : "s"}</span>
             </div>
             <div class="totals staff-totals">
               <div class="${amountBoxClass(staffGroup.cash)}"><div class="label">Cash</div><div class="value">Rs. ${staffGroup.cash.toFixed(2)}</div></div>
@@ -867,6 +867,7 @@ function Dashboard() {
                 <tr>
                   <th>Sr No</th>
                   <th>Outlet</th>
+                  <th>Invoice</th>
                   <th class="right">Cash</th>
                   <th class="right">Online</th>
                   <th class="right">Cheque</th>
@@ -880,6 +881,7 @@ function Dashboard() {
                       <tr>
                         <td>${index + 1}</td>
                         <td>${escapeHtml(row.outlet_name || "N/A")}</td>
+                        <td>${escapeHtml(row.invoice_number || "N/A")}</td>
                         <td class="right">Rs. ${Number(row.cash_amount || 0).toFixed(2)}</td>
                         <td class="right">Rs. ${Number(row.upi_amount || 0).toFixed(2)}</td>
                         <td class="right">Rs. ${Number(row.cheque_amount || 0).toFixed(2)}</td>
@@ -1038,8 +1040,8 @@ function Dashboard() {
     [reportData.yearlyCollection]
   );
 
-  const monthlyPurchaseRows = purchaseReportData.purchasesByPeriod?.monthly || [];
-  const yearlyPurchaseRows = purchaseReportData.purchasesByPeriod?.yearly || [];
+  // const monthlyPurchaseRows = purchaseReportData.purchasesByPeriod?.monthly || [];
+  // const yearlyPurchaseRows = purchaseReportData.purchasesByPeriod?.yearly || [];
   const purchaseSummaryCards = [
     {
       color: "info",

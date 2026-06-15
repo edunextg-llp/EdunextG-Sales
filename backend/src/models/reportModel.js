@@ -144,6 +144,8 @@ class ReportModel {
                     sc.id AS outlet_id,
                     sc.outlet_name,
                     sc.outlet_erp_id,
+                    ss.id AS sale_id,
+                    ss.invoice_number,
                     COALESCE(SUM(CASE WHEN sp.payment_mode = 'cash' THEN sp.amount ELSE 0 END), 0) AS cash_amount,
                     COALESCE(SUM(CASE WHEN sp.payment_mode = 'upi' THEN sp.amount ELSE 0 END), 0) AS upi_amount,
                     COALESCE(SUM(CASE WHEN sp.payment_mode = 'cheque' THEN sp.amount ELSE 0 END), 0) AS cheque_amount,
@@ -153,8 +155,8 @@ class ReportModel {
              LEFT JOIN staff s ON s.id = ss.staff_id
              LEFT JOIN staff_counters sc ON sc.id = ss.outlet_id
              ${dateWhere.sql ? `${dateWhere.sql} AND` : 'WHERE sp.payment_date = CURDATE() AND'} sp.payment_mode IN ('cash', 'upi', 'cheque')
-             GROUP BY s.id, s.name, sc.id, sc.outlet_name, sc.outlet_erp_id
-             ORDER BY s.name ASC, sc.outlet_name ASC`,
+             GROUP BY s.id, s.name, sc.id, sc.outlet_name, sc.outlet_erp_id, ss.id, ss.invoice_number
+             ORDER BY s.name ASC, sc.outlet_name ASC, ss.invoice_number ASC`,
             dateWhere.params
         );
         return toNumberRows(rows);
@@ -353,27 +355,8 @@ class ReportModel {
         return toNumberRows(rows);
     }
 
-    static async getChequeReports(startDate, endDate) {
-        const dateWhere = ReportModel.buildDateWhere('sp.reference_date', startDate, endDate);
-        const [rows] = await db.execute(
-            `SELECT sp.id, sp.sale_id,
-                    DATE_FORMAT(sp.payment_date, '%Y-%m-%d') AS payment_date,
-                    DATE_FORMAT(sp.reference_date, '%Y-%m-%d') AS deposit_date,
-                    sp.reference_no, sp.amount,
-                    ss.invoice_number, sc.outlet_name, sc.outlet_erp_id, s.name AS staff_name,
-                    CASE
-                        WHEN sp.reference_date BETWEEN CURDATE() AND DATE_ADD(CURDATE(), INTERVAL 2 DAY)
-                            THEN 'alarm'
-                        WHEN sp.reference_date <= CURDATE()
-                            THEN 'clearing_done'
-                        ELSE 'bank_submitted'
-                    END AS report_status
-             FROM sale_payments sp
-             JOIN staff_sales ss ON sp.sale_id = ss.id
-             LEFT JOIN staff_counters sc ON ss.outlet_id = sc.id
-             LEFT JOIN staff s ON ss.staff_id = s.id
-             ${dateWhere.sql ? `${dateWhere.sql} AND` : 'WHERE'} sp.payment_mode = 'cheque'
-               AND NOT EXISTS (
+    static getUndepositedChequeNotExistsSql() {
+        return `NOT EXISTS (
                    SELECT 1
                    FROM bank_deposits bd
                    WHERE bd.deposit_mode = 'cheque'
@@ -401,7 +384,70 @@ class ReportModel {
                              )
                          )
                      )
-               )
+               )`;
+    }
+
+    static async getPendingCheques({ search = '', storeName = '', alarmOnly = false } = {}) {
+        const conditions = ["sp.payment_mode = 'cheque'", ReportModel.getUndepositedChequeNotExistsSql()];
+        const params = [];
+
+        if (alarmOnly) {
+            conditions.push('sp.reference_date BETWEEN CURDATE() AND DATE_ADD(CURDATE(), INTERVAL 2 DAY)');
+        }
+        if (search && String(search).trim()) {
+            conditions.push('TRIM(sp.reference_no) LIKE ?');
+            params.push(`%${String(search).trim()}%`);
+        }
+        if (storeName && String(storeName).trim()) {
+            conditions.push('sc.outlet_name LIKE ?');
+            params.push(`%${String(storeName).trim()}%`);
+        }
+
+        const [rows] = await db.execute(
+            `SELECT sp.id, sp.sale_id,
+                    DATE_FORMAT(sp.payment_date, '%Y-%m-%d') AS payment_date,
+                    DATE_FORMAT(sp.reference_date, '%Y-%m-%d') AS deposit_date,
+                    sp.reference_no, sp.amount,
+                    ss.invoice_number, sc.outlet_name, sc.outlet_erp_id, s.name AS staff_name,
+                    CASE
+                        WHEN sp.reference_date BETWEEN CURDATE() AND DATE_ADD(CURDATE(), INTERVAL 2 DAY)
+                            THEN 'alarm'
+                        WHEN sp.reference_date <= CURDATE()
+                            THEN 'clearing_done'
+                        ELSE 'bank_submitted'
+                    END AS report_status
+             FROM sale_payments sp
+             JOIN staff_sales ss ON sp.sale_id = ss.id
+             LEFT JOIN staff_counters sc ON ss.outlet_id = sc.id
+             LEFT JOIN staff s ON ss.staff_id = s.id
+             WHERE ${conditions.join(' AND ')}
+             ORDER BY sp.reference_date ASC, sp.id DESC`,
+            params
+        );
+        return toNumberRows(rows);
+    }
+
+    static async getChequeReports(startDate, endDate) {
+        const dateWhere = ReportModel.buildDateWhere('sp.reference_date', startDate, endDate);
+        const [rows] = await db.execute(
+            `SELECT sp.id, sp.sale_id,
+                    DATE_FORMAT(sp.payment_date, '%Y-%m-%d') AS payment_date,
+                    DATE_FORMAT(sp.reference_date, '%Y-%m-%d') AS deposit_date,
+                    sp.reference_no, sp.amount,
+                    ss.invoice_number, sc.outlet_name, sc.outlet_erp_id, s.name AS staff_name,
+                    CASE
+                        WHEN sp.reference_date BETWEEN CURDATE() AND DATE_ADD(CURDATE(), INTERVAL 2 DAY)
+                            THEN 'alarm'
+                        WHEN sp.reference_date <= CURDATE()
+                            THEN 'clearing_done'
+                        ELSE 'bank_submitted'
+                    END AS report_status
+             FROM sale_payments sp
+             JOIN staff_sales ss ON sp.sale_id = ss.id
+             LEFT JOIN staff_counters sc ON ss.outlet_id = sc.id
+             LEFT JOIN staff s ON ss.staff_id = s.id
+             ${dateWhere.sql ? `${dateWhere.sql} AND` : 'WHERE'} sp.payment_mode = 'cheque'
+               AND ${ReportModel.getUndepositedChequeNotExistsSql()}
              ORDER BY sp.reference_date ASC, sp.id DESC`,
             dateWhere.params
         );

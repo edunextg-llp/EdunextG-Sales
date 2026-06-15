@@ -698,6 +698,20 @@ export const searchDeliveredStores = async (req, res) => {
     }
 };
 
+export const searchPendingCheques = async (req, res) => {
+    try {
+        const cheques = await ReportModel.getPendingCheques({
+            search: req.query.search || '',
+            storeName: req.query.storeName || '',
+            alarmOnly: String(req.query.alarmOnly || '').toLowerCase() === 'true',
+        });
+        res.status(200).json(cheques);
+    } catch (error) {
+        console.error('Error searching pending cheques:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+};
+
 export const searchPurchaseSellers = async (req, res) => {
     try {
         const sellers = await PurchaseSellerModel.search(req.query.search || '');

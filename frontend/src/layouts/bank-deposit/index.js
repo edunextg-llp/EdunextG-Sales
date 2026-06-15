@@ -60,10 +60,19 @@ const emptyCashDetails = () =>
   }, {});
 
 const emptyChequeRow = () => ({
+  paymentId: null,
   storeName: "",
   chequeNo: "",
   chequeDate: "",
   amount: "",
+});
+
+const mapPendingChequeToRow = (cheque) => ({
+  paymentId: cheque.id,
+  storeName: cheque.outlet_name || "",
+  chequeNo: cheque.reference_no || "",
+  chequeDate: cheque.deposit_date || "",
+  amount: cheque.amount === undefined || cheque.amount === null ? "" : String(cheque.amount),
 });
 
 const getTodayLocalDate = () => {
@@ -134,6 +143,7 @@ const parseChequeDetails = (deposit) => {
       const details = JSON.parse(deposit.cash_details);
       if (Array.isArray(details?.cheques) && details.cheques.length) {
         return details.cheques.map((cheque) => ({
+          paymentId: null,
           storeName: cheque.storeName || "",
           chequeNo: cheque.chequeNo || "",
           chequeDate: cheque.chequeDate || "",
@@ -148,6 +158,7 @@ const parseChequeDetails = (deposit) => {
   if (deposit?.deposit_mode === "cheque") {
     return [
       {
+        paymentId: null,
         storeName: deposit.store_name || "",
         chequeNo: deposit.cheque_no || "",
         chequeDate: deposit.cheque_date || "",
@@ -171,6 +182,8 @@ function BankDeposit() {
   const [deposits, setDeposits] = useState([]);
   const [storeOptions, setStoreOptions] = useState([]);
   const [loadingStores, setLoadingStores] = useState(false);
+  const [pendingCheques, setPendingCheques] = useState([]);
+  const [loadingPendingCheques, setLoadingPendingCheques] = useState(false);
   const [editingDepositId, setEditingDepositId] = useState(null);
   const [saving, setSaving] = useState(false);
   const [depositTotalStartDate, setDepositTotalStartDate] = useState(() => getMonthStartDate());
@@ -264,6 +277,66 @@ function BankDeposit() {
 
     return () => clearTimeout(timer);
   }, [form.depositMode, form.storeName]);
+
+  useEffect(() => {
+    if (form.depositMode !== "cheque" || editingDepositId) {
+      setPendingCheques([]);
+      return undefined;
+    }
+
+    const timer = setTimeout(async () => {
+      setLoadingPendingCheques(true);
+      try {
+        const params = new URLSearchParams();
+        if (form.storeName.trim()) {
+          params.set("storeName", form.storeName.trim());
+        }
+        const response = await fetch(`${API}/staff/bank-deposits/pending-cheques?${params.toString()}`);
+        if (response.ok) {
+          const data = await response.json();
+          setPendingCheques(data);
+        }
+      } catch (error) {
+        console.error("Error fetching pending cheques:", error);
+      } finally {
+        setLoadingPendingCheques(false);
+      }
+    }, 300);
+
+    return () => clearTimeout(timer);
+  }, [form.depositMode, form.storeName, editingDepositId]);
+
+  const getAvailableChequesForRow = (rowIndex) => {
+    const usedPaymentIds = new Set(
+      form.chequeDetails
+        .filter((_, index) => index !== rowIndex)
+        .map((cheque) => cheque.paymentId)
+        .filter(Boolean)
+    );
+    return pendingCheques.filter((cheque) => !usedPaymentIds.has(cheque.id));
+  };
+
+  const handleChequeSelect = (index, cheque) => {
+    if (!cheque) {
+      setForm((prev) => ({
+        ...prev,
+        ...(index === 0 ? { storeName: "" } : {}),
+        chequeDetails: prev.chequeDetails.map((row, rowIndex) =>
+          rowIndex === index ? emptyChequeRow() : row
+        ),
+      }));
+      return;
+    }
+
+    const mappedCheque = mapPendingChequeToRow(cheque);
+    setForm((prev) => ({
+      ...prev,
+      ...(index === 0 ? { storeName: mappedCheque.storeName } : {}),
+      chequeDetails: prev.chequeDetails.map((row, rowIndex) =>
+        rowIndex === index ? mappedCheque : row
+      ),
+    }));
+  };
 
   const handleFormChange = (field, value) => {
     setForm((prev) => ({
@@ -853,9 +926,16 @@ function BankDeposit() {
                   {form.depositMode === "cheque" && (
                     <Grid item xs={12}>
                       <MDBox display="flex" alignItems="center" justifyContent="space-between" mb={1}>
-                        <MDTypography variant="button" fontWeight="medium" color="dark">
-                          Cheque Details
-                        </MDTypography>
+                        <MDBox>
+                          <MDTypography variant="button" fontWeight="medium" color="dark">
+                            Cheque Details
+                          </MDTypography>
+                          {!editingDepositId && (
+                            <MDTypography variant="caption" color="text" display="block">
+                              Choose a cheque from pending sale payments — store, date, and amount fill automatically.
+                            </MDTypography>
+                          )}
+                        </MDBox>
                         <MDButton color="info" variant="outlined" size="small" onClick={addChequeRow}>
                           <Icon sx={{ mr: 1 }}>add</Icon>
                           Add Cheque
@@ -865,19 +945,58 @@ function BankDeposit() {
                         {form.chequeDetails.map((cheque, index) => (
                           <Grid container spacing={1.5} key={`cheque-row-${index}`}>
                             <Grid item xs={12} md={3}>
+                              {editingDepositId ? (
+                                <MDInput
+                                  label="Cheque No"
+                                  fullWidth
+                                  value={cheque.chequeNo}
+                                  onChange={(e) => handleChequeChange(index, "chequeNo", e.target.value)}
+                                />
+                              ) : (
+                                <Autocomplete
+                                  options={getAvailableChequesForRow(index)}
+                                  loading={loadingPendingCheques}
+                                  value={
+                                    pendingCheques.find((item) => item.id === cheque.paymentId) ||
+                                    (cheque.chequeNo
+                                      ? {
+                                          id: cheque.paymentId,
+                                          reference_no: cheque.chequeNo,
+                                          outlet_name: cheque.storeName,
+                                          deposit_date: cheque.chequeDate,
+                                          amount: cheque.amount,
+                                        }
+                                      : null)
+                                  }
+                                  getOptionLabel={(option) => option.reference_no || ""}
+                                  isOptionEqualToValue={(option, value) => option.id === value.id}
+                                  onChange={(event, value) => handleChequeSelect(index, value)}
+                                  renderOption={(props, option) => (
+                                    <li {...props} key={option.id}>
+                                      <MDBox>
+                                        <MDTypography variant="button" fontWeight="medium">
+                                          {option.reference_no}
+                                        </MDTypography>
+                                        <MDTypography variant="caption" color="text" display="block">
+                                          {option.outlet_name || "N/A"} · {formatDate(option.deposit_date)} ·{" "}
+                                          {formatMoney(option.amount)}
+                                        </MDTypography>
+                                      </MDBox>
+                                    </li>
+                                  )}
+                                  renderInput={(params) => (
+                                    <MDInput {...params} label="Cheque No" fullWidth />
+                                  )}
+                                />
+                              )}
+                            </Grid>
+                            <Grid item xs={12} md={3}>
                               <MDInput
                                 label="Store Name"
                                 fullWidth
                                 value={cheque.storeName}
                                 onChange={(e) => handleChequeChange(index, "storeName", e.target.value)}
-                              />
-                            </Grid>
-                            <Grid item xs={12} md={3}>
-                              <MDInput
-                                label="Cheque No"
-                                fullWidth
-                                value={cheque.chequeNo}
-                                onChange={(e) => handleChequeChange(index, "chequeNo", e.target.value)}
+                                InputProps={{ readOnly: !editingDepositId }}
                               />
                             </Grid>
                             <Grid item xs={12} md={2}>
@@ -888,6 +1007,7 @@ function BankDeposit() {
                                 value={cheque.chequeDate}
                                 onChange={(e) => handleChequeChange(index, "chequeDate", e.target.value)}
                                 InputLabelProps={{ shrink: true }}
+                                InputProps={{ readOnly: !editingDepositId }}
                               />
                             </Grid>
                             <Grid item xs={12} md={2}>
@@ -898,6 +1018,7 @@ function BankDeposit() {
                                 value={cheque.amount}
                                 onChange={(e) => handleChequeChange(index, "amount", e.target.value)}
                                 inputProps={{ min: 0, step: "0.01" }}
+                                InputProps={{ readOnly: !editingDepositId }}
                               />
                             </Grid>
                             <Grid item xs={12} md={2}>
