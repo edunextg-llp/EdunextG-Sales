@@ -364,7 +364,7 @@ function Packaging() {
                                 {row.outlet_erp_id}
                               </TableCell>
                               <TableCell align="center" sx={{ borderBottom: borderCol, py: 2, color: txColor, fontWeight: "bold" }}>
-                                {formatBpSaleId(row)}
+                                {row.sticker_number}
                               </TableCell>
                               <TableCell align="center" sx={{ borderBottom: borderCol, py: 2, color: txColor }}>
                                 {row.invoice_number}

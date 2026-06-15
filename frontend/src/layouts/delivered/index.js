@@ -89,7 +89,7 @@ function Delivered() {
     const outletName = row.outlet_name ? row.outlet_name.toLowerCase() : "";
     const outletErpId = row.outlet_erp_id ? row.outlet_erp_id.toLowerCase() : "";
     const staffName = row.staff_name ? row.staff_name.toLowerCase() : "";
-    const saleId = formatBpSaleId(row).toLowerCase();
+    const saleId = row.sticker_number ? row.sticker_number.toLowerCase() : "";
     return (
       outletName.includes(search) ||
       outletErpId.includes(search) ||
@@ -113,13 +113,12 @@ function Delivered() {
         (row, index) => `
           <tr>
             <td>${index + 1}</td>
-            <td>${escapeHtml(formatBpSaleId(row))}</td>
+            <td>${escapeHtml(row.sticker_number || "N/A")}</td>
             <td>${escapeHtml(row.staff_name || "N/A")}</td>
             <td>${escapeHtml(formatDate(row.sale_date))}</td>
             <td>${escapeHtml(formatDate(row.delivery_date || row.status_updated_at))}</td>
             <td>${escapeHtml(row.outlet_erp_id || "N/A")}</td>
             <td>${escapeHtml(row.outlet_name || "N/A")}</td>
-            <td>${escapeHtml(row.google_location || "N/A")}</td>
             <td>${escapeHtml(row.invoice_number || "N/A")}</td>
             <td class="right">Rs. ${Number(row.price || 0).toFixed(2)}</td>
           </tr>
@@ -168,7 +167,6 @@ function Delivered() {
                       <th>Cancel Date</th>
                       <th>ERP ID</th>
                       <th>Outlet Name</th>
-                      <th>Outlet Location</th>
                       <th>Invoice No</th>
                       <th class="right">Cancel Amount</th>
                     </tr>
@@ -386,7 +384,7 @@ function Delivered() {
                             <TableCell sx={{ borderBottom: "1px solid #cbd5e1", py: 2 }}>{row.staff_name}</TableCell>
                             <TableCell sx={{ borderBottom: "1px solid #cbd5e1", py: 2, fontWeight: "medium" }}>{row.outlet_name}</TableCell>
                             <TableCell sx={{ borderBottom: "1px solid #cbd5e1", py: 2 }}>{row.outlet_erp_id}</TableCell>
-                            <TableCell align="center" sx={{ borderBottom: "1px solid #cbd5e1", py: 2, fontWeight: "bold" }}>{formatBpSaleId(row)}</TableCell>
+                            <TableCell align="center" sx={{ borderBottom: "1px solid #cbd5e1", py: 2, fontWeight: "bold" }}>{row.sticker_number}</TableCell>
                             <TableCell align="center" sx={{ borderBottom: "1px solid #cbd5e1", py: 2 }}>{row.invoice_number}</TableCell>
                             <TableCell align="right" sx={{ borderBottom: "1px solid #cbd5e1", py: 2, fontWeight: "bold" }}>
                               ₹{Number(row.price).toFixed(2)}
@@ -493,7 +491,7 @@ function Delivered() {
                   <TableRow key={`cancelled-${row.id}`}>
                     <TableCell>{index + 1}</TableCell>
                     <TableCell align="center" sx={{ fontWeight: "bold" }}>
-                      {formatBpSaleId(row)}
+                      {row.sticker_number}
                     </TableCell>
                     <TableCell>{row.outlet_name || "N/A"}</TableCell>
                     <TableCell align="center">{formatDate(row.sale_date)}</TableCell>

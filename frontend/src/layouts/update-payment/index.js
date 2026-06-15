@@ -28,7 +28,6 @@ import MDButton from "components/MDButton";
 import DashboardLayout from "examples/LayoutContainers/DashboardLayout";
 import DashboardNavbar from "examples/Navbars/DashboardNavbar";
 import Footer from "examples/Footer";
-import { formatBpSaleId } from "utils/saleId";
 
 const PAYMENT_MODE_LABELS = {
   cash: "Cash",
@@ -146,7 +145,7 @@ function UpdatePayment() {
     const outletName = row.outlet_name ? row.outlet_name.toLowerCase() : "";
     const outletErpId = row.outlet_erp_id ? row.outlet_erp_id.toLowerCase() : "";
     const staffName = row.staff_name ? row.staff_name.toLowerCase() : "";
-    const saleId = formatBpSaleId(row).toLowerCase();
+    const saleId = row.sticker_number ? row.sticker_number.toLowerCase() : "";
     return (
       outletName.includes(search) ||
       outletErpId.includes(search) ||
@@ -608,7 +607,7 @@ function UpdatePayment() {
                                     Staff: {sale.staff_name || "N/A"}
                                   </MDTypography>
                                 </TableCell>
-                                <TableCell align="center">{formatBpSaleId(sale)}</TableCell>
+                                <TableCell align="center">{sale.sticker_number}</TableCell>
                                 <TableCell align="center">{sale.invoice_number}</TableCell>
                                 <TableCell align="center">
                                   ₹{Number(sale.price).toFixed(2)}
@@ -671,7 +670,7 @@ function UpdatePayment() {
                 sx={{ backgroundColor: "#f8f9fa", borderRadius: "10px", border: "1px solid #e9ecef" }}
               >
                 <MDTypography variant="body2">
-                  <strong>Sale ID:</strong> {formatBpSaleId(paymentDialogSale)}
+                  <strong>Sale ID:</strong> {paymentDialogSale.sticker_number}
                 </MDTypography>
                 <MDTypography variant="body2">
                   <strong>Invoice:</strong> {paymentDialogSale.invoice_number}
