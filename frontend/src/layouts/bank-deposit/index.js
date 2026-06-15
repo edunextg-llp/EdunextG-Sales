@@ -287,7 +287,7 @@ function BankDeposit() {
     const timer = setTimeout(async () => {
       setLoadingPendingCheques(true);
       try {
-        const params = new URLSearchParams();
+        const params = new URLSearchParams({ alarmOnly: "true" });
         if (form.storeName.trim()) {
           params.set("storeName", form.storeName.trim());
         }
@@ -932,7 +932,7 @@ function BankDeposit() {
                           </MDTypography>
                           {!editingDepositId && (
                             <MDTypography variant="caption" color="text" display="block">
-                              Choose a cheque from pending sale payments — store, date, and amount fill automatically.
+                              Only cheque alarms (due in next 2 days, not yet deposited) — same as dashboard.
                             </MDTypography>
                           )}
                         </MDBox>

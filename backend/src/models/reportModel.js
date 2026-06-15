@@ -362,9 +362,11 @@ class ReportModel {
                    WHERE bd.deposit_mode = 'cheque'
                      AND (
                          (
-                             TRIM(bd.cheque_no) COLLATE utf8mb4_unicode_ci = TRIM(sp.reference_no) COLLATE utf8mb4_unicode_ci
-                             AND bd.cheque_date = sp.reference_date
-                             AND ABS(COALESCE(bd.amount, 0) - COALESCE(sp.amount, 0)) < 0.01
+                             bd.cheque_date = sp.reference_date
+                             AND (
+                                 TRIM(bd.cheque_no) COLLATE utf8mb4_unicode_ci = TRIM(sp.reference_no) COLLATE utf8mb4_unicode_ci
+                                 OR TRIM(bd.cheque_no) COLLATE utf8mb4_unicode_ci LIKE CONCAT(TRIM(sp.reference_no) COLLATE utf8mb4_unicode_ci, ' (%')
+                             )
                          )
                          OR (
                              JSON_VALID(bd.cash_details)
@@ -387,7 +389,7 @@ class ReportModel {
                )`;
     }
 
-    static async getPendingCheques({ search = '', storeName = '', alarmOnly = false } = {}) {
+    static async getPendingCheques({ search = '', storeName = '', alarmOnly = true } = {}) {
         const conditions = ["sp.payment_mode = 'cheque'", ReportModel.getUndepositedChequeNotExistsSql()];
         const params = [];
 

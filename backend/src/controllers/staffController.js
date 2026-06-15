@@ -703,7 +703,7 @@ export const searchPendingCheques = async (req, res) => {
         const cheques = await ReportModel.getPendingCheques({
             search: req.query.search || '',
             storeName: req.query.storeName || '',
-            alarmOnly: String(req.query.alarmOnly || '').toLowerCase() === 'true',
+            alarmOnly: String(req.query.alarmOnly ?? 'true').toLowerCase() !== 'false',
         });
         res.status(200).json(cheques);
     } catch (error) {
