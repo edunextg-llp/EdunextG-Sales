@@ -32,6 +32,8 @@ import {
   InputLabel,
   Select,
   MenuItem,
+  Tabs,
+  Tab,
 } from "@mui/material";
 
 // Material Dashboard 2 React components
@@ -683,6 +685,7 @@ function Dashboard() {
   const [selectedMonth, setSelectedMonth] = useState("");
   const [reportData, setReportData] = useState(emptyReportData);
   const [purchaseReportData, setPurchaseReportData] = useState(emptyPurchaseReportData);
+  const [activeDashboardTab, setActiveDashboardTab] = useState("purchase");
   const [chequeDialogOpen, setChequeDialogOpen] = useState(false);
   const [collectionPrintDate, setCollectionPrintDate] = useState(getTodayLocalDate());
   const [collectionDateReportData, setCollectionDateReportData] = useState({
@@ -1151,6 +1154,31 @@ function Dashboard() {
     <DashboardLayout>
       <DashboardNavbar />
 
+      <MDBox pt={3} px={1}>
+        <Card sx={{ display: "inline-flex", p: 0.5, boxShadow: "none", border: "1px solid #e5e7eb" }}>
+          <Tabs
+            value={activeDashboardTab}
+            onChange={(_, value) => setActiveDashboardTab(value)}
+            textColor="primary"
+            indicatorColor="primary"
+            sx={{
+              minHeight: 42,
+              "& .MuiTab-root": {
+                minHeight: 42,
+                px: 2.5,
+                fontSize: "0.8rem",
+                fontWeight: 700,
+                textTransform: "none",
+              },
+            }}
+          >
+            <Tab value="purchase" icon={<Icon>inventory_2</Icon>} iconPosition="start" label="Purchase Dashboard" />
+            <Tab value="sales" icon={<Icon>query_stats</Icon>} iconPosition="start" label="Sales Dashboard" />
+          </Tabs>
+        </Card>
+      </MDBox>
+
+      {activeDashboardTab === "purchase" && (
       <MDBox py={3}>
         <MDBox mb={1}>
           <MDTypography variant="h4" fontWeight="medium" color="dark">
@@ -1403,12 +1431,14 @@ function Dashboard() {
       
         </Grid>
       </MDBox>
+      )}
 
 
 
 
       {/* //sales dashboard */}
       
+      {activeDashboardTab === "sales" && (
       <MDBox py={3}>
         <MDBox mb={1}>
           <MDTypography variant="h4" fontWeight="medium" color="dark">
@@ -1684,6 +1714,7 @@ function Dashboard() {
       
         </Grid>
       </MDBox>
+      )}
 
       <Dialog open={chequeDialogOpen} onClose={() => setChequeDialogOpen(false)} fullWidth maxWidth="md">
         <DialogTitle>Cheque Details</DialogTitle>

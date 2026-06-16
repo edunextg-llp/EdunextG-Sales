@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import Grid from "@mui/material/Grid";
 import Card from "@mui/material/Card";
 import {
@@ -14,6 +14,10 @@ import {
   DialogTitle,
   DialogContent,
   DialogActions,
+  FormControl,
+  InputLabel,
+  Select,
+  MenuItem,
 } from "@mui/material";
 
 import MDBox from "components/MDBox";
@@ -25,7 +29,7 @@ import DashboardLayout from "examples/LayoutContainers/DashboardLayout";
 import DashboardNavbar from "examples/Navbars/DashboardNavbar";
 import Footer from "examples/Footer";
 import { useSalesPolling } from "utils/salesSync";
-import { formatBpSaleId } from "utils/saleId";
+// import { formatBpSaleId } from "utils/saleId";
 
 function escapeHtml(value) {
   return String(value ?? "")
@@ -38,7 +42,12 @@ function escapeHtml(value) {
 
 function Delivered() {
   const [salesData, setSalesData] = useState([]);
+  const [cancelledSalesData, setCancelledSalesData] = useState([]);
   const [searchQuery, setSearchQuery] = useState("");
+  const [selectedCompanyId, setSelectedCompanyId] = useState("");
+  const [selectedStaffId, setSelectedStaffId] = useState("");
+  const [cancelRangeStart, setCancelRangeStart] = useState("");
+  const [cancelRangeEnd, setCancelRangeEnd] = useState("");
   const [updatingSaleIds, setUpdatingSaleIds] = useState(new Set());
   const [cancelReportOpen, setCancelReportOpen] = useState(false);
   const API = "https://bawarchee.edunextg.co/api";
@@ -59,6 +68,32 @@ function Delivered() {
     return value;
   };
 
+  const getDateOnly = (value) => {
+    if (!value) return "";
+    return String(value).split("T")[0].split(" ")[0];
+  };
+
+  const getCompanyIds = (row) =>
+    String(row?.company_ids || "")
+      .split(",")
+      .map((id) => Number(id))
+      .filter((id) => Number.isInteger(id) && id > 0);
+
+  const csvValue = (value) => `"${String(value ?? "").replace(/"/g, '""')}"`;
+
+  const downloadCSV = (filename, csvContent) => {
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const link = document.createElement("a");
+    const url = URL.createObjectURL(blob);
+    link.setAttribute("href", url);
+    link.setAttribute("download", filename);
+    link.style.visibility = "hidden";
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
   const fetchSales = useCallback(async ({ silent = false } = {}) => {
     try {
       const response = await fetch(`${API}/staff/sales/by-date`);
@@ -75,15 +110,83 @@ function Delivered() {
     }
   }, [API]);
 
+  const fetchCancelledSales = useCallback(async ({ silent = false } = {}) => {
+    try {
+      const response = await fetch(`${API}/staff/sales/cancelled`);
+      if (response.ok) {
+        const data = await response.json();
+        setCancelledSalesData(data);
+      } else if (!silent) {
+        setCancelledSalesData([]);
+      }
+    } catch (error) {
+      if (!silent) {
+        console.error("Error fetching cancelled sales:", error);
+      }
+    }
+  }, [API]);
+
   useEffect(() => {
     fetchSales();
-  }, [fetchSales]);
+    fetchCancelledSales();
+  }, [fetchSales, fetchCancelledSales]);
 
-  useSalesPolling(fetchSales);
+  useSalesPolling(() => {
+    fetchSales({ silent: true });
+    fetchCancelledSales({ silent: true });
+  });
+
+  const companyOptions = useMemo(() => {
+    const companies = new Map();
+
+    cancelledSalesData.forEach((row) => {
+      const ids = getCompanyIds(row);
+      const names = String(row.company_name || "")
+        .split(",")
+        .map((name) => name.trim())
+        .filter(Boolean);
+
+      ids.forEach((id, index) => {
+        if (!companies.has(id)) {
+          companies.set(id, names[index] || names[0] || `Company ${id}`);
+        }
+      });
+    });
+
+    return [...companies.entries()]
+      .map(([id, name]) => ({ id, name }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [cancelledSalesData]);
+
+  const staffOptions = useMemo(() => {
+    const staff = new Map();
+
+    cancelledSalesData.forEach((row) => {
+      if (!row.staff_id) return;
+      if (selectedCompanyId && !getCompanyIds(row).includes(Number(selectedCompanyId))) return;
+      if (!staff.has(row.staff_id)) {
+        staff.set(row.staff_id, row.staff_name || `Staff ${row.staff_id}`);
+      }
+    });
+
+    return [...staff.entries()]
+      .map(([id, name]) => ({ id, name }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [cancelledSalesData, selectedCompanyId]);
+
+  const selectedCompanyName =
+    companyOptions.find((company) => company.id === Number(selectedCompanyId))?.name || "";
+  const selectedStaffName =
+    staffOptions.find((staff) => staff.id === Number(selectedStaffId))?.name || "";
+
+  const handleCompanyChange = (value) => {
+    setSelectedCompanyId(value);
+    setSelectedStaffId("");
+  };
 
   const filteredSales = salesData.filter((row) => {
     const st = row.packaging_status;
-    if (st !== 'out_for_delivery' && st !== 'delivered' && st !== 'cancelled' && st !== 'returned') return false;
+    if (st !== 'out_for_delivery' && st !== 'delivered' && st !== 'returned') return false;
 
     const search = searchQuery.toLowerCase();
     const outletName = row.outlet_name ? row.outlet_name.toLowerCase() : "";
@@ -98,14 +201,106 @@ function Delivered() {
     );
   });
 
+  const filteredCancelledSales = cancelledSalesData.filter((row) => {
+    if (selectedCompanyId && !getCompanyIds(row).includes(Number(selectedCompanyId))) {
+      return false;
+    }
+    if (selectedStaffId && Number(row.staff_id) !== Number(selectedStaffId)) {
+      return false;
+    }
+
+    const cancelDate = getDateOnly(row.delivery_date || row.status_updated_at);
+    if (cancelRangeStart && (!cancelDate || cancelDate < cancelRangeStart)) {
+      return false;
+    }
+    if (cancelRangeEnd && (!cancelDate || cancelDate > cancelRangeEnd)) {
+      return false;
+    }
+
+    const search = searchQuery.toLowerCase();
+    const outletName = row.outlet_name ? row.outlet_name.toLowerCase() : "";
+    const outletErpId = row.outlet_erp_id ? row.outlet_erp_id.toLowerCase() : "";
+    const staffName = row.staff_name ? row.staff_name.toLowerCase() : "";
+    const saleId = row.sticker_number ? row.sticker_number.toLowerCase() : "";
+    const companyName = row.company_name ? row.company_name.toLowerCase() : "";
+    return (
+      outletName.includes(search) ||
+      outletErpId.includes(search) ||
+      staffName.includes(search) ||
+      saleId.includes(search) ||
+      companyName.includes(search)
+    );
+  });
+
   const deliveredTotal = filteredSales.filter((row) => row.packaging_status === "delivered").length;
-  const cancelledTotal = filteredSales.filter((row) => row.packaging_status === "cancelled").length;
+  const cancelledTotal = filteredCancelledSales.length;
   const returnedTotal = filteredSales.filter((row) => row.packaging_status === "returned").length;
-  const cancelledSales = filteredSales.filter((row) => row.packaging_status === "cancelled");
+  const cancelledSales = filteredCancelledSales;
   const cancelledAmount = cancelledSales.reduce(
     (total, row) => total + (Number(row.price) || 0),
     0
   );
+  const reportCompanyLabel = selectedCompanyName || "All Companies";
+  const reportStaffLabel = selectedStaffName || "All Staff";
+  const reportRangeLabel =
+    cancelRangeStart || cancelRangeEnd
+      ? `${cancelRangeStart ? formatDate(cancelRangeStart) : "Start"} to ${
+          cancelRangeEnd ? formatDate(cancelRangeEnd) : "Today"
+        }`
+      : "All Dates";
+
+  const buildSummary = (rows, getKey) => {
+    const summary = new Map();
+    rows.forEach((row) => {
+      const key = getKey(row) || "N/A";
+      const current = summary.get(key) || { name: key, count: 0, amount: 0 };
+      current.count += 1;
+      current.amount += Number(row.price) || 0;
+      summary.set(key, current);
+    });
+    return [...summary.values()].sort((a, b) => a.name.localeCompare(b.name));
+  };
+
+  const staffCancelSummary = buildSummary(cancelledSales, (row) => row.staff_name || "Unknown Staff");
+  const companyCancelSummary = buildSummary(cancelledSales, (row) => row.company_name || "Unknown Company");
+  const rangeCancelSummary = buildSummary(cancelledSales, (row) =>
+    formatDate(row.delivery_date || row.status_updated_at)
+  );
+
+  const renderSummaryRows = (summary) =>
+    summary
+      .map(
+        (row, index) => `
+          <tr>
+            <td>${index + 1}</td>
+            <td>${escapeHtml(row.name)}</td>
+            <td class="right">${row.count}</td>
+            <td class="right">Rs. ${row.amount.toFixed(2)}</td>
+          </tr>
+        `
+      )
+      .join("");
+
+  const renderSummaryTable = (title, label, summary) => `
+    <div class="summary-block">
+      <h2>${escapeHtml(title)}</h2>
+      ${
+        summary.length > 0
+          ? `<table>
+              <thead>
+                <tr>
+                  <th>Sr No</th>
+                  <th>${escapeHtml(label)}</th>
+                  <th class="right">Cancel Count</th>
+                  <th class="right">Cancel Amount</th>
+                </tr>
+              </thead>
+              <tbody>${renderSummaryRows(summary)}</tbody>
+            </table>`
+          : `<div class="empty">No cancelled invoices found.</div>`
+      }
+    </div>
+  `;
 
   const handleDownloadCancelReport = () => {
     const rowsHtml = cancelledSales
@@ -115,6 +310,7 @@ function Delivered() {
             <td>${index + 1}</td>
             <td>${escapeHtml(row.sticker_number || "N/A")}</td>
             <td>${escapeHtml(row.staff_name || "N/A")}</td>
+            <td>${escapeHtml(row.company_name || "N/A")}</td>
             <td>${escapeHtml(formatDate(row.sale_date))}</td>
             <td>${escapeHtml(formatDate(row.delivery_date || row.status_updated_at))}</td>
             <td>${escapeHtml(row.outlet_erp_id || "N/A")}</td>
@@ -141,20 +337,37 @@ function Delivered() {
           <style>
             body { font-family: Arial, sans-serif; color: #111827; margin: 28px; }
             h1 { font-size: 22px; margin: 0 0 6px; }
+            h2 { color: #7f1d1d; font-size: 15px; margin: 18px 0 8px; }
             .sub { color: #4b5563; margin-bottom: 14px; font-size: 13px; }
+            .meta { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px 20px; margin-bottom: 14px; font-size: 12px; background: #f8fafc; border: 1px solid #e5e7eb; border-radius: 6px; padding: 10px; }
+            .meta strong { display: inline-block; min-width: 90px; color: #4b5563; }
             .total { display: inline-block; border: 1px solid #fecaca; background: #fef2f2; color: #991b1b; padding: 10px 12px; border-radius: 6px; font-weight: 700; margin-bottom: 16px; }
             table { width: 100%; border-collapse: collapse; font-size: 11px; }
             th, td { border: 1px solid #d1d5db; padding: 7px; text-align: left; vertical-align: top; }
             th { background: #fef2f2; font-weight: 700; color: #7f1d1d; }
             .right { text-align: right; white-space: nowrap; }
+            .summary-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; margin-bottom: 16px; }
+            .summary-block { page-break-inside: avoid; }
             .empty { padding: 24px; text-align: center; color: #6b7280; border: 1px solid #d1d5db; }
-            @media print { body { margin: 12mm; } }
+            @media print { body { margin: 12mm; } .summary-grid { display: block; } }
           </style>
         </head>
         <body>
           <h1>Cancelled Invoice Report</h1>
-          <div class="sub">Cancelled invoices in the current list.</div>
+          <div class="sub">Staff-wise, company-wise, and date-range-wise cancelled invoice totals.</div>
+          <div class="meta">
+            <div><strong>Company:</strong> ${escapeHtml(reportCompanyLabel)}</div>
+            <div><strong>Staff:</strong> ${escapeHtml(reportStaffLabel)}</div>
+            <div><strong>Range:</strong> ${escapeHtml(reportRangeLabel)}</div>
+            <div><strong>Generated:</strong> ${escapeHtml(new Date().toLocaleString("en-GB"))}</div>
+          </div>
           <div class="total">Total Cancel Amount: Rs. ${cancelledAmount.toFixed(2)}</div>
+          <div class="summary-grid">
+            ${renderSummaryTable("Staff Wise Total", "Staff Name", staffCancelSummary)}
+            ${renderSummaryTable("Company Wise Total", "Company Name", companyCancelSummary)}
+            ${renderSummaryTable("Range Wise Total", "Cancel Date", rangeCancelSummary)}
+          </div>
+          <h2>Cancelled Invoice Details</h2>
           ${
             cancelledSales.length > 0
               ? `<table>
@@ -163,6 +376,7 @@ function Delivered() {
                       <th>Sr No</th>
                       <th>Sale ID</th>
                       <th>Staff Name</th>
+                      <th>Company</th>
                       <th>Invoice Date</th>
                       <th>Cancel Date</th>
                       <th>ERP ID</th>
@@ -181,6 +395,42 @@ function Delivered() {
     printWindow.document.close();
     printWindow.focus();
     printWindow.print();
+  };
+
+  const handleDownloadCancelCSV = () => {
+    let csv =
+      "Report Type,Name,Cancel Count,Cancel Amount\n" +
+      staffCancelSummary
+        .map((row) => `Staff Wise,${csvValue(row.name)},${row.count},${row.amount.toFixed(2)}`)
+        .join("\n");
+
+    csv += "\n\nReport Type,Name,Cancel Count,Cancel Amount\n";
+    csv += companyCancelSummary
+      .map((row) => `Company Wise,${csvValue(row.name)},${row.count},${row.amount.toFixed(2)}`)
+      .join("\n");
+
+    csv += "\n\nReport Type,Date,Cancel Count,Cancel Amount\n";
+    csv += rangeCancelSummary
+      .map((row) => `Range Wise,${csvValue(row.name)},${row.count},${row.amount.toFixed(2)}`)
+      .join("\n");
+
+    csv += "\n\nSr No,Sale ID,Staff Name,Company,Invoice Date,Cancel Date,ERP ID,Outlet Name,Invoice No,Cancel Amount\n";
+    cancelledSales.forEach((row, index) => {
+      csv +=
+        `${index + 1},` +
+        `${csvValue(row.sticker_number || "N/A")},` +
+        `${csvValue(row.staff_name || "N/A")},` +
+        `${csvValue(row.company_name || "N/A")},` +
+        `${csvValue(formatDate(row.sale_date))},` +
+        `${csvValue(formatDate(row.delivery_date || row.status_updated_at))},` +
+        `${csvValue(row.outlet_erp_id || "N/A")},` +
+        `${csvValue(row.outlet_name || "N/A")},` +
+        `${csvValue(row.invoice_number || "N/A")},` +
+        `${Number(row.price || 0).toFixed(2)}\n`;
+    });
+    csv += `,,,,,,,,Total,${cancelledAmount.toFixed(2)}\n`;
+
+    downloadCSV("Cancelled_Invoice_Report.csv", csv);
   };
 
   const handleUpdateStatus = async (saleId, newStatus, currentDeliveryBoy, currentVehicle, currentDeliveryDate) => {
@@ -211,11 +461,14 @@ function Delivered() {
 
       if (response.ok) {
         const data = await response.json();
-        const updated = data.sale;
-        if (newStatus === "packing_done") {
-          // Returned to Delivery section — remove from Delivered Items list.
+        if (newStatus === "packing_done" || newStatus === "cancelled") {
+          // Returned to Delivery / Add Sales — remove from Delivered Items list.
           setSalesData((prevData) => prevData.filter((row) => row.id !== saleId));
+          if (newStatus === "cancelled") {
+            fetchCancelledSales({ silent: true });
+          }
         } else {
+          const updated = data.sale;
           setSalesData((prevData) =>
             prevData.map((row) => (row.id === saleId ? { ...row, ...updated } : row))
           );
@@ -374,7 +627,7 @@ function Delivered() {
                           <TableRow
                             key={row.id}
                             sx={{
-                              backgroundColor: row.packaging_status === 'cancelled' ? '#fef2f2' : row.packaging_status === 'returned' ? '#fff7ed' : row.packaging_status === 'delivered' ? '#f0fdf4' : '#f8fafc',
+                              backgroundColor: row.packaging_status === 'returned' ? '#fff7ed' : row.packaging_status === 'delivered' ? '#f0fdf4' : '#f8fafc',
                               "&:last-child td, &:last-child th": { border: 0 }
                             }}
                           >
@@ -408,9 +661,7 @@ function Delivered() {
                               {formatDate(row.delivery_date)}
                             </TableCell>
                             <TableCell align="center" sx={{ borderBottom: "1px solid #cbd5e1", py: 2 }}>
-                              {row.packaging_status === 'cancelled' ? (
-                                <Chip label="Cancelled" color="error" variant="outlined" size="small" />
-                              ) : row.packaging_status === 'returned' ? (
+                              {row.packaging_status === 'returned' ? (
                                 <Chip label="Returned" color="warning" variant="outlined" size="small" />
                               ) : row.packaging_status === 'delivered' ? (
                                 <Chip label="Delivered" color="success" variant="outlined" size="small" />
@@ -466,22 +717,116 @@ function Delivered() {
       <Dialog open={cancelReportOpen} onClose={() => setCancelReportOpen(false)} fullWidth maxWidth="md">
         <DialogTitle>Cancelled Invoice Report</DialogTitle>
         <DialogContent dividers>
+          <Grid container spacing={2} mb={2}>
+            <Grid item xs={12} md={3}>
+              <FormControl size="small" fullWidth>
+                <InputLabel id="cancel-company-filter-label">Company</InputLabel>
+                <Select
+                  labelId="cancel-company-filter-label"
+                  value={selectedCompanyId}
+                  label="Company"
+                  onChange={(e) => handleCompanyChange(e.target.value)}
+                  sx={{ height: 44 }}
+                >
+                  <MenuItem value="">All Companies</MenuItem>
+                  {companyOptions.map((company) => (
+                    <MenuItem key={company.id} value={company.id}>
+                      {company.name}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            </Grid>
+            <Grid item xs={12} md={3}>
+              <FormControl size="small" fullWidth>
+                <InputLabel id="cancel-staff-filter-label">Staff</InputLabel>
+                <Select
+                  labelId="cancel-staff-filter-label"
+                  value={selectedStaffId}
+                  label="Staff"
+                  onChange={(e) => setSelectedStaffId(e.target.value)}
+                  sx={{ height: 44 }}
+                >
+                  <MenuItem value="">All Staff</MenuItem>
+                  {staffOptions.map((staff) => (
+                    <MenuItem key={staff.id} value={staff.id}>
+                      {staff.name}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            </Grid>
+            <Grid item xs={12} md={3}>
+              <MDInput
+                type="date"
+                label="Cancel From"
+                fullWidth
+                InputLabelProps={{ shrink: true }}
+                value={cancelRangeStart}
+                onChange={(e) => setCancelRangeStart(e.target.value)}
+              />
+            </Grid>
+            <Grid item xs={12} md={3}>
+              <MDInput
+                type="date"
+                label="Cancel To"
+                fullWidth
+                InputLabelProps={{ shrink: true }}
+                value={cancelRangeEnd}
+                onChange={(e) => setCancelRangeEnd(e.target.value)}
+              />
+            </Grid>
+          </Grid>
           <MDBox display="flex" justifyContent="space-between" alignItems="center" mb={2} flexWrap="wrap" gap={1}>
             <MDTypography variant="body2" color="text">
-              Cancelled invoices in the current list.
+              {reportCompanyLabel} / {reportStaffLabel} / {reportRangeLabel}
             </MDTypography>
             <MDTypography variant="h6" color="error" fontWeight="bold">
-              Total Cancel Amount: ₹{cancelledAmount.toFixed(2)}
+              Total Cancel: {cancelledTotal} | Amount: Rs. {cancelledAmount.toFixed(2)}
             </MDTypography>
           </MDBox>
+          <Grid container spacing={2} mb={2}>
+            {[
+              { title: "Staff Wise Total", rows: staffCancelSummary },
+              { title: "Company Wise Total", rows: companyCancelSummary },
+              { title: "Range Wise Total", rows: rangeCancelSummary },
+            ].map((section) => (
+              <Grid item xs={12} md={4} key={section.title}>
+                <MDBox p={1.5} borderRadius="lg" sx={{ border: "1px solid #fecaca", backgroundColor: "#fff7f7" }}>
+                  <MDTypography variant="button" color="error" fontWeight="bold">
+                    {section.title}
+                  </MDTypography>
+                  {section.rows.length > 0 ? (
+                    section.rows.map((row) => (
+                      <MDBox key={`${section.title}-${row.name}`} display="flex" justifyContent="space-between" mt={0.75} gap={1}>
+                        <MDTypography variant="caption" color="text">
+                          {row.name}
+                        </MDTypography>
+                        <MDTypography variant="caption" color="dark" fontWeight="bold" sx={{ whiteSpace: "nowrap" }}>
+                          {row.count} / Rs. {row.amount.toFixed(2)}
+                        </MDTypography>
+                      </MDBox>
+                    ))
+                  ) : (
+                    <MDTypography variant="caption" color="text">
+                      No cancelled invoices found.
+                    </MDTypography>
+                  )}
+                </MDBox>
+              </Grid>
+            ))}
+          </Grid>
           <TableContainer component={Paper} sx={{ boxShadow: "none", border: "1px solid #fecaca" }}>
             <Table size="small">
               <TableHead sx={{ display: "table-header-group", backgroundColor: "#fef2f2" }}>
                 <TableRow>
                   <TableCell sx={{ fontWeight: 700 }}>Sr No</TableCell>
                   <TableCell align="center" sx={{ fontWeight: 700 }}>Sale ID</TableCell>
+                  <TableCell sx={{ fontWeight: 700 }}>Staff</TableCell>
+                  <TableCell sx={{ fontWeight: 700 }}>Company</TableCell>
                   <TableCell sx={{ fontWeight: 700 }}>Outlet Name</TableCell>
                   <TableCell align="center" sx={{ fontWeight: 700 }}>Invoice Date</TableCell>
+                  <TableCell align="center" sx={{ fontWeight: 700 }}>Cancel Date</TableCell>
                   <TableCell align="center" sx={{ fontWeight: 700 }}>Invoice No</TableCell>
                   <TableCell align="right" sx={{ fontWeight: 700 }}>Cancel Amount</TableCell>
                 </TableRow>
@@ -493,8 +838,11 @@ function Delivered() {
                     <TableCell align="center" sx={{ fontWeight: "bold" }}>
                       {row.sticker_number}
                     </TableCell>
+                    <TableCell>{row.staff_name || "N/A"}</TableCell>
+                    <TableCell>{row.company_name || "N/A"}</TableCell>
                     <TableCell>{row.outlet_name || "N/A"}</TableCell>
                     <TableCell align="center">{formatDate(row.sale_date)}</TableCell>
+                    <TableCell align="center">{formatDate(row.delivery_date || row.status_updated_at)}</TableCell>
                     <TableCell align="center">{row.invoice_number || "N/A"}</TableCell>
                     <TableCell align="right" sx={{ fontWeight: 700 }}>
                       ₹{Number(row.price || 0).toFixed(2)}
@@ -503,7 +851,7 @@ function Delivered() {
                 ))}
                 {cancelledSales.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={6} align="center" sx={{ py: 3 }}>
+                    <TableCell colSpan={9} align="center" sx={{ py: 3 }}>
                       <MDTypography variant="body2" color="text">
                         No cancelled invoices found.
                       </MDTypography>
@@ -515,6 +863,9 @@ function Delivered() {
           </TableContainer>
         </DialogContent>
         <DialogActions>
+          <MDButton color="dark" variant="outlined" onClick={handleDownloadCancelCSV}>
+            Download CSV
+          </MDButton>
           <MDButton color="error" variant="contained" onClick={handleDownloadCancelReport}>
             Download PDF
           </MDButton>

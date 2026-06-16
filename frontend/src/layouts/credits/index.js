@@ -31,7 +31,7 @@ import MDButton from "components/MDButton";
 import DashboardLayout from "examples/LayoutContainers/DashboardLayout";
 import DashboardNavbar from "examples/Navbars/DashboardNavbar";
 import Footer from "examples/Footer";
-import { formatBpSaleId } from "utils/saleId";
+import { IoPrintOutline } from "react-icons/io5";
 
 function CreditsPage() {
   const [credits, setCredits] = useState([]);
@@ -115,6 +115,43 @@ function CreditsPage() {
       .replace(/"/g, "&quot;")
       .replace(/'/g, "&#039;");
 
+  const getDiffDays = (saleDateStr, creditDays) => {
+    if (!creditDays) return null;
+    const saleDate = new Date(saleDateStr);
+    const msInDay = 24 * 60 * 60 * 1000;
+    const dueDate = new Date(saleDate.getTime() + creditDays * msInDay);
+    const now = new Date();
+    now.setHours(0, 0, 0, 0);
+    dueDate.setHours(0, 0, 0, 0);
+    return Math.round((dueDate - now) / msInDay);
+  };
+
+  const downloadCSV = (filename, csvContent) => {
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const link = document.createElement("a");
+    if (link.download !== undefined) {
+      const url = URL.createObjectURL(blob);
+      link.setAttribute("href", url);
+      link.setAttribute("download", filename);
+      link.style.visibility = "hidden";
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    }
+  };
+
+  const groupCreditsByStaff = (creditsList) => {
+    const groups = {};
+    creditsList.forEach((credit) => {
+      const staffName = credit.staff_name || "Unknown Staff";
+      if (!groups[staffName]) {
+        groups[staffName] = [];
+      }
+      groups[staffName].push(credit);
+    });
+    return groups;
+  };
+
   const getCreditRowSx = (credit) => {
     if ((Number(credit.remarks_count) || 0) > 0 || credit.remarks?.trim()) {
       return {
@@ -180,10 +217,10 @@ function CreditsPage() {
   const selectedStaffName =
     staffOptions.find((staff) => staff.id === Number(selectedStaffId))?.name || "";
   const totalCreditLabel = selectedStaffName
-    ? `${selectedStaffName} Credit Dues Amount`
-    : selectedCompanyName
-      ? `${selectedCompanyName} Credit Dues Amount`
-      : "Total Credit Dues Amount";
+    // ? `${selectedStaffName} Credit Dues Amount`
+    // : selectedCompanyName
+    //   ? `${selectedCompanyName} Credit Dues Amount`
+    //   : "Total Credit Dues Amount";
 
   const handleCompanyChange = (value) => {
     setSelectedCompanyId(value);
@@ -295,15 +332,15 @@ function CreditsPage() {
     const invoiceNum = credit.invoice_number ? credit.invoice_number.toLowerCase() : "";
     const staffName = credit.staff_name ? credit.staff_name.toLowerCase() : "";
     const remarks = credit.remarks ? credit.remarks.toLowerCase() : "";
-    const saleId = formatBpSaleId(credit).toLowerCase();
+    const stickerNum = credit.sticker_number ? credit.sticker_number.toLowerCase() : "";
     return (
       outletName.includes(search) ||
       contactNumber.includes(search) ||
       invoiceNum.includes(search) ||
       staffName.includes(search) ||
       remarks.includes(search) ||
-      saleId.includes(search)
-    );
+      stickerNum.includes(search)
+    )
   });
 
   const totalCreditDuesAmount = filteredCredits.reduce(
@@ -323,7 +360,7 @@ function CreditsPage() {
         <tr>
           <td>${index + 1}</td>
           
-          <td>${escapeHtml(formatBpSaleId(credit))}</td>
+          <td>${escapeHtml(credit.sticker_number || "N/A")}</td>
           <td>${escapeHtml(credit.invoice_number || "N/A")}</td>
           <td>${escapeHtml(credit.outlet_name || "N/A")}</td>
           <td>${escapeHtml(credit.outlet_erp_id || "N/A")}</td>
@@ -378,7 +415,7 @@ function CreditsPage() {
         <thead>
           <tr>
             <th>Sr No</th>
-            <th>BP Sale ID</th>
+            <th>Sale ID</th>
             <th>Invoice No</th>
             <th>Outlet Name</th>
             <th>ERP ID</th>
@@ -400,6 +437,436 @@ function CreditsPage() {
     printWindow.document.close();
     printWindow.focus();
     printWindow.print();
+  };
+
+  const handlePrintTomorrowCollection = () => {
+    const tomorrowCredits = filteredCredits.filter((c) => {
+      const diff = getDiffDays(c.sale_date, c.credit_days);
+      return diff === 1;
+    });
+
+    const grouped = groupCreditsByStaff(tomorrowCredits);
+    const staffNames = Object.keys(grouped).sort();
+
+    const companyLabel = selectedCompanyName || "All Companies";
+    const staffLabel = selectedStaffName || "All Staff";
+    const generatedOn = new Date().toLocaleString("en-GB");
+    const grandTotal = tomorrowCredits.reduce((sum, c) => sum + (Number(c.balance_amount) || 0), 0);
+
+    let tablesHtml = "";
+    if (staffNames.length === 0) {
+      tablesHtml = `<div class="empty">No tomorrow collections due.</div>`;
+    } else {
+      staffNames.forEach((staffName) => {
+        const staffCredits = grouped[staffName];
+        const staffTotal = staffCredits.reduce((sum, c) => sum + (Number(c.balance_amount) || 0), 0);
+        const rows = staffCredits.map((c, idx) => `
+          <tr>
+            <td>${idx + 1}</td>
+            <td>${escapeHtml(c.sticker_number || "N/A")}</td>
+            <td>${escapeHtml(c.invoice_number || "N/A")}</td>
+            <td>${escapeHtml(c.outlet_name || "N/A")}</td>
+            <td>${escapeHtml(c.outlet_erp_id || "N/A")}</td>
+            <td>${escapeHtml(formatDate(c.sale_date))}</td>
+            <td>${escapeHtml(calcDueDate(c.sale_date, c.credit_days))}</td>
+            <td class="right">Rs. ${Number(c.balance_amount || 0).toFixed(2)}</td>
+          </tr>
+        `).join("");
+
+        tablesHtml += `
+          <div class="staff-section">
+            <h2>Staff: ${escapeHtml(staffName)}</h2>
+            <table>
+              <thead>
+                <tr>
+                  <th style="width: 5%">Sr</th>
+                  <th style="width: 12%">Sale ID</th>
+                  <th style="width: 15%">Invoice</th>
+                  <th>Outlet Name</th>
+                  <th style="width: 12%">ERP ID</th>
+                  <th style="width: 14%">Issue Date</th>
+                  <th style="width: 14%">Due Date</th>
+                  <th style="width: 16%" class="right">Balance</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${rows}
+                <tr class="staff-total-row">
+                  <td colspan="7" class="right"><strong>Total for ${escapeHtml(staffName)}</strong></td>
+                  <td class="right"><strong>Rs. ${staffTotal.toFixed(2)}</strong></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        `;
+      });
+    }
+
+    const printWindow = window.open("", "_blank", "width=1100,height=800");
+    if (!printWindow) {
+      alert("Please allow popups to print the report.");
+      return;
+    }
+
+    printWindow.document.write(`
+      <!doctype html>
+      <html>
+        <head>
+          <title>Staff Wise Tomorrow Collection Report</title>
+          <style>
+            body { font-family: Arial, sans-serif; color: #111827; margin: 28px; line-height: 1.4; }
+            h1 { font-size: 20px; margin: 0 0 4px; text-transform: uppercase; color: #1e3a8a; }
+            h2 { font-size: 14px; margin: 16px 0 6px; color: #1f2937; border-bottom: 2px solid #e5e7eb; padding-bottom: 4px; }
+            .meta { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px 20px; margin-bottom: 20px; font-size: 13px; background: #f8fafc; padding: 12px; border-radius: 6px; border: 1px solid #e2e8f0; }
+            .meta strong { display: inline-block; min-width: 120px; color: #475569; }
+            table { width: 100%; border-collapse: collapse; font-size: 12px; margin-bottom: 8px; }
+            th, td { border: 1px solid #cbd5e1; padding: 6px 8px; text-align: left; }
+            th { background: #f1f5f9; font-weight: 700; color: #334155; }
+            .right { text-align: right; }
+            .staff-section { margin-bottom: 24px; page-break-inside: avoid; }
+            .staff-total-row { background: #f8fafc; }
+            .grand-total { margin-top: 20px; padding: 12px; text-align: right; font-size: 16px; font-weight: 700; background: #e0f2fe; color: #0369a1; border-radius: 6px; border: 1px solid #bae6fd; }
+            .empty { padding: 30px; text-align: center; color: #64748b; border: 1px solid #cbd5e1; border-radius: 6px; }
+            @media print {
+              body { margin: 12mm; }
+              button { display: none; }
+            }
+          </style>
+        </head>
+        <body>
+          <h1>Staff-Wise Tomorrow Collection Report</h1>
+          <div style="color: #4b5563; font-size: 12px; margin-bottom: 12px;">Report of pending credit balances due tomorrow.</div>
+          <div class="meta">
+            <div><strong>Company:</strong> ${escapeHtml(companyLabel)}</div>
+            <div><strong>Staff:</strong> ${escapeHtml(staffLabel)}</div>
+            <div><strong>Report Date:</strong> ${escapeHtml(new Date(Date.now() + 86400000).toLocaleDateString("en-GB"))} (Tomorrow)</div>
+            <div><strong>Generated:</strong> ${escapeHtml(generatedOn)}</div>
+          </div>
+          ${tablesHtml}
+          ${tomorrowCredits.length > 0 ? `<div class="grand-total">Grand Total Tomorrow Collection: Rs. ${grandTotal.toFixed(2)}</div>` : ""}
+        </body>
+      </html>
+    `);
+    printWindow.document.close();
+    printWindow.focus();
+    printWindow.print();
+  };
+
+  const handleDownloadTomorrowCollection = () => {
+    const tomorrowCredits = filteredCredits.filter((c) => {
+      const diff = getDiffDays(c.sale_date, c.credit_days);
+      return diff === 1;
+    });
+    
+    tomorrowCredits.sort((a, b) => (a.staff_name || "").localeCompare(b.staff_name || ""));
+
+    let csv = "Sr No,Staff Name,Sale ID,Invoice No,Outlet Name,ERP ID,Issue Date,Due Date,Outstanding Balance\n";
+    tomorrowCredits.forEach((c, idx) => {
+      csv += `${idx + 1},"${(c.staff_name || "").replace(/"/g, '""')}",` +
+             `"${(c.sticker_number || "").replace(/"/g, '""')}",` +
+             `"${(c.invoice_number || "").replace(/"/g, '""')}",` +
+             `"${(c.outlet_name || "").replace(/"/g, '""')}",` +
+             `"${(c.outlet_erp_id || "").replace(/"/g, '""')}",` +
+             `"${formatDate(c.sale_date)}",` +
+             `"${calcDueDate(c.sale_date, c.credit_days)}",` +
+             `${Number(c.balance_amount || 0).toFixed(2)}\n`;
+    });
+
+    const total = tomorrowCredits.reduce((sum, c) => sum + (Number(c.balance_amount) || 0), 0);
+    csv += `,,,,,,,,Total: Rs. ${total.toFixed(2)}\n`;
+
+    downloadCSV("Tomorrow_Collection_Report.csv", csv);
+  };
+
+  const handlePrintNext2DaysCollection = () => {
+    const next2DaysCredits = filteredCredits.filter((c) => {
+      const diff = getDiffDays(c.sale_date, c.credit_days);
+      return diff === 1 || diff === 2;
+    });
+
+    const grouped = groupCreditsByStaff(next2DaysCredits);
+    const staffNames = Object.keys(grouped).sort();
+
+    const companyLabel = selectedCompanyName || "All Companies";
+    const staffLabel = selectedStaffName || "All Staff";
+    const generatedOn = new Date().toLocaleString("en-GB");
+    const grandTotal = next2DaysCredits.reduce((sum, c) => sum + (Number(c.balance_amount) || 0), 0);
+
+    let tablesHtml = "";
+    if (staffNames.length === 0) {
+      tablesHtml = `<div class="empty">No collections due in the next 2 days.</div>`;
+    } else {
+      staffNames.forEach((staffName) => {
+        const staffCredits = grouped[staffName];
+        const staffTotal = staffCredits.reduce((sum, c) => sum + (Number(c.balance_amount) || 0), 0);
+        const rows = staffCredits.map((c, idx) => {
+          const diff = getDiffDays(c.sale_date, c.credit_days);
+          const dueInLabel = diff === 1 ? "Tomorrow" : "In 2 Days";
+          return `
+            <tr>
+              <td>${idx + 1}</td>
+              <td>${escapeHtml(c.sticker_number || "N/A")}</td>
+              <td>${escapeHtml(c.invoice_number || "N/A")}</td>
+              <td>${escapeHtml(c.outlet_name || "N/A")}</td>
+              <td>${escapeHtml(c.outlet_erp_id || "N/A")}</td>
+              <td>${escapeHtml(formatDate(c.sale_date))}</td>
+              <td>${escapeHtml(calcDueDate(c.sale_date, c.credit_days))} (${dueInLabel})</td>
+              <td class="right">Rs. ${Number(c.balance_amount || 0).toFixed(2)}</td>
+            </tr>
+          `;
+        }).join("");
+
+        tablesHtml += `
+          <div class="staff-section">
+            <h2>Staff: ${escapeHtml(staffName)}</h2>
+            <table>
+              <thead>
+                <tr>
+                  <th style="width: 5%">Sr</th>
+                  <th style="width: 12%">Sale ID</th>
+                  <th style="width: 15%">Invoice</th>
+                  <th>Outlet Name</th>
+                  <th style="width: 12%">ERP ID</th>
+                  <th style="width: 14%">Issue Date</th>
+                  <th style="width: 20%">Due Date</th>
+                  <th style="width: 16%" class="right">Balance</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${rows}
+                <tr class="staff-total-row">
+                  <td colspan="7" class="right"><strong>Total for ${escapeHtml(staffName)}</strong></td>
+                  <td class="right"><strong>Rs. ${staffTotal.toFixed(2)}</strong></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        `;
+      });
+    }
+
+    const printWindow = window.open("", "_blank", "width=1100,height=800");
+    if (!printWindow) {
+      alert("Please allow popups to print the report.");
+      return;
+    }
+
+    printWindow.document.write(`
+      <!doctype html>
+      <html>
+        <head>
+          <title>Staff Wise Next 2 Days Collection Report</title>
+          <style>
+            body { font-family: Arial, sans-serif; color: #111827; margin: 28px; line-height: 1.4; }
+            h1 { font-size: 20px; margin: 0 0 4px; text-transform: uppercase; color: #0f766e; }
+            h2 { font-size: 14px; margin: 16px 0 6px; color: #1f2937; border-bottom: 2px solid #e5e7eb; padding-bottom: 4px; }
+            .meta { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px 20px; margin-bottom: 20px; font-size: 13px; background: #f0fdfa; padding: 12px; border-radius: 6px; border: 1px solid #99f6e4; }
+            .meta strong { display: inline-block; min-width: 120px; color: #0f766e; }
+            table { width: 100%; border-collapse: collapse; font-size: 12px; margin-bottom: 8px; }
+            th, td { border: 1px solid #cbd5e1; padding: 6px 8px; text-align: left; }
+            th { background: #f0fdfa; font-weight: 700; color: #0f766e; }
+            .right { text-align: right; }
+            .staff-section { margin-bottom: 24px; page-break-inside: avoid; }
+            .staff-total-row { background: #f0fdfa; }
+            .grand-total { margin-top: 20px; padding: 12px; text-align: right; font-size: 16px; font-weight: 700; background: #ccfbf1; color: #0f766e; border-radius: 6px; border: 1px solid #99f6e4; }
+            .empty { padding: 30px; text-align: center; color: #64748b; border: 1px solid #cbd5e1; border-radius: 6px; }
+            @media print {
+              body { margin: 12mm; }
+              button { display: none; }
+            }
+          </style>
+        </head>
+        <body>
+          <h1>Staff-Wise Next 2 Days Collection Report</h1>
+          <div style="color: #4b5563; font-size: 12px; margin-bottom: 12px;">Report of pending credit balances due in the next 2 days (tomorrow and day after tomorrow).</div>
+          <div class="meta">
+            <div><strong>Company:</strong> ${escapeHtml(companyLabel)}</div>
+            <div><strong>Staff:</strong> ${escapeHtml(staffLabel)}</div>
+            <div><strong>Generated:</strong> ${escapeHtml(generatedOn)}</div>
+            <div><strong>Total Collection:</strong> Rs. ${grandTotal.toFixed(2)}</div>
+          </div>
+          ${tablesHtml}
+          ${next2DaysCredits.length > 0 ? `<div class="grand-total">Grand Total Next 2 Days Collection: Rs. ${grandTotal.toFixed(2)}</div>` : ""}
+        </body>
+      </html>
+    `);
+    printWindow.document.close();
+    printWindow.focus();
+    printWindow.print();
+  };
+
+  const handleDownloadNext2DaysCollection = () => {
+    const next2DaysCredits = filteredCredits.filter((c) => {
+      const diff = getDiffDays(c.sale_date, c.credit_days);
+      return diff === 1 || diff === 2;
+    });
+
+    next2DaysCredits.sort((a, b) => (a.staff_name || "").localeCompare(b.staff_name || ""));
+
+    let csv = "Sr No,Staff Name,Sale ID,Invoice No,Outlet Name,ERP ID,Issue Date,Due Date,Outstanding Balance\n";
+    next2DaysCredits.forEach((c, idx) => {
+      csv += `${idx + 1},"${(c.staff_name || "").replace(/"/g, '""')}",` +
+             `"${(c.sticker_number || c.bp_sale_id || "").replace(/"/g, '""')}",` +
+             `"${(c.invoice_number || "").replace(/"/g, '""')}",` +
+             `"${(c.outlet_name || "").replace(/"/g, '""')}",` +
+             `"${(c.outlet_erp_id || "").replace(/"/g, '""')}",` +
+             `"${formatDate(c.sale_date)}",` +
+             `"${calcDueDate(c.sale_date, c.credit_days)}",` +
+             `${Number(c.balance_amount || 0).toFixed(2)}\n`;
+    });
+
+    const total = next2DaysCredits.reduce((sum, c) => sum + (Number(c.balance_amount) || 0), 0);
+    csv += `,,,,,,,,Total: Rs. ${total.toFixed(2)}\n`;
+
+    downloadCSV("Next_2_Days_Collection_Report.csv", csv);
+  };
+
+  const handlePrintOverdueReport = () => {
+    const overdueCredits = filteredCredits.filter((c) => {
+      const diff = getDiffDays(c.sale_date, c.credit_days);
+      return diff !== null && diff < 0;
+    });
+
+    const grouped = groupCreditsByStaff(overdueCredits);
+    const staffNames = Object.keys(grouped).sort();
+
+    const companyLabel = selectedCompanyName || "All Companies";
+    const staffLabel = selectedStaffName || "All Staff";
+    const generatedOn = new Date().toLocaleString("en-GB");
+    const grandTotal = overdueCredits.reduce((sum, c) => sum + (Number(c.balance_amount) || 0), 0);
+
+    let tablesHtml = "";
+    if (staffNames.length === 0) {
+      tablesHtml = `<div class="empty">No overdue credits found.</div>`;
+    } else {
+      staffNames.forEach((staffName) => {
+        const staffCredits = grouped[staffName];
+        const staffTotal = staffCredits.reduce((sum, c) => sum + (Number(c.balance_amount) || 0), 0);
+        const rows = staffCredits.map((c, idx) => {
+          const diff = getDiffDays(c.sale_date, c.credit_days);
+          const overdueDays = diff ? Math.abs(diff) : 0;
+          return `
+            <tr>
+              <td>${idx + 1}</td>
+              <td>${escapeHtml(c.sticker_number || c.bp_sale_id || "N/A")}</td>
+              <td>${escapeHtml(c.invoice_number || "N/A")}</td>
+              <td>${escapeHtml(c.outlet_name || "N/A")}</td>
+              <td>${escapeHtml(c.outlet_erp_id || "N/A")}</td>
+              <td>${escapeHtml(formatDate(c.sale_date))}</td>
+              <td>${escapeHtml(calcDueDate(c.sale_date, c.credit_days))}</td>
+              <td class="right">${overdueDays} days</td>
+              <td class="right">Rs. ${Number(c.balance_amount || 0).toFixed(2)}</td>
+            </tr>
+          `;
+        }).join("");
+
+        tablesHtml += `
+          <div class="staff-section">
+            <h2>Staff: ${escapeHtml(staffName)}</h2>
+            <table>
+              <thead>
+                <tr>
+                  <th style="width: 5%">Sr</th>
+                  <th style="width: 12%">Sale ID</th>
+                  <th style="width: 15%">Invoice</th>
+                  <th>Outlet Name</th>
+                  <th style="width: 12%">ERP ID</th>
+                  <th style="width: 14%">Issue Date</th>
+                  <th style="width: 14%">Due Date</th>
+                  <th style="width: 12%" class="right">Overdue</th>
+                  <th style="width: 16%" class="right">Balance</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${rows}
+                <tr class="staff-total-row">
+                  <td colspan="8" class="right"><strong>Total Overdue for ${escapeHtml(staffName)}</strong></td>
+                  <td class="right"><strong>Rs. ${staffTotal.toFixed(2)}</strong></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        `;
+      });
+    }
+
+    const printWindow = window.open("", "_blank", "width=1100,height=800");
+    if (!printWindow) {
+      alert("Please allow popups to print the report.");
+      return;
+    }
+
+    printWindow.document.write(`
+      <!doctype html>
+      <html>
+        <head>
+          <title>Staff Wise Overdue Report</title>
+          <style>
+            body { font-family: Arial, sans-serif; color: #111827; margin: 28px; line-height: 1.4; }
+            h1 { font-size: 20px; margin: 0 0 4px; text-transform: uppercase; color: #dc2626; }
+            h2 { font-size: 14px; margin: 16px 0 6px; color: #1f2937; border-bottom: 2px solid #e5e7eb; padding-bottom: 4px; }
+            .meta { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px 20px; margin-bottom: 20px; font-size: 13px; background: #fef2f2; padding: 12px; border-radius: 6px; border: 1px solid #fecaca; }
+            .meta strong { display: inline-block; min-width: 120px; color: #991b1b; }
+            table { width: 100%; border-collapse: collapse; font-size: 12px; margin-bottom: 8px; }
+            th, td { border: 1px solid #cbd5e1; padding: 6px 8px; text-align: left; }
+            th { background: #fef2f2; font-weight: 700; color: #991b1b; }
+            .right { text-align: right; }
+            .staff-section { margin-bottom: 24px; page-break-inside: avoid; }
+            .staff-total-row { background: #fef2f2; }
+            .grand-total { margin-top: 20px; padding: 12px; text-align: right; font-size: 16px; font-weight: 700; background: #fef2f2; color: #b91c1c; border-radius: 6px; border: 1px solid #fca5a5; }
+            .empty { padding: 30px; text-align: center; color: #64748b; border: 1px solid #cbd5e1; border-radius: 6px; }
+            @media print {
+              body { margin: 12mm; }
+              button { display: none; }
+            }
+          </style>
+        </head>
+        <body>
+          <h1>Staff-Wise Overdue Report</h1>
+          <div style="color: #4b5563; font-size: 12px; margin-bottom: 12px;">Report of pending credit balances past their due date.</div>
+          <div class="meta">
+            <div><strong>Company:</strong> ${escapeHtml(companyLabel)}</div>
+            <div><strong>Staff:</strong> ${escapeHtml(staffLabel)}</div>
+            <div><strong>Generated:</strong> ${escapeHtml(generatedOn)}</div>
+            <div><strong>Total Overdue:</strong> Rs. ${grandTotal.toFixed(2)}</div>
+          </div>
+          ${tablesHtml}
+          ${overdueCredits.length > 0 ? `<div class="grand-total">Grand Total Overdue for Staff: Rs. ${grandTotal.toFixed(2)}</div>` : ""}
+        </body>
+      </html>
+    `);
+    printWindow.document.close();
+    printWindow.focus();
+    printWindow.print();
+  };
+
+  const handleDownloadOverdueReport = () => {
+    const overdueCredits = filteredCredits.filter((c) => {
+      const diff = getDiffDays(c.sale_date, c.credit_days);
+      return diff !== null && diff < 0;
+    });
+
+    overdueCredits.sort((a, b) => (a.staff_name || "").localeCompare(b.staff_name || ""));
+
+    let csv = "Sr No,Staff Name,Sale ID,Invoice No,Outlet Name,ERP ID,Issue Date,Due Date,Overdue Days,Outstanding Balance\n";
+    overdueCredits.forEach((c, idx) => {
+      const diff = getDiffDays(c.sale_date, c.credit_days);
+      const overdueDays = diff ? Math.abs(diff) : 0;
+      csv += `${idx + 1},"${(c.staff_name || "").replace(/"/g, '""')}",` +
+             `"${(c.sticker_number|| "").replace(/"/g, '""')}",` +
+             `"${(c.invoice_number || "").replace(/"/g, '""')}",` +
+             `"${(c.outlet_name || "").replace(/"/g, '""')}",` +
+             `"${(c.outlet_erp_id || "").replace(/"/g, '""')}",` +
+             `"${formatDate(c.sale_date)}",` +
+             `"${calcDueDate(c.sale_date, c.credit_days)}",` +
+             `${overdueDays},` +
+             `${Number(c.balance_amount || 0).toFixed(2)}\n`;
+    });
+
+    const total = overdueCredits.reduce((sum, c) => sum + (Number(c.balance_amount) || 0), 0);
+    csv += `,,,,,,,,,Total: Rs. ${total.toFixed(2)}\n`;
+
+    downloadCSV("Staff_Wise_Overdue_Report.csv", csv);
   };
 
   return (
@@ -475,21 +942,22 @@ function CreditsPage() {
                   </Grid>
                   {showPrintButton && (
                     <Grid item xs={6} md={4} lg={2}>
-                      <MDButton
+                      {/* <MDButton
                         color="dark"
                         variant="outlined"
-                        fullWidth
-                        onClick={handlePrintPdf}
+                        fullWidth */}
+                        {/* onClick={handlePrintPdf}
                         disabled={filteredCredits.length === 0}
-                        sx={{ height: 44 }}
-                      >
-                        <Icon sx={{ mr: 1 }}>print</Icon>
-                        Print PDF
-                      </MDButton>
+                        sx={{ height: 44 }} */}
+                      {/* > */}
+                        <IoPrintOutline  onClick={() => handlePrintPdf()}                         disabled={filteredCredits.length === 0}
+ style={{ cursor: "pointer" }} color="#6C9CF0" size={20}/> 
+                        
+                      {/* </MDButton> */}
                     </Grid>
                   )}
                  
-                  <Grid item xs={12} md={6} lg={3}>
+                  <Grid item xs={6} md={3} lg={2}>
                     <MDBox display="flex" justifyContent={{ xs: "flex-start", md: "flex-end" }}>
                       <MDBox
                         px={2}
@@ -507,6 +975,88 @@ function CreditsPage() {
                     </MDBox>
                   </Grid>
                 </Grid>
+              </MDBox>
+
+              <MDBox px={3} pt={1} pb={2} display="flex" flexDirection="column" gap={1.5} sx={{ borderBottom: "1px solid #f0f2f5" }}>
+                <MDTypography variant="subtitle2" fontWeight="bold" color="text">
+                  Staff-Wise Reports:
+                </MDTypography>
+                <MDBox display="flex" gap={2} flexWrap="wrap" alignItems="center">
+                  {/* Tomorrow's Due Collection */}
+                  <MDBox display="flex" gap={1} alignItems="center" sx={{ background: "#f8fafc", padding: "8px 12px", borderRadius: "8px", border: "1px solid #e2e8f0" }}>
+                    <MDTypography variant="button" fontWeight="medium" color="dark" sx={{ mr: 1 }}>
+                      Tomorrow Collection:
+                    </MDTypography>
+                    <MDButton
+                      color="info"
+                      variant="gradient"
+                      size="small"
+                      onClick={handlePrintTomorrowCollection}
+                      sx={{ py: 1 }}
+                    >
+                      <Icon sx={{ mr: 0.5 }}>print</Icon> Print
+                    </MDButton>
+                    <MDButton
+                      color="info"
+                      variant="outlined"
+                      size="small"
+                      onClick={handleDownloadTomorrowCollection}
+                      sx={{ py: 1 }}
+                    >
+                      <Icon sx={{ mr: 0.5 }}>download</Icon> CSV
+                    </MDButton>
+                  </MDBox>
+
+                  {/* Next 2 Days Due Collection */}
+                  <MDBox display="flex" gap={1} alignItems="center" sx={{ background: "#f0fdfa", padding: "8px 12px", borderRadius: "8px", border: "1px solid #99f6e4" }}>
+                    <MDTypography variant="button" fontWeight="medium" color="dark" sx={{ mr: 1 }}>
+                      Next 2 Days Collection:
+                    </MDTypography>
+                    <MDButton
+                      color="success"
+                      variant="gradient"
+                      size="small"
+                      onClick={handlePrintNext2DaysCollection}
+                      sx={{ py: 1 }}
+                    >
+                      <Icon sx={{ mr: 0.5 }}>print</Icon> Print
+                    </MDButton>
+                    <MDButton
+                      color="success"
+                      variant="outlined"
+                      size="small"
+                      onClick={handleDownloadNext2DaysCollection}
+                      sx={{ py: 1 }}
+                    >
+                      <Icon sx={{ mr: 0.5 }}>download</Icon> CSV
+                    </MDButton>
+                  </MDBox>
+
+                  {/* Overdue Credits */}
+                  <MDBox display="flex" gap={1} alignItems="center" sx={{ background: "#fef2f2", padding: "8px 12px", borderRadius: "8px", border: "1px solid #fecaca" }}>
+                    <MDTypography variant="button" fontWeight="medium" color="dark" sx={{ mr: 1 }}>
+                      Overdue Report:
+                    </MDTypography>
+                    <MDButton
+                      color="error"
+                      variant="gradient"
+                      size="small"
+                      onClick={handlePrintOverdueReport}
+                      sx={{ py: 1 }}
+                    >
+                      <Icon sx={{ mr: 0.5 }}>print</Icon> Print
+                    </MDButton>
+                    <MDButton
+                      color="error"
+                      variant="outlined"
+                      size="small"
+                      onClick={handleDownloadOverdueReport}
+                      sx={{ py: 1 }}
+                    >
+                      <Icon sx={{ mr: 0.5 }}>download</Icon> CSV
+                    </MDButton>
+                  </MDBox>
+                </MDBox>
               </MDBox>
 
               <MDBox pb={4} px={3}>
@@ -562,7 +1112,7 @@ function CreditsPage() {
                           <TableCell align="left">{credit.outlet_name}</TableCell>
                           <TableCell align="center">{credit.outlet_erp_id || "N/A"}</TableCell>
                           <TableCell align="center">{credit.contact_number || "N/A"}</TableCell>
-                          <TableCell align="center">{formatBpSaleId(credit)}</TableCell>
+                          <TableCell align="center">{credit.sticker_number}</TableCell>
                           <TableCell align="center">{credit.invoice_number}</TableCell>
                           <TableCell align="center">{credit.staff_name}</TableCell>
                           <TableCell
@@ -634,7 +1184,7 @@ function CreditsPage() {
           {remarksDialog.credit && (
             <MDBox mb={2}>
               <MDTypography variant="button" fontWeight="medium">
-                {remarksDialog.credit.outlet_name} - {formatBpSaleId(remarksDialog.credit)} - {remarksDialog.credit.invoice_number}
+                {remarksDialog.credit.outlet_name} - {remarksDialog.credit.sticker_number} - {remarksDialog.credit.invoice_number}
               </MDTypography>
             </MDBox>
           )}

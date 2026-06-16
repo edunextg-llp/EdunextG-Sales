@@ -1154,6 +1154,16 @@ export const getAllSalesByDate = async (req, res) => {
     }
 };
 
+export const getCancelledDeliverySales = async (req, res) => {
+    try {
+        const sales = await StaffModel.getCancelledDeliverySales();
+        res.status(200).json(sales);
+    } catch (error) {
+        console.error('Error fetching cancelled delivery sales:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+};
+
 export const fetchSalesByDate = async (req, res) => {
     try {
         const { id } = req.params;

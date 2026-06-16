@@ -22,6 +22,7 @@ router.put('/purchases/:purchaseId', staffController.updatePurchase);
 router.delete('/purchases/:purchaseId', staffController.deletePurchase);
 router.get('/purchase-reports', staffController.getPurchaseReports);
 router.get('/sales/by-date', staffController.getAllSalesByDate);
+router.get('/sales/cancelled', staffController.getCancelledDeliverySales);
 router.get('/reports', staffController.getReports);
 router.get('/:id', staffController.getStaffFullDetails);
 router.put('/:id', staffController.updateStaff);

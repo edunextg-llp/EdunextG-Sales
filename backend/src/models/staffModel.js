@@ -332,7 +332,7 @@ class StaffModel {
 
     static async getAllSalesByDate(date) {
         let query = `
-            SELECT ss.id, CONCAT('BP', ss.id) AS bp_sale_id,
+            SELECT ss.id,
                     ss.staff_id, ss.outlet_id, ss.sale_date, ss.item_count, ss.packed_item_count, ss.box_count, ss.price, ss.invoice_number, 
                     ss.sticker_number, ss.packaging_status, ss.delivery_boy_id, ss.vehicle_no,
                     DATE_FORMAT(ss.delivery_date, '%Y-%m-%d') AS delivery_date,
@@ -374,7 +374,7 @@ class StaffModel {
 
     static async getSalesByDate(staffId, date) {
         const [rows] = await db.execute(
-            `SELECT ss.id, CONCAT('BP', ss.id) AS bp_sale_id,
+            `SELECT ss.id,
                     ss.staff_id, ss.outlet_id, ss.sale_date, ss.item_count, ss.packed_item_count, ss.box_count, ss.price, ss.invoice_number, 
                     ss.sticker_number, ss.payment_mode, ss.paid_amount, ss.balance_amount, 
                     ss.reference_no, ss.reference_date, ss.credit_days, ss.vehicle_no,
@@ -400,7 +400,7 @@ class StaffModel {
 
     static async getSaleById(saleId) {
         const [rows] = await db.execute(
-            `SELECT ss.id, CONCAT('BP', ss.id) AS bp_sale_id,
+                `SELECT ss.id,
                     ss.staff_id, ss.outlet_id, ss.sale_date, ss.item_count, ss.packed_item_count, ss.box_count, ss.price, ss.invoice_number,
                     ss.sticker_number, ss.paid_amount, ss.balance_amount, ss.packaging_status,
                     DATE_FORMAT(ss.delivery_date, '%Y-%m-%d') AS delivery_date,
@@ -494,12 +494,45 @@ class StaffModel {
         try {
             await connection.beginTransaction();
             const [currentRows] = await connection.execute(
-                'SELECT packaging_status FROM staff_sales WHERE id = ? FOR UPDATE',
+                'SELECT packaging_status, item_count FROM staff_sales WHERE id = ? FOR UPDATE',
                 [saleId]
             );
             const currentStatus = currentRows[0]?.packaging_status;
 
-            if (status === 'out_for_delivery' || status === 'delivered' || status === 'cancelled' || status === 'returned') {
+            if (status === 'cancelled') {
+                if (currentStatus !== 'cancelled') {
+                    if (statusDate) {
+                        await connection.execute(
+                            `INSERT INTO staff_sale_status_history (sale_id, status, changed_at)
+                             VALUES (?, 'cancelled', ?)`,
+                            [saleId, `${statusDate} 00:00:00`]
+                        );
+                    } else {
+                        await connection.execute(
+                            `INSERT INTO staff_sale_status_history (sale_id, status, changed_at)
+                             VALUES (?, 'cancelled', NOW())`,
+                            [saleId]
+                        );
+                    }
+                }
+
+                const resetPackedCount = currentRows[0]?.item_count ?? packedItemCount;
+                await connection.execute(
+                    `UPDATE staff_sales
+                     SET packaging_status = 'not_packing',
+                         delivery_boy_id = NULL,
+                         vehicle_no = NULL,
+                         delivery_date = NULL,
+                         packed_item_count = ?,
+                         box_count = NULL
+                     WHERE id = ?`,
+                    [resetPackedCount, saleId]
+                );
+                await connection.commit();
+                return;
+            }
+
+            if (status === 'out_for_delivery' || status === 'delivered' || status === 'returned') {
                 await connection.execute(
                     `UPDATE staff_sales 
                      SET packaging_status = ?, delivery_boy_id = ?, vehicle_no = ?, delivery_date = ?,
@@ -542,6 +575,51 @@ class StaffModel {
         }
     }
 
+    static async getCancelledDeliverySales() {
+        const [rows] = await db.execute(
+            `SELECT ss.id,
+                    ss.staff_id, ss.outlet_id, ss.sale_date, ss.item_count, ss.packed_item_count, ss.box_count,
+                    ss.price, ss.invoice_number, ss.sticker_number, ss.packaging_status,
+                    DATE_FORMAT(
+                        COALESCE(cancel_hist.cancel_date, legacy_cancel.status_updated_at),
+                        '%Y-%m-%d %H:%i:%s'
+                    ) AS status_updated_at,
+                    DATE_FORMAT(
+                        COALESCE(cancel_hist.cancel_date, legacy_cancel.status_updated_at),
+                        '%Y-%m-%d'
+                    ) AS delivery_date,
+                    sc.outlet_name, sc.outlet_erp_id, s.name AS staff_name,
+                    COALESCE(staff_company.company_names, c.name) AS company_name,
+                    COALESCE(staff_company.company_ids, s.company_id) AS company_ids
+             FROM staff_sales ss
+             LEFT JOIN (
+                 SELECT sale_id, MAX(changed_at) AS cancel_date
+                 FROM staff_sale_status_history
+                 WHERE status = 'cancelled'
+                 GROUP BY sale_id
+             ) cancel_hist ON cancel_hist.sale_id = ss.id
+             LEFT JOIN (
+                 SELECT sale_id, MAX(changed_at) AS status_updated_at
+                 FROM staff_sale_status_history
+                 GROUP BY sale_id
+             ) legacy_cancel ON legacy_cancel.sale_id = ss.id
+             LEFT JOIN staff_counters sc ON ss.outlet_id = sc.id
+             LEFT JOIN staff s ON ss.staff_id = s.id
+             LEFT JOIN companies c ON s.company_id = c.id
+             LEFT JOIN (
+                 SELECT sc.staff_id,
+                        GROUP_CONCAT(c2.name ORDER BY c2.name SEPARATOR ', ') AS company_names,
+                        GROUP_CONCAT(c2.id ORDER BY c2.name) AS company_ids
+                 FROM staff_companies sc
+                 INNER JOIN companies c2 ON c2.id = sc.company_id
+                 GROUP BY sc.staff_id
+             ) staff_company ON staff_company.staff_id = s.id
+             WHERE cancel_hist.sale_id IS NOT NULL OR ss.packaging_status = 'cancelled'
+             ORDER BY COALESCE(cancel_hist.cancel_date, legacy_cancel.status_updated_at) DESC, ss.id DESC`
+        );
+        return rows;
+    }
+
     static async getSaleStatusHistory(saleId) {
         const sale = await StaffModel.getSaleById(saleId);
         if (!sale) {
@@ -561,7 +639,7 @@ class StaffModel {
 
     static async getPendingCredits() {
         const [rows] = await db.execute(
-            `SELECT sp.id, sp.sale_id, CONCAT('BP', ss.id) AS bp_sale_id,
+            `SELECT sp.id, sp.sale_id, ss.sticker_number,
                     sp.amount AS credit_amount,
                     GREATEST(0, sp.amount - COALESCE(credit_paid.paid_amount, 0)) AS balance_amount,
                     sp.payment_date AS sale_date, sp.credit_days,

@@ -14,6 +14,10 @@ import {
   TableHead,
   TableRow,
   Paper,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions
 } from "@mui/material";
 
 import MDBox from "components/MDBox";
@@ -26,6 +30,11 @@ import DashboardNavbar from "examples/Navbars/DashboardNavbar";
 import Footer from "examples/Footer";
 import { printCashCountingPdf } from "utils/printCashCountingPdf";
 import { printChequeDepositPdf } from "utils/printChequeDepositPdf";
+import { FaRegEdit } from "react-icons/fa";
+import { IoPrintOutline } from "react-icons/io5";
+import { CiTrash } from "react-icons/ci";
+import { FaRegEye } from "react-icons/fa";
+
 
 const CASH_NOTE_DENOMINATIONS = [500, 200, 100, 50, 20, 10];
 const CASH_COIN_DENOMINATIONS = [20, 10, 5, 2, 1];
@@ -137,6 +146,14 @@ const formatDate = (value) => {
   return parts.length === 3 ? `${parts[2]}-${parts[1]}-${parts[0]}` : value;
 };
 
+const escapeHtml = (value) =>
+  String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+
 const parseChequeDetails = (deposit) => {
   if (deposit?.cash_details) {
     try {
@@ -188,6 +205,7 @@ function BankDeposit() {
   const [saving, setSaving] = useState(false);
   const [depositTotalStartDate, setDepositTotalStartDate] = useState(() => getMonthStartDate());
   const [depositTotalEndDate, setDepositTotalEndDate] = useState(() => getTodayLocalDate());
+  const [viewDeposit, setViewDeposit] = useState(null); // For view dialog
   const API = "https://bawarchee.edunextg.co/api";
 
   const cashAmount = useMemo(
@@ -233,6 +251,42 @@ function BankDeposit() {
         .reduce((total, deposit) => total + Number(deposit.amount || 0), 0),
     [depositsInTotalRange]
   );
+
+  const bankWiseDepositSummary = useMemo(() => {
+    const summary = new Map();
+
+    depositsInTotalRange.forEach((deposit) => {
+      const bankName = deposit.bank_name || "Unknown Bank";
+      const accountNo = deposit.bank_account_no || "N/A";
+      const key = `${bankName}|${accountNo}|${deposit.branch_name || ""}`;
+      const current =
+        summary.get(key) || {
+          bankName,
+          branchName: deposit.branch_name || "N/A",
+          accountNo,
+          cashAmount: 0,
+          chequeAmount: 0,
+          totalAmount: 0,
+          depositCount: 0,
+        };
+
+      const amount = Number(deposit.amount || 0);
+      if (deposit.deposit_mode === "cash") {
+        current.cashAmount += amount;
+      } else if (deposit.deposit_mode === "cheque") {
+        current.chequeAmount += amount;
+      }
+      current.totalAmount += amount;
+      current.depositCount += 1;
+      summary.set(key, current);
+    });
+
+    return [...summary.values()].sort((a, b) =>
+      `${a.bankName} ${a.accountNo}`.localeCompare(`${b.bankName} ${b.accountNo}`)
+    );
+  }, [depositsInTotalRange]);
+
+  const totalDepositAmount = cashDepositTotal + chequeDepositTotal;
 
   const fetchDeposits = async () => {
     try {
@@ -556,6 +610,20 @@ function BankDeposit() {
     }
   };
 
+  const [openViewDialog, setOpenViewDialog] = useState(false);
+  const [selectedViewDeposit, setSelectedViewDeposit] = useState(null);
+
+  // View action trigger
+  const handleViewDeposit = (deposit) => {
+    setSelectedViewDeposit(deposit);
+    setOpenViewDialog(true);
+  };
+
+  const closeViewDialog = () => {
+    setOpenViewDialog(false);
+    setSelectedViewDeposit(null);
+  };
+
   const cashBreakdownRows = (cashDetails = form.cashDetails) =>
     CASH_DENOMINATIONS.map((item) => {
       const count = parseInt(cashDetails[item.key], 10) || 0;
@@ -642,6 +710,129 @@ function BankDeposit() {
     });
   };
 
+  const printBankWiseDepositReport = () => {
+    const rowsHtml = bankWiseDepositSummary
+      .map(
+        (row, index) => `
+          <tr>
+            <td>${index + 1}</td>
+            <td>${escapeHtml(row.bankName)}</td>
+            <td>${escapeHtml(row.branchName)}</td>
+            <td>${escapeHtml(row.accountNo)}</td>
+            <td class="right">${row.depositCount}</td>
+            <td class="right">Rs. ${row.cashAmount.toFixed(2)}</td>
+            <td class="right">Rs. ${row.chequeAmount.toFixed(2)}</td>
+            <td class="right">Rs. ${row.totalAmount.toFixed(2)}</td>
+          </tr>
+        `
+      )
+      .join("");
+
+    const detailRowsHtml = depositsInTotalRange
+      .map(
+        (deposit, index) => `
+          <tr>
+            <td>${index + 1}</td>
+            <td>${escapeHtml(deposit.deposit_ref_no || "N/A")}</td>
+            <td>${escapeHtml(formatDate(deposit.deposit_date))}</td>
+            <td>${escapeHtml(deposit.bank_name || "N/A")}</td>
+            <td>${escapeHtml(deposit.branch_name || "N/A")}</td>
+            <td>${escapeHtml(deposit.bank_account_no || "N/A")}</td>
+            <td>${escapeHtml(deposit.deposit_mode === "cash" ? "Cash" : "Cheque")}</td>
+            <td class="right">Rs. ${Number(deposit.amount || 0).toFixed(2)}</td>
+          </tr>
+        `
+      )
+      .join("");
+
+    const printWindow = window.open("", "_blank", "width=1200,height=800");
+    if (!printWindow) {
+      alert("Please allow popups to download the report.");
+      return;
+    }
+
+    printWindow.document.open();
+    printWindow.document.write(`
+      <!doctype html>
+      <html>
+        <head>
+          <title>Bank Wise Deposit Report</title>
+          <style>
+            body { font-family: Arial, sans-serif; color: #111827; margin: 28px; line-height: 1.35; }
+            h1 { font-size: 22px; margin: 0 0 6px; }
+            h2 { font-size: 15px; margin: 20px 0 8px; color: #1f2937; }
+            .sub { color: #4b5563; font-size: 13px; margin-bottom: 14px; }
+            .meta { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px 20px; margin-bottom: 16px; font-size: 13px; background: #f8fafc; border: 1px solid #e5e7eb; border-radius: 6px; padding: 12px; }
+            .meta strong { display: inline-block; min-width: 120px; color: #4b5563; }
+            table { width: 100%; border-collapse: collapse; font-size: 11px; margin-bottom: 12px; }
+            th, td { border: 1px solid #d1d5db; padding: 7px; text-align: left; vertical-align: top; }
+            th { background: #f3f4f6; font-weight: 700; color: #374151; }
+            .right { text-align: right; white-space: nowrap; }
+            .total { margin-top: 12px; padding: 10px 12px; background: #ecfdf5; border: 1px solid #bbf7d0; border-radius: 6px; font-size: 15px; font-weight: 700; text-align: right; color: #166534; }
+            .empty { padding: 24px; text-align: center; color: #6b7280; border: 1px solid #d1d5db; }
+            @media print { body { margin: 12mm; } }
+          </style>
+        </head>
+        <body>
+          <h1>Bank Wise Deposit Report</h1>
+          <div class="sub">Range wise total deposit summary grouped by bank account.</div>
+          <div class="meta">
+            <div><strong>From Date:</strong> ${escapeHtml(formatDate(depositTotalStartDate))}</div>
+            <div><strong>To Date:</strong> ${escapeHtml(formatDate(depositTotalEndDate))}</div>
+            <div><strong>Generated:</strong> ${escapeHtml(new Date().toLocaleString("en-GB"))}</div>
+            <div><strong>Total Deposits:</strong> ${depositsInTotalRange.length}</div>
+            <div><strong>Total Cash:</strong> Rs. ${cashDepositTotal.toFixed(2)}</div>
+            <div><strong>Total Cheque:</strong> Rs. ${chequeDepositTotal.toFixed(2)}</div>
+          </div>
+          <h2>Bank Wise Total</h2>
+          ${
+            bankWiseDepositSummary.length > 0
+              ? `<table>
+                  <thead>
+                    <tr>
+                      <th>Sr No</th>
+                      <th>Bank</th>
+                      <th>Branch</th>
+                      <th>Account No</th>
+                      <th class="right">Deposit Count</th>
+                      <th class="right">Cash Deposit</th>
+                      <th class="right">Cheque Deposit</th>
+                      <th class="right">Total Deposit</th>
+                    </tr>
+                  </thead>
+                  <tbody>${rowsHtml}</tbody>
+                </table>`
+              : `<div class="empty">No deposits found for this range.</div>`
+          }
+          <div class="total">Grand Total Deposit: Rs. ${totalDepositAmount.toFixed(2)}</div>
+          <h2>Deposit Details</h2>
+          ${
+            depositsInTotalRange.length > 0
+              ? `<table>
+                  <thead>
+                    <tr>
+                      <th>Sr No</th>
+                      <th>Deposit ID</th>
+                      <th>Date</th>
+                      <th>Bank</th>
+                      <th>Branch</th>
+                      <th>Account No</th>
+                      <th>Mode</th>
+                      <th class="right">Amount</th>
+                    </tr>
+                  </thead>
+                  <tbody>${detailRowsHtml}</tbody>
+                </table>`
+              : ""
+          }
+        </body>
+      </html>
+    `);
+    printWindow.document.close();
+    printWindow.focus();
+    printWindow.print();
+  };
+
   return (
     <DashboardLayout>
       <DashboardNavbar />
@@ -708,6 +899,78 @@ function BankDeposit() {
                 <MDTypography variant="h4" fontWeight="bold" color="warning">
                   {formatMoney(chequeDepositTotal)}
                 </MDTypography>
+              </MDBox>
+            </Card>
+          </Grid>
+          <Grid item xs={12}>
+            <Card>
+              <MDBox p={3} pb={2} display="flex" justifyContent="space-between" alignItems="center" flexWrap="wrap" gap={2}>
+                <MDBox>
+                  <MDTypography variant="h6" fontWeight="medium" color="dark">
+                    Bank Wise Deposit Report
+                  </MDTypography>
+                  <MDTypography variant="caption" color="text">
+                    {formatDate(depositTotalStartDate)} to {formatDate(depositTotalEndDate)}
+                  </MDTypography>
+                </MDBox>
+                <MDBox display="flex" alignItems="center" gap={2} flexWrap="wrap">
+                  <MDTypography variant="button" color="success" fontWeight="bold">
+                    Total: {formatMoney(totalDepositAmount)}
+                  </MDTypography>
+                  <MDButton
+                    color="dark"
+                    variant="contained"
+                    size="small"
+                    onClick={printBankWiseDepositReport}
+                    disabled={bankWiseDepositSummary.length === 0}
+                  >
+                    Download PDF
+                  </MDButton>
+                </MDBox>
+              </MDBox>
+              <MDBox px={3} pb={3}>
+                <TableContainer component={Paper} sx={{ boxShadow: "none", border: "1px solid #e5e7eb" }}>
+                  <Table sx={{ minWidth: 900 }}>
+                    <TableHead sx={{ display: "table-header-group", backgroundColor: "#f9fafb" }}>
+                      <TableRow>
+                        <TableCell sx={tableHeadSx}>Sr No</TableCell>
+                        <TableCell sx={tableHeadSx}>Bank</TableCell>
+                        <TableCell sx={tableHeadSx}>Branch</TableCell>
+                        <TableCell sx={tableHeadSx}>Account No</TableCell>
+                        <TableCell align="right" sx={tableHeadSx}>Deposit Count</TableCell>
+                        <TableCell align="right" sx={tableHeadSx}>Cash Deposit</TableCell>
+                        <TableCell align="right" sx={tableHeadSx}>Cheque Deposit</TableCell>
+                        <TableCell align="right" sx={tableHeadSx}>Total Deposit</TableCell>
+                      </TableRow>
+                    </TableHead>
+                    <TableBody>
+                      {bankWiseDepositSummary.length > 0 ? (
+                        bankWiseDepositSummary.map((row, index) => (
+                          <TableRow key={`${row.bankName}-${row.accountNo}-${row.branchName}`}>
+                            <TableCell sx={tableBodySx}>{index + 1}</TableCell>
+                            <TableCell sx={tableBodySx}>{row.bankName}</TableCell>
+                            <TableCell sx={tableBodySx}>{row.branchName}</TableCell>
+                            <TableCell sx={tableBodySx}>{row.accountNo}</TableCell>
+                            <TableCell align="right" sx={tableBodySx}>{row.depositCount}</TableCell>
+                            <TableCell align="right" sx={tableBodySx}>{formatMoney(row.cashAmount)}</TableCell>
+                            <TableCell align="right" sx={tableBodySx}>{formatMoney(row.chequeAmount)}</TableCell>
+                            <TableCell align="right" sx={{ ...tableBodySx, fontWeight: 700 }}>
+                              {formatMoney(row.totalAmount)}
+                            </TableCell>
+                          </TableRow>
+                        ))
+                      ) : (
+                        <TableRow>
+                          <TableCell colSpan={8} align="center" sx={{ py: 3, borderBottom: 0 }}>
+                            <MDTypography variant="body2" color="text">
+                              No deposits found for this range.
+                            </MDTypography>
+                          </TableCell>
+                        </TableRow>
+                      )}
+                    </TableBody>
+                  </Table>
+                </TableContainer>
               </MDBox>
             </Card>
           </Grid>
@@ -797,49 +1060,6 @@ function BankDeposit() {
                       onChange={(e) => handleFormChange("depositorName", e.target.value)}
                     />
                   </Grid>
-                  {form.depositMode === "cheque" && (
-                  <Grid item xs={12} md={4}>
-                    <Autocomplete
-                      freeSolo
-                      options={storeOptions}
-                      loading={loadingStores}
-                      value={form.storeName}
-                      inputValue={form.storeName}
-                      getOptionLabel={(option) =>
-                        typeof option === "string" ? option : option.store_name || ""
-                      }
-                      isOptionEqualToValue={(option, value) =>
-                        option.store_name === (typeof value === "string" ? value : value?.store_name)
-                      }
-                      onInputChange={(event, value) => handleFormChange("storeName", value || "")}
-                      onChange={(event, value) =>
-                        handleFormChange(
-                          "storeName",
-                          typeof value === "string" ? value : value?.store_name || ""
-                        )
-                      }
-                      renderOption={(props, option) => (
-                        <li {...props} key={`${option.store_name}-${option.outlet_erp_id || ""}`}>
-                          <MDBox>
-                            <MDTypography variant="button" fontWeight="medium">
-                              {option.store_name}
-                            </MDTypography>
-                            <MDTypography variant="caption" color="text" display="block">
-                              {option.outlet_erp_id || "No ERP"} · Delivered: {option.delivered_count}
-                            </MDTypography>
-                          </MDBox>
-                        </li>
-                      )}
-                      renderInput={(params) => (
-                        <MDInput
-                          {...params}
-                          label="Store Name"
-                          fullWidth
-                        />
-                      )}
-                    />
-                  </Grid>
-                  )}
                   <Grid item xs={12} md={4}>
                     <FormControl size="small" fullWidth>
                       <Select
@@ -1085,13 +1305,9 @@ function BankDeposit() {
                         <TableCell sx={tableHeadSx}>Deposit ID</TableCell>
                         <TableCell sx={tableHeadSx}>Date</TableCell>
                         <TableCell sx={tableHeadSx}>Bank</TableCell>
-                        {/* <TableCell sx={tableHeadSx}>Account Name</TableCell> */}
                         <TableCell sx={tableHeadSx}>Branch</TableCell>
                         <TableCell sx={tableHeadSx}>Bank No</TableCell>
-                        <TableCell sx={tableHeadSx}>IFSC</TableCell>
-                        <TableCell sx={tableHeadSx}>Depositor</TableCell>
-                        <TableCell sx={tableHeadSx}>Store</TableCell>
-                        <TableCell sx={tableHeadSx}>Mode</TableCell>
+                        {/* IFSC, Store, Mode removed from here */}
                         <TableCell sx={tableHeadSx}>Cheque No</TableCell>
                         <TableCell sx={tableHeadSx}>Cheque Date</TableCell>
                         <TableCell align="right" sx={tableHeadSx}>Amount</TableCell>
@@ -1108,17 +1324,9 @@ function BankDeposit() {
                             </TableCell>
                             <TableCell sx={tableBodySx}>{formatDate(deposit.deposit_date)}</TableCell>
                             <TableCell sx={tableBodySx}>{deposit.bank_name}</TableCell>
-                            {/* <TableCell sx={tableBodySx}>{deposit.account_name || "N/A"}</TableCell> */}
                             <TableCell sx={tableBodySx}>{deposit.branch_name}</TableCell>
                             <TableCell sx={tableBodySx}>{deposit.bank_account_no}</TableCell>
-                            <TableCell sx={tableBodySx}>{deposit.ifsc_code || "N/A"}</TableCell>
-                            <TableCell sx={tableBodySx}>{deposit.depositor_name || "N/A"}</TableCell>
-                            <TableCell sx={tableBodySx}>
-                              {deposit.deposit_mode === "cheque" ? chequeDisplayText(deposit, "storeName") : deposit.store_name || "N/A"}
-                            </TableCell>
-                            <TableCell sx={tableBodySx}>
-                              {deposit.deposit_mode === "cash" ? "Cash" : "Cheque"}
-                            </TableCell>
+                            {/* Removed IFSC, Store, Mode from here */}
                             <TableCell sx={tableBodySx}>
                               {deposit.deposit_mode === "cheque" ? chequeDisplayText(deposit, "chequeNo") : deposit.cheque_no || "N/A"}
                             </TableCell>
@@ -1128,29 +1336,33 @@ function BankDeposit() {
                             </TableCell>
                             <TableCell align="center" sx={tableBodySx}>
                               <MDBox display="flex" gap={1} justifyContent="center">
+                                {/* <MDButton color="info" variant="outlined" size="small" onClick={() => handleViewDeposit(deposit)}> */}
+                                  <FaRegEye onClick={() => handleViewDeposit(deposit)} style={{ cursor: "pointer" }} color="" size={20}/> 
+                                {/* </MDButton> */}
                                 {deposit.deposit_mode === "cash" && (
-                                  <MDButton color="success" variant="outlined" size="small" onClick={() => printCashDetails(deposit)}>
-                                    Print
-                                  </MDButton>
+                                  // <MDButton color="success" variant="outlined" size="small" onClick={() => printCashDetails(deposit)}>
+                                  
+                                    <IoPrintOutline  onClick={() => printCashDetails(deposit)} style={{ cursor: "pointer" }} color="#6C9CF0" size={20}/> 
+                                  // {/* </MDButton> */}
                                 )}
                                 {deposit.deposit_mode === "cheque" && (
-                                  <MDButton color="warning" variant="outlined" size="small" onClick={() => printChequeDetails(deposit)}>
-                                    Print
-                                  </MDButton>
+                                  // <MDButton color="warning" variant="outlined" size="small" onClick={() => printChequeDetails(deposit)}>
+                                    <IoPrintOutline  onClick={() => printChequeDetails(deposit)} style={{ cursor: "pointer" }} color="#6C9CF0" size={20}/> 
+                                  // </MDButton>
                                 )}
-                                <MDButton color="info" variant="outlined" size="small" onClick={() => startEditDeposit(deposit)}>
-                                  Edit
-                                </MDButton>
-                                <MDButton color="error" variant="outlined" size="small" onClick={() => deleteDeposit(deposit.id)}>
-                                  Delete
-                                </MDButton>
+                                {/* // <MDButton color="info" variant="outlined" size="small" onClick={() => startEditDeposit(deposit)}> */}
+                                <FaRegEdit  onClick={() => startEditDeposit(deposit)} style={{ cursor: "pointer" }} color="#E0E388" size={20}/>
+                                {/* // </MDButton> */}
+                                {/* // <MDButton color="error" variant="outlined" size="small" onClick={() => deleteDeposit(deposit.id)}> */}
+                                  <CiTrash  onClick={() => deleteDeposit(deposit.id)} style={{ cursor: "pointer" }} color="#D2042D" size={20}/>
+                                {/* // </MDButton> */}
                               </MDBox>
                             </TableCell>
                           </TableRow>
                         ))
                       ) : (
                         <TableRow>
-                          <TableCell colSpan={14} align="center" sx={{ py: 3, borderBottom: 0 }}>
+                          <TableCell colSpan={10} align="center" sx={{ py: 3, borderBottom: 0 }}>
                             <MDTypography variant="body2" color="text">
                               No bank deposits found.
                             </MDTypography>
@@ -1165,6 +1377,42 @@ function BankDeposit() {
           </Grid>
         </Grid>
       </MDBox>
+
+      {/* View Dialog for IFSC, Store, Mode */}
+      <Dialog open={openViewDialog} onClose={closeViewDialog} maxWidth="xs" fullWidth>
+        <DialogTitle>
+          View Bank Deposit Details
+        </DialogTitle>
+        <DialogContent dividers>
+          {selectedViewDeposit && (
+            <MDBox>
+              <MDTypography variant="subtitle2" fontWeight="bold" gutterBottom>
+                IFSC:{" "}
+                <span style={{ fontWeight: 400 }}>
+                  {selectedViewDeposit.ifsc_code || "N/A"}
+                </span>
+              </MDTypography>
+              <MDTypography variant="subtitle2" fontWeight="bold" gutterBottom>
+                Store:{" "}
+                <span style={{ fontWeight: 400 }}>
+                  {selectedViewDeposit.deposit_mode === "cheque"
+                    ? chequeDisplayText(selectedViewDeposit, "storeName")
+                    : selectedViewDeposit.store_name || "N/A"}
+                </span>
+              </MDTypography>
+              <MDTypography variant="subtitle2" fontWeight="bold">
+                Mode: <span style={{ fontWeight: 400 }}>{selectedViewDeposit.deposit_mode === "cash" ? "Cash" : "Cheque"}</span>
+              </MDTypography>
+            </MDBox>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <MDButton onClick={closeViewDialog} color="info" variant="contained">
+            Close
+          </MDButton>
+        </DialogActions>
+      </Dialog>
+
       <Footer />
     </DashboardLayout>
   );

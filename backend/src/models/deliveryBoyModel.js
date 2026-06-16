@@ -214,22 +214,54 @@ class DeliveryBoyModel {
                 return null;
             }
 
-            await connection.execute(
-                `UPDATE staff_sales
-                 SET packaging_status = ?
-                 WHERE id = ? AND delivery_boy_id = ?`,
-                [status, saleId, deliveryBoyId]
-            );
+            if (status === 'cancelled') {
+                if (sale.packaging_status !== 'cancelled') {
+                    await connection.execute(
+                        `INSERT INTO staff_sale_status_history (sale_id, status, changed_at)
+                         VALUES (?, 'cancelled', NOW())`,
+                        [saleId]
+                    );
+                }
 
-            if (sale.packaging_status !== status) {
-                await connection.execute(
-                    `INSERT INTO staff_sale_status_history (sale_id, status, changed_at)
-                     VALUES (?, ?, NOW())`,
-                    [saleId, status]
+                const [itemRows] = await connection.execute(
+                    'SELECT item_count FROM staff_sales WHERE id = ?',
+                    [saleId]
                 );
+                const resetPackedCount = itemRows[0]?.item_count ?? null;
+
+                await connection.execute(
+                    `UPDATE staff_sales
+                     SET packaging_status = 'not_packing',
+                         delivery_boy_id = NULL,
+                         vehicle_no = NULL,
+                         delivery_date = NULL,
+                         packed_item_count = ?,
+                         box_count = NULL
+                     WHERE id = ? AND delivery_boy_id = ?`,
+                    [resetPackedCount, saleId, deliveryBoyId]
+                );
+            } else {
+                await connection.execute(
+                    `UPDATE staff_sales
+                     SET packaging_status = ?
+                     WHERE id = ? AND delivery_boy_id = ?`,
+                    [status, saleId, deliveryBoyId]
+                );
+
+                if (sale.packaging_status !== status) {
+                    await connection.execute(
+                        `INSERT INTO staff_sale_status_history (sale_id, status, changed_at)
+                         VALUES (?, ?, NOW())`,
+                        [saleId, status]
+                    );
+                }
             }
 
             await connection.commit();
+            if (status === 'cancelled') {
+                return { id: saleId, packaging_status: 'not_packing', delivery_cancelled: true };
+            }
+
             const updatedRows = await DeliveryBoyModel.getAssignedSales(deliveryBoyId);
             return updatedRows.find((item) => Number(item.id) === Number(saleId)) || null;
         } catch (error) {
