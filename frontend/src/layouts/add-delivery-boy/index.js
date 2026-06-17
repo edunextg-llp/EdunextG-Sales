@@ -19,6 +19,9 @@ import DashboardLayout from "examples/LayoutContainers/DashboardLayout";
 import DashboardNavbar from "examples/Navbars/DashboardNavbar";
 import Footer from "examples/Footer";
 import DataTable from "examples/Tables/DataTable";
+import { FaRegEdit } from "react-icons/fa";
+import { CiTrash } from "react-icons/ci";
+
 
 function AddDeliveryBoy() {
   const [name, setName] = useState("");
@@ -317,22 +320,16 @@ function AddDeliveryBoy() {
                           ),
                           action: (
                             <MDBox display="flex" gap={1} justifyContent="center" flexWrap="wrap">
-                              <MDButton
+                              {/* <MDButton
                                 variant="outlined"
                                 color="info"
                                 size="small"
                                 onClick={() => startEditDeliveryBoy(boy)}
                               >
                                 Edit
-                              </MDButton>
-                              <MDButton
-                                variant="outlined"
-                                color="error"
-                                size="small"
-                                onClick={() => handleDeleteDeliveryBoy(boy)}
-                              >
-                                Delete
-                              </MDButton>
+                              </MDButton> */}
+                              <FaRegEdit   onClick={() => startEditDeliveryBoy(boy)} style={{ cursor: "pointer" }} color="#E0E388" size={20}/>
+                              <CiTrash   onClick={() => handleDeleteDeliveryBoy(boy)} style={{ cursor: "pointer" }} color="#FF0000" size={20}/>
                             </MDBox>
                           ),
                         })),

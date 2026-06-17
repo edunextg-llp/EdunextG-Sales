@@ -25,6 +25,8 @@ import MDButton from "components/MDButton";
 import DashboardLayout from "examples/LayoutContainers/DashboardLayout";
 import DashboardNavbar from "examples/Navbars/DashboardNavbar";
 import Footer from "examples/Footer";
+import { FaRegEdit } from "react-icons/fa";
+import { CiTrash } from "react-icons/ci";
 
 const emptyForm = () => ({
   sellerName: "",
@@ -808,22 +810,8 @@ function Purchase() {
                             </TableCell>
                             <TableCell align="center" sx={tableBodySx}>
                               <MDBox display="flex" gap={0.75} justifyContent="center">
-                                <MDButton
-                                  color="info"
-                                  variant="text"
-                                  size="small"
-                                  onClick={() => handleEditPurchase(purchase)}
-                                >
-                                  <Icon>edit</Icon>
-                                </MDButton>
-                                <MDButton
-                                  color="error"
-                                  variant="text"
-                                  size="small"
-                                  onClick={() => handleDeletePurchase(purchase)}
-                                >
-                                  <Icon>delete</Icon>
-                                </MDButton>
+                                <FaRegEdit   onClick={() => handleEditPurchase(purchase)} style={{ cursor: "pointer" }} color="#E0E388" size={20}/>
+                                <CiTrash   onClick={() => handleDeletePurchase(purchase)} style={{ cursor: "pointer" }} color="#FF0000" size={20}/>
                               </MDBox>
                             </TableCell>
                           </TableRow>

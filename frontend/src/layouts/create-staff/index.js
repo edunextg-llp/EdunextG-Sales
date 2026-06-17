@@ -34,6 +34,10 @@ import MDButton from "components/MDButton";
 import DashboardLayout from "examples/LayoutContainers/DashboardLayout";
 import DashboardNavbar from "examples/Navbars/DashboardNavbar";
 import Footer from "examples/Footer";
+import { FaEye } from "react-icons/fa";
+import { FaRegEdit } from "react-icons/fa";
+import { CiTrash } from "react-icons/ci";
+
 
 const tableHeadSx = {
   color: "#6b7280",
@@ -478,15 +482,7 @@ function CreateStaff() {
                                   </Grid>
 
                                   <Grid item xs={12} sm={3}>
-                                    <MDButton
-                                      color="error"
-                                      variant="text"
-                                      fullWidth
-                                      onClick={() => removeLocation(day, locIndex)}
-                                    >
-                                      <Icon sx={{ mr: 1 }}>delete</Icon>
-                                      Remove
-                                    </MDButton>
+                                    <CiTrash   onClick={() => removeLocation(day, locIndex)} style={{ cursor: "pointer" }} color="#FF0000" size={20}/>
                                   </Grid>
                                 </Grid>
                               </MDBox>
@@ -543,15 +539,7 @@ function CreateStaff() {
                               </Grid>
 
                               <Grid item xs={12} sm={3}>
-                                <MDButton
-                                  color="error"
-                                  variant="text"
-                                  fullWidth
-                                  onClick={() => removeLocation(cnfRouteDay, locIndex)}
-                                >
-                                  <Icon sx={{ mr: 1 }}>delete</Icon>
-                                  Remove
-                                </MDButton>
+                                <CiTrash   onClick={() => removeLocation(cnfRouteDay, locIndex)} style={{ cursor: "pointer" }} color="#FF0000" size={20}/>
                               </Grid>
                             </Grid>
                           </MDBox>
@@ -705,12 +693,8 @@ function CreateStaff() {
                             </TableCell>
                             <TableCell align="center" sx={{ ...tableBodySx, borderBottom: "1px solid #e5e7eb" }}>
                               <MDBox display="flex" gap={0.5} justifyContent="center" alignItems="center" flexWrap="wrap">
-                                <MDButton variant="text" color="dark" onClick={() => handleView(staff)}>
-                                  <Icon>visibility</Icon>&nbsp;View
-                                </MDButton>
-                                <MDButton variant="text" color="info" onClick={() => handleEdit(staff)}>
-                                  <Icon>edit</Icon>&nbsp;Edit
-                                </MDButton>
+                                <FaEye   onClick={() => handleView(staff)} style={{ cursor: "pointer" }} color="#E0E388" size={20}/>
+                                <FaRegEdit   onClick={() => handleEdit(staff)} style={{ cursor: "pointer" }} color="#E0E388" size={20}/>
                               </MDBox>
                             </TableCell>
                           </TableRow>

@@ -31,6 +31,8 @@ import DashboardLayout from "examples/LayoutContainers/DashboardLayout";
 import DashboardNavbar from "examples/Navbars/DashboardNavbar";
 import Footer from "examples/Footer";
 import { printSalesStickers } from "utils/printSalesStickers";
+import { FaRegEdit } from "react-icons/fa";
+import { CiTrash } from "react-icons/ci";
 
 const tableHeadSx = {
   color: "#6b7280",
@@ -1425,12 +1427,8 @@ function AddSales() {
                                       </>
                                     ) : (
                                       <>
-                                        <MDButton variant="outlined" color="info" size="small" onClick={() => startEditSale(row)}>
-                                          <Icon fontSize="small">edit</Icon>
-                                        </MDButton>
-                                        <MDButton variant="outlined" color="error" size="small" onClick={() => handleDeleteSale(row.id)}>
-                                          <Icon fontSize="small">delete</Icon>
-                                        </MDButton>
+                                        <FaRegEdit   onClick={() => startEditSale(row)} style={{ cursor: "pointer" }} color="#E0E388" size={20}/>
+                                        <CiTrash   onClick={() => handleDeleteSale(row.id)} style={{ cursor: "pointer" }} color="#FF0000" size={20}/>
                                       </>
                                     )}
                                   </MDBox>

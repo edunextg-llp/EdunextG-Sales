@@ -30,6 +30,9 @@ import DashboardNavbar from "examples/Navbars/DashboardNavbar";
 import Footer from "examples/Footer";
 import { useSalesPolling } from "utils/salesSync";
 // import { formatBpSaleId } from "utils/saleId";
+// import { IoSaveOutline } from "react-icons/io5";
+import { FaRegEdit } from "react-icons/fa";
+// import { CiTrash } from "react-icons/ci";
 
 function escapeHtml(value) {
   return String(value ?? "")
@@ -685,14 +688,7 @@ function Delivered() {
                                   </MDButton>
                                 </MDBox>
                               ) : (
-                                <MDButton
-                                  color="info"
-                                  variant="outlined"
-                                  size="small"
-                                  onClick={() => handleUpdateStatus(row.id, 'out_for_delivery', row.delivery_boy_id, row.vehicle_no, row.delivery_date)}
-                                >
-                                  Edit
-                                </MDButton>
+                                <FaRegEdit   onClick={() => handleUpdateStatus(row.id, 'out_for_delivery', row.delivery_boy_id, row.vehicle_no, row.delivery_date)} style={{ cursor: "pointer" }} color="#E0E388" size={20}/>
                               )}
                             </TableCell>
                           </TableRow>

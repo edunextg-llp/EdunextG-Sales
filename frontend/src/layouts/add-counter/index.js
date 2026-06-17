@@ -20,6 +20,8 @@ import MDButton from "components/MDButton";
 import DashboardLayout from "examples/LayoutContainers/DashboardLayout";
 import DashboardNavbar from "examples/Navbars/DashboardNavbar";
 import Footer from "examples/Footer";
+import { FaRegEdit } from "react-icons/fa";
+import { CiTrash } from "react-icons/ci";
 
 function AddCounter() {
   const days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
@@ -664,12 +666,14 @@ function AddCounter() {
                             </Grid>
                             <Grid item xs={12} md={2}>
                               <MDBox display="flex" gap={1} justifyContent={{ xs: "flex-start", md: "flex-end" }}>
-                                <MDButton color="info" variant="text" size="small" onClick={() => handleEditClick(saved)}>
+                                {/* <MDButton color="info" variant="text" size="small" onClick={() => handleEditClick(saved)}>
                                   <Icon>edit</Icon> Edit
                                 </MDButton>
                                 <MDButton color="error" variant="text" size="small" onClick={() => handleDeleteSavedOutlet(saved.id)}>
                                   <Icon>delete</Icon> Delete
-                                </MDButton>
+                                </MDButton> */}
+                                <FaRegEdit   onClick={() => handleEditClick(saved)} style={{ cursor: "pointer" }} color="#E0E388" size={20}/>
+                                <CiTrash   onClick={() => handleDeleteSavedOutlet(saved.id)} style={{ cursor: "pointer" }} color="#FF0000" size={20}/>
                               </MDBox>
                             </Grid>
                           </Grid>

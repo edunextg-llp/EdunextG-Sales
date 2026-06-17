@@ -18,6 +18,9 @@ import {
   useSalesPolling,
 } from "utils/salesSync";
 import { formatBpSaleId } from "utils/saleId";
+import { IoSaveOutline } from "react-icons/io5";
+import { FaEye } from "react-icons/fa";
+// import { CiTrash } from "react-icons/ci";
 
 function Delivery() {
   const [salesData, setSalesData] = useState([]);
@@ -388,19 +391,9 @@ function Delivery() {
                                 </MDButton>
                               </TableCell>
                               <TableCell align="center" sx={{ borderBottom: borderCol, py: 2 }}>
-                                <MDBox display="flex" gap={1} justifyContent="center" flexWrap="wrap">
-                                  <MDButton
-                                    color="dark"
-                                    variant="gradient"
-                                    size="small"
-                                    disabled={savingSaleIds.has(row.id)}
-                                    onClick={() => handleSaveDelivery(row.id)}
-                                  >
-                                    {savingSaleIds.has(row.id) ? "Saving..." : "Save"}
-                                  </MDButton>
-                                  <MDButton color="info" variant="outlined" size="small" onClick={() => handleViewHistory(row.id)}>
-                                    View
-                                  </MDButton>
+                                <MDBox display="flex" gap={1} justifyContent="center" flexWrap="wrap" sx={{ backgroundColor: "#f0fdfa", padding: "8px 12px", borderRadius: "8px", border: "1px solid #99f6e4" }}>
+                                  <IoSaveOutline   onClick={() => handleSaveDelivery(row.id)} style={{ cursor: "pointer" }} color="#059669" size={20} />
+                                  <FaEye   onClick={() => handleViewHistory(row.id)} style={{ cursor: "pointer" }} color="#E0E388" size={20}/>
                                 </MDBox>
                               </TableCell>
                             </TableRow>
