@@ -126,6 +126,27 @@ function CreditsPage() {
     return Math.round((dueDate - now) / msInDay);
   };
 
+  const isTomorrowOrMissedCollection = (credit) => {
+    const diff = getDiffDays(credit.sale_date, credit.credit_days);
+    return diff !== null && (diff === 1 || diff < 0);
+  };
+
+  const getCollectionDueLabel = (credit) => {
+    const diff = getDiffDays(credit.sale_date, credit.credit_days);
+    if (diff === null) return "N/A";
+    if (diff < 0) return `Missed (${Math.abs(diff)} days overdue)`;
+    if (diff === 1) return "Tomorrow";
+    return "N/A";
+  };
+
+  const sortTomorrowCollectionCredits = (creditsList) =>
+    [...creditsList].sort((a, b) => {
+      const diffA = getDiffDays(a.sale_date, a.credit_days) ?? 999;
+      const diffB = getDiffDays(b.sale_date, b.credit_days) ?? 999;
+      if (diffA !== diffB) return diffA - diffB;
+      return (a.staff_name || "").localeCompare(b.staff_name || "");
+    });
+
   const downloadCSV = (filename, csvContent) => {
     const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
     const link = document.createElement("a");
@@ -440,10 +461,9 @@ function CreditsPage() {
   };
 
   const handlePrintTomorrowCollection = () => {
-    const tomorrowCredits = filteredCredits.filter((c) => {
-      const diff = getDiffDays(c.sale_date, c.credit_days);
-      return diff === 1;
-    });
+    const tomorrowCredits = sortTomorrowCollectionCredits(
+      filteredCredits.filter(isTomorrowOrMissedCollection)
+    );
 
     const grouped = groupCreditsByStaff(tomorrowCredits);
     const staffNames = Object.keys(grouped).sort();
@@ -452,13 +472,18 @@ function CreditsPage() {
     const staffLabel = selectedStaffName || "All Staff";
     const generatedOn = new Date().toLocaleString("en-GB");
     const grandTotal = tomorrowCredits.reduce((sum, c) => sum + (Number(c.balance_amount) || 0), 0);
+    const missedCount = tomorrowCredits.filter((c) => {
+      const diff = getDiffDays(c.sale_date, c.credit_days);
+      return diff !== null && diff < 0;
+    }).length;
+    const tomorrowCount = tomorrowCredits.length - missedCount;
 
     let tablesHtml = "";
     if (staffNames.length === 0) {
-      tablesHtml = `<div class="empty">No tomorrow collections due.</div>`;
+      tablesHtml = `<div class="empty">No tomorrow or missed collections found.</div>`;
     } else {
       staffNames.forEach((staffName) => {
-        const staffCredits = grouped[staffName];
+        const staffCredits = sortTomorrowCollectionCredits(grouped[staffName]);
         const staffTotal = staffCredits.reduce((sum, c) => sum + (Number(c.balance_amount) || 0), 0);
         const rows = staffCredits.map((c, idx) => `
           <tr>
@@ -469,6 +494,7 @@ function CreditsPage() {
             <td>${escapeHtml(c.outlet_erp_id || "N/A")}</td>
             <td>${escapeHtml(formatDate(c.sale_date))}</td>
             <td>${escapeHtml(calcDueDate(c.sale_date, c.credit_days))}</td>
+            <td>${escapeHtml(getCollectionDueLabel(c))}</td>
             <td class="right">Rs. ${Number(c.balance_amount || 0).toFixed(2)}</td>
           </tr>
         `).join("");
@@ -484,15 +510,16 @@ function CreditsPage() {
                   <th style="width: 15%">Invoice</th>
                   <th>Outlet Name</th>
                   <th style="width: 12%">ERP ID</th>
-                  <th style="width: 14%">Issue Date</th>
-                  <th style="width: 14%">Due Date</th>
-                  <th style="width: 16%" class="right">Balance</th>
+                  <th style="width: 12%">Issue Date</th>
+                  <th style="width: 12%">Due Date</th>
+                  <th style="width: 14%">Status</th>
+                  <th style="width: 14%" class="right">Balance</th>
                 </tr>
               </thead>
               <tbody>
                 ${rows}
                 <tr class="staff-total-row">
-                  <td colspan="7" class="right"><strong>Total for ${escapeHtml(staffName)}</strong></td>
+                  <td colspan="8" class="right"><strong>Total for ${escapeHtml(staffName)}</strong></td>
                   <td class="right"><strong>Rs. ${staffTotal.toFixed(2)}</strong></td>
                 </tr>
               </tbody>
@@ -512,7 +539,7 @@ function CreditsPage() {
       <!doctype html>
       <html>
         <head>
-          <title>Staff Wise Tomorrow Collection Report</title>
+          <title>Staff Wise Tomorrow + Missed Collection Report</title>
           <style>
             body { font-family: Arial, sans-serif; color: #111827; margin: 28px; line-height: 1.4; }
             h1 { font-size: 20px; margin: 0 0 4px; text-transform: uppercase; color: #1e3a8a; }
@@ -534,16 +561,18 @@ function CreditsPage() {
           </style>
         </head>
         <body>
-          <h1>Staff-Wise Tomorrow Collection Report</h1>
-          <div style="color: #4b5563; font-size: 12px; margin-bottom: 12px;">Report of pending credit balances due tomorrow.</div>
+          <h1>Staff-Wise Tomorrow + Missed Collection Report</h1>
+          <div style="color: #4b5563; font-size: 12px; margin-bottom: 12px;">Report of pending credit balances due tomorrow and previously missed overdue collections.</div>
           <div class="meta">
             <div><strong>Company:</strong> ${escapeHtml(companyLabel)}</div>
             <div><strong>Staff:</strong> ${escapeHtml(staffLabel)}</div>
             <div><strong>Report Date:</strong> ${escapeHtml(new Date(Date.now() + 86400000).toLocaleDateString("en-GB"))} (Tomorrow)</div>
             <div><strong>Generated:</strong> ${escapeHtml(generatedOn)}</div>
+            <div><strong>Missed:</strong> ${missedCount}</div>
+            <div><strong>Tomorrow:</strong> ${tomorrowCount}</div>
           </div>
           ${tablesHtml}
-          ${tomorrowCredits.length > 0 ? `<div class="grand-total">Grand Total Tomorrow Collection: Rs. ${grandTotal.toFixed(2)}</div>` : ""}
+          ${tomorrowCredits.length > 0 ? `<div class="grand-total">Grand Total Tomorrow + Missed Collection: Rs. ${grandTotal.toFixed(2)}</div>` : ""}
         </body>
       </html>
     `);
@@ -553,14 +582,11 @@ function CreditsPage() {
   };
 
   const handleDownloadTomorrowCollection = () => {
-    const tomorrowCredits = filteredCredits.filter((c) => {
-      const diff = getDiffDays(c.sale_date, c.credit_days);
-      return diff === 1;
-    });
-    
-    tomorrowCredits.sort((a, b) => (a.staff_name || "").localeCompare(b.staff_name || ""));
+    const tomorrowCredits = sortTomorrowCollectionCredits(
+      filteredCredits.filter(isTomorrowOrMissedCollection)
+    );
 
-    let csv = "Sr No,Staff Name,Sale ID,Invoice No,Outlet Name,ERP ID,Issue Date,Due Date,Outstanding Balance\n";
+    let csv = "Sr No,Staff Name,Sale ID,Invoice No,Outlet Name,ERP ID,Issue Date,Due Date,Status,Outstanding Balance\n";
     tomorrowCredits.forEach((c, idx) => {
       csv += `${idx + 1},"${(c.staff_name || "").replace(/"/g, '""')}",` +
              `"${(c.sticker_number || "").replace(/"/g, '""')}",` +
@@ -569,13 +595,14 @@ function CreditsPage() {
              `"${(c.outlet_erp_id || "").replace(/"/g, '""')}",` +
              `"${formatDate(c.sale_date)}",` +
              `"${calcDueDate(c.sale_date, c.credit_days)}",` +
+             `"${getCollectionDueLabel(c).replace(/"/g, '""')}",` +
              `${Number(c.balance_amount || 0).toFixed(2)}\n`;
     });
 
     const total = tomorrowCredits.reduce((sum, c) => sum + (Number(c.balance_amount) || 0), 0);
-    csv += `,,,,,,,,Total: Rs. ${total.toFixed(2)}\n`;
+    csv += `,,,,,,,,,Total: Rs. ${total.toFixed(2)}\n`;
 
-    downloadCSV("Tomorrow_Collection_Report.csv", csv);
+    downloadCSV("Tomorrow_Missed_Collection_Report.csv", csv);
   };
 
   const handlePrintNext2DaysCollection = () => {
@@ -985,7 +1012,7 @@ function CreditsPage() {
                   {/* Tomorrow's Due Collection */}
                   <MDBox display="flex" gap={1} alignItems="center" sx={{ background: "#f8fafc", padding: "8px 12px", borderRadius: "8px", border: "1px solid #e2e8f0" }}>
                     <MDTypography variant="button" fontWeight="medium" color="dark" sx={{ mr: 1 }}>
-                      Tomorrow Collection:
+                      Tomorrow + Missed:
                     </MDTypography>
                     <MDButton
                       color="info"
