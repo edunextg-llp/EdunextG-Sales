@@ -8,12 +8,8 @@ import Switch from "@mui/material/Switch";
 import Grid from "@mui/material/Grid";
 import Icon from "@mui/material/Icon";
 
-// import MuiLink from "@mui/material/Link";
-
-// // @mui icons
-// import FacebookIcon from "@mui/icons-material/Facebook";
-// import GitHubIcon from "@mui/icons-material/GitHub";
-// import GoogleIcon from "@mui/icons-material/Google";
+// react-icons/fa for eye/eye-slash
+import { FaEye, FaEyeSlash } from "react-icons/fa";
 
 // Material Dashboard 2 React components
 import MDBox from "components/MDBox";
@@ -31,6 +27,7 @@ function Basic() {
   const [rememberMe, setRememberMe] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false); // Added for show/hide
   const [captcha, setCaptcha] = useState(null);
   const [captchaAnswer, setCaptchaAnswer] = useState("");
   const [error, setError] = useState("");
@@ -143,8 +140,31 @@ function Basic() {
             <MDBox mb={2}>
               <MDInput type="email" label="Email" fullWidth value={email} onChange={(e) => setEmail(e.target.value)} required />
             </MDBox>
-            <MDBox mb={2}>
-              <MDInput type="password" label="Password" fullWidth value={password} onChange={(e) => setPassword(e.target.value)} required />
+            <MDBox mb={2} position="relative">
+              <MDInput
+                type={showPassword ? "text" : "password"}
+                label="Password"
+                fullWidth
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required
+              />
+              <MDBox
+                sx={{
+                  position: "absolute",
+                  top: "50%",
+                  right: 12,
+                  transform: "translateY(-50%)",
+                  cursor: "pointer",
+                  zIndex: 2,
+                  color: "#94a3b8",
+                  display: "flex",
+                  alignItems: "center",
+                }}
+                onClick={() => setShowPassword((show) => !show)}
+              >
+                {showPassword ? <FaEyeSlash size={20} /> : <FaEye size={20} />}
+              </MDBox>
             </MDBox>
             <MDBox
               mb={2}
