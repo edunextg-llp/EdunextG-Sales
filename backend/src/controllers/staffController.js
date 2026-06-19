@@ -124,6 +124,7 @@ function normalizeBankDepositChequeDetails(reqBody) {
             chequeNo: chequeValidation.value,
             chequeDate: normalizedChequeDate,
             amount: amountValidation.value,
+            paymentId: cheque.paymentId ? Number(cheque.paymentId) : null,
         });
     }
 

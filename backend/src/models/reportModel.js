@@ -362,11 +362,8 @@ class ReportModel {
                    WHERE bd.deposit_mode = 'cheque'
                      AND (
                          (
-                             bd.cheque_date = sp.reference_date
-                             AND (
-                                 TRIM(bd.cheque_no) COLLATE utf8mb4_unicode_ci = TRIM(sp.reference_no) COLLATE utf8mb4_unicode_ci
-                                 OR TRIM(bd.cheque_no) COLLATE utf8mb4_unicode_ci LIKE CONCAT(TRIM(sp.reference_no) COLLATE utf8mb4_unicode_ci, ' (%')
-                             )
+                             TRIM(bd.cheque_no) COLLATE utf8mb4_unicode_ci = TRIM(sp.reference_no) COLLATE utf8mb4_unicode_ci
+                             OR TRIM(bd.cheque_no) COLLATE utf8mb4_unicode_ci LIKE CONCAT(TRIM(sp.reference_no) COLLATE utf8mb4_unicode_ci, ' (%')
                          )
                          OR (
                              JSON_VALID(bd.cash_details)
@@ -375,14 +372,12 @@ class ReportModel {
                                  FROM JSON_TABLE(
                                      bd.cash_details,
                                      '$.cheques[*]' COLUMNS (
-                                         cheque_no VARCHAR(100) PATH '$.chequeNo' NULL ON EMPTY NULL ON ERROR,
-                                         cheque_date DATE PATH '$.chequeDate' NULL ON EMPTY NULL ON ERROR,
-                                         amount DECIMAL(10, 2) PATH '$.amount' NULL ON EMPTY NULL ON ERROR
+                                         payment_id INT PATH '$.paymentId' NULL ON EMPTY NULL ON ERROR,
+                                         cheque_no VARCHAR(100) PATH '$.chequeNo' NULL ON EMPTY NULL ON ERROR
                                      )
                                  ) deposited_cheque
-                                 WHERE TRIM(deposited_cheque.cheque_no) COLLATE utf8mb4_unicode_ci = TRIM(sp.reference_no) COLLATE utf8mb4_unicode_ci
-                                   AND deposited_cheque.cheque_date = sp.reference_date
-                                   AND ABS(COALESCE(deposited_cheque.amount, 0) - COALESCE(sp.amount, 0)) < 0.01
+                                 WHERE deposited_cheque.payment_id = sp.id
+                                    OR TRIM(deposited_cheque.cheque_no) COLLATE utf8mb4_unicode_ci = TRIM(sp.reference_no) COLLATE utf8mb4_unicode_ci
                              )
                          )
                      )

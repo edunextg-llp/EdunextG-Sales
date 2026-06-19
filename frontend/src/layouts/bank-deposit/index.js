@@ -522,6 +522,7 @@ function BankDeposit() {
         chequeDetails:
           form.depositMode === "cheque"
             ? form.chequeDetails.map((cheque) => ({
+                paymentId: cheque.paymentId || null,
                 storeName: cheque.storeName.trim(),
                 chequeNo: cheque.chequeNo.trim(),
                 chequeDate: cheque.chequeDate,
