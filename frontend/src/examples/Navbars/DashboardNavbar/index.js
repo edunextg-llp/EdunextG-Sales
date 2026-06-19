@@ -165,10 +165,15 @@ function DashboardNavbar({ absolute, light, isMini }) {
 
   return (
     <AppBar
-      position={absolute ? "absolute" : navbarType}
-      color="inherit"
-      sx={(theme) => navbar(theme, { transparentNavbar, absolute, light, darkMode })}
-    >
+    position={absolute ? "absolute" : navbarType}
+    color="inherit"
+    sx={(theme) => ({
+      ...navbar(theme, { transparentNavbar, absolute, light, darkMode }),
+      backgroundColor: "#C0C0C0 !important", // Gray
+      color: "#fff",
+      boxShadow: "0 4px 20px rgba(131, 125, 125, 0.1)",
+    })}
+  >
       <Toolbar sx={(theme) => navbarContainer(theme)}>
         <MDBox color="inherit" mb={{ xs: 1, md: 0 }} sx={(theme) => navbarRow(theme, { isMini })}>
           <Breadcrumbs icon="home" title={route[route.length - 1]} route={route} light={light} />

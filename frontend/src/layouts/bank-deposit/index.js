@@ -69,6 +69,7 @@ const emptyCashDetails = () =>
   }, {});
 
 const emptyChequeRow = () => ({
+  rowKey: `cheque-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
   paymentId: null,
   storeName: "",
   chequeNo: "",
@@ -76,7 +77,13 @@ const emptyChequeRow = () => ({
   amount: "",
 });
 
+const samePaymentId = (left, right) => {
+  if (left === null || left === undefined || right === null || right === undefined) return false;
+  return String(left) === String(right);
+};
+
 const mapPendingChequeToRow = (cheque) => ({
+  rowKey: `cheque-${cheque.id}-${Date.now()}`,
   paymentId: cheque.id,
   storeName: cheque.outlet_name || "",
   chequeNo: cheque.reference_no || "",
@@ -160,7 +167,8 @@ const parseChequeDetails = (deposit) => {
       const details = JSON.parse(deposit.cash_details);
       if (Array.isArray(details?.cheques) && details.cheques.length) {
         return details.cheques.map((cheque) => ({
-          paymentId: null,
+          rowKey: `cheque-${cheque.chequeNo || "row"}-${cheque.chequeDate || ""}-${cheque.amount || ""}`,
+          paymentId: cheque.paymentId || null,
           storeName: cheque.storeName || "",
           chequeNo: cheque.chequeNo || "",
           chequeDate: cheque.chequeDate || "",
@@ -175,6 +183,7 @@ const parseChequeDetails = (deposit) => {
   if (deposit?.deposit_mode === "cheque") {
     return [
       {
+        rowKey: `cheque-${deposit.cheque_no || "legacy"}-${deposit.id}`,
         paymentId: null,
         storeName: deposit.store_name || "",
         chequeNo: deposit.cheque_no || "",
@@ -342,9 +351,6 @@ function BankDeposit() {
       setLoadingPendingCheques(true);
       try {
         const params = new URLSearchParams({ dueByToday: "true" });
-        if (form.storeName.trim()) {
-          params.set("storeName", form.storeName.trim());
-        }
         const response = await fetch(`${API}/staff/bank-deposits/pending-cheques?${params.toString()}`);
         if (response.ok) {
           const data = await response.json();
@@ -358,25 +364,25 @@ function BankDeposit() {
     }, 300);
 
     return () => clearTimeout(timer);
-  }, [form.depositMode, form.storeName, editingDepositId]);
+  }, [form.depositMode, editingDepositId]);
 
   const getAvailableChequesForRow = (rowIndex) => {
     const usedPaymentIds = new Set(
       form.chequeDetails
         .filter((_, index) => index !== rowIndex)
         .map((cheque) => cheque.paymentId)
-        .filter(Boolean)
+        .filter((paymentId) => paymentId !== null && paymentId !== undefined)
+        .map((paymentId) => String(paymentId))
     );
-    return pendingCheques.filter((cheque) => !usedPaymentIds.has(cheque.id));
+    return pendingCheques.filter((cheque) => !usedPaymentIds.has(String(cheque.id)));
   };
 
   const handleChequeSelect = (index, cheque) => {
     if (!cheque) {
       setForm((prev) => ({
         ...prev,
-        ...(index === 0 ? { storeName: "" } : {}),
         chequeDetails: prev.chequeDetails.map((row, rowIndex) =>
-          rowIndex === index ? emptyChequeRow() : row
+          rowIndex === index ? { ...emptyChequeRow(), rowKey: row.rowKey } : row
         ),
       }));
       return;
@@ -385,9 +391,8 @@ function BankDeposit() {
     const mappedCheque = mapPendingChequeToRow(cheque);
     setForm((prev) => ({
       ...prev,
-      ...(index === 0 ? { storeName: mappedCheque.storeName } : {}),
       chequeDetails: prev.chequeDetails.map((row, rowIndex) =>
-        rowIndex === index ? mappedCheque : row
+        rowIndex === index ? { ...mappedCheque, rowKey: row.rowKey || mappedCheque.rowKey } : row
       ),
     }));
   };
@@ -1164,7 +1169,7 @@ function BankDeposit() {
                       </MDBox>
                       <MDBox display="flex" flexDirection="column" gap={1.5}>
                         {form.chequeDetails.map((cheque, index) => (
-                          <Grid container spacing={1.5} key={`cheque-row-${index}`}>
+                          <Grid container spacing={1.5} key={cheque.rowKey || `cheque-row-${index}`}>
                             <Grid item xs={12} md={3}>
                               {editingDepositId ? (
                                 <MDInput
@@ -1175,10 +1180,11 @@ function BankDeposit() {
                                 />
                               ) : (
                                 <Autocomplete
+                                  id={`cheque-autocomplete-${cheque.rowKey || index}`}
                                   options={getAvailableChequesForRow(index)}
                                   loading={loadingPendingCheques}
                                   value={
-                                    pendingCheques.find((item) => item.id === cheque.paymentId) ||
+                                    pendingCheques.find((item) => samePaymentId(item.id, cheque.paymentId)) ||
                                     (cheque.chequeNo
                                       ? {
                                           id: cheque.paymentId,
@@ -1190,7 +1196,7 @@ function BankDeposit() {
                                       : null)
                                   }
                                   getOptionLabel={(option) => option.reference_no || ""}
-                                  isOptionEqualToValue={(option, value) => option.id === value.id}
+                                  isOptionEqualToValue={(option, value) => samePaymentId(option?.id, value?.id)}
                                   onChange={(event, value) => handleChequeSelect(index, value)}
                                   renderOption={(props, option) => (
                                     <li {...props} key={option.id}>
