@@ -341,7 +341,7 @@ function BankDeposit() {
     const timer = setTimeout(async () => {
       setLoadingPendingCheques(true);
       try {
-        const params = new URLSearchParams({ alarmOnly: "true" });
+        const params = new URLSearchParams({ dueByToday: "true" });
         if (form.storeName.trim()) {
           params.set("storeName", form.storeName.trim());
         }
@@ -1152,7 +1152,7 @@ function BankDeposit() {
                           </MDTypography>
                           {!editingDepositId && (
                             <MDTypography variant="caption" color="text" display="block">
-                              Only cheque alarms (due in next 2 days, not yet deposited) — same as dashboard.
+                              Only today&apos;s deposit cheques and previously missed cheques not yet deposited.
                             </MDTypography>
                           )}
                         </MDBox>
@@ -1200,6 +1200,11 @@ function BankDeposit() {
                                         <MDTypography variant="caption" color="text" display="block">
                                           {option.outlet_name || "N/A"} · {formatDate(option.deposit_date)} ·{" "}
                                           {formatMoney(option.amount)}
+                                          {option.report_status === "due_today"
+                                            ? " · Due today"
+                                            : option.report_status === "missed" || option.report_status === "clearing_done"
+                                              ? " · Missed / not deposited"
+                                              : ""}
                                         </MDTypography>
                                       </MDBox>
                                     </li>

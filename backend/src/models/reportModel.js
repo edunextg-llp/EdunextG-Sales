@@ -389,11 +389,13 @@ class ReportModel {
                )`;
     }
 
-    static async getPendingCheques({ search = '', storeName = '', alarmOnly = true } = {}) {
+    static async getPendingCheques({ search = '', storeName = '', alarmOnly = true, dueByToday = false } = {}) {
         const conditions = ["sp.payment_mode = 'cheque'", ReportModel.getUndepositedChequeNotExistsSql()];
         const params = [];
 
-        if (alarmOnly) {
+        if (dueByToday) {
+            conditions.push('sp.reference_date <= CURDATE()');
+        } else if (alarmOnly) {
             conditions.push('sp.reference_date BETWEEN CURDATE() AND DATE_ADD(CURDATE(), INTERVAL 2 DAY)');
         }
         if (search && String(search).trim()) {
@@ -412,11 +414,13 @@ class ReportModel {
                     sp.reference_no, sp.amount,
                     ss.invoice_number, sc.outlet_name, sc.outlet_erp_id, s.name AS staff_name,
                     CASE
-                        WHEN sp.reference_date BETWEEN CURDATE() AND DATE_ADD(CURDATE(), INTERVAL 2 DAY)
+                        WHEN sp.reference_date < CURDATE()
+                            THEN 'missed'
+                        WHEN sp.reference_date = CURDATE()
+                            THEN 'due_today'
+                        WHEN sp.reference_date BETWEEN DATE_ADD(CURDATE(), INTERVAL 1 DAY) AND DATE_ADD(CURDATE(), INTERVAL 2 DAY)
                             THEN 'alarm'
-                        WHEN sp.reference_date <= CURDATE()
-                            THEN 'clearing_done'
-                        ELSE 'bank_submitted'
+                        ELSE 'upcoming'
                     END AS report_status
              FROM sale_payments sp
              JOIN staff_sales ss ON sp.sale_id = ss.id
@@ -506,6 +510,7 @@ class ReportModel {
             yearlyCollection,
             salesByPeriod,
             chequeReports,
+            pendingChequeReports,
             duesReport,
             creditDuesSummary,
             staffSalesSummary,
@@ -521,6 +526,7 @@ class ReportModel {
             ReportModel.getYearlyCollection(startDate, endDate),
             ReportModel.getSalesByPeriod(startDate, endDate, companyId, staffId),
             ReportModel.getChequeReports(startDate, endDate),
+            ReportModel.getPendingCheques({ alarmOnly: false }),
             ReportModel.getDuesReport(),
             ReportModel.getCreditDuesSummary(),
             ReportModel.getStaffSalesSummary(startDate, endDate, companyId, staffId),
@@ -538,6 +544,7 @@ class ReportModel {
             yearlyCollection,
             salesByPeriod,
             chequeReports,
+            pendingChequeReports,
             duesReport,
             creditDuesSummary,
             staffSalesSummary,

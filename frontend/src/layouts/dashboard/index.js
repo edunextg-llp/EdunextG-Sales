@@ -59,6 +59,7 @@ const emptyReportData = {
   yearlyCollection: [],
   salesByPeriod: { weekly: [], monthly: [], quarterly: [], yearly: [] },
   chequeReports: [],
+  pendingChequeReports: [],
   duesReport: [],
 };
 
@@ -621,6 +622,13 @@ PaymentModePieChart.propTypes = {
   iconColor: PropTypes.string,
 };
 
+function getChequeDepositStatusLabel(status) {
+  if (status === "missed" || status === "clearing_done") return "Missed / not deposited";
+  if (status === "due_today") return "Due today";
+  if (status === "alarm") return "Due in 2 days";
+  return "Upcoming";
+}
+
 function escapeHtml(value) {
   return String(value ?? "")
     .replace(/&/g, "&amp;")
@@ -1142,10 +1150,11 @@ function Dashboard() {
     },
   };
 
-  const chequeAlarmCount = reportData.chequeReports.filter(
-    (row) => row.report_status === "alarm"
+  const pendingChequeRows = reportData.pendingChequeReports || [];
+  const chequePendingCount = pendingChequeRows.length;
+  const chequeMissedCount = pendingChequeRows.filter(
+    (row) => row.report_status === "missed" || row.report_status === "clearing_done"
   ).length;
-  const chequeAlarmRows = reportData.chequeReports.filter((row) => row.report_status === "alarm");
 
   const totalCreditDues = Number(reportData.creditDuesSummary?.total_credit_dues) || 0;
   const creditDuesCount = Number(reportData.creditDuesSummary?.credit_dues_count) || 0;
@@ -1532,13 +1541,14 @@ function Dashboard() {
             <Card onClick={() => setChequeDialogOpen(true)} sx={{ cursor: "pointer" }}>
               <MDBox p={3}>
                 <MDTypography variant="h6" fontWeight="medium">
-                  Cheque Alarm
+                  Pending Cheques
                 </MDTypography>
-                <MDTypography variant="h3" color={chequeAlarmCount > 0 ? "warning" : "success"}>
-                  {chequeAlarmCount}
+                <MDTypography variant="h3" color={chequePendingCount > 0 ? "warning" : "success"}>
+                  {chequePendingCount}
                 </MDTypography>
                 <MDTypography variant="body2" color="text">
-                  Cheques due for deposit alert in next 2 days.
+                  All cheques not submitted in bank deposit
+                  {chequeMissedCount > 0 ? `, including ${chequeMissedCount} missed earlier.` : "."}
                 </MDTypography>
               </MDBox>
             </Card>
@@ -1716,9 +1726,12 @@ function Dashboard() {
       </MDBox>
       )}
 
-      <Dialog open={chequeDialogOpen} onClose={() => setChequeDialogOpen(false)} fullWidth maxWidth="md">
-        <DialogTitle>Cheque Details</DialogTitle>
+      <Dialog open={chequeDialogOpen} onClose={() => setChequeDialogOpen(false)} fullWidth maxWidth="lg">
+        <DialogTitle>Pending Cheque Deposit</DialogTitle>
         <DialogContent dividers>
+          <MDTypography variant="body2" color="text" mb={2}>
+            All cheques not yet submitted in bank deposit, including previous missed ones.
+          </MDTypography>
           <TableContainer component={Paper} sx={{ boxShadow: "none", border: "1px solid #e5e7eb" }}>
             <Table size="small">
               <TableHead sx={{ display: "table-header-group", backgroundColor: "#f9fafb" }}>
@@ -1727,24 +1740,28 @@ function Dashboard() {
                   <TableCell sx={{ fontWeight: "bold" }}>Outlet</TableCell>
                   <TableCell sx={{ fontWeight: "bold" }}>Invoice</TableCell>
                   <TableCell sx={{ fontWeight: "bold" }}>Cheque No</TableCell>
+                  <TableCell sx={{ fontWeight: "bold" }}>Staff</TableCell>
+                  <TableCell sx={{ fontWeight: "bold" }}>Status</TableCell>
                   <TableCell align="right" sx={{ fontWeight: "bold" }}>Amount</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
-                {chequeAlarmRows.map((row) => (
+                {(reportData.pendingChequeReports || []).map((row) => (
                   <TableRow key={row.id}>
                     <TableCell>{formatDate(row.deposit_date)}</TableCell>
                     <TableCell>{row.outlet_name || "N/A"}</TableCell>
                     <TableCell>{row.invoice_number || "N/A"}</TableCell>
                     <TableCell>{row.reference_no || "N/A"}</TableCell>
+                    <TableCell>{row.staff_name || "N/A"}</TableCell>
+                    <TableCell>{getChequeDepositStatusLabel(row.report_status)}</TableCell>
                     <TableCell align="right">{money(row.amount)}</TableCell>
                   </TableRow>
                 ))}
-                {chequeAlarmRows.length === 0 && (
+                {(reportData.pendingChequeReports || []).length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={5} align="center" sx={{ py: 3 }}>
+                    <TableCell colSpan={7} align="center" sx={{ py: 3 }}>
                       <MDTypography variant="body2" color="text">
-                        No cheque alarms found.
+                        No pending cheques found.
                       </MDTypography>
                     </TableCell>
                   </TableRow>

@@ -700,10 +700,12 @@ export const searchDeliveredStores = async (req, res) => {
 
 export const searchPendingCheques = async (req, res) => {
     try {
+        const dueByToday = String(req.query.dueByToday ?? 'false').toLowerCase() === 'true';
         const cheques = await ReportModel.getPendingCheques({
             search: req.query.search || '',
             storeName: req.query.storeName || '',
-            alarmOnly: String(req.query.alarmOnly ?? 'true').toLowerCase() !== 'false',
+            alarmOnly: dueByToday ? false : String(req.query.alarmOnly ?? 'true').toLowerCase() !== 'false',
+            dueByToday,
         });
         res.status(200).json(cheques);
     } catch (error) {
