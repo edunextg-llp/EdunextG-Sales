@@ -383,7 +383,7 @@ function AddCounter() {
                       />
                     </MDBox>
                   </Grid>
-                  {selectedStaff && (
+                  {/* {selectedStaff && (
                     <Grid item xs={12} md={6}>
                       <MDBox
                         p={2}
@@ -408,7 +408,7 @@ function AddCounter() {
                         </MDTypography>
                       </MDBox>
                     </Grid>
-                  )}
+                  )} */}
                 </Grid>
 
                 {selectedStaff && (

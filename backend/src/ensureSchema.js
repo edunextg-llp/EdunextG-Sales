@@ -328,6 +328,53 @@ export async function ensureSchema() {
             );
         `);
 
+        await connection.query(`
+            CREATE TABLE IF NOT EXISTS dms_stock_imports (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                file_name VARCHAR(255) NOT NULL,
+                row_count INT NOT NULL DEFAULT 0,
+                total_purchase_units DECIMAL(14, 4) NOT NULL DEFAULT 0.0000,
+                total_purchase_value DECIMAL(14, 2) NOT NULL DEFAULT 0.00,
+                total_invoiced_units DECIMAL(14, 4) NOT NULL DEFAULT 0.0000,
+                total_invoiced_value DECIMAL(14, 2) NOT NULL DEFAULT 0.00,
+                total_closing_units DECIMAL(14, 4) NOT NULL DEFAULT 0.0000,
+                total_closing_value DECIMAL(14, 2) NOT NULL DEFAULT 0.00,
+                total_in_transit_units DECIMAL(14, 4) NOT NULL DEFAULT 0.0000,
+                total_in_transit_value DECIMAL(14, 2) NOT NULL DEFAULT 0.00,
+                total_pieces DECIMAL(14, 4) NOT NULL DEFAULT 0.0000,
+                total_value DECIMAL(14, 2) NOT NULL DEFAULT 0.00,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+        `);
+
+        await connection.query(`
+            CREATE TABLE IF NOT EXISTS dms_stock_items (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                import_id INT NOT NULL,
+                product_erp_id VARCHAR(100) NULL,
+                product_name VARCHAR(255) NULL,
+                product_division VARCHAR(100) NULL,
+                variant_name VARCHAR(100) NULL,
+                total_purchases_in_stock_unit DECIMAL(14, 4) NOT NULL DEFAULT 0.0000,
+                purchases_in_stock_value DECIMAL(14, 2) NOT NULL DEFAULT 0.00,
+                dp_per_unit_stock DECIMAL(14, 4) NOT NULL DEFAULT 0.0000,
+                total_invoiced_stock_unit DECIMAL(14, 4) NOT NULL DEFAULT 0.0000,
+                invoiced_stock_value DECIMAL(14, 2) NOT NULL DEFAULT 0.00,
+                total_closing_stock_unit DECIMAL(14, 4) NOT NULL DEFAULT 0.0000,
+                closing_stock_value DECIMAL(14, 2) NOT NULL DEFAULT 0.00,
+                total_in_transit_stock_quantity_unit DECIMAL(14, 4) NOT NULL DEFAULT 0.0000,
+                in_transit_stock_value DECIMAL(14, 2) NOT NULL DEFAULT 0.00,
+                total_pieces DECIMAL(14, 4) NOT NULL DEFAULT 0.0000,
+                total_value DECIMAL(14, 2) NOT NULL DEFAULT 0.00,
+                purchase_price DECIMAL(14, 4) NULL,
+                raw_data JSON NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (import_id) REFERENCES dms_stock_imports(id) ON DELETE CASCADE,
+                INDEX idx_dms_stock_items_import_id (import_id),
+                INDEX idx_dms_stock_items_product_erp_id (product_erp_id)
+            );
+        `);
+
         await tryQuery(
             connection,
             `ALTER TABLE bank_deposits ADD COLUMN deposit_ref_no VARCHAR(20) NULL UNIQUE`,

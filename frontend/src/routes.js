@@ -19,6 +19,7 @@ import Packaging from "layouts/packaging";
 import Delivery from "layouts/delivery";
 import Delivered from "layouts/delivered";
 import Reports from "layouts/reports";
+import DmsStock from "layouts/dms-stock";
 
 // @mui icons
 import Icon from "@mui/material/Icon";
@@ -39,6 +40,14 @@ const routes = [
     icon: <Icon fontSize="small">summarize</Icon>,
     route: "/reports",
     component: <Reports />,
+  },
+  {
+    type: "collapse",
+    name: "DMS Stock",
+    key: "dms-stock",
+    icon: <Icon fontSize="small">inventory</Icon>,
+    route: "/dms-stock",
+    component: <DmsStock />,
   },
   // {
   //   type: "collapse",
