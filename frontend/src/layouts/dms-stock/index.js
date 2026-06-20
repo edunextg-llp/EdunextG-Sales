@@ -64,6 +64,42 @@ const unitFormat = (value) =>
 
 const money = (value) => `Rs. ${numberFormat(value)}`;
 
+const formatUploadDate = (value) => {
+  if (!value) return "N/A";
+  const dateOnly = String(value).slice(0, 10);
+  if (/^\d{4}-\d{2}-\d{2}$/.test(dateOnly)) {
+    const [year, month, day] = dateOnly.split("-").map(Number);
+    const date = new Date(year, month - 1, day);
+    return date.toLocaleDateString("en-GB", {
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+    });
+  }
+
+  const normalized = String(value).replace(" ", "T");
+  const date = new Date(normalized);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleString("en-GB", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+};
+
+const getTodayLocalDate = () => {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, "0");
+  const day = String(now.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+};
+
+const getImportUploadDate = (stockImport) =>
+  stockImport?.upload_date || stockImport?.created_at || null;
+
 function Metric({ label, value }) {
   return (
     <MDBox p={2} sx={metricBoxSx}>
@@ -89,6 +125,7 @@ function DmsStock() {
   const [divisionFilter, setDivisionFilter] = useState("");
   const [erpSearch, setErpSearch] = useState("");
   const [productSearch, setProductSearch] = useState("");
+  const [uploadDate, setUploadDate] = useState(() => getTodayLocalDate());
 
   const fetchLatestStock = async () => {
     setLoading(true);
@@ -112,7 +149,10 @@ function DmsStock() {
     fetchLatestStock();
   }, []);
 
-  const uploadDisabled = useMemo(() => !selectedFile || uploading, [selectedFile, uploading]);
+  const uploadDisabled = useMemo(
+    () => !selectedFile || !uploadDate || uploading,
+    [selectedFile, uploadDate, uploading]
+  );
 
   const divisionOptions = useMemo(
     () =>
@@ -154,6 +194,7 @@ function DmsStock() {
 
     const formData = new FormData();
     formData.append("file", selectedFile);
+    formData.append("uploadDate", uploadDate);
 
     setUploading(true);
     setMessage("");
@@ -192,8 +233,8 @@ function DmsStock() {
                     DMS Stock
                   </MDTypography>
                   {stockImport && (
-                    <MDTypography variant="caption" color="text">
-                      Last upload: {stockImport.file_name} | {stockImport.created_at}
+                    <MDTypography variant="caption" color="text" display="block" mt={0.5}>
+                      Upload Date: {formatUploadDate(getImportUploadDate(stockImport))} | File: {stockImport.file_name}
                     </MDTypography>
                   )}
                 </MDBox>
@@ -205,7 +246,7 @@ function DmsStock() {
 
               <MDBox px={3} pb={3}>
                 <Grid container spacing={2} alignItems="center">
-                  <Grid item xs={12} md={7}>
+                  <Grid item xs={12} md={5}>
                     <MDBox
                       display="flex"
                       alignItems="center"
@@ -237,7 +278,17 @@ function DmsStock() {
                       />
                     </MDBox>
                   </Grid>
-                  <Grid item xs={12} md={5}>
+                  <Grid item xs={12} md={3}>
+                    <MDInput
+                      type="date"
+                      label="Upload Date"
+                      fullWidth
+                      value={uploadDate}
+                      onChange={(event) => setUploadDate(event.target.value)}
+                      InputLabelProps={{ shrink: true }}
+                    />
+                  </Grid>
+                  <Grid item xs={12} md={4}>
                     <MDBox display="flex" justifyContent={{ xs: "flex-start", md: "flex-end" }} gap={1}>
                       <MDButton
                         color="info"
@@ -278,6 +329,9 @@ function DmsStock() {
             <Grid item xs={12}>
               <Grid container spacing={2}>
                 <Grid item xs={12} sm={6} md={3}>
+                  <Metric label="Upload Date" value={formatUploadDate(getImportUploadDate(stockImport))} />
+                </Grid>
+                <Grid item xs={12} sm={6} md={3}>
                   <Metric label="Rows Stored" value={unitFormat(stockImport.row_count)} />
                 </Grid>
                 <Grid item xs={12} sm={6} md={3}>
@@ -307,13 +361,21 @@ function DmsStock() {
 
           <Grid item xs={12}>
             <Card>
-              <MDBox p={3} pb={2}>
-                <MDTypography variant="h6" fontWeight="medium">
-                  Stock Ledger Preview
-                </MDTypography>
-                <MDTypography variant="caption" color="text">
-                  Showing up to 200 saved rows from the latest upload.
-                </MDTypography>
+              <MDBox p={3} pb={2} display="flex" justifyContent="space-between" alignItems="flex-start" flexWrap="wrap" gap={2}>
+                <MDBox>
+                  <MDTypography variant="h6" fontWeight="medium">
+                    Stock Ledger Preview
+                  </MDTypography>
+                  <MDTypography variant="caption" color="text" display="block">
+                    Showing up to 200 saved rows from the latest upload.
+                  </MDTypography>
+                  {stockImport && (
+                    <MDTypography variant="caption" color="text" display="block" mt={0.5}>
+                      Upload Date: {formatUploadDate(getImportUploadDate(stockImport))}
+                      {stockImport.file_name ? ` | File: ${stockImport.file_name}` : ""}
+                    </MDTypography>
+                  )}
+                </MDBox>
               </MDBox>
               <MDBox px={3} pb={3}>
                 <Grid container spacing={2} mb={2} alignItems="center">
@@ -367,10 +429,11 @@ function DmsStock() {
                   </Grid>
                 </Grid>
                 <TableContainer component={Paper} sx={{ boxShadow: "none", border: "1px solid #e5e7eb" }}>
-                  <Table sx={{ minWidth: 1560 }}>
+                  <Table sx={{ minWidth: 1680 }}>
                     <TableHead sx={{ display: "table-header-group", backgroundColor: "#f9fafb" }}>
                       <TableRow>
                         <TableCell sx={tableHeadSx}>Sr No</TableCell>
+                        <TableCell sx={tableHeadSx}>Upload Date</TableCell>
                         <TableCell sx={tableHeadSx}>ERP ID</TableCell>
                         <TableCell sx={tableHeadSx}>Product</TableCell>
                         <TableCell sx={tableHeadSx}>Division</TableCell>
@@ -392,7 +455,7 @@ function DmsStock() {
                     <TableBody>
                       {items.length === 0 && (
                         <TableRow>
-                          <TableCell colSpan={17} align="center" sx={tableBodySx}>
+                          <TableCell colSpan={18} align="center" sx={tableBodySx}>
                             <MDTypography variant="button" color="text">
                               No DMS stock uploaded yet.
                             </MDTypography>
@@ -401,7 +464,7 @@ function DmsStock() {
                       )}
                       {items.length > 0 && filteredItems.length === 0 && (
                         <TableRow>
-                          <TableCell colSpan={17} align="center" sx={tableBodySx}>
+                          <TableCell colSpan={18} align="center" sx={tableBodySx}>
                             <MDTypography variant="button" color="text">
                               No stock rows match the selected filters.
                             </MDTypography>
@@ -411,6 +474,9 @@ function DmsStock() {
                       {filteredItems.map((item, index) => (
                         <TableRow key={item.id}>
                           <TableCell sx={tableBodySx}>{index + 1}</TableCell>
+                          <TableCell sx={tableBodySx}>
+                            {formatUploadDate(getImportUploadDate(stockImport))}
+                          </TableCell>
                           <TableCell sx={tableBodySx}>{item.product_erp_id}</TableCell>
                           <TableCell sx={{ ...tableBodySx, minWidth: 220 }}>{item.product_name}</TableCell>
                           <TableCell sx={tableBodySx}>{item.product_division}</TableCell>

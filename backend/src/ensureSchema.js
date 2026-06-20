@@ -332,6 +332,7 @@ export async function ensureSchema() {
             CREATE TABLE IF NOT EXISTS dms_stock_imports (
                 id INT AUTO_INCREMENT PRIMARY KEY,
                 file_name VARCHAR(255) NOT NULL,
+                upload_date DATE NULL,
                 row_count INT NOT NULL DEFAULT 0,
                 total_purchase_units DECIMAL(14, 4) NOT NULL DEFAULT 0.0000,
                 total_purchase_value DECIMAL(14, 2) NOT NULL DEFAULT 0.00,
@@ -374,6 +375,18 @@ export async function ensureSchema() {
                 INDEX idx_dms_stock_items_product_erp_id (product_erp_id)
             );
         `);
+
+        await tryQuery(
+            connection,
+            `ALTER TABLE dms_stock_imports ADD COLUMN upload_date DATE NULL`,
+            'upload_date on dms_stock_imports'
+        );
+
+        await tryQuery(
+            connection,
+            `UPDATE dms_stock_imports SET upload_date = DATE(created_at) WHERE upload_date IS NULL`,
+            'backfill upload_date on dms_stock_imports'
+        );
 
         await tryQuery(
             connection,

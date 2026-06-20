@@ -330,7 +330,7 @@ class StaffModel {
         }
     }
 
-    static async getAllSalesByDate(date) {
+    static async getAllSalesByDate(date, search = '') {
         let query = `
             SELECT ss.id,
                     ss.staff_id, ss.outlet_id, ss.sale_date, ss.item_count, ss.packed_item_count, ss.box_count, ss.price, ss.invoice_number, 
@@ -360,13 +360,32 @@ class StaffModel {
              ) ssh ON ssh.sale_id = ss.id
         `;
         const params = [];
-        
+        const conditions = [];
+
         if (date) {
-            query += ` WHERE ss.sale_date = ? ORDER BY ss.id DESC`;
+            conditions.push('ss.sale_date = ?');
             params.push(date);
-        } else {
-            query += ` ORDER BY ss.sale_date DESC, ss.id DESC LIMIT 1000`;
         }
+
+        const normalizedSearch = String(search || '').trim();
+        if (normalizedSearch) {
+            const searchTerm = `%${normalizedSearch}%`;
+            conditions.push(`(
+                sc.outlet_name LIKE ?
+                OR sc.outlet_erp_id LIKE ?
+                OR s.name LIKE ?
+                OR ss.sticker_number LIKE ?
+                OR ss.invoice_number LIKE ?
+                OR CAST(ss.id AS CHAR) LIKE ?
+            )`);
+            params.push(searchTerm, searchTerm, searchTerm, searchTerm, searchTerm, searchTerm);
+        }
+
+        if (conditions.length) {
+            query += ` WHERE ${conditions.join(' AND ')}`;
+        }
+
+        query += ` ORDER BY ss.sale_date DESC, ss.id DESC LIMIT 1000`;
 
         const [rows] = await db.execute(query, params);
         return rows;

@@ -377,7 +377,7 @@ function MonthlyCollectionChart({ rows }) {
   const currencyFormatter = (value) => money(value);
 
   return (
-    <Card sx={{ height: 460, display: "flex", flexDirection: "column" }}>
+    <Card sx={{ height: 460, display: "flex", flexDirection: "column", mt: 3 }}>
       <MDBox p={3} pb={1}>
         <MDTypography variant="h6" fontWeight="medium">
           Month Wise Collection
@@ -432,7 +432,7 @@ function YearlyCollectionChart({ rows }) {
   const chartHeight = 360;
 
   return (
-    <Card sx={{ height: 460, display: "flex", flexDirection: "column" }}>
+    <Card sx={{ height: 460, display: "flex", flexDirection: "column", mt: 3 }}>
       <MDBox p={3} pb={1}>
         <MDTypography variant="h6" fontWeight="medium">
           Year Wise Collections
@@ -1449,13 +1449,58 @@ function Dashboard() {
       
       {activeDashboardTab === "sales" && (
       <MDBox py={3}>
-        <MDBox mb={1}>
-          <MDTypography variant="h4" fontWeight="medium" color="dark">
-            Sales Dashboard
-          </MDTypography>
-          <MDTypography variant="body2" color="text">
-            Live sales, collection, outstanding, cheque, and dues overview.
-          </MDTypography>
+        <MDBox
+          mb={1}
+          display="flex"
+          justifyContent="space-between"
+          alignItems="flex-start"
+          flexWrap="wrap"
+          gap={2}
+        >
+          <MDBox>
+            <MDTypography variant="h4" fontWeight="medium" color="dark">
+              Sales Dashboard
+            </MDTypography>
+            <MDTypography variant="body2" color="text">
+              Live sales, collection, outstanding, cheque, and dues overview.
+            </MDTypography>
+          </MDBox>
+          <MDBox display="flex" gap={1.5} flexWrap="wrap" alignItems="center" sx={{ ml: { xs: 0, md: "auto" } }}>
+            <FormControl size="small" sx={{ minWidth: 160 }}>
+              <InputLabel id="dashboard-financial-year-label">Financial Year</InputLabel>
+              <Select
+                labelId="dashboard-financial-year-label"
+                value={selectedFinancialYear}
+                label="Financial Year"
+                onChange={(event) => handleFinancialYearChange(event.target.value)}
+                sx={{ height: 44, backgroundColor: "#fff" }}
+              >
+                <MenuItem value="">All Years</MenuItem>
+                {financialYearOptions.map((option) => (
+                  <MenuItem key={option.value} value={option.value}>
+                    {option.label}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+            <FormControl size="small" sx={{ minWidth: 140 }} disabled={!selectedFinancialYear}>
+              <InputLabel id="dashboard-month-label">Month</InputLabel>
+              <Select
+                labelId="dashboard-month-label"
+                value={selectedMonth}
+                label="Month"
+                onChange={(event) => setSelectedMonth(event.target.value)}
+                sx={{ height: 44, backgroundColor: "#fff" }}
+              >
+                <MenuItem value="">All Months</MenuItem>
+                {monthOptions.map((option) => (
+                  <MenuItem key={option.value} value={option.value}>
+                    {option.label}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+          </MDBox>
         </MDBox>
 
         <MDBox mt={4}>
@@ -1622,7 +1667,7 @@ function Dashboard() {
         Loading collection for selected date...
       </MDTypography>
     )}
-    <MDBox mt={1} display="flex" gap={1} alignItems="center">
+    <MDBox mt={1} mb={4} pb={1} display="flex" gap={1} alignItems="center">
       <TextField
         type="date"
         size="small"
@@ -1649,46 +1694,6 @@ function Dashboard() {
         </MDBox>
 
         <MDBox mt={1}>
-          <Grid container spacing={2} alignItems="center" mb={2}>
-            <Grid item xs={12} md={4}>
-              <FormControl size="small" fullWidth>
-                <InputLabel id="dashboard-financial-year-label">Financial Year</InputLabel>
-                <Select
-                  labelId="dashboard-financial-year-label"
-                  value={selectedFinancialYear}
-                  label="Financial Year"
-                  onChange={(event) => handleFinancialYearChange(event.target.value)}
-                  sx={{ height: 44 }}
-                >
-                  <MenuItem value="">All Years</MenuItem>
-                  {financialYearOptions.map((option) => (
-                    <MenuItem key={option.value} value={option.value}>
-                      {option.label}
-                    </MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
-            </Grid>
-            <Grid item xs={12} md={4}>
-              <FormControl size="small" fullWidth disabled={!selectedFinancialYear}>
-                <InputLabel id="dashboard-month-label">Month</InputLabel>
-                <Select
-                  labelId="dashboard-month-label"
-                  value={selectedMonth}
-                  label="Month"
-                  onChange={(event) => setSelectedMonth(event.target.value)}
-                  sx={{ height: 44 }}
-                >
-                  <MenuItem value="">All Months</MenuItem>
-                  {monthOptions.map((option) => (
-                    <MenuItem key={option.value} value={option.value}>
-                      {option.label}
-                    </MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
-            </Grid>
-          </Grid>
           <Grid container spacing={3}>
             <Grid item xs={12} lg={6} display="flex">
               <MDBox mb={3} width="100%">

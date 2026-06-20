@@ -579,6 +579,7 @@ async function initDB() {
         CREATE TABLE IF NOT EXISTS dms_stock_imports (
             id INT AUTO_INCREMENT PRIMARY KEY,
             file_name VARCHAR(255) NOT NULL,
+            upload_date DATE NULL,
             row_count INT NOT NULL DEFAULT 0,
             total_purchase_units DECIMAL(14, 4) NOT NULL DEFAULT 0.0000,
             total_purchase_value DECIMAL(14, 2) NOT NULL DEFAULT 0.00,

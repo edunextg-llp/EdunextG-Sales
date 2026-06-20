@@ -6,7 +6,7 @@ const toNumber = (value) => {
 };
 
 class DmsStockModel {
-    static async createImport({ fileName, rowCount, summary, rows }) {
+    static async createImport({ fileName, uploadDate, rowCount, summary, rows }) {
         const connection = await db.getConnection();
 
         try {
@@ -14,13 +14,14 @@ class DmsStockModel {
 
             const [importResult] = await connection.execute(
                 `INSERT INTO dms_stock_imports
-                 (file_name, row_count, total_purchase_units, total_purchase_value,
+                 (file_name, upload_date, row_count, total_purchase_units, total_purchase_value,
                   total_invoiced_units, total_invoiced_value, total_closing_units,
                   total_closing_value, total_in_transit_units, total_in_transit_value,
                   total_pieces, total_value)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
                 [
                     fileName,
+                    uploadDate,
                     rowCount,
                     summary.totalPurchaseUnits,
                     summary.totalPurchaseValue,
@@ -84,6 +85,7 @@ class DmsStockModel {
     static async getLatestImport() {
         const [rows] = await db.execute(
             `SELECT id, file_name, row_count,
+                    DATE_FORMAT(upload_date, '%Y-%m-%d') AS upload_date,
                     total_purchase_units, total_purchase_value,
                     total_invoiced_units, total_invoiced_value,
                     total_closing_units, total_closing_value,
@@ -101,6 +103,7 @@ class DmsStockModel {
         const [headerRows, itemRows] = await Promise.all([
             db.execute(
                 `SELECT id, file_name, row_count,
+                        DATE_FORMAT(upload_date, '%Y-%m-%d') AS upload_date,
                         total_purchase_units, total_purchase_value,
                         total_invoiced_units, total_invoiced_value,
                         total_closing_units, total_closing_value,

@@ -158,6 +158,19 @@ function buildSummary(rows) {
     });
 }
 
+function normalizeUploadDate(value) {
+    const trimmed = String(value || '').trim();
+    if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
+        return trimmed;
+    }
+
+    const today = new Date();
+    const year = today.getFullYear();
+    const month = String(today.getMonth() + 1).padStart(2, '0');
+    const day = String(today.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+}
+
 export const uploadDmsStock = async (req, res) => {
     try {
         if (!req.file) {
@@ -176,6 +189,7 @@ export const uploadDmsStock = async (req, res) => {
         const summary = buildSummary(rows);
         const result = await DmsStockModel.createImport({
             fileName: req.file.originalname,
+            uploadDate: normalizeUploadDate(req.body?.uploadDate),
             rowCount: rows.length,
             summary,
             rows,

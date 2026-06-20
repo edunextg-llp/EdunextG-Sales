@@ -122,9 +122,18 @@ function UpdatePayment() {
 
   const API = "https://bawarchee.edunextg.co/api";
 
-  const fetchSales = async () => {
+  const fetchSales = async (search = searchQuery) => {
     try {
-      const response = await fetch(`${API}/staff/sales/by-date`);
+      const params = new URLSearchParams();
+      const normalizedSearch = String(search || "").trim();
+      if (normalizedSearch) {
+        params.set("search", normalizedSearch);
+      }
+
+      const queryString = params.toString();
+      const response = await fetch(
+        `${API}/staff/sales/by-date${queryString ? `?${queryString}` : ""}`
+      );
       if (response.ok) {
         const data = await response.json();
         setSalesData(data);
@@ -135,24 +144,14 @@ function UpdatePayment() {
   };
 
   useEffect(() => {
-    fetchSales();
-  }, []);
+    const timer = setTimeout(() => {
+      fetchSales(searchQuery);
+    }, 300);
 
-  const filteredSales = salesData.filter((row) => {
-    if (row.packaging_status !== "delivered") return false;
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
 
-    const search = searchQuery.toLowerCase();
-    const outletName = row.outlet_name ? row.outlet_name.toLowerCase() : "";
-    const outletErpId = row.outlet_erp_id ? row.outlet_erp_id.toLowerCase() : "";
-    const staffName = row.staff_name ? row.staff_name.toLowerCase() : "";
-    const saleId = row.sticker_number ? row.sticker_number.toLowerCase() : "";
-    return (
-      outletName.includes(search) ||
-      outletErpId.includes(search) ||
-      staffName.includes(search) ||
-      saleId.includes(search)
-    );
-  });
+  const filteredSales = salesData.filter((row) => row.packaging_status === "delivered");
 
   const getRemainingBalance = (sale) => {
     const price = parseFloat(sale.price) || 0;
@@ -545,7 +544,7 @@ function UpdatePayment() {
                   <Grid item xs={12} md={4}>
                     <MDInput
                       type="text"
-                      label="Search by Outlet Name, ID, Staff Name, or Sale ID"
+                      label="Search by Outlet Name, ID, Staff Name, Sale ID, or Invoice No"
                       fullWidth
                       value={searchQuery}
                       onChange={(e) => setSearchQuery(e.target.value)}
