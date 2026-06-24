@@ -18,6 +18,8 @@ import {
   InputLabel,
   Select,
   MenuItem,
+  Tabs,
+  Tab,
 } from "@mui/material";
 
 import MDBox from "components/MDBox";
@@ -53,6 +55,7 @@ function Delivered() {
   const [cancelRangeEnd, setCancelRangeEnd] = useState("");
   const [updatingSaleIds, setUpdatingSaleIds] = useState(new Set());
   const [cancelReportOpen, setCancelReportOpen] = useState(false);
+  const [activeTab, setActiveTab] = useState("delivered");
   const API = "https://bawarchee.edunextg.co/api";
 
   const getTodayLocalDate = () => {
@@ -469,6 +472,7 @@ function Delivered() {
           setSalesData((prevData) => prevData.filter((row) => row.id !== saleId));
           if (newStatus === "cancelled") {
             fetchCancelledSales({ silent: true });
+            setActiveTab("cancelled");
           }
         } else {
           const updated = data.sale;
@@ -502,10 +506,25 @@ function Delivered() {
         <Grid container spacing={3} justifyContent="center">
           <Grid item xs={12}>
             <Card>
-              <MDBox p={3} pb={2} display="flex" justifyContent="space-between" alignItems="center">
-                <MDTypography variant="h5" fontWeight="medium" color="dark">
+              <MDBox p={3} pb={2}>
+                <MDTypography variant="h5" fontWeight="medium" color="dark" mb={2}>
                   Delivered Items
                 </MDTypography>
+                <Tabs
+                  value={activeTab}
+                  onChange={(_, value) => setActiveTab(value)}
+                  sx={{
+                    minHeight: 40,
+                    "& .MuiTab-root": { minHeight: 40, textTransform: "none", fontWeight: 600 },
+                  }}
+                >
+                  <Tab label="Active Deliveries" value="delivered" />
+                  <Tab
+                    label={`Cancelled Items (${cancelledTotal})`}
+                    value="cancelled"
+                    sx={{ color: activeTab === "cancelled" ? "error.main" : undefined }}
+                  />
+                </Tabs>
               </MDBox>
               <MDBox pb={3} px={3}>
                 <Grid container spacing={3} mb={3}>
@@ -518,7 +537,69 @@ function Delivered() {
                       onChange={(e) => setSearchQuery(e.target.value)}
                     />
                   </Grid>
-                  <Grid item xs={12} md={8}>
+                  {activeTab === "cancelled" && (
+                    <>
+                      <Grid item xs={12} md={2}>
+                        <FormControl size="small" fullWidth>
+                          <InputLabel id="cancel-page-company-label">Company</InputLabel>
+                          <Select
+                            labelId="cancel-page-company-label"
+                            value={selectedCompanyId}
+                            label="Company"
+                            onChange={(e) => handleCompanyChange(e.target.value)}
+                            sx={{ height: 44 }}
+                          >
+                            <MenuItem value="">All Companies</MenuItem>
+                            {companyOptions.map((company) => (
+                              <MenuItem key={company.id} value={company.id}>
+                                {company.name}
+                              </MenuItem>
+                            ))}
+                          </Select>
+                        </FormControl>
+                      </Grid>
+                      <Grid item xs={12} md={2}>
+                        <FormControl size="small" fullWidth>
+                          <InputLabel id="cancel-page-staff-label">Staff</InputLabel>
+                          <Select
+                            labelId="cancel-page-staff-label"
+                            value={selectedStaffId}
+                            label="Staff"
+                            onChange={(e) => setSelectedStaffId(e.target.value)}
+                            sx={{ height: 44 }}
+                          >
+                            <MenuItem value="">All Staff</MenuItem>
+                            {staffOptions.map((staff) => (
+                              <MenuItem key={staff.id} value={staff.id}>
+                                {staff.name}
+                              </MenuItem>
+                            ))}
+                          </Select>
+                        </FormControl>
+                      </Grid>
+                      <Grid item xs={12} md={2}>
+                        <MDInput
+                          type="date"
+                          label="Cancel From"
+                          fullWidth
+                          InputLabelProps={{ shrink: true }}
+                          value={cancelRangeStart}
+                          onChange={(e) => setCancelRangeStart(e.target.value)}
+                        />
+                      </Grid>
+                      <Grid item xs={12} md={2}>
+                        <MDInput
+                          type="date"
+                          label="Cancel To"
+                          fullWidth
+                          InputLabelProps={{ shrink: true }}
+                          value={cancelRangeEnd}
+                          onChange={(e) => setCancelRangeEnd(e.target.value)}
+                        />
+                      </Grid>
+                    </>
+                  )}
+                  <Grid item xs={12} md={activeTab === "cancelled" ? 12 : 8}>
                     <MDBox display="flex" gap={2} justifyContent={{ xs: "flex-start", md: "flex-end" }} flexWrap="wrap">
                       <MDBox
                         px={2}
@@ -537,7 +618,10 @@ function Delivered() {
                         px={2}
                         py={1.25}
                         borderRadius="lg"
-                        onClick={() => setCancelReportOpen(true)}
+                        onClick={() => {
+                          setActiveTab("cancelled");
+                          setCancelReportOpen(true);
+                        }}
                         sx={{ backgroundColor: "#fef2f2", border: "1px solid #fecaca", cursor: "pointer" }}
                       >
                         <MDTypography variant="caption" color="text">
@@ -564,6 +648,7 @@ function Delivered() {
                   </Grid>
                 </Grid>
 
+                {activeTab === "delivered" ? (
                 <TableContainer component={Paper} sx={{ boxShadow: "none", border: "1px solid #e5e7eb" }}>
                   <Table sx={{ minWidth: 650 }}>
                     <TableHead sx={{ display: "table-header-group", backgroundColor: "#f9fafb" }}>
@@ -705,6 +790,126 @@ function Delivered() {
                     </TableBody>
                   </Table>
                 </TableContainer>
+                ) : (
+                  <MDBox>
+                    <MDBox
+                      display="flex"
+                      justifyContent="space-between"
+                      alignItems="center"
+                      mb={2}
+                      flexWrap="wrap"
+                      gap={1}
+                    >
+                      <MDTypography variant="body2" color="text">
+                        {reportCompanyLabel} / {reportStaffLabel} / {reportRangeLabel}
+                      </MDTypography>
+                      <MDBox display="flex" gap={1} flexWrap="wrap">
+                        <MDTypography variant="h6" color="error" fontWeight="bold">
+                          Total: {cancelledTotal} | Amount: ₹{cancelledAmount.toFixed(2)}
+                        </MDTypography>
+                        <MDButton color="dark" variant="outlined" size="small" onClick={handleDownloadCancelCSV}>
+                          Download CSV
+                        </MDButton>
+                        <MDButton color="error" variant="contained" size="small" onClick={handleDownloadCancelReport}>
+                          Download PDF
+                        </MDButton>
+                      </MDBox>
+                    </MDBox>
+                    <TableContainer component={Paper} sx={{ boxShadow: "none", border: "1px solid #fecaca" }}>
+                      <Table sx={{ minWidth: 650 }}>
+                        <TableHead sx={{ display: "table-header-group", backgroundColor: "#fef2f2" }}>
+                          <TableRow>
+                            <TableCell align="center" sx={{ color: "#7f1d1d", borderBottom: "1px solid #fecaca", py: 1.5, fontWeight: 600, width: 56 }}>
+                              Sr No
+                            </TableCell>
+                            <TableCell sx={{ color: "#7f1d1d", borderBottom: "1px solid #fecaca", py: 1.5, fontWeight: 600 }}>
+                              Staff Name
+                            </TableCell>
+                            <TableCell sx={{ color: "#7f1d1d", borderBottom: "1px solid #fecaca", py: 1.5, fontWeight: 600 }}>
+                              Company
+                            </TableCell>
+                            <TableCell sx={{ color: "#7f1d1d", borderBottom: "1px solid #fecaca", py: 1.5, fontWeight: 600 }}>
+                              Outlet Name
+                            </TableCell>
+                            <TableCell sx={{ color: "#7f1d1d", borderBottom: "1px solid #fecaca", py: 1.5, fontWeight: 600 }}>
+                              ERP ID
+                            </TableCell>
+                            <TableCell align="center" sx={{ color: "#7f1d1d", borderBottom: "1px solid #fecaca", py: 1.5, fontWeight: 600 }}>
+                              Sale ID
+                            </TableCell>
+                            <TableCell align="center" sx={{ color: "#7f1d1d", borderBottom: "1px solid #fecaca", py: 1.5, fontWeight: 600 }}>
+                              Invoice No
+                            </TableCell>
+                            <TableCell align="center" sx={{ color: "#7f1d1d", borderBottom: "1px solid #fecaca", py: 1.5, fontWeight: 600 }}>
+                              Invoice Date
+                            </TableCell>
+                            <TableCell align="center" sx={{ color: "#7f1d1d", borderBottom: "1px solid #fecaca", py: 1.5, fontWeight: 600 }}>
+                              Cancel Date
+                            </TableCell>
+                            <TableCell align="right" sx={{ color: "#7f1d1d", borderBottom: "1px solid #fecaca", py: 1.5, fontWeight: 600 }}>
+                              Cancel Amount
+                            </TableCell>
+                            <TableCell align="center" sx={{ color: "#7f1d1d", borderBottom: "1px solid #fecaca", py: 1.5, fontWeight: 600 }}>
+                              Status
+                            </TableCell>
+                          </TableRow>
+                        </TableHead>
+                        <TableBody>
+                          {cancelledSales.length > 0 ? (
+                            cancelledSales.map((row, index) => (
+                              <TableRow
+                                key={`cancelled-page-${row.id}`}
+                                sx={{ backgroundColor: "#fff7f7", "&:last-child td, &:last-child th": { border: 0 } }}
+                              >
+                                <TableCell align="center" sx={{ borderBottom: "1px solid #fecaca", py: 2 }}>
+                                  {index + 1}
+                                </TableCell>
+                                <TableCell sx={{ borderBottom: "1px solid #fecaca", py: 2 }}>
+                                  {row.staff_name || "N/A"}
+                                </TableCell>
+                                <TableCell sx={{ borderBottom: "1px solid #fecaca", py: 2 }}>
+                                  {row.company_name || "N/A"}
+                                </TableCell>
+                                <TableCell sx={{ borderBottom: "1px solid #fecaca", py: 2, fontWeight: "medium" }}>
+                                  {row.outlet_name || "N/A"}
+                                </TableCell>
+                                <TableCell sx={{ borderBottom: "1px solid #fecaca", py: 2 }}>
+                                  {row.outlet_erp_id || "N/A"}
+                                </TableCell>
+                                <TableCell align="center" sx={{ borderBottom: "1px solid #fecaca", py: 2, fontWeight: "bold" }}>
+                                  {row.sticker_number}
+                                </TableCell>
+                                <TableCell align="center" sx={{ borderBottom: "1px solid #fecaca", py: 2 }}>
+                                  {row.invoice_number || "N/A"}
+                                </TableCell>
+                                <TableCell align="center" sx={{ borderBottom: "1px solid #fecaca", py: 2 }}>
+                                  {formatDate(row.sale_date)}
+                                </TableCell>
+                                <TableCell align="center" sx={{ borderBottom: "1px solid #fecaca", py: 2 }}>
+                                  {formatDate(row.delivery_date || row.status_updated_at)}
+                                </TableCell>
+                                <TableCell align="right" sx={{ borderBottom: "1px solid #fecaca", py: 2, fontWeight: "bold" }}>
+                                  ₹{Number(row.price || 0).toFixed(2)}
+                                </TableCell>
+                                <TableCell align="center" sx={{ borderBottom: "1px solid #fecaca", py: 2 }}>
+                                  <Chip label="Cancelled" color="error" variant="outlined" size="small" />
+                                </TableCell>
+                              </TableRow>
+                            ))
+                          ) : (
+                            <TableRow>
+                              <TableCell colSpan={11} align="center" sx={{ py: 3, borderBottom: 0 }}>
+                                <MDTypography variant="body2" color="text">
+                                  No cancelled delivered items found.
+                                </MDTypography>
+                              </TableCell>
+                            </TableRow>
+                          )}
+                        </TableBody>
+                      </Table>
+                    </TableContainer>
+                  </MDBox>
+                )}
               </MDBox>
             </Card>
           </Grid>
