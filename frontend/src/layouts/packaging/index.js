@@ -224,8 +224,16 @@ function Packaging() {
   };
 
   const filteredSales = salesData.filter((row) => {
-    const status = row.original_packaging_status || row.packaging_status || 'not_packing';
-    if (status === 'packing_done' || status === 'out_for_delivery' || status === 'delivered' || status === 'cancelled' || status === 'returned') return false;
+    const status = row.packaging_status || row.original_packaging_status || "not_packing";
+    if (
+      status === "packing_done" ||
+      status === "out_for_delivery" ||
+      status === "delivered" ||
+      status === "cancelled" ||
+      status === "returned"
+    ) {
+      return false;
+    }
 
     if (statusFilter !== "all" && status !== statusFilter) {
       return false;

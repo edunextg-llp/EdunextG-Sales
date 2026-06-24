@@ -553,6 +553,20 @@ export async function ensureSchema() {
             WHERE EXISTS (SELECT 1 FROM sale_payments sp WHERE sp.sale_id = ss.id)
         `);
 
+        // Older cancel flow reset delivery cancels to not_packing — keep them out of Packaging.
+        await connection.query(`
+            UPDATE staff_sales ss
+            SET packaging_status = 'cancelled',
+                delivery_boy_id = NULL,
+                vehicle_no = NULL,
+                delivery_date = NULL
+            WHERE ss.packaging_status IN ('not_packing', 'packing', 'packing_done')
+              AND EXISTS (
+                  SELECT 1 FROM staff_sale_status_history h
+                  WHERE h.sale_id = ss.id AND h.status = 'cancelled'
+              )
+        `);
+
         console.log('Database schema verified');
     } finally {
         await connection.end();
