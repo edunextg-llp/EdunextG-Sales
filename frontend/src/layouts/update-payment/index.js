@@ -117,6 +117,7 @@ function UpdatePayment() {
   const [paymentForm, setPaymentForm] = useState(emptyPaymentForm());
   const [loadingPayments, setLoadingPayments] = useState(false);
   const [addingPayment, setAddingPayment] = useState(false);
+  const [deletingPaymentId, setDeletingPaymentId] = useState(null);
   const [editingPaymentId, setEditingPaymentId] = useState(null);
   const [activeCreditPayment, setActiveCreditPayment] = useState(null);
 
@@ -252,6 +253,7 @@ function UpdatePayment() {
     setPaymentForm(emptyPaymentForm());
     setEditingPaymentId(null);
     setActiveCreditPayment(null);
+    setDeletingPaymentId(null);
   };
 
 
@@ -483,6 +485,60 @@ function UpdatePayment() {
       alert("Error saving payment.");
     } finally {
       setAddingPayment(false);
+    }
+  };
+
+  const handleDeletePayment = async (payment) => {
+    if (!paymentDialogSale || deletingPaymentId) return;
+
+    const creditChildren =
+      payment.payment_mode === "credit" ? getCreditChildPayments(payment) : [];
+    const confirmMessage =
+      payment.payment_mode === "credit" && creditChildren.length > 0
+        ? `Delete this credit payment and ${creditChildren.length} linked payment(s)? This cannot be undone.`
+        : "Delete this payment? This cannot be undone.";
+
+    if (!window.confirm(confirmMessage)) return;
+
+    setDeletingPaymentId(payment.id);
+    try {
+      const response = await fetch(
+        `${API}/staff/sales/${paymentDialogSale.id}/payments/${payment.id}`,
+        { method: "DELETE" }
+      );
+
+      if (response.ok) {
+        const data = await response.json();
+        setPayments(data.payments);
+        setPaymentSummary(data.summary);
+        if (editingPaymentId === payment.id) {
+          cancelEditPayment();
+        }
+        if (activeCreditPayment?.id === payment.id) {
+          setActiveCreditPayment(null);
+          setPaymentForm(emptyPaymentForm());
+        }
+        setSalesData((prev) =>
+          prev.map((sale) =>
+            sale.id === paymentDialogSale.id
+              ? {
+                  ...sale,
+                  paid_amount: data.summary.paidAmount,
+                  balance_amount: data.summary.balanceAmount,
+                  payment_count: data.payments?.length || 0,
+                }
+              : sale
+          )
+        );
+      } else {
+        const err = await response.json().catch(() => ({}));
+        alert(err.error || "Failed to delete payment.");
+      }
+    } catch (error) {
+      console.error("Error deleting payment:", error);
+      alert("Error deleting payment.");
+    } finally {
+      setDeletingPaymentId(null);
     }
   };
 
@@ -825,6 +881,15 @@ function UpdatePayment() {
                               >
                                 <Icon fontSize="small">edit</Icon>
                               </MDButton>
+                              <MDButton
+                                variant="outlined"
+                                color="error"
+                                size="small"
+                                disabled={deletingPaymentId === payment.id || addingPayment}
+                                onClick={() => handleDeletePayment(payment)}
+                              >
+                                <Icon fontSize="small">delete</Icon>
+                              </MDButton>
                             </MDBox>
                           </TableCell>
                             </TableRow>
@@ -846,14 +911,25 @@ function UpdatePayment() {
                                   Against credit #{payment.id} - {formatPaymentDetails(childPayment)}
                                 </TableCell>
                                 <TableCell align="center" sx={{ ...tableBodySx, borderBottom: "1px solid #e5e7eb" }}>
-                                  <MDButton
-                                    variant="outlined"
-                                    color="info"
-                                    size="small"
-                                    onClick={() => startEditPayment(childPayment)}
-                                  >
-                                    <Icon fontSize="small">edit</Icon>
-                                  </MDButton>
+                                  <MDBox display="flex" justifyContent="center" alignItems="center" gap={0.75}>
+                                    <MDButton
+                                      variant="outlined"
+                                      color="info"
+                                      size="small"
+                                      onClick={() => startEditPayment(childPayment)}
+                                    >
+                                      <Icon fontSize="small">edit</Icon>
+                                    </MDButton>
+                                    <MDButton
+                                      variant="outlined"
+                                      color="error"
+                                      size="small"
+                                      disabled={deletingPaymentId === childPayment.id || addingPayment}
+                                      onClick={() => handleDeletePayment(childPayment)}
+                                    >
+                                      <Icon fontSize="small">delete</Icon>
+                                    </MDButton>
+                                  </MDBox>
                                 </TableCell>
                               </TableRow>
                             ))}

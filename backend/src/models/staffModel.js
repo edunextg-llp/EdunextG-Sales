@@ -538,7 +538,7 @@ class StaffModel {
                 const resetPackedCount = currentRows[0]?.item_count ?? packedItemCount;
                 await connection.execute(
                     `UPDATE staff_sales
-                     SET packaging_status = 'not_packing',
+                     SET packaging_status = 'cancelled',
                          delivery_boy_id = NULL,
                          vehicle_no = NULL,
                          delivery_date = NULL,

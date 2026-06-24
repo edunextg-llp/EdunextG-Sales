@@ -151,6 +151,9 @@ function AddSales() {
     staffName: s.staff_name || selectedStaff?.name || "",
   });
 
+  const activeSalesForAddSales = (sales) =>
+    (sales || []).filter((s) => s.packaging_status !== "cancelled");
+
   const refreshSubmittedSales = async () => {
     if (!selectedStaff || !selectedDate) return;
     try {
@@ -158,7 +161,7 @@ function AddSales() {
         `${API}/staff/${selectedStaff.id}/sales-by-date?date=${selectedDate}`
       );
       if (!salesRes.ok) return;
-      const salesDataList = await salesRes.json();
+      const salesDataList = activeSalesForAddSales(await salesRes.json());
       if (salesDataList.length > 0) {
         setSubmittedSummary(
           buildSubmittedSummary(selectedStaff, selectedDate, salesDataList.map(mapSaleFromApi))
@@ -242,7 +245,7 @@ function AddSales() {
         setSalesData(initialSales);
       }
       if (salesRes.ok) {
-        const salesDataList = await salesRes.json();
+        const salesDataList = activeSalesForAddSales(await salesRes.json());
         if (salesDataList.length > 0) {
           setSubmittedSummary(
             buildSubmittedSummary(selectedStaff, selectedDate, salesDataList.map(mapSaleFromApi))
@@ -351,11 +354,13 @@ function AddSales() {
         }
 
         if (salesRes.ok) {
-          const salesDataList = await salesRes.json();
+          const salesDataList = activeSalesForAddSales(await salesRes.json());
           if (salesDataList.length > 0) {
             setSubmittedSummary(
               buildSubmittedSummary(selectedStaff, date, salesDataList.map(mapSaleFromApi))
             );
+          } else {
+            setSubmittedSummary(null);
           }
         }
       } catch (error) {

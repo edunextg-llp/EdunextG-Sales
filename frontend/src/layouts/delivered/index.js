@@ -465,7 +465,7 @@ function Delivered() {
       if (response.ok) {
         const data = await response.json();
         if (newStatus === "packing_done" || newStatus === "cancelled") {
-          // Returned to Delivery / Add Sales — remove from Delivered Items list.
+          // packing_done → Delivery; cancelled → cancelled report only (not Add Sales).
           setSalesData((prevData) => prevData.filter((row) => row.id !== saleId));
           if (newStatus === "cancelled") {
             fetchCancelledSales({ silent: true });

@@ -440,6 +440,56 @@ class PaymentModel {
             connection.release();
         }
     }
+
+    static async deletePayment(saleId, paymentId) {
+        const connection = await db.getConnection();
+
+        try {
+            await connection.beginTransaction();
+
+            const price = await PaymentModel.getSalePrice(connection, saleId);
+            if (price === null) {
+                const err = new Error('SALE_NOT_FOUND');
+                throw err;
+            }
+
+            const [existingRows] = await connection.execute(
+                `SELECT id, payment_mode
+                 FROM sale_payments
+                 WHERE id = ? AND sale_id = ?
+                 FOR UPDATE`,
+                [paymentId, saleId]
+            );
+            if (!existingRows.length) {
+                const err = new Error('PAYMENT_NOT_FOUND');
+                throw err;
+            }
+
+            const payment = existingRows[0];
+
+            if (payment.payment_mode === 'credit') {
+                await connection.execute(
+                    'DELETE FROM sale_payments WHERE parent_credit_payment_id = ? AND sale_id = ?',
+                    [paymentId, saleId]
+                );
+            }
+
+            await connection.execute(
+                'DELETE FROM sale_payments WHERE id = ? AND sale_id = ?',
+                [paymentId, saleId]
+            );
+
+            await PaymentModel.recalculateSaleTotals(connection, saleId);
+            await connection.commit();
+
+            return PaymentModel.buildPaymentResponse(saleId);
+        } catch (error) {
+            await connection.rollback();
+            throw error;
+        } finally {
+            connection.release();
+        }
+    }
 }
 
 export default PaymentModel;

@@ -231,7 +231,7 @@ class DeliveryBoyModel {
 
                 await connection.execute(
                     `UPDATE staff_sales
-                     SET packaging_status = 'not_packing',
+                     SET packaging_status = 'cancelled',
                          delivery_boy_id = NULL,
                          vehicle_no = NULL,
                          delivery_date = NULL,
@@ -259,7 +259,7 @@ class DeliveryBoyModel {
 
             await connection.commit();
             if (status === 'cancelled') {
-                return { id: saleId, packaging_status: 'not_packing', delivery_cancelled: true };
+                return { id: saleId, packaging_status: 'cancelled', delivery_cancelled: true };
             }
 
             const updatedRows = await DeliveryBoyModel.getAssignedSales(deliveryBoyId);

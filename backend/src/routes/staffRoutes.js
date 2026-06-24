@@ -50,6 +50,7 @@ router.get('/sales/:saleId/status-history', staffController.getSaleStatusHistory
 router.post('/sales/:saleId/payments', staffController.addSalePayment);
 
 router.put('/sales/:saleId/payments/:paymentId', staffController.editSalePayment);
+router.delete('/sales/:saleId/payments/:paymentId', staffController.deleteSalePayment);
 
 router.put('/sales/:saleId', staffController.updateSale);
 router.delete('/sales/:saleId', staffController.deleteSale);

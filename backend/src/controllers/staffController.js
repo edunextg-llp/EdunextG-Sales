@@ -1451,6 +1451,27 @@ export const editSalePayment = async (req, res) => {
     }
 };
 
+export const deleteSalePayment = async (req, res) => {
+    try {
+        const { saleId, paymentId } = req.params;
+        const result = await PaymentModel.deletePayment(saleId, paymentId);
+
+        res.status(200).json({
+            message: 'Payment deleted successfully',
+            ...result,
+        });
+    } catch (error) {
+        if (error.message === 'SALE_NOT_FOUND') {
+            return res.status(404).json({ error: 'Sale not found' });
+        }
+        if (error.message === 'PAYMENT_NOT_FOUND') {
+            return res.status(404).json({ error: 'Payment not found' });
+        }
+        console.error('Error deleting sale payment:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+};
+
 export const updatePaymentMode = async (req, res) => {
     try {
         const { saleId } = req.params;
