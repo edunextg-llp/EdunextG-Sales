@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import Grid from "@mui/material/Grid";
 import Card from "@mui/material/Card";
 // import Icon from "@mui/material/Icon";
@@ -46,6 +46,7 @@ function Packaging() {
   const [statusFilter, setStatusFilter] = useState("all");
   const [historyDialog, setHistoryDialog] = useState({ open: false, sale: null, history: [] });
   const [savingSaleIds, setSavingSaleIds] = useState(new Set());
+  const recentlySavedRef = useRef(new Map());
   const API = "https://bawarchee.edunextg.co/api";
 
   const statusLabels = {
@@ -92,7 +93,13 @@ function Packaging() {
       if (response.ok) {
         const data = await response.json();
         setSalesData((prev) =>
-          mergeSalesRows(data, prev, enhancePackagingRow, isPackagingRowDirty)
+          mergeSalesRows(
+            data,
+            prev,
+            enhancePackagingRow,
+            isPackagingRowDirty,
+            recentlySavedRef.current
+          )
         );
       } else if (!silent) {
         console.error("Failed to fetch sales for packaging");
@@ -134,7 +141,7 @@ function Packaging() {
       row.original_packaging_status !== row.packaging_status &&
       (!row.status_update_date || !row.status_update_date_changed)
     ) {
-      alert("Please choose Status Date.");
+      alert("Status changed — please choose a Status Date before saving.");
       return;
     }
 
@@ -174,7 +181,13 @@ function Packaging() {
       if (response.ok) {
         const data = await response.json();
         const updated = enhancePackagingRow(data.sale);
-        setSalesData((prev) => prev.map((item) => (item.id === saleId ? updated : item)));
+        recentlySavedRef.current.set(saleId, Date.now());
+
+        if (updated.packaging_status === "packing_done") {
+          setSalesData((prev) => prev.filter((item) => item.id !== saleId));
+        } else {
+          setSalesData((prev) => prev.map((item) => (item.id === saleId ? updated : item)));
+        }
       } else if (response.status === 409) {
         const err = await response.json().catch(() => ({}));
         alert(err.error || "This record was updated by another user.");
@@ -225,13 +238,15 @@ function Packaging() {
 
   const filteredSales = salesData.filter((row) => {
     const status = row.packaging_status || row.original_packaging_status || "not_packing";
-    if (
+    const isTerminalStatus =
       status === "packing_done" ||
       status === "out_for_delivery" ||
       status === "delivered" ||
       status === "cancelled" ||
-      status === "returned"
-    ) {
+      status === "returned";
+
+    // Keep locally edited rows visible until saved, so user can set date and click save.
+    if (isTerminalStatus && !isPackagingRowDirty(row)) {
       return false;
     }
 
@@ -285,7 +300,6 @@ function Packaging() {
                         <MenuItem value="all">All Progress</MenuItem>
                         <MenuItem value="not_packing">Not Started</MenuItem>
                         <MenuItem value="packing">In Progress</MenuItem>
-                        <MenuItem value="packing_done">Packing Done</MenuItem>
                       </Select>
                     </FormControl>
                   </Grid>

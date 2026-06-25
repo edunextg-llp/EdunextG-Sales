@@ -33,18 +33,34 @@ export const isPackagingRowDirty = (row) =>
 export const isDeliveryRowDirty = (row) =>
   Boolean(row._localDirty) || row.packaging_status !== row.original_packaging_status;
 
-export const mergeSalesRows = (serverRows, localRows, enhanceFn, isDirtyFn) => {
+export const mergeSalesRows = (
+  serverRows,
+  localRows,
+  enhanceFn,
+  isDirtyFn,
+  recentlySavedMap = null
+) => {
   const localById = new Map(localRows.map((row) => [row.id, row]));
+  const now = Date.now();
 
   return serverRows.map((serverRow) => {
     const local = localById.get(serverRow.id);
-    // Cancelled on server must win — otherwise stale local rows reappear in Packaging.
+
     if (serverRow.packaging_status === "cancelled") {
       return enhanceFn(serverRow);
     }
+
+    if (local && recentlySavedMap) {
+      const savedAt = recentlySavedMap.get(serverRow.id);
+      if (savedAt && now - savedAt < 15000) {
+        return local;
+      }
+    }
+
     if (local && isDirtyFn(local)) {
       return local;
     }
+
     return enhanceFn(serverRow);
   });
 };
