@@ -139,15 +139,24 @@ class ReportModel {
     static async getTodayCollectionDetails(startDate, endDate) {
         const dateWhere = ReportModel.buildDateWhere('sp.payment_date', startDate, endDate);
         const [rows] = await db.execute(
-            `SELECT COALESCE(collector.name, sp.collector_name, sale_staff.name, 'N/A') AS staff_name,
-                    sale_staff.id AS sale_staff_id,
-                    sale_staff.name AS sale_staff_name,
+            `SELECT outlet_staff.id AS outlet_staff_id,
                     outlet_staff.name AS outlet_staff_name,
                     sc.id AS outlet_id,
                     sc.outlet_name,
                     sc.outlet_erp_id,
                     ss.id AS sale_id,
                     ss.invoice_number,
+                    CASE
+                        WHEN sp.collector_name IS NOT NULL
+                             AND TRIM(sp.collector_name) <> ''
+                             AND sp.collector_staff_id IS NULL THEN 'bawarchee_staff'
+                        ELSE 'company_staff'
+                    END AS collector_type,
+                    COALESCE(collector.name, outlet_staff.name, sale_staff.name, 'N/A') AS company_collector_name,
+                    sp.collector_name AS bawarchee_collector_name,
+                    COALESCE(collector.name, sp.collector_name, sale_staff.name, 'N/A') AS staff_name,
+                    sale_staff.id AS sale_staff_id,
+                    sale_staff.name AS sale_staff_name,
                     COALESCE(SUM(CASE WHEN sp.payment_mode = 'cash' THEN sp.amount ELSE 0 END), 0) AS cash_amount,
                     COALESCE(SUM(CASE WHEN sp.payment_mode = 'upi' THEN sp.amount ELSE 0 END), 0) AS upi_amount,
                     COALESCE(SUM(CASE WHEN sp.payment_mode = 'cheque' THEN sp.amount ELSE 0 END), 0) AS cheque_amount,
@@ -159,9 +168,11 @@ class ReportModel {
              LEFT JOIN staff_counters sc ON sc.id = ss.outlet_id
              LEFT JOIN staff outlet_staff ON outlet_staff.id = sc.staff_id
              ${dateWhere.sql ? `${dateWhere.sql} AND` : 'WHERE sp.payment_date = CURDATE() AND'} sp.payment_mode IN ('cash', 'upi', 'cheque')
-             GROUP BY COALESCE(collector.name, sp.collector_name, sale_staff.name, 'N/A'),
-                      sale_staff.id, sale_staff.name, outlet_staff.name, sc.id, sc.outlet_name, sc.outlet_erp_id, ss.id, ss.invoice_number
-             ORDER BY staff_name ASC, sc.outlet_name ASC, ss.invoice_number ASC`,
+             GROUP BY outlet_staff.id, outlet_staff.name, sc.id, sc.outlet_name, sc.outlet_erp_id, ss.id, ss.invoice_number,
+                      collector_type,
+                      COALESCE(collector.name, outlet_staff.name, sale_staff.name, 'N/A'),
+                      sp.collector_name, sale_staff.id, sale_staff.name
+             ORDER BY outlet_staff.name ASC, sc.outlet_name ASC, collector_type ASC, ss.invoice_number ASC`,
             dateWhere.params
         );
         return toNumberRows(rows);
@@ -170,15 +181,24 @@ class ReportModel {
     static async getCollectionDetails(startDate, endDate) {
         const dateWhere = ReportModel.buildDateWhere('sp.payment_date', startDate, endDate);
         const [rows] = await db.execute(
-            `SELECT COALESCE(collector.name, sp.collector_name, sale_staff.name, 'N/A') AS staff_name,
-                    sale_staff.id AS sale_staff_id,
-                    sale_staff.name AS sale_staff_name,
+            `SELECT outlet_staff.id AS outlet_staff_id,
                     outlet_staff.name AS outlet_staff_name,
                     sc.id AS outlet_id,
                     sc.outlet_name,
                     sc.outlet_erp_id,
                     ss.id AS sale_id,
                     ss.invoice_number,
+                    CASE
+                        WHEN sp.collector_name IS NOT NULL
+                             AND TRIM(sp.collector_name) <> ''
+                             AND sp.collector_staff_id IS NULL THEN 'bawarchee_staff'
+                        ELSE 'company_staff'
+                    END AS collector_type,
+                    COALESCE(collector.name, outlet_staff.name, sale_staff.name, 'N/A') AS company_collector_name,
+                    sp.collector_name AS bawarchee_collector_name,
+                    COALESCE(collector.name, sp.collector_name, sale_staff.name, 'N/A') AS staff_name,
+                    sale_staff.id AS sale_staff_id,
+                    sale_staff.name AS sale_staff_name,
                     COALESCE(SUM(CASE WHEN sp.payment_mode = 'cash' THEN sp.amount ELSE 0 END), 0) AS cash_amount,
                     COALESCE(SUM(CASE WHEN sp.payment_mode = 'upi' THEN sp.amount ELSE 0 END), 0) AS upi_amount,
                     COALESCE(SUM(CASE WHEN sp.payment_mode = 'cheque' THEN sp.amount ELSE 0 END), 0) AS cheque_amount,
@@ -190,9 +210,11 @@ class ReportModel {
              LEFT JOIN staff_counters sc ON sc.id = ss.outlet_id
              LEFT JOIN staff outlet_staff ON outlet_staff.id = sc.staff_id
              ${dateWhere.sql ? `${dateWhere.sql} AND` : 'WHERE'} sp.payment_mode IN ('cash', 'upi', 'cheque')
-             GROUP BY COALESCE(collector.name, sp.collector_name, sale_staff.name, 'N/A'),
-                      sale_staff.id, sale_staff.name, outlet_staff.name, sc.id, sc.outlet_name, sc.outlet_erp_id, ss.id, ss.invoice_number
-             ORDER BY staff_name ASC, sc.outlet_name ASC, ss.invoice_number ASC`,
+             GROUP BY outlet_staff.id, outlet_staff.name, sc.id, sc.outlet_name, sc.outlet_erp_id, ss.id, ss.invoice_number,
+                      collector_type,
+                      COALESCE(collector.name, outlet_staff.name, sale_staff.name, 'N/A'),
+                      sp.collector_name, sale_staff.id, sale_staff.name
+             ORDER BY outlet_staff.name ASC, sc.outlet_name ASC, collector_type ASC, ss.invoice_number ASC`,
             dateWhere.params
         );
         return toNumberRows(rows);

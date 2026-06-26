@@ -640,6 +640,82 @@ function escapeHtml(value) {
     .replace(/'/g, "&#039;");
 }
 
+function buildMarketingStaffCollectionGroups(details) {
+  const marketingGroups = new Map();
+
+  details.forEach((row) => {
+    const marketingKey = row.outlet_staff_id || row.outlet_staff_name || "unassigned";
+    const marketingName = row.outlet_staff_name || "Unassigned";
+
+    if (!marketingGroups.has(marketingKey)) {
+      marketingGroups.set(marketingKey, {
+        marketingName,
+        outlets: new Map(),
+        cash: 0,
+        online: 0,
+        cheque: 0,
+        total: 0,
+        companyStaffTotal: 0,
+        bawarcheeStaffTotal: 0,
+      });
+    }
+
+    const marketingGroup = marketingGroups.get(marketingKey);
+    const outletKey = row.outlet_id || row.outlet_name || "unknown";
+
+    if (!marketingGroup.outlets.has(outletKey)) {
+      marketingGroup.outlets.set(outletKey, {
+        outletName: row.outlet_name || "N/A",
+        collectors: [],
+        cash: 0,
+        online: 0,
+        cheque: 0,
+        total: 0,
+        companyStaffTotal: 0,
+        bawarcheeStaffTotal: 0,
+      });
+    }
+
+    const outletGroup = marketingGroup.outlets.get(outletKey);
+    const cash = Number(row.cash_amount) || 0;
+    const online = Number(row.upi_amount) || 0;
+    const cheque = Number(row.cheque_amount) || 0;
+    const total = Number(row.total_amount) || 0;
+    const isBawarchee = row.collector_type === "bawarchee_staff";
+
+    outletGroup.collectors.push({
+      collectorType: isBawarchee ? "Bawarchee Staff" : "Company Staff",
+      collectorName: isBawarchee
+        ? row.bawarchee_collector_name || "N/A"
+        : row.company_collector_name || marketingName,
+      invoiceNumber: row.invoice_number || "N/A",
+      cash,
+      online,
+      cheque,
+      total,
+    });
+
+    outletGroup.cash += cash;
+    outletGroup.online += online;
+    outletGroup.cheque += cheque;
+    outletGroup.total += total;
+    if (isBawarchee) {
+      outletGroup.bawarcheeStaffTotal += total;
+      marketingGroup.bawarcheeStaffTotal += total;
+    } else {
+      outletGroup.companyStaffTotal += total;
+      marketingGroup.companyStaffTotal += total;
+    }
+
+    marketingGroup.cash += cash;
+    marketingGroup.online += online;
+    marketingGroup.cheque += cheque;
+    marketingGroup.total += total;
+  });
+
+  return [...marketingGroups.values()].sort((a, b) => a.marketingName.localeCompare(b.marketingName));
+}
+
 function PurchasePeriodTable({ title, rows, periodLabel }) {
   return (
     <Card sx={{ height: "100%" }}>
@@ -839,76 +915,88 @@ function Dashboard() {
     const onlineTotal = details.reduce((total, row) => total + (Number(row.upi_amount) || 0), 0);
     const grandTotal = cashTotal + chequeTotal + onlineTotal;
     const amountBoxClass = (value) => `box ${Number(value || 0) > 0 ? "box-active" : ""}`;
-    const staffGroups = details.reduce((groups, row) => {
-      const staffKey = row.staff_name || "unknown";
-      if (!groups.has(staffKey)) {
-        groups.set(staffKey, {
-          staffName: row.staff_name || "N/A",
-          rows: [],
-          cash: 0,
-          online: 0,
-          cheque: 0,
-          total: 0,
-        });
-      }
+    const marketingGroups = buildMarketingStaffCollectionGroups(details);
 
-      const group = groups.get(staffKey);
-      group.rows.push(row);
-      group.cash += Number(row.cash_amount) || 0;
-      group.online += Number(row.upi_amount) || 0;
-      group.cheque += Number(row.cheque_amount) || 0;
-      group.total += Number(row.total_amount) || 0;
-      return groups;
-    }, new Map());
-
-    const staffBoxesHtml = [...staffGroups.values()]
+    const staffBoxesHtml = marketingGroups
       .map(
-        (staffGroup) => `
+        (marketingGroup) => {
+          const outletsHtml = [...marketingGroup.outlets.values()]
+            .sort((a, b) => a.outletName.localeCompare(b.outletName))
+            .map(
+              (outletGroup) => `
+                <div class="outlet-block">
+                  <h3>Outlet: ${escapeHtml(outletGroup.outletName)}</h3>
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Collector Type</th>
+                        <th>Collector Name</th>
+                        <th>Invoice</th>
+                        <th class="right">Cash</th>
+                        <th class="right">Online</th>
+                        <th class="right">Cheque</th>
+                        <th class="right">Total</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      ${outletGroup.collectors
+                        .map(
+                          (collector) => `
+                            <tr>
+                              <td>${escapeHtml(collector.collectorType)}</td>
+                              <td>${escapeHtml(collector.collectorName)}</td>
+                              <td>${escapeHtml(collector.invoiceNumber)}</td>
+                              <td class="right">Rs. ${collector.cash.toFixed(2)}</td>
+                              <td class="right">Rs. ${collector.online.toFixed(2)}</td>
+                              <td class="right">Rs. ${collector.cheque.toFixed(2)}</td>
+                              <td class="right">Rs. ${collector.total.toFixed(2)}</td>
+                            </tr>
+                          `
+                        )
+                        .join("")}
+                      <tr class="outlet-total-row">
+                        <td colspan="3"><strong>Outlet Total</strong></td>
+                        <td class="right"><strong>Rs. ${outletGroup.cash.toFixed(2)}</strong></td>
+                        <td class="right"><strong>Rs. ${outletGroup.online.toFixed(2)}</strong></td>
+                        <td class="right"><strong>Rs. ${outletGroup.cheque.toFixed(2)}</strong></td>
+                        <td class="right"><strong>Rs. ${outletGroup.total.toFixed(2)}</strong></td>
+                      </tr>
+                      <tr class="split-total-row">
+                        <td colspan="6">Company Staff Collection</td>
+                        <td class="right">Rs. ${outletGroup.companyStaffTotal.toFixed(2)}</td>
+                      </tr>
+                      <tr class="split-total-row">
+                        <td colspan="6">Bawarchee Staff Collection</td>
+                        <td class="right">Rs. ${outletGroup.bawarcheeStaffTotal.toFixed(2)}</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              `
+            )
+            .join("");
+
+          return `
           <section class="staff-card">
             <div class="staff-header">
-              <h2>Collector: ${escapeHtml(staffGroup.staffName)}</h2>
-              <span>${staffGroup.rows.length} invoice${staffGroup.rows.length === 1 ? "" : "s"}</span>
+              <h2>Company Staff: ${escapeHtml(marketingGroup.marketingName)}</h2>
+              <span>${marketingGroup.outlets.size} outlet${marketingGroup.outlets.size === 1 ? "" : "s"}</span>
             </div>
             <div class="totals staff-totals">
-              <div class="${amountBoxClass(staffGroup.cash)}"><div class="label">Cash</div><div class="value">Rs. ${staffGroup.cash.toFixed(2)}</div></div>
-              <div class="${amountBoxClass(staffGroup.online)}"><div class="label">Online</div><div class="value">Rs. ${staffGroup.online.toFixed(2)}</div></div>
-              <div class="${amountBoxClass(staffGroup.cheque)}"><div class="label">Cheque</div><div class="value">Rs. ${staffGroup.cheque.toFixed(2)}</div></div>
-              <div class="${amountBoxClass(staffGroup.total)}"><div class="label">Total</div><div class="value">Rs. ${staffGroup.total.toFixed(2)}</div></div>
+              <div class="${amountBoxClass(marketingGroup.cash)}"><div class="label">Cash</div><div class="value">Rs. ${marketingGroup.cash.toFixed(2)}</div></div>
+              <div class="${amountBoxClass(marketingGroup.online)}"><div class="label">Online</div><div class="value">Rs. ${marketingGroup.online.toFixed(2)}</div></div>
+              <div class="${amountBoxClass(marketingGroup.cheque)}"><div class="label">Cheque</div><div class="value">Rs. ${marketingGroup.cheque.toFixed(2)}</div></div>
+              <div class="${amountBoxClass(marketingGroup.total)}"><div class="label">Total</div><div class="value">Rs. ${marketingGroup.total.toFixed(2)}</div></div>
             </div>
-            <table>
-              <thead>
-                <tr>
-                  <th>Sr No</th>
-                  <th>Outlet</th>
-                  <th>Invoice</th>
-                  <th>Marketing Person</th>
-                  <th class="right">Cash</th>
-                  <th class="right">Online</th>
-                  <th class="right">Cheque</th>
-                  <th class="right">Total</th>
-                </tr>
-              </thead>
-              <tbody>
-                ${staffGroup.rows
-                  .map(
-                    (row, index) => `
-                      <tr>
-                        <td>${index + 1}</td>
-                        <td>${escapeHtml(row.outlet_name || "N/A")}</td>
-                        <td>${escapeHtml(row.invoice_number || "N/A")}</td>
-                        <td>${escapeHtml(row.outlet_staff_name || row.sale_staff_name || "N/A")}</td>
-                        <td class="right">Rs. ${Number(row.cash_amount || 0).toFixed(2)}</td>
-                        <td class="right">Rs. ${Number(row.upi_amount || 0).toFixed(2)}</td>
-                        <td class="right">Rs. ${Number(row.cheque_amount || 0).toFixed(2)}</td>
-                        <td class="right">Rs. ${Number(row.total_amount || 0).toFixed(2)}</td>
-                      </tr>
-                    `
-                  )
-                  .join("")}
-              </tbody>
-            </table>
+            <div class="split-summary">
+              <span>Company Staff: Rs. ${marketingGroup.companyStaffTotal.toFixed(2)}</span>
+              <span>Bawarchee Staff: Rs. ${marketingGroup.bawarcheeStaffTotal.toFixed(2)}</span>
+              <span><strong>Combined Total: Rs. ${marketingGroup.total.toFixed(2)}</strong></span>
+            </div>
+            ${outletsHtml}
           </section>
-        `
+        `;
+        }
       )
       .join("");
 
@@ -937,13 +1025,18 @@ function Dashboard() {
             .staff-header { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 10px; }
             .staff-header span { color: #6b7280; font-size: 12px; }
             .staff-totals { margin: 0 0 12px; }
+            .split-summary { display: flex; flex-wrap: wrap; gap: 16px; margin: 0 0 14px; font-size: 12px; color: #374151; }
+            .outlet-block { margin-top: 14px; }
+            .outlet-block h3 { font-size: 14px; margin: 0 0 8px; color: #1f2937; }
+            .outlet-total-row { background: #f8fafc; }
+            .split-total-row { background: #f9fafb; color: #4b5563; }
             .empty { padding: 24px; text-align: center; color: #6b7280; border: 1px solid #d1d5db; }
             @media print { body { margin: 16mm; } }
           </style>
         </head>
         <body>
           <h1>Collection Report</h1>
-          <div class="sub">Period: ${escapeHtml(periodLabel)} | Payment collector and outlet wise cash, online, and cheque collection</div>
+          <div class="sub">Period: ${escapeHtml(periodLabel)} | Grouped by company staff (marketing person), with bawarchee staff collector breakdown per outlet</div>
           ${
             details.length > 0
               ? staffBoxesHtml
