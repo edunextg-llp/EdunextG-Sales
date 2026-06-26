@@ -491,6 +491,7 @@ function CreditsPage() {
             <td>${escapeHtml(c.sticker_number || "N/A")}</td>
             <td>${escapeHtml(c.invoice_number || "N/A")}</td>
             <td>${escapeHtml(c.outlet_name || "N/A")}</td>
+            <td>${escapeHtml(c.contact_number || "N/A")}</td>
             <td>${escapeHtml(c.outlet_erp_id || "N/A")}</td>
             <td>${escapeHtml(formatDate(c.sale_date))}</td>
             <td>${escapeHtml(calcDueDate(c.sale_date, c.credit_days))}</td>
@@ -509,6 +510,7 @@ function CreditsPage() {
                   <th style="width: 12%">Sale ID</th>
                   <th style="width: 15%">Invoice</th>
                   <th>Outlet Name</th>
+                  <th style="width: 12%">Contact Number</th>
                   <th style="width: 12%">ERP ID</th>
                   <th style="width: 12%">Issue Date</th>
                   <th style="width: 12%">Due Date</th>
@@ -519,7 +521,7 @@ function CreditsPage() {
               <tbody>
                 ${rows}
                 <tr class="staff-total-row">
-                  <td colspan="8" class="right"><strong>Total for ${escapeHtml(staffName)}</strong></td>
+                  <td colspan="9" class="right"><strong>Total for ${escapeHtml(staffName)}</strong></td>
                   <td class="right"><strong>Rs. ${staffTotal.toFixed(2)}</strong></td>
                 </tr>
               </tbody>
@@ -586,12 +588,13 @@ function CreditsPage() {
       filteredCredits.filter(isTomorrowOrMissedCollection)
     );
 
-    let csv = "Sr No,Staff Name,Sale ID,Invoice No,Outlet Name,ERP ID,Issue Date,Due Date,Status,Outstanding Balance\n";
+    let csv = "Sr No,Staff Name,Sale ID,Invoice No,Outlet Name,Contact Number,ERP ID,Issue Date,Due Date,Status,Outstanding Balance\n";
     tomorrowCredits.forEach((c, idx) => {
       csv += `${idx + 1},"${(c.staff_name || "").replace(/"/g, '""')}",` +
              `"${(c.sticker_number || "").replace(/"/g, '""')}",` +
              `"${(c.invoice_number || "").replace(/"/g, '""')}",` +
              `"${(c.outlet_name || "").replace(/"/g, '""')}",` +
+             `"${(c.contact_number || "").replace(/"/g, '""')}",` +
              `"${(c.outlet_erp_id || "").replace(/"/g, '""')}",` +
              `"${formatDate(c.sale_date)}",` +
              `"${calcDueDate(c.sale_date, c.credit_days)}",` +
@@ -600,7 +603,7 @@ function CreditsPage() {
     });
 
     const total = tomorrowCredits.reduce((sum, c) => sum + (Number(c.balance_amount) || 0), 0);
-    csv += `,,,,,,,,,Total: Rs. ${total.toFixed(2)}\n`;
+    csv += `,,,,,,,,,,Total: Rs. ${total.toFixed(2)}\n`;
 
     downloadCSV("Tomorrow_Missed_Collection_Report.csv", csv);
   };
@@ -635,6 +638,7 @@ function CreditsPage() {
               <td>${escapeHtml(c.sticker_number || "N/A")}</td>
               <td>${escapeHtml(c.invoice_number || "N/A")}</td>
               <td>${escapeHtml(c.outlet_name || "N/A")}</td>
+              <td>${escapeHtml(c.contact_number || "N/A")}</td>
               <td>${escapeHtml(c.outlet_erp_id || "N/A")}</td>
               <td>${escapeHtml(formatDate(c.sale_date))}</td>
               <td>${escapeHtml(calcDueDate(c.sale_date, c.credit_days))} (${dueInLabel})</td>
@@ -653,6 +657,7 @@ function CreditsPage() {
                   <th style="width: 12%">Sale ID</th>
                   <th style="width: 15%">Invoice</th>
                   <th>Outlet Name</th>
+                  <th style="width: 12%">Contact Number</th>
                   <th style="width: 12%">ERP ID</th>
                   <th style="width: 14%">Issue Date</th>
                   <th style="width: 20%">Due Date</th>
@@ -730,12 +735,13 @@ function CreditsPage() {
 
     next2DaysCredits.sort((a, b) => (a.staff_name || "").localeCompare(b.staff_name || ""));
 
-    let csv = "Sr No,Staff Name,Sale ID,Invoice No,Outlet Name,ERP ID,Issue Date,Due Date,Outstanding Balance\n";
+    let csv = "Sr No,Staff Name,Sale ID,Invoice No,Outlet Name,Contact Number,ERP ID,Issue Date,Due Date,Outstanding Balance\n";
     next2DaysCredits.forEach((c, idx) => {
       csv += `${idx + 1},"${(c.staff_name || "").replace(/"/g, '""')}",` +
              `"${(c.sticker_number || c.bp_sale_id || "").replace(/"/g, '""')}",` +
              `"${(c.invoice_number || "").replace(/"/g, '""')}",` +
              `"${(c.outlet_name || "").replace(/"/g, '""')}",` +
+             `"${(c.contact_number || "").replace(/"/g, '""')}",` +
              `"${(c.outlet_erp_id || "").replace(/"/g, '""')}",` +
              `"${formatDate(c.sale_date)}",` +
              `"${calcDueDate(c.sale_date, c.credit_days)}",` +
@@ -743,7 +749,7 @@ function CreditsPage() {
     });
 
     const total = next2DaysCredits.reduce((sum, c) => sum + (Number(c.balance_amount) || 0), 0);
-    csv += `,,,,,,,,Total: Rs. ${total.toFixed(2)}\n`;
+    csv += `,,,,,,,,,,Total: Rs. ${total.toFixed(2)}\n`;
 
     downloadCSV("Next_2_Days_Collection_Report.csv", csv);
   };
@@ -778,6 +784,7 @@ function CreditsPage() {
               <td>${escapeHtml(c.sticker_number || c.bp_sale_id || "N/A")}</td>
               <td>${escapeHtml(c.invoice_number || "N/A")}</td>
               <td>${escapeHtml(c.outlet_name || "N/A")}</td>
+              <td>${escapeHtml(c.contact_number || "N/A")}</td>
               <td>${escapeHtml(c.outlet_erp_id || "N/A")}</td>
               <td>${escapeHtml(formatDate(c.sale_date))}</td>
               <td>${escapeHtml(calcDueDate(c.sale_date, c.credit_days))}</td>
@@ -797,6 +804,7 @@ function CreditsPage() {
                   <th style="width: 12%">Sale ID</th>
                   <th style="width: 15%">Invoice</th>
                   <th>Outlet Name</th>
+                  <th style="width: 12%">Contact Number</th>
                   <th style="width: 12%">ERP ID</th>
                   <th style="width: 14%">Issue Date</th>
                   <th style="width: 14%">Due Date</th>
@@ -875,7 +883,7 @@ function CreditsPage() {
 
     overdueCredits.sort((a, b) => (a.staff_name || "").localeCompare(b.staff_name || ""));
 
-    let csv = "Sr No,Staff Name,Sale ID,Invoice No,Outlet Name,ERP ID,Issue Date,Due Date,Overdue Days,Outstanding Balance\n";
+    let csv = "Sr No,Staff Name,Sale ID,Invoice No,Outlet Name,Contact Number,ERP ID,Issue Date,Due Date,Overdue Days,Outstanding Balance\n";
     overdueCredits.forEach((c, idx) => {
       const diff = getDiffDays(c.sale_date, c.credit_days);
       const overdueDays = diff ? Math.abs(diff) : 0;
@@ -883,6 +891,7 @@ function CreditsPage() {
              `"${(c.sticker_number|| "").replace(/"/g, '""')}",` +
              `"${(c.invoice_number || "").replace(/"/g, '""')}",` +
              `"${(c.outlet_name || "").replace(/"/g, '""')}",` +
+             `"${(c.contact_number || "").replace(/"/g, '""')}",` +
              `"${(c.outlet_erp_id || "").replace(/"/g, '""')}",` +
              `"${formatDate(c.sale_date)}",` +
              `"${calcDueDate(c.sale_date, c.credit_days)}",` +
@@ -891,7 +900,7 @@ function CreditsPage() {
     });
 
     const total = overdueCredits.reduce((sum, c) => sum + (Number(c.balance_amount) || 0), 0);
-    csv += `,,,,,,,,,Total: Rs. ${total.toFixed(2)}\n`;
+    csv += `,,,,,,,,,,Total: Rs. ${total.toFixed(2)}\n`;
 
     downloadCSV("Staff_Wise_Overdue_Report.csv", csv);
   };
