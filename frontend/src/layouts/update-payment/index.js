@@ -81,6 +81,7 @@ const emptyPaymentForm = () => ({
   amount: "",
   collectorType: "company_staff",
   collectorStaffId: "",
+  collectorDeliveryBoyId: "",
   collectorName: "",
   cashNotes: emptyCashNotes(),
   referenceNo: "",
@@ -123,8 +124,26 @@ function UpdatePayment() {
   const [deletingPaymentId, setDeletingPaymentId] = useState(null);
   const [editingPaymentId, setEditingPaymentId] = useState(null);
   const [activeCreditPayment, setActiveCreditPayment] = useState(null);
+  const [deliveryBoys, setDeliveryBoys] = useState([]);
 
   const API = "https://bawarchee.edunextg.co/api";
+
+  const getDeliveryBoyById = (boyId) =>
+    deliveryBoys.find((boy) => String(boy.id) === String(boyId));
+
+  const getDefaultDeliveryBoyCollector = (sale = paymentDialogSale) => {
+    const boyId = sale?.delivery_boy_id != null ? String(sale.delivery_boy_id) : "";
+    const boy = getDeliveryBoyById(boyId);
+    return {
+      collectorDeliveryBoyId: boyId,
+      collectorName: boy?.name || sale?.delivery_boy_name || "",
+    };
+  };
+
+  const resolveDeliveryBoyIdFromName = (name) => {
+    const boy = deliveryBoys.find((item) => item.name === name);
+    return boy ? String(boy.id) : "";
+  };
 
   const getOutletMarketingStaffId = (sale = paymentDialogSale) => {
     if (sale?.outlet_staff_id != null) return String(sale.outlet_staff_id);
@@ -176,6 +195,42 @@ function UpdatePayment() {
 
     return () => clearTimeout(timer);
   }, [searchQuery]);
+
+  useEffect(() => {
+    const fetchDeliveryBoys = async () => {
+      try {
+        const response = await fetch(`${API}/delivery-boy`);
+        if (response.ok) {
+          setDeliveryBoys(await response.json());
+        }
+      } catch (error) {
+        console.error("Error fetching delivery boys:", error);
+      }
+    };
+
+    fetchDeliveryBoys();
+  }, []);
+
+  useEffect(() => {
+    if (!paymentDialogSale || deliveryBoys.length === 0) return;
+
+    setPaymentForm((prev) => {
+      if (prev.collectorType !== "bawarchee_staff" || prev.collectorDeliveryBoyId) {
+        return prev;
+      }
+
+      const defaultDeliveryBoy = getDefaultDeliveryBoyCollector(paymentDialogSale);
+      if (!defaultDeliveryBoy.collectorDeliveryBoyId) {
+        return prev;
+      }
+
+      return {
+        ...prev,
+        collectorDeliveryBoyId: defaultDeliveryBoy.collectorDeliveryBoyId,
+        collectorName: defaultDeliveryBoy.collectorName,
+      };
+    });
+  }, [deliveryBoys, paymentDialogSale]);
 
   const filteredSales = salesData.filter((row) => row.packaging_status === "delivered");
 
@@ -296,6 +351,9 @@ function UpdatePayment() {
       collectorStaffId: payment.collector_staff_id
         ? String(payment.collector_staff_id)
         : getOutletMarketingStaffId(),
+      collectorDeliveryBoyId: inferCollectorType(payment) === "bawarchee_staff"
+        ? resolveDeliveryBoyIdFromName(payment.collector_name)
+        : "",
       collectorName: payment.collector_name || "",
       cashNotes: emptyCashNotes(),
       referenceNo: payment.reference_no || "",
@@ -320,7 +378,10 @@ function UpdatePayment() {
         ? String(payment.collector_staff_id)
         : getOutletMarketingStaffId(),
       collectorType: inferCollectorType(payment),
-      collectorName: payment.collector_name || "",
+      collectorDeliveryBoyId: inferCollectorType(payment) === "bawarchee_staff"
+        ? resolveDeliveryBoyIdFromName(payment.collector_name)
+        : getDefaultDeliveryBoyCollector().collectorDeliveryBoyId,
+      collectorName: payment.collector_name || getDefaultDeliveryBoyCollector().collectorName,
     });
   };
 
@@ -344,14 +405,26 @@ function UpdatePayment() {
             ...prev,
             collectorType: value,
             collectorStaffId: getOutletMarketingStaffId(),
+            collectorDeliveryBoyId: "",
             collectorName: "",
           };
         }
+        const defaultDeliveryBoy = getDefaultDeliveryBoyCollector();
         return {
           ...prev,
           collectorType: value,
           collectorStaffId: "",
-          collectorName: prev.collectorName || "",
+          collectorDeliveryBoyId: defaultDeliveryBoy.collectorDeliveryBoyId,
+          collectorName: defaultDeliveryBoy.collectorName,
+        };
+      }
+
+      if (field === "collectorDeliveryBoyId") {
+        const boy = getDeliveryBoyById(value);
+        return {
+          ...prev,
+          collectorDeliveryBoyId: value,
+          collectorName: boy?.name || "",
         };
       }
 
@@ -433,8 +506,8 @@ function UpdatePayment() {
         alert("No marketing person is assigned to this outlet.");
         return null;
       }
-    } else if (!String(paymentForm.collectorName || "").trim()) {
-      alert("Please enter payment collector name.");
+    } else if (!paymentForm.collectorDeliveryBoyId) {
+      alert("Please choose a delivery boy.");
       return null;
     }
 
@@ -494,7 +567,7 @@ function UpdatePayment() {
           : null,
       collectorName:
         paymentForm.collectorType === "bawarchee_staff"
-          ? String(paymentForm.collectorName || "").trim()
+          ? String(getDeliveryBoyById(paymentForm.collectorDeliveryBoyId)?.name || paymentForm.collectorName || "").trim()
           : null,
       referenceNo: paymentForm.referenceNo.trim() || null,
       referenceDate: paymentForm.referenceDate || null,
@@ -1085,13 +1158,28 @@ function UpdatePayment() {
                           InputProps={{ readOnly: true }}
                         />
                       ) : (
-                        <MDInput
-                          label="Payment Collector Name"
-                          fullWidth
-                          value={paymentForm.collectorName}
-                          onChange={(e) => handlePaymentFormChange("collectorName", e.target.value)}
-                          placeholder="Enter collector name"
-                        />
+                        <FormControl fullWidth size="small">
+                          <InputLabel>Delivery Boy</InputLabel>
+                          <Select
+                            value={paymentForm.collectorDeliveryBoyId}
+                            label="Delivery Boy"
+                            onChange={(e) => handlePaymentFormChange("collectorDeliveryBoyId", e.target.value)}
+                            sx={{ height: "45px" }}
+                          >
+                            {paymentDialogSale?.delivery_boy_id && (
+                              <MenuItem value={String(paymentDialogSale.delivery_boy_id)}>
+                                {paymentDialogSale.delivery_boy_name || "Assigned Delivery Boy"} (Assigned)
+                              </MenuItem>
+                            )}
+                            {deliveryBoys
+                              .filter((boy) => String(boy.id) !== String(paymentDialogSale?.delivery_boy_id || ""))
+                              .map((boy) => (
+                                <MenuItem key={boy.id} value={String(boy.id)}>
+                                  {boy.name}
+                                </MenuItem>
+                              ))}
+                          </Select>
+                        </FormControl>
                       )}
                     </Grid>
                     <Grid item xs={12} sm={6} md={3}>
