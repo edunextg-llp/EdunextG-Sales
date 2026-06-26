@@ -158,7 +158,7 @@ function Delivery() {
       if (response.ok) {
         const data = await response.json();
         const updated = enhanceDeliveryRow(data.sale);
-        if (["delivered", "cancelled", "returned"].includes(updated.packaging_status)) {
+        if (updated.packaging_status !== "packing_done") {
           setSalesData((prev) => prev.filter((item) => item.id !== saleId));
         } else {
           setSalesData((prev) =>
@@ -218,8 +218,8 @@ function Delivery() {
   };
 
   const filteredSales = salesData.filter((row) => {
-    const status = row.packaging_status || row.original_packaging_status || 'not_packing';
-    if (status !== "packing_done" && status !== "out_for_delivery") {
+    const status = row.original_packaging_status || row.packaging_status || "not_packing";
+    if (status !== "packing_done") {
       return false;
     }
 
