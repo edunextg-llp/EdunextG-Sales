@@ -168,11 +168,17 @@ class ReportModel {
              LEFT JOIN staff_counters sc ON sc.id = ss.outlet_id
              LEFT JOIN staff outlet_staff ON outlet_staff.id = sc.staff_id
              ${dateWhere.sql ? `${dateWhere.sql} AND` : 'WHERE sp.payment_date = CURDATE() AND'} sp.payment_mode IN ('cash', 'upi', 'cheque')
-             GROUP BY outlet_staff.id, outlet_staff.name, sc.id, sc.outlet_name, sc.outlet_erp_id, ss.id, ss.invoice_number,
-                      collector_type,
-                      COALESCE(collector.name, outlet_staff.name, sale_staff.name, 'N/A'),
-                      sp.collector_name, sale_staff.id, sale_staff.name
-             ORDER BY outlet_staff.name ASC, sc.outlet_name ASC, collector_type ASC, ss.invoice_number ASC`,
+             GROUP BY outlet_staff.id, outlet_staff.name, sc.id, sc.outlet_name, sc.outlet_erp_id,
+                      ss.id, ss.invoice_number, sp.collector_staff_id, sp.collector_name,
+                      collector.id, collector.name, sale_staff.id, sale_staff.name
+             ORDER BY outlet_staff.name ASC, sc.outlet_name ASC,
+                      CASE
+                          WHEN sp.collector_name IS NOT NULL
+                               AND TRIM(sp.collector_name) <> ''
+                               AND sp.collector_staff_id IS NULL THEN 1
+                          ELSE 0
+                      END ASC,
+                      ss.invoice_number ASC`,
             dateWhere.params
         );
         return toNumberRows(rows);
@@ -210,11 +216,17 @@ class ReportModel {
              LEFT JOIN staff_counters sc ON sc.id = ss.outlet_id
              LEFT JOIN staff outlet_staff ON outlet_staff.id = sc.staff_id
              ${dateWhere.sql ? `${dateWhere.sql} AND` : 'WHERE'} sp.payment_mode IN ('cash', 'upi', 'cheque')
-             GROUP BY outlet_staff.id, outlet_staff.name, sc.id, sc.outlet_name, sc.outlet_erp_id, ss.id, ss.invoice_number,
-                      collector_type,
-                      COALESCE(collector.name, outlet_staff.name, sale_staff.name, 'N/A'),
-                      sp.collector_name, sale_staff.id, sale_staff.name
-             ORDER BY outlet_staff.name ASC, sc.outlet_name ASC, collector_type ASC, ss.invoice_number ASC`,
+             GROUP BY outlet_staff.id, outlet_staff.name, sc.id, sc.outlet_name, sc.outlet_erp_id,
+                      ss.id, ss.invoice_number, sp.collector_staff_id, sp.collector_name,
+                      collector.id, collector.name, sale_staff.id, sale_staff.name
+             ORDER BY outlet_staff.name ASC, sc.outlet_name ASC,
+                      CASE
+                          WHEN sp.collector_name IS NOT NULL
+                               AND TRIM(sp.collector_name) <> ''
+                               AND sp.collector_staff_id IS NULL THEN 1
+                          ELSE 0
+                      END ASC,
+                      ss.invoice_number ASC`,
             dateWhere.params
         );
         return toNumberRows(rows);
