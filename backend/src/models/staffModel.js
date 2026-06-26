@@ -1,5 +1,6 @@
 import db from '../config/db.js';
 import { formatStickerNumber } from '../utils/stickerNumber.js';
+import { normalizeInvoiceNumber } from '../utils/invoiceNumber.js';
 
 class StaffModel {
     static async create(name, contactNo, companyId = null, staffType = 'distributor') {
@@ -442,7 +443,12 @@ class StaffModel {
     }
 
     static async findSaleByInvoice(staffId, invoiceNumber, excludeSaleId = null) {
-        const params = [staffId, invoiceNumber];
+        const normalizedInvoiceNumber = normalizeInvoiceNumber(invoiceNumber);
+        if (!normalizedInvoiceNumber) {
+            return null;
+        }
+
+        const params = [staffId];
         let excludeClause = '';
 
         if (excludeSaleId) {
@@ -453,12 +459,12 @@ class StaffModel {
         const [rows] = await db.execute(
             `SELECT id, invoice_number
              FROM staff_sales
-             WHERE staff_id = ? AND LOWER(invoice_number) = LOWER(?)
+             WHERE staff_id = ?
              ${excludeClause}
-             LIMIT 1`,
+             ORDER BY id DESC`,
             params
         );
-        return rows[0] || null;
+        return rows.find((row) => normalizeInvoiceNumber(row.invoice_number) === normalizedInvoiceNumber) || null;
     }
 
     static async updateSale(saleId, invoiceNumber, price, itemCount) {

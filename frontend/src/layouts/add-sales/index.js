@@ -115,7 +115,11 @@ function AddSales() {
   const rowHasDraft = (row) =>
     Boolean(row?.itemCount?.toString().trim() || row?.invoiceNumber?.trim() || row?.price?.toString().trim());
 
-  const normalizeInvoice = (value) => String(value || "").trim().toLowerCase();
+  const normalizeInvoice = (value) =>
+    String(value || "")
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9]/g, "");
 
   const hasDuplicateInvoiceNumbers = (invoiceNumbers, excludeSaleId = null) => {
     const normalizedInvoices = invoiceNumbers.map(normalizeInvoice).filter(Boolean);

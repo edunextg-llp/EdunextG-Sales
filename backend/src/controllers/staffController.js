@@ -12,6 +12,7 @@ import {
     validatePositiveInteger,
     validateRequiredText,
 } from '../utils/validation.js';
+import { normalizeInvoiceNumber } from '../utils/invoiceNumber.js';
 
 async function resolveCompanyIds(companyNames, fallbackCompanyName) {
     const names = Array.isArray(companyNames)
@@ -397,7 +398,7 @@ export const recordSales = async (req, res) => {
                 return res.status(400).json({ error: itemCountValidation.error });
             }
 
-            const normalizedInvoice = invoiceValidation.value.toLowerCase();
+            const normalizedInvoice = normalizeInvoiceNumber(invoiceValidation.value);
             if (invoiceNumbers.has(normalizedInvoice)) {
                 return res.status(400).json({ error: 'Same invoice number already exists in this entry.' });
             }
