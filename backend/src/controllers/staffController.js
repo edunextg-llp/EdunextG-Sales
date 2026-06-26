@@ -14,6 +14,28 @@ import {
 } from '../utils/validation.js';
 import { normalizeInvoiceNumber } from '../utils/invoiceNumber.js';
 
+async function parseCollectorPayload(body) {
+    const collectorType = String(body.collectorType || 'company_staff').toLowerCase();
+
+    if (collectorType === 'bawarchee_staff') {
+        const collectorName = String(body.collectorName || '').trim();
+        if (!collectorName) {
+            return { error: 'Please enter payment collector name.' };
+        }
+        return { collectorStaffId: null, collectorName };
+    }
+
+    const collectorValidation = validatePositiveInteger(body.collectorStaffId, 'Payment collector');
+    if (!collectorValidation.valid) {
+        return { error: collectorValidation.error };
+    }
+    const collector = await StaffModel.getDetails(collectorValidation.value);
+    if (!collector) {
+        return { error: 'Payment collector not found' };
+    }
+    return { collectorStaffId: collectorValidation.value, collectorName: null };
+}
+
 async function resolveCompanyIds(companyNames, fallbackCompanyName) {
     const names = Array.isArray(companyNames)
         ? companyNames
@@ -1270,7 +1292,7 @@ export const getSalePayments = async (req, res) => {
 export const addSalePayment = async (req, res) => {
     try {
         const { saleId } = req.params;
-        const { paymentDate, paymentMode, amount, collectorStaffId, referenceNo, referenceDate, creditDays, parentCreditPaymentId } = req.body;
+        const { paymentDate, paymentMode, amount, collectorStaffId, collectorName, collectorType, referenceNo, referenceDate, creditDays, parentCreditPaymentId } = req.body;
 
         if (!paymentDate) {
             return res.status(400).json({ error: 'Payment date is required' });
@@ -1320,20 +1342,21 @@ export const addSalePayment = async (req, res) => {
 
         const formattedPaymentDate = normalizeDateInput(paymentDate);
         const formattedRefDate = normalizeDateInput(referenceDate);
-        const collectorValidation = validatePositiveInteger(collectorStaffId, 'Payment collector');
-        if (!collectorValidation.valid) {
-            return res.status(400).json({ error: collectorValidation.error });
-        }
-        const collector = await StaffModel.getDetails(collectorValidation.value);
-        if (!collector) {
-            return res.status(400).json({ error: 'Payment collector not found' });
+        const collectorPayload = await parseCollectorPayload({
+            collectorType,
+            collectorStaffId,
+            collectorName,
+        });
+        if (collectorPayload.error) {
+            return res.status(400).json({ error: collectorPayload.error });
         }
 
         const result = await PaymentModel.addPayment(saleId, {
             paymentDate: formattedPaymentDate,
             paymentMode: mode,
             amount: amountValidation.value,
-            collectorStaffId: collectorValidation.value,
+            collectorStaffId: collectorPayload.collectorStaffId,
+            collectorName: collectorPayload.collectorName,
             referenceNo: referenceNo || null,
             referenceDate: formattedRefDate,
             creditDays: mode === 'credit' ? parseInt(creditDays, 10) : null,
@@ -1374,7 +1397,7 @@ export const addSalePayment = async (req, res) => {
 export const editSalePayment = async (req, res) => {
     try {
         const { saleId, paymentId } = req.params;
-        const { paymentDate, paymentMode, amount, collectorStaffId, referenceNo, referenceDate, creditDays } = req.body;
+        const { paymentDate, paymentMode, amount, collectorStaffId, collectorName, collectorType, referenceNo, referenceDate, creditDays } = req.body;
 
         if (!paymentDate) {
             return res.status(400).json({ error: 'Payment date is required' });
@@ -1417,13 +1440,13 @@ export const editSalePayment = async (req, res) => {
         if (formattedPaymentDate && typeof formattedPaymentDate === 'string' && formattedPaymentDate.includes('T')) {
             formattedPaymentDate = formattedPaymentDate.split('T')[0];
         }
-        const collectorValidation = validatePositiveInteger(collectorStaffId, 'Payment collector');
-        if (!collectorValidation.valid) {
-            return res.status(400).json({ error: collectorValidation.error });
-        }
-        const collector = await StaffModel.getDetails(collectorValidation.value);
-        if (!collector) {
-            return res.status(400).json({ error: 'Payment collector not found' });
+        const collectorPayload = await parseCollectorPayload({
+            collectorType,
+            collectorStaffId,
+            collectorName,
+        });
+        if (collectorPayload.error) {
+            return res.status(400).json({ error: collectorPayload.error });
         }
 
         const result = await PaymentModel.updatePayment(paymentId, saleId, {
@@ -1431,7 +1454,8 @@ export const editSalePayment = async (req, res) => {
 
             paymentMode: mode,
             amount: amountValidation.value,
-            collectorStaffId: collectorValidation.value,
+            collectorStaffId: collectorPayload.collectorStaffId,
+            collectorName: collectorPayload.collectorName,
             referenceNo: referenceNo || null,
             referenceDate: formattedRefDate,
             creditDays: mode === 'credit' ? parseInt(creditDays, 10) : null,

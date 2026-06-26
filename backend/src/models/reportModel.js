@@ -139,10 +139,10 @@ class ReportModel {
     static async getTodayCollectionDetails(startDate, endDate) {
         const dateWhere = ReportModel.buildDateWhere('sp.payment_date', startDate, endDate);
         const [rows] = await db.execute(
-            `SELECT collector.id AS staff_id,
-                    collector.name AS staff_name,
+            `SELECT COALESCE(collector.name, sp.collector_name, sale_staff.name, 'N/A') AS staff_name,
                     sale_staff.id AS sale_staff_id,
                     sale_staff.name AS sale_staff_name,
+                    outlet_staff.name AS outlet_staff_name,
                     sc.id AS outlet_id,
                     sc.outlet_name,
                     sc.outlet_erp_id,
@@ -155,11 +155,13 @@ class ReportModel {
              FROM sale_payments sp
              JOIN staff_sales ss ON ss.id = sp.sale_id
              LEFT JOIN staff sale_staff ON sale_staff.id = ss.staff_id
-             LEFT JOIN staff collector ON collector.id = COALESCE(sp.collector_staff_id, ss.staff_id)
+             LEFT JOIN staff collector ON collector.id = sp.collector_staff_id
              LEFT JOIN staff_counters sc ON sc.id = ss.outlet_id
+             LEFT JOIN staff outlet_staff ON outlet_staff.id = sc.staff_id
              ${dateWhere.sql ? `${dateWhere.sql} AND` : 'WHERE sp.payment_date = CURDATE() AND'} sp.payment_mode IN ('cash', 'upi', 'cheque')
-             GROUP BY collector.id, collector.name, sale_staff.id, sale_staff.name, sc.id, sc.outlet_name, sc.outlet_erp_id, ss.id, ss.invoice_number
-             ORDER BY collector.name ASC, sc.outlet_name ASC, ss.invoice_number ASC`,
+             GROUP BY COALESCE(collector.name, sp.collector_name, sale_staff.name, 'N/A'),
+                      sale_staff.id, sale_staff.name, outlet_staff.name, sc.id, sc.outlet_name, sc.outlet_erp_id, ss.id, ss.invoice_number
+             ORDER BY staff_name ASC, sc.outlet_name ASC, ss.invoice_number ASC`,
             dateWhere.params
         );
         return toNumberRows(rows);
@@ -168,10 +170,10 @@ class ReportModel {
     static async getCollectionDetails(startDate, endDate) {
         const dateWhere = ReportModel.buildDateWhere('sp.payment_date', startDate, endDate);
         const [rows] = await db.execute(
-            `SELECT collector.id AS staff_id,
-                    collector.name AS staff_name,
+            `SELECT COALESCE(collector.name, sp.collector_name, sale_staff.name, 'N/A') AS staff_name,
                     sale_staff.id AS sale_staff_id,
                     sale_staff.name AS sale_staff_name,
+                    outlet_staff.name AS outlet_staff_name,
                     sc.id AS outlet_id,
                     sc.outlet_name,
                     sc.outlet_erp_id,
@@ -184,11 +186,13 @@ class ReportModel {
              FROM sale_payments sp
              JOIN staff_sales ss ON ss.id = sp.sale_id
              LEFT JOIN staff sale_staff ON sale_staff.id = ss.staff_id
-             LEFT JOIN staff collector ON collector.id = COALESCE(sp.collector_staff_id, ss.staff_id)
+             LEFT JOIN staff collector ON collector.id = sp.collector_staff_id
              LEFT JOIN staff_counters sc ON sc.id = ss.outlet_id
+             LEFT JOIN staff outlet_staff ON outlet_staff.id = sc.staff_id
              ${dateWhere.sql ? `${dateWhere.sql} AND` : 'WHERE'} sp.payment_mode IN ('cash', 'upi', 'cheque')
-             GROUP BY collector.id, collector.name, sale_staff.id, sale_staff.name, sc.id, sc.outlet_name, sc.outlet_erp_id, ss.id, ss.invoice_number
-             ORDER BY collector.name ASC, sc.outlet_name ASC, ss.invoice_number ASC`,
+             GROUP BY COALESCE(collector.name, sp.collector_name, sale_staff.name, 'N/A'),
+                      sale_staff.id, sale_staff.name, outlet_staff.name, sc.id, sc.outlet_name, sc.outlet_erp_id, ss.id, ss.invoice_number
+             ORDER BY staff_name ASC, sc.outlet_name ASC, ss.invoice_number ASC`,
             dateWhere.params
         );
         return toNumberRows(rows);

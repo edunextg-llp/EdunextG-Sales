@@ -438,6 +438,15 @@ async function initDB() {
         console.log('collector_staff_id column on sale_payments already exists or skipped');
     }
 
+    try {
+        await connection.query(`
+            ALTER TABLE sale_payments ADD COLUMN collector_name VARCHAR(255) NULL
+        `);
+        console.log('Added collector_name column to sale_payments');
+    } catch (err) {
+        console.log('collector_name column on sale_payments already exists or skipped');
+    }
+
     await connection.query(`
         UPDATE sale_payments sp
         JOIN staff_sales ss ON ss.id = sp.sale_id

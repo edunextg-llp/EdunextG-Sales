@@ -840,7 +840,7 @@ function Dashboard() {
     const grandTotal = cashTotal + chequeTotal + onlineTotal;
     const amountBoxClass = (value) => `box ${Number(value || 0) > 0 ? "box-active" : ""}`;
     const staffGroups = details.reduce((groups, row) => {
-      const staffKey = row.staff_id || row.staff_name || "unknown";
+      const staffKey = row.staff_name || "unknown";
       if (!groups.has(staffKey)) {
         groups.set(staffKey, {
           staffName: row.staff_name || "N/A",
@@ -866,7 +866,7 @@ function Dashboard() {
         (staffGroup) => `
           <section class="staff-card">
             <div class="staff-header">
-              <h2>${escapeHtml(staffGroup.staffName)}</h2>
+              <h2>Collector: ${escapeHtml(staffGroup.staffName)}</h2>
               <span>${staffGroup.rows.length} invoice${staffGroup.rows.length === 1 ? "" : "s"}</span>
             </div>
             <div class="totals staff-totals">
@@ -881,7 +881,7 @@ function Dashboard() {
                   <th>Sr No</th>
                   <th>Outlet</th>
                   <th>Invoice</th>
-                  <th>Sale Staff</th>
+                  <th>Marketing Person</th>
                   <th class="right">Cash</th>
                   <th class="right">Online</th>
                   <th class="right">Cheque</th>
@@ -896,7 +896,7 @@ function Dashboard() {
                         <td>${index + 1}</td>
                         <td>${escapeHtml(row.outlet_name || "N/A")}</td>
                         <td>${escapeHtml(row.invoice_number || "N/A")}</td>
-                        <td>${escapeHtml(row.sale_staff_name || row.staff_name || "N/A")}</td>
+                        <td>${escapeHtml(row.outlet_staff_name || row.sale_staff_name || "N/A")}</td>
                         <td class="right">Rs. ${Number(row.cash_amount || 0).toFixed(2)}</td>
                         <td class="right">Rs. ${Number(row.upi_amount || 0).toFixed(2)}</td>
                         <td class="right">Rs. ${Number(row.cheque_amount || 0).toFixed(2)}</td>

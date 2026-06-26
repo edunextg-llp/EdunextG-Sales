@@ -243,6 +243,12 @@ export async function ensureSchema() {
             'collector_staff_id on sale_payments'
         );
 
+        await tryQuery(
+            connection,
+            `ALTER TABLE sale_payments ADD COLUMN collector_name VARCHAR(255) NULL`,
+            'collector_name on sale_payments'
+        );
+
         await connection.query(`
             UPDATE sale_payments sp
             JOIN staff_sales ss ON ss.id = sp.sale_id

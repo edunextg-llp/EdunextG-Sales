@@ -79,7 +79,9 @@ const emptyPaymentForm = () => ({
   paymentDate: getTodayLocalDate(),
   paymentMode: "cash",
   amount: "",
+  collectorType: "company_staff",
   collectorStaffId: "",
+  collectorName: "",
   cashNotes: emptyCashNotes(),
   referenceNo: "",
   referenceDate: "",
@@ -121,15 +123,30 @@ function UpdatePayment() {
   const [deletingPaymentId, setDeletingPaymentId] = useState(null);
   const [editingPaymentId, setEditingPaymentId] = useState(null);
   const [activeCreditPayment, setActiveCreditPayment] = useState(null);
-  const [staffOptions, setStaffOptions] = useState([]);
 
   const API = "https://bawarchee.edunextg.co/api";
 
-  const getDefaultCollectorStaffId = (sale = paymentDialogSale) =>
-    sale?.staff_id != null ? String(sale.staff_id) : "";
+  const getOutletMarketingStaffId = (sale = paymentDialogSale) => {
+    if (sale?.outlet_staff_id != null) return String(sale.outlet_staff_id);
+    if (sale?.staff_id != null) return String(sale.staff_id);
+    return "";
+  };
+
+  const getOutletMarketingStaffName = (sale = paymentDialogSale) =>
+    sale?.outlet_staff_name || sale?.staff_name || "N/A";
+
+  const buildDefaultPaymentForm = (sale = paymentDialogSale) => ({
+    ...emptyPaymentForm(),
+    collectorType: "company_staff",
+    collectorStaffId: getOutletMarketingStaffId(sale),
+    collectorName: "",
+  });
 
   const getCollectorName = (payment) =>
-    payment.collector_staff_name || paymentDialogSale?.staff_name || "N/A";
+    payment.collector_staff_name || payment.collector_name || getOutletMarketingStaffName() || "N/A";
+
+  const inferCollectorType = (payment) =>
+    payment.collector_name && !payment.collector_staff_id ? "bawarchee_staff" : "company_staff";
 
   const fetchSales = async (search = searchQuery) => {
     try {
@@ -159,21 +176,6 @@ function UpdatePayment() {
 
     return () => clearTimeout(timer);
   }, [searchQuery]);
-
-  useEffect(() => {
-    const fetchStaffOptions = async () => {
-      try {
-        const response = await fetch(`${API}/staff`);
-        if (response.ok) {
-          setStaffOptions(await response.json());
-        }
-      } catch (error) {
-        console.error("Error fetching staff options:", error);
-      }
-    };
-
-    fetchStaffOptions();
-  }, []);
 
   const filteredSales = salesData.filter((row) => row.packaging_status === "delivered");
 
@@ -265,7 +267,7 @@ function UpdatePayment() {
 
   const openPaymentDialog = async (sale) => {
     setPaymentDialogSale(sale);
-    setPaymentForm({ ...emptyPaymentForm(), collectorStaffId: getDefaultCollectorStaffId(sale) });
+    setPaymentForm(buildDefaultPaymentForm(sale));
     await fetchPaymentsForSale(sale.id);
   };
 
@@ -290,9 +292,11 @@ function UpdatePayment() {
       paymentDate: paymentDt || getTodayLocalDate(),
       paymentMode: payment.payment_mode,
       amount: String(payment.amount),
+      collectorType: inferCollectorType(payment),
       collectorStaffId: payment.collector_staff_id
         ? String(payment.collector_staff_id)
-        : getDefaultCollectorStaffId(),
+        : getOutletMarketingStaffId(),
+      collectorName: payment.collector_name || "",
       cashNotes: emptyCashNotes(),
       referenceNo: payment.reference_no || "",
       referenceDate: formattedDate,
@@ -303,19 +307,20 @@ function UpdatePayment() {
   const cancelEditPayment = () => {
     setEditingPaymentId(null);
     setActiveCreditPayment(null);
-    setPaymentForm({ ...emptyPaymentForm(), collectorStaffId: getDefaultCollectorStaffId() });
-
+    setPaymentForm(buildDefaultPaymentForm());
   };
 
   const startAddAgainstCredit = (payment) => {
     setEditingPaymentId(null);
     setActiveCreditPayment(payment);
     setPaymentForm({
-      ...emptyPaymentForm(),
+      ...buildDefaultPaymentForm(),
       paymentMode: "cash",
       collectorStaffId: payment.collector_staff_id
         ? String(payment.collector_staff_id)
-        : getDefaultCollectorStaffId(),
+        : getOutletMarketingStaffId(),
+      collectorType: inferCollectorType(payment),
+      collectorName: payment.collector_name || "",
     });
   };
 
@@ -330,6 +335,23 @@ function UpdatePayment() {
           referenceNo: "",
           referenceDate: "",
           creditDays: "",
+        };
+      }
+
+      if (field === "collectorType") {
+        if (value === "company_staff") {
+          return {
+            ...prev,
+            collectorType: value,
+            collectorStaffId: getOutletMarketingStaffId(),
+            collectorName: "",
+          };
+        }
+        return {
+          ...prev,
+          collectorType: value,
+          collectorStaffId: "",
+          collectorName: prev.collectorName || "",
         };
       }
 
@@ -406,8 +428,13 @@ function UpdatePayment() {
       return;
     }
 
-    if (!paymentForm.collectorStaffId) {
-      alert("Please choose payment collector.");
+    if (paymentForm.collectorType === "company_staff") {
+      if (!paymentForm.collectorStaffId) {
+        alert("No marketing person is assigned to this outlet.");
+        return null;
+      }
+    } else if (!String(paymentForm.collectorName || "").trim()) {
+      alert("Please enter payment collector name.");
       return null;
     }
 
@@ -460,7 +487,15 @@ function UpdatePayment() {
       paymentDate: paymentForm.paymentDate,
       paymentMode: paymentForm.paymentMode,
       amount,
-      collectorStaffId: Number(paymentForm.collectorStaffId),
+      collectorType: paymentForm.collectorType,
+      collectorStaffId:
+        paymentForm.collectorType === "company_staff"
+          ? Number(paymentForm.collectorStaffId)
+          : null,
+      collectorName:
+        paymentForm.collectorType === "bawarchee_staff"
+          ? String(paymentForm.collectorName || "").trim()
+          : null,
       referenceNo: paymentForm.referenceNo.trim() || null,
       referenceDate: paymentForm.referenceDate || null,
       creditDays:
@@ -497,7 +532,7 @@ function UpdatePayment() {
         setPaymentSummary(data.summary);
         setEditingPaymentId(null);
         setActiveCreditPayment(null);
-        setPaymentForm({ ...emptyPaymentForm(), collectorStaffId: getDefaultCollectorStaffId() });
+        setPaymentForm(buildDefaultPaymentForm());
         setSalesData((prev) =>
           prev.map((sale) =>
             sale.id === paymentDialogSale.id
@@ -1029,27 +1064,35 @@ function UpdatePayment() {
                     </Grid>
                     <Grid item xs={12} sm={6} md={3}>
                       <FormControl fullWidth size="small">
-                        <InputLabel>Payment Collector</InputLabel>
+                        <InputLabel>Collector Type</InputLabel>
                         <Select
-                          value={paymentForm.collectorStaffId}
-                          label="Payment Collector"
-                          onChange={(e) => handlePaymentFormChange("collectorStaffId", e.target.value)}
+                          value={paymentForm.collectorType}
+                          label="Collector Type"
+                          onChange={(e) => handlePaymentFormChange("collectorType", e.target.value)}
                           sx={{ height: "45px" }}
                         >
-                          {paymentDialogSale?.staff_id && (
-                            <MenuItem value={String(paymentDialogSale.staff_id)}>
-                              {paymentDialogSale.staff_name || "Assigned Staff"} (Assigned)
-                            </MenuItem>
-                          )}
-                          {staffOptions
-                            .filter((staff) => String(staff.id) !== String(paymentDialogSale?.staff_id || ""))
-                            .map((staff) => (
-                              <MenuItem key={staff.id} value={String(staff.id)}>
-                                {staff.name}{staff.company_name ? ` - ${staff.company_name}` : ""}
-                              </MenuItem>
-                            ))}
+                          <MenuItem value="company_staff">Company Staff</MenuItem>
+                          <MenuItem value="bawarchee_staff">Bawarchee Staff</MenuItem>
                         </Select>
                       </FormControl>
+                    </Grid>
+                    <Grid item xs={12} sm={6} md={3}>
+                      {paymentForm.collectorType === "company_staff" ? (
+                        <MDInput
+                          label="Marketing Person (Outlet)"
+                          fullWidth
+                          value={getOutletMarketingStaffName()}
+                          InputProps={{ readOnly: true }}
+                        />
+                      ) : (
+                        <MDInput
+                          label="Payment Collector Name"
+                          fullWidth
+                          value={paymentForm.collectorName}
+                          onChange={(e) => handlePaymentFormChange("collectorName", e.target.value)}
+                          placeholder="Enter collector name"
+                        />
+                      )}
                     </Grid>
                     <Grid item xs={12} sm={6} md={3}>
                       <MDInput
