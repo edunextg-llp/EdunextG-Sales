@@ -79,6 +79,7 @@ const emptyPaymentForm = () => ({
   paymentDate: getTodayLocalDate(),
   paymentMode: "cash",
   amount: "",
+  collectorStaffId: "",
   cashNotes: emptyCashNotes(),
   referenceNo: "",
   referenceDate: "",
@@ -120,8 +121,15 @@ function UpdatePayment() {
   const [deletingPaymentId, setDeletingPaymentId] = useState(null);
   const [editingPaymentId, setEditingPaymentId] = useState(null);
   const [activeCreditPayment, setActiveCreditPayment] = useState(null);
+  const [staffOptions, setStaffOptions] = useState([]);
 
   const API = "https://bawarchee.edunextg.co/api";
+
+  const getDefaultCollectorStaffId = (sale = paymentDialogSale) =>
+    sale?.staff_id != null ? String(sale.staff_id) : "";
+
+  const getCollectorName = (payment) =>
+    payment.collector_staff_name || paymentDialogSale?.staff_name || "N/A";
 
   const fetchSales = async (search = searchQuery) => {
     try {
@@ -151,6 +159,21 @@ function UpdatePayment() {
 
     return () => clearTimeout(timer);
   }, [searchQuery]);
+
+  useEffect(() => {
+    const fetchStaffOptions = async () => {
+      try {
+        const response = await fetch(`${API}/staff`);
+        if (response.ok) {
+          setStaffOptions(await response.json());
+        }
+      } catch (error) {
+        console.error("Error fetching staff options:", error);
+      }
+    };
+
+    fetchStaffOptions();
+  }, []);
 
   const filteredSales = salesData.filter((row) => row.packaging_status === "delivered");
 
@@ -242,7 +265,7 @@ function UpdatePayment() {
 
   const openPaymentDialog = async (sale) => {
     setPaymentDialogSale(sale);
-    setPaymentForm(emptyPaymentForm());
+    setPaymentForm({ ...emptyPaymentForm(), collectorStaffId: getDefaultCollectorStaffId(sale) });
     await fetchPaymentsForSale(sale.id);
   };
 
@@ -267,6 +290,9 @@ function UpdatePayment() {
       paymentDate: paymentDt || getTodayLocalDate(),
       paymentMode: payment.payment_mode,
       amount: String(payment.amount),
+      collectorStaffId: payment.collector_staff_id
+        ? String(payment.collector_staff_id)
+        : getDefaultCollectorStaffId(),
       cashNotes: emptyCashNotes(),
       referenceNo: payment.reference_no || "",
       referenceDate: formattedDate,
@@ -277,7 +303,7 @@ function UpdatePayment() {
   const cancelEditPayment = () => {
     setEditingPaymentId(null);
     setActiveCreditPayment(null);
-    setPaymentForm(emptyPaymentForm());
+    setPaymentForm({ ...emptyPaymentForm(), collectorStaffId: getDefaultCollectorStaffId() });
 
   };
 
@@ -287,6 +313,9 @@ function UpdatePayment() {
     setPaymentForm({
       ...emptyPaymentForm(),
       paymentMode: "cash",
+      collectorStaffId: payment.collector_staff_id
+        ? String(payment.collector_staff_id)
+        : getDefaultCollectorStaffId(),
     });
   };
 
@@ -377,6 +406,11 @@ function UpdatePayment() {
       return;
     }
 
+    if (!paymentForm.collectorStaffId) {
+      alert("Please choose payment collector.");
+      return null;
+    }
+
     let remaining = paymentSummary?.balanceAmount ?? getRemainingBalance(paymentDialogSale);
 
     // If editing, add back the old amount of the payment we're editing so we don't overestimate
@@ -426,6 +460,7 @@ function UpdatePayment() {
       paymentDate: paymentForm.paymentDate,
       paymentMode: paymentForm.paymentMode,
       amount,
+      collectorStaffId: Number(paymentForm.collectorStaffId),
       referenceNo: paymentForm.referenceNo.trim() || null,
       referenceDate: paymentForm.referenceDate || null,
       creditDays:
@@ -462,7 +497,7 @@ function UpdatePayment() {
         setPaymentSummary(data.summary);
         setEditingPaymentId(null);
         setActiveCreditPayment(null);
-        setPaymentForm(emptyPaymentForm());
+        setPaymentForm({ ...emptyPaymentForm(), collectorStaffId: getDefaultCollectorStaffId() });
         setSalesData((prev) =>
           prev.map((sale) =>
             sale.id === paymentDialogSale.id
@@ -774,16 +809,17 @@ function UpdatePayment() {
                     sx={{
                       tableLayout: "fixed",
                       width: "100%",
-                      minWidth: 520,
+                      minWidth: 680,
                       "& .MuiTableCell-root": { overflow: "hidden" },
                     }}
                   >
                     <colgroup>
-                      <col style={{ width: "18%" }} />
+                      <col style={{ width: "14%" }} />
+                      <col style={{ width: "12%" }} />
                       <col style={{ width: "14%" }} />
                       <col style={{ width: "16%" }} />
-                      <col style={{ width: "34%" }} />
-                      <col style={{ width: "18%" }} />
+                      <col style={{ width: "28%" }} />
+                      <col style={{ width: "16%" }} />
                     </colgroup>
                     <TableHead
                       sx={{
@@ -801,6 +837,9 @@ function UpdatePayment() {
                         </TableCell>
                         <TableCell align="right" sx={tableHeadSx}>
                           Amount
+                        </TableCell>
+                        <TableCell align="left" sx={tableHeadSx}>
+                          Collector
                         </TableCell>
                         <TableCell align="left" sx={tableHeadSx}>
                           Details
@@ -843,6 +882,12 @@ function UpdatePayment() {
                             }}
                           >
                             ₹{Number(payment.amount).toFixed(2)}
+                          </TableCell>
+                          <TableCell
+                            align="left"
+                            sx={{ ...tableBodySx, borderBottom: "1px solid #e5e7eb", fontSize: "0.875rem", color: "#374151" }}
+                          >
+                            {getCollectorName(payment)}
                           </TableCell>
                           <TableCell
                             align="left"
@@ -906,6 +951,9 @@ function UpdatePayment() {
                                 </TableCell>
                                 <TableCell align="right" sx={{ ...tableBodySx, borderBottom: "1px solid #e5e7eb", fontSize: "0.8125rem", fontWeight: 500, color: "#111827" }}>
                                   ₹{Number(childPayment.amount).toFixed(2)}
+                                </TableCell>
+                                <TableCell align="left" sx={{ ...tableBodySx, borderBottom: "1px solid #e5e7eb", fontSize: "0.8125rem", color: "#475569" }}>
+                                  {getCollectorName(childPayment)}
                                 </TableCell>
                                 <TableCell align="left" sx={{ ...tableBodySx, borderBottom: "1px solid #e5e7eb", fontSize: "0.8125rem", color: "#475569", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                                   Against credit #{payment.id} - {formatPaymentDetails(childPayment)}
@@ -976,6 +1024,30 @@ function UpdatePayment() {
                           <MenuItem value="upi">UPI</MenuItem>
                           <MenuItem value="cheque">Cheque</MenuItem>
                           {!activeCreditPayment && <MenuItem value="credit">Credit</MenuItem>}
+                        </Select>
+                      </FormControl>
+                    </Grid>
+                    <Grid item xs={12} sm={6} md={3}>
+                      <FormControl fullWidth size="small">
+                        <InputLabel>Payment Collector</InputLabel>
+                        <Select
+                          value={paymentForm.collectorStaffId}
+                          label="Payment Collector"
+                          onChange={(e) => handlePaymentFormChange("collectorStaffId", e.target.value)}
+                          sx={{ height: "45px" }}
+                        >
+                          {paymentDialogSale?.staff_id && (
+                            <MenuItem value={String(paymentDialogSale.staff_id)}>
+                              {paymentDialogSale.staff_name || "Assigned Staff"} (Assigned)
+                            </MenuItem>
+                          )}
+                          {staffOptions
+                            .filter((staff) => String(staff.id) !== String(paymentDialogSale?.staff_id || ""))
+                            .map((staff) => (
+                              <MenuItem key={staff.id} value={String(staff.id)}>
+                                {staff.name}{staff.company_name ? ` - ${staff.company_name}` : ""}
+                              </MenuItem>
+                            ))}
                         </Select>
                       </FormControl>
                     </Grid>

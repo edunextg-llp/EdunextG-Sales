@@ -408,6 +408,7 @@ async function initDB() {
             payment_date DATE NOT NULL,
             payment_mode ENUM('cash', 'upi', 'credit', 'cheque') NOT NULL,
             amount DECIMAL(10, 2) NOT NULL,
+            collector_staff_id INT NULL,
             parent_credit_payment_id INT NULL,
             reference_no VARCHAR(100) NULL,
             reference_date DATE NULL,
@@ -427,6 +428,22 @@ async function initDB() {
     } catch (err) {
         console.log('remarks column on sale_payments already exists or skipped');
     }
+
+    try {
+        await connection.query(`
+            ALTER TABLE sale_payments ADD COLUMN collector_staff_id INT NULL
+        `);
+        console.log('Added collector_staff_id column to sale_payments');
+    } catch (err) {
+        console.log('collector_staff_id column on sale_payments already exists or skipped');
+    }
+
+    await connection.query(`
+        UPDATE sale_payments sp
+        JOIN staff_sales ss ON ss.id = sp.sale_id
+        SET sp.collector_staff_id = ss.staff_id
+        WHERE sp.collector_staff_id IS NULL
+    `);
 
     try {
         await connection.query(`

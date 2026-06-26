@@ -54,7 +54,9 @@ const emptyReportData = {
   summary: { total_sales: 0, total_paid: 0, total_collection: 0, total_outstanding: 0 },
   creditDuesSummary: { total_credit_dues: 0, credit_dues_count: 0 },
   collectionByMode: [],
+  collectionDetails: [],
   todayCollection: [],
+  todayCollectionDetails: [],
   monthlyCollection: [],
   yearlyCollection: [],
   salesByPeriod: { weekly: [], monthly: [], quarterly: [], yearly: [] },
@@ -879,6 +881,7 @@ function Dashboard() {
                   <th>Sr No</th>
                   <th>Outlet</th>
                   <th>Invoice</th>
+                  <th>Sale Staff</th>
                   <th class="right">Cash</th>
                   <th class="right">Online</th>
                   <th class="right">Cheque</th>
@@ -893,6 +896,7 @@ function Dashboard() {
                         <td>${index + 1}</td>
                         <td>${escapeHtml(row.outlet_name || "N/A")}</td>
                         <td>${escapeHtml(row.invoice_number || "N/A")}</td>
+                        <td>${escapeHtml(row.sale_staff_name || row.staff_name || "N/A")}</td>
                         <td class="right">Rs. ${Number(row.cash_amount || 0).toFixed(2)}</td>
                         <td class="right">Rs. ${Number(row.upi_amount || 0).toFixed(2)}</td>
                         <td class="right">Rs. ${Number(row.cheque_amount || 0).toFixed(2)}</td>
@@ -939,7 +943,7 @@ function Dashboard() {
         </head>
         <body>
           <h1>Collection Report</h1>
-          <div class="sub">Period: ${escapeHtml(periodLabel)} | Staff and outlet wise cash, online, and cheque collection</div>
+          <div class="sub">Period: ${escapeHtml(periodLabel)} | Payment collector and outlet wise cash, online, and cheque collection</div>
           ${
             details.length > 0
               ? staffBoxesHtml
@@ -990,6 +994,21 @@ function Dashboard() {
       printWindow.document.write("<p style=\"font-family: Arial, sans-serif; padding: 24px;\">Unable to load collection report.</p>");
       printWindow.document.close();
     }
+  };
+
+  const handlePrintTotalCollection = () => {
+    const printWindow = window.open("", "_blank", "width=1100,height=800");
+    if (!printWindow) {
+      alert("Please allow popups to print the report.");
+      return;
+    }
+
+    const periodLabel =
+      reportStartDate && reportEndDate
+        ? `${formatDate(reportStartDate)} to ${formatDate(reportEndDate)}`
+        : "All Records";
+
+    writeCollectionPrintReport(printWindow, reportData.collectionDetails || [], periodLabel);
   };
 
   const monthlySalesChart = useMemo(() => {
@@ -1649,6 +1668,17 @@ function Dashboard() {
                   icon="donut_small"
                   iconColor="warning"
                 />
+                <MDBox mt={1} display="flex" justifyContent="flex-end">
+                  <MDButton
+                    color="dark"
+                    variant="contained"
+                    size="small"
+                    onClick={handlePrintTotalCollection}
+                    sx={{ minWidth: 44, p: 1.2 }}
+                  >
+                    <Icon>print</Icon>
+                  </MDButton>
+                </MDBox>
               </MDBox>
             </Grid>
             <Grid item xs={12} md={6} lg={4} display="flex">

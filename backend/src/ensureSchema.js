@@ -162,6 +162,7 @@ export async function ensureSchema() {
                 payment_date DATE NOT NULL,
                 payment_mode ENUM('cash', 'upi', 'credit', 'cheque') NOT NULL,
                 amount DECIMAL(10, 2) NOT NULL,
+                collector_staff_id INT NULL,
                 parent_credit_payment_id INT NULL,
                 reference_no VARCHAR(100) NULL,
                 reference_date DATE NULL,
@@ -235,6 +236,19 @@ export async function ensureSchema() {
             `ALTER TABLE sale_payments ADD COLUMN parent_credit_payment_id INT NULL`,
             'parent_credit_payment_id on sale_payments'
         );
+
+        await tryQuery(
+            connection,
+            `ALTER TABLE sale_payments ADD COLUMN collector_staff_id INT NULL`,
+            'collector_staff_id on sale_payments'
+        );
+
+        await connection.query(`
+            UPDATE sale_payments sp
+            JOIN staff_sales ss ON ss.id = sp.sale_id
+            SET sp.collector_staff_id = ss.staff_id
+            WHERE sp.collector_staff_id IS NULL
+        `);
 
         await connection.query(`
             CREATE TABLE IF NOT EXISTS credit_payment_remarks (
