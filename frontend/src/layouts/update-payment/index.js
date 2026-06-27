@@ -125,6 +125,15 @@ function UpdatePayment() {
   const [editingPaymentId, setEditingPaymentId] = useState(null);
   const [activeCreditPayment, setActiveCreditPayment] = useState(null);
   const [deliveryBoys, setDeliveryBoys] = useState([]);
+  const [cancelDialogSale, setCancelDialogSale] = useState(null);
+  const [cancelForm, setCancelForm] = useState({
+    productName: "",
+    productSize: "",
+    amount: "",
+  });
+  const [loggingCancel, setLoggingCancel] = useState(false);
+  const [cancellationHistory, setCancellationHistory] = useState([]);
+  const [loadingCancellations, setLoadingCancellations] = useState(false);
 
   const API = "https://bawarchee.edunextg.co/api";
 
@@ -334,6 +343,217 @@ function UpdatePayment() {
     setEditingPaymentId(null);
     setActiveCreditPayment(null);
     setDeletingPaymentId(null);
+  };
+
+  const fetchCancellationHistory = async (saleId) => {
+    setLoadingCancellations(true);
+    try {
+      const response = await fetch(`${API}/staff/sales/${saleId}/cancel-log`);
+      if (response.ok) {
+        const data = await response.json();
+        setCancellationHistory(data);
+      }
+    } catch (error) {
+      console.error("Error fetching cancellation history:", error);
+    } finally {
+      setLoadingCancellations(false);
+    }
+  };
+
+  const openCancelDialog = async (sale) => {
+    setCancelDialogSale(sale);
+    setCancelForm({
+      productName: "",
+      productSize: "",
+      amount: "",
+    });
+    setCancellationHistory([]);
+    await fetchCancellationHistory(sale.id);
+  };
+
+  const closeCancelDialog = () => {
+    setCancelDialogSale(null);
+    setCancelForm({
+      productName: "",
+      productSize: "",
+      amount: "",
+    });
+    setCancellationHistory([]);
+  };
+
+  const handleCancelFormChange = (field, value) => {
+    setCancelForm((prev) => ({ ...prev, [field]: value }));
+  };
+
+  const handleSaveCancellation = async () => {
+    if (!cancelDialogSale) return;
+
+    const { productName, productSize, amount } = cancelForm;
+
+    if (!productName.trim()) {
+      alert("Please enter product name.");
+      return;
+    }
+    if (!productSize.trim()) {
+      alert("Please enter product size.");
+      return;
+    }
+    const parsedAmount = parseFloat(amount);
+    if (!amount || Number.isNaN(parsedAmount) || parsedAmount <= 0) {
+      alert("Please enter a valid amount.");
+      return;
+    }
+
+    setLoggingCancel(true);
+    try {
+      const response = await fetch(
+        `${API}/staff/sales/${cancelDialogSale.id}/cancel-log`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            outletName: cancelDialogSale.outlet_name,
+            invoiceNumber: cancelDialogSale.invoice_number,
+            productName: productName.trim(),
+            productSize: productSize.trim(),
+            amount: parsedAmount,
+          }),
+        }
+      );
+
+      if (response.ok) {
+        alert("Order cancellation logged successfully.");
+        setCancelForm({
+          productName: "",
+          productSize: "",
+          amount: "",
+        });
+        await fetchCancellationHistory(cancelDialogSale.id);
+      } else {
+        const err = await response.json().catch(() => ({}));
+        alert(err.error || "Failed to log cancellation.");
+      }
+    } catch (error) {
+      console.error("Error logging cancellation:", error);
+      alert("Error logging cancellation.");
+    } finally {
+      setLoggingCancel(false);
+    }
+  };
+
+  const handlePrintCancellation = (cancellation) => {
+    const printWindow = window.open("", "_blank");
+    printWindow.document.write(`
+      <html>
+        <head>
+          <title>Order Cancellation Slip</title>
+          <style>
+            body { font-family: 'Courier New', Courier, monospace; padding: 20px; color: #000; }
+            .ticket { max-width: 300px; margin: 0 auto; text-align: center; }
+            .header { font-size: 16px; font-weight: bold; margin-bottom: 10px; text-transform: uppercase; }
+            .divider { border-top: 1px dashed #000; margin: 10px 0; }
+            .details { text-align: left; font-size: 12px; line-height: 1.6; }
+            .row { display: flex; justify-content: space-between; }
+            .footer { margin-top: 20px; font-size: 10px; }
+            @media print {
+              body { padding: 0; margin: 0; }
+              @page { margin: 0; }
+            }
+          </style>
+        </head>
+        <body>
+          <div class="ticket">
+            <div class="header">Cancellation Slip</div>
+            <div class="divider"></div>
+            <div class="details">
+              <div class="row"><strong>Date:</strong> <span>${cancellation.created_at}</span></div>
+              <div class="row"><strong>Outlet:</strong> <span>${cancellation.outlet_name}</span></div>
+              <div class="row"><strong>Invoice No:</strong> <span>${cancellation.invoice_number}</span></div>
+              <div class="divider"></div>
+              <div class="row"><strong>Product:</strong> <span>${cancellation.product_name}</span></div>
+              <div class="row"><strong>Size:</strong> <span>${cancellation.product_size}</span></div>
+              <div class="row"><strong>Amount:</strong> <span>₹${Number(cancellation.amount).toFixed(2)}</span></div>
+            </div>
+            <div class="divider"></div>
+            <div class="footer">
+              Thank you
+            </div>
+          </div>
+          <script>
+            window.onload = function() {
+              window.print();
+              setTimeout(function() { window.close(); }, 500);
+            };
+          </script>
+        </body>
+      </html>
+    `);
+    printWindow.document.close();
+  };
+
+  const handlePrintAllCancellations = () => {
+    if (cancellationHistory.length === 0) return;
+    const printWindow = window.open("", "_blank");
+    
+    let rowsHtml = "";
+    cancellationHistory.forEach((c) => {
+      rowsHtml += `
+        <tr>
+          <td>${c.created_at}</td>
+          <td>${c.product_name}</td>
+          <td>${c.product_size}</td>
+          <td align="right">₹${Number(c.amount).toFixed(2)}</td>
+        </tr>
+      `;
+    });
+
+    printWindow.document.write(`
+      <html>
+        <head>
+          <title>Cancellation History Report</title>
+          <style>
+            body { font-family: Arial, sans-serif; padding: 20px; color: #000; }
+            .header { text-align: center; margin-bottom: 20px; }
+            .header h2 { margin: 0; font-size: 18px; text-transform: uppercase; }
+            .header p { margin: 5px 0 0 0; font-size: 12px; color: #555; }
+            table { width: 100%; border-collapse: collapse; margin-top: 15px; font-size: 12px; }
+            th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+            th { background-color: #f2f2f2; }
+            .total { font-weight: bold; }
+            @media print {
+              body { padding: 0; }
+            }
+          </style>
+        </head>
+        <body>
+          <div class="header">
+            <h2>Cancellation History Report</h2>
+            <p><strong>Outlet:</strong> ${cancelDialogSale.outlet_name}</p>
+            <p><strong>Invoice No:</strong> ${cancelDialogSale.invoice_number}</p>
+          </div>
+          <table>
+            <thead>
+              <tr>
+                <th>Date</th>
+                <th>Product Name</th>
+                <th>Product Size</th>
+                <th style="text-align: right">Amount</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${rowsHtml}
+            </tbody>
+          </table>
+          <script>
+            window.onload = function() {
+              window.print();
+              setTimeout(function() { window.close(); }, 500);
+            };
+          </script>
+        </body>
+      </html>
+    `);
+    printWindow.document.close();
   };
 
 
@@ -821,14 +1041,24 @@ function UpdatePayment() {
                                   </MDTypography>
                                 </TableCell>
                                 <TableCell align="center">
-                                  <MDButton
-                                    variant="outlined"
-                                    color="info"
-                                    size="small"
-                                    onClick={() => openPaymentDialog(sale)}
-                                  >
-                                    Manage Payments
-                                  </MDButton>
+                                  <MDBox display="flex" justifyContent="center" alignItems="center" gap={1}>
+                                    <MDButton
+                                      variant="outlined"
+                                      color="info"
+                                      size="small"
+                                      onClick={() => openPaymentDialog(sale)}
+                                    >
+                                      Manage Payments
+                                    </MDButton>
+                                    <MDButton
+                                      variant="outlined"
+                                      color="error"
+                                      size="small"
+                                      onClick={() => openCancelDialog(sale)}
+                                    >
+                                      Order Cancel
+                                    </MDButton>
+                                  </MDBox>
                                 </TableCell>
                               </TableRow>
                             );
@@ -1367,6 +1597,134 @@ function UpdatePayment() {
         <DialogActions>
           <MDButton variant="outlined" color="dark" onClick={closePaymentDialog}>
             Close
+          </MDButton>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={!!cancelDialogSale} onClose={closeCancelDialog} maxWidth="sm" fullWidth>
+        <DialogTitle sx={{ fontWeight: "bold", color: "#344767" }}>
+          Log Cancelled Order
+        </DialogTitle>
+        <DialogContent>
+          {cancelDialogSale && (
+            <MDBox pt={1}>
+              <Grid container spacing={2}>
+                <Grid item xs={12} sm={6}>
+                  <MDInput
+                    label="Outlet Name"
+                    fullWidth
+                    value={cancelDialogSale.outlet_name || ""}
+                    InputProps={{ readOnly: true }}
+                    disabled
+                  />
+                </Grid>
+                <Grid item xs={12} sm={6}>
+                  <MDInput
+                    label="Invoice Number"
+                    fullWidth
+                    value={cancelDialogSale.invoice_number || ""}
+                    InputProps={{ readOnly: true }}
+                    disabled
+                  />
+                </Grid>
+                <Grid item xs={12}>
+                  <MDInput
+                    label="Product Name"
+                    fullWidth
+                    value={cancelForm.productName}
+                    onChange={(e) => handleCancelFormChange("productName", e.target.value)}
+                  />
+                </Grid>
+                <Grid item xs={12} sm={6}>
+                  <MDInput
+                    label="Product Size"
+                    fullWidth
+                    value={cancelForm.productSize}
+                    onChange={(e) => handleCancelFormChange("productSize", e.target.value)}
+                  />
+                </Grid>
+                <Grid item xs={12} sm={6}>
+                  <MDInput
+                    type="number"
+                    label="Amount"
+                    fullWidth
+                    value={cancelForm.amount}
+                    onChange={(e) => handleCancelFormChange("amount", e.target.value)}
+                  />
+                </Grid>
+              </Grid>
+
+              {/* Cancellation History Section */}
+              <MDBox mt={4}>
+                <MDBox display="flex" justifyContent="space-between" alignItems="center" mb={2}>
+                  <MDTypography variant="h6" fontWeight="medium">
+                    Cancellation History
+                  </MDTypography>
+                  {cancellationHistory.length > 0 && (
+                    <MDButton
+                      variant="outlined"
+                      color="info"
+                      size="small"
+                      onClick={handlePrintAllCancellations}
+                    >
+                      Print All
+                    </MDButton>
+                  )}
+                </MDBox>
+
+                {loadingCancellations ? (
+                  <MDTypography variant="body2" color="text">
+                    Loading history...
+                  </MDTypography>
+                ) : cancellationHistory.length === 0 ? (
+                  <MDTypography variant="body2" color="text">
+                    No cancellations logged for this invoice.
+                  </MDTypography>
+                ) : (
+                  <TableContainer component={Paper} sx={{ boxShadow: "none", border: "1px solid #e5e7eb" }}>
+                    <Table size="small">
+                      <TableHead sx={{ display: "table-header-group", backgroundColor: "#f9fafb" }}>
+                        <TableRow>
+                          <TableCell sx={{ fontWeight: "bold" }}>Date</TableCell>
+                          <TableCell sx={{ fontWeight: "bold" }}>Product</TableCell>
+                          <TableCell sx={{ fontWeight: "bold" }}>Size</TableCell>
+                          <TableCell sx={{ fontWeight: "bold" }} align="right">Amount</TableCell>
+                          <TableCell sx={{ fontWeight: "bold" }} align="center">Action</TableCell>
+                        </TableRow>
+                      </TableHead>
+                      <TableBody>
+                        {cancellationHistory.map((c) => (
+                          <TableRow key={c.id}>
+                            <TableCell>{c.created_at.split(" ")[0]}</TableCell>
+                            <TableCell>{c.product_name}</TableCell>
+                            <TableCell>{c.product_size}</TableCell>
+                            <TableCell align="right">₹{Number(c.amount).toFixed(2)}</TableCell>
+                            <TableCell align="center">
+                              <MDButton
+                                variant="outlined"
+                                color="info"
+                                size="small"
+                                onClick={() => handlePrintCancellation(c)}
+                              >
+                                Print
+                              </MDButton>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </TableContainer>
+                )}
+              </MDBox>
+            </MDBox>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <MDButton variant="outlined" color="dark" onClick={closeCancelDialog} disabled={loggingCancel}>
+            Close
+          </MDButton>
+          <MDButton variant="gradient" color="error" onClick={handleSaveCancellation} disabled={loggingCancel}>
+            {loggingCancel ? "Saving..." : "Log Cancellation"}
           </MDButton>
         </DialogActions>
       </Dialog>

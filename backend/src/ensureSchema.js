@@ -587,6 +587,20 @@ export async function ensureSchema() {
               )
         `);
 
+        await connection.query(`
+            CREATE TABLE IF NOT EXISTS order_cancellations (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                sale_id INT NULL,
+                outlet_name VARCHAR(255) NOT NULL,
+                invoice_number VARCHAR(255) NOT NULL,
+                product_name VARCHAR(255) NOT NULL,
+                product_size VARCHAR(100) NOT NULL,
+                amount DECIMAL(10, 2) NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (sale_id) REFERENCES staff_sales(id) ON DELETE SET NULL
+            );
+        `);
+
         console.log('Database schema verified');
     } finally {
         await connection.end();

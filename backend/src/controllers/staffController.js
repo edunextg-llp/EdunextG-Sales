@@ -6,6 +6,7 @@ import ReportModel from '../models/reportModel.js';
 import BankDepositModel from '../models/bankDepositModel.js';
 import PurchaseSellerModel from '../models/purchaseSellerModel.js';
 import PurchaseModel from '../models/purchaseModel.js';
+import OrderCancellationModel from '../models/orderCancellationModel.js';
 import {
     validateDigitsOnly,
     validateNumeric,
@@ -1538,6 +1539,62 @@ export const updatePaymentMode = async (req, res) => {
         res.status(200).json({ message: 'Payment mode updated successfully' });
     } catch (error) {
         console.error('Error updating payment mode:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+};
+
+export const logOrderCancellation = async (req, res) => {
+    try {
+        const { saleId } = req.params;
+        const { outletName, invoiceNumber, productName, productSize, amount } = req.body;
+
+        if (!outletName) {
+            return res.status(400).json({ error: 'Outlet name is required' });
+        }
+        if (!invoiceNumber) {
+            return res.status(400).json({ error: 'Invoice number is required' });
+        }
+        if (!productName) {
+            return res.status(400).json({ error: 'Product name is required' });
+        }
+        if (!productSize) {
+            return res.status(400).json({ error: 'Product size is required' });
+        }
+
+        const amountValidation = validateNumeric(amount, 'Amount');
+        if (!amountValidation.valid) {
+            return res.status(400).json({ error: amountValidation.error });
+        }
+        if (amountValidation.value <= 0) {
+            return res.status(400).json({ error: 'Amount must be greater than zero' });
+        }
+
+        const cancellationId = await OrderCancellationModel.create({
+            saleId,
+            outletName,
+            invoiceNumber,
+            productName,
+            productSize,
+            amount: amountValidation.value
+        });
+
+        res.status(201).json({
+            message: 'Order cancellation logged successfully',
+            cancellationId
+        });
+    } catch (error) {
+        console.error('Error logging order cancellation:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+};
+
+export const getOrderCancellations = async (req, res) => {
+    try {
+        const { saleId } = req.params;
+        const cancellations = await OrderCancellationModel.getBySaleId(saleId);
+        res.status(200).json(cancellations);
+    } catch (error) {
+        console.error('Error fetching order cancellations:', error);
         res.status(500).json({ error: 'Internal server error' });
     }
 };
