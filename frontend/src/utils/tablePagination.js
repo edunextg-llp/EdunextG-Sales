@@ -1,7 +1,7 @@
-import Icon from "@mui/material/Icon";
+import Pagination from "@mui/material/Pagination";
+import Stack from "@mui/material/Stack";
 import MDBox from "components/MDBox";
 import MDTypography from "components/MDTypography";
-import MDPagination from "components/MDPagination";
 
 export const ROWS_PER_PAGE = 10;
 
@@ -61,24 +61,22 @@ export function TablePaginationFooter({ page, totalPages, total, onPageChange, l
         Showing {entriesStart} to {entriesEnd} of {total} entries
       </MDTypography>
       {totalPages > 1 && (
-        <MDPagination variant="gradient" color="info">
-          <MDPagination item onClick={() => onPageChange(Math.max(1, page - 1))}>
-            <Icon sx={{ fontWeight: "bold" }}>chevron_left</Icon>
-          </MDPagination>
-          {Array.from({ length: totalPages }, (_, pageIndex) => pageIndex + 1).map((pageNumber) => (
-            <MDPagination
-              key={pageNumber}
-              item
-              onClick={() => onPageChange(pageNumber)}
-              active={page === pageNumber}
-            >
-              {pageNumber}
-            </MDPagination>
-          ))}
-          <MDPagination item onClick={() => onPageChange(Math.min(totalPages, page + 1))}>
-            <Icon sx={{ fontWeight: "bold" }}>chevron_right</Icon>
-          </MDPagination>
-        </MDPagination>
+        <Stack spacing={1} alignItems={{ xs: "flex-start", sm: "flex-end" }}>
+          <MDTypography variant="caption" color="text">
+            Page {page} of {totalPages}
+          </MDTypography>
+          <Pagination
+            count={totalPages}
+            page={page}
+            color="primary"
+            size="small"
+            siblingCount={0}
+            boundaryCount={1}
+            showFirstButton
+            showLastButton
+            onChange={(_, value) => onPageChange(value)}
+          />
+        </Stack>
       )}
     </MDBox>
   );

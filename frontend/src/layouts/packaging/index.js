@@ -45,6 +45,7 @@ const getPackagingStatusIn = (statusFilter) => {
 };
 
 function Packaging() {
+  const [dateFilterMode, setDateFilterMode] = useState("all");
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split("T")[0]);
   const [salesData, setSalesData] = useState([]);
   const [deliveryBoys, setDeliveryBoys] = useState([]);
@@ -107,7 +108,7 @@ function Packaging() {
       if (normalizedSearch) {
         params.set("search", normalizedSearch);
       }
-      if (selectedDate) {
+      if (dateFilterMode === "specific" && selectedDate) {
         params.set("date", selectedDate);
       }
 
@@ -119,7 +120,7 @@ function Packaging() {
         setSalesData((prev) =>
           mergeSalesRows(
             payload.data,
-            prev,
+            silent ? prev : [],
             enhancePackagingRow,
             isPackagingRowDirty,
             recentlySavedRef.current
@@ -136,7 +137,7 @@ function Packaging() {
         console.error("Error fetching global sales:", error);
       }
     }
-  }, [API, currentPage, searchQuery, statusFilter, selectedDate]);
+  }, [API, currentPage, searchQuery, statusFilter, dateFilterMode, selectedDate]);
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -148,7 +149,7 @@ function Packaging() {
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchQuery, statusFilter, selectedDate]);
+  }, [searchQuery, statusFilter, dateFilterMode, selectedDate]);
 
   useEffect(() => {
     if (currentPage > totalPages) {
@@ -325,6 +326,30 @@ function Packaging() {
                       </Select>
                     </FormControl>
                   </Grid>
+                  <Grid item xs={12} md={3}>
+                    <FormControl size="small" fullWidth>
+                      <Select
+                        value={dateFilterMode}
+                        onChange={(e) => setDateFilterMode(e.target.value)}
+                        sx={{ height: "44px", backgroundColor: "#fff" }}
+                      >
+                        <MenuItem value="all">All Dates (incl. previous)</MenuItem>
+                        <MenuItem value="specific">Specific Date</MenuItem>
+                      </Select>
+                    </FormControl>
+                  </Grid>
+                  {dateFilterMode === "specific" && (
+                    <Grid item xs={12} md={3}>
+                      <MDInput
+                        type="date"
+                        label="Sale Date"
+                        fullWidth
+                        value={selectedDate}
+                        onChange={(e) => setSelectedDate(e.target.value)}
+                        InputLabelProps={{ shrink: true }}
+                      />
+                    </Grid>
+                  )}
                 </Grid>
 
                 <TableContainer component={Paper} sx={{ boxShadow: "none", border: "1px solid #e5e7eb" }}>
@@ -352,9 +377,11 @@ function Packaging() {
                         <TableCell sx={{ color: "#6b7280", borderBottom: "1px solid #e5e7eb", py: 1.5, fontWeight: 500 }}>
                           ERP ID
                         </TableCell>
-                        {/* <TableCell sx={{ color: "#6b7280", borderBottom: "1px solid #e5e7eb", py: 1.5, fontWeight: 500 }}>
-                          Date
-                        </TableCell> */}
+                        {dateFilterMode === "all" && (
+                          <TableCell sx={{ color: "#6b7280", borderBottom: "1px solid #e5e7eb", py: 1.5, fontWeight: 500 }}>
+                            Sale Date
+                          </TableCell>
+                        )}
                         <TableCell align="center" sx={{ color: "#6b7280", borderBottom: "1px solid #e5e7eb", py: 1.5, fontWeight: 500 }}>
                           Sale ID
                         </TableCell>
@@ -413,6 +440,11 @@ function Packaging() {
                               <TableCell sx={{ borderBottom: borderCol, py: 2, color: txColor }}>
                                 {row.outlet_erp_id}
                               </TableCell>
+                              {dateFilterMode === "all" && (
+                                <TableCell sx={{ borderBottom: borderCol, py: 2, color: txColor }}>
+                                  {formatDate(row.sale_date || row.formatted_date)}
+                                </TableCell>
+                              )}
                               <TableCell align="center" sx={{ borderBottom: borderCol, py: 2, color: txColor, fontWeight: "bold" }}>
                                 {row.sticker_number}
                               </TableCell>
@@ -498,7 +530,7 @@ function Packaging() {
                         })
                       ) : (
                         <TableRow>
-                          <TableCell colSpan={14} align="center" sx={{ py: 3, borderBottom: 0 }}>
+                          <TableCell colSpan={dateFilterMode === "all" ? 15 : 14} align="center" sx={{ py: 3, borderBottom: 0 }}>
                             <MDTypography variant="body2" color="text">
                               No sales found.
                             </MDTypography>
