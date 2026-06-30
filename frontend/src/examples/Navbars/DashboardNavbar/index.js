@@ -52,10 +52,9 @@ function DashboardNavbar({ absolute, light, isMini }) {
   useEffect(() => {
     const fetchPendingCredits = async () => {
       try {
-        const response = await fetch("https://bawarchee.edunextg.co/api/staff/credits/pending?all=true");
+        const response = await fetch("https://bawarchee.edunextg.co/api/staff/credits/pending");
         if (response.ok) {
-          const payload = await response.json();
-          const data = Array.isArray(payload) ? payload : payload.data || [];
+          const data = await response.json();
           const dueTomorrow = data.filter((credit) => {
             if (!credit.credit_days || !credit.sale_date) return false;
             const saleDate = new Date(credit.sale_date);

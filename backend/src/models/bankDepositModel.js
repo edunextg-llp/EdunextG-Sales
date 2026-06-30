@@ -2,8 +2,7 @@ import db from '../config/db.js';
 
 class BankDepositModel {
     static async generateDepositRefNo(depositMode, connection = db) {
-        const prefix =
-            depositMode === 'cheque' ? 'BFPCQ' : depositMode === 'upi' ? 'BFPUP' : 'BFPCA';
+        const prefix = depositMode === 'cheque' ? 'BFPCQ' : 'BFPCA';
         const [rows] = await connection.execute(
             `SELECT deposit_ref_no
              FROM bank_deposits

@@ -13,7 +13,6 @@ import {
     validatePositiveInteger,
     validateRequiredText,
 } from '../utils/validation.js';
-import { parseStatusIn } from '../utils/pagination.js';
 import { normalizeInvoiceNumber } from '../utils/invoiceNumber.js';
 
 async function parseCollectorPayload(body) {
@@ -161,43 +160,6 @@ function normalizeBankDepositChequeDetails(reqBody) {
         chequeNo: `${firstCheque.chequeNo}${extraCount > 0 ? ` (+${extraCount} more)` : ''}`,
         chequeDate: firstCheque.chequeDate,
         amount: normalizedCheques.reduce((total, cheque) => total + cheque.amount, 0),
-    };
-}
-
-function normalizeBankDepositUpiDetails({ amount, upiNo, upiDetails }) {
-    const rawUpiRows = Array.isArray(upiDetails) && upiDetails.length
-        ? upiDetails
-        : [{ upiNo, amount }];
-
-    const normalizedUpiRows = [];
-    for (let index = 0; index < rawUpiRows.length; index += 1) {
-        const upi = rawUpiRows[index] || {};
-        const rowLabel = `UPI ${index + 1}`;
-        const upiValidation = validateRequiredText(upi.upiNo, `${rowLabel} number`);
-        if (!upiValidation.valid) return { error: upiValidation.error };
-        const outletValidation = validateRequiredText(upi.outletName, `${rowLabel} outlet name`);
-        if (!outletValidation.valid) return { error: outletValidation.error };
-        const invoiceValidation = validateRequiredText(upi.invoiceNumber, `${rowLabel} invoice number`);
-        if (!invoiceValidation.valid) return { error: invoiceValidation.error };
-        const amountValidation = validateNumeric(upi.amount, `${rowLabel} amount`);
-        if (!amountValidation.valid) return { error: amountValidation.error };
-        if (amountValidation.value <= 0) return { error: `${rowLabel} amount must be greater than zero` };
-
-        normalizedUpiRows.push({
-            upiNo: upiValidation.value,
-            outletName: outletValidation.value,
-            invoiceNumber: invoiceValidation.value,
-            amount: amountValidation.value,
-        });
-    }
-
-    const firstUpi = normalizedUpiRows[0];
-    const extraCount = normalizedUpiRows.length - 1;
-    return {
-        upiDetails: normalizedUpiRows,
-        amount: normalizedUpiRows.reduce((total, upi) => total + upi.amount, 0),
-        upiNo: `${firstUpi.upiNo}${extraCount > 0 ? ` (+${extraCount} more)` : ''}`,
-        storeName: `${firstUpi.outletName}${extraCount > 0 ? ` (+${extraCount} more)` : ''}`,
     };
 }
 
@@ -612,17 +574,7 @@ export const deleteSale = async (req, res) => {
 export const updatePackagingStatus = async (req, res) => {
     try {
         const { saleId } = req.params;
-        const {
-            packagingStatus,
-            deliveryBoyId,
-            vehicleNo,
-            deliveryDate,
-            statusDate,
-            expectedStatus,
-            packedItemCount,
-            boxCount,
-            packetCount,
-        } = req.body;
+        const { packagingStatus, deliveryBoyId, vehicleNo, deliveryDate, statusDate, expectedStatus, packedItemCount, boxCount } = req.body;
 
         if (!['not_packing', 'packing', 'packing_done', 'out_for_delivery', 'delivered', 'cancelled', 'returned'].includes(packagingStatus)) {
             return res.status(400).json({ error: 'Invalid packaging status' });
@@ -644,13 +596,9 @@ export const updatePackagingStatus = async (req, res) => {
         const normalizedStatusDate = normalizeDateInput(statusDate);
         const hasPackedItemCount = Object.prototype.hasOwnProperty.call(req.body, 'packedItemCount');
         const hasBoxCount = Object.prototype.hasOwnProperty.call(req.body, 'boxCount');
-        const hasPacketCount = Object.prototype.hasOwnProperty.call(req.body, 'packetCount');
         let normalizedPackedItemCount =
             existingSale?.packed_item_count || existingSale?.item_count || null;
         let normalizedBoxCount = existingSale?.box_count || null;
-        let normalizedPacketCount = Number.isInteger(Number(existingSale?.packet_count))
-            ? Number(existingSale.packet_count)
-            : 0;
 
         if (hasPackedItemCount) {
             const packedValidation = validatePositiveInteger(packedItemCount, 'Packing item');
@@ -672,14 +620,6 @@ export const updatePackagingStatus = async (req, res) => {
             normalizedBoxCount = boxValidation.value;
         }
 
-        if (hasPacketCount) {
-            const parsedPacketCount = Number(packetCount);
-            if (!Number.isInteger(parsedPacketCount) || parsedPacketCount < 0) {
-                return res.status(400).json({ error: 'No. of packet must be 0 or more.' });
-            }
-            normalizedPacketCount = parsedPacketCount;
-        }
-
         await StaffModel.updatePackagingStatus(
             saleId,
             packagingStatus,
@@ -688,8 +628,7 @@ export const updatePackagingStatus = async (req, res) => {
             normalizeDateInput(deliveryDate),
             normalizedStatusDate,
             normalizedPackedItemCount,
-            normalizedBoxCount,
-            normalizedPacketCount
+            normalizedBoxCount
         );
         const updated = await StaffModel.getSaleById(saleId);
         res.status(200).json({
@@ -720,25 +659,8 @@ export const getSaleStatusHistory = async (req, res) => {
 
 export const getPendingCredits = async (req, res) => {
     try {
-        const {
-            page,
-            limit,
-            all,
-            search,
-            companyId,
-            staffId,
-        } = req.query;
-
-        const result = await StaffModel.getPendingCredits({
-            page,
-            limit,
-            all,
-            search,
-            companyId: companyId || null,
-            staffId: staffId || null,
-        });
-
-        res.status(200).json(result);
+        const credits = await StaffModel.getPendingCredits();
+        res.status(200).json(credits);
     } catch (error) {
         console.error('Error fetching pending credits:', error);
         res.status(500).json({ error: 'Internal server error' });
@@ -1008,8 +930,6 @@ export const createBankDeposit = async (req, res) => {
             storeName,
             depositMode,
             amount,
-            upiNo,
-            upiDetails = [],
             chequeNo,
             chequeDate,
             chequeDetails = [],
@@ -1027,17 +947,13 @@ export const createBankDeposit = async (req, res) => {
         if (!branchValidation.valid) return res.status(400).json({ error: branchValidation.error });
         const accountValidation = validateRequiredText(bankAccountNo, 'Bank account no');
         if (!accountValidation.valid) return res.status(400).json({ error: accountValidation.error });
+        const depositorValidation = validateRequiredText(depositorName, 'Depositor name');
+        if (!depositorValidation.valid) return res.status(400).json({ error: depositorValidation.error });
 
         const mode = String(depositMode || '').toLowerCase();
-        if (!['cash', 'cheque', 'upi'].includes(mode)) {
-            return res.status(400).json({ error: 'Deposit mode must be cash, cheque, or upi' });
+        if (!['cash', 'cheque'].includes(mode)) {
+            return res.status(400).json({ error: 'Deposit mode must be cash or cheque' });
         }
-
-        const depositorValidation =
-            mode === 'upi'
-                ? { valid: true, value: null }
-                : validateRequiredText(depositorName, 'Depositor name');
-        if (!depositorValidation.valid) return res.status(400).json({ error: depositorValidation.error });
 
         let depositAmount = 0;
         let normalizedChequeNo = null;
@@ -1050,7 +966,7 @@ export const createBankDeposit = async (req, res) => {
             if (cashResult.error) return res.status(400).json({ error: cashResult.error });
             normalizedCashDetails = cashResult.cashDetails;
             depositAmount = cashResult.amount;
-        } else if (mode === 'cheque') {
+        } else {
             const chequeResult = normalizeBankDepositChequeDetails({
                 chequeDetails,
                 storeName,
@@ -1064,13 +980,6 @@ export const createBankDeposit = async (req, res) => {
             normalizedChequeDate = chequeResult.chequeDate;
             normalizedCashDetails = { cheques: chequeResult.chequeDetails };
             depositAmount = chequeResult.amount;
-        } else {
-            const upiResult = normalizeBankDepositUpiDetails({ amount, upiNo, upiDetails });
-            if (upiResult.error) return res.status(400).json({ error: upiResult.error });
-            depositAmount = upiResult.amount;
-            normalizedChequeNo = upiResult.upiNo;
-            normalizedStoreName = upiResult.storeName;
-            normalizedCashDetails = { upis: upiResult.upiDetails };
         }
 
         const deposit = await BankDepositModel.create({
@@ -1115,8 +1024,6 @@ export const updateBankDeposit = async (req, res) => {
             storeName,
             depositMode,
             amount,
-            upiNo,
-            upiDetails = [],
             chequeNo,
             chequeDate,
             chequeDetails = [],
@@ -1131,17 +1038,13 @@ export const updateBankDeposit = async (req, res) => {
         if (!branchValidation.valid) return res.status(400).json({ error: branchValidation.error });
         const accountValidation = validateRequiredText(bankAccountNo, 'Bank account no');
         if (!accountValidation.valid) return res.status(400).json({ error: accountValidation.error });
+        const depositorValidation = validateRequiredText(depositorName, 'Depositor name');
+        if (!depositorValidation.valid) return res.status(400).json({ error: depositorValidation.error });
 
         const mode = String(depositMode || '').toLowerCase();
-        if (!['cash', 'cheque', 'upi'].includes(mode)) {
-            return res.status(400).json({ error: 'Deposit mode must be cash, cheque, or upi' });
+        if (!['cash', 'cheque'].includes(mode)) {
+            return res.status(400).json({ error: 'Deposit mode must be cash or cheque' });
         }
-
-        const depositorValidation =
-            mode === 'upi'
-                ? { valid: true, value: null }
-                : validateRequiredText(depositorName, 'Depositor name');
-        if (!depositorValidation.valid) return res.status(400).json({ error: depositorValidation.error });
 
         let depositAmount = 0;
         let normalizedChequeNo = null;
@@ -1154,7 +1057,7 @@ export const updateBankDeposit = async (req, res) => {
             if (cashResult.error) return res.status(400).json({ error: cashResult.error });
             normalizedCashDetails = cashResult.cashDetails;
             depositAmount = cashResult.amount;
-        } else if (mode === 'cheque') {
+        } else {
             const chequeResult = normalizeBankDepositChequeDetails({
                 chequeDetails,
                 storeName,
@@ -1168,13 +1071,6 @@ export const updateBankDeposit = async (req, res) => {
             normalizedChequeDate = chequeResult.chequeDate;
             normalizedCashDetails = { cheques: chequeResult.chequeDetails };
             depositAmount = chequeResult.amount;
-        } else {
-            const upiResult = normalizeBankDepositUpiDetails({ amount, upiNo, upiDetails });
-            if (upiResult.error) return res.status(400).json({ error: upiResult.error });
-            depositAmount = upiResult.amount;
-            normalizedChequeNo = upiResult.upiNo;
-            normalizedStoreName = upiResult.storeName;
-            normalizedCashDetails = { upis: upiResult.upiDetails };
         }
 
         const deposit = await BankDepositModel.update(depositId, {
@@ -1275,28 +1171,10 @@ export const getOutletsByStaffAndDayName = async (req, res) => {
 
 export const getAllSalesByDate = async (req, res) => {
     try {
-        const {
-            date,
-            search,
-            page,
-            limit,
-            all,
-            statusIn,
-            packagingStatus,
-        } = req.query;
+        const { date, search } = req.query;
 
-        const statuses = parseStatusIn(statusIn, packagingStatus);
-
-        const result = await StaffModel.getAllSalesByDate({
-            date,
-            search,
-            statusIn: statuses,
-            page,
-            limit,
-            all,
-        });
-
-        res.status(200).json(result);
+        const sales = await StaffModel.getAllSalesByDate(date, search);
+        res.status(200).json(sales);
     } catch (error) {
         console.error('Error fetching global sales by date:', error);
         res.status(500).json({ error: 'Internal server error' });
@@ -1305,29 +1183,8 @@ export const getAllSalesByDate = async (req, res) => {
 
 export const getCancelledDeliverySales = async (req, res) => {
     try {
-        const {
-            page,
-            limit,
-            all,
-            search,
-            companyId,
-            staffId,
-            cancelDateFrom,
-            cancelDateTo,
-        } = req.query;
-
-        const result = await StaffModel.getCancelledDeliverySales({
-            page,
-            limit,
-            all,
-            search,
-            companyId: companyId || null,
-            staffId: staffId || null,
-            cancelDateFrom: cancelDateFrom || null,
-            cancelDateTo: cancelDateTo || null,
-        });
-
-        res.status(200).json(result);
+        const sales = await StaffModel.getCancelledDeliverySales();
+        res.status(200).json(sales);
     } catch (error) {
         console.error('Error fetching cancelled delivery sales:', error);
         res.status(500).json({ error: 'Internal server error' });

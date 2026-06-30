@@ -154,13 +154,6 @@ function shortMoney(value) {
   return money(value);
 }
 
-function getMonthStartDate() {
-  const now = new Date();
-  const year = now.getFullYear();
-  const month = String(now.getMonth() + 1).padStart(2, "0");
-  return `${year}-${month}-01`;
-}
-
 function formatDate(value) {
   if (!value) return "N/A";
   const dateOnly = String(value).split("T")[0].split(" ")[0];
@@ -540,30 +533,13 @@ function pieSliceAmount(value) {
   return 0;
 }
 
-function PaymentModePieChart({
-  data,
-  title,
-  icon,
-  iconColor = "info",
-  selectedDate,
-  onDateChange,
-  selectedEndDate,
-  onEndDateChange,
-  startDateLabel = "Date",
-  endDateLabel = "To",
-  loading = false,
-  loadingMessage = "Loading collection for selected date...",
-  onPrint,
-  printDisabled = false,
-}) {
+function PaymentModePieChart({ data, title, icon, iconColor = "info" }) {
   const total = useMemo(() => data.reduce((sum, item) => sum + pieSliceAmount(item.value), 0), [data]);
   const valueFormatter = (value) => money(pieSliceAmount(value));
-  const isRangeControls = Boolean(onEndDateChange);
-  const dateFieldWidth = isRangeControls ? 128 : 150;
 
   return (
-    <Card sx={{ height: "100%", minHeight: 400 }}>
-      <MDBox p={3} display="flex" flexDirection="column" height="100%">
+    <Card sx={{ height: "100%" }}>
+      <MDBox p={3}>
         <MDBox display="flex" alignItems="center" mb={1.5}>
           <MDBox
             width="3.25rem"
@@ -580,7 +556,7 @@ function PaymentModePieChart({
           >
             <Icon sx={{ fontSize: "1.25rem" }}>{icon}</Icon>
           </MDBox>
-          <MDBox flex={1}>
+          <MDBox>
             <MDTypography variant="h6" sx={{ fontSize: "1rem", lineHeight: 1.3 }}>
               {title}
             </MDTypography>
@@ -589,74 +565,7 @@ function PaymentModePieChart({
             </MDTypography>
           </MDBox>
         </MDBox>
-        {(onDateChange || onPrint) && (
-          <MDBox mb={1.5}>
-            <MDBox
-              display="flex"
-              alignItems="center"
-              gap={1}
-              flexWrap={isRangeControls ? "nowrap" : "wrap"}
-              sx={{ width: "100%" }}
-            >
-              {onDateChange && (
-                <TextField
-                  type="date"
-                  size="small"
-                  label={startDateLabel}
-                  value={selectedDate || ""}
-                  onChange={(event) => onDateChange(event.target.value)}
-                  InputLabelProps={{ shrink: true }}
-                  sx={{
-                    width: dateFieldWidth,
-                    minWidth: dateFieldWidth,
-                    flexShrink: 0,
-                    backgroundColor: "#fff",
-                    borderRadius: 1,
-                    "& .MuiInputBase-root": { height: 40 },
-                    "& .MuiInputBase-input": { py: 1, px: 1.25, fontSize: "0.8rem" },
-                  }}
-                />
-              )}
-              {onEndDateChange && (
-                <TextField
-                  type="date"
-                  size="small"
-                  label={endDateLabel}
-                  value={selectedEndDate || ""}
-                  onChange={(event) => onEndDateChange(event.target.value)}
-                  InputLabelProps={{ shrink: true }}
-                  sx={{
-                    width: dateFieldWidth,
-                    minWidth: dateFieldWidth,
-                    flexShrink: 0,
-                    backgroundColor: "#fff",
-                    borderRadius: 1,
-                    "& .MuiInputBase-root": { height: 40 },
-                    "& .MuiInputBase-input": { py: 1, px: 1.25, fontSize: "0.8rem" },
-                  }}
-                />
-              )}
-              {onPrint && (
-                <MDButton
-                  color="dark"
-                  variant="contained"
-                  size="small"
-                  onClick={onPrint}
-                  disabled={printDisabled || loading}
-                  sx={{ minWidth: 40, width: 40, height: 40, p: 0, flexShrink: 0 }}
-                >
-                  <Icon sx={{ fontSize: "1.1rem" }}>print</Icon>
-                </MDButton>
-              )}
-            </MDBox>
-            {loading && (
-              <MDTypography variant="caption" color="text" display="block" mt={0.5}>
-                {loadingMessage}
-              </MDTypography>
-            )}
-          </MDBox>
-        )}
-        <MDBox display="flex" flexDirection="column" alignItems="center" flex={1}>
+        <MDBox display="flex" flexDirection="column" alignItems="center">
           <PieChart
             series={[
               {
@@ -713,16 +622,6 @@ PaymentModePieChart.propTypes = {
   title: PropTypes.string.isRequired,
   icon: PropTypes.string.isRequired,
   iconColor: PropTypes.string,
-  selectedDate: PropTypes.string,
-  onDateChange: PropTypes.func,
-  selectedEndDate: PropTypes.string,
-  onEndDateChange: PropTypes.func,
-  startDateLabel: PropTypes.string,
-  endDateLabel: PropTypes.string,
-  loading: PropTypes.bool,
-  loadingMessage: PropTypes.string,
-  onPrint: PropTypes.func,
-  printDisabled: PropTypes.bool,
 };
 
 function getChequeDepositStatusLabel(status) {
@@ -880,13 +779,6 @@ function Dashboard() {
     todayCollectionDetails: [],
   });
   const [collectionDateLoading, setCollectionDateLoading] = useState(false);
-  const [totalCollectionStartDate, setTotalCollectionStartDate] = useState(() => getMonthStartDate());
-  const [totalCollectionEndDate, setTotalCollectionEndDate] = useState(() => getTodayLocalDate());
-  const [totalCollectionReportData, setTotalCollectionReportData] = useState({
-    collectionByMode: [],
-    collectionDetails: [],
-  });
-  const [totalCollectionLoading, setTotalCollectionLoading] = useState(false);
 
   const monthOptions = useMemo(
     () => getMonthOptions(selectedFinancialYear),
@@ -961,27 +853,6 @@ function Dashboard() {
     };
   };
 
-  const fetchTotalCollectionReport = async (startDate, endDate) => {
-    if (!startDate || !endDate) {
-      return { collectionByMode: [], collectionDetails: [] };
-    }
-
-    const params = new URLSearchParams({
-      startDate,
-      endDate,
-    });
-    const response = await fetch(`${API}/staff/reports?${params.toString()}`);
-    if (!response.ok) {
-      throw new Error("Failed to fetch total collection report.");
-    }
-
-    const data = await response.json();
-    return {
-      collectionByMode: data.collectionByMode || [],
-      collectionDetails: data.collectionDetails || [],
-    };
-  };
-
   useEffect(() => {
     fetchReports();
     fetchPurchaseReports();
@@ -1018,35 +889,6 @@ function Dashboard() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [collectionPrintDate]);
 
-  useEffect(() => {
-    let ignore = false;
-
-    const loadTotalCollectionReport = async () => {
-      setTotalCollectionLoading(true);
-      try {
-        const data = await fetchTotalCollectionReport(totalCollectionStartDate, totalCollectionEndDate);
-        if (!ignore) {
-          setTotalCollectionReportData(data);
-        }
-      } catch (error) {
-        console.error("Error fetching total collection report:", error);
-        if (!ignore) {
-          setTotalCollectionReportData({ collectionByMode: [], collectionDetails: [] });
-        }
-      } finally {
-        if (!ignore) {
-          setTotalCollectionLoading(false);
-        }
-      }
-    };
-
-    loadTotalCollectionReport();
-
-    return () => {
-      ignore = true;
-    };
-  }, [totalCollectionStartDate, totalCollectionEndDate]);
-
   const handleFinancialYearChange = (value) => {
     setSelectedFinancialYear(value);
     setSelectedMonth("");
@@ -1058,8 +900,8 @@ function Dashboard() {
   );
 
   const collectionModePieData = useMemo(
-    () => buildPaymentModePieData(totalCollectionReportData.collectionByMode),
-    [totalCollectionReportData.collectionByMode]
+    () => buildPaymentModePieData(reportData.collectionByMode),
+    [reportData.collectionByMode]
   );
 
   const todayCollectionPieData = useMemo(
@@ -1255,15 +1097,11 @@ function Dashboard() {
     }
 
     const periodLabel =
-      totalCollectionStartDate && totalCollectionEndDate
-        ? `${formatDate(totalCollectionStartDate)} to ${formatDate(totalCollectionEndDate)}`
+      reportStartDate && reportEndDate
+        ? `${formatDate(reportStartDate)} to ${formatDate(reportEndDate)}`
         : "All Records";
 
-    writeCollectionPrintReport(
-      printWindow,
-      totalCollectionReportData.collectionDetails || [],
-      periodLabel
-    );
+    writeCollectionPrintReport(printWindow, reportData.collectionDetails || [], periodLabel);
   };
 
   const monthlySalesChart = useMemo(() => {
@@ -1463,58 +1301,13 @@ function Dashboard() {
 
       {activeDashboardTab === "purchase" && (
       <MDBox py={3}>
-        <MDBox
-          mb={1}
-          display="flex"
-          justifyContent="space-between"
-          alignItems="flex-start"
-          flexWrap="wrap"
-          gap={2}
-        >
-          <MDBox>
-            <MDTypography variant="h4" fontWeight="medium" color="dark">
-              Purchase Dashboard
-            </MDTypography>
-            <MDTypography variant="body2" color="text">
-              Live purchase invoice, taxable value, GST, and seller overview.
-            </MDTypography>
-          </MDBox>
-          <MDBox display="flex" gap={1.5} flexWrap="wrap" alignItems="center" sx={{ ml: { xs: 0, md: "auto" } }}>
-            <FormControl size="small" sx={{ minWidth: 160 }}>
-              <InputLabel id="purchase-dashboard-financial-year-label">Financial Year</InputLabel>
-              <Select
-                labelId="purchase-dashboard-financial-year-label"
-                value={selectedFinancialYear}
-                label="Financial Year"
-                onChange={(event) => handleFinancialYearChange(event.target.value)}
-                sx={{ height: 44, backgroundColor: "#fff" }}
-              >
-                <MenuItem value="">All Years</MenuItem>
-                {financialYearOptions.map((option) => (
-                  <MenuItem key={option.value} value={option.value}>
-                    {option.label}
-                  </MenuItem>
-                ))}
-              </Select>
-            </FormControl>
-            <FormControl size="small" sx={{ minWidth: 140 }} disabled={!selectedFinancialYear}>
-              <InputLabel id="purchase-dashboard-month-label">Month</InputLabel>
-              <Select
-                labelId="purchase-dashboard-month-label"
-                value={selectedMonth}
-                label="Month"
-                onChange={(event) => setSelectedMonth(event.target.value)}
-                sx={{ height: 44, backgroundColor: "#fff" }}
-              >
-                <MenuItem value="">All Months</MenuItem>
-                {monthOptions.map((option) => (
-                  <MenuItem key={option.value} value={option.value}>
-                    {option.label}
-                  </MenuItem>
-                ))}
-              </Select>
-            </FormControl>
-          </MDBox>
+        <MDBox mb={1}>
+          <MDTypography variant="h4" fontWeight="medium" color="dark">
+            Purchase Dashboard
+          </MDTypography>
+          <MDTypography variant="body2" color="text">
+            Live purchase invoice, taxable value, GST, and seller overview.
+          </MDTypography>
         </MDBox>
 
         <MDBox mt={4}>
@@ -1674,6 +1467,90 @@ function Dashboard() {
             </Grid>
           </Grid>
         </MDBox>
+
+        <MDBox mt={1}>
+          <Grid container spacing={2} alignItems="center" mb={2}>
+            <Grid item xs={12} md={4}>
+              <FormControl size="small" fullWidth>
+                <InputLabel id="purchase-dashboard-financial-year-label">Financial Year</InputLabel>
+                <Select
+                  labelId="purchase-dashboard-financial-year-label"
+                  value={selectedFinancialYear}
+                  label="Financial Year"
+                  onChange={(event) => handleFinancialYearChange(event.target.value)}
+                  sx={{ height: 44 }}
+                >
+                  <MenuItem value="">All Years</MenuItem>
+                  {financialYearOptions.map((option) => (
+                    <MenuItem key={option.value} value={option.value}>
+                      {option.label}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            </Grid>
+            <Grid item xs={12} md={4}>
+              <FormControl size="small" fullWidth disabled={!selectedFinancialYear}>
+                <InputLabel id="purchase-dashboard-month-label">Month</InputLabel>
+                <Select
+                  labelId="purchase-dashboard-month-label"
+                  value={selectedMonth}
+                  label="Month"
+                  onChange={(event) => setSelectedMonth(event.target.value)}
+                  sx={{ height: 44 }}
+                >
+                  <MenuItem value="">All Months</MenuItem>
+                  {monthOptions.map((option) => (
+                    <MenuItem key={option.value} value={option.value}>
+                      {option.label}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            </Grid>
+          </Grid>
+          {/* <Grid container spacing={3}>
+            <Grid item xs={12} lg={6} display="flex">
+              <MDBox mb={3} width="100%">
+                <PurchasePeriodTable
+                  title="Month Wise Purchase"
+                  rows={monthlyPurchaseRows}
+                  periodLabel="Month"
+                />
+              </MDBox>
+            </Grid>
+           
+            <Grid item xs={12} lg={6} display="flex">
+              <MDBox mb={3} width="100%">
+                <PurchasePeriodTable
+                  title="Year Wise Purchase"
+                  rows={yearlyPurchaseRows}
+                  periodLabel="Year"
+                />
+              </MDBox>
+            </Grid>
+          </Grid> */}
+        </MDBox>
+
+        <Grid container spacing={3}>
+         
+          {/* <Grid item xs={12} md={4}>
+            <Card>
+              <MDBox p={3}>
+                <MDTypography variant="h6" fontWeight="medium">
+                  Credit Dues
+                </MDTypography>
+                <MDTypography variant="h3" color={totalCreditDues > 0 ? "error" : "success"}>
+                  {shortMoney(totalCreditDues)}
+                </MDTypography>
+                <MDTypography variant="body2" color="text">
+                  {creditDuesCount} open credit {creditDuesCount === 1 ? "entry" : "entries"} with unpaid balance.
+                </MDTypography>
+              </MDBox>
+            </Card>
+          </Grid> */}
+      
+        </Grid>
       </MDBox>
       )}
 
@@ -1817,46 +1694,37 @@ function Dashboard() {
                 />
               </MDBox>
             </Grid>
-            <Grid item xs={12} md={6} lg={3}>
-              <MDBox
-                mb={1.5}
-                onClick={() => setChequeDialogOpen(true)}
-                sx={{ cursor: "pointer" }}
-              >
-                <ComplexStatisticsCard
-                  color={chequePendingCount > 0 ? "warning" : "success"}
-                  icon="account_balance"
-                  title="Pending Cheques"
-                  count={chequePendingCount}
-                  percentage={{
-                    color: chequeMissedCount > 0 ? "warning" : chequePendingCount > 0 ? "warning" : "success",
-                    amount: chequeMissedCount > 0 ? chequeMissedCount : "",
-                    label:
-                      chequeMissedCount > 0
-                        ? "missed earlier, not in bank deposit"
-                        : "cheques not in bank deposit",
-                  }}
-                />
+            <Grid item xs={12} md={4}>
+            <Card onClick={() => setChequeDialogOpen(true)} sx={{ cursor: "pointer" }}>
+              <MDBox p={3}>
+                <MDTypography variant="h6" fontWeight="medium">
+                  Pending Cheques
+                </MDTypography>
+                <MDTypography variant="h3" color={chequePendingCount > 0 ? "warning" : "success"}>
+                  {chequePendingCount}
+                </MDTypography>
+                <MDTypography variant="body2" color="text">
+                  All cheques not submitted in bank deposit
+                  {chequeMissedCount > 0 ? `, including ${chequeMissedCount} missed earlier.` : "."}
+                </MDTypography>
               </MDBox>
-            </Grid>
-            <Grid item xs={12} md={6} lg={3}>
-              <MDBox mb={1.5}>
-                <ComplexStatisticsCard
-                  color="info"
-                  icon="payments"
-                  title="Payment Entries"
-                  count={reportData.collectionByMode.reduce(
-                    (total, row) => total + Number(row.count || 0),
-                    0
-                  )}
-                  percentage={{
-                    color: "info",
-                    amount: "",
-                    label: "cash, online, and cheque collection entries",
-                  }}
-                />
+            </Card>
+          </Grid>
+          <Grid item xs={12} md={4}>
+            <Card>
+              <MDBox p={3}>
+                <MDTypography variant="h6" fontWeight="medium">
+                  Payment Entries
+                </MDTypography>
+                <MDTypography variant="h3" color="info">
+                  {reportData.collectionByMode.reduce((total, row) => total + Number(row.count || 0), 0)}
+                </MDTypography>
+                <MDTypography variant="body2" color="text">
+                  Cash, online, and cheque collection entries.
+                </MDTypography>
               </MDBox>
-            </Grid>
+            </Card>
+          </Grid>
           </Grid>
           
         </MDBox>
@@ -1886,40 +1754,65 @@ function Dashboard() {
               </MDBox>
             </Grid> */}
             <Grid item xs={12} md={6} lg={4} display="flex">
-              <MDBox mb={3} width="100%" height={420}>
+              <MDBox mb={3} width="100%" height={380}>
                 <PaymentModePieChart
                   data={collectionModePieData}
                   title="Total Collection"
                   icon="donut_small"
                   iconColor="warning"
-                  selectedDate={totalCollectionStartDate}
-                  onDateChange={setTotalCollectionStartDate}
-                  selectedEndDate={totalCollectionEndDate}
-                  onEndDateChange={setTotalCollectionEndDate}
-                  startDateLabel="From"
-                  endDateLabel="To"
-                  loading={totalCollectionLoading}
-                  loadingMessage="Loading collection for selected range..."
-                  onPrint={handlePrintTotalCollection}
-                  printDisabled={!totalCollectionStartDate || !totalCollectionEndDate}
                 />
+                <MDBox mt={1} display="flex" justifyContent="flex-end">
+                  <MDButton
+                    color="dark"
+                    variant="contained"
+                    size="small"
+                    onClick={handlePrintTotalCollection}
+                    sx={{ minWidth: 44, p: 1.2 }}
+                  >
+                    <Icon>print</Icon>
+                  </MDButton>
+                </MDBox>
               </MDBox>
             </Grid>
             <Grid item xs={12} md={6} lg={4} display="flex">
-              <MDBox mb={3} width="100%" height={420}>
-                <PaymentModePieChart
-                  data={todayCollectionPieData}
-                  title="Daily Collection"
-                  icon="today"
-                  iconColor="success"
-                  selectedDate={collectionPrintDate}
-                  onDateChange={setCollectionPrintDate}
-                  loading={collectionDateLoading}
-                  onPrint={handlePrintTodayCollection}
-                  printDisabled={!collectionPrintDate}
-                />
-              </MDBox>
-            </Grid>
+  <MDBox
+    mb={3}
+    width="100%"
+  >
+    <PaymentModePieChart
+      data={todayCollectionPieData}
+      title={`collection ${formatDate(collectionPrintDate)}`}
+      icon="today"
+      iconColor="success"
+    />
+    {collectionDateLoading && (
+      <MDTypography variant="caption" color="text" display="block" mt={1}>
+        Loading collection for selected date...
+      </MDTypography>
+    )}
+    <MDBox mt={1} mb={4} pb={1} display="flex" gap={1} alignItems="center">
+      <TextField
+        type="date"
+        size="small"
+        label="Report Date"
+        value={collectionPrintDate}
+        onChange={(event) => setCollectionPrintDate(event.target.value)}
+        InputLabelProps={{ shrink: true }}
+        sx={{ flex: 1, backgroundColor: "#fff", borderRadius: 1 }}
+      />
+      <MDButton
+        color="dark"
+        variant="contained"
+        size="small"
+        onClick={handlePrintTodayCollection}
+        disabled={!collectionPrintDate || collectionDateLoading}
+        sx={{ minWidth: 44, p: 1.2 }}
+      >
+        <Icon>print</Icon>
+      </MDButton>
+    </MDBox>
+  </MDBox>
+</Grid>
           </Grid>
         </MDBox>
 
