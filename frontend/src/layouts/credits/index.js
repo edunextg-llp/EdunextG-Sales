@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback, useMemo } from "react";
 import {
   Table,
   TableBody,
@@ -32,12 +32,17 @@ import DashboardLayout from "examples/LayoutContainers/DashboardLayout";
 import DashboardNavbar from "examples/Navbars/DashboardNavbar";
 import Footer from "examples/Footer";
 import { IoPrintOutline } from "react-icons/io5";
+import { ROWS_PER_PAGE, parseListResponse, TablePaginationFooter, getPageSliceMeta } from "utils/tablePagination";
 
 function CreditsPage() {
   const [credits, setCredits] = useState([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCompanyId, setSelectedCompanyId] = useState("");
   const [selectedStaffId, setSelectedStaffId] = useState("");
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalCount, setTotalCount] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
+  const [totalBalance, setTotalBalance] = useState(0);
   const [remarksDialog, setRemarksDialog] = useState({ open: false, mode: "edit", credit: null });
   const [remarksText, setRemarksText] = useState("");
   const [remarksDate, setRemarksDate] = useState("");
@@ -54,23 +59,78 @@ function CreditsPage() {
     return `${year}-${month}-${day}`;
   };
 
-  const fetchCredits = async () => {
-    try {
-      const response = await fetch(`${API}/staff/credits/pending`);
-      if (response.ok) {
-        const data = await response.json();
-        setCredits(data);
+  const buildCreditsParams = useCallback(
+    ({ all = false } = {}) => {
+      const params = new URLSearchParams();
+      if (all) {
+        params.set("all", "true");
       } else {
-        console.error("Failed to fetch pending credits");
+        params.set("page", String(currentPage));
+        params.set("limit", String(ROWS_PER_PAGE));
+      }
+      const normalizedSearch = String(searchQuery || "").trim();
+      if (normalizedSearch) {
+        params.set("search", normalizedSearch);
+      }
+      if (selectedCompanyId) {
+        params.set("companyId", selectedCompanyId);
+      }
+      if (selectedStaffId) {
+        params.set("staffId", selectedStaffId);
+      }
+      return params;
+    },
+    [currentPage, searchQuery, selectedCompanyId, selectedStaffId]
+  );
+
+  const fetchCredits = useCallback(async () => {
+    try {
+      const response = await fetch(`${API}/staff/credits/pending?${buildCreditsParams().toString()}`);
+      if (response.ok) {
+        const payload = parseListResponse(await response.json());
+        setCredits(payload.data);
+        setTotalCount(payload.total);
+        setTotalPages(payload.totalPages);
+        setTotalBalance(payload.totalBalance);
+      } else {
+        setCredits([]);
+        setTotalCount(0);
+        setTotalPages(1);
+        setTotalBalance(0);
       }
     } catch (error) {
       console.error("Error fetching credits:", error);
     }
-  };
+  }, [API, buildCreditsParams]);
+
+  const fetchAllCredits = useCallback(async () => {
+    try {
+      const response = await fetch(`${API}/staff/credits/pending?${buildCreditsParams({ all: true }).toString()}`);
+      if (response.ok) {
+        return parseListResponse(await response.json()).data;
+      }
+    } catch (error) {
+      console.error("Error fetching all credits:", error);
+    }
+    return [];
+  }, [API, buildCreditsParams]);
 
   useEffect(() => {
-    fetchCredits();
-  }, []);
+    const timer = setTimeout(() => {
+      fetchCredits();
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [fetchCredits]);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery, selectedCompanyId, selectedStaffId]);
+
+  useEffect(() => {
+    if (currentPage > totalPages) {
+      setCurrentPage(totalPages);
+    }
+  }, [currentPage, totalPages]);
 
   const getStatus = (saleDateStr, creditDays) => {
     if (!creditDays) return <Chip label="No Term" size="small" variant="outlined" />;
@@ -193,7 +253,7 @@ function CreditsPage() {
       .map((id) => Number(id))
       .filter((id) => Number.isInteger(id) && id > 0);
 
-  const companyOptions = React.useMemo(() => {
+  const companyOptions = useMemo(() => {
     const companies = new Map();
 
     credits.forEach((credit) => {
@@ -215,7 +275,7 @@ function CreditsPage() {
       .sort((a, b) => a.name.localeCompare(b.name));
   }, [credits]);
 
-  const staffOptions = React.useMemo(() => {
+  const staffOptions = useMemo(() => {
     const staff = new Map();
 
     credits.forEach((credit) => {
@@ -334,47 +394,20 @@ function CreditsPage() {
     }
   };
 
-  const filteredCredits = credits.filter((credit) => {
-    const saleBalance = Number(credit.sale_balance_amount ?? credit.saleBalanceAmount);
-    if (!Number.isNaN(saleBalance) && saleBalance <= 0) {
-      return false;
-    }
-
-    if (selectedCompanyId && !getCreditCompanyIds(credit).includes(Number(selectedCompanyId))) {
-      return false;
-    }
-    if (selectedStaffId && Number(credit.staff_id) !== Number(selectedStaffId)) {
-      return false;
-    }
-
-    const search = searchQuery.toLowerCase();
-    const outletName = credit.outlet_name ? credit.outlet_name.toLowerCase() : "";
-    const contactNumber = credit.contact_number ? credit.contact_number.toLowerCase() : "";
-    const invoiceNum = credit.invoice_number ? credit.invoice_number.toLowerCase() : "";
-    const staffName = credit.staff_name ? credit.staff_name.toLowerCase() : "";
-    const remarks = credit.remarks ? credit.remarks.toLowerCase() : "";
-    const stickerNum = credit.sticker_number ? credit.sticker_number.toLowerCase() : "";
-    return (
-      outletName.includes(search) ||
-      contactNumber.includes(search) ||
-      invoiceNum.includes(search) ||
-      staffName.includes(search) ||
-      remarks.includes(search) ||
-      stickerNum.includes(search)
-    )
-  });
-
-  const totalCreditDuesAmount = filteredCredits.reduce(
-    (total, credit) => total + (Number(credit.balance_amount) || 0),
-    0
-  );
+  const totalCreditDuesAmount = totalBalance;
+  const { entriesStart: creditEntriesStart } = getPageSliceMeta(currentPage, totalCount, ROWS_PER_PAGE);
 
   const showPrintButton = Boolean(selectedCompanyId || selectedStaffId);
 
-  const handlePrintPdf = () => {
+  const handlePrintPdf = async () => {
+    const filteredCredits = await fetchAllCredits();
     const companyLabel = selectedCompanyName || "All Companies";
     const staffLabel = selectedStaffName || "All Staff";
     const generatedOn = new Date().toLocaleString("en-GB");
+    const reportTotal = filteredCredits.reduce(
+      (total, credit) => total + (Number(credit.balance_amount) || 0),
+      0
+    );
     const rowsHtml = filteredCredits
     .map(
       (credit, index) => `
@@ -428,7 +461,7 @@ function CreditsPage() {
             <div><strong>Company:</strong> ${escapeHtml(companyLabel)}</div>
             <div><strong>Staff:</strong> ${escapeHtml(staffLabel)}</div>
             <div><strong>Generated:</strong> ${escapeHtml(generatedOn)}</div>
-            <div><strong>Total Balance:</strong> Rs. ${totalCreditDuesAmount.toFixed(2)}</div>
+            <div><strong>Total Balance:</strong> Rs. ${reportTotal.toFixed(2)}</div>
           </div>
           ${
             filteredCredits.length > 0
@@ -451,7 +484,7 @@ function CreditsPage() {
       </table>`
               : `<div class="empty">No outstanding credits found for this filter.</div>`
           }
-          <div class="total">Total Balance: Rs. ${totalCreditDuesAmount.toFixed(2)}</div>
+          <div class="total">Total Balance: Rs. ${reportTotal.toFixed(2)}</div>
         </body>
       </html>
     `);
@@ -460,9 +493,10 @@ function CreditsPage() {
     printWindow.print();
   };
 
-  const handlePrintTomorrowCollection = () => {
+  const handlePrintTomorrowCollection = async () => {
+    const allCredits = await fetchAllCredits();
     const tomorrowCredits = sortTomorrowCollectionCredits(
-      filteredCredits.filter(isTomorrowOrMissedCollection)
+      allCredits.filter(isTomorrowOrMissedCollection)
     );
 
     const grouped = groupCreditsByStaff(tomorrowCredits);
@@ -583,9 +617,10 @@ function CreditsPage() {
     printWindow.print();
   };
 
-  const handleDownloadTomorrowCollection = () => {
+  const handleDownloadTomorrowCollection = async () => {
+    const allCredits = await fetchAllCredits();
     const tomorrowCredits = sortTomorrowCollectionCredits(
-      filteredCredits.filter(isTomorrowOrMissedCollection)
+      allCredits.filter(isTomorrowOrMissedCollection)
     );
 
     let csv = "Sr No,Staff Name,Sale ID,Invoice No,Outlet Name,Contact Number,ERP ID,Issue Date,Due Date,Status,Outstanding Balance\n";
@@ -608,8 +643,9 @@ function CreditsPage() {
     downloadCSV("Tomorrow_Missed_Collection_Report.csv", csv);
   };
 
-  const handlePrintNext2DaysCollection = () => {
-    const next2DaysCredits = filteredCredits.filter((c) => {
+  const handlePrintNext2DaysCollection = async () => {
+    const allCredits = await fetchAllCredits();
+    const next2DaysCredits = allCredits.filter((c) => {
       const diff = getDiffDays(c.sale_date, c.credit_days);
       return diff === 1 || diff === 2;
     });
@@ -727,8 +763,9 @@ function CreditsPage() {
     printWindow.print();
   };
 
-  const handleDownloadNext2DaysCollection = () => {
-    const next2DaysCredits = filteredCredits.filter((c) => {
+  const handleDownloadNext2DaysCollection = async () => {
+    const allCredits = await fetchAllCredits();
+    const next2DaysCredits = allCredits.filter((c) => {
       const diff = getDiffDays(c.sale_date, c.credit_days);
       return diff === 1 || diff === 2;
     });
@@ -754,8 +791,9 @@ function CreditsPage() {
     downloadCSV("Next_2_Days_Collection_Report.csv", csv);
   };
 
-  const handlePrintOverdueReport = () => {
-    const overdueCredits = filteredCredits.filter((c) => {
+  const handlePrintOverdueReport = async () => {
+    const allCredits = await fetchAllCredits();
+    const overdueCredits = allCredits.filter((c) => {
       const diff = getDiffDays(c.sale_date, c.credit_days);
       return diff !== null && diff < 0;
     });
@@ -875,8 +913,9 @@ function CreditsPage() {
     printWindow.print();
   };
 
-  const handleDownloadOverdueReport = () => {
-    const overdueCredits = filteredCredits.filter((c) => {
+  const handleDownloadOverdueReport = async () => {
+    const allCredits = await fetchAllCredits();
+    const overdueCredits = allCredits.filter((c) => {
       const diff = getDiffDays(c.sale_date, c.credit_days);
       return diff !== null && diff < 0;
     });
@@ -986,8 +1025,13 @@ function CreditsPage() {
                         disabled={filteredCredits.length === 0}
                         sx={{ height: 44 }} */}
                       {/* > */}
-                        <IoPrintOutline  onClick={() => handlePrintPdf()}                         disabled={filteredCredits.length === 0}
- style={{ cursor: "pointer" }} color="#6C9CF0" size={20}/> 
+                        <IoPrintOutline
+                          onClick={() => handlePrintPdf()}
+                          disabled={totalCount === 0}
+                          style={{ cursor: totalCount === 0 ? "not-allowed" : "pointer", opacity: totalCount === 0 ? 0.5 : 1 }}
+                          color="#6C9CF0"
+                          size={20}
+                        />
                         
                       {/* </MDButton> */}
                     </Grid>
@@ -1142,9 +1186,9 @@ function CreditsPage() {
                       </TableRow>
                     </TableHead>
                     <TableBody>
-                      {filteredCredits.map((credit, index) => (
+                      {credits.map((credit, index) => (
                         <TableRow key={credit.id} sx={getCreditRowSx(credit)}>
-                          <TableCell align="center">{index + 1}</TableCell>
+                          <TableCell align="center">{creditEntriesStart + index}</TableCell>
                           <TableCell align="left">{credit.outlet_name}</TableCell>
                           <TableCell align="center">{credit.outlet_erp_id || "N/A"}</TableCell>
                           <TableCell align="center">{credit.contact_number || "N/A"}</TableCell>
@@ -1192,7 +1236,7 @@ function CreditsPage() {
                       ))}
                     </TableBody>
                   </Table>
-                  {filteredCredits.length === 0 && (
+                  {credits.length === 0 && (
                     <MDBox mt={4} textAlign="center">
                       <MDTypography variant="body2" color="text">
                         No outstanding credits found in the system!
@@ -1200,6 +1244,12 @@ function CreditsPage() {
                     </MDBox>
                   )}
                 </TableContainer>
+                <TablePaginationFooter
+                  page={currentPage}
+                  totalPages={totalPages}
+                  total={totalCount}
+                  onPageChange={setCurrentPage}
+                />
               </MDBox>
             </Card>
           </Grid>

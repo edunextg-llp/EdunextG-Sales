@@ -31,6 +31,7 @@ import DashboardLayout from "examples/LayoutContainers/DashboardLayout";
 import DashboardNavbar from "examples/Navbars/DashboardNavbar";
 import Footer from "examples/Footer";
 import { useSalesPolling } from "utils/salesSync";
+import { ROWS_PER_PAGE, parseListResponse, TablePaginationFooter, getPageSliceMeta } from "utils/tablePagination";
 // import { formatBpSaleId } from "utils/saleId";
 // import { IoSaveOutline } from "react-icons/io5";
 import { FaRegEdit } from "react-icons/fa";
@@ -56,6 +57,15 @@ function Delivered() {
   const [updatingSaleIds, setUpdatingSaleIds] = useState(new Set());
   const [cancelReportOpen, setCancelReportOpen] = useState(false);
   const [activeTab, setActiveTab] = useState("delivered");
+  const [deliveredPage, setDeliveredPage] = useState(1);
+  const [cancelledPage, setCancelledPage] = useState(1);
+  const [deliveredTotal, setDeliveredTotal] = useState(0);
+  const [deliveredOnlyTotal, setDeliveredOnlyTotal] = useState(0);
+  const [deliveredTotalPages, setDeliveredTotalPages] = useState(1);
+  const [returnedTotal, setReturnedTotal] = useState(0);
+  const [cancelledTotal, setCancelledTotal] = useState(0);
+  const [cancelledTotalPages, setCancelledTotalPages] = useState(1);
+  const [cancelledAmount, setCancelledAmount] = useState(0);
   const API = "https://bawarchee.edunextg.co/api";
 
   const getTodayLocalDate = () => {
@@ -102,40 +112,145 @@ function Delivered() {
 
   const fetchSales = useCallback(async ({ silent = false } = {}) => {
     try {
-      const response = await fetch(`${API}/staff/sales/by-date`);
+      const params = new URLSearchParams({
+        page: String(deliveredPage),
+        limit: String(ROWS_PER_PAGE),
+        statusIn: "out_for_delivery,delivered,returned",
+      });
+      const normalizedSearch = String(searchQuery || "").trim();
+      if (normalizedSearch) {
+        params.set("search", normalizedSearch);
+      }
+
+      const response = await fetch(`${API}/staff/sales/by-date?${params.toString()}`);
       if (response.ok) {
-        const data = await response.json();
-        setSalesData(data);
+        const payload = parseListResponse(await response.json());
+        setSalesData(payload.data);
+        setDeliveredTotal(payload.total);
+        setDeliveredTotalPages(payload.totalPages);
+        setDeliveredOnlyTotal(payload.summary?.delivered || 0);
+        setReturnedTotal(payload.summary?.returned || 0);
       } else if (!silent) {
         setSalesData([]);
+        setDeliveredTotal(0);
+        setDeliveredTotalPages(1);
+        setReturnedTotal(0);
       }
     } catch (error) {
       if (!silent) {
         console.error("Error fetching global sales:", error);
       }
     }
-  }, [API]);
+  }, [API, deliveredPage, searchQuery]);
+
+  const buildCancelledQueryParams = useCallback(
+    ({ all = false } = {}) => {
+      const params = new URLSearchParams();
+      if (all) {
+        params.set("all", "true");
+      } else {
+        params.set("page", String(cancelledPage));
+        params.set("limit", String(ROWS_PER_PAGE));
+      }
+      const normalizedSearch = String(searchQuery || "").trim();
+      if (normalizedSearch) {
+        params.set("search", normalizedSearch);
+      }
+      if (selectedCompanyId) {
+        params.set("companyId", selectedCompanyId);
+      }
+      if (selectedStaffId) {
+        params.set("staffId", selectedStaffId);
+      }
+      if (cancelRangeStart) {
+        params.set("cancelDateFrom", cancelRangeStart);
+      }
+      if (cancelRangeEnd) {
+        params.set("cancelDateTo", cancelRangeEnd);
+      }
+      return params;
+    },
+    [
+      cancelledPage,
+      searchQuery,
+      selectedCompanyId,
+      selectedStaffId,
+      cancelRangeStart,
+      cancelRangeEnd,
+    ]
+  );
+
+  const fetchAllCancelledSales = useCallback(async () => {
+    try {
+      const response = await fetch(
+        `${API}/staff/sales/cancelled?${buildCancelledQueryParams({ all: true }).toString()}`
+      );
+      if (response.ok) {
+        return parseListResponse(await response.json()).data;
+      }
+    } catch (error) {
+      console.error("Error fetching all cancelled sales:", error);
+    }
+    return [];
+  }, [API, buildCancelledQueryParams]);
 
   const fetchCancelledSales = useCallback(async ({ silent = false } = {}) => {
     try {
-      const response = await fetch(`${API}/staff/sales/cancelled`);
+      const response = await fetch(
+        `${API}/staff/sales/cancelled?${buildCancelledQueryParams().toString()}`
+      );
       if (response.ok) {
-        const data = await response.json();
-        setCancelledSalesData(data);
+        const payload = parseListResponse(await response.json());
+        setCancelledSalesData(payload.data);
+        setCancelledTotal(payload.total);
+        setCancelledTotalPages(payload.totalPages);
+        setCancelledAmount(payload.totalAmount);
       } else if (!silent) {
         setCancelledSalesData([]);
+        setCancelledTotal(0);
+        setCancelledTotalPages(1);
+        setCancelledAmount(0);
       }
     } catch (error) {
       if (!silent) {
         console.error("Error fetching cancelled sales:", error);
       }
     }
-  }, [API]);
+  }, [API, buildCancelledQueryParams]);
 
   useEffect(() => {
-    fetchSales();
-    fetchCancelledSales();
-  }, [fetchSales, fetchCancelledSales]);
+    const timer = setTimeout(() => {
+      fetchSales();
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [fetchSales]);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      fetchCancelledSales();
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [fetchCancelledSales]);
+
+  useEffect(() => {
+    setDeliveredPage(1);
+  }, [searchQuery]);
+
+  useEffect(() => {
+    setCancelledPage(1);
+  }, [searchQuery, selectedCompanyId, selectedStaffId, cancelRangeStart, cancelRangeEnd]);
+
+  useEffect(() => {
+    if (deliveredPage > deliveredTotalPages) {
+      setDeliveredPage(deliveredTotalPages);
+    }
+  }, [deliveredPage, deliveredTotalPages]);
+
+  useEffect(() => {
+    if (cancelledPage > cancelledTotalPages) {
+      setCancelledPage(cancelledTotalPages);
+    }
+  }, [cancelledPage, cancelledTotalPages]);
 
   useSalesPolling(() => {
     fetchSales({ silent: true });
@@ -190,70 +305,11 @@ function Delivered() {
     setSelectedStaffId("");
   };
 
-  const filteredSales = salesData.filter((row) => {
-    const st = row.packaging_status;
-    if (st !== 'out_for_delivery' && st !== 'delivered' && st !== 'returned') return false;
-
-    const search = searchQuery.toLowerCase();
-    const outletName = row.outlet_name ? row.outlet_name.toLowerCase() : "";
-    const outletErpId = row.outlet_erp_id ? row.outlet_erp_id.toLowerCase() : "";
-    const staffName = row.staff_name ? row.staff_name.toLowerCase() : "";
-    const saleId = row.sticker_number ? row.sticker_number.toLowerCase() : "";
-    return (
-      outletName.includes(search) ||
-      outletErpId.includes(search) ||
-      staffName.includes(search) ||
-      saleId.includes(search)
-    );
-  });
-
-  const filteredCancelledSales = cancelledSalesData.filter((row) => {
-    if (selectedCompanyId && !getCompanyIds(row).includes(Number(selectedCompanyId))) {
-      return false;
-    }
-    if (selectedStaffId && Number(row.staff_id) !== Number(selectedStaffId)) {
-      return false;
-    }
-
-    const cancelDate = getDateOnly(row.delivery_date || row.status_updated_at);
-    if (cancelRangeStart && (!cancelDate || cancelDate < cancelRangeStart)) {
-      return false;
-    }
-    if (cancelRangeEnd && (!cancelDate || cancelDate > cancelRangeEnd)) {
-      return false;
-    }
-
-    const search = searchQuery.toLowerCase();
-    const outletName = row.outlet_name ? row.outlet_name.toLowerCase() : "";
-    const outletErpId = row.outlet_erp_id ? row.outlet_erp_id.toLowerCase() : "";
-    const staffName = row.staff_name ? row.staff_name.toLowerCase() : "";
-    const saleId = row.sticker_number ? row.sticker_number.toLowerCase() : "";
-    const companyName = row.company_name ? row.company_name.toLowerCase() : "";
-    return (
-      outletName.includes(search) ||
-      outletErpId.includes(search) ||
-      staffName.includes(search) ||
-      saleId.includes(search) ||
-      companyName.includes(search)
-    );
-  });
-
-  const deliveredTotal = filteredSales.filter((row) => row.packaging_status === "delivered").length;
-  const cancelledTotal = filteredCancelledSales.length;
-  const returnedTotal = filteredSales.filter((row) => row.packaging_status === "returned").length;
-  const cancelledSales = filteredCancelledSales;
-  const cancelledAmount = cancelledSales.reduce(
-    (total, row) => total + (Number(row.price) || 0),
-    0
-  );
-  const reportCompanyLabel = selectedCompanyName || "All Companies";
-  const reportStaffLabel = selectedStaffName || "All Staff";
-  const reportRangeLabel =
-    cancelRangeStart || cancelRangeEnd
-      ? `${cancelRangeStart ? formatDate(cancelRangeStart) : "Start"} to ${
-          cancelRangeEnd ? formatDate(cancelRangeEnd) : "Today"
-        }`
-      : "All Dates";
+  const deliveredRows = salesData;
+  const cancelledSales = cancelledSalesData;
+  const deliveredCount = deliveredTotal;
+  const { entriesStart: deliveredEntriesStart } = getPageSliceMeta(deliveredPage, deliveredTotal, ROWS_PER_PAGE);
+  const { entriesStart: cancelledEntriesStart } = getPageSliceMeta(cancelledPage, cancelledTotal, ROWS_PER_PAGE);
 
   const buildSummary = (rows, getKey) => {
     const summary = new Map();
@@ -266,6 +322,15 @@ function Delivered() {
     });
     return [...summary.values()].sort((a, b) => a.name.localeCompare(b.name));
   };
+
+  const reportCompanyLabel = selectedCompanyName || "All Companies";
+  const reportStaffLabel = selectedStaffName || "All Staff";
+  const reportRangeLabel =
+    cancelRangeStart || cancelRangeEnd
+      ? `${cancelRangeStart ? formatDate(cancelRangeStart) : "Start"} to ${
+          cancelRangeEnd ? formatDate(cancelRangeEnd) : "Today"
+        }`
+      : "All Dates";
 
   const staffCancelSummary = buildSummary(cancelledSales, (row) => row.staff_name || "Unknown Staff");
   const companyCancelSummary = buildSummary(cancelledSales, (row) => row.company_name || "Unknown Company");
@@ -308,8 +373,16 @@ function Delivered() {
     </div>
   `;
 
-  const handleDownloadCancelReport = () => {
-    const rowsHtml = cancelledSales
+  const handleDownloadCancelReport = async () => {
+    const exportRows = await fetchAllCancelledSales();
+    const exportAmount = exportRows.reduce((sum, row) => sum + (Number(row.price) || 0), 0);
+    const exportStaffSummary = buildSummary(exportRows, (row) => row.staff_name || "Unknown Staff");
+    const exportCompanySummary = buildSummary(exportRows, (row) => row.company_name || "Unknown Company");
+    const exportRangeSummary = buildSummary(exportRows, (row) =>
+      formatDate(row.delivery_date || row.status_updated_at)
+    );
+
+    const rowsHtml = exportRows
       .map(
         (row, index) => `
           <tr>
@@ -367,15 +440,15 @@ function Delivered() {
             <div><strong>Range:</strong> ${escapeHtml(reportRangeLabel)}</div>
             <div><strong>Generated:</strong> ${escapeHtml(new Date().toLocaleString("en-GB"))}</div>
           </div>
-          <div class="total">Total Cancel Amount: Rs. ${cancelledAmount.toFixed(2)}</div>
+          <div class="total">Total Cancel Amount: Rs. ${exportAmount.toFixed(2)}</div>
           <div class="summary-grid">
-            ${renderSummaryTable("Staff Wise Total", "Staff Name", staffCancelSummary)}
-            ${renderSummaryTable("Company Wise Total", "Company Name", companyCancelSummary)}
-            ${renderSummaryTable("Range Wise Total", "Cancel Date", rangeCancelSummary)}
+            ${renderSummaryTable("Staff Wise Total", "Staff Name", exportStaffSummary)}
+            ${renderSummaryTable("Company Wise Total", "Company Name", exportCompanySummary)}
+            ${renderSummaryTable("Range Wise Total", "Cancel Date", exportRangeSummary)}
           </div>
           <h2>Cancelled Invoice Details</h2>
           ${
-            cancelledSales.length > 0
+            exportRows.length > 0
               ? `<table>
                   <thead>
                     <tr>
@@ -403,25 +476,33 @@ function Delivered() {
     printWindow.print();
   };
 
-  const handleDownloadCancelCSV = () => {
+  const handleDownloadCancelCSV = async () => {
+    const exportRows = await fetchAllCancelledSales();
+    const exportAmount = exportRows.reduce((sum, row) => sum + (Number(row.price) || 0), 0);
+    const exportStaffSummary = buildSummary(exportRows, (row) => row.staff_name || "Unknown Staff");
+    const exportCompanySummary = buildSummary(exportRows, (row) => row.company_name || "Unknown Company");
+    const exportRangeSummary = buildSummary(exportRows, (row) =>
+      formatDate(row.delivery_date || row.status_updated_at)
+    );
+
     let csv =
       "Report Type,Name,Cancel Count,Cancel Amount\n" +
-      staffCancelSummary
+      exportStaffSummary
         .map((row) => `Staff Wise,${csvValue(row.name)},${row.count},${row.amount.toFixed(2)}`)
         .join("\n");
 
     csv += "\n\nReport Type,Name,Cancel Count,Cancel Amount\n";
-    csv += companyCancelSummary
+    csv += exportCompanySummary
       .map((row) => `Company Wise,${csvValue(row.name)},${row.count},${row.amount.toFixed(2)}`)
       .join("\n");
 
     csv += "\n\nReport Type,Date,Cancel Count,Cancel Amount\n";
-    csv += rangeCancelSummary
+    csv += exportRangeSummary
       .map((row) => `Range Wise,${csvValue(row.name)},${row.count},${row.amount.toFixed(2)}`)
       .join("\n");
 
     csv += "\n\nSr No,Sale ID,Staff Name,Company,Invoice Date,Cancel Date,ERP ID,Outlet Name,Invoice No,Cancel Amount\n";
-    cancelledSales.forEach((row, index) => {
+    exportRows.forEach((row, index) => {
       csv +=
         `${index + 1},` +
         `${csvValue(row.sticker_number || "N/A")},` +
@@ -434,7 +515,7 @@ function Delivered() {
         `${csvValue(row.invoice_number || "N/A")},` +
         `${Number(row.price || 0).toFixed(2)}\n`;
     });
-    csv += `,,,,,,,,Total,${cancelledAmount.toFixed(2)}\n`;
+    csv += `,,,,,,,,Total,${exportAmount.toFixed(2)}\n`;
 
     downloadCSV("Cancelled_Invoice_Report.csv", csv);
   };
@@ -611,7 +692,7 @@ function Delivered() {
                           Total Delivered
                         </MDTypography>
                         <MDTypography variant="h5" color="success" fontWeight="bold">
-                          {deliveredTotal}
+                          {deliveredOnlyTotal}
                         </MDTypography>
                       </MDBox>
                       <MDBox
@@ -649,6 +730,7 @@ function Delivered() {
                 </Grid>
 
                 {activeTab === "delivered" ? (
+                <MDBox>
                 <TableContainer component={Paper} sx={{ boxShadow: "none", border: "1px solid #e5e7eb" }}>
                   <Table sx={{ minWidth: 650 }}>
                     <TableHead sx={{ display: "table-header-group", backgroundColor: "#f9fafb" }}>
@@ -693,6 +775,9 @@ function Delivered() {
                           No. of Box
                         </TableCell>
                         <TableCell align="center" sx={{ color: "#6b7280", borderBottom: "1px solid #e5e7eb", py: 1.5, fontWeight: 500 }}>
+                          No. of Packet
+                        </TableCell>
+                        <TableCell align="center" sx={{ color: "#6b7280", borderBottom: "1px solid #e5e7eb", py: 1.5, fontWeight: 500 }}>
                           Delivery Boy
                         </TableCell>
                         <TableCell align="center" sx={{ color: "#6b7280", borderBottom: "1px solid #e5e7eb", py: 1.5, fontWeight: 500 }}>
@@ -710,8 +795,8 @@ function Delivered() {
                       </TableRow>
                     </TableHead>
                     <TableBody>
-                      {filteredSales.length > 0 ? (
-                        filteredSales.map((row, index) => (
+                      {deliveredRows.length > 0 ? (
+                        deliveredRows.map((row, index) => (
                           <TableRow
                             key={row.id}
                             sx={{
@@ -720,7 +805,7 @@ function Delivered() {
                             }}
                           >
                             <TableCell align="center" sx={{ borderBottom: "1px solid #cbd5e1", py: 2 }}>
-                              {index + 1}
+                              {deliveredEntriesStart + index}
                             </TableCell>
                             <TableCell sx={{ borderBottom: "1px solid #cbd5e1", py: 2 }}>{row.staff_name}</TableCell>
                             <TableCell sx={{ borderBottom: "1px solid #cbd5e1", py: 2, fontWeight: "medium" }}>{row.outlet_name}</TableCell>
@@ -738,6 +823,9 @@ function Delivered() {
                             </TableCell>
                             <TableCell align="center" sx={{ borderBottom: "1px solid #cbd5e1", py: 2, color: '#334155' }}>
                               {row.box_count || "N/A"}
+                            </TableCell>
+                            <TableCell align="center" sx={{ borderBottom: "1px solid #cbd5e1", py: 2, color: '#334155' }}>
+                              {row.packet_count ?? 0}
                             </TableCell>
                             <TableCell align="center" sx={{ borderBottom: "1px solid #cbd5e1", py: 2, color: '#334155' }}>
                               {row.delivery_boy_name || 'N/A'}
@@ -780,7 +868,7 @@ function Delivered() {
                         ))
                       ) : (
                         <TableRow>
-                          <TableCell colSpan={15} align="center" sx={{ py: 3, borderBottom: 0 }}>
+                          <TableCell colSpan={16} align="center" sx={{ py: 3, borderBottom: 0 }}>
                             <MDTypography variant="body2" color="text">
                               No delivered items found.
                             </MDTypography>
@@ -790,6 +878,13 @@ function Delivered() {
                     </TableBody>
                   </Table>
                 </TableContainer>
+                <TablePaginationFooter
+                  page={deliveredPage}
+                  totalPages={deliveredTotalPages}
+                  total={deliveredTotal}
+                  onPageChange={setDeliveredPage}
+                />
+                </MDBox>
                 ) : (
                   <MDBox>
                     <MDBox
@@ -862,7 +957,7 @@ function Delivered() {
                                 sx={{ backgroundColor: "#fff7f7", "&:last-child td, &:last-child th": { border: 0 } }}
                               >
                                 <TableCell align="center" sx={{ borderBottom: "1px solid #fecaca", py: 2 }}>
-                                  {index + 1}
+                                  {cancelledEntriesStart + index}
                                 </TableCell>
                                 <TableCell sx={{ borderBottom: "1px solid #fecaca", py: 2 }}>
                                   {row.staff_name || "N/A"}
@@ -908,6 +1003,12 @@ function Delivered() {
                         </TableBody>
                       </Table>
                     </TableContainer>
+                    <TablePaginationFooter
+                      page={cancelledPage}
+                      totalPages={cancelledTotalPages}
+                      total={cancelledTotal}
+                      onPageChange={setCancelledPage}
+                    />
                   </MDBox>
                 )}
               </MDBox>

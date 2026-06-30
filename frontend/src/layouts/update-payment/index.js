@@ -28,6 +28,7 @@ import MDButton from "components/MDButton";
 import DashboardLayout from "examples/LayoutContainers/DashboardLayout";
 import DashboardNavbar from "examples/Navbars/DashboardNavbar";
 import Footer from "examples/Footer";
+import { ROWS_PER_PAGE, parseListResponse, TablePaginationFooter, getPageSliceMeta } from "utils/tablePagination";
 
 const PAYMENT_MODE_LABELS = {
   cash: "Cash",
@@ -114,6 +115,9 @@ const toInputDate = (value) => {
 
 function UpdatePayment() {
   const [searchQuery, setSearchQuery] = useState("");
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalCount, setTotalCount] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
   const [salesData, setSalesData] = useState([]);
   const [paymentDialogSale, setPaymentDialogSale] = useState(null);
   const [payments, setPayments] = useState([]);
@@ -176,21 +180,24 @@ function UpdatePayment() {
   const inferCollectorType = (payment) =>
     payment.collector_name && !payment.collector_staff_id ? "bawarchee_staff" : "company_staff";
 
-  const fetchSales = async (search = searchQuery) => {
+  const fetchSales = async (search = searchQuery, page = currentPage) => {
     try {
-      const params = new URLSearchParams();
+      const params = new URLSearchParams({
+        page: String(page),
+        limit: String(ROWS_PER_PAGE),
+        packagingStatus: "delivered",
+      });
       const normalizedSearch = String(search || "").trim();
       if (normalizedSearch) {
         params.set("search", normalizedSearch);
       }
 
-      const queryString = params.toString();
-      const response = await fetch(
-        `${API}/staff/sales/by-date${queryString ? `?${queryString}` : ""}`
-      );
+      const response = await fetch(`${API}/staff/sales/by-date?${params.toString()}`);
       if (response.ok) {
-        const data = await response.json();
-        setSalesData(data);
+        const payload = parseListResponse(await response.json());
+        setSalesData(payload.data);
+        setTotalCount(payload.total);
+        setTotalPages(payload.totalPages);
       }
     } catch (error) {
       console.error("Error fetching global sales:", error);
@@ -199,11 +206,21 @@ function UpdatePayment() {
 
   useEffect(() => {
     const timer = setTimeout(() => {
-      fetchSales(searchQuery);
+      fetchSales(searchQuery, currentPage);
     }, 300);
 
     return () => clearTimeout(timer);
+  }, [searchQuery, currentPage]);
+
+  useEffect(() => {
+    setCurrentPage(1);
   }, [searchQuery]);
+
+  useEffect(() => {
+    if (currentPage > totalPages) {
+      setCurrentPage(totalPages);
+    }
+  }, [currentPage, totalPages]);
 
   useEffect(() => {
     const fetchDeliveryBoys = async () => {
@@ -241,7 +258,8 @@ function UpdatePayment() {
     });
   }, [deliveryBoys, paymentDialogSale]);
 
-  const filteredSales = salesData.filter((row) => row.packaging_status === "delivered");
+  const tableRows = salesData;
+  const { entriesStart } = getPageSliceMeta(currentPage, totalCount, ROWS_PER_PAGE);
 
   const getRemainingBalance = (sale) => {
     const price = parseFloat(sale.price) || 0;
@@ -1010,13 +1028,13 @@ function UpdatePayment() {
                         </TableRow>
                       </TableHead>
                       <TableBody>
-                        {filteredSales.length > 0 ? (
-                          filteredSales.map((sale, index) => {
+                        {tableRows.length > 0 ? (
+                          tableRows.map((sale, index) => {
                             const balance = getRemainingBalance(sale);
                             const paid = getPaidAmount(sale);
                             return (
                               <TableRow key={sale.id} sx={getPaymentRowSx(sale)}>
-                                <TableCell align="center">{index + 1}</TableCell>
+                                <TableCell align="center">{entriesStart + index}</TableCell>
                                 <TableCell align="left">
                                   <MDTypography variant="button" fontWeight="medium" color="dark">
                                     {sale.outlet_name}
@@ -1075,6 +1093,12 @@ function UpdatePayment() {
                       </TableBody>
                     </Table>
                   </TableContainer>
+                  <TablePaginationFooter
+                    page={currentPage}
+                    totalPages={totalPages}
+                    total={totalCount}
+                    onPageChange={setCurrentPage}
+                  />
                 </MDBox>
               </MDBox>
             </Card>

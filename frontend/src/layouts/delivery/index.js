@@ -18,6 +18,7 @@ import {
   useSalesPolling,
 } from "utils/salesSync";
 import { formatBpSaleId } from "utils/saleId";
+import { ROWS_PER_PAGE, parseListResponse, TablePaginationFooter, getPageSliceMeta } from "utils/tablePagination";
 import { IoSaveOutline } from "react-icons/io5";
 import { FaEye } from "react-icons/fa";
 // import { CiTrash } from "react-icons/ci";
@@ -26,6 +27,9 @@ function Delivery() {
   const [salesData, setSalesData] = useState([]);
   const [deliveryBoys, setDeliveryBoys] = useState([]);
   const [searchQuery, setSearchQuery] = useState("");
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalCount, setTotalCount] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
   const [detailsModalOpen, setDetailsModalOpen] = useState(false);
   const [activeRowId, setActiveRowId] = useState(null);
   const [historyDialog, setHistoryDialog] = useState({ open: false, sale: null, history: [] });
@@ -97,25 +101,53 @@ function Delivery() {
 
   const fetchSales = useCallback(async ({ silent = false } = {}) => {
     try {
-      const response = await fetch(`${API}/staff/sales/by-date`);
+      const params = new URLSearchParams({
+        page: String(currentPage),
+        limit: String(ROWS_PER_PAGE),
+        statusIn: "packing_done",
+      });
+      const normalizedSearch = String(searchQuery || "").trim();
+      if (normalizedSearch) {
+        params.set("search", normalizedSearch);
+      }
+
+      const response = await fetch(`${API}/staff/sales/by-date?${params.toString()}`);
       if (response.ok) {
-        const data = await response.json();
+        const payload = parseListResponse(await response.json());
+        setTotalCount(payload.total);
+        setTotalPages(payload.totalPages);
         setSalesData((prev) =>
-          mergeSalesRows(data, prev, enhanceDeliveryRow, isDeliveryRowDirty)
+          mergeSalesRows(payload.data, prev, enhanceDeliveryRow, isDeliveryRowDirty)
         );
       } else if (!silent) {
         setSalesData([]);
+        setTotalCount(0);
+        setTotalPages(1);
       }
     } catch (error) {
       if (!silent) {
         console.error("Error fetching global sales:", error);
       }
     }
-  }, [API]);
+  }, [API, currentPage, searchQuery]);
 
   useEffect(() => {
-    fetchSales();
+    const timer = setTimeout(() => {
+      fetchSales();
+    }, 300);
+
+    return () => clearTimeout(timer);
   }, [fetchSales]);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery]);
+
+  useEffect(() => {
+    if (currentPage > totalPages) {
+      setCurrentPage(totalPages);
+    }
+  }, [currentPage, totalPages]);
 
   useSalesPolling(fetchSales);
 
@@ -217,24 +249,8 @@ function Delivery() {
     return '#991b1b';
   };
 
-  const filteredSales = salesData.filter((row) => {
-    const status = row.original_packaging_status || row.packaging_status || "not_packing";
-    if (status !== "packing_done") {
-      return false;
-    }
-
-    const search = searchQuery.toLowerCase();
-    const outletName = row.outlet_name ? row.outlet_name.toLowerCase() : "";
-    const outletErpId = row.outlet_erp_id ? row.outlet_erp_id.toLowerCase() : "";
-    const staffName = row.staff_name ? row.staff_name.toLowerCase() : "";
-    const saleId = formatBpSaleId(row).toLowerCase();
-    return (
-      outletName.includes(search) ||
-      outletErpId.includes(search) ||
-      staffName.includes(search) ||
-      saleId.includes(search)
-    );
-  });
+  const { entriesStart } = getPageSliceMeta(currentPage, totalCount, ROWS_PER_PAGE);
+  const tableRows = salesData;
 
   return (
     <DashboardLayout>
@@ -305,6 +321,9 @@ function Delivery() {
                           No. of Box
                         </TableCell>
                         <TableCell align="center" sx={{ color: "#6b7280", borderBottom: "1px solid #e5e7eb", py: 1.5, fontWeight: 500 }}>
+                          No. of Packet
+                        </TableCell>
+                        <TableCell align="center" sx={{ color: "#6b7280", borderBottom: "1px solid #e5e7eb", py: 1.5, fontWeight: 500 }}>
                           Status
                         </TableCell>
                         <TableCell align="center" sx={{ color: "#6b7280", borderBottom: "1px solid #e5e7eb", py: 1.5, fontWeight: 500 }}>
@@ -322,8 +341,8 @@ function Delivery() {
                       </TableRow>
                     </TableHead>
                     <TableBody>
-                      {filteredSales.length > 0 ? (
-                        filteredSales.map((row, index) => {
+                      {tableRows.length > 0 ? (
+                        tableRows.map((row, index) => {
                           const bgColor = getRowColor(row.packaging_status);
                           const txColor = getTextColor(row.packaging_status);
                           const borderCol = `1px solid ${txColor}`;
@@ -336,7 +355,7 @@ function Delivery() {
                               }}
                             >
                               <TableCell align="center" sx={{ borderBottom: borderCol, py: 2, color: txColor }}>
-                                {index + 1}
+                                {entriesStart + index}
                               </TableCell>
                               <TableCell sx={{ borderBottom: borderCol, py: 2, color: txColor }}>
                                 {row.staff_name}
@@ -364,6 +383,9 @@ function Delivery() {
                               </TableCell>
                               <TableCell align="center" sx={{ borderBottom: borderCol, py: 2, color: txColor }}>
                                 {row.box_count || "N/A"}
+                              </TableCell>
+                              <TableCell align="center" sx={{ borderBottom: borderCol, py: 2, color: txColor }}>
+                                {row.packet_count ?? 0}
                               </TableCell>
                               <TableCell align="center" sx={{ borderBottom: borderCol, py: 2, color: txColor }}>
                                 <FormControl size="small" sx={{ minWidth: 160 }}>
@@ -400,7 +422,7 @@ function Delivery() {
                         })
                       ) : (
                         <TableRow>
-                          <TableCell colSpan={15} align="center" sx={{ py: 3, borderBottom: 0 }}>
+                          <TableCell colSpan={16} align="center" sx={{ py: 3, borderBottom: 0 }}>
                             <MDTypography variant="body2" color="text">
                               No deliveries found.
                             </MDTypography>
@@ -410,6 +432,12 @@ function Delivery() {
                     </TableBody>
                   </Table>
                 </TableContainer>
+                <TablePaginationFooter
+                  page={currentPage}
+                  totalPages={totalPages}
+                  total={totalCount}
+                  onPageChange={setCurrentPage}
+                />
               </MDBox>
             </Card>
           </Grid>

@@ -1,4 +1,10 @@
 import db from '../config/db.js';
+import {
+    buildLimitOffsetClause,
+    buildPaginatedResponse,
+    parsePaginationQuery,
+    shouldReturnAllRecords,
+} from '../utils/pagination.js';
 import { formatStickerNumber } from '../utils/stickerNumber.js';
 import { normalizeInvoiceNumber } from '../utils/invoiceNumber.js';
 
@@ -331,10 +337,19 @@ class StaffModel {
         }
     }
 
-    static async getAllSalesByDate(date, search = '') {
-        let query = `
+    static async getAllSalesByDate(options = {}) {
+        const {
+            date,
+            search = '',
+            statusIn = [],
+            page,
+            limit,
+            all = false,
+        } = options;
+
+        const baseSelect = `
             SELECT ss.id,
-                    ss.staff_id, ss.outlet_id, ss.sale_date, ss.item_count, ss.packed_item_count, ss.box_count, ss.price, ss.invoice_number, 
+                    ss.staff_id, ss.outlet_id, ss.sale_date, ss.item_count, ss.packed_item_count, ss.box_count, ss.packet_count, ss.price, ss.invoice_number, 
                     ss.sticker_number, ss.packaging_status, ss.delivery_boy_id, ss.vehicle_no,
                     DATE_FORMAT(ss.delivery_date, '%Y-%m-%d') AS delivery_date,
                     DATE_FORMAT(ssh.status_updated_at, '%Y-%m-%d %H:%i:%s') AS status_updated_at,
@@ -363,12 +378,24 @@ class StaffModel {
                  GROUP BY sale_id
              ) ssh ON ssh.sale_id = ss.id
         `;
+
         const params = [];
         const conditions = [];
 
         if (date) {
             conditions.push('ss.sale_date = ?');
             params.push(date);
+        }
+
+        const normalizedStatuses = Array.isArray(statusIn)
+            ? statusIn.filter(Boolean)
+            : String(statusIn || '')
+                .split(',')
+                .map((value) => value.trim())
+                .filter(Boolean);
+        if (normalizedStatuses.length) {
+            conditions.push(`ss.packaging_status IN (${normalizedStatuses.map(() => '?').join(', ')})`);
+            params.push(...normalizedStatuses);
         }
 
         const normalizedSearch = String(search || '').trim();
@@ -385,20 +412,66 @@ class StaffModel {
             params.push(searchTerm, searchTerm, searchTerm, searchTerm, searchTerm, searchTerm);
         }
 
-        if (conditions.length) {
-            query += ` WHERE ${conditions.join(' AND ')}`;
+        const whereClause = conditions.length ? ` WHERE ${conditions.join(' AND ')}` : '';
+        const orderClause = ' ORDER BY ss.sale_date DESC, ss.id DESC';
+
+        if (!shouldReturnAllRecords(all) && page !== undefined && page !== null && String(page) !== '') {
+            const pagination = parsePaginationQuery(page, limit);
+            const [countRows] = await db.execute(
+                `SELECT COUNT(*) AS total FROM staff_sales ss
+                 LEFT JOIN staff_counters sc ON ss.outlet_id = sc.id
+                 LEFT JOIN staff s ON ss.staff_id = s.id
+                 ${whereClause}`,
+                params
+            );
+            const total = countRows[0]?.total || 0;
+            const { clause: limitClause } = buildLimitOffsetClause(pagination);
+            const [rows] = await db.execute(
+                `${baseSelect}${whereClause}${orderClause}${limitClause}`,
+                params
+            );
+
+            const [statusCounts] = await db.execute(
+                `SELECT ss.packaging_status, COUNT(*) AS total
+                 FROM staff_sales ss
+                 LEFT JOIN staff_counters sc ON ss.outlet_id = sc.id
+                 LEFT JOIN staff s ON ss.staff_id = s.id
+                 ${whereClause}
+                 GROUP BY ss.packaging_status`,
+                params
+            );
+
+            const summary = {
+                delivered: 0,
+                returned: 0,
+                out_for_delivery: 0,
+                packing_done: 0,
+                not_packing: 0,
+                packing: 0,
+            };
+            statusCounts.forEach((row) => {
+                if (Object.prototype.hasOwnProperty.call(summary, row.packaging_status)) {
+                    summary[row.packaging_status] = Number(row.total) || 0;
+                }
+            });
+
+            return {
+                ...buildPaginatedResponse(rows, total, pagination.page, pagination.limit),
+                summary,
+            };
         }
 
-        query += ` ORDER BY ss.sale_date DESC, ss.id DESC LIMIT 1000`;
-
-        const [rows] = await db.execute(query, params);
+        const [rows] = await db.execute(
+            `${baseSelect}${whereClause}${orderClause} LIMIT 1000`,
+            params
+        );
         return rows;
     }
 
     static async getSalesByDate(staffId, date) {
         const [rows] = await db.execute(
             `SELECT ss.id,
-                    ss.staff_id, ss.outlet_id, ss.sale_date, ss.item_count, ss.packed_item_count, ss.box_count, ss.price, ss.invoice_number, 
+                    ss.staff_id, ss.outlet_id, ss.sale_date, ss.item_count, ss.packed_item_count, ss.box_count, ss.packet_count, ss.price, ss.invoice_number, 
                     ss.sticker_number, ss.payment_mode, ss.paid_amount, ss.balance_amount, 
                     ss.reference_no, ss.reference_date, ss.credit_days, ss.vehicle_no,
                     DATE_FORMAT(ss.delivery_date, '%Y-%m-%d') AS delivery_date,
@@ -424,7 +497,7 @@ class StaffModel {
     static async getSaleById(saleId) {
         const [rows] = await db.execute(
                 `SELECT ss.id,
-                    ss.staff_id, ss.outlet_id, ss.sale_date, ss.item_count, ss.packed_item_count, ss.box_count, ss.price, ss.invoice_number,
+                    ss.staff_id, ss.outlet_id, ss.sale_date, ss.item_count, ss.packed_item_count, ss.box_count, ss.packet_count, ss.price, ss.invoice_number,
                     ss.sticker_number, ss.paid_amount, ss.balance_amount, ss.packaging_status,
                     DATE_FORMAT(ss.delivery_date, '%Y-%m-%d') AS delivery_date,
                     DATE_FORMAT(ssh.status_updated_at, '%Y-%m-%d %H:%i:%s') AS status_updated_at,
@@ -515,7 +588,8 @@ class StaffModel {
         deliveryDate = null,
         statusDate = null,
         packedItemCount = null,
-        boxCount = null
+        boxCount = null,
+        packetCount = 0
     ) {
         const connection = await db.getConnection();
 
@@ -552,7 +626,8 @@ class StaffModel {
                          vehicle_no = NULL,
                          delivery_date = NULL,
                          packed_item_count = ?,
-                         box_count = NULL
+                         box_count = NULL,
+                         packet_count = 0
                      WHERE id = ?`,
                     [resetPackedCount, saleId]
                 );
@@ -564,17 +639,17 @@ class StaffModel {
                 await connection.execute(
                     `UPDATE staff_sales 
                      SET packaging_status = ?, delivery_boy_id = ?, vehicle_no = ?, delivery_date = ?,
-                         packed_item_count = ?, box_count = ?
+                         packed_item_count = ?, box_count = ?, packet_count = ?
                      WHERE id = ?`,
-                    [status, deliveryBoyId, vehicleNo, deliveryDate, packedItemCount, boxCount, saleId]
+                    [status, deliveryBoyId, vehicleNo, deliveryDate, packedItemCount, boxCount, packetCount, saleId]
                 );
             } else {
                 await connection.execute(
                     `UPDATE staff_sales 
                      SET packaging_status = ?, delivery_boy_id = NULL, vehicle_no = NULL, delivery_date = NULL,
-                         packed_item_count = ?, box_count = ?
+                         packed_item_count = ?, box_count = ?, packet_count = ?
                      WHERE id = ?`,
-                    [status, packedItemCount, boxCount, saleId]
+                    [status, packedItemCount, boxCount, packetCount, saleId]
                 );
             }
 
@@ -603,10 +678,21 @@ class StaffModel {
         }
     }
 
-    static async getCancelledDeliverySales() {
-        const [rows] = await db.execute(
-            `SELECT ss.id,
-                    ss.staff_id, ss.outlet_id, ss.sale_date, ss.item_count, ss.packed_item_count, ss.box_count,
+    static async getCancelledDeliverySales(options = {}) {
+        const {
+            search = '',
+            companyId = null,
+            staffId = null,
+            cancelDateFrom = null,
+            cancelDateTo = null,
+            page,
+            limit,
+            all = false,
+        } = options;
+
+        const baseSelect = `
+            SELECT ss.id,
+                    ss.staff_id, ss.outlet_id, ss.sale_date, ss.item_count, ss.packed_item_count, ss.box_count, ss.packet_count,
                     ss.price, ss.invoice_number, ss.sticker_number, ss.packaging_status,
                     DATE_FORMAT(
                         COALESCE(cancel_hist.cancel_date, legacy_cancel.status_updated_at),
@@ -642,9 +728,96 @@ class StaffModel {
                  INNER JOIN companies c2 ON c2.id = sc.company_id
                  GROUP BY sc.staff_id
              ) staff_company ON staff_company.staff_id = s.id
-             WHERE cancel_hist.sale_id IS NOT NULL OR ss.packaging_status = 'cancelled'
-             ORDER BY COALESCE(cancel_hist.cancel_date, legacy_cancel.status_updated_at) DESC, ss.id DESC`
-        );
+        `;
+
+        const params = [];
+        const conditions = ['(cancel_hist.sale_id IS NOT NULL OR ss.packaging_status = \'cancelled\')'];
+
+        if (companyId) {
+            conditions.push(`(
+                FIND_IN_SET(?, COALESCE(staff_company.company_ids, CAST(s.company_id AS CHAR))) > 0
+                OR s.company_id = ?
+            )`);
+            params.push(String(companyId), companyId);
+        }
+
+        if (staffId) {
+            conditions.push('s.id = ?');
+            params.push(staffId);
+        }
+
+        if (cancelDateFrom) {
+            conditions.push('DATE(COALESCE(cancel_hist.cancel_date, legacy_cancel.status_updated_at)) >= ?');
+            params.push(cancelDateFrom);
+        }
+
+        if (cancelDateTo) {
+            conditions.push('DATE(COALESCE(cancel_hist.cancel_date, legacy_cancel.status_updated_at)) <= ?');
+            params.push(cancelDateTo);
+        }
+
+        const normalizedSearch = String(search || '').trim();
+        if (normalizedSearch) {
+            const searchTerm = `%${normalizedSearch}%`;
+            conditions.push(`(
+                sc.outlet_name LIKE ?
+                OR sc.outlet_erp_id LIKE ?
+                OR s.name LIKE ?
+                OR ss.sticker_number LIKE ?
+                OR ss.invoice_number LIKE ?
+                OR COALESCE(staff_company.company_names, c.name) LIKE ?
+            )`);
+            params.push(searchTerm, searchTerm, searchTerm, searchTerm, searchTerm, searchTerm);
+        }
+
+        const whereClause = ` WHERE ${conditions.join(' AND ')}`;
+        const orderClause = ' ORDER BY COALESCE(cancel_hist.cancel_date, legacy_cancel.status_updated_at) DESC, ss.id DESC';
+
+        if (!shouldReturnAllRecords(all) && page !== undefined && page !== null && String(page) !== '') {
+            const pagination = parsePaginationQuery(page, limit);
+            const [countRows] = await db.execute(
+                `SELECT COUNT(*) AS total,
+                        COALESCE(SUM(ss.price), 0) AS total_amount
+                 FROM staff_sales ss
+                 LEFT JOIN (
+                     SELECT sale_id, MAX(changed_at) AS cancel_date
+                     FROM staff_sale_status_history
+                     WHERE status = 'cancelled'
+                     GROUP BY sale_id
+                 ) cancel_hist ON cancel_hist.sale_id = ss.id
+                 LEFT JOIN (
+                     SELECT sale_id, MAX(changed_at) AS status_updated_at
+                     FROM staff_sale_status_history
+                     GROUP BY sale_id
+                 ) legacy_cancel ON legacy_cancel.sale_id = ss.id
+                 LEFT JOIN staff_counters sc ON ss.outlet_id = sc.id
+                 LEFT JOIN staff s ON ss.staff_id = s.id
+                 LEFT JOIN companies c ON s.company_id = c.id
+                 LEFT JOIN (
+                     SELECT sc.staff_id,
+                            GROUP_CONCAT(c2.id ORDER BY c2.name) AS company_ids
+                     FROM staff_companies sc
+                     INNER JOIN companies c2 ON c2.id = sc.company_id
+                     GROUP BY sc.staff_id
+                 ) staff_company ON staff_company.staff_id = s.id
+                 ${whereClause}`,
+                params
+            );
+            const total = countRows[0]?.total || 0;
+            const totalAmount = Number(countRows[0]?.total_amount) || 0;
+            const { clause: limitClause } = buildLimitOffsetClause(pagination);
+            const [rows] = await db.execute(
+                `${baseSelect}${whereClause}${orderClause}${limitClause}`,
+                params
+            );
+
+            return {
+                ...buildPaginatedResponse(rows, total, pagination.page, pagination.limit),
+                totalAmount,
+            };
+        }
+
+        const [rows] = await db.execute(`${baseSelect}${whereClause}${orderClause}`, params);
         return rows;
     }
 
@@ -665,20 +838,17 @@ class StaffModel {
         return { sale, history };
     }
 
-    static async getPendingCredits() {
-        const [rows] = await db.execute(
-            `SELECT sp.id, sp.sale_id, ss.sticker_number,
-                    sp.amount AS credit_amount,
-                    GREATEST(0, sp.amount - COALESCE(credit_paid.paid_amount, 0)) AS balance_amount,
-                    sp.payment_date AS sale_date, sp.credit_days,
-                    ss.balance_amount AS sale_balance_amount,
-                    COALESCE(cpr.latest_remarks, sp.remarks) AS remarks,
-                    COALESCE(cpr.remarks_count, CASE WHEN sp.remarks IS NULL OR TRIM(sp.remarks) = '' THEN 0 ELSE 1 END) AS remarks_count,
-                    DATE_FORMAT(cpr.latest_remark_date, '%Y-%m-%d') AS latest_remark_date,
-                    ss.invoice_number, sc.outlet_name, sc.outlet_erp_id, sc.contact_number,
-                    s.id AS staff_id, s.name AS staff_name,
-                    COALESCE(staff_company.company_names, c.name) AS company_name,
-                    COALESCE(staff_company.company_ids, s.company_id) AS company_ids
+    static async getPendingCredits(options = {}) {
+        const {
+            search = '',
+            companyId = null,
+            staffId = null,
+            page,
+            limit,
+            all = false,
+        } = options;
+
+        const baseFrom = `
              FROM sale_payments sp
              JOIN staff_sales ss ON sp.sale_id = ss.id
              LEFT JOIN staff_counters sc ON ss.outlet_id = sc.id
@@ -712,10 +882,102 @@ class StaffModel {
                  FROM credit_payment_remarks r
                  GROUP BY r.payment_id
              ) cpr ON cpr.payment_id = sp.id
-             WHERE sp.payment_mode = 'credit'
-               AND ss.balance_amount > 0
-             HAVING balance_amount > 0
-             ORDER BY sp.payment_date ASC`
+        `;
+
+        const baseSelect = `
+            SELECT sp.id, sp.sale_id, ss.sticker_number,
+                    sp.amount AS credit_amount,
+                    GREATEST(0, sp.amount - COALESCE(credit_paid.paid_amount, 0)) AS balance_amount,
+                    sp.payment_date AS sale_date, sp.credit_days,
+                    ss.balance_amount AS sale_balance_amount,
+                    COALESCE(cpr.latest_remarks, sp.remarks) AS remarks,
+                    COALESCE(cpr.remarks_count, CASE WHEN sp.remarks IS NULL OR TRIM(sp.remarks) = '' THEN 0 ELSE 1 END) AS remarks_count,
+                    DATE_FORMAT(cpr.latest_remark_date, '%Y-%m-%d') AS latest_remark_date,
+                    ss.invoice_number, sc.outlet_name, sc.outlet_erp_id, sc.contact_number,
+                    s.id AS staff_id, s.name AS staff_name,
+                    COALESCE(staff_company.company_names, c.name) AS company_name,
+                    COALESCE(staff_company.company_ids, s.company_id) AS company_ids
+             ${baseFrom}
+        `;
+
+        const params = [];
+        const conditions = [
+            "sp.payment_mode = 'credit'",
+            'ss.balance_amount > 0',
+        ];
+
+        if (companyId) {
+            conditions.push(`(
+                FIND_IN_SET(?, COALESCE(staff_company.company_ids, CAST(s.company_id AS CHAR))) > 0
+                OR s.company_id = ?
+            )`);
+            params.push(String(companyId), companyId);
+        }
+
+        if (staffId) {
+            conditions.push('s.id = ?');
+            params.push(staffId);
+        }
+
+        const normalizedSearch = String(search || '').trim();
+        if (normalizedSearch) {
+            const searchTerm = `%${normalizedSearch}%`;
+            conditions.push(`(
+                sc.outlet_name LIKE ?
+                OR sc.contact_number LIKE ?
+                OR ss.invoice_number LIKE ?
+                OR s.name LIKE ?
+                OR COALESCE(cpr.latest_remarks, sp.remarks) LIKE ?
+                OR ss.sticker_number LIKE ?
+                OR sc.outlet_erp_id LIKE ?
+            )`);
+            params.push(searchTerm, searchTerm, searchTerm, searchTerm, searchTerm, searchTerm, searchTerm);
+        }
+
+        const whereClause = ` WHERE ${conditions.join(' AND ')}`;
+        const havingClause = ' HAVING balance_amount > 0';
+        const orderClause = ' ORDER BY sp.payment_date ASC';
+
+        if (!shouldReturnAllRecords(all) && page !== undefined && page !== null && String(page) !== '') {
+            const pagination = parsePaginationQuery(page, limit);
+            const [countRows] = await db.execute(
+                `SELECT COUNT(*) AS total
+                 FROM (
+                    SELECT sp.id,
+                           GREATEST(0, sp.amount - COALESCE(credit_paid.paid_amount, 0)) AS balance_amount
+                    ${baseFrom}
+                    ${whereClause}
+                    ${havingClause}
+                 ) filtered_credits`,
+                params
+            );
+            const total = countRows[0]?.total || 0;
+            const { clause: limitClause } = buildLimitOffsetClause(pagination);
+            const [rows] = await db.execute(
+                `${baseSelect}${whereClause}${havingClause}${orderClause}${limitClause}`,
+                params
+            );
+
+            const [balanceRows] = await db.execute(
+                `SELECT COALESCE(SUM(filtered.balance_amount), 0) AS total_balance
+                 FROM (
+                    SELECT GREATEST(0, sp.amount - COALESCE(credit_paid.paid_amount, 0)) AS balance_amount
+                    ${baseFrom}
+                    ${whereClause}
+                    ${havingClause}
+                 ) filtered`,
+                params
+            );
+
+            return {
+                ...buildPaginatedResponse(rows, total, pagination.page, pagination.limit),
+                totalBalance: Number(balanceRows[0]?.total_balance) || 0,
+            };
+        }
+
+        const [rows] = await db.execute(
+            `${baseSelect}${whereClause}${havingClause}${orderClause}`,
+            params
         );
         return rows;
     }

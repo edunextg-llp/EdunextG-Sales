@@ -154,6 +154,7 @@ async function initDB() {
             item_count INT NOT NULL DEFAULT 0,
             packed_item_count INT NULL,
             box_count INT NULL,
+            packet_count INT NOT NULL DEFAULT 0,
             price DECIMAL(10, 2) NOT NULL,
             sticker_number VARCHAR(20) NULL UNIQUE,
             payment_mode ENUM('cash', 'upi') NOT NULL DEFAULT 'cash',
@@ -489,6 +490,23 @@ async function initDB() {
 
     try {
         await connection.query(`
+            ALTER TABLE staff_sales ADD COLUMN packet_count INT NOT NULL DEFAULT 0
+        `);
+        console.log('Added packet_count to staff_sales table');
+    } catch (err) {
+        if (err.code !== 'ER_DUP_FIELDNAME') {
+            console.log('packet_count column may already exist on staff_sales');
+        }
+    }
+
+    await connection.query(`
+        UPDATE staff_sales
+        SET packet_count = 0
+        WHERE packet_count IS NULL
+    `);
+
+    try {
+        await connection.query(`
             ALTER TABLE sale_payments ADD COLUMN parent_credit_payment_id INT NULL
         `);
         console.log('Added parent_credit_payment_id column to sale_payments');
@@ -521,7 +539,7 @@ async function initDB() {
             ifsc_code VARCHAR(50) NULL,
             depositor_name VARCHAR(255) NULL,
             store_name VARCHAR(255) NOT NULL,
-            deposit_mode ENUM('cash', 'cheque') NOT NULL,
+            deposit_mode ENUM('cash', 'cheque', 'upi') NOT NULL,
             amount DECIMAL(10, 2) NOT NULL DEFAULT 0.00,
             cheque_no VARCHAR(100) NULL,
             cheque_date DATE NULL,
