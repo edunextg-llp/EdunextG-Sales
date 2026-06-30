@@ -227,18 +227,6 @@ export async function ensureSchema() {
 
         await tryQuery(
             connection,
-            `ALTER TABLE staff_sales ADD COLUMN packet_count INT NOT NULL DEFAULT 0`,
-            'packet_count on staff_sales'
-        );
-
-        await connection.query(`
-            UPDATE staff_sales
-            SET packet_count = 0
-            WHERE packet_count IS NULL
-        `);
-
-        await tryQuery(
-            connection,
             `ALTER TABLE sale_payments ADD COLUMN remarks TEXT NULL`,
             'remarks on sale_payments'
         );
@@ -292,7 +280,7 @@ export async function ensureSchema() {
                 ifsc_code VARCHAR(50) NULL,
                 depositor_name VARCHAR(255) NULL,
                 store_name VARCHAR(255) NOT NULL,
-                deposit_mode ENUM('cash', 'cheque', 'upi') NOT NULL,
+                deposit_mode ENUM('cash', 'cheque') NOT NULL,
                 amount DECIMAL(10, 2) NOT NULL DEFAULT 0.00,
                 cheque_no VARCHAR(100) NULL,
                 cheque_date DATE NULL,
@@ -490,12 +478,6 @@ export async function ensureSchema() {
             connection,
             `ALTER TABLE bank_deposits ADD COLUMN depositor_name VARCHAR(255) NULL`,
             'depositor_name on bank_deposits'
-        );
-
-        await tryQuery(
-            connection,
-            `ALTER TABLE bank_deposits MODIFY deposit_mode ENUM('cash', 'cheque', 'upi') NOT NULL`,
-            'upi deposit_mode on bank_deposits'
         );
 
         await connection.query(`
