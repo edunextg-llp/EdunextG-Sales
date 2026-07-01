@@ -24,7 +24,7 @@ import DashboardLayout from "examples/LayoutContainers/DashboardLayout";
 import DashboardNavbar from "examples/Navbars/DashboardNavbar";
 import Footer from "examples/Footer";
 
-const API = "https://bawarchee.edunextg.co/api";
+const API = "http://localhost:5001/api";
 
 const tableHeadSx = {
   color: "#6b7280",

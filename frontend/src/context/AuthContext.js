@@ -9,7 +9,7 @@ const AUTH_KEYS = {
   remember: "auth_remember",
 };
 
-const API_BASE = "https://bawarchee.edunextg.co/api";
+const API_BASE = "http://localhost:5001/api";
 
 const getStorage = () => {
   const remember = localStorage.getItem(AUTH_KEYS.remember) === "true";

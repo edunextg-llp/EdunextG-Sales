@@ -215,7 +215,7 @@ function BankDeposit() {
   const [depositTotalStartDate, setDepositTotalStartDate] = useState(() => getMonthStartDate());
   const [depositTotalEndDate, setDepositTotalEndDate] = useState(() => getTodayLocalDate());
   const [viewDeposit, setViewDeposit] = useState(null); // For view dialog
-  const API = "https://bawarchee.edunextg.co/api";
+  const API = "http://localhost:5001/api";
 
   const cashAmount = useMemo(
     () =>

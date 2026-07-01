@@ -44,7 +44,7 @@ function CreditsPage() {
   const [remarksHistory, setRemarksHistory] = useState([]);
   const [loadingRemarks, setLoadingRemarks] = useState(false);
   const [savingRemarks, setSavingRemarks] = useState(false);
-  const API = "https://bawarchee.edunextg.co/api";
+  const API = "http://localhost:5001/api";
 
   const getTodayLocalDate = () => {
     const now = new Date();

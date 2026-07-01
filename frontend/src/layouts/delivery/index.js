@@ -30,7 +30,7 @@ function Delivery() {
   const [activeRowId, setActiveRowId] = useState(null);
   const [historyDialog, setHistoryDialog] = useState({ open: false, sale: null, history: [] });
   const [savingSaleIds, setSavingSaleIds] = useState(new Set());
-  const API = "https://bawarchee.edunextg.co/api";
+  const API = "http://localhost:5001/api";
 
   const statusLabels = {
     not_packing: "Not Packing",

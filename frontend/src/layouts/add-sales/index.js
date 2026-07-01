@@ -77,7 +77,7 @@ function AddSales() {
   const [editForm, setEditForm] = useState({ itemCount: "", invoiceNumber: "", price: "" });
   const [savingEdit, setSavingEdit] = useState(false);
 
-  const API = "https://bawarchee.edunextg.co/api";
+  const API = "http://localhost:5001/api";
   const isCnfStaff = selectedStaff?.staff_type === "cnf";
   const emptySaleRow = { itemCount: "", invoiceNumber: "", price: "", deliveryBoyId: "", vehicleNo: "" };
 

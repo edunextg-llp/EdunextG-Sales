@@ -56,7 +56,7 @@ function Delivered() {
   const [updatingSaleIds, setUpdatingSaleIds] = useState(new Set());
   const [cancelReportOpen, setCancelReportOpen] = useState(false);
   const [activeTab, setActiveTab] = useState("delivered");
-  const API = "https://bawarchee.edunextg.co/api";
+  const API = "http://localhost:5001/api";
 
   const getTodayLocalDate = () => {
     const now = new Date();

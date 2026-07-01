@@ -93,7 +93,7 @@ function CreateStaff() {
     assignments: createEmptyAssignments(),
   });
 
-  const API = "https://bawarchee.edunextg.co/api";
+  const API = "http://localhost:5001/api";
 
   // Fetch Staff List
   const fetchStaffList = async () => {

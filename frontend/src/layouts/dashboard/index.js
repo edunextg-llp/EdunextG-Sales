@@ -48,7 +48,7 @@ import ReportsBarChart from "examples/Charts/BarCharts/ReportsBarChart";
 import ReportsLineChart from "examples/Charts/LineCharts/ReportsLineChart";
 import ComplexStatisticsCard from "examples/Cards/StatisticsCards/ComplexStatisticsCard";
 
-const API = "https://bawarchee.edunextg.co/api";
+const API = "http://localhost:5001/api";
 
 const emptyReportData = {
   summary: { total_sales: 0, total_paid: 0, total_collection: 0, total_outstanding: 0 },
@@ -1685,48 +1685,40 @@ function Dashboard() {
                   icon="today"
                   title="Today Collection"
                   count={shortMoney(todayCollectionTotal)}
-                //   percentage={{
-                //     color: chequeAlarmCount > 0 ? "warning" : "success",
-                //     amount: chequeAlarmCount,
-                //     label: "cheque alarms",
-                //   }
-                // }
                 />
               </MDBox>
             </Grid>
-            <Grid item xs={12} md={4}>
-            <Card onClick={() => setChequeDialogOpen(true)} sx={{ cursor: "pointer" }}>
-              <MDBox p={3}>
-                <MDTypography variant="h6" fontWeight="medium">
-                  Pending Cheques
-                </MDTypography>
-                <MDTypography variant="h3" color={chequePendingCount > 0 ? "warning" : "success"}>
-                  {chequePendingCount}
-                </MDTypography>
-                <MDTypography variant="body2" color="text">
-                  All cheques not submitted in bank deposit
-                  {chequeMissedCount > 0 ? `, including ${chequeMissedCount} missed earlier.` : "."}
-                </MDTypography>
+            <Grid item xs={12} md={6} lg={3}>
+              <MDBox mb={1.5} onClick={() => setChequeDialogOpen(true)} sx={{ cursor: "pointer" }}>
+                <ComplexStatisticsCard
+                  color={chequePendingCount > 0 ? "warning" : "success"}
+                  icon="account_balance"
+                  title="Pending Cheques"
+                  count={chequePendingCount}
+                  percentage={{
+                    color: chequeMissedCount > 0 ? "error" : "success",
+                    amount: "",
+                    label: chequeMissedCount > 0 ? `incl. ${chequeMissedCount} missed` : "deposit pending",
+                  }}
+                />
               </MDBox>
-            </Card>
-          </Grid>
-          <Grid item xs={12} md={4}>
-            <Card>
-              <MDBox p={3}>
-                <MDTypography variant="h6" fontWeight="medium">
-                  Payment Entries
-                </MDTypography>
-                <MDTypography variant="h3" color="info">
-                  {reportData.collectionByMode.reduce((total, row) => total + Number(row.count || 0), 0)}
-                </MDTypography>
-                <MDTypography variant="body2" color="text">
-                  Cash, online, and cheque collection entries.
-                </MDTypography>
+            </Grid>
+            <Grid item xs={12} md={6} lg={3}>
+              <MDBox mb={1.5}>
+                <ComplexStatisticsCard
+                  color="info"
+                  icon="receipt"
+                  title="Payment Entries"
+                  count={reportData.collectionByMode.reduce((total, row) => total + Number(row.count || 0), 0)}
+                  percentage={{
+                    color: "success",
+                    amount: "",
+                    label: "Cash, online, and cheque entries",
+                  }}
+                />
               </MDBox>
-            </Card>
+            </Grid>
           </Grid>
-          </Grid>
-          
         </MDBox>
 
         <MDBox mt={4.5}>
