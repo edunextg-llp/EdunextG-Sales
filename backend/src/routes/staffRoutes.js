@@ -4,6 +4,7 @@ const router = express.Router();
 import * as staffController from '../controllers/staffController.js';
 import * as dmsStockController from '../controllers/dmsStockController.js';
 import * as currentStockController from '../controllers/currentStockController.js';
+import * as physicalStockController from '../controllers/physicalStockController.js';
 
 const upload = multer({
     storage: multer.memoryStorage(),
@@ -34,7 +35,8 @@ router.get('/dms-stock', dmsStockController.getLatestDmsStock);
 router.get('/dms-stock/imports', dmsStockController.getDmsStockImports);
 router.post('/dms-stock/upload', upload.single('file'), dmsStockController.uploadDmsStock);
 router.get('/current-stock', currentStockController.getCurrentStock);
-router.post('/current-stock/upload', upload.single('file'), currentStockController.uploadCurrentStock);
+router.get('/physical-stock', physicalStockController.getPhysicalStock);
+router.post('/physical-stock/upload', upload.single('file'), physicalStockController.uploadPhysicalStock);
 router.get('/sales/by-date', staffController.getAllSalesByDate);
 router.get('/sales/cancelled', staffController.getCancelledDeliverySales);
 router.get('/reports', staffController.getReports);

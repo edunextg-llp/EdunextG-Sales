@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import Card from "@mui/material/Card";
 import FormControl from "@mui/material/FormControl";
@@ -22,6 +22,7 @@ import MDTypography from "components/MDTypography";
 import DashboardLayout from "examples/LayoutContainers/DashboardLayout";
 import DashboardNavbar from "examples/Navbars/DashboardNavbar";
 import Footer from "examples/Footer";
+import { stickyColumnSx, stickyHeadRowSx, stickyTableContainerSx, stickyTableSx } from "utils/stickyProductColumns";
 
 const API = "https://bawarchee.edunextg.co/api";
 
@@ -48,6 +49,11 @@ const calculatedCellSx = {
   fontWeight: 700,
 };
 
+const sourceCellSx = {
+  ...tableBodySx,
+  backgroundColor: "#f8fafc",
+};
+
 const numberFormat = (value, decimals = 2) =>
   Number(value || 0).toLocaleString("en-IN", {
     minimumFractionDigits: decimals,
@@ -70,6 +76,13 @@ const formatDate = (value) => {
   });
 };
 
+const resolveDmsImportId = (uploadDate, imports) => {
+  if (!imports.length) return "";
+  if (!uploadDate) return String(imports[0].id);
+  const match = imports.find((entry) => entry.upload_date === uploadDate);
+  return match ? String(match.id) : "";
+};
+
 function Metric({ label, value }) {
   return (
     <MDBox p={2} sx={{ border: "1px solid #e5e7eb", borderRadius: 1, backgroundColor: "#fff" }}>
@@ -84,19 +97,21 @@ function Metric({ label, value }) {
 }
 
 function CurrentStock() {
-  const fileInputRef = useRef(null);
   const [dmsImports, setDmsImports] = useState([]);
-  const [selectedDmsImportId, setSelectedDmsImportId] = useState("");
-  const [selectedFile, setSelectedFile] = useState(null);
   const [stockImport, setStockImport] = useState(null);
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(false);
-  const [uploading, setUploading] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [divisionFilter, setDivisionFilter] = useState("");
   const [erpSearch, setErpSearch] = useState("");
   const [productSearch, setProductSearch] = useState("");
+  const [stockListDateFilter, setStockListDateFilter] = useState("");
+
+  const selectedDmsImportId = useMemo(
+    () => resolveDmsImportId(stockListDateFilter, dmsImports),
+    [stockListDateFilter, dmsImports]
+  );
 
   const selectedDmsImport = useMemo(
     () => dmsImports.find((item) => String(item.id) === String(selectedDmsImportId)) || null,
@@ -104,8 +119,6 @@ function CurrentStock() {
   );
 
   const fetchDmsImports = async () => {
-    setLoading(true);
-    setError("");
     try {
       const response = await fetch(`${API}/staff/dms-stock/imports`);
       const data = await response.json();
@@ -113,8 +126,6 @@ function CurrentStock() {
       setDmsImports(data.imports || []);
     } catch (fetchError) {
       setError(fetchError.message);
-    } finally {
-      setLoading(false);
     }
   };
 
@@ -122,9 +133,11 @@ function CurrentStock() {
     if (!dmsImportId) {
       setStockImport(null);
       setItems([]);
+      setMessage("");
       return;
     }
     setLoading(true);
+    setMessage("");
     setError("");
     try {
       const response = await fetch(`${API}/staff/current-stock?dmsImportId=${dmsImportId}`);
@@ -132,6 +145,7 @@ function CurrentStock() {
       if (!response.ok) throw new Error(data.error || "Failed to fetch current stock.");
       setStockImport(data.import || null);
       setItems(data.items || []);
+      setMessage("Current stock calculated as Physical Stock minus DMS Stock.");
     } catch (fetchError) {
       setError(fetchError.message);
       setStockImport(null);
@@ -145,49 +159,16 @@ function CurrentStock() {
     fetchDmsImports();
   }, []);
 
+  useEffect(() => {
+    if (!dmsImports.length) return;
+    fetchCurrentStock(selectedDmsImportId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [stockListDateFilter, dmsImports]);
+
   const handleDateChange = (event) => {
-    const dmsImportId = event.target.value;
-    setSelectedDmsImportId(dmsImportId);
-    setSelectedFile(null);
+    setStockListDateFilter(event.target.value);
     setMessage("");
     setError("");
-    if (fileInputRef.current) fileInputRef.current.value = "";
-    fetchCurrentStock(dmsImportId);
-  };
-
-  const handleUpload = async () => {
-    if (!selectedDmsImportId) {
-      setError("Please choose a DMS stock date first.");
-      return;
-    }
-    if (!selectedFile) {
-      setError("Please choose a Current Stock Excel or CSV file.");
-      return;
-    }
-
-    const formData = new FormData();
-    formData.append("dmsImportId", selectedDmsImportId);
-    formData.append("file", selectedFile);
-    setUploading(true);
-    setMessage("");
-    setError("");
-    try {
-      const response = await fetch(`${API}/staff/current-stock/upload`, {
-        method: "POST",
-        body: formData,
-      });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || "Current stock upload failed.");
-      setStockImport(data.import || null);
-      setItems(data.items || []);
-      setSelectedFile(null);
-      if (fileInputRef.current) fileInputRef.current.value = "";
-      setMessage(data.message || "Current stock uploaded and calculated successfully.");
-    } catch (uploadError) {
-      setError(uploadError.message);
-    } finally {
-      setUploading(false);
-    }
   };
 
   const divisionOptions = useMemo(
@@ -218,66 +199,19 @@ function CurrentStock() {
                     Current Stock
                   </MDTypography>
                   <MDTypography variant="caption" color="text">
-                    Choose a DMS upload date first, then upload the matching Current Stock file.
+                    Calculated as Physical Stock minus DMS Stock for the selected DMS date.
                   </MDTypography>
                 </MDBox>
                 <MDButton color="dark" variant="outlined" onClick={() => fetchCurrentStock()} disabled={!selectedDmsImportId || loading}>
                   <Icon sx={{ mr: 1 }}>refresh</Icon>
-                  Fetch Data
+                  Calculate
                 </MDButton>
               </MDBox>
 
               <MDBox px={3} pb={3}>
-                <Grid container spacing={2} alignItems="center">
-                  <Grid item xs={12} md={4}>
-                    <FormControl size="small" fullWidth>
-                      <Select
-                        displayEmpty
-                        value={selectedDmsImportId}
-                        onChange={handleDateChange}
-                        sx={{ height: 44, backgroundColor: "#fff" }}
-                      >
-                        <MenuItem value="">Choose DMS Stock Date</MenuItem>
-                        {dmsImports.map((stock) => (
-                          <MenuItem key={stock.id} value={stock.id}>
-                            {formatDate(stock.upload_date)} — {stock.file_name}
-                          </MenuItem>
-                        ))}
-                      </Select>
-                    </FormControl>
-                  </Grid>
-                  <Grid item xs={12} md={5}>
-                    <MDBox display="flex" alignItems="center" gap={1.5} sx={{ border: "1px dashed #94a3b8", borderRadius: 1, p: 1.5, backgroundColor: "#f8fafc" }}>
-                      <MDButton color="info" variant="outlined" onClick={() => fileInputRef.current?.click()} disabled={!selectedDmsImportId}>
-                        <Icon sx={{ mr: 1 }}>upload_file</Icon>
-                        Choose File
-                      </MDButton>
-                      <MDTypography variant="button" color="dark" sx={{ overflowWrap: "anywhere" }}>
-                        {selectedFile ? selectedFile.name : "CSV, XLS, or XLSX"}
-                      </MDTypography>
-                      <input
-                        ref={fileInputRef}
-                        type="file"
-                        accept=".csv,.xls,.xlsx"
-                        onChange={(event) => {
-                          setSelectedFile(event.target.files?.[0] || null);
-                          setMessage("");
-                          setError("");
-                        }}
-                        style={{ display: "none" }}
-                      />
-                    </MDBox>
-                  </Grid>
-                  <Grid item xs={12} md={3}>
-                    <MDButton color="info" variant="gradient" fullWidth onClick={handleUpload} disabled={!selectedDmsImportId || !selectedFile || uploading}>
-                      <Icon sx={{ mr: 1 }}>cloud_upload</Icon>
-                      {uploading ? "Uploading" : "Upload & Calculate"}
-                    </MDButton>
-                  </Grid>
-                  {(loading || uploading) && <Grid item xs={12}><LinearProgress color="info" /></Grid>}
-                  {message && <Grid item xs={12}><MDTypography variant="button" color="success" fontWeight="medium">{message}</MDTypography></Grid>}
-                  {error && <Grid item xs={12}><MDTypography variant="button" color="error" fontWeight="medium">{error}</MDTypography></Grid>}
-                </Grid>
+                {loading && <LinearProgress color="info" sx={{ mb: 2 }} />}
+                {message && <MDTypography variant="button" color="success" fontWeight="medium" display="block" mb={1}>{message}</MDTypography>}
+                {error && <MDTypography variant="button" color="error" fontWeight="medium" display="block">{error}</MDTypography>}
               </MDBox>
             </Card>
           </Grid>
@@ -286,11 +220,13 @@ function CurrentStock() {
             <Grid item xs={12}>
               <Grid container spacing={2}>
                 <Grid item xs={12} sm={6} md={3}><Metric label="DMS Stock Date" value={formatDate(stockImport.dms_upload_date)} /></Grid>
-                <Grid item xs={12} sm={6} md={3}><Metric label="Rows Stored" value={unitFormat(stockImport.row_count)} /></Grid>
-                <Grid item xs={12} sm={6} md={3}><Metric label="Stock Cases" value={unitFormat(stockImport.total_cases)} /></Grid>
-                <Grid item xs={12} sm={6} md={3}><Metric label="Loose Stock Pcs" value={unitFormat(stockImport.total_loose_pcs)} /></Grid>
-                <Grid item xs={12} sm={6} md={3}><Metric label="Calculated Total Pcs" value={unitFormat(stockImport.total_pieces)} /></Grid>
-                <Grid item xs={12} sm={6} md={3}><Metric label="Calculated Total Value" value={money(stockImport.total_value)} /></Grid>
+                <Grid item xs={12} sm={6} md={3}><Metric label="Products Compared" value={unitFormat(stockImport.row_count)} /></Grid>
+                <Grid item xs={12} sm={6} md={3}><Metric label="Physical Total Pcs" value={unitFormat(stockImport.total_physical_pieces)} /></Grid>
+                <Grid item xs={12} sm={6} md={3}><Metric label="DMS Total Pcs" value={unitFormat(stockImport.total_dms_pieces)} /></Grid>
+                <Grid item xs={12} sm={6} md={3}><Metric label="Current Stock Cases" value={unitFormat(stockImport.total_cases)} /></Grid>
+                <Grid item xs={12} sm={6} md={3}><Metric label="Current Stock Loose Pcs" value={unitFormat(stockImport.total_loose_pcs)} /></Grid>
+                <Grid item xs={12} sm={6} md={3}><Metric label="Current Stock Total Pcs" value={unitFormat(stockImport.total_pieces)} /></Grid>
+                <Grid item xs={12} sm={6} md={3}><Metric label="Current Stock Total Value" value={money(stockImport.total_value)} /></Grid>
               </Grid>
             </Grid>
           )}
@@ -300,17 +236,38 @@ function CurrentStock() {
               <MDBox p={3} pb={2}>
                 <MDTypography variant="h6" fontWeight="medium">Current Stock Items</MDTypography>
                 <MDTypography variant="caption" color="text" display="block">
-                  {selectedDmsImport
-                    ? `DMS date: ${formatDate(selectedDmsImport.upload_date)} | ${selectedDmsImport.file_name}`
-                    : "Choose a DMS stock date to fetch saved Current Stock data."}
+                  Use the date filter to calculate Current Stock for a specific DMS upload.
                 </MDTypography>
+                {selectedDmsImport && (
+                  <MDTypography variant="caption" color="text" display="block" mt={0.5}>
+                    DMS date: {formatDate(selectedDmsImport.upload_date)}
+                    {selectedDmsImport.file_name ? ` | File: ${selectedDmsImport.file_name}` : ""}
+                  </MDTypography>
+                )}
                 <MDTypography variant="caption" color="info" display="block" mt={0.5}>
-                  Blue columns are automatically calculated from Case, Pcs/Box, loose Pcs, and Price/Pcs.
+                  Blue columns show Current Stock = Physical Stock minus DMS Stock.
                 </MDTypography>
               </MDBox>
               <MDBox px={3} pb={3}>
                 <Grid container spacing={2} mb={2} alignItems="center">
-                  <Grid item xs={12} md={3}>
+                  <Grid item xs={12} md={2}>
+                    <FormControl size="small" fullWidth>
+                      <Select
+                        displayEmpty
+                        value={stockListDateFilter}
+                        onChange={handleDateChange}
+                        sx={{ height: 44, backgroundColor: "#fff" }}
+                      >
+                        <MenuItem value="">Latest Upload</MenuItem>
+                        {dmsImports.map((stock) => (
+                          <MenuItem key={stock.id} value={stock.upload_date}>
+                            {formatDate(stock.upload_date)}
+                          </MenuItem>
+                        ))}
+                      </Select>
+                    </FormControl>
+                  </Grid>
+                  <Grid item xs={12} md={2}>
                     <FormControl size="small" fullWidth>
                       <Select displayEmpty value={divisionFilter} onChange={(event) => setDivisionFilter(event.target.value)} sx={{ height: 44, backgroundColor: "#fff" }}>
                         <MenuItem value="">All Divisions</MenuItem>
@@ -318,53 +275,63 @@ function CurrentStock() {
                       </Select>
                     </FormControl>
                   </Grid>
-                  <Grid item xs={12} md={3}><MDInput label="Search ERP ID" fullWidth value={erpSearch} onChange={(event) => setErpSearch(event.target.value)} /></Grid>
-                  <Grid item xs={12} md={4}><MDInput label="Search Product" fullWidth value={productSearch} onChange={(event) => setProductSearch(event.target.value)} /></Grid>
+                  <Grid item xs={12} md={2}><MDInput label="Search ERP ID" fullWidth value={erpSearch} onChange={(event) => setErpSearch(event.target.value)} /></Grid>
+                  <Grid item xs={12} md={3}><MDInput label="Search Product" fullWidth value={productSearch} onChange={(event) => setProductSearch(event.target.value)} /></Grid>
                   <Grid item xs={12} md={2}>
-                    <MDButton color="dark" variant="outlined" fullWidth onClick={() => { setDivisionFilter(""); setErpSearch(""); setProductSearch(""); }}>
+                    <MDButton color="dark" variant="outlined" fullWidth onClick={() => { setStockListDateFilter(""); setDivisionFilter(""); setErpSearch(""); setProductSearch(""); }}>
                       <Icon sx={{ mr: 1 }}>filter_alt_off</Icon>Clear
                     </MDButton>
                   </Grid>
                 </Grid>
 
-                <TableContainer component={Paper} sx={{ boxShadow: "none", border: "1px solid #e5e7eb" }}>
-                  <Table sx={{ minWidth: 1450 }}>
+                <TableContainer component={Paper} sx={stickyTableContainerSx}>
+                  <Table sx={stickyTableSx(1800)}>
                     <TableHead sx={{ display: "table-header-group", backgroundColor: "#f9fafb" }}>
                       <TableRow>
-                        <TableCell sx={tableHeadSx}>Sr No</TableCell>
-                        <TableCell sx={tableHeadSx}>Product ERP ID</TableCell>
-                        <TableCell sx={tableHeadSx}>SKU Name</TableCell>
-                        <TableCell sx={tableHeadSx}>Product Division</TableCell>
-                        <TableCell sx={tableHeadSx}>Variant Name</TableCell>
-                        <TableCell align="right" sx={tableHeadSx}>Pcs/Box</TableCell>
-                        <TableCell align="right" sx={tableHeadSx}>Current Stock In Case</TableCell>
-                        <TableCell align="right" sx={tableHeadSx}>Current Stock In Pcs</TableCell>
-                        <TableCell align="right" sx={{ ...tableHeadSx, backgroundColor: "#dbeafe" }}>Total Current Stock In Pcs</TableCell>
-                        <TableCell align="right" sx={tableHeadSx}>Price/Pcs</TableCell>
-                        <TableCell align="right" sx={tableHeadSx}>MRP</TableCell>
-                        <TableCell align="right" sx={{ ...tableHeadSx, backgroundColor: "#dbeafe" }}>Total Value</TableCell>
+                        <TableCell sx={stickyColumnSx(0, { isHead: true, baseSx: tableHeadSx })}>Sr No</TableCell>
+                        <TableCell sx={stickyColumnSx(1, { isHead: true, baseSx: tableHeadSx })}>Product ERP ID</TableCell>
+                        <TableCell sx={stickyColumnSx(2, { isHead: true, baseSx: tableHeadSx })}>SKU Name</TableCell>
+                        <TableCell sx={stickyColumnSx(3, { isHead: true, baseSx: tableHeadSx })}>Product Division</TableCell>
+                        <TableCell sx={stickyHeadRowSx(tableHeadSx)}>Variant Name</TableCell>
+                        <TableCell align="right" sx={stickyHeadRowSx(tableHeadSx)}>Pcs/Box</TableCell>
+                        <TableCell align="right" sx={stickyHeadRowSx(tableHeadSx, "#f1f5f9")}>Physical Case</TableCell>
+                        <TableCell align="right" sx={stickyHeadRowSx(tableHeadSx, "#f1f5f9")}>Physical Pcs</TableCell>
+                        <TableCell align="right" sx={stickyHeadRowSx(tableHeadSx, "#f1f5f9")}>Physical Total Pcs</TableCell>
+                        <TableCell align="right" sx={stickyHeadRowSx(tableHeadSx, "#fef3c7")}>DMS Case</TableCell>
+                        <TableCell align="right" sx={stickyHeadRowSx(tableHeadSx, "#fef3c7")}>DMS Pcs</TableCell>
+                        <TableCell align="right" sx={stickyHeadRowSx(tableHeadSx, "#fef3c7")}>DMS Total Pcs</TableCell>
+                        <TableCell align="right" sx={stickyHeadRowSx(tableHeadSx, "#dbeafe")}>Current Case</TableCell>
+                        <TableCell align="right" sx={stickyHeadRowSx(tableHeadSx, "#dbeafe")}>Current Pcs</TableCell>
+                        <TableCell align="right" sx={stickyHeadRowSx(tableHeadSx, "#dbeafe")}>Current Total Pcs</TableCell>
+                        <TableCell align="right" sx={stickyHeadRowSx(tableHeadSx)}>Price/Pcs</TableCell>
+                        <TableCell align="right" sx={stickyHeadRowSx(tableHeadSx, "#dbeafe")}>Current Value</TableCell>
                       </TableRow>
                     </TableHead>
                     <TableBody>
                       {items.length === 0 && (
-                        <TableRow><TableCell colSpan={12} align="center" sx={tableBodySx}><MDTypography variant="button" color="text">{selectedDmsImportId ? "No Current Stock uploaded for this DMS date." : "Choose a DMS stock date first."}</MDTypography></TableCell></TableRow>
+                        <TableRow><TableCell colSpan={17} align="center" sx={tableBodySx}><MDTypography variant="button" color="text">{selectedDmsImportId ? "Upload Physical Stock for this DMS date, then calculate Current Stock." : "Choose a DMS stock date first."}</MDTypography></TableCell></TableRow>
                       )}
                       {items.length > 0 && filteredItems.length === 0 && (
-                        <TableRow><TableCell colSpan={12} align="center" sx={tableBodySx}><MDTypography variant="button" color="text">No rows match the selected filters.</MDTypography></TableCell></TableRow>
+                        <TableRow><TableCell colSpan={17} align="center" sx={tableBodySx}><MDTypography variant="button" color="text">No rows match the selected filters.</MDTypography></TableCell></TableRow>
                       )}
                       {filteredItems.map((item, index) => (
-                        <TableRow key={item.id}>
-                          <TableCell sx={tableBodySx}>{index + 1}</TableCell>
-                          <TableCell sx={tableBodySx}>{item.product_erp_id}</TableCell>
-                          <TableCell sx={{ ...tableBodySx, minWidth: 220 }}>{item.product_name}</TableCell>
-                          <TableCell sx={tableBodySx}>{item.product_division}</TableCell>
+                        <TableRow key={`${item.product_erp_id}-${index}`}>
+                          <TableCell sx={stickyColumnSx(0, { baseSx: tableBodySx })}>{index + 1}</TableCell>
+                          <TableCell sx={stickyColumnSx(1, { baseSx: tableBodySx })}>{item.product_erp_id}</TableCell>
+                          <TableCell sx={stickyColumnSx(2, { baseSx: { ...tableBodySx, overflow: "hidden", textOverflow: "ellipsis" } })}>{item.product_name}</TableCell>
+                          <TableCell sx={stickyColumnSx(3, { baseSx: tableBodySx })}>{item.product_division}</TableCell>
                           <TableCell sx={tableBodySx}>{item.variant_name}</TableCell>
                           <TableCell align="right" sx={tableBodySx}>{unitFormat(item.pcs_per_box)}</TableCell>
-                          <TableCell align="right" sx={tableBodySx}>{unitFormat(item.current_stock_in_case)}</TableCell>
-                          <TableCell align="right" sx={tableBodySx}>{unitFormat(item.current_stock_in_pcs)}</TableCell>
+                          <TableCell align="right" sx={sourceCellSx}>{unitFormat(item.physical_stock_in_case)}</TableCell>
+                          <TableCell align="right" sx={sourceCellSx}>{unitFormat(item.physical_stock_in_pcs)}</TableCell>
+                          <TableCell align="right" sx={sourceCellSx}>{unitFormat(item.total_physical_stock_in_pcs)}</TableCell>
+                          <TableCell align="right" sx={{ ...sourceCellSx, backgroundColor: "#fffbeb" }}>{unitFormat(item.dms_stock_in_case)}</TableCell>
+                          <TableCell align="right" sx={{ ...sourceCellSx, backgroundColor: "#fffbeb" }}>{unitFormat(item.dms_stock_in_pcs)}</TableCell>
+                          <TableCell align="right" sx={{ ...sourceCellSx, backgroundColor: "#fffbeb" }}>{unitFormat(item.total_dms_stock_in_pcs)}</TableCell>
+                          <TableCell align="right" sx={calculatedCellSx}>{unitFormat(item.current_stock_in_case)}</TableCell>
+                          <TableCell align="right" sx={calculatedCellSx}>{unitFormat(item.current_stock_in_pcs)}</TableCell>
                           <TableCell align="right" sx={calculatedCellSx}>{unitFormat(item.total_current_stock_in_pcs)}</TableCell>
                           <TableCell align="right" sx={tableBodySx}>{money(item.price_per_piece)}</TableCell>
-                          <TableCell align="right" sx={tableBodySx}>{money(item.mrp)}</TableCell>
                           <TableCell align="right" sx={calculatedCellSx}>{money(item.total_value)}</TableCell>
                         </TableRow>
                       ))}

@@ -23,6 +23,7 @@ import MDTypography from "components/MDTypography";
 import DashboardLayout from "examples/LayoutContainers/DashboardLayout";
 import DashboardNavbar from "examples/Navbars/DashboardNavbar";
 import Footer from "examples/Footer";
+import { stickyColumnSx, stickyHeadRowSx, stickyTableContainerSx, stickyTableSx } from "utils/stickyProductColumns";
 
 const API = "https://bawarchee.edunextg.co/api";
 
@@ -463,23 +464,23 @@ function DmsStock() {
                     </MDButton>
                   </Grid>
                 </Grid>
-                <TableContainer component={Paper} sx={{ boxShadow: "none", border: "1px solid #e5e7eb" }}>
-                  <Table sx={{ minWidth: 1320 }}>
+                <TableContainer component={Paper} sx={stickyTableContainerSx}>
+                  <Table sx={stickyTableSx(1320)}>
                     <TableHead sx={{ display: "table-header-group", backgroundColor: "#f9fafb" }}>
                       <TableRow>
-                        <TableCell sx={tableHeadSx}>Sr No</TableCell>
-                        <TableCell sx={tableHeadSx}>Upload Date</TableCell>
-                        <TableCell sx={tableHeadSx}>Product ERP ID</TableCell>
-                        <TableCell sx={tableHeadSx}>SKU Name</TableCell>
-                        <TableCell sx={tableHeadSx}>Product Division</TableCell>
-                        <TableCell sx={tableHeadSx}>Variant Name</TableCell>
-                        <TableCell align="right" sx={tableHeadSx}>Pcs/Box</TableCell>
-                        <TableCell align="right" sx={tableHeadSx}>Current Stock In Case</TableCell>
-                        <TableCell align="right" sx={tableHeadSx}>Current Stock In Pcs</TableCell>
-                        <TableCell align="right" sx={tableHeadSx}>Total Current Stock In Pcs</TableCell>
-                        <TableCell align="right" sx={tableHeadSx}>Price/Pcs</TableCell>
-                        <TableCell align="right" sx={tableHeadSx}>MRP</TableCell>
-                        <TableCell align="right" sx={tableHeadSx}>Total Value</TableCell>
+                        <TableCell sx={stickyColumnSx(0, { isHead: true, baseSx: tableHeadSx })}>Sr No</TableCell>
+                        <TableCell sx={stickyColumnSx(1, { isHead: true, baseSx: tableHeadSx })}>Product ERP ID</TableCell>
+                        <TableCell sx={stickyColumnSx(2, { isHead: true, baseSx: tableHeadSx })}>SKU Name</TableCell>
+                        <TableCell sx={stickyColumnSx(3, { isHead: true, baseSx: tableHeadSx })}>Product Division</TableCell>
+                        <TableCell sx={stickyHeadRowSx(tableHeadSx)}>Upload Date</TableCell>
+                        <TableCell sx={stickyHeadRowSx(tableHeadSx)}>Variant Name</TableCell>
+                        <TableCell align="right" sx={stickyHeadRowSx(tableHeadSx)}>Pcs/Box</TableCell>
+                        <TableCell align="right" sx={stickyHeadRowSx(tableHeadSx)}>Current Stock In Case</TableCell>
+                        <TableCell align="right" sx={stickyHeadRowSx(tableHeadSx)}>Current Stock In Pcs</TableCell>
+                        <TableCell align="right" sx={stickyHeadRowSx(tableHeadSx)}>Total Current Stock In Pcs</TableCell>
+                        <TableCell align="right" sx={stickyHeadRowSx(tableHeadSx)}>Price/Pcs</TableCell>
+                        <TableCell align="right" sx={stickyHeadRowSx(tableHeadSx)}>MRP</TableCell>
+                        <TableCell align="right" sx={stickyHeadRowSx(tableHeadSx)}>Total Value</TableCell>
                       </TableRow>
                     </TableHead>
                     <TableBody>
@@ -503,13 +504,13 @@ function DmsStock() {
                       )}
                       {filteredItems.map((item, index) => (
                         <TableRow key={item.id}>
-                          <TableCell sx={tableBodySx}>{index + 1}</TableCell>
+                          <TableCell sx={stickyColumnSx(0, { baseSx: tableBodySx })}>{index + 1}</TableCell>
+                          <TableCell sx={stickyColumnSx(1, { baseSx: tableBodySx })}>{item.product_erp_id}</TableCell>
+                          <TableCell sx={stickyColumnSx(2, { baseSx: { ...tableBodySx, overflow: "hidden", textOverflow: "ellipsis" } })}>{item.product_name}</TableCell>
+                          <TableCell sx={stickyColumnSx(3, { baseSx: tableBodySx })}>{item.product_division}</TableCell>
                           <TableCell sx={tableBodySx}>
                             {formatUploadDate(item.upload_date || getImportUploadDate(stockImport))}
                           </TableCell>
-                          <TableCell sx={tableBodySx}>{item.product_erp_id}</TableCell>
-                          <TableCell sx={{ ...tableBodySx, minWidth: 220 }}>{item.product_name}</TableCell>
-                          <TableCell sx={tableBodySx}>{item.product_division}</TableCell>
                           <TableCell sx={tableBodySx}>{item.variant_name}</TableCell>
                           <TableCell align="right" sx={tableBodySx}>{unitFormat(item.pcs_per_box)}</TableCell>
                           <TableCell align="right" sx={tableBodySx}>{unitFormat(item.current_stock_in_case)}</TableCell>

@@ -467,6 +467,45 @@ export async function ensureSchema() {
             );
         `);
 
+        await connection.query(`
+            CREATE TABLE IF NOT EXISTS physical_stock_imports (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                dms_import_id INT NOT NULL,
+                file_name VARCHAR(255) NOT NULL,
+                row_count INT NOT NULL DEFAULT 0,
+                total_cases DECIMAL(14, 4) NOT NULL DEFAULT 0.0000,
+                total_loose_pcs DECIMAL(14, 4) NOT NULL DEFAULT 0.0000,
+                total_pieces DECIMAL(14, 4) NOT NULL DEFAULT 0.0000,
+                total_value DECIMAL(14, 2) NOT NULL DEFAULT 0.00,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (dms_import_id) REFERENCES dms_stock_imports(id) ON DELETE CASCADE,
+                INDEX idx_physical_stock_imports_dms_import_id (dms_import_id)
+            );
+        `);
+
+        await connection.query(`
+            CREATE TABLE IF NOT EXISTS physical_stock_items (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                import_id INT NOT NULL,
+                product_erp_id VARCHAR(100) NULL,
+                product_name VARCHAR(255) NULL,
+                product_division VARCHAR(100) NULL,
+                variant_name VARCHAR(100) NULL,
+                pcs_per_box DECIMAL(14, 4) NOT NULL DEFAULT 0.0000,
+                physical_stock_in_case DECIMAL(14, 4) NOT NULL DEFAULT 0.0000,
+                physical_stock_in_pcs DECIMAL(14, 4) NOT NULL DEFAULT 0.0000,
+                total_physical_stock_in_pcs DECIMAL(14, 4) NOT NULL DEFAULT 0.0000,
+                price_per_piece DECIMAL(14, 4) NOT NULL DEFAULT 0.0000,
+                mrp DECIMAL(14, 4) NOT NULL DEFAULT 0.0000,
+                total_value DECIMAL(14, 2) NOT NULL DEFAULT 0.00,
+                raw_data JSON NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (import_id) REFERENCES physical_stock_imports(id) ON DELETE CASCADE,
+                INDEX idx_physical_stock_items_import_id (import_id),
+                INDEX idx_physical_stock_items_product_erp_id (product_erp_id)
+            );
+        `);
+
         await tryQuery(
             connection,
             `UPDATE dms_stock_imports SET upload_date = DATE(created_at) WHERE upload_date IS NULL`,

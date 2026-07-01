@@ -1,98 +1,124 @@
-import { parse } from 'csv-parse/sync';
-import xlsx from 'xlsx';
-import CurrentStockModel from '../models/currentStockModel.js';
 import DmsStockModel from '../models/dmsStockModel.js';
+import PhysicalStockModel from '../models/physicalStockModel.js';
 
-const HEADER_ALIASES = {
-    productErpId: ['product erp id'],
-    productName: ['sku name', 'product name'],
-    productDivision: ['product division'],
-    variantName: ['variant name'],
-    pcsPerBox: ['pcs/box', 'pcs per box'],
-    currentStockInCase: ['current stock in case'],
-    currentStockInPcs: ['current stock in pcs'],
-    pricePerPiece: ['price/pcs', 'price per pcs', 'price per piece'],
-    mrp: ['mrp'],
-};
-
-const normalizeHeader = (header) => String(header || '')
-    .toLowerCase()
-    .replace(/\s+/g, ' ')
-    .trim();
-
-const findValue = (row, key) => {
-    const aliases = HEADER_ALIASES[key] || [];
-    const entries = Object.entries(row);
-    const exactMatch = entries.find(([header]) => aliases.includes(normalizeHeader(header)));
-    if (exactMatch) return exactMatch[1];
-    const partialMatch = entries.find(([header]) => {
-        const normalized = normalizeHeader(header);
-        return aliases.some((alias) => normalized.includes(alias));
-    });
-    return partialMatch ? partialMatch[1] : '';
-};
-
-const toNumber = (value) => {
-    if (value === null || value === undefined || value === '') return 0;
-    const parsed = Number(String(value).replace(/,/g, '').trim());
-    return Number.isFinite(parsed) ? parsed : 0;
-};
-
-const textValue = (value) => String(value ?? '').trim();
 const roundMoney = (value) => Math.round((Number(value) + Number.EPSILON) * 100) / 100;
 const roundQuantity = (value) => Math.round((Number(value) + Number.EPSILON) * 10000) / 10000;
 
-export function parseCurrentStockRows(file) {
-    const extension = (file.originalname.split('.').pop() || '').toLowerCase();
-    if (extension === 'csv') {
-        return parse(file.buffer.toString('utf8'), {
-            columns: true,
-            skip_empty_lines: true,
-            trim: true,
-        });
+const itemKey = (item) => String(item.product_erp_id || item.product_name || '').trim().toLowerCase();
+
+const zeroStock = () => ({
+    product_erp_id: '',
+    product_name: '',
+    product_division: '',
+    variant_name: '',
+    pcs_per_box: 0,
+    stock_in_case: 0,
+    stock_in_pcs: 0,
+    total_stock_in_pcs: 0,
+    price_per_piece: 0,
+    mrp: 0,
+    total_value: 0,
+});
+
+const pickPhysical = (item = {}) => ({
+    product_erp_id: item.product_erp_id || '',
+    product_name: item.product_name || '',
+    product_division: item.product_division || '',
+    variant_name: item.variant_name || '',
+    pcs_per_box: item.pcs_per_box || 0,
+    stock_in_case: item.physical_stock_in_case || 0,
+    stock_in_pcs: item.physical_stock_in_pcs || 0,
+    total_stock_in_pcs: item.total_physical_stock_in_pcs || 0,
+    price_per_piece: item.price_per_piece || 0,
+    mrp: item.mrp || 0,
+    total_value: item.total_value || 0,
+});
+
+const pickDms = (item = {}) => ({
+    product_erp_id: item.product_erp_id || '',
+    product_name: item.product_name || '',
+    product_division: item.product_division || '',
+    variant_name: item.variant_name || '',
+    pcs_per_box: item.pcs_per_box || 0,
+    stock_in_case: item.current_stock_in_case || 0,
+    stock_in_pcs: item.current_stock_in_pcs || 0,
+    total_stock_in_pcs: item.total_current_stock_in_pcs || 0,
+    price_per_piece: item.price_per_piece || 0,
+    mrp: item.mrp || 0,
+    total_value: roundMoney((item.total_current_stock_in_pcs || 0) * (item.price_per_piece || 0)),
+});
+
+export function buildCurrentStockDiff(physicalItems = [], dmsItems = []) {
+    const pairs = new Map();
+
+    for (const item of physicalItems) {
+        const key = itemKey(item);
+        if (!key) continue;
+        pairs.set(key, { physical: pickPhysical(item), dms: zeroStock() });
     }
-    if (['xlsx', 'xls'].includes(extension)) {
-        const workbook = xlsx.read(file.buffer, { type: 'buffer', cellDates: false });
-        const firstSheetName = workbook.SheetNames[0];
-        if (!firstSheetName) return [];
-        return xlsx.utils.sheet_to_json(workbook.Sheets[firstSheetName], { defval: '' });
+
+    for (const item of dmsItems) {
+        const key = itemKey(item);
+        if (!key) continue;
+        if (pairs.has(key)) {
+            pairs.get(key).dms = pickDms(item);
+        } else {
+            pairs.set(key, { physical: zeroStock(), dms: pickDms(item) });
+        }
     }
-    const error = new Error('Only CSV, XLS, and XLSX files are supported.');
-    error.statusCode = 400;
-    throw error;
+
+    return [...pairs.values()].map(({ physical, dms }) => {
+        const currentStockInCase = roundQuantity(physical.stock_in_case - dms.stock_in_case);
+        const currentStockInPcs = roundQuantity(physical.stock_in_pcs - dms.stock_in_pcs);
+        const totalCurrentStockInPcs = roundQuantity(physical.total_stock_in_pcs - dms.total_stock_in_pcs);
+        const pricePerPiece = physical.price_per_piece || dms.price_per_piece || 0;
+
+        return {
+            product_erp_id: physical.product_erp_id || dms.product_erp_id,
+            product_name: physical.product_name || dms.product_name,
+            product_division: physical.product_division || dms.product_division,
+            variant_name: physical.variant_name || dms.variant_name,
+            pcs_per_box: physical.pcs_per_box || dms.pcs_per_box || 0,
+            physical_stock_in_case: physical.stock_in_case,
+            physical_stock_in_pcs: physical.stock_in_pcs,
+            total_physical_stock_in_pcs: physical.total_stock_in_pcs,
+            dms_stock_in_case: dms.stock_in_case,
+            dms_stock_in_pcs: dms.stock_in_pcs,
+            total_dms_stock_in_pcs: dms.total_stock_in_pcs,
+            current_stock_in_case: currentStockInCase,
+            current_stock_in_pcs: currentStockInPcs,
+            total_current_stock_in_pcs: totalCurrentStockInPcs,
+            price_per_piece: pricePerPiece,
+            mrp: physical.mrp || dms.mrp || 0,
+            total_value: roundMoney(totalCurrentStockInPcs * pricePerPiece),
+        };
+    });
 }
 
-export function normalizeCurrentStockRow(row) {
-    const pcsPerBox = toNumber(findValue(row, 'pcsPerBox'));
-    const currentStockInCase = toNumber(findValue(row, 'currentStockInCase'));
-    const currentStockInPcs = toNumber(findValue(row, 'currentStockInPcs'));
-    const pricePerPiece = toNumber(findValue(row, 'pricePerPiece'));
-    const totalCurrentStockInPcs = roundQuantity((currentStockInCase * pcsPerBox) + currentStockInPcs);
-    const totalValue = roundMoney(totalCurrentStockInPcs * pricePerPiece);
-
-    return {
-        productErpId: textValue(findValue(row, 'productErpId')),
-        productName: textValue(findValue(row, 'productName')),
-        productDivision: textValue(findValue(row, 'productDivision')),
-        variantName: textValue(findValue(row, 'variantName')),
-        pcsPerBox,
-        currentStockInCase,
-        currentStockInPcs,
-        totalCurrentStockInPcs,
-        pricePerPiece,
-        mrp: toNumber(findValue(row, 'mrp')),
-        totalValue,
-        rawData: row,
-    };
-}
-
-export function buildCurrentStockSummary(rows) {
-    return rows.reduce((summary, row) => ({
-        totalCases: roundQuantity(summary.totalCases + row.currentStockInCase),
-        totalLoosePcs: roundQuantity(summary.totalLoosePcs + row.currentStockInPcs),
-        totalPieces: roundQuantity(summary.totalPieces + row.totalCurrentStockInPcs),
-        totalValue: roundMoney(summary.totalValue + row.totalValue),
-    }), { totalCases: 0, totalLoosePcs: 0, totalPieces: 0, totalValue: 0 });
+export function buildCurrentStockSummary(items = []) {
+    return items.reduce((summary, row) => ({
+        totalPhysicalCases: roundQuantity(summary.totalPhysicalCases + row.physical_stock_in_case),
+        totalPhysicalLoosePcs: roundQuantity(summary.totalPhysicalLoosePcs + row.physical_stock_in_pcs),
+        totalPhysicalPieces: roundQuantity(summary.totalPhysicalPieces + row.total_physical_stock_in_pcs),
+        totalDmsCases: roundQuantity(summary.totalDmsCases + row.dms_stock_in_case),
+        totalDmsLoosePcs: roundQuantity(summary.totalDmsLoosePcs + row.dms_stock_in_pcs),
+        totalDmsPieces: roundQuantity(summary.totalDmsPieces + row.total_dms_stock_in_pcs),
+        totalCases: roundQuantity(summary.totalCases + row.current_stock_in_case),
+        totalLoosePcs: roundQuantity(summary.totalLoosePcs + row.current_stock_in_pcs),
+        totalPieces: roundQuantity(summary.totalPieces + row.total_current_stock_in_pcs),
+        totalValue: roundMoney(summary.totalValue + row.total_value),
+    }), {
+        totalPhysicalCases: 0,
+        totalPhysicalLoosePcs: 0,
+        totalPhysicalPieces: 0,
+        totalDmsCases: 0,
+        totalDmsLoosePcs: 0,
+        totalDmsPieces: 0,
+        totalCases: 0,
+        totalLoosePcs: 0,
+        totalPieces: 0,
+        totalValue: 0,
+    });
 }
 
 const parseDmsImportId = (value) => {
@@ -106,53 +132,36 @@ export const getCurrentStock = async (req, res) => {
         if (!dmsImportId) {
             return res.status(400).json({ error: 'Please choose a DMS stock upload date.' });
         }
+
         const dmsResult = await DmsStockModel.getImportById(dmsImportId);
         if (!dmsResult) {
             return res.status(404).json({ error: 'Selected DMS stock upload was not found.' });
         }
-        const currentResult = await CurrentStockModel.getLatestByDmsImportId(dmsImportId);
-        return res.status(200).json(currentResult || { import: null, items: [] });
+
+        const physicalResult = await PhysicalStockModel.getLatestByDmsImportId(dmsImportId);
+        if (!physicalResult?.items?.length) {
+            return res.status(404).json({
+                error: 'Physical stock is not uploaded for this DMS date. Upload Physical Stock first.',
+            });
+        }
+
+        const dmsItems = await DmsStockModel.getItems(dmsImportId, 2000);
+        const items = buildCurrentStockDiff(physicalResult.items, dmsItems);
+        const summary = buildCurrentStockSummary(items);
+
+        return res.status(200).json({
+            import: {
+                dms_import_id: dmsImportId,
+                dms_upload_date: dmsResult.import.upload_date,
+                dms_file_name: dmsResult.import.file_name,
+                physical_file_name: physicalResult.import?.file_name || null,
+                row_count: items.length,
+                ...summary,
+            },
+            items,
+        });
     } catch (error) {
         console.error('Error fetching current stock:', error);
         return res.status(500).json({ error: 'Internal server error' });
-    }
-};
-
-export const uploadCurrentStock = async (req, res) => {
-    try {
-        const dmsImportId = parseDmsImportId(req.body?.dmsImportId);
-        if (!dmsImportId) {
-            return res.status(400).json({ error: 'Please choose a DMS stock upload date first.' });
-        }
-        if (!req.file) {
-            return res.status(400).json({ error: 'Please upload a current stock Excel or CSV file.' });
-        }
-        const dmsResult = await DmsStockModel.getImportById(dmsImportId);
-        if (!dmsResult) {
-            return res.status(404).json({ error: 'Selected DMS stock upload was not found.' });
-        }
-
-        const rows = parseCurrentStockRows(req.file)
-            .map(normalizeCurrentStockRow)
-            .filter((row) => row.productErpId || row.productName);
-        if (!rows.length) {
-            return res.status(400).json({ error: 'No current stock rows found in the uploaded file.' });
-        }
-
-        const summary = buildCurrentStockSummary(rows);
-        const result = await CurrentStockModel.createImport({
-            dmsImportId,
-            fileName: req.file.originalname,
-            rowCount: rows.length,
-            summary,
-            rows,
-        });
-        return res.status(201).json({
-            message: 'Current stock uploaded and calculated successfully',
-            ...result,
-        });
-    } catch (error) {
-        console.error('Error uploading current stock:', error);
-        return res.status(error.statusCode || 500).json({ error: error.message || 'Internal server error' });
     }
 };
