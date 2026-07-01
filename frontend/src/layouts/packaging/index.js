@@ -36,13 +36,11 @@ import {
 import { formatBpSaleId } from "utils/saleId";
 import { IoSaveOutline } from "react-icons/io5";
 import { FaRegEdit } from "react-icons/fa";
-import { CiTrash } from "react-icons/ci";
 
 function Packaging() {
   const [dateFilterMode, setDateFilterMode] = useState("all");
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split("T")[0]);
   const [salesData, setSalesData] = useState([]);
-  const [deliveryBoys, setDeliveryBoys] = useState([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [historyDialog, setHistoryDialog] = useState({ open: false, sale: null, history: [] });
@@ -72,21 +70,6 @@ function Packaging() {
     const [datePart, timePart = ""] = String(value).split(/[T ]/);
     return `${formatDate(datePart)}${timePart ? ` ${timePart.slice(0, 5)}` : ""}`;
   };
-
-  useEffect(() => {
-    const fetchDeliveryBoys = async () => {
-      try {
-        const response = await fetch(`${API}/delivery-boy`);
-        if (response.ok) {
-          const data = await response.json();
-          setDeliveryBoys(data);
-        }
-      } catch (error) {
-        console.error("Error fetching delivery boys:", error);
-      }
-    };
-    fetchDeliveryBoys();
-  }, []);
 
   const fetchSales = useCallback(async ({ silent = false } = {}) => {
     try {

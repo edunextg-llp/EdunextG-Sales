@@ -20,6 +20,8 @@ import Delivery from "layouts/delivery";
 import Delivered from "layouts/delivered";
 import Reports from "layouts/reports";
 import DmsStock from "layouts/dms-stock";
+import CurrentStock from "layouts/current-stock";
+import PhysicalStock from "layouts/physical-stock";
 
 // @mui icons
 import Icon from "@mui/material/Icon";
@@ -43,11 +45,35 @@ const routes = [
   },
   {
     type: "collapse",
-    name: "DMS Stock",
-    key: "dms-stock",
+    name: "DMS",
+    key: "dms",
     icon: <Icon fontSize="small">inventory</Icon>,
-    route: "/dms-stock",
-    component: <DmsStock />,
+    collapse: [
+      {
+        type: "collapse",
+        name: "DMS Stock",
+        key: "dms-stock",
+        icon: <Icon fontSize="small">upload_file</Icon>,
+        route: "/dms-stock",
+        component: <DmsStock />,
+      },
+      {
+        type: "collapse",
+        name: "Current Stock",
+        key: "current-stock",
+        icon: <Icon fontSize="small">fact_check</Icon>,
+        route: "/current-stock",
+        component: <CurrentStock />,
+      },
+      {
+        type: "collapse",
+        name: "Physical Stock",
+        key: "physical-stock",
+        icon: <Icon fontSize="small">warehouse</Icon>,
+        route: "/physical-stock",
+        component: <PhysicalStock />,
+      },
+    ],
   },
   // {
   //   type: "collapse",

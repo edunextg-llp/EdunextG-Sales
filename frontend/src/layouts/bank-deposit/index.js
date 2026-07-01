@@ -268,8 +268,6 @@ const upiDisplayText = (deposit, field) => {
 function BankDeposit() {
   const [form, setForm] = useState(emptyForm());
   const [deposits, setDeposits] = useState([]);
-  const [storeOptions, setStoreOptions] = useState([]);
-  const [loadingStores, setLoadingStores] = useState(false);
   const [pendingCheques, setPendingCheques] = useState([]);
   const [loadingPendingCheques, setLoadingPendingCheques] = useState(false);
   const [pendingUpiInvoices, setPendingUpiInvoices] = useState([]);
@@ -278,7 +276,6 @@ function BankDeposit() {
   const [saving, setSaving] = useState(false);
   const [depositTotalStartDate, setDepositTotalStartDate] = useState(() => getMonthStartDate());
   const [depositTotalEndDate, setDepositTotalEndDate] = useState(() => getTodayLocalDate());
-  const [viewDeposit, setViewDeposit] = useState(null); // For view dialog
   const API = "https://bawarchee.edunextg.co/api";
 
   const cashAmount = useMemo(
@@ -399,34 +396,6 @@ function BankDeposit() {
   useEffect(() => {
     fetchDeposits();
   }, []);
-
-  useEffect(() => {
-    if (form.depositMode !== "cheque") {
-      setStoreOptions([]);
-      return undefined;
-    }
-
-    const timer = setTimeout(async () => {
-      setLoadingStores(true);
-      try {
-        const params = new URLSearchParams();
-        if (form.storeName.trim()) {
-          params.set("search", form.storeName.trim());
-        }
-        const response = await fetch(`${API}/staff/bank-deposits/stores?${params.toString()}`);
-        if (response.ok) {
-          const data = await response.json();
-          setStoreOptions(data);
-        }
-      } catch (error) {
-        console.error("Error fetching delivered stores:", error);
-      } finally {
-        setLoadingStores(false);
-      }
-    }, 300);
-
-    return () => clearTimeout(timer);
-  }, [form.depositMode, form.storeName]);
 
   useEffect(() => {
     if (form.depositMode !== "cheque" || editingDepositId) {

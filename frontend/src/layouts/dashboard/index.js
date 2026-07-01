@@ -45,7 +45,6 @@ import DashboardLayout from "examples/LayoutContainers/DashboardLayout";
 import DashboardNavbar from "examples/Navbars/DashboardNavbar";
 import Footer from "examples/Footer";
 import ReportsBarChart from "examples/Charts/BarCharts/ReportsBarChart";
-import ReportsLineChart from "examples/Charts/LineCharts/ReportsLineChart";
 import ComplexStatisticsCard from "examples/Cards/StatisticsCards/ComplexStatisticsCard";
 
 const API = "https://bawarchee.edunextg.co/api";
@@ -187,10 +186,6 @@ const compactDateFieldSx = {
 
 function sumRows(rows, field = "total_amount") {
   return rows.reduce((total, row) => total + (Number(row[field]) || 0), 0);
-}
-
-function reverseRecent(rows, limit = 8) {
-  return [...rows].slice(0, limit).reverse();
 }
 
 const DEMO_YEARLY_YEARS = [2022, 2023, 2024, 2025];
@@ -523,6 +518,11 @@ const defaultPaymentModes = [
   { payment_mode: "cheque", total_amount: 0 },
 ];
 
+function getCollectionAmountByMode(apiRows, mode) {
+  const row = (apiRows || []).find((item) => item.payment_mode === mode);
+  return Number(row?.total_amount || 0);
+}
+
 function buildPaymentModePieData(apiRows) {
   const rows = defaultPaymentModes.map((def) => {
     const found = (apiRows || []).find((r) => r.payment_mode === def.payment_mode);
@@ -790,6 +790,7 @@ function Dashboard() {
   const [purchaseReportData, setPurchaseReportData] = useState(emptyPurchaseReportData);
   const [activeDashboardTab, setActiveDashboardTab] = useState("purchase");
   const [chequeDialogOpen, setChequeDialogOpen] = useState(false);
+  const [paidCollectionDialogOpen, setPaidCollectionDialogOpen] = useState(false);
   const [collectionPrintDate, setCollectionPrintDate] = useState(getTodayLocalDate());
   const [totalCollectionFromDate, setTotalCollectionFromDate] = useState(getMonthStartLocalDate());
   const [totalCollectionToDate, setTotalCollectionToDate] = useState(getTodayLocalDate());
@@ -815,6 +816,24 @@ function Dashboard() {
   const selectedMonthOption = monthOptions.find((option) => option.value === selectedMonth);
   const reportStartDate = selectedMonthOption?.startDate || selectedFinancialYearOption?.startDate || null;
   const reportEndDate = selectedMonthOption?.endDate || selectedFinancialYearOption?.endDate || null;
+
+  const reportPeriodLabel = useMemo(() => {
+    if (selectedMonthOption) return selectedMonthOption.label;
+    if (selectedFinancialYearOption) return selectedFinancialYearOption.label;
+    return "All Records";
+  }, [selectedMonthOption, selectedFinancialYearOption]);
+
+  const paidCollectionBreakdown = useMemo(
+    () => ({
+      cash: getCollectionAmountByMode(reportData.collectionByMode, "cash"),
+      upi: getCollectionAmountByMode(reportData.collectionByMode, "upi"),
+      cheque: getCollectionAmountByMode(reportData.collectionByMode, "cheque"),
+    }),
+    [reportData.collectionByMode]
+  );
+
+  const paidCollectionTotal =
+    paidCollectionBreakdown.cash + paidCollectionBreakdown.upi + paidCollectionBreakdown.cheque;
 
   const fetchReports = async () => {
     try {
@@ -1253,11 +1272,6 @@ function Dashboard() {
     };
   }, [purchaseReportData.purchasesByPeriod?.monthly]);
 
-  const weeklySalesRows = useMemo(
-    () => reverseRecent(reportData.salesByPeriod.weekly || [], 8),
-    [reportData.salesByPeriod.weekly]
-  );
-
   const monthlyCollectionRows = useMemo(
     () => buildMonthlyCollectionRows(reportData.monthlyCollection, reportStartDate, reportEndDate),
     [reportData.monthlyCollection, reportStartDate, reportEndDate]
@@ -1358,14 +1372,6 @@ function Dashboard() {
       label: "Sellers included in the selected period.",
     }
   ];
-
-  const weeklySalesChart = {
-    labels: weeklySalesRows.map((row) => row.period),
-    datasets: {
-      label: "Weekly Sales",
-      data: weeklySalesRows.map((row) => Number(row.total_sales) || 0),
-    },
-  };
 
   const pendingChequeRows = reportData.pendingChequeReports || [];
   const chequePendingCount = pendingChequeRows.length;
@@ -1743,7 +1749,7 @@ function Dashboard() {
               </MDBox>
             </Grid>
             <Grid item xs={12} md={6} lg={3}>
-              <MDBox mb={1.5}>
+              <MDBox mb={1.5} position="relative">
                 <ComplexStatisticsCard
                   color="success"
                   icon="payments"
@@ -1755,6 +1761,18 @@ function Dashboard() {
                     label: "Paid invoice amount",
                   }}
                 />
+                <MDBox
+                  position="absolute"
+                  bottom={14}
+                  right={16}
+                  display="flex"
+                  alignItems="center"
+                  onClick={() => setPaidCollectionDialogOpen(true)}
+                  sx={{ cursor: "pointer", color: "#7b809a", "&:hover": { color: "#344767" } }}
+                  title="View collection breakdown"
+                >
+                  <Icon sx={{ fontSize: "1.1rem" }}>visibility</Icon>
+                </MDBox>
               </MDBox>
             </Grid>
            
@@ -1992,6 +2010,66 @@ function Dashboard() {
         </Grid>
       </MDBox>
       )}
+
+      <Dialog
+        open={paidCollectionDialogOpen}
+        onClose={() => setPaidCollectionDialogOpen(false)}
+        maxWidth="xs"
+        fullWidth
+      >
+        <DialogTitle>Collection Breakdown</DialogTitle>
+        <DialogContent dividers>
+          <MDTypography variant="body2" color="text" mb={2}>
+            Period: {reportPeriodLabel}
+          </MDTypography>
+          <MDBox display="flex" flexDirection="column" gap={1.5}>
+            <MDBox display="flex" justifyContent="space-between" alignItems="center">
+              <MDTypography variant="button" color="text">
+                Total Cash Collection
+              </MDTypography>
+              <MDTypography variant="button" fontWeight="bold" color="success">
+                {money(paidCollectionBreakdown.cash)}
+              </MDTypography>
+            </MDBox>
+            <MDBox display="flex" justifyContent="space-between" alignItems="center">
+              <MDTypography variant="button" color="text">
+                Total UPI Collection
+              </MDTypography>
+              <MDTypography variant="button" fontWeight="bold" color="info">
+                {money(paidCollectionBreakdown.upi)}
+              </MDTypography>
+            </MDBox>
+            <MDBox display="flex" justifyContent="space-between" alignItems="center">
+              <MDTypography variant="button" color="text">
+                Total Cheque Collection
+              </MDTypography>
+              <MDTypography variant="button" fontWeight="bold" color="warning">
+                {money(paidCollectionBreakdown.cheque)}
+              </MDTypography>
+            </MDBox>
+            <MDBox
+              mt={1}
+              pt={1.5}
+              display="flex"
+              justifyContent="space-between"
+              alignItems="center"
+              sx={{ borderTop: "1px solid #e5e7eb" }}
+            >
+              <MDTypography variant="button" fontWeight="medium" color="dark">
+                Total Collection
+              </MDTypography>
+              <MDTypography variant="button" fontWeight="bold" color="dark">
+                {money(paidCollectionTotal)}
+              </MDTypography>
+            </MDBox>
+          </MDBox>
+        </DialogContent>
+        <DialogActions>
+          <MDButton color="dark" variant="outlined" onClick={() => setPaidCollectionDialogOpen(false)}>
+            Close
+          </MDButton>
+        </DialogActions>
+      </Dialog>
 
       <Dialog open={chequeDialogOpen} onClose={() => setChequeDialogOpen(false)} fullWidth maxWidth="lg">
         <DialogTitle>Pending Cheque Deposit</DialogTitle>

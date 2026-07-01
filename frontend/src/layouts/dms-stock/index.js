@@ -125,13 +125,32 @@ function DmsStock() {
   const [divisionFilter, setDivisionFilter] = useState("");
   const [erpSearch, setErpSearch] = useState("");
   const [productSearch, setProductSearch] = useState("");
+  const [stockListDateFilter, setStockListDateFilter] = useState("");
+  const [importDates, setImportDates] = useState([]);
   const [uploadDate, setUploadDate] = useState(() => getTodayLocalDate());
 
-  const fetchLatestStock = async () => {
+  const fetchImportDates = async () => {
+    try {
+      const response = await fetch(`${API}/staff/dms-stock/imports`);
+      const data = await response.json();
+      if (response.ok) {
+        setImportDates(data.imports || []);
+      }
+    } catch (fetchError) {
+      console.error("Error fetching DMS stock dates:", fetchError);
+    }
+  };
+
+  const fetchLatestStock = async (uploadDateFilter = stockListDateFilter) => {
     setLoading(true);
     setError("");
     try {
-      const response = await fetch(`${API}/staff/dms-stock`);
+      const params = new URLSearchParams();
+      if (uploadDateFilter) {
+        params.set("uploadDate", uploadDateFilter);
+      }
+      const query = params.toString();
+      const response = await fetch(`${API}/staff/dms-stock${query ? `?${query}` : ""}`);
       const data = await response.json();
       if (!response.ok) {
         throw new Error(data.error || "Failed to fetch DMS stock.");
@@ -146,8 +165,13 @@ function DmsStock() {
   };
 
   useEffect(() => {
-    fetchLatestStock();
+    fetchImportDates();
   }, []);
+
+  useEffect(() => {
+    fetchLatestStock(stockListDateFilter);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [stockListDateFilter]);
 
   const uploadDisabled = useMemo(
     () => !selectedFile || !uploadDate || uploading,
@@ -213,6 +237,8 @@ function DmsStock() {
       setSelectedFile(null);
       if (fileInputRef.current) fileInputRef.current.value = "";
       setMessage(data.message || "DMS stock uploaded successfully.");
+      await fetchImportDates();
+      setStockListDateFilter(uploadDate);
     } catch (uploadError) {
       setError(uploadError.message);
     } finally {
@@ -335,25 +361,16 @@ function DmsStock() {
                   <Metric label="Rows Stored" value={unitFormat(stockImport.row_count)} />
                 </Grid>
                 <Grid item xs={12} sm={6} md={3}>
-                  <Metric label="Purchase Stock" value={unitFormat(stockImport.total_purchase_units)} />
+                  <Metric label="Stock Cases" value={unitFormat(stockImport.total_stock_cases)} />
                 </Grid>
                 <Grid item xs={12} sm={6} md={3}>
-                  <Metric label="Closing Stock" value={unitFormat(stockImport.total_closing_units)} />
+                  <Metric label="Loose Stock Pcs" value={unitFormat(stockImport.total_stock_pcs)} />
                 </Grid>
                 <Grid item xs={12} sm={6} md={3}>
                   <Metric label="Total Value" value={money(stockImport.total_value)} />
                 </Grid>
                 <Grid item xs={12} sm={6} md={3}>
-                  <Metric label="Purchase Value" value={money(stockImport.total_purchase_value)} />
-                </Grid>
-                <Grid item xs={12} sm={6} md={3}>
-                  <Metric label="Invoiced Value" value={money(stockImport.total_invoiced_value)} />
-                </Grid>
-                <Grid item xs={12} sm={6} md={3}>
-                  <Metric label="In Transit Units" value={unitFormat(stockImport.total_in_transit_units)} />
-                </Grid>
-                <Grid item xs={12} sm={6} md={3}>
-                  <Metric label="Total Pieces" value={unitFormat(stockImport.total_pieces)} />
+                  <Metric label="Total Current Stock Pcs" value={unitFormat(stockImport.total_pieces)} />
                 </Grid>
               </Grid>
             </Grid>
@@ -364,10 +381,10 @@ function DmsStock() {
               <MDBox p={3} pb={2} display="flex" justifyContent="space-between" alignItems="flex-start" flexWrap="wrap" gap={2}>
                 <MDBox>
                   <MDTypography variant="h6" fontWeight="medium">
-                    Stock Ledger Preview
+                    DMS Stock Items
                   </MDTypography>
                   <MDTypography variant="caption" color="text" display="block">
-                    Showing up to 200 saved rows from the latest upload.
+                    Showing up to 200 saved rows per upload. Use the date filter to view a specific upload.
                   </MDTypography>
                   {stockImport && (
                     <MDTypography variant="caption" color="text" display="block" mt={0.5}>
@@ -379,7 +396,24 @@ function DmsStock() {
               </MDBox>
               <MDBox px={3} pb={3}>
                 <Grid container spacing={2} mb={2} alignItems="center">
-                  <Grid item xs={12} md={3}>
+                  <Grid item xs={12} md={2}>
+                    <FormControl size="small" fullWidth>
+                      <Select
+                        displayEmpty
+                        value={stockListDateFilter}
+                        onChange={(event) => setStockListDateFilter(event.target.value)}
+                        sx={{ height: 44, backgroundColor: "#fff" }}
+                      >
+                        <MenuItem value="">Latest Upload</MenuItem>
+                        {importDates.map((entry) => (
+                          <MenuItem key={entry.id} value={entry.upload_date}>
+                            {formatUploadDate(entry.upload_date)}
+                          </MenuItem>
+                        ))}
+                      </Select>
+                    </FormControl>
+                  </Grid>
+                  <Grid item xs={12} md={2}>
                     <FormControl size="small" fullWidth>
                       <Select
                         displayEmpty
@@ -396,7 +430,7 @@ function DmsStock() {
                       </Select>
                     </FormControl>
                   </Grid>
-                  <Grid item xs={12} md={3}>
+                  <Grid item xs={12} md={2}>
                     <MDInput
                       label="Search ERP ID"
                       fullWidth
@@ -404,7 +438,7 @@ function DmsStock() {
                       onChange={(event) => setErpSearch(event.target.value)}
                     />
                   </Grid>
-                  <Grid item xs={12} md={4}>
+                  <Grid item xs={12} md={3}>
                     <MDInput
                       label="Search Product"
                       fullWidth
@@ -418,6 +452,7 @@ function DmsStock() {
                       variant="outlined"
                       fullWidth
                       onClick={() => {
+                        setStockListDateFilter("");
                         setDivisionFilter("");
                         setErpSearch("");
                         setProductSearch("");
@@ -429,33 +464,28 @@ function DmsStock() {
                   </Grid>
                 </Grid>
                 <TableContainer component={Paper} sx={{ boxShadow: "none", border: "1px solid #e5e7eb" }}>
-                  <Table sx={{ minWidth: 1680 }}>
+                  <Table sx={{ minWidth: 1320 }}>
                     <TableHead sx={{ display: "table-header-group", backgroundColor: "#f9fafb" }}>
                       <TableRow>
                         <TableCell sx={tableHeadSx}>Sr No</TableCell>
                         <TableCell sx={tableHeadSx}>Upload Date</TableCell>
-                        <TableCell sx={tableHeadSx}>ERP ID</TableCell>
-                        <TableCell sx={tableHeadSx}>Product</TableCell>
-                        <TableCell sx={tableHeadSx}>Division</TableCell>
-                        <TableCell sx={tableHeadSx}>Variant</TableCell>
-                        <TableCell align="right" sx={tableHeadSx}>Purchase Unit</TableCell>
-                        <TableCell align="right" sx={tableHeadSx}>Purchase Value</TableCell>
-                        <TableCell align="right" sx={tableHeadSx}>DP/Unit</TableCell>
-                        <TableCell align="right" sx={tableHeadSx}>Invoiced Unit</TableCell>
-                        <TableCell align="right" sx={tableHeadSx}>Invoiced Value</TableCell>
-                        <TableCell align="right" sx={tableHeadSx}>Closing Unit</TableCell>
-                        <TableCell align="right" sx={tableHeadSx}>Closing Value</TableCell>
-                        <TableCell align="right" sx={tableHeadSx}>Transit Unit</TableCell>
-                        <TableCell align="right" sx={tableHeadSx}>Transit Value</TableCell>
-                        <TableCell align="right" sx={tableHeadSx}>Total Pieces</TableCell>
+                        <TableCell sx={tableHeadSx}>Product ERP ID</TableCell>
+                        <TableCell sx={tableHeadSx}>SKU Name</TableCell>
+                        <TableCell sx={tableHeadSx}>Product Division</TableCell>
+                        <TableCell sx={tableHeadSx}>Variant Name</TableCell>
+                        <TableCell align="right" sx={tableHeadSx}>Pcs/Box</TableCell>
+                        <TableCell align="right" sx={tableHeadSx}>Current Stock In Case</TableCell>
+                        <TableCell align="right" sx={tableHeadSx}>Current Stock In Pcs</TableCell>
+                        <TableCell align="right" sx={tableHeadSx}>Total Current Stock In Pcs</TableCell>
+                        <TableCell align="right" sx={tableHeadSx}>Price/Pcs</TableCell>
+                        <TableCell align="right" sx={tableHeadSx}>MRP</TableCell>
                         <TableCell align="right" sx={tableHeadSx}>Total Value</TableCell>
-                        <TableCell align="right" sx={tableHeadSx}>Purchase Price</TableCell>
                       </TableRow>
                     </TableHead>
                     <TableBody>
                       {items.length === 0 && (
                         <TableRow>
-                          <TableCell colSpan={18} align="center" sx={tableBodySx}>
+                          <TableCell colSpan={13} align="center" sx={tableBodySx}>
                             <MDTypography variant="button" color="text">
                               No DMS stock uploaded yet.
                             </MDTypography>
@@ -464,7 +494,7 @@ function DmsStock() {
                       )}
                       {items.length > 0 && filteredItems.length === 0 && (
                         <TableRow>
-                          <TableCell colSpan={18} align="center" sx={tableBodySx}>
+                          <TableCell colSpan={13} align="center" sx={tableBodySx}>
                             <MDTypography variant="button" color="text">
                               No stock rows match the selected filters.
                             </MDTypography>
@@ -475,26 +505,19 @@ function DmsStock() {
                         <TableRow key={item.id}>
                           <TableCell sx={tableBodySx}>{index + 1}</TableCell>
                           <TableCell sx={tableBodySx}>
-                            {formatUploadDate(getImportUploadDate(stockImport))}
+                            {formatUploadDate(item.upload_date || getImportUploadDate(stockImport))}
                           </TableCell>
                           <TableCell sx={tableBodySx}>{item.product_erp_id}</TableCell>
                           <TableCell sx={{ ...tableBodySx, minWidth: 220 }}>{item.product_name}</TableCell>
                           <TableCell sx={tableBodySx}>{item.product_division}</TableCell>
                           <TableCell sx={tableBodySx}>{item.variant_name}</TableCell>
-                          <TableCell align="right" sx={tableBodySx}>{unitFormat(item.total_purchases_in_stock_unit)}</TableCell>
-                          <TableCell align="right" sx={tableBodySx}>{money(item.purchases_in_stock_value)}</TableCell>
-                          <TableCell align="right" sx={tableBodySx}>{numberFormat(item.dp_per_unit_stock, 4)}</TableCell>
-                          <TableCell align="right" sx={tableBodySx}>{unitFormat(item.total_invoiced_stock_unit)}</TableCell>
-                          <TableCell align="right" sx={tableBodySx}>{money(item.invoiced_stock_value)}</TableCell>
-                          <TableCell align="right" sx={tableBodySx}>{unitFormat(item.total_closing_stock_unit)}</TableCell>
-                          <TableCell align="right" sx={tableBodySx}>{money(item.closing_stock_value)}</TableCell>
-                          <TableCell align="right" sx={tableBodySx}>{unitFormat(item.total_in_transit_stock_quantity_unit)}</TableCell>
-                          <TableCell align="right" sx={tableBodySx}>{money(item.in_transit_stock_value)}</TableCell>
-                          <TableCell align="right" sx={tableBodySx}>{unitFormat(item.total_pieces)}</TableCell>
+                          <TableCell align="right" sx={tableBodySx}>{unitFormat(item.pcs_per_box)}</TableCell>
+                          <TableCell align="right" sx={tableBodySx}>{unitFormat(item.current_stock_in_case)}</TableCell>
+                          <TableCell align="right" sx={tableBodySx}>{unitFormat(item.current_stock_in_pcs)}</TableCell>
+                          <TableCell align="right" sx={tableBodySx}>{unitFormat(item.total_current_stock_in_pcs)}</TableCell>
+                          <TableCell align="right" sx={tableBodySx}>{money(item.price_per_piece)}</TableCell>
+                          <TableCell align="right" sx={tableBodySx}>{money(item.mrp)}</TableCell>
                           <TableCell align="right" sx={{ ...tableBodySx, fontWeight: 700 }}>{money(item.total_value)}</TableCell>
-                          <TableCell align="right" sx={tableBodySx}>
-                            {item.purchase_price === null ? "N/A" : numberFormat(item.purchase_price, 4)}
-                          </TableCell>
                         </TableRow>
                       ))}
                     </TableBody>

@@ -4,9 +4,15 @@ import DmsStockModel from '../models/dmsStockModel.js';
 
 const HEADER_ALIASES = {
     productErpId: ['product erp id'],
-    productName: ['product name'],
+    productName: ['sku name', 'product name'],
     productDivision: ['product division'],
     variantName: ['variant name'],
+    pcsPerBox: ['pcs/box', 'pcs per box'],
+    currentStockInCase: ['current stock in case'],
+    currentStockInPcs: ['current stock in pcs'],
+    totalCurrentStockInPcs: ['total current stock in pcs'],
+    pricePerPiece: ['price/pcs', 'price per pcs', 'price per piece'],
+    mrp: ['mrp'],
     totalPurchasesInStockUnit: ['total purchases in stock'],
     purchasesInStockValue: ['purchases in stock value'],
     dpPerUnitStock: ['dp- per unit stock', 'dp per unit stock'],
@@ -30,11 +36,22 @@ const normalizeHeader = (header) =>
 const findValue = (row, key) => {
     const entries = Object.entries(row);
     const aliases = HEADER_ALIASES[key] || [];
-    const match = entries.find(([header]) => {
+    const exactMatch = entries.find(([header]) => aliases.includes(normalizeHeader(header)));
+    if (exactMatch) return exactMatch[1];
+
+    const partialMatch = entries.find(([header]) => {
         const normalized = normalizeHeader(header);
         return aliases.some((alias) => normalized.includes(alias));
     });
-    return match ? match[1] : '';
+    return partialMatch ? partialMatch[1] : '';
+};
+
+const hasHeader = (row, key) => {
+    const aliases = HEADER_ALIASES[key] || [];
+    return Object.keys(row).some((header) => {
+        const normalized = normalizeHeader(header);
+        return aliases.some((alias) => normalized === alias || normalized.includes(alias));
+    });
 };
 
 const toNumber = (value) => {
@@ -50,7 +67,7 @@ const roundRate = (value) => Math.round((Number(value) + Number.EPSILON) * 10000
 
 const textValue = (value) => String(value || '').trim();
 
-function parseRows(file) {
+export function parseRows(file) {
     const extension = (file.originalname.split('.').pop() || '').toLowerCase();
 
     if (extension === 'csv') {
@@ -73,7 +90,17 @@ function parseRows(file) {
     throw error;
 }
 
-function normalizeStockRow(row) {
+export function normalizeStockRow(row) {
+    const pcsPerBox = toNumber(findValue(row, 'pcsPerBox'));
+    const currentStockInCase = toNumber(findValue(row, 'currentStockInCase'));
+    const currentStockInPcs = toNumber(findValue(row, 'currentStockInPcs'));
+    const sourceTotalCurrentStockInPcs = findValue(row, 'totalCurrentStockInPcs');
+    const totalCurrentStockInPcs = sourceTotalCurrentStockInPcs === '' || sourceTotalCurrentStockInPcs === null
+        ? roundRate((pcsPerBox * currentStockInCase) + currentStockInPcs)
+        : toNumber(sourceTotalCurrentStockInPcs);
+    const pricePerPiece = toNumber(findValue(row, 'pricePerPiece'));
+    const mrp = toNumber(findValue(row, 'mrp'));
+
     const totalPurchasesInStockUnit = toNumber(findValue(row, 'totalPurchasesInStockUnit'));
     const purchasesInStockValue = toNumber(findValue(row, 'purchasesInStockValue'));
     const totalInvoicedStockUnit = toNumber(findValue(row, 'totalInvoicedStockUnit'));
@@ -96,14 +123,16 @@ function normalizeStockRow(row) {
         ? roundMoney(purchasesInStockValue - invoicedStockValue)
         : toNumber(sourceClosingValue);
 
-    const sourceTotalPieces = findValue(row, 'totalPieces');
+    const sourceTotalPieces = findValue(row, 'totalPieces') || sourceTotalCurrentStockInPcs;
     const totalPieces = sourceTotalPieces === '' || sourceTotalPieces === null
-        ? roundRate(totalClosingStockUnit + totalInTransitStockQuantityUnit)
+        ? (hasHeader(row, 'pcsPerBox') || hasHeader(row, 'currentStockInCase') || hasHeader(row, 'currentStockInPcs')
+            ? totalCurrentStockInPcs
+            : roundRate(totalClosingStockUnit + totalInTransitStockQuantityUnit))
         : toNumber(sourceTotalPieces);
 
     const sourceTotalValue = findValue(row, 'totalValue');
     const totalValue = sourceTotalValue === '' || sourceTotalValue === null
-        ? roundMoney(closingStockValue + inTransitStockValue)
+        ? roundMoney(totalCurrentStockInPcs * pricePerPiece) || roundMoney(closingStockValue + inTransitStockValue)
         : toNumber(sourceTotalValue);
 
     const purchasePriceText = findValue(row, 'purchasePrice');
@@ -116,6 +145,12 @@ function normalizeStockRow(row) {
         productName: textValue(findValue(row, 'productName')),
         productDivision: textValue(findValue(row, 'productDivision')),
         variantName: textValue(findValue(row, 'variantName')),
+        pcsPerBox,
+        currentStockInCase,
+        currentStockInPcs,
+        totalCurrentStockInPcs,
+        pricePerPiece,
+        mrp,
         totalPurchasesInStockUnit,
         purchasesInStockValue,
         dpPerUnitStock,
@@ -132,8 +167,10 @@ function normalizeStockRow(row) {
     };
 }
 
-function buildSummary(rows) {
+export function buildSummary(rows) {
     return rows.reduce((summary, row) => ({
+        totalStockCases: roundRate(summary.totalStockCases + row.currentStockInCase),
+        totalStockPcs: roundRate(summary.totalStockPcs + row.currentStockInPcs),
         totalPurchaseUnits: roundRate(summary.totalPurchaseUnits + row.totalPurchasesInStockUnit),
         totalPurchaseValue: roundMoney(summary.totalPurchaseValue + row.purchasesInStockValue),
         totalInvoicedUnits: roundRate(summary.totalInvoicedUnits + row.totalInvoicedStockUnit),
@@ -145,6 +182,8 @@ function buildSummary(rows) {
         totalPieces: roundRate(summary.totalPieces + row.totalPieces),
         totalValue: roundMoney(summary.totalValue + row.totalValue),
     }), {
+        totalStockCases: 0,
+        totalStockPcs: 0,
         totalPurchaseUnits: 0,
         totalPurchaseValue: 0,
         totalInvoicedUnits: 0,
@@ -207,7 +246,10 @@ export const uploadDmsStock = async (req, res) => {
 
 export const getLatestDmsStock = async (req, res) => {
     try {
-        const latestImport = await DmsStockModel.getLatestImport();
+        const uploadDate = String(req.query.uploadDate || '').trim();
+        const latestImport = uploadDate
+            ? await DmsStockModel.getImportByUploadDate(uploadDate)
+            : await DmsStockModel.getLatestImport();
         if (!latestImport) {
             return res.status(200).json({ import: null, items: [] });
         }
@@ -216,6 +258,16 @@ export const getLatestDmsStock = async (req, res) => {
         res.status(200).json(result);
     } catch (error) {
         console.error('Error fetching DMS stock:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+};
+
+export const getDmsStockImports = async (req, res) => {
+    try {
+        const imports = await DmsStockModel.getImports();
+        res.status(200).json({ imports });
+    } catch (error) {
+        console.error('Error fetching DMS stock dates:', error);
         res.status(500).json({ error: 'Internal server error' });
     }
 };

@@ -263,10 +263,11 @@ function Purchase() {
     }
   };
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     fetchSellers();
     fetchPurchases();
-  }, []);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const fillSellerDetails = (seller) => {
     if (!seller) return;

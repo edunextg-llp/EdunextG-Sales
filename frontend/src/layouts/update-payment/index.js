@@ -197,13 +197,14 @@ function UpdatePayment() {
     }
   };
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     const timer = setTimeout(() => {
       fetchSales(searchQuery);
     }, 300);
 
     return () => clearTimeout(timer);
-  }, [searchQuery]);
+  }, [searchQuery]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     const fetchDeliveryBoys = async () => {
@@ -220,6 +221,7 @@ function UpdatePayment() {
     fetchDeliveryBoys();
   }, []);
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (!paymentDialogSale || deliveryBoys.length === 0) return;
 
@@ -239,7 +241,7 @@ function UpdatePayment() {
         collectorName: defaultDeliveryBoy.collectorName,
       };
     });
-  }, [deliveryBoys, paymentDialogSale]);
+  }, [deliveryBoys, paymentDialogSale]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const filteredSales = salesData.filter((row) => row.packaging_status === "delivered");
 
@@ -922,7 +924,6 @@ function UpdatePayment() {
     return Math.max(0, Math.round((price - paidExcludingEdit) * 100) / 100);
   })();
 
-  const showPaymentForm = dialogRemaining > 0 || editingPaymentId;
   const topLevelPayments = payments.filter((payment) => !payment.parent_credit_payment_id);
 
   const totalCreditOnAccount = payments

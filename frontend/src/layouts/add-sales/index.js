@@ -24,7 +24,6 @@ import MDTypography from "components/MDTypography";
 import MDInput from "components/MDInput";
 import MDButton from "components/MDButton";
 import MDBadge from "components/MDBadge";
-import MDAvatar from "components/MDAvatar";
 
 // Material Dashboard 2 React example components
 import DashboardLayout from "examples/LayoutContainers/DashboardLayout";
@@ -69,7 +68,6 @@ function AddSales() {
   const [salesData, setSalesData] = useState({});
   const [submittedSummary, setSubmittedSummary] = useState(null);
   const [submitting, setSubmitting] = useState(false);
-  const [deliveryBoys, setDeliveryBoys] = useState([]);
   const [outletSearch, setOutletSearch] = useState("");
   const [searchOutlets, setSearchOutlets] = useState([]);
   const [searchingOutlets, setSearchingOutlets] = useState(false);
@@ -178,6 +176,7 @@ function AddSales() {
     }
   };
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   const displayOutlets = useMemo(() => {
     if (outletSearch.trim()) {
       return mergeOutletsById(outlets, searchOutlets);
@@ -186,7 +185,7 @@ function AddSales() {
       outlets,
       searchOutlets.filter((o) => outletHasDraft(o.id))
     );
-  }, [outlets, searchOutlets, outletSearch, salesData]);
+  }, [outlets, searchOutlets, outletSearch, salesData]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const hasSubmittableSales = useMemo(
     () =>
@@ -213,12 +212,6 @@ function AddSales() {
     searchOutlets.length === 0 &&
     displayOutlets.length === 0 &&
     !hasSubmittableSales;
-
-  const submittedForSelectedDate =
-    submittedSummary && submittedSummary.date === selectedDate ? submittedSummary : null;
-
-  // Always show all sales for the selected date — outlet search only filters the entry table above.
-  const submittedSales = submittedForSelectedDate?.sales || [];
 
   const buildSubmittedSummary = (staff, date, sales) => ({
     date,
@@ -262,21 +255,6 @@ function AddSales() {
       console.error("Error refreshing sales data:", error);
     }
   };
-
-  useEffect(() => {
-    const fetchDeliveryBoys = async () => {
-      try {
-        const response = await fetch(`${API}/delivery-boy`);
-        if (response.ok) {
-          const data = await response.json();
-          setDeliveryBoys(data);
-        }
-      } catch (error) {
-        console.error("Error fetching delivery boys:", error);
-      }
-    };
-    fetchDeliveryBoys();
-  }, []);
 
   const dayName = selectedDate
     ? new Intl.DateTimeFormat("en-US", { weekday: "long" }).format(
@@ -373,6 +351,7 @@ function AddSales() {
     };
 
     fetchAllData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedStaff, selectedDate]);
 
   useEffect(() => {
@@ -415,6 +394,7 @@ function AddSales() {
     }, 300);
 
     return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [outletSearch, selectedStaff, selectedDate]);
 
   const handleSalesChange = (outletId, index, field, value) => {
@@ -1010,10 +990,6 @@ function AddSales() {
                             </TableRow>
                           ) : (
                             displayOutlets.map((outlet, outletIndex) => {
-                              const alreadySubmitted = Boolean(
-                                outlet.already_submitted_today === 1 ||
-                                outlet.already_submitted_today === true
-                              );
                               const rows = salesData[outletKey(outlet.id)] || [];
                               return rows.map((row, index) => {
                                 const rowBorder =

@@ -3,6 +3,7 @@ import multer from 'multer';
 const router = express.Router();
 import * as staffController from '../controllers/staffController.js';
 import * as dmsStockController from '../controllers/dmsStockController.js';
+import * as currentStockController from '../controllers/currentStockController.js';
 
 const upload = multer({
     storage: multer.memoryStorage(),
@@ -30,7 +31,10 @@ router.put('/purchases/:purchaseId', staffController.updatePurchase);
 router.delete('/purchases/:purchaseId', staffController.deletePurchase);
 router.get('/purchase-reports', staffController.getPurchaseReports);
 router.get('/dms-stock', dmsStockController.getLatestDmsStock);
+router.get('/dms-stock/imports', dmsStockController.getDmsStockImports);
 router.post('/dms-stock/upload', upload.single('file'), dmsStockController.uploadDmsStock);
+router.get('/current-stock', currentStockController.getCurrentStock);
+router.post('/current-stock/upload', upload.single('file'), currentStockController.uploadCurrentStock);
 router.get('/sales/by-date', staffController.getAllSalesByDate);
 router.get('/sales/cancelled', staffController.getCancelledDeliverySales);
 router.get('/reports', staffController.getReports);
