@@ -133,7 +133,7 @@ function Purchase() {
   const [loadingSellers, setLoadingSellers] = useState(false);
   const [gstManuallyEdited, setGstManuallyEdited] = useState(false);
   const [editingPurchaseId, setEditingPurchaseId] = useState(null);
-  const API = "http://localhost:5001/api";
+  const API = "https://bawarchee.edunextg.co/api";
 
   const totals = useMemo(() => {
     const grossAmount = numberValue(form.grossAmount);

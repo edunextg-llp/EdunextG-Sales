@@ -52,7 +52,7 @@ function DashboardNavbar({ absolute, light, isMini }) {
   useEffect(() => {
     const fetchPendingCredits = async () => {
       try {
-        const response = await fetch("http://localhost:5001/api/staff/credits/pending");
+        const response = await fetch("https://bawarchee.edunextg.co/api/staff/credits/pending");
         if (response.ok) {
           const data = await response.json();
           const dueTomorrow = data.filter((credit) => {

@@ -163,6 +163,48 @@ function normalizeBankDepositChequeDetails(reqBody) {
     };
 }
 
+function normalizeBankDepositUpiDetails(reqBody) {
+    const { upiDetails } = reqBody;
+    const rawUpis = Array.isArray(upiDetails) && upiDetails.length ? upiDetails : [];
+
+    if (!rawUpis.length) {
+        return { error: 'Please add at least one UPI entry.' };
+    }
+
+    const normalizedUpis = [];
+    for (let index = 0; index < rawUpis.length; index += 1) {
+        const upi = rawUpis[index] || {};
+        const rowLabel = `UPI ${index + 1}`;
+        const storeValidation = validateRequiredText(upi.storeName, `${rowLabel} outlet name`);
+        if (!storeValidation.valid) return { error: storeValidation.error };
+        const invoiceValidation = validateRequiredText(upi.invoiceNumber, `${rowLabel} invoice number`);
+        if (!invoiceValidation.valid) return { error: invoiceValidation.error };
+        const upiIdValidation = validateRequiredText(upi.upiId, `${rowLabel} UPI ID`);
+        if (!upiIdValidation.valid) return { error: upiIdValidation.error };
+        const amountValidation = validateNumeric(upi.amount, `${rowLabel} amount`);
+        if (!amountValidation.valid) return { error: amountValidation.error };
+        if (amountValidation.value <= 0) return { error: `${rowLabel} amount must be greater than zero` };
+
+        normalizedUpis.push({
+            storeName: storeValidation.value,
+            invoiceNumber: invoiceValidation.value,
+            upiId: upiIdValidation.value,
+            amount: amountValidation.value,
+            paymentId: upi.paymentId ? Number(upi.paymentId) : null,
+        });
+    }
+
+    const firstUpi = normalizedUpis[0];
+    const extraCount = normalizedUpis.length - 1;
+    return {
+        upiDetails: normalizedUpis,
+        storeName: `${firstUpi.storeName}${extraCount > 0 ? ` (+${extraCount} more)` : ''}`,
+        chequeNo: `${firstUpi.invoiceNumber}${extraCount > 0 ? ` (+${extraCount} more)` : ''}`,
+        chequeDate: null,
+        amount: normalizedUpis.reduce((total, upi) => total + upi.amount, 0),
+    };
+}
+
 export const createStaff = async (req, res) => {
     try {
         const { name, contactNo, companyName, companyNames, staffType = 'distributor', assignments = {} } = req.body;
@@ -739,6 +781,18 @@ export const searchPendingCheques = async (req, res) => {
     }
 };
 
+export const searchUpiInvoices = async (req, res) => {
+    try {
+        const upiPayments = await ReportModel.getUpiPaymentsForDeposit({
+            search: req.query.search || '',
+        });
+        res.status(200).json(upiPayments);
+    } catch (error) {
+        console.error('Error searching UPI invoices:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+};
+
 export const searchPurchaseSellers = async (req, res) => {
     try {
         const sellers = await PurchaseSellerModel.search(req.query.search || '');
@@ -933,6 +987,7 @@ export const createBankDeposit = async (req, res) => {
             chequeNo,
             chequeDate,
             chequeDetails = [],
+            upiDetails = [],
             cashDetails = {},
         } = req.body;
 
@@ -947,12 +1002,17 @@ export const createBankDeposit = async (req, res) => {
         if (!branchValidation.valid) return res.status(400).json({ error: branchValidation.error });
         const accountValidation = validateRequiredText(bankAccountNo, 'Bank account no');
         if (!accountValidation.valid) return res.status(400).json({ error: accountValidation.error });
-        const depositorValidation = validateRequiredText(depositorName, 'Depositor name');
-        if (!depositorValidation.valid) return res.status(400).json({ error: depositorValidation.error });
 
         const mode = String(depositMode || '').toLowerCase();
-        if (!['cash', 'cheque'].includes(mode)) {
-            return res.status(400).json({ error: 'Deposit mode must be cash or cheque' });
+        if (!['cash', 'cheque', 'upi'].includes(mode)) {
+            return res.status(400).json({ error: 'Deposit mode must be cash, cheque, or upi' });
+        }
+
+        let normalizedDepositorName = '';
+        if (mode !== 'upi') {
+            const depositorValidation = validateRequiredText(depositorName, 'Depositor name');
+            if (!depositorValidation.valid) return res.status(400).json({ error: depositorValidation.error });
+            normalizedDepositorName = depositorValidation.value;
         }
 
         let depositAmount = 0;
@@ -966,7 +1026,7 @@ export const createBankDeposit = async (req, res) => {
             if (cashResult.error) return res.status(400).json({ error: cashResult.error });
             normalizedCashDetails = cashResult.cashDetails;
             depositAmount = cashResult.amount;
-        } else {
+        } else if (mode === 'cheque') {
             const chequeResult = normalizeBankDepositChequeDetails({
                 chequeDetails,
                 storeName,
@@ -980,6 +1040,14 @@ export const createBankDeposit = async (req, res) => {
             normalizedChequeDate = chequeResult.chequeDate;
             normalizedCashDetails = { cheques: chequeResult.chequeDetails };
             depositAmount = chequeResult.amount;
+        } else {
+            const upiResult = normalizeBankDepositUpiDetails({ upiDetails });
+            if (upiResult.error) return res.status(400).json({ error: upiResult.error });
+            normalizedStoreName = upiResult.storeName;
+            normalizedChequeNo = upiResult.chequeNo;
+            normalizedChequeDate = upiResult.chequeDate;
+            normalizedCashDetails = { upis: upiResult.upiDetails };
+            depositAmount = upiResult.amount;
         }
 
         const deposit = await BankDepositModel.create({
@@ -989,7 +1057,7 @@ export const createBankDeposit = async (req, res) => {
             branchName: branchValidation.value,
             bankAccountNo: accountValidation.value,
             ifscCode: ifscCode ? String(ifscCode).trim() : null,
-            depositorName: depositorValidation.value,
+            depositorName: normalizedDepositorName || null,
             storeName: normalizedStoreName,
             depositMode: mode,
             amount: depositAmount,
@@ -1027,6 +1095,7 @@ export const updateBankDeposit = async (req, res) => {
             chequeNo,
             chequeDate,
             chequeDetails = [],
+            upiDetails = [],
             cashDetails = {},
         } = req.body;
 
@@ -1038,12 +1107,17 @@ export const updateBankDeposit = async (req, res) => {
         if (!branchValidation.valid) return res.status(400).json({ error: branchValidation.error });
         const accountValidation = validateRequiredText(bankAccountNo, 'Bank account no');
         if (!accountValidation.valid) return res.status(400).json({ error: accountValidation.error });
-        const depositorValidation = validateRequiredText(depositorName, 'Depositor name');
-        if (!depositorValidation.valid) return res.status(400).json({ error: depositorValidation.error });
 
         const mode = String(depositMode || '').toLowerCase();
-        if (!['cash', 'cheque'].includes(mode)) {
-            return res.status(400).json({ error: 'Deposit mode must be cash or cheque' });
+        if (!['cash', 'cheque', 'upi'].includes(mode)) {
+            return res.status(400).json({ error: 'Deposit mode must be cash, cheque, or upi' });
+        }
+
+        let normalizedDepositorName = '';
+        if (mode !== 'upi') {
+            const depositorValidation = validateRequiredText(depositorName, 'Depositor name');
+            if (!depositorValidation.valid) return res.status(400).json({ error: depositorValidation.error });
+            normalizedDepositorName = depositorValidation.value;
         }
 
         let depositAmount = 0;
@@ -1057,7 +1131,7 @@ export const updateBankDeposit = async (req, res) => {
             if (cashResult.error) return res.status(400).json({ error: cashResult.error });
             normalizedCashDetails = cashResult.cashDetails;
             depositAmount = cashResult.amount;
-        } else {
+        } else if (mode === 'cheque') {
             const chequeResult = normalizeBankDepositChequeDetails({
                 chequeDetails,
                 storeName,
@@ -1071,6 +1145,14 @@ export const updateBankDeposit = async (req, res) => {
             normalizedChequeDate = chequeResult.chequeDate;
             normalizedCashDetails = { cheques: chequeResult.chequeDetails };
             depositAmount = chequeResult.amount;
+        } else {
+            const upiResult = normalizeBankDepositUpiDetails({ upiDetails });
+            if (upiResult.error) return res.status(400).json({ error: upiResult.error });
+            normalizedStoreName = upiResult.storeName;
+            normalizedChequeNo = upiResult.chequeNo;
+            normalizedChequeDate = upiResult.chequeDate;
+            normalizedCashDetails = { upis: upiResult.upiDetails };
+            depositAmount = upiResult.amount;
         }
 
         const deposit = await BankDepositModel.update(depositId, {
@@ -1080,7 +1162,7 @@ export const updateBankDeposit = async (req, res) => {
             branchName: branchValidation.value,
             bankAccountNo: accountValidation.value,
             ifscCode: ifscCode ? String(ifscCode).trim() : null,
-            depositorName: depositorValidation.value,
+            depositorName: normalizedDepositorName || null,
             storeName: normalizedStoreName,
             depositMode: mode,
             amount: depositAmount,

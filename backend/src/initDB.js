@@ -738,6 +738,15 @@ async function initDB() {
         if (err.code !== 'ER_DUP_FIELDNAME') console.log('depositor_name column may already exist on bank_deposits');
     }
 
+    try {
+        await connection.query(`
+            ALTER TABLE bank_deposits MODIFY COLUMN deposit_mode ENUM('cash', 'cheque', 'upi') NOT NULL
+        `);
+        console.log('Added upi to deposit_mode on bank_deposits');
+    } catch (err) {
+        if (err.code !== 'ER_DUP_FIELDNAME') console.log('upi deposit_mode may already exist on bank_deposits');
+    }
+
     await connection.query(`
         INSERT INTO credit_payment_remarks (payment_id, remark_date, remarks, created_at)
         SELECT id, payment_date, remarks, COALESCE(created_at, CURRENT_TIMESTAMP)

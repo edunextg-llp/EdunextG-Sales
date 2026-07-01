@@ -30,6 +30,7 @@ import DashboardNavbar from "examples/Navbars/DashboardNavbar";
 import Footer from "examples/Footer";
 import { printCashCountingPdf } from "utils/printCashCountingPdf";
 import { printChequeDepositPdf } from "utils/printChequeDepositPdf";
+import { printUpiDepositPdf } from "utils/printUpiDepositPdf";
 import { FaRegEdit } from "react-icons/fa";
 import { IoPrintOutline } from "react-icons/io5";
 import { CiTrash } from "react-icons/ci";
@@ -77,6 +78,15 @@ const emptyChequeRow = () => ({
   amount: "",
 });
 
+const emptyUpiRow = () => ({
+  rowKey: `upi-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
+  paymentId: null,
+  storeName: "",
+  invoiceNumber: "",
+  upiId: "",
+  amount: "",
+});
+
 const samePaymentId = (left, right) => {
   if (left === null || left === undefined || right === null || right === undefined) return false;
   return String(left) === String(right);
@@ -89,6 +99,15 @@ const mapPendingChequeToRow = (cheque) => ({
   chequeNo: cheque.reference_no || "",
   chequeDate: cheque.deposit_date || "",
   amount: cheque.amount === undefined || cheque.amount === null ? "" : String(cheque.amount),
+});
+
+const mapPendingUpiToRow = (upi) => ({
+  rowKey: `upi-${upi.id}-${Date.now()}`,
+  paymentId: upi.id,
+  storeName: upi.outlet_name || "",
+  invoiceNumber: upi.invoice_number || "",
+  upiId: upi.reference_no || "",
+  amount: upi.amount === undefined || upi.amount === null ? "" : String(upi.amount),
 });
 
 const getTodayLocalDate = () => {
@@ -125,6 +144,7 @@ const emptyForm = () => ({
   chequeNo: "",
   chequeDate: "",
   chequeDetails: [emptyChequeRow()],
+  upiDetails: [emptyUpiRow()],
   cashDetails: emptyCashDetails(),
 });
 
@@ -196,11 +216,53 @@ const parseChequeDetails = (deposit) => {
   return [emptyChequeRow()];
 };
 
+const parseUpiDetails = (deposit) => {
+  if (deposit?.cash_details) {
+    try {
+      const details = JSON.parse(deposit.cash_details);
+      if (Array.isArray(details?.upis) && details.upis.length) {
+        return details.upis.map((upi) => ({
+          rowKey: `upi-${upi.invoiceNumber || "row"}-${upi.upiId || ""}-${upi.amount || ""}`,
+          paymentId: upi.paymentId || null,
+          storeName: upi.storeName || "",
+          invoiceNumber: upi.invoiceNumber || "",
+          upiId: upi.upiId || "",
+          amount: upi.amount === undefined || upi.amount === null ? "" : String(upi.amount),
+        }));
+      }
+    } catch (error) {
+      // Fall back to legacy columns below.
+    }
+  }
+
+  if (deposit?.deposit_mode === "upi") {
+    return [
+      {
+        rowKey: `upi-${deposit.cheque_no || "legacy"}-${deposit.id}`,
+        paymentId: null,
+        storeName: deposit.store_name || "",
+        invoiceNumber: deposit.cheque_no || "",
+        upiId: "",
+        amount: deposit.amount === undefined || deposit.amount === null ? "" : String(deposit.amount),
+      },
+    ];
+  }
+
+  return [emptyUpiRow()];
+};
+
 const chequeDisplayText = (deposit, field) => {
   const rows = parseChequeDetails(deposit).filter((row) => row[field]);
   if (!rows.length) return "N/A";
   if (rows.length === 1) return rows[0][field];
   return `${rows.length} cheques`;
+};
+
+const upiDisplayText = (deposit, field) => {
+  const rows = parseUpiDetails(deposit).filter((row) => row[field]);
+  if (!rows.length) return "N/A";
+  if (rows.length === 1) return rows[0][field];
+  return `${rows.length} UPI entries`;
 };
 
 function BankDeposit() {
@@ -210,12 +272,14 @@ function BankDeposit() {
   const [loadingStores, setLoadingStores] = useState(false);
   const [pendingCheques, setPendingCheques] = useState([]);
   const [loadingPendingCheques, setLoadingPendingCheques] = useState(false);
+  const [pendingUpiInvoices, setPendingUpiInvoices] = useState([]);
+  const [loadingPendingUpi, setLoadingPendingUpi] = useState(false);
   const [editingDepositId, setEditingDepositId] = useState(null);
   const [saving, setSaving] = useState(false);
   const [depositTotalStartDate, setDepositTotalStartDate] = useState(() => getMonthStartDate());
   const [depositTotalEndDate, setDepositTotalEndDate] = useState(() => getTodayLocalDate());
   const [viewDeposit, setViewDeposit] = useState(null); // For view dialog
-  const API = "http://localhost:5001/api";
+  const API = "https://bawarchee.edunextg.co/api";
 
   const cashAmount = useMemo(
     () =>
@@ -234,6 +298,18 @@ function BankDeposit() {
       ),
     [form.chequeDetails]
   );
+
+  const upiAmount = useMemo(
+    () =>
+      form.upiDetails.reduce(
+        (total, upi) => total + (Number.isNaN(parseFloat(upi.amount)) ? 0 : parseFloat(upi.amount)),
+        0
+      ),
+    [form.upiDetails]
+  );
+
+  const activeDepositAmount =
+    form.depositMode === "cash" ? cashAmount : form.depositMode === "cheque" ? chequeAmount : upiAmount;
 
   const depositsInTotalRange = useMemo(() => {
     return deposits.filter((deposit) => {
@@ -261,6 +337,14 @@ function BankDeposit() {
     [depositsInTotalRange]
   );
 
+  const upiDepositTotal = useMemo(
+    () =>
+      depositsInTotalRange
+        .filter((deposit) => deposit.deposit_mode === "upi")
+        .reduce((total, deposit) => total + Number(deposit.amount || 0), 0),
+    [depositsInTotalRange]
+  );
+
   const bankWiseDepositSummary = useMemo(() => {
     const summary = new Map();
 
@@ -275,6 +359,7 @@ function BankDeposit() {
           accountNo,
           cashAmount: 0,
           chequeAmount: 0,
+          upiAmount: 0,
           totalAmount: 0,
           depositCount: 0,
         };
@@ -284,6 +369,8 @@ function BankDeposit() {
         current.cashAmount += amount;
       } else if (deposit.deposit_mode === "cheque") {
         current.chequeAmount += amount;
+      } else if (deposit.deposit_mode === "upi") {
+        current.upiAmount += amount;
       }
       current.totalAmount += amount;
       current.depositCount += 1;
@@ -295,7 +382,7 @@ function BankDeposit() {
     );
   }, [depositsInTotalRange]);
 
-  const totalDepositAmount = cashDepositTotal + chequeDepositTotal;
+  const totalDepositAmount = cashDepositTotal + chequeDepositTotal + upiDepositTotal;
 
   const fetchDeposits = async () => {
     try {
@@ -366,6 +453,30 @@ function BankDeposit() {
     return () => clearTimeout(timer);
   }, [form.depositMode, editingDepositId]);
 
+  useEffect(() => {
+    if (form.depositMode !== "upi" || editingDepositId) {
+      setPendingUpiInvoices([]);
+      return undefined;
+    }
+
+    const timer = setTimeout(async () => {
+      setLoadingPendingUpi(true);
+      try {
+        const response = await fetch(`${API}/staff/bank-deposits/upi-invoices`);
+        if (response.ok) {
+          const data = await response.json();
+          setPendingUpiInvoices(data);
+        }
+      } catch (error) {
+        console.error("Error fetching UPI invoices:", error);
+      } finally {
+        setLoadingPendingUpi(false);
+      }
+    }, 300);
+
+    return () => clearTimeout(timer);
+  }, [form.depositMode, editingDepositId]);
+
   const getAvailableChequesForRow = (rowIndex) => {
     const usedPaymentIds = new Set(
       form.chequeDetails
@@ -375,6 +486,17 @@ function BankDeposit() {
         .map((paymentId) => String(paymentId))
     );
     return pendingCheques.filter((cheque) => !usedPaymentIds.has(String(cheque.id)));
+  };
+
+  const getAvailableUpiInvoicesForRow = (rowIndex) => {
+    const usedPaymentIds = new Set(
+      form.upiDetails
+        .filter((_, index) => index !== rowIndex)
+        .map((upi) => upi.paymentId)
+        .filter((paymentId) => paymentId !== null && paymentId !== undefined)
+        .map((paymentId) => String(paymentId))
+    );
+    return pendingUpiInvoices.filter((upi) => !usedPaymentIds.has(String(upi.id)));
   };
 
   const handleChequeSelect = (index, cheque) => {
@@ -397,6 +519,26 @@ function BankDeposit() {
     }));
   };
 
+  const handleUpiSelect = (index, upi) => {
+    if (!upi) {
+      setForm((prev) => ({
+        ...prev,
+        upiDetails: prev.upiDetails.map((row, rowIndex) =>
+          rowIndex === index ? { ...emptyUpiRow(), rowKey: row.rowKey } : row
+        ),
+      }));
+      return;
+    }
+
+    const mappedUpi = mapPendingUpiToRow(upi);
+    setForm((prev) => ({
+      ...prev,
+      upiDetails: prev.upiDetails.map((row, rowIndex) =>
+        rowIndex === index ? { ...mappedUpi, rowKey: row.rowKey || mappedUpi.rowKey } : row
+      ),
+    }));
+  };
+
   const handleFormChange = (field, value) => {
     setForm((prev) => ({
       ...prev,
@@ -415,8 +557,10 @@ function BankDeposit() {
             chequeNo: value === "cash" ? "" : prev.chequeNo,
             chequeDate: value === "cash" ? "" : prev.chequeDate,
             storeName: value === "cash" ? "" : prev.storeName,
-            chequeDetails: value === "cash" ? [emptyChequeRow()] : prev.chequeDetails,
+            chequeDetails: value === "cheque" ? prev.chequeDetails : [emptyChequeRow()],
+            upiDetails: value === "upi" ? prev.upiDetails : [emptyUpiRow()],
             cashDetails: value === "cash" ? emptyCashDetails() : prev.cashDetails,
+            depositorName: value === "upi" ? "" : prev.depositorName,
           }
         : {}),
       ...(field === "storeName"
@@ -478,12 +622,38 @@ function BankDeposit() {
     }));
   };
 
+  const handleUpiChange = (index, field, value) => {
+    setForm((prev) => ({
+      ...prev,
+      upiDetails: prev.upiDetails.map((upi, upiIndex) =>
+        upiIndex === index ? { ...upi, [field]: value } : upi
+      ),
+    }));
+  };
+
+  const addUpiRow = () => {
+    setForm((prev) => ({
+      ...prev,
+      upiDetails: [...prev.upiDetails, emptyUpiRow()],
+    }));
+  };
+
+  const removeUpiRow = (index) => {
+    setForm((prev) => ({
+      ...prev,
+      upiDetails:
+        prev.upiDetails.length === 1
+          ? [emptyUpiRow()]
+          : prev.upiDetails.filter((_, upiIndex) => upiIndex !== index),
+    }));
+  };
+
   const validateForm = () => {
     if (!form.depositDate) return "Deposit date is required.";
     if (!form.bankName.trim()) return "Bank name is required.";
     if (!form.branchName.trim()) return "Branch name is required.";
     if (!form.bankAccountNo.trim()) return "Bank account no is required.";
-    if (!form.depositorName.trim()) return "Depositor name is required.";
+    if (form.depositMode !== "upi" && !form.depositorName.trim()) return "Depositor name is required.";
     if (form.depositMode === "cash" && cashAmount <= 0) {
       return "Please enter cash note or coin count.";
     }
@@ -495,6 +665,18 @@ function BankDeposit() {
         if (!cheque.chequeNo.trim()) return `${label} no is required.`;
         if (!cheque.chequeDate) return `${label} date is required.`;
         if (!cheque.amount || Number.isNaN(parseFloat(cheque.amount)) || parseFloat(cheque.amount) <= 0) {
+          return `${label} amount is required.`;
+        }
+      }
+    }
+    if (form.depositMode === "upi") {
+      for (let index = 0; index < form.upiDetails.length; index += 1) {
+        const upi = form.upiDetails[index];
+        const label = `UPI ${index + 1}`;
+        if (!upi.storeName.trim()) return `${label} outlet name is required.`;
+        if (!upi.invoiceNumber.trim()) return `${label} invoice number is required.`;
+        if (!upi.upiId.trim()) return `${label} UPI ID is required.`;
+        if (!upi.amount || Number.isNaN(parseFloat(upi.amount)) || parseFloat(upi.amount) <= 0) {
           return `${label} amount is required.`;
         }
       }
@@ -518,10 +700,10 @@ function BankDeposit() {
         branchName: form.branchName.trim(),
         bankAccountNo: form.bankAccountNo.trim(),
         ifscCode: form.ifscCode.trim(),
-        depositorName: form.depositorName.trim(),
+        depositorName: form.depositMode === "upi" ? "" : form.depositorName.trim(),
         storeName: form.depositMode === "cheque" ? form.chequeDetails[0]?.storeName.trim() || "" : "",
         depositMode: form.depositMode,
-        amount: form.depositMode === "cash" ? cashAmount : chequeAmount,
+        amount: activeDepositAmount,
         chequeNo: form.depositMode === "cheque" ? form.chequeDetails[0]?.chequeNo.trim() || "" : null,
         chequeDate: form.depositMode === "cheque" ? form.chequeDetails[0]?.chequeDate || "" : null,
         chequeDetails:
@@ -532,6 +714,16 @@ function BankDeposit() {
                 chequeNo: cheque.chequeNo.trim(),
                 chequeDate: cheque.chequeDate,
                 amount: parseFloat(cheque.amount),
+              }))
+            : [],
+        upiDetails:
+          form.depositMode === "upi"
+            ? form.upiDetails.map((upi) => ({
+                paymentId: upi.paymentId || null,
+                storeName: upi.storeName.trim(),
+                invoiceNumber: upi.invoiceNumber.trim(),
+                upiId: upi.upiId.trim(),
+                amount: parseFloat(upi.amount),
               }))
             : [],
         cashDetails: form.depositMode === "cash" ? form.cashDetails : null,
@@ -589,6 +781,7 @@ function BankDeposit() {
       chequeNo: deposit.cheque_no || "",
       chequeDate: deposit.cheque_date || "",
       chequeDetails: parseChequeDetails(deposit),
+      upiDetails: parseUpiDetails(deposit),
       cashDetails,
     });
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -716,6 +909,41 @@ function BankDeposit() {
     });
   };
 
+  const printUpiDetails = (deposit = null) => {
+    const rows = (deposit ? parseUpiDetails(deposit) : form.upiDetails)
+      .filter((upi) => upi.storeName || upi.invoiceNumber || upi.upiId || upi.amount)
+      .map((upi) => ({
+        storeName: upi.storeName || "N/A",
+        invoiceNumber: upi.invoiceNumber || "N/A",
+        upiId: upi.upiId || "N/A",
+        amount: parseFloat(upi.amount) || 0,
+      }));
+
+    if (!rows.length) {
+      alert("Please enter UPI details.");
+      return;
+    }
+
+    const total = rows.reduce((sum, row) => sum + row.amount, 0);
+    const depositRefNo = deposit?.deposit_ref_no || "Generated after save";
+    const printDate = deposit?.deposit_date || form.depositDate;
+    const bankName = deposit?.bank_name || form.bankName;
+    const bankAccountNo = deposit?.bank_account_no || form.bankAccountNo;
+    const branchName = deposit?.branch_name || form.branchName;
+    const ifscCode = deposit?.ifsc_code || form.ifscCode;
+
+    printUpiDepositPdf({
+      depositRefNo,
+      depositDate: formatDate(printDate),
+      bankName: bankName || "N/A",
+      branchName: branchName || "N/A",
+      bankAccountNo: bankAccountNo || "N/A",
+      ifscCode: ifscCode || "N/A",
+      rows,
+      total,
+    });
+  };
+
   const printBankWiseDepositReport = () => {
     const rowsHtml = bankWiseDepositSummary
       .map(
@@ -744,7 +972,7 @@ function BankDeposit() {
             <td>${escapeHtml(deposit.bank_name || "N/A")}</td>
             <td>${escapeHtml(deposit.branch_name || "N/A")}</td>
             <td>${escapeHtml(deposit.bank_account_no || "N/A")}</td>
-            <td>${escapeHtml(deposit.deposit_mode === "cash" ? "Cash" : "Cheque")}</td>
+            <td>${escapeHtml(deposit.deposit_mode === "cash" ? "Cash" : deposit.deposit_mode === "upi" ? "UPI" : "Cheque")}</td>
             <td class="right">Rs. ${Number(deposit.amount || 0).toFixed(2)}</td>
           </tr>
         `
@@ -789,6 +1017,7 @@ function BankDeposit() {
             <div><strong>Total Deposits:</strong> ${depositsInTotalRange.length}</div>
             <div><strong>Total Cash:</strong> Rs. ${cashDepositTotal.toFixed(2)}</div>
             <div><strong>Total Cheque:</strong> Rs. ${chequeDepositTotal.toFixed(2)}</div>
+            <div><strong>Total UPI:</strong> Rs. ${upiDepositTotal.toFixed(2)}</div>
           </div>
           <h2>Bank Wise Total</h2>
           ${
@@ -878,7 +1107,7 @@ function BankDeposit() {
               </MDBox>
             </Card>
           </Grid>
-          <Grid item xs={12} md={6}>
+          <Grid item xs={12} md={4}>
             <Card>
               <MDBox p={3}>
                 <MDTypography variant="button" color="text" fontWeight="medium">
@@ -893,7 +1122,7 @@ function BankDeposit() {
               </MDBox>
             </Card>
           </Grid>
-          <Grid item xs={12} md={6}>
+          <Grid item xs={12} md={4}>
             <Card>
               <MDBox p={3}>
                 <MDTypography variant="button" color="text" fontWeight="medium">
@@ -904,6 +1133,21 @@ function BankDeposit() {
                 </MDTypography>
                 <MDTypography variant="h4" fontWeight="bold" color="warning">
                   {formatMoney(chequeDepositTotal)}
+                </MDTypography>
+              </MDBox>
+            </Card>
+          </Grid>
+          <Grid item xs={12} md={4}>
+            <Card>
+              <MDBox p={3}>
+                <MDTypography variant="button" color="text" fontWeight="medium">
+                  Total UPI Deposit
+                </MDTypography>
+                <MDTypography variant="caption" color="text" display="block" mb={1}>
+                  {formatDate(depositTotalStartDate)} to {formatDate(depositTotalEndDate)}
+                </MDTypography>
+                <MDTypography variant="h4" fontWeight="bold" color="info">
+                  {formatMoney(upiDepositTotal)}
                 </MDTypography>
               </MDBox>
             </Card>
@@ -1064,6 +1308,7 @@ function BankDeposit() {
                       fullWidth
                       value={form.depositorName}
                       onChange={(e) => handleFormChange("depositorName", e.target.value)}
+                      disabled={form.depositMode === "upi"}
                     />
                   </Grid>
                   <Grid item xs={12} md={4}>
@@ -1075,6 +1320,7 @@ function BankDeposit() {
                       >
                         <MenuItem value="cash">Cash</MenuItem>
                         <MenuItem value="cheque">Cheque</MenuItem>
+                        <MenuItem value="upi">UPI</MenuItem>
                       </Select>
                     </FormControl>
                   </Grid>
@@ -1087,7 +1333,7 @@ function BankDeposit() {
                       sx={{ border: "1px solid #d2d6da", borderRadius: 1, backgroundColor: "#f8fafc" }}
                     >
                       <MDTypography variant="button" fontWeight="medium" color="dark">
-                        Total: {formatMoney(form.depositMode === "cash" ? cashAmount : chequeAmount)}
+                        Total: {formatMoney(activeDepositAmount)}
                       </MDTypography>
                     </MDBox>
                   </Grid>
@@ -1271,6 +1517,121 @@ function BankDeposit() {
                     </Grid>
                   )}
 
+                  {form.depositMode === "upi" && (
+                    <Grid item xs={12}>
+                      <MDBox display="flex" alignItems="center" justifyContent="space-between" mb={1}>
+                        <MDBox>
+                          <MDTypography variant="button" fontWeight="medium" color="dark">
+                            UPI Details
+                          </MDTypography>
+                          {!editingDepositId && (
+                            <MDTypography variant="caption" color="text" display="block">
+                              Choose invoice number to auto-fill outlet name, UPI ID, and amount.
+                            </MDTypography>
+                          )}
+                        </MDBox>
+                        <MDButton color="info" variant="outlined" size="small" onClick={addUpiRow}>
+                          <Icon sx={{ mr: 1 }}>add</Icon>
+                          Add UPI
+                        </MDButton>
+                      </MDBox>
+                      <MDBox display="flex" flexDirection="column" gap={1.5}>
+                        {form.upiDetails.map((upi, index) => (
+                          <Grid container spacing={1.5} key={upi.rowKey || `upi-row-${index}`}>
+                            <Grid item xs={12} md={3}>
+                              {editingDepositId ? (
+                                <MDInput
+                                  label="Invoice No"
+                                  fullWidth
+                                  value={upi.invoiceNumber}
+                                  onChange={(e) => handleUpiChange(index, "invoiceNumber", e.target.value)}
+                                />
+                              ) : (
+                                <Autocomplete
+                                  id={`upi-autocomplete-${upi.rowKey || index}`}
+                                  options={getAvailableUpiInvoicesForRow(index)}
+                                  loading={loadingPendingUpi}
+                                  value={
+                                    pendingUpiInvoices.find((item) => samePaymentId(item.id, upi.paymentId)) ||
+                                    (upi.invoiceNumber
+                                      ? {
+                                          id: upi.paymentId,
+                                          invoice_number: upi.invoiceNumber,
+                                          outlet_name: upi.storeName,
+                                          reference_no: upi.upiId,
+                                          amount: upi.amount,
+                                        }
+                                      : null)
+                                  }
+                                  getOptionLabel={(option) => option.invoice_number || ""}
+                                  isOptionEqualToValue={(option, value) => samePaymentId(option?.id, value?.id)}
+                                  onChange={(event, value) => handleUpiSelect(index, value)}
+                                  renderOption={(props, option) => (
+                                    <li {...props} key={option.id}>
+                                      <MDBox>
+                                        <MDTypography variant="button" fontWeight="medium">
+                                          {option.invoice_number}
+                                        </MDTypography>
+                                        <MDTypography variant="caption" color="text" display="block">
+                                          {option.outlet_name || "N/A"} · {option.reference_no || "No UPI ID"} ·{" "}
+                                          {formatMoney(option.amount)}
+                                        </MDTypography>
+                                      </MDBox>
+                                    </li>
+                                  )}
+                                  renderInput={(params) => (
+                                    <MDInput {...params} label="Invoice No" fullWidth />
+                                  )}
+                                />
+                              )}
+                            </Grid>
+                            <Grid item xs={12} md={3}>
+                              <MDInput
+                                label="Outlet Name"
+                                fullWidth
+                                value={upi.storeName}
+                                onChange={(e) => handleUpiChange(index, "storeName", e.target.value)}
+                                InputProps={{ readOnly: !editingDepositId }}
+                              />
+                            </Grid>
+                            <Grid item xs={12} md={2}>
+                              <MDInput
+                                label="UPI ID"
+                                fullWidth
+                                value={upi.upiId}
+                                onChange={(e) => handleUpiChange(index, "upiId", e.target.value)}
+                                InputProps={{ readOnly: !editingDepositId }}
+                              />
+                            </Grid>
+                            <Grid item xs={12} md={2}>
+                              <MDInput
+                                type="number"
+                                label="Amount"
+                                fullWidth
+                                value={upi.amount}
+                                onChange={(e) => handleUpiChange(index, "amount", e.target.value)}
+                                inputProps={{ min: 0, step: "0.01" }}
+                                InputProps={{ readOnly: !editingDepositId }}
+                              />
+                            </Grid>
+                            <Grid item xs={12} md={2}>
+                              <MDButton
+                                color="error"
+                                variant="outlined"
+                                fullWidth
+                                sx={{ height: 44 }}
+                                onClick={() => removeUpiRow(index)}
+                              >
+                                <Icon sx={{ mr: 1 }}>delete</Icon>
+                                Remove
+                              </MDButton>
+                            </Grid>
+                          </Grid>
+                        ))}
+                      </MDBox>
+                    </Grid>
+                  )}
+
                   <Grid item xs={12}>
                     <MDBox display="flex" justifyContent="flex-end">
                       {form.depositMode === "cash" && (
@@ -1283,6 +1644,12 @@ function BankDeposit() {
                         <MDButton color="warning" variant="outlined" onClick={() => printChequeDetails()} sx={{ mr: 1 }}>
                           <Icon sx={{ mr: 1 }}>picture_as_pdf</Icon>
                           Print Cheque PDF
+                        </MDButton>
+                      )}
+                      {form.depositMode === "upi" && (
+                        <MDButton color="info" variant="outlined" onClick={() => printUpiDetails()} sx={{ mr: 1 }}>
+                          <Icon sx={{ mr: 1 }}>picture_as_pdf</Icon>
+                          Print UPI PDF
                         </MDButton>
                       )}
                       <MDButton color="info" variant="gradient" onClick={handleSubmit} disabled={saving}>
@@ -1320,8 +1687,8 @@ function BankDeposit() {
                         <TableCell sx={tableHeadSx}>Branch</TableCell>
                         <TableCell sx={tableHeadSx}>Bank No</TableCell>
                         {/* IFSC, Store, Mode removed from here */}
-                        <TableCell sx={tableHeadSx}>Cheque No</TableCell>
-                        <TableCell sx={tableHeadSx}>Cheque Date</TableCell>
+                        <TableCell sx={tableHeadSx}>Cheque / Invoice No</TableCell>
+                        <TableCell sx={tableHeadSx}>Cheque Date / UPI ID</TableCell>
                         <TableCell align="right" sx={tableHeadSx}>Amount</TableCell>
                         <TableCell align="center" sx={tableHeadSx}>Action</TableCell>
                       </TableRow>
@@ -1340,9 +1707,19 @@ function BankDeposit() {
                             <TableCell sx={tableBodySx}>{deposit.bank_account_no}</TableCell>
                             {/* Removed IFSC, Store, Mode from here */}
                             <TableCell sx={tableBodySx}>
-                              {deposit.deposit_mode === "cheque" ? chequeDisplayText(deposit, "chequeNo") : deposit.cheque_no || "N/A"}
+                              {deposit.deposit_mode === "cheque"
+                                ? chequeDisplayText(deposit, "chequeNo")
+                                : deposit.deposit_mode === "upi"
+                                  ? upiDisplayText(deposit, "invoiceNumber")
+                                  : deposit.cheque_no || "N/A"}
                             </TableCell>
-                            <TableCell sx={tableBodySx}>{formatDate(deposit.cheque_date)}</TableCell>
+                            <TableCell sx={tableBodySx}>
+                              {deposit.deposit_mode === "cheque"
+                                ? formatDate(deposit.cheque_date)
+                                : deposit.deposit_mode === "upi"
+                                  ? upiDisplayText(deposit, "upiId")
+                                  : formatDate(deposit.cheque_date)}
+                            </TableCell>
                             <TableCell align="right" sx={{ ...tableBodySx, fontWeight: 600 }}>
                               {formatMoney(deposit.amount)}
                             </TableCell>
@@ -1358,9 +1735,10 @@ function BankDeposit() {
                                   // {/* </MDButton> */}
                                 )}
                                 {deposit.deposit_mode === "cheque" && (
-                                  // <MDButton color="warning" variant="outlined" size="small" onClick={() => printChequeDetails(deposit)}>
                                     <IoPrintOutline  onClick={() => printChequeDetails(deposit)} style={{ cursor: "pointer" }} color="#6C9CF0" size={20}/> 
-                                  // </MDButton>
+                                )}
+                                {deposit.deposit_mode === "upi" && (
+                                    <IoPrintOutline  onClick={() => printUpiDetails(deposit)} style={{ cursor: "pointer" }} color="#6C9CF0" size={20}/> 
                                 )}
                                 {/* // <MDButton color="info" variant="outlined" size="small" onClick={() => startEditDeposit(deposit)}> */}
                                 <FaRegEdit  onClick={() => startEditDeposit(deposit)} style={{ cursor: "pointer" }} color="#E0E388" size={20}/>
@@ -1409,11 +1787,20 @@ function BankDeposit() {
                 <span style={{ fontWeight: 400 }}>
                   {selectedViewDeposit.deposit_mode === "cheque"
                     ? chequeDisplayText(selectedViewDeposit, "storeName")
-                    : selectedViewDeposit.store_name || "N/A"}
+                    : selectedViewDeposit.deposit_mode === "upi"
+                      ? upiDisplayText(selectedViewDeposit, "storeName")
+                      : selectedViewDeposit.store_name || "N/A"}
                 </span>
               </MDTypography>
               <MDTypography variant="subtitle2" fontWeight="bold">
-                Mode: <span style={{ fontWeight: 400 }}>{selectedViewDeposit.deposit_mode === "cash" ? "Cash" : "Cheque"}</span>
+                Mode:{" "}
+                <span style={{ fontWeight: 400 }}>
+                  {selectedViewDeposit.deposit_mode === "cash"
+                    ? "Cash"
+                    : selectedViewDeposit.deposit_mode === "upi"
+                      ? "UPI"
+                      : "Cheque"}
+                </span>
               </MDTypography>
             </MDBox>
           )}

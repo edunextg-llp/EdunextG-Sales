@@ -33,7 +33,7 @@ function AddDeliveryBoy() {
   const [loadingList, setLoadingList] = useState(true);
   const [editingId, setEditingId] = useState(null);
 
-  const API = "http://localhost:5001/api";
+  const API = "https://bawarchee.edunextg.co/api";
 
   const fetchCompanyOptions = async () => {
     try {

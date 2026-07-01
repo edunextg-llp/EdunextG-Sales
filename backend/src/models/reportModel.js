@@ -454,6 +454,62 @@ class ReportModel {
                )`;
     }
 
+    static getUndepositedUpiNotExistsSql() {
+        return `NOT EXISTS (
+                   SELECT 1
+                   FROM bank_deposits bd
+                   WHERE bd.deposit_mode = 'upi'
+                     AND (
+                         (
+                             TRIM(bd.cheque_no) COLLATE utf8mb4_unicode_ci = TRIM(ss.invoice_number) COLLATE utf8mb4_unicode_ci
+                             OR TRIM(bd.cheque_no) COLLATE utf8mb4_unicode_ci LIKE CONCAT(TRIM(ss.invoice_number) COLLATE utf8mb4_unicode_ci, ' (%')
+                         )
+                         OR (
+                             JSON_VALID(bd.cash_details)
+                             AND EXISTS (
+                                 SELECT 1
+                                 FROM JSON_TABLE(
+                                     bd.cash_details,
+                                     '$.upis[*]' COLUMNS (
+                                         payment_id INT PATH '$.paymentId' NULL ON EMPTY NULL ON ERROR,
+                                         invoice_number VARCHAR(100) PATH '$.invoiceNumber' NULL ON EMPTY NULL ON ERROR
+                                     )
+                                 ) deposited_upi
+                                 WHERE deposited_upi.payment_id = sp.id
+                                    OR TRIM(deposited_upi.invoice_number) COLLATE utf8mb4_unicode_ci = TRIM(ss.invoice_number) COLLATE utf8mb4_unicode_ci
+                             )
+                         )
+                     )
+               )`;
+    }
+
+    static async getUpiPaymentsForDeposit({ search = '' } = {}) {
+        const conditions = ["sp.payment_mode = 'upi'", ReportModel.getUndepositedUpiNotExistsSql()];
+        const params = [];
+
+        if (search && String(search).trim()) {
+            conditions.push('(TRIM(ss.invoice_number) LIKE ? OR TRIM(sp.reference_no) LIKE ? OR sc.outlet_name LIKE ?)');
+            const term = `%${String(search).trim()}%`;
+            params.push(term, term, term);
+        }
+
+        const [rows] = await db.execute(
+            `SELECT sp.id, sp.sale_id,
+                    DATE_FORMAT(sp.payment_date, '%Y-%m-%d') AS payment_date,
+                    sp.reference_no, sp.amount,
+                    ss.invoice_number, sc.outlet_name, sc.outlet_erp_id, s.name AS staff_name
+             FROM sale_payments sp
+             JOIN staff_sales ss ON sp.sale_id = ss.id
+             LEFT JOIN staff_counters sc ON ss.outlet_id = sc.id
+             LEFT JOIN staff s ON ss.staff_id = s.id
+             WHERE ${conditions.join(' AND ')}
+             ORDER BY sp.payment_date DESC, sp.id DESC
+             LIMIT 100`,
+            params
+        );
+        return toNumberRows(rows);
+    }
+
     static async getPendingCheques({ search = '', storeName = '', alarmOnly = true, dueByToday = false } = {}) {
         const conditions = ["sp.payment_mode = 'cheque'", ReportModel.getUndepositedChequeNotExistsSql()];
         const params = [];

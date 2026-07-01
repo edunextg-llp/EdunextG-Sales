@@ -48,7 +48,7 @@ function Packaging() {
   const [historyDialog, setHistoryDialog] = useState({ open: false, sale: null, history: [] });
   const [savingSaleIds, setSavingSaleIds] = useState(new Set());
   const recentlySavedRef = useRef(new Map());
-  const API = "http://localhost:5001/api";
+  const API = "https://bawarchee.edunextg.co/api";
 
   const statusLabels = {
     not_packing: "Not Packing",

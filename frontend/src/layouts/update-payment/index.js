@@ -135,7 +135,7 @@ function UpdatePayment() {
   const [cancellationHistory, setCancellationHistory] = useState([]);
   const [loadingCancellations, setLoadingCancellations] = useState(false);
 
-  const API = "http://localhost:5001/api";
+  const API = "https://bawarchee.edunextg.co/api";
 
   const getDeliveryBoyById = (boyId) =>
     deliveryBoys.find((boy) => String(boy.id) === String(boyId));

@@ -480,6 +480,12 @@ export async function ensureSchema() {
             'depositor_name on bank_deposits'
         );
 
+        await tryQuery(
+            connection,
+            `ALTER TABLE bank_deposits MODIFY COLUMN deposit_mode ENUM('cash', 'cheque', 'upi') NOT NULL`,
+            'upi deposit_mode on bank_deposits'
+        );
+
         await connection.query(`
             INSERT INTO credit_payment_remarks (payment_id, remark_date, remarks, created_at)
             SELECT id, payment_date, remarks, COALESCE(created_at, CURRENT_TIMESTAMP)

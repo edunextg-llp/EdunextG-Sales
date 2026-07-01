@@ -19,6 +19,7 @@ router.get('/bank-deposits', staffController.getBankDeposits);
 router.post('/bank-deposits', staffController.createBankDeposit);
 router.get('/bank-deposits/stores', staffController.searchDeliveredStores);
 router.get('/bank-deposits/pending-cheques', staffController.searchPendingCheques);
+router.get('/bank-deposits/upi-invoices', staffController.searchUpiInvoices);
 router.put('/bank-deposits/:depositId', staffController.updateBankDeposit);
 router.delete('/bank-deposits/:depositId', staffController.deleteBankDeposit);
 router.get('/purchase-sellers', staffController.searchPurchaseSellers);

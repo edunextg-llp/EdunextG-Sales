@@ -43,7 +43,7 @@ function AddCounter() {
     googleLocation: "",
   });
 
-  const API = "http://localhost:5001/api";
+  const API = "https://bawarchee.edunextg.co/api";
   const isCnfStaff = selectedStaff?.staff_type === "cnf";
   const routeDay = isCnfStaff ? cnfRouteDay : selectedDay;
 
