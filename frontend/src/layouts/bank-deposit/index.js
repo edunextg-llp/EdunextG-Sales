@@ -274,7 +274,7 @@ function BankDeposit() {
   const [loadingPendingUpi, setLoadingPendingUpi] = useState(false);
   const [editingDepositId, setEditingDepositId] = useState(null);
   const [saving, setSaving] = useState(false);
-  const [depositTotalStartDate, setDepositTotalStartDate] = useState(() => getMonthStartDate());
+  const [depositTotalStartDate, setDepositTotalStartDate] = useState("");
   const [depositTotalEndDate, setDepositTotalEndDate] = useState(() => getTodayLocalDate());
   const API = "https://bawarchee.edunextg.co/api";
 
@@ -396,6 +396,16 @@ function BankDeposit() {
   useEffect(() => {
     fetchDeposits();
   }, []);
+
+  useEffect(() => {
+    if (depositTotalStartDate) return;
+    if (!deposits.length) return;
+    const earliest = deposits
+      .map((deposit) => toComparableDate(deposit.deposit_date))
+      .filter(Boolean)
+      .sort()[0];
+    setDepositTotalStartDate(earliest || getMonthStartDate());
+  }, [deposits, depositTotalStartDate]);
 
   useEffect(() => {
     if (form.depositMode !== "cheque" || editingDepositId) {
