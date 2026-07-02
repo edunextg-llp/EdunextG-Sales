@@ -31,6 +31,12 @@ import Footer from "examples/Footer";
 import { printCashCountingPdf } from "utils/printCashCountingPdf";
 import { printChequeDepositPdf } from "utils/printChequeDepositPdf";
 import { printUpiDepositPdf } from "utils/printUpiDepositPdf";
+import {
+  ROWS_PER_PAGE,
+  TablePaginationFooter,
+  paginatedTableContainerSx,
+  paginatedTableHeadSx,
+} from "utils/tablePagination";
 import { FaRegEdit } from "react-icons/fa";
 import { IoPrintOutline } from "react-icons/io5";
 import { CiTrash } from "react-icons/ci";
@@ -276,6 +282,7 @@ function BankDeposit() {
   const [saving, setSaving] = useState(false);
   const [depositTotalStartDate, setDepositTotalStartDate] = useState("");
   const [depositTotalEndDate, setDepositTotalEndDate] = useState(() => getTodayLocalDate());
+  const [depositsPage, setDepositsPage] = useState(1);
   const API = "https://bawarchee.edunextg.co/api";
 
   const cashAmount = useMemo(
@@ -381,6 +388,12 @@ function BankDeposit() {
 
   const totalDepositAmount = cashDepositTotal + chequeDepositTotal + upiDepositTotal;
 
+  const depositsTotalPages = Math.max(1, Math.ceil(deposits.length / ROWS_PER_PAGE));
+  const paginatedDeposits = deposits.slice(
+    (depositsPage - 1) * ROWS_PER_PAGE,
+    depositsPage * ROWS_PER_PAGE
+  );
+
   const fetchDeposits = async () => {
     try {
       const response = await fetch(`${API}/staff/bank-deposits`);
@@ -396,6 +409,10 @@ function BankDeposit() {
   useEffect(() => {
     fetchDeposits();
   }, []);
+
+  useEffect(() => {
+    setDepositsPage(1);
+  }, [deposits.length]);
 
   useEffect(() => {
     if (depositTotalStartDate) return;
@@ -1655,9 +1672,9 @@ function BankDeposit() {
                 </MDTypography>
               </MDBox>
               <MDBox px={3} pb={3}>
-                <TableContainer component={Paper} sx={{ boxShadow: "none", border: "1px solid #e5e7eb" }}>
-                  <Table sx={{ minWidth: 1180 }}>
-                    <TableHead sx={{ display: "table-header-group", backgroundColor: "#f9fafb" }}>
+                <TableContainer component={Paper} sx={paginatedTableContainerSx}>
+                  <Table stickyHeader sx={{ minWidth: 1180 }}>
+                    <TableHead sx={paginatedTableHeadSx()}>
                       <TableRow>
                         <TableCell sx={tableHeadSx}>Sr No</TableCell>
                         <TableCell sx={tableHeadSx}>Deposit ID</TableCell>
@@ -1673,10 +1690,10 @@ function BankDeposit() {
                       </TableRow>
                     </TableHead>
                     <TableBody>
-                      {deposits.length > 0 ? (
-                        deposits.map((deposit, index) => (
+                      {paginatedDeposits.length > 0 ? (
+                        paginatedDeposits.map((deposit, index) => (
                           <TableRow key={deposit.id}>
-                            <TableCell sx={tableBodySx}>{index + 1}</TableCell>
+                            <TableCell sx={tableBodySx}>{(depositsPage - 1) * ROWS_PER_PAGE + index + 1}</TableCell>
                             <TableCell sx={{ ...tableBodySx, fontWeight: 700 }}>
                               {deposit.deposit_ref_no || "N/A"}
                             </TableCell>
@@ -1741,6 +1758,12 @@ function BankDeposit() {
                     </TableBody>
                   </Table>
                 </TableContainer>
+                <TablePaginationFooter
+                  page={depositsPage}
+                  totalPages={depositsTotalPages}
+                  total={deposits.length}
+                  onPageChange={setDepositsPage}
+                />
               </MDBox>
             </Card>
           </Grid>

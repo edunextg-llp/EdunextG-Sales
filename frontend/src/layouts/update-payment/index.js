@@ -28,6 +28,13 @@ import MDButton from "components/MDButton";
 import DashboardLayout from "examples/LayoutContainers/DashboardLayout";
 import DashboardNavbar from "examples/Navbars/DashboardNavbar";
 import Footer from "examples/Footer";
+import {
+  ROWS_PER_PAGE,
+  TablePaginationFooter,
+  paginatedTableContainerSx,
+  paginatedTableHeadCellSx,
+  paginatedTableHeadSx,
+} from "utils/tablePagination";
 
 const PAYMENT_MODE_LABELS = {
   cash: "Cash",
@@ -134,6 +141,7 @@ function UpdatePayment() {
   const [loggingCancel, setLoggingCancel] = useState(false);
   const [cancellationHistory, setCancellationHistory] = useState([]);
   const [loadingCancellations, setLoadingCancellations] = useState(false);
+  const [page, setPage] = useState(1);
 
   const API = "https://bawarchee.edunextg.co/api";
 
@@ -207,6 +215,10 @@ function UpdatePayment() {
   }, [searchQuery]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
+    setPage(1);
+  }, [searchQuery]);
+
+  useEffect(() => {
     const fetchDeliveryBoys = async () => {
       try {
         const response = await fetch(`${API}/delivery-boy`);
@@ -244,6 +256,11 @@ function UpdatePayment() {
   }, [deliveryBoys, paymentDialogSale]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const filteredSales = salesData.filter((row) => row.packaging_status === "delivered");
+  const totalPages = Math.max(1, Math.ceil(filteredSales.length / ROWS_PER_PAGE));
+  const paginatedSales = filteredSales.slice(
+    (page - 1) * ROWS_PER_PAGE,
+    page * ROWS_PER_PAGE
+  );
 
   const getRemainingBalance = (sale) => {
     const price = parseFloat(sale.price) || 0;
@@ -975,49 +992,31 @@ function UpdatePayment() {
                 <MDBox>
                   <TableContainer
                     component={Paper}
-                    sx={{
-                      boxShadow: "none",
-                      backgroundColor: "transparent",
-                      border: "1px solid #e5e7eb",
-                    }}
+                    sx={{ ...paginatedTableContainerSx, backgroundColor: "transparent" }}
                   >
-                    <Table size="small">
-                      <TableHead sx={{ display: "table-header-group", backgroundColor: "#f9fafb" }}>
+                    <Table stickyHeader size="small">
+                      <TableHead sx={paginatedTableHeadSx()}>
                         <TableRow>
-                          <TableCell align="center" sx={{ fontWeight: "bold", width: 56 }}>
+                          <TableCell align="center" sx={{ ...paginatedTableHeadCellSx, width: 56 }}>
                             Sr No
                           </TableCell>
-                          <TableCell align="left" sx={{ fontWeight: "bold" }}>
-                            Outlet Name
-                          </TableCell>
-                          <TableCell align="center" sx={{ fontWeight: "bold" }}>
-                            Sale ID
-                          </TableCell>
-                          <TableCell align="center" sx={{ fontWeight: "bold" }}>
-                            Invoice No
-                          </TableCell>
-                          <TableCell align="center" sx={{ fontWeight: "bold" }}>
-                            Invoice Price
-                          </TableCell>
-                          <TableCell align="center" sx={{ fontWeight: "bold" }}>
-                            Paid Amount
-                          </TableCell>
-                          <TableCell align="center" sx={{ fontWeight: "bold" }}>
-                            Balance Amount
-                          </TableCell>
-                          <TableCell align="center" sx={{ fontWeight: "bold" }}>
-                            Action
-                          </TableCell>
+                          <TableCell align="left" sx={paginatedTableHeadCellSx}>Outlet Name</TableCell>
+                          <TableCell align="center" sx={paginatedTableHeadCellSx}>Sale ID</TableCell>
+                          <TableCell align="center" sx={paginatedTableHeadCellSx}>Invoice No</TableCell>
+                          <TableCell align="center" sx={paginatedTableHeadCellSx}>Invoice Price</TableCell>
+                          <TableCell align="center" sx={paginatedTableHeadCellSx}>Paid Amount</TableCell>
+                          <TableCell align="center" sx={paginatedTableHeadCellSx}>Balance Amount</TableCell>
+                          <TableCell align="center" sx={paginatedTableHeadCellSx}>Action</TableCell>
                         </TableRow>
                       </TableHead>
                       <TableBody>
-                        {filteredSales.length > 0 ? (
-                          filteredSales.map((sale, index) => {
+                        {paginatedSales.length > 0 ? (
+                          paginatedSales.map((sale, index) => {
                             const balance = getRemainingBalance(sale);
                             const paid = getPaidAmount(sale);
                             return (
                               <TableRow key={sale.id} sx={getPaymentRowSx(sale)}>
-                                <TableCell align="center">{index + 1}</TableCell>
+                                <TableCell align="center">{(page - 1) * ROWS_PER_PAGE + index + 1}</TableCell>
                                 <TableCell align="left">
                                   <MDTypography variant="button" fontWeight="medium" color="dark">
                                     {sale.outlet_name}
@@ -1076,6 +1075,12 @@ function UpdatePayment() {
                       </TableBody>
                     </Table>
                   </TableContainer>
+                  <TablePaginationFooter
+                    page={page}
+                    totalPages={totalPages}
+                    total={filteredSales.length}
+                    onPageChange={setPage}
+                  />
                 </MDBox>
               </MDBox>
             </Card>

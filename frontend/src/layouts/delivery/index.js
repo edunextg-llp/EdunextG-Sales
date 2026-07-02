@@ -18,6 +18,13 @@ import {
   useSalesPolling,
 } from "utils/salesSync";
 import { formatBpSaleId } from "utils/saleId";
+import {
+  ROWS_PER_PAGE,
+  TablePaginationFooter,
+  paginatedTableContainerSx,
+  paginatedTableHeadCellSx,
+  paginatedTableHeadSx,
+} from "utils/tablePagination";
 import { IoSaveOutline } from "react-icons/io5";
 import { FaEye } from "react-icons/fa";
 // import { CiTrash } from "react-icons/ci";
@@ -30,6 +37,7 @@ function Delivery() {
   const [activeRowId, setActiveRowId] = useState(null);
   const [historyDialog, setHistoryDialog] = useState({ open: false, sale: null, history: [] });
   const [savingSaleIds, setSavingSaleIds] = useState(new Set());
+  const [page, setPage] = useState(1);
   const API = "https://bawarchee.edunextg.co/api";
 
   const statusLabels = {
@@ -116,6 +124,10 @@ function Delivery() {
   useEffect(() => {
     fetchSales();
   }, [fetchSales]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [searchQuery]);
 
   useSalesPolling(fetchSales);
 
@@ -236,6 +248,12 @@ function Delivery() {
     );
   });
 
+  const totalPages = Math.max(1, Math.ceil(filteredSales.length / ROWS_PER_PAGE));
+  const paginatedSales = filteredSales.slice(
+    (page - 1) * ROWS_PER_PAGE,
+    page * ROWS_PER_PAGE
+  );
+
   return (
     <DashboardLayout>
       <DashboardNavbar />
@@ -261,69 +279,32 @@ function Delivery() {
                   </Grid>
                 </Grid>
 
-                <TableContainer component={Paper} sx={{ boxShadow: "none", border: "1px solid #e5e7eb" }}>
-                  <Table sx={{ minWidth: 650 }}>
-                    <TableHead sx={{ display: "table-header-group", backgroundColor: "#f9fafb" }}>
+                <TableContainer component={Paper} sx={paginatedTableContainerSx}>
+                  <Table stickyHeader sx={{ minWidth: 650 }}>
+                    <TableHead sx={paginatedTableHeadSx()}>
                       <TableRow>
-                        <TableCell
-                          align="center"
-                          sx={{
-                            color: "#6b7280",
-                            borderBottom: "1px solid #e5e7eb",
-                            py: 1.5,
-                            fontWeight: 500,
-                            width: 56,
-                          }}
-                        >
+                        <TableCell align="center" sx={{ ...paginatedTableHeadCellSx, width: 56 }}>
                           Sr No
                         </TableCell>
-                        <TableCell sx={{ color: "#6b7280", borderBottom: "1px solid #e5e7eb", py: 1.5, fontWeight: 500 }}>
-                          Staff Name
-                        </TableCell>
-                        <TableCell sx={{ color: "#6b7280", borderBottom: "1px solid #e5e7eb", py: 1.5, fontWeight: 500 }}>
-                          Outlet Name
-                        </TableCell>
-                        <TableCell sx={{ color: "#6b7280", borderBottom: "1px solid #e5e7eb", py: 1.5, fontWeight: 500 }}>
-                          ERP ID
-                        </TableCell>
-                        <TableCell align="center" sx={{ color: "#6b7280", borderBottom: "1px solid #e5e7eb", py: 1.5, fontWeight: 500 }}>
-                          Sale ID
-                        </TableCell>
-                        <TableCell align="center" sx={{ color: "#6b7280", borderBottom: "1px solid #e5e7eb", py: 1.5, fontWeight: 500 }}>
-                          Invoice No
-                        </TableCell>
-                        <TableCell align="right" sx={{ color: "#6b7280", borderBottom: "1px solid #e5e7eb", py: 1.5, fontWeight: 500 }}>
-                          Price
-                        </TableCell>
-                        <TableCell align="center" sx={{ color: "#6b7280", borderBottom: "1px solid #e5e7eb", py: 1.5, fontWeight: 500 }}>
-                          No. of Item
-                        </TableCell>
-                        <TableCell align="center" sx={{ color: "#6b7280", borderBottom: "1px solid #e5e7eb", py: 1.5, fontWeight: 500 }}>
-                          Packing Item
-                        </TableCell>
-                        <TableCell align="center" sx={{ color: "#6b7280", borderBottom: "1px solid #e5e7eb", py: 1.5, fontWeight: 500 }}>
-                          No. of Box
-                        </TableCell>
-                        <TableCell align="center" sx={{ color: "#6b7280", borderBottom: "1px solid #e5e7eb", py: 1.5, fontWeight: 500 }}>
-                          Status
-                        </TableCell>
-                        <TableCell align="center" sx={{ color: "#6b7280", borderBottom: "1px solid #e5e7eb", py: 1.5, fontWeight: 500 }}>
-                          Delivery Date
-                        </TableCell>
-                        <TableCell align="center" sx={{ color: "#6b7280", borderBottom: "1px solid #e5e7eb", py: 1.5, fontWeight: 500 }}>
-                          Packing Date
-                        </TableCell>
-                        <TableCell align="center" sx={{ color: "#6b7280", borderBottom: "1px solid #e5e7eb", py: 1.5, fontWeight: 500 }}>
-                          Delivery Details
-                        </TableCell>
-                        <TableCell align="center" sx={{ color: "#6b7280", borderBottom: "1px solid #e5e7eb", py: 1.5, fontWeight: 500 }}>
-                          Action
-                        </TableCell>
+                        <TableCell sx={paginatedTableHeadCellSx}>Staff Name</TableCell>
+                        <TableCell sx={paginatedTableHeadCellSx}>Outlet Name</TableCell>
+                        <TableCell sx={paginatedTableHeadCellSx}>ERP ID</TableCell>
+                        <TableCell align="center" sx={paginatedTableHeadCellSx}>Sale ID</TableCell>
+                        <TableCell align="center" sx={paginatedTableHeadCellSx}>Invoice No</TableCell>
+                        <TableCell align="right" sx={paginatedTableHeadCellSx}>Price</TableCell>
+                        <TableCell align="center" sx={paginatedTableHeadCellSx}>No. of Item</TableCell>
+                        <TableCell align="center" sx={paginatedTableHeadCellSx}>Packing Item</TableCell>
+                        <TableCell align="center" sx={paginatedTableHeadCellSx}>No. of Box</TableCell>
+                        <TableCell align="center" sx={paginatedTableHeadCellSx}>Status</TableCell>
+                        <TableCell align="center" sx={paginatedTableHeadCellSx}>Delivery Date</TableCell>
+                        <TableCell align="center" sx={paginatedTableHeadCellSx}>Packing Date</TableCell>
+                        <TableCell align="center" sx={paginatedTableHeadCellSx}>Delivery Details</TableCell>
+                        <TableCell align="center" sx={paginatedTableHeadCellSx}>Action</TableCell>
                       </TableRow>
                     </TableHead>
                     <TableBody>
-                      {filteredSales.length > 0 ? (
-                        filteredSales.map((row, index) => {
+                      {paginatedSales.length > 0 ? (
+                        paginatedSales.map((row, index) => {
                           const bgColor = getRowColor(row.packaging_status);
                           const txColor = getTextColor(row.packaging_status);
                           const borderCol = `1px solid ${txColor}`;
@@ -336,7 +317,7 @@ function Delivery() {
                               }}
                             >
                               <TableCell align="center" sx={{ borderBottom: borderCol, py: 2, color: txColor }}>
-                                {index + 1}
+                                {(page - 1) * ROWS_PER_PAGE + index + 1}
                               </TableCell>
                               <TableCell sx={{ borderBottom: borderCol, py: 2, color: txColor }}>
                                 {row.staff_name}
@@ -410,6 +391,12 @@ function Delivery() {
                     </TableBody>
                   </Table>
                 </TableContainer>
+                <TablePaginationFooter
+                  page={page}
+                  totalPages={totalPages}
+                  total={filteredSales.length}
+                  onPageChange={setPage}
+                />
               </MDBox>
             </Card>
           </Grid>

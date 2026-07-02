@@ -31,6 +31,14 @@ import DashboardLayout from "examples/LayoutContainers/DashboardLayout";
 import DashboardNavbar from "examples/Navbars/DashboardNavbar";
 import Footer from "examples/Footer";
 import { useSalesPolling } from "utils/salesSync";
+import {
+  ROWS_PER_PAGE,
+  TablePaginationFooter,
+  paginatedTableContainerSx,
+  paginatedTableHeadCellSx,
+  paginatedTableHeadCellErrorSx,
+  paginatedTableHeadSx,
+} from "utils/tablePagination";
 // import { formatBpSaleId } from "utils/saleId";
 // import { IoSaveOutline } from "react-icons/io5";
 import { FaRegEdit } from "react-icons/fa";
@@ -56,6 +64,7 @@ function Delivered() {
   const [updatingSaleIds, setUpdatingSaleIds] = useState(new Set());
   const [cancelReportOpen, setCancelReportOpen] = useState(false);
   const [activeTab, setActiveTab] = useState("delivered");
+  const [page, setPage] = useState(1);
   const API = "https://bawarchee.edunextg.co/api";
 
   const getTodayLocalDate = () => {
@@ -141,6 +150,17 @@ function Delivered() {
     fetchSales({ silent: true });
     fetchCancelledSales({ silent: true });
   });
+
+  useEffect(() => {
+    setPage(1);
+  }, [
+    activeTab,
+    searchQuery,
+    selectedCompanyId,
+    selectedStaffId,
+    cancelRangeStart,
+    cancelRangeEnd,
+  ]);
 
   const companyOptions = useMemo(() => {
     const companies = new Map();
@@ -242,6 +262,12 @@ function Delivered() {
   const cancelledTotal = filteredCancelledSales.length;
   const returnedTotal = filteredSales.filter((row) => row.packaging_status === "returned").length;
   const cancelledSales = filteredCancelledSales;
+  const activeList = activeTab === "delivered" ? filteredSales : cancelledSales;
+  const totalPages = Math.max(1, Math.ceil(activeList.length / ROWS_PER_PAGE));
+  const paginatedActiveList = activeList.slice(
+    (page - 1) * ROWS_PER_PAGE,
+    page * ROWS_PER_PAGE
+  );
   const cancelledAmount = cancelledSales.reduce(
     (total, row) => total + (Number(row.price) || 0),
     0
@@ -649,69 +675,33 @@ function Delivered() {
                 </Grid>
 
                 {activeTab === "delivered" ? (
-                <TableContainer component={Paper} sx={{ boxShadow: "none", border: "1px solid #e5e7eb" }}>
-                  <Table sx={{ minWidth: 650 }}>
-                    <TableHead sx={{ display: "table-header-group", backgroundColor: "#f9fafb" }}>
+                <>
+                <TableContainer component={Paper} sx={paginatedTableContainerSx}>
+                  <Table stickyHeader sx={{ minWidth: 650 }}>
+                    <TableHead sx={paginatedTableHeadSx()}>
                       <TableRow>
-                        <TableCell
-                          align="center"
-                          sx={{
-                            color: "#6b7280",
-                            borderBottom: "1px solid #e5e7eb",
-                            py: 1.5,
-                            fontWeight: 500,
-                            width: 56,
-                          }}
-                        >
+                        <TableCell align="center" sx={{ ...paginatedTableHeadCellSx, width: 56 }}>
                           Sr No
                         </TableCell>
-                        <TableCell sx={{ color: "#6b7280", borderBottom: "1px solid #e5e7eb", py: 1.5, fontWeight: 500 }}>
-                          Staff Name
-                        </TableCell>
-                        <TableCell sx={{ color: "#6b7280", borderBottom: "1px solid #e5e7eb", py: 1.5, fontWeight: 500 }}>
-                          Outlet Name
-                        </TableCell>
-                        <TableCell sx={{ color: "#6b7280", borderBottom: "1px solid #e5e7eb", py: 1.5, fontWeight: 500 }}>
-                          ERP ID
-                        </TableCell>
-                        <TableCell align="center" sx={{ color: "#6b7280", borderBottom: "1px solid #e5e7eb", py: 1.5, fontWeight: 500 }}>
-                          Sale ID
-                        </TableCell>
-                        <TableCell align="center" sx={{ color: "#6b7280", borderBottom: "1px solid #e5e7eb", py: 1.5, fontWeight: 500 }}>
-                          Invoice No
-                        </TableCell>
-                        <TableCell align="right" sx={{ color: "#6b7280", borderBottom: "1px solid #e5e7eb", py: 1.5, fontWeight: 500 }}>
-                          Price
-                        </TableCell>
-                        <TableCell align="center" sx={{ color: "#6b7280", borderBottom: "1px solid #e5e7eb", py: 1.5, fontWeight: 500 }}>
-                          No. of Item
-                        </TableCell>
-                        <TableCell align="center" sx={{ color: "#6b7280", borderBottom: "1px solid #e5e7eb", py: 1.5, fontWeight: 500 }}>
-                          Packing Item
-                        </TableCell>
-                        <TableCell align="center" sx={{ color: "#6b7280", borderBottom: "1px solid #e5e7eb", py: 1.5, fontWeight: 500 }}>
-                          No. of Box
-                        </TableCell>
-                        <TableCell align="center" sx={{ color: "#6b7280", borderBottom: "1px solid #e5e7eb", py: 1.5, fontWeight: 500 }}>
-                          Delivery Boy
-                        </TableCell>
-                        <TableCell align="center" sx={{ color: "#6b7280", borderBottom: "1px solid #e5e7eb", py: 1.5, fontWeight: 500 }}>
-                          Vehicle
-                        </TableCell>
-                        <TableCell align="center" sx={{ color: "#6b7280", borderBottom: "1px solid #e5e7eb", py: 1.5, fontWeight: 500 }}>
-                          Delivery Date
-                        </TableCell>
-                        <TableCell align="center" sx={{ color: "#6b7280", borderBottom: "1px solid #e5e7eb", py: 1.5, fontWeight: 500 }}>
-                          Status
-                        </TableCell>
-                        <TableCell align="center" sx={{ color: "#6b7280", borderBottom: "1px solid #e5e7eb", py: 1.5, fontWeight: 500 }}>
-                          Action
-                        </TableCell>
+                        <TableCell sx={paginatedTableHeadCellSx}>Staff Name</TableCell>
+                        <TableCell sx={paginatedTableHeadCellSx}>Outlet Name</TableCell>
+                        <TableCell sx={paginatedTableHeadCellSx}>ERP ID</TableCell>
+                        <TableCell align="center" sx={paginatedTableHeadCellSx}>Sale ID</TableCell>
+                        <TableCell align="center" sx={paginatedTableHeadCellSx}>Invoice No</TableCell>
+                        <TableCell align="right" sx={paginatedTableHeadCellSx}>Price</TableCell>
+                        <TableCell align="center" sx={paginatedTableHeadCellSx}>No. of Item</TableCell>
+                        <TableCell align="center" sx={paginatedTableHeadCellSx}>Packing Item</TableCell>
+                        <TableCell align="center" sx={paginatedTableHeadCellSx}>No. of Box</TableCell>
+                        <TableCell align="center" sx={paginatedTableHeadCellSx}>Delivery Boy</TableCell>
+                        <TableCell align="center" sx={paginatedTableHeadCellSx}>Vehicle</TableCell>
+                        <TableCell align="center" sx={paginatedTableHeadCellSx}>Delivery Date</TableCell>
+                        <TableCell align="center" sx={paginatedTableHeadCellSx}>Status</TableCell>
+                        <TableCell align="center" sx={paginatedTableHeadCellSx}>Action</TableCell>
                       </TableRow>
                     </TableHead>
                     <TableBody>
-                      {filteredSales.length > 0 ? (
-                        filteredSales.map((row, index) => (
+                      {paginatedActiveList.length > 0 ? (
+                        paginatedActiveList.map((row, index) => (
                           <TableRow
                             key={row.id}
                             sx={{
@@ -720,7 +710,7 @@ function Delivered() {
                             }}
                           >
                             <TableCell align="center" sx={{ borderBottom: "1px solid #cbd5e1", py: 2 }}>
-                              {index + 1}
+                              {(page - 1) * ROWS_PER_PAGE + index + 1}
                             </TableCell>
                             <TableCell sx={{ borderBottom: "1px solid #cbd5e1", py: 2 }}>{row.staff_name}</TableCell>
                             <TableCell sx={{ borderBottom: "1px solid #cbd5e1", py: 2, fontWeight: "medium" }}>{row.outlet_name}</TableCell>
@@ -790,6 +780,13 @@ function Delivered() {
                     </TableBody>
                   </Table>
                 </TableContainer>
+                <TablePaginationFooter
+                  page={page}
+                  totalPages={totalPages}
+                  total={activeList.length}
+                  onPageChange={setPage}
+                />
+                </>
                 ) : (
                   <MDBox>
                     <MDBox
@@ -815,54 +812,34 @@ function Delivered() {
                         </MDButton>
                       </MDBox>
                     </MDBox>
-                    <TableContainer component={Paper} sx={{ boxShadow: "none", border: "1px solid #fecaca" }}>
-                      <Table sx={{ minWidth: 650 }}>
-                        <TableHead sx={{ display: "table-header-group", backgroundColor: "#fef2f2" }}>
+                    <TableContainer component={Paper} sx={{ ...paginatedTableContainerSx, border: "1px solid #fecaca" }}>
+                      <Table stickyHeader sx={{ minWidth: 650 }}>
+                        <TableHead sx={paginatedTableHeadSx("#fef2f2")}>
                           <TableRow>
-                            <TableCell align="center" sx={{ color: "#7f1d1d", borderBottom: "1px solid #fecaca", py: 1.5, fontWeight: 600, width: 56 }}>
+                            <TableCell align="center" sx={{ ...paginatedTableHeadCellErrorSx, width: 56 }}>
                               Sr No
                             </TableCell>
-                            <TableCell sx={{ color: "#7f1d1d", borderBottom: "1px solid #fecaca", py: 1.5, fontWeight: 600 }}>
-                              Staff Name
-                            </TableCell>
-                            <TableCell sx={{ color: "#7f1d1d", borderBottom: "1px solid #fecaca", py: 1.5, fontWeight: 600 }}>
-                              Company
-                            </TableCell>
-                            <TableCell sx={{ color: "#7f1d1d", borderBottom: "1px solid #fecaca", py: 1.5, fontWeight: 600 }}>
-                              Outlet Name
-                            </TableCell>
-                            <TableCell sx={{ color: "#7f1d1d", borderBottom: "1px solid #fecaca", py: 1.5, fontWeight: 600 }}>
-                              ERP ID
-                            </TableCell>
-                            <TableCell align="center" sx={{ color: "#7f1d1d", borderBottom: "1px solid #fecaca", py: 1.5, fontWeight: 600 }}>
-                              Sale ID
-                            </TableCell>
-                            <TableCell align="center" sx={{ color: "#7f1d1d", borderBottom: "1px solid #fecaca", py: 1.5, fontWeight: 600 }}>
-                              Invoice No
-                            </TableCell>
-                            <TableCell align="center" sx={{ color: "#7f1d1d", borderBottom: "1px solid #fecaca", py: 1.5, fontWeight: 600 }}>
-                              Invoice Date
-                            </TableCell>
-                            <TableCell align="center" sx={{ color: "#7f1d1d", borderBottom: "1px solid #fecaca", py: 1.5, fontWeight: 600 }}>
-                              Cancel Date
-                            </TableCell>
-                            <TableCell align="right" sx={{ color: "#7f1d1d", borderBottom: "1px solid #fecaca", py: 1.5, fontWeight: 600 }}>
-                              Cancel Amount
-                            </TableCell>
-                            <TableCell align="center" sx={{ color: "#7f1d1d", borderBottom: "1px solid #fecaca", py: 1.5, fontWeight: 600 }}>
-                              Status
-                            </TableCell>
+                            <TableCell sx={paginatedTableHeadCellErrorSx}>Staff Name</TableCell>
+                            <TableCell sx={paginatedTableHeadCellErrorSx}>Company</TableCell>
+                            <TableCell sx={paginatedTableHeadCellErrorSx}>Outlet Name</TableCell>
+                            <TableCell sx={paginatedTableHeadCellErrorSx}>ERP ID</TableCell>
+                            <TableCell align="center" sx={paginatedTableHeadCellErrorSx}>Sale ID</TableCell>
+                            <TableCell align="center" sx={paginatedTableHeadCellErrorSx}>Invoice No</TableCell>
+                            <TableCell align="center" sx={paginatedTableHeadCellErrorSx}>Invoice Date</TableCell>
+                            <TableCell align="center" sx={paginatedTableHeadCellErrorSx}>Cancel Date</TableCell>
+                            <TableCell align="right" sx={paginatedTableHeadCellErrorSx}>Cancel Amount</TableCell>
+                            <TableCell align="center" sx={paginatedTableHeadCellErrorSx}>Status</TableCell>
                           </TableRow>
                         </TableHead>
                         <TableBody>
-                          {cancelledSales.length > 0 ? (
-                            cancelledSales.map((row, index) => (
+                          {paginatedActiveList.length > 0 ? (
+                            paginatedActiveList.map((row, index) => (
                               <TableRow
                                 key={`cancelled-page-${row.id}`}
                                 sx={{ backgroundColor: "#fff7f7", "&:last-child td, &:last-child th": { border: 0 } }}
                               >
                                 <TableCell align="center" sx={{ borderBottom: "1px solid #fecaca", py: 2 }}>
-                                  {index + 1}
+                                  {(page - 1) * ROWS_PER_PAGE + index + 1}
                                 </TableCell>
                                 <TableCell sx={{ borderBottom: "1px solid #fecaca", py: 2 }}>
                                   {row.staff_name || "N/A"}
@@ -908,6 +885,12 @@ function Delivered() {
                         </TableBody>
                       </Table>
                     </TableContainer>
+                    <TablePaginationFooter
+                      page={page}
+                      totalPages={totalPages}
+                      total={activeList.length}
+                      onPageChange={setPage}
+                    />
                   </MDBox>
                 )}
               </MDBox>

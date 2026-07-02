@@ -31,6 +31,13 @@ import MDButton from "components/MDButton";
 import DashboardLayout from "examples/LayoutContainers/DashboardLayout";
 import DashboardNavbar from "examples/Navbars/DashboardNavbar";
 import Footer from "examples/Footer";
+import {
+  ROWS_PER_PAGE,
+  TablePaginationFooter,
+  paginatedTableContainerSx,
+  paginatedTableHeadCellSx,
+  paginatedTableHeadSx,
+} from "utils/tablePagination";
 import { IoPrintOutline } from "react-icons/io5";
 
 function CreditsPage() {
@@ -44,6 +51,7 @@ function CreditsPage() {
   const [remarksHistory, setRemarksHistory] = useState([]);
   const [loadingRemarks, setLoadingRemarks] = useState(false);
   const [savingRemarks, setSavingRemarks] = useState(false);
+  const [page, setPage] = useState(1);
   const API = "https://bawarchee.edunextg.co/api";
 
   const getTodayLocalDate = () => {
@@ -71,6 +79,10 @@ function CreditsPage() {
   useEffect(() => {
     fetchCredits();
   }, []);
+
+  useEffect(() => {
+    setPage(1);
+  }, [searchQuery, selectedCompanyId, selectedStaffId]);
 
   const getStatus = (saleDateStr, creditDays) => {
     if (!creditDays) return <Chip label="No Term" size="small" variant="outlined" />;
@@ -363,6 +375,12 @@ function CreditsPage() {
       stickerNum.includes(search)
     )
   });
+
+  const totalPages = Math.max(1, Math.ceil(filteredCredits.length / ROWS_PER_PAGE));
+  const paginatedCredits = filteredCredits.slice(
+    (page - 1) * ROWS_PER_PAGE,
+    page * ROWS_PER_PAGE
+  );
 
   const totalCreditDuesAmount = filteredCredits.reduce(
     (total, credit) => total + (Number(credit.balance_amount) || 0),
@@ -1098,53 +1116,31 @@ function CreditsPage() {
               <MDBox pb={4} px={3}>
                 <TableContainer
                   component={Paper}
-                  sx={{ boxShadow: "none", backgroundColor: "transparent" }}
+                  sx={{ ...paginatedTableContainerSx, backgroundColor: "transparent" }}
                 >
-                  <Table size="small">
-                    <TableHead sx={{ display: "table-header-group" }}>
+                  <Table stickyHeader size="small">
+                    <TableHead sx={paginatedTableHeadSx()}>
                       <TableRow>
-                        <TableCell align="center" sx={{ fontWeight: "bold" }}>
+                        <TableCell align="center" sx={{ ...paginatedTableHeadCellSx, width: 56 }}>
                           Sr No
                         </TableCell>
-                        <TableCell align="left" sx={{ fontWeight: "bold" }}>
-                          Outlet Name
-                        </TableCell>
-                        <TableCell align="center" sx={{ fontWeight: "bold" }}>
-                          ERP ID
-                        </TableCell>
-                        <TableCell align="center" sx={{ fontWeight: "bold" }}>
-                          Contact No
-                        </TableCell>
-                        <TableCell align="center" sx={{ fontWeight: "bold" }}>
-                          Sale ID
-                        </TableCell>
-                        <TableCell align="center" sx={{ fontWeight: "bold" }}>
-                          Invoice No
-                        </TableCell>
-                        <TableCell align="center" sx={{ fontWeight: "bold" }}>
-                          Staff
-                        </TableCell>
-                        <TableCell align="center" sx={{ fontWeight: "bold" }}>
-                          Outstanding Balance
-                        </TableCell>
-                        <TableCell align="center" sx={{ fontWeight: "bold" }}>
-                          Issue Date
-                        </TableCell>
-                        <TableCell align="center" sx={{ fontWeight: "bold" }}>
-                          Due Date
-                        </TableCell>
-                        <TableCell align="center" sx={{ fontWeight: "bold" }}>
-                          Status
-                        </TableCell>
-                        <TableCell align="center" sx={{ fontWeight: "bold" }}>
-                          Action
-                        </TableCell>
+                        <TableCell align="left" sx={paginatedTableHeadCellSx}>Outlet Name</TableCell>
+                        <TableCell align="center" sx={paginatedTableHeadCellSx}>ERP ID</TableCell>
+                        <TableCell align="center" sx={paginatedTableHeadCellSx}>Contact No</TableCell>
+                        <TableCell align="center" sx={paginatedTableHeadCellSx}>Sale ID</TableCell>
+                        <TableCell align="center" sx={paginatedTableHeadCellSx}>Invoice No</TableCell>
+                        <TableCell align="center" sx={paginatedTableHeadCellSx}>Staff</TableCell>
+                        <TableCell align="center" sx={paginatedTableHeadCellSx}>Outstanding Balance</TableCell>
+                        <TableCell align="center" sx={paginatedTableHeadCellSx}>Issue Date</TableCell>
+                        <TableCell align="center" sx={paginatedTableHeadCellSx}>Due Date</TableCell>
+                        <TableCell align="center" sx={paginatedTableHeadCellSx}>Status</TableCell>
+                        <TableCell align="center" sx={paginatedTableHeadCellSx}>Action</TableCell>
                       </TableRow>
                     </TableHead>
                     <TableBody>
-                      {filteredCredits.map((credit, index) => (
+                      {paginatedCredits.map((credit, index) => (
                         <TableRow key={credit.id} sx={getCreditRowSx(credit)}>
-                          <TableCell align="center">{index + 1}</TableCell>
+                          <TableCell align="center">{(page - 1) * ROWS_PER_PAGE + index + 1}</TableCell>
                           <TableCell align="left">{credit.outlet_name}</TableCell>
                           <TableCell align="center">{credit.outlet_erp_id || "N/A"}</TableCell>
                           <TableCell align="center">{credit.contact_number || "N/A"}</TableCell>
@@ -1199,6 +1195,12 @@ function CreditsPage() {
                       </MDTypography>
                     </MDBox>
                   )}
+                  <TablePaginationFooter
+                    page={page}
+                    totalPages={totalPages}
+                    total={filteredCredits.length}
+                    onPageChange={setPage}
+                  />
                 </TableContainer>
               </MDBox>
             </Card>

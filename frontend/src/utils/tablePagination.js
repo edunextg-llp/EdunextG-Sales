@@ -5,6 +5,35 @@ import MDTypography from "components/MDTypography";
 
 export const ROWS_PER_PAGE = 10;
 
+export const paginatedTableContainerSx = {
+  boxShadow: "none",
+  border: "1px solid #e5e7eb",
+  maxHeight: "70vh",
+  overflow: "auto",
+};
+
+export const paginatedTableHeadSx = (backgroundColor = "#f9fafb") => ({
+  display: "table-header-group",
+  "& .MuiTableCell-head": {
+    backgroundColor,
+  },
+});
+
+export const paginatedTableHeadCellSx = {
+  color: "#6b7280",
+  borderBottom: "1px solid #e5e7eb",
+  py: 1.5,
+  fontWeight: 600,
+  whiteSpace: "nowrap",
+  verticalAlign: "middle",
+};
+
+export const paginatedTableHeadCellErrorSx = {
+  ...paginatedTableHeadCellSx,
+  color: "#7f1d1d",
+  borderBottom: "1px solid #fecaca",
+};
+
 export function parseListResponse(payload) {
   if (Array.isArray(payload)) {
     return {

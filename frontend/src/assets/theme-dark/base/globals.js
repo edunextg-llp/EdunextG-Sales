@@ -21,6 +21,10 @@ const { info, dark } = colors;
 const globals = {
   html: {
     scrollBehavior: "smooth",
+    overflowX: "hidden",
+  },
+  body: {
+    overflowX: "hidden",
   },
   "*, *::before, *::after": {
     margin: 0,
