@@ -261,11 +261,13 @@ function Packaging() {
     const outletErpId = row.outlet_erp_id ? row.outlet_erp_id.toLowerCase() : "";
     const staffName = row.staff_name ? row.staff_name.toLowerCase() : "";
     const saleId = formatBpSaleId(row).toLowerCase();
+    const invoiceNumber = row.invoice_number ? String(row.invoice_number).toLowerCase() : "";
     return (
       outletName.includes(search) ||
       outletErpId.includes(search) ||
       staffName.includes(search) ||
-      saleId.includes(search)
+      saleId.includes(search) ||
+      invoiceNumber.includes(search)
     );
   });
 
@@ -292,7 +294,7 @@ function Packaging() {
                   <Grid item xs={12} md={3}>
                     <MDInput
                       type="text"
-                      label="Search by Outlet Name, ID, Staff Name, or Sale ID"
+                      label="Search by Outlet Name, ID, Staff Name, Sale ID, or Invoice No."
                       fullWidth
                       value={searchQuery}
                       onChange={(e) => setSearchQuery(e.target.value)}
