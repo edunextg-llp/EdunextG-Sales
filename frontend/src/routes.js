@@ -22,7 +22,7 @@ import Reports from "layouts/reports";
 import DmsStock from "layouts/dms-stock";
 import CurrentStock from "layouts/current-stock";
 import PhysicalStock from "layouts/physical-stock";
-
+// import ExpiredStock from "layouts/expired-stock";
 // @mui icons
 import Icon from "@mui/material/Icon";
 
@@ -73,6 +73,14 @@ const routes = [
         route: "/physical-stock",
         component: <PhysicalStock />,
       },
+      // {
+      //   type: "collapse",
+      //   name: "Expired Stock",
+      //   key: "expired-stock",
+      //   icon: <Icon fontSize="small">swap_horiz</Icon>,
+      //   route: "/expired-stock",
+      //   component: <ExpiredStock />,
+      // },
     ],
   },
   // {

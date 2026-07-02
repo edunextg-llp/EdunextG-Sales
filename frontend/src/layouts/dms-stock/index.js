@@ -26,6 +26,8 @@ import Footer from "examples/Footer";
 import { stickyColumnSx, stickyHeadRowSx, stickyTableContainerSx, stickyTableSx } from "utils/stickyProductColumns";
 
 const API = "https://bawarchee.edunextg.co/api";
+const DMS_STOCK_TEMPLATE_URL =
+  "https://res.cloudinary.com/ddwp5cuhl/raw/upload/v1782977868/DMS_Stock_-_Copy_cgba8i.xlsx";
 
 const tableHeadSx = {
   color: "#6b7280",
@@ -265,10 +267,24 @@ function DmsStock() {
                     </MDTypography>
                   )}
                 </MDBox>
-                <MDButton color="dark" variant="outlined" onClick={fetchLatestStock} disabled={loading}>
-                  <Icon sx={{ mr: 1 }}>refresh</Icon>
-                  Refresh
-                </MDButton>
+                <MDBox display="flex" gap={1} flexWrap="wrap" justifyContent="flex-end">
+                  <MDButton
+                    color="info"
+                    variant="outlined"
+                    component="a"
+                    href={DMS_STOCK_TEMPLATE_URL}
+                    target="_blank"
+                    rel="noreferrer"
+                    download
+                  >
+                    <Icon sx={{ mr: 1 }}>download</Icon>
+                    Download Template
+                  </MDButton>
+                  <MDButton color="dark" variant="outlined" onClick={fetchLatestStock} disabled={loading}>
+                    <Icon sx={{ mr: 1 }}>refresh</Icon>
+                    Refresh
+                  </MDButton>
+                </MDBox>
               </MDBox>
 
               <MDBox px={3} pb={3}>

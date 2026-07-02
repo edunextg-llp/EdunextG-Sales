@@ -69,6 +69,7 @@ test('includes products that exist only in physical or only in DMS stock', () =>
             product_division: '',
             variant_name: '',
             pcs_per_box: 10,
+            expired_stock_date: null,
             physical_stock_in_case: 2,
             physical_stock_in_pcs: 1,
             total_physical_stock_in_pcs: 21,

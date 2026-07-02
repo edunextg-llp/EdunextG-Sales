@@ -25,6 +25,8 @@ import Footer from "examples/Footer";
 import { stickyColumnSx, stickyHeadRowSx, stickyTableContainerSx, stickyTableSx } from "utils/stickyProductColumns";
 
 const API = "https://bawarchee.edunextg.co/api";
+const PHYSICAL_STOCK_TEMPLATE_URL =
+  "https://res.cloudinary.com/ddwp5cuhl/raw/upload/v1782977511/Physiscal_Stock_-_Copy_gjxvok.xlsx";
 
 const tableHeadSx = {
   color: "#6b7280",
@@ -69,6 +71,29 @@ const formatDate = (value) => {
     month: "short",
     year: "numeric",
   });
+};
+
+const formatExpiredStockDate = (value) => {
+  if (!value) return "N/A";
+  const s = String(value).trim();
+  const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+  // Expected DB format: YYYY-MM-DD
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) {
+    const [yStr, mStr, dStr] = s.split("-");
+    const y = Number(yStr);
+    const m = Number(mStr);
+    const d = Number(dStr);
+    if (m >= 1 && m <= 12) return `${d}-${months[m - 1]}-${String(y).slice(-2)}`;
+  }
+
+  // Fallback for other date strings
+  const dt = new Date(s);
+  if (Number.isNaN(dt.getTime())) return s;
+  const d = dt.getDate();
+  const m = dt.getMonth();
+  const y = dt.getFullYear();
+  return `${d}-${months[m]}-${String(y).slice(-2)}`;
 };
 
 const resolveDmsImportId = (uploadDate, imports) => {
@@ -237,10 +262,29 @@ function PhysicalStock() {
                     Choose a DMS upload date first, then upload the matching Physical Stock file.
                   </MDTypography>
                 </MDBox>
-                <MDButton color="dark" variant="outlined" onClick={() => fetchPhysicalStock()} disabled={!selectedDmsImportId || loading}>
-                  <Icon sx={{ mr: 1 }}>refresh</Icon>
-                  Fetch Data
-                </MDButton>
+                <MDBox display="flex" gap={1} flexWrap="wrap" justifyContent="flex-end">
+                  <MDButton
+                    color="info"
+                    variant="outlined"
+                    component="a"
+                    href={PHYSICAL_STOCK_TEMPLATE_URL}
+                    target="_blank"
+                    rel="noreferrer"
+                    download
+                  >
+                    <Icon sx={{ mr: 1 }}>download</Icon>
+                    Download Template
+                  </MDButton>
+                  <MDButton
+                    color="dark"
+                    variant="outlined"
+                    onClick={() => fetchPhysicalStock()}
+                    disabled={!selectedDmsImportId || loading}
+                  >
+                    <Icon sx={{ mr: 1 }}>refresh</Icon>
+                    Fetch Data
+                  </MDButton>
+                </MDBox>
               </MDBox>
 
               <MDBox px={3} pb={3}>
@@ -362,7 +406,7 @@ function PhysicalStock() {
                 </Grid>
 
                 <TableContainer component={Paper} sx={stickyTableContainerSx}>
-                  <Table sx={stickyTableSx(1450)}>
+                  <Table sx={stickyTableSx(1650)}>
                     <TableHead sx={{ display: "table-header-group", backgroundColor: "#f9fafb" }}>
                       <TableRow>
                         <TableCell sx={stickyColumnSx(0, { isHead: true, baseSx: tableHeadSx })}>Sr No</TableCell>
@@ -371,6 +415,7 @@ function PhysicalStock() {
                         <TableCell sx={stickyColumnSx(3, { isHead: true, baseSx: tableHeadSx })}>Product Division</TableCell>
                         <TableCell sx={stickyHeadRowSx(tableHeadSx)}>Variant Name</TableCell>
                         <TableCell align="right" sx={stickyHeadRowSx(tableHeadSx)}>Pcs/Box</TableCell>
+                        <TableCell sx={stickyHeadRowSx(tableHeadSx)}>Expired Stock</TableCell>
                         <TableCell align="right" sx={stickyHeadRowSx(tableHeadSx)}>Physical Stock In Case</TableCell>
                         <TableCell align="right" sx={stickyHeadRowSx(tableHeadSx)}>Physical Stock In Pcs</TableCell>
                         <TableCell align="right" sx={stickyHeadRowSx(tableHeadSx, "#dbeafe")}>Total Physical Stock In Pcs</TableCell>
@@ -394,6 +439,7 @@ function PhysicalStock() {
                           <TableCell sx={stickyColumnSx(3, { baseSx: tableBodySx })}>{item.product_division}</TableCell>
                           <TableCell sx={tableBodySx}>{item.variant_name}</TableCell>
                           <TableCell align="right" sx={tableBodySx}>{unitFormat(item.pcs_per_box)}</TableCell>
+                          <TableCell sx={tableBodySx}>{formatExpiredStockDate(item.expired_stock_date)}</TableCell>
                           <TableCell align="right" sx={tableBodySx}>{unitFormat(item.physical_stock_in_case)}</TableCell>
                           <TableCell align="right" sx={tableBodySx}>{unitFormat(item.physical_stock_in_pcs)}</TableCell>
                           <TableCell align="right" sx={calculatedCellSx}>{unitFormat(item.total_physical_stock_in_pcs)}</TableCell>

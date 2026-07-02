@@ -42,6 +42,7 @@ class PhysicalStockModel {
                     row.pricePerPiece,
                     row.mrp,
                     row.totalValue,
+                    row.expiredStockDate || null,
                     JSON.stringify(row.rawData),
                 ]);
 
@@ -49,7 +50,8 @@ class PhysicalStockModel {
                     `INSERT INTO physical_stock_items
                      (import_id, product_erp_id, product_name, product_division, variant_name,
                       pcs_per_box, physical_stock_in_case, physical_stock_in_pcs,
-                      total_physical_stock_in_pcs, price_per_piece, mrp, total_value, raw_data)
+                      total_physical_stock_in_pcs, price_per_piece, mrp, total_value,
+                      expired_stock_date, raw_data)
                      VALUES ?`,
                     [values]
                 );
@@ -106,7 +108,8 @@ class PhysicalStockModel {
         const [rows] = await db.execute(
             `SELECT id, import_id, product_erp_id, product_name, product_division, variant_name,
                     pcs_per_box, physical_stock_in_case, physical_stock_in_pcs,
-                    total_physical_stock_in_pcs, price_per_piece, mrp, total_value
+                    total_physical_stock_in_pcs, price_per_piece, mrp, total_value,
+                    expired_stock_date
              FROM physical_stock_items
              WHERE import_id = ?
              ORDER BY id ASC

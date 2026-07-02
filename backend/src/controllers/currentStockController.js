@@ -32,6 +32,7 @@ const pickPhysical = (item = {}) => ({
     price_per_piece: item.price_per_piece || 0,
     mrp: item.mrp || 0,
     total_value: item.total_value || 0,
+    expired_stock_date: item.expired_stock_date || null,
 });
 
 const pickDms = (item = {}) => ({
@@ -79,6 +80,7 @@ export function buildCurrentStockDiff(physicalItems = [], dmsItems = []) {
             product_division: physical.product_division || dms.product_division,
             variant_name: physical.variant_name || dms.variant_name,
             pcs_per_box: physical.pcs_per_box || dms.pcs_per_box || 0,
+            expired_stock_date: physical.expired_stock_date || null,
             physical_stock_in_case: physical.stock_in_case,
             physical_stock_in_pcs: physical.stock_in_pcs,
             total_physical_stock_in_pcs: physical.total_stock_in_pcs,

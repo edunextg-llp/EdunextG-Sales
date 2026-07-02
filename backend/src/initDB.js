@@ -732,6 +732,7 @@ async function initDB() {
             price_per_piece DECIMAL(14, 4) NOT NULL DEFAULT 0.0000,
             mrp DECIMAL(14, 4) NOT NULL DEFAULT 0.0000,
             total_value DECIMAL(14, 2) NOT NULL DEFAULT 0.00,
+            expired_stock_date DATE NULL,
             raw_data JSON NULL,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (import_id) REFERENCES physical_stock_imports(id) ON DELETE CASCADE,

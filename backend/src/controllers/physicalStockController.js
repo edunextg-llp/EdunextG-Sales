@@ -11,6 +11,7 @@ const HEADER_ALIASES = {
     pcsPerBox: ['pcs/box', 'pcs per box'],
     physicalStockInCase: ['current stock in case', 'physical stock in case'],
     physicalStockInPcs: ['current stock in pcs', 'physical stock in pcs'],
+    expiredStockDate: ['expired stock', 'expiry date', 'expired date'],
     pricePerPiece: ['price/pcs', 'price per pcs', 'price per piece'],
     mrp: ['mrp'],
 };
@@ -42,6 +43,38 @@ const textValue = (value) => String(value ?? '').trim();
 const roundMoney = (value) => Math.round((Number(value) + Number.EPSILON) * 100) / 100;
 const roundQuantity = (value) => Math.round((Number(value) + Number.EPSILON) * 10000) / 10000;
 
+const excelSerialToIsoDate = (serial) => {
+    // Excel serial dates are days since 1899-12-30 (with the 1900 leap-year bug baked in).
+    const days = Number(serial);
+    if (!Number.isFinite(days) || days <= 0) return null;
+    const ms = Math.round(days * 86400000);
+    const epoch = Date.UTC(1899, 11, 30);
+    const dt = new Date(epoch + ms);
+    if (Number.isNaN(dt.getTime())) return null;
+    return dt.toISOString().slice(0, 10); // YYYY-MM-DD
+};
+
+const toIsoDateOrNull = (value) => {
+    if (value === null || value === undefined || value === '') return null;
+
+    // xlsx can give dates as numbers (Excel serial)
+    if (typeof value === 'number') return excelSerialToIsoDate(value);
+
+    const raw = String(value).trim();
+    if (!raw) return null;
+
+    // numeric string could be Excel serial too
+    if (/^\d{4,6}$/.test(raw)) return excelSerialToIsoDate(Number(raw));
+
+    // already in ISO
+    if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw;
+
+    // try Date parse fallback
+    const dt = new Date(raw);
+    if (Number.isNaN(dt.getTime())) return raw; // keep as-is; DB may reject invalid dates
+    return dt.toISOString().slice(0, 10);
+};
+
 export function parsePhysicalStockRows(file) {
     const extension = (file.originalname.split('.').pop() || '').toLowerCase();
     if (extension === 'csv') {
@@ -69,6 +102,8 @@ export function normalizePhysicalStockRow(row) {
     const pricePerPiece = toNumber(findValue(row, 'pricePerPiece'));
     const totalPhysicalStockInPcs = roundQuantity((physicalStockInCase * pcsPerBox) + physicalStockInPcs);
     const totalValue = roundMoney(totalPhysicalStockInPcs * pricePerPiece);
+    const expiredStockDateRaw = findValue(row, 'expiredStockDate');
+    const expiredStockDate = toIsoDateOrNull(expiredStockDateRaw);
 
     return {
         productErpId: textValue(findValue(row, 'productErpId')),
@@ -82,6 +117,7 @@ export function normalizePhysicalStockRow(row) {
         pricePerPiece,
         mrp: toNumber(findValue(row, 'mrp')),
         totalValue,
+        expiredStockDate,
         rawData: row,
     };
 }

@@ -76,6 +76,29 @@ const formatDate = (value) => {
   });
 };
 
+const formatExpiredStockDate = (value) => {
+  if (!value) return "N/A";
+  const s = String(value).trim();
+  const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+  // Expected DB format: YYYY-MM-DD
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) {
+    const [yStr, mStr, dStr] = s.split("-");
+    const y = Number(yStr);
+    const m = Number(mStr);
+    const d = Number(dStr);
+    if (m >= 1 && m <= 12) return `${d}-${months[m - 1]}-${String(y).slice(-2)}`;
+  }
+
+  // Fallback for other date strings
+  const dt = new Date(s);
+  if (Number.isNaN(dt.getTime())) return s;
+  const d = dt.getDate();
+  const m = dt.getMonth();
+  const y = dt.getFullYear();
+  return `${d}-${months[m]}-${String(y).slice(-2)}`;
+};
+
 const resolveDmsImportId = (uploadDate, imports) => {
   if (!imports.length) return "";
   if (!uploadDate) return String(imports[0].id);
@@ -285,7 +308,7 @@ function CurrentStock() {
                 </Grid>
 
                 <TableContainer component={Paper} sx={stickyTableContainerSx}>
-                  <Table sx={stickyTableSx(1800)}>
+                  <Table sx={stickyTableSx(1950)}>
                     <TableHead sx={{ display: "table-header-group", backgroundColor: "#f9fafb" }}>
                       <TableRow>
                         <TableCell sx={stickyColumnSx(0, { isHead: true, baseSx: tableHeadSx })}>Sr No</TableCell>
@@ -294,6 +317,7 @@ function CurrentStock() {
                         <TableCell sx={stickyColumnSx(3, { isHead: true, baseSx: tableHeadSx })}>Product Division</TableCell>
                         <TableCell sx={stickyHeadRowSx(tableHeadSx)}>Variant Name</TableCell>
                         <TableCell align="right" sx={stickyHeadRowSx(tableHeadSx)}>Pcs/Box</TableCell>
+                        <TableCell sx={stickyHeadRowSx(tableHeadSx)}>Expired Stock</TableCell>
                         <TableCell align="right" sx={stickyHeadRowSx(tableHeadSx, "#f1f5f9")}>Physical Case</TableCell>
                         <TableCell align="right" sx={stickyHeadRowSx(tableHeadSx, "#f1f5f9")}>Physical Pcs</TableCell>
                         <TableCell align="right" sx={stickyHeadRowSx(tableHeadSx, "#f1f5f9")}>Physical Total Pcs</TableCell>
@@ -322,6 +346,7 @@ function CurrentStock() {
                           <TableCell sx={stickyColumnSx(3, { baseSx: tableBodySx })}>{item.product_division}</TableCell>
                           <TableCell sx={tableBodySx}>{item.variant_name}</TableCell>
                           <TableCell align="right" sx={tableBodySx}>{unitFormat(item.pcs_per_box)}</TableCell>
+                          <TableCell sx={tableBodySx}>{formatExpiredStockDate(item.expired_stock_date)}</TableCell>
                           <TableCell align="right" sx={sourceCellSx}>{unitFormat(item.physical_stock_in_case)}</TableCell>
                           <TableCell align="right" sx={sourceCellSx}>{unitFormat(item.physical_stock_in_pcs)}</TableCell>
                           <TableCell align="right" sx={sourceCellSx}>{unitFormat(item.total_physical_stock_in_pcs)}</TableCell>
