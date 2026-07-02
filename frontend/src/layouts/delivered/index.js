@@ -259,6 +259,7 @@ function Delivered() {
   });
 
   const deliveredTotal = filteredSales.filter((row) => row.packaging_status === "delivered").length;
+  const pendingDeliveryTotal = filteredSales.filter((row) => row.packaging_status === "out_for_delivery").length;
   const cancelledTotal = filteredCancelledSales.length;
   const returnedTotal = filteredSales.filter((row) => row.packaging_status === "returned").length;
   const cancelledSales = filteredCancelledSales;
@@ -625,8 +626,21 @@ function Delivered() {
                       </Grid>
                     </>
                   )}
-                  <Grid item xs={12} md={activeTab === "cancelled" ? 12 : 8}>
+                  <Grid item xs={12} md={activeTab === "cancelled" ? 12 : 12}>
                     <MDBox display="flex" gap={2} justifyContent={{ xs: "flex-start", md: "flex-end" }} flexWrap="wrap">
+                      <MDBox
+                        px={2}
+                        py={1.25}
+                        borderRadius="lg"
+                        sx={{ backgroundColor: "#eff6ff", border: "1px solid #bfdbfe" }}
+                      >
+                        <MDTypography variant="caption" color="text">
+                          Pending Deliver
+                        </MDTypography>
+                        <MDTypography variant="h5" color="info" fontWeight="bold">
+                          {pendingDeliveryTotal}
+                        </MDTypography>
+                      </MDBox>
                       <MDBox
                         px={2}
                         py={1.25}
@@ -692,6 +706,7 @@ function Delivered() {
                         <TableCell align="center" sx={paginatedTableHeadCellSx}>No. of Item</TableCell>
                         <TableCell align="center" sx={paginatedTableHeadCellSx}>Packing Item</TableCell>
                         <TableCell align="center" sx={paginatedTableHeadCellSx}>No. of Box</TableCell>
+                        <TableCell align="center" sx={paginatedTableHeadCellSx}>No. of Packet</TableCell>
                         <TableCell align="center" sx={paginatedTableHeadCellSx}>Delivery Boy</TableCell>
                         <TableCell align="center" sx={paginatedTableHeadCellSx}>Vehicle</TableCell>
                         <TableCell align="center" sx={paginatedTableHeadCellSx}>Delivery Date</TableCell>
@@ -728,6 +743,9 @@ function Delivered() {
                             </TableCell>
                             <TableCell align="center" sx={{ borderBottom: "1px solid #cbd5e1", py: 2, color: '#334155' }}>
                               {row.box_count || "N/A"}
+                            </TableCell>
+                            <TableCell align="center" sx={{ borderBottom: "1px solid #cbd5e1", py: 2, color: '#334155' }}>
+                              {row.packet_count || "N/A"}
                             </TableCell>
                             <TableCell align="center" sx={{ borderBottom: "1px solid #cbd5e1", py: 2, color: '#334155' }}>
                               {row.delivery_boy_name || 'N/A'}
@@ -770,7 +788,7 @@ function Delivered() {
                         ))
                       ) : (
                         <TableRow>
-                          <TableCell colSpan={15} align="center" sx={{ py: 3, borderBottom: 0 }}>
+                          <TableCell colSpan={16} align="center" sx={{ py: 3, borderBottom: 0 }}>
                             <MDTypography variant="body2" color="text">
                               No delivered items found.
                             </MDTypography>

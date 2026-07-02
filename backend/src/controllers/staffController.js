@@ -616,7 +616,7 @@ export const deleteSale = async (req, res) => {
 export const updatePackagingStatus = async (req, res) => {
     try {
         const { saleId } = req.params;
-        const { packagingStatus, deliveryBoyId, vehicleNo, deliveryDate, statusDate, expectedStatus, packedItemCount, boxCount } = req.body;
+        const { packagingStatus, deliveryBoyId, vehicleNo, deliveryDate, statusDate, expectedStatus, packedItemCount, boxCount, packetCount } = req.body;
 
         if (!['not_packing', 'packing', 'packing_done', 'out_for_delivery', 'delivered', 'cancelled', 'returned'].includes(packagingStatus)) {
             return res.status(400).json({ error: 'Invalid packaging status' });
@@ -638,9 +638,11 @@ export const updatePackagingStatus = async (req, res) => {
         const normalizedStatusDate = normalizeDateInput(statusDate);
         const hasPackedItemCount = Object.prototype.hasOwnProperty.call(req.body, 'packedItemCount');
         const hasBoxCount = Object.prototype.hasOwnProperty.call(req.body, 'boxCount');
+        const hasPacketCount = Object.prototype.hasOwnProperty.call(req.body, 'packetCount');
         let normalizedPackedItemCount =
-            existingSale?.packed_item_count || existingSale?.item_count || null;
-        let normalizedBoxCount = existingSale?.box_count || null;
+            existingSale?.packed_item_count ?? existingSale?.item_count ?? null;
+        let normalizedBoxCount = existingSale?.box_count ?? null;
+        let normalizedPacketCount = existingSale?.packet_count ?? null;
 
         if (hasPackedItemCount) {
             const packedValidation = validatePositiveInteger(packedItemCount, 'Packing item');
@@ -662,6 +664,14 @@ export const updatePackagingStatus = async (req, res) => {
             normalizedBoxCount = boxValidation.value;
         }
 
+        if (hasPacketCount) {
+            const packetValidation = validatePositiveInteger(packetCount, 'No. of packet');
+            if (!packetValidation.valid) {
+                return res.status(400).json({ error: packetValidation.error });
+            }
+            normalizedPacketCount = packetValidation.value;
+        }
+
         await StaffModel.updatePackagingStatus(
             saleId,
             packagingStatus,
@@ -670,7 +680,8 @@ export const updatePackagingStatus = async (req, res) => {
             normalizeDateInput(deliveryDate),
             normalizedStatusDate,
             normalizedPackedItemCount,
-            normalizedBoxCount
+            normalizedBoxCount,
+            normalizedPacketCount
         );
         const updated = await StaffModel.getSaleById(saleId);
         res.status(200).json({

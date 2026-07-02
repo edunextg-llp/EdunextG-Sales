@@ -144,6 +144,7 @@ function Packaging() {
     const packedItemCount = parseInt(row.packed_item_count, 10);
     const originalItemCount = Number(row.item_count || 0);
     const boxCount = parseInt(row.box_count, 10);
+    const packetCount = parseInt(row.packet_count, 10);
     if (Number.isNaN(packedItemCount) || packedItemCount <= 0) {
       alert("Please enter Packing Item.");
       return;
@@ -156,6 +157,10 @@ function Packaging() {
       alert("Please enter No. of Box.");
       return;
     }
+    if (Number.isNaN(packetCount) || packetCount <= 0) {
+      alert("Please enter No. of Packet.");
+      return;
+    }
 
     setSavingSaleIds((prev) => new Set(prev).add(saleId));
 
@@ -166,6 +171,7 @@ function Packaging() {
         expectedStatus: row.original_packaging_status,
         packedItemCount,
         boxCount,
+        packetCount,
       };
 
       const response = await fetch(`${API}/staff/sales/${row.id}/packaging`, {
@@ -363,6 +369,9 @@ function Packaging() {
                           No. of Box
                         </TableCell>
                         <TableCell align="center" sx={paginatedTableHeadCellSx}>
+                          No. of Packet
+                        </TableCell>
+                        <TableCell align="center" sx={paginatedTableHeadCellSx}>
                           Status
                         </TableCell>
                         <TableCell align="center" sx={paginatedTableHeadCellSx}>
@@ -441,6 +450,18 @@ function Packaging() {
                                 />
                               </TableCell>
                               <TableCell align="center" sx={{ borderBottom: borderCol, py: 2, color: txColor }}>
+                                <MDInput
+                                  type="number"
+                                  value={row.packet_count || ""}
+                                  onChange={(e) =>
+                                    handleRowChange(row.id, "packet_count", e.target.value)
+                                  }
+                                  size="small"
+                                  inputProps={{ min: 1, style: { textAlign: "center" } }}
+                                  sx={{ width: 100, backgroundColor: "#fff" }}
+                                />
+                              </TableCell>
+                              <TableCell align="center" sx={{ borderBottom: borderCol, py: 2, color: txColor }}>
                                 <FormControl size="small" sx={{ minWidth: 140 }}>
                                   <Select
                                     value={row.packaging_status || 'not_packing'}
@@ -477,7 +498,7 @@ function Packaging() {
                         })
                       ) : (
                         <TableRow>
-                          <TableCell colSpan={13} align="center" sx={{ py: 3, borderBottom: 0 }}>
+                          <TableCell colSpan={dateFilterMode === "all" ? 15 : 14} align="center" sx={{ py: 3, borderBottom: 0 }}>
                             <MDTypography variant="body2" color="text">
                               No sales found.
                             </MDTypography>

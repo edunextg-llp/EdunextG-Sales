@@ -11,8 +11,10 @@ export const enhancePackagingRow = (row) => ({
   ...row,
   packed_item_count: row.packed_item_count ?? row.item_count ?? "",
   box_count: row.box_count ?? "",
+  packet_count: row.packet_count ?? "",
   original_packed_item_count: row.packed_item_count ?? row.item_count ?? "",
   original_box_count: row.box_count ?? "",
+  original_packet_count: row.packet_count ?? "",
   original_packaging_status: row.packaging_status,
   status_update_date: toDateInputValue(row.status_updated_at),
   status_update_date_changed: false,
@@ -28,7 +30,8 @@ export const isPackagingRowDirty = (row) =>
   row.packaging_status !== row.original_packaging_status ||
   row.status_update_date_changed ||
   String(row.packed_item_count ?? "") !== String(row.original_packed_item_count ?? "") ||
-  String(row.box_count ?? "") !== String(row.original_box_count ?? "");
+  String(row.box_count ?? "") !== String(row.original_box_count ?? "") ||
+  String(row.packet_count ?? "") !== String(row.original_packet_count ?? "");
 
 export const isDeliveryRowDirty = (row) =>
   Boolean(row._localDirty) || row.packaging_status !== row.original_packaging_status;

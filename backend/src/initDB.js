@@ -154,6 +154,7 @@ async function initDB() {
             item_count INT NOT NULL DEFAULT 0,
             packed_item_count INT NULL,
             box_count INT NULL,
+            packet_count INT NULL,
             price DECIMAL(10, 2) NOT NULL,
             sticker_number VARCHAR(20) NULL UNIQUE,
             payment_mode ENUM('cash', 'upi') NOT NULL DEFAULT 'cash',
@@ -484,6 +485,17 @@ async function initDB() {
     } catch (err) {
         if (err.code !== 'ER_DUP_FIELDNAME') {
             console.log('box_count column may already exist on staff_sales');
+        }
+    }
+
+    try {
+        await connection.query(`
+            ALTER TABLE staff_sales ADD COLUMN packet_count INT NULL
+        `);
+        console.log('Added packet_count to staff_sales table');
+    } catch (err) {
+        if (err.code !== 'ER_DUP_FIELDNAME') {
+            console.log('packet_count column may already exist on staff_sales');
         }
     }
 

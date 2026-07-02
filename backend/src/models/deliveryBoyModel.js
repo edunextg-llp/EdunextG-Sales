@@ -175,7 +175,7 @@ class DeliveryBoyModel {
             `SELECT ss.id, CONCAT('BP', ss.id) AS bp_sale_id, ss.invoice_number,
                     DATE_FORMAT(ss.sale_date, '%Y-%m-%d') AS sale_date,
                     DATE_FORMAT(ss.delivery_date, '%Y-%m-%d') AS delivery_date,
-                    ss.item_count, ss.packed_item_count, ss.box_count, ss.price,
+                    ss.item_count, ss.packed_item_count, ss.box_count, ss.packet_count, ss.price,
                     ss.packaging_status, ss.vehicle_no,
                     sc.outlet_name, sc.outlet_erp_id, sc.contact_number, sc.google_location,
                     s.name AS staff_name,
@@ -236,7 +236,8 @@ class DeliveryBoyModel {
                          vehicle_no = NULL,
                          delivery_date = NULL,
                          packed_item_count = ?,
-                         box_count = NULL
+                         box_count = NULL,
+                         packet_count = NULL
                      WHERE id = ? AND delivery_boy_id = ?`,
                     [resetPackedCount, saleId, deliveryBoyId]
                 );

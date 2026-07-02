@@ -295,6 +295,7 @@ function Delivery() {
                         <TableCell align="center" sx={paginatedTableHeadCellSx}>No. of Item</TableCell>
                         <TableCell align="center" sx={paginatedTableHeadCellSx}>Packing Item</TableCell>
                         <TableCell align="center" sx={paginatedTableHeadCellSx}>No. of Box</TableCell>
+                        <TableCell align="center" sx={paginatedTableHeadCellSx}>No. of Packet</TableCell>
                         <TableCell align="center" sx={paginatedTableHeadCellSx}>Status</TableCell>
                         <TableCell align="center" sx={paginatedTableHeadCellSx}>Delivery Date</TableCell>
                         <TableCell align="center" sx={paginatedTableHeadCellSx}>Packing Date</TableCell>
@@ -347,6 +348,9 @@ function Delivery() {
                                 {row.box_count || "N/A"}
                               </TableCell>
                               <TableCell align="center" sx={{ borderBottom: borderCol, py: 2, color: txColor }}>
+                                {row.packet_count || "N/A"}
+                              </TableCell>
+                              <TableCell align="center" sx={{ borderBottom: borderCol, py: 2, color: txColor }}>
                                 <FormControl size="small" sx={{ minWidth: 160 }}>
                                   <Select
                                     value={row.packaging_status === 'packing_done' ? '' : row.packaging_status}
@@ -381,7 +385,7 @@ function Delivery() {
                         })
                       ) : (
                         <TableRow>
-                          <TableCell colSpan={15} align="center" sx={{ py: 3, borderBottom: 0 }}>
+                          <TableCell colSpan={16} align="center" sx={{ py: 3, borderBottom: 0 }}>
                             <MDTypography variant="body2" color="text">
                               No deliveries found.
                             </MDTypography>

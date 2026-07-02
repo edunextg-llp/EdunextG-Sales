@@ -334,7 +334,7 @@ class StaffModel {
     static async getAllSalesByDate(date, search = '') {
         let query = `
             SELECT ss.id,
-                    ss.staff_id, ss.outlet_id, ss.sale_date, ss.item_count, ss.packed_item_count, ss.box_count, ss.price, ss.invoice_number, 
+                    ss.staff_id, ss.outlet_id, ss.sale_date, ss.item_count, ss.packed_item_count, ss.box_count, ss.packet_count, ss.price, ss.invoice_number, 
                     ss.sticker_number, ss.packaging_status, ss.delivery_boy_id, ss.vehicle_no,
                     DATE_FORMAT(ss.delivery_date, '%Y-%m-%d') AS delivery_date,
                     DATE_FORMAT(ssh.status_updated_at, '%Y-%m-%d %H:%i:%s') AS status_updated_at,
@@ -398,7 +398,7 @@ class StaffModel {
     static async getSalesByDate(staffId, date) {
         const [rows] = await db.execute(
             `SELECT ss.id,
-                    ss.staff_id, ss.outlet_id, ss.sale_date, ss.item_count, ss.packed_item_count, ss.box_count, ss.price, ss.invoice_number, 
+                    ss.staff_id, ss.outlet_id, ss.sale_date, ss.item_count, ss.packed_item_count, ss.box_count, ss.packet_count, ss.price, ss.invoice_number, 
                     ss.sticker_number, ss.payment_mode, ss.paid_amount, ss.balance_amount, 
                     ss.reference_no, ss.reference_date, ss.credit_days, ss.vehicle_no,
                     DATE_FORMAT(ss.delivery_date, '%Y-%m-%d') AS delivery_date,
@@ -424,7 +424,7 @@ class StaffModel {
     static async getSaleById(saleId) {
         const [rows] = await db.execute(
                 `SELECT ss.id,
-                    ss.staff_id, ss.outlet_id, ss.sale_date, ss.item_count, ss.packed_item_count, ss.box_count, ss.price, ss.invoice_number,
+                    ss.staff_id, ss.outlet_id, ss.sale_date, ss.item_count, ss.packed_item_count, ss.box_count, ss.packet_count, ss.price, ss.invoice_number,
                     ss.sticker_number, ss.paid_amount, ss.balance_amount, ss.packaging_status,
                     DATE_FORMAT(ss.delivery_date, '%Y-%m-%d') AS delivery_date,
                     DATE_FORMAT(ssh.status_updated_at, '%Y-%m-%d %H:%i:%s') AS status_updated_at,
@@ -515,7 +515,8 @@ class StaffModel {
         deliveryDate = null,
         statusDate = null,
         packedItemCount = null,
-        boxCount = null
+        boxCount = null,
+        packetCount = null
     ) {
         const connection = await db.getConnection();
 
@@ -552,7 +553,8 @@ class StaffModel {
                          vehicle_no = NULL,
                          delivery_date = NULL,
                          packed_item_count = ?,
-                         box_count = NULL
+                         box_count = NULL,
+                         packet_count = NULL
                      WHERE id = ?`,
                     [resetPackedCount, saleId]
                 );
@@ -563,18 +565,19 @@ class StaffModel {
             if (status === 'out_for_delivery' || status === 'delivered' || status === 'returned') {
                 await connection.execute(
                     `UPDATE staff_sales 
-                     SET packaging_status = ?, delivery_boy_id = ?, vehicle_no = ?, delivery_date = ?,
-                         packed_item_count = ?, box_count = ?
+                     SET packaging_status = ?, delivery_boy_id = ?, vehicle_no = ?, delivery_date = ?
                      WHERE id = ?`,
-                    [status, deliveryBoyId, vehicleNo, deliveryDate, packedItemCount, boxCount, saleId]
+                    [status, deliveryBoyId, vehicleNo, deliveryDate, saleId]
                 );
             } else {
                 await connection.execute(
                     `UPDATE staff_sales 
                      SET packaging_status = ?, delivery_boy_id = NULL, vehicle_no = NULL, delivery_date = NULL,
-                         packed_item_count = ?, box_count = ?
+                         packed_item_count = COALESCE(?, packed_item_count),
+                         box_count = COALESCE(?, box_count),
+                         packet_count = COALESCE(?, packet_count)
                      WHERE id = ?`,
-                    [status, packedItemCount, boxCount, saleId]
+                    [status, packedItemCount, boxCount, packetCount, saleId]
                 );
             }
 
@@ -606,7 +609,7 @@ class StaffModel {
     static async getCancelledDeliverySales() {
         const [rows] = await db.execute(
             `SELECT ss.id,
-                    ss.staff_id, ss.outlet_id, ss.sale_date, ss.item_count, ss.packed_item_count, ss.box_count,
+                    ss.staff_id, ss.outlet_id, ss.sale_date, ss.item_count, ss.packed_item_count, ss.box_count, ss.packet_count,
                     ss.price, ss.invoice_number, ss.sticker_number, ss.packaging_status,
                     DATE_FORMAT(
                         COALESCE(cancel_hist.cancel_date, legacy_cancel.status_updated_at),

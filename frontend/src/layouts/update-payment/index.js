@@ -1003,6 +1003,8 @@ function UpdatePayment() {
                           <TableCell align="left" sx={paginatedTableHeadCellSx}>Outlet Name</TableCell>
                           <TableCell align="center" sx={paginatedTableHeadCellSx}>Sale ID</TableCell>
                           <TableCell align="center" sx={paginatedTableHeadCellSx}>Invoice No</TableCell>
+                          <TableCell align="center" sx={paginatedTableHeadCellSx}>No. of Box</TableCell>
+                          <TableCell align="center" sx={paginatedTableHeadCellSx}>No. of Packet</TableCell>
                           <TableCell align="center" sx={paginatedTableHeadCellSx}>Invoice Price</TableCell>
                           <TableCell align="center" sx={paginatedTableHeadCellSx}>Paid Amount</TableCell>
                           <TableCell align="center" sx={paginatedTableHeadCellSx}>Balance Amount</TableCell>
@@ -1027,6 +1029,8 @@ function UpdatePayment() {
                                 </TableCell>
                                 <TableCell align="center">{sale.sticker_number}</TableCell>
                                 <TableCell align="center">{sale.invoice_number}</TableCell>
+                                <TableCell align="center">{sale.box_count || "N/A"}</TableCell>
+                                <TableCell align="center">{sale.packet_count || "N/A"}</TableCell>
                                 <TableCell align="center">
                                   ₹{Number(sale.price).toFixed(2)}
                                 </TableCell>
@@ -1065,7 +1069,7 @@ function UpdatePayment() {
                           })
                         ) : (
                           <TableRow>
-                            <TableCell colSpan={8} align="center" sx={{ py: 4 }}>
+                            <TableCell colSpan={10} align="center" sx={{ py: 4 }}>
                               <MDTypography variant="body2" color="text">
                                 No delivered items found matching your search.
                               </MDTypography>

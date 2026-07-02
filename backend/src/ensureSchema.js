@@ -227,6 +227,24 @@ export async function ensureSchema() {
 
         await tryQuery(
             connection,
+            `ALTER TABLE staff_sales ADD COLUMN packet_count INT NULL`,
+            'packet_count on staff_sales'
+        );
+
+        await tryQuery(
+            connection,
+            `ALTER TABLE staff_sales MODIFY COLUMN box_count INT NULL`,
+            'box_count nullable on staff_sales'
+        );
+
+        await tryQuery(
+            connection,
+            `ALTER TABLE staff_sales MODIFY COLUMN packet_count INT NULL`,
+            'packet_count nullable on staff_sales'
+        );
+
+        await tryQuery(
+            connection,
             `ALTER TABLE sale_payments ADD COLUMN remarks TEXT NULL`,
             'remarks on sale_payments'
         );
