@@ -1,6 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import Card from "@mui/material/Card";
+import Dialog from "@mui/material/Dialog";
+import DialogActions from "@mui/material/DialogActions";
+import DialogContent from "@mui/material/DialogContent";
+import DialogTitle from "@mui/material/DialogTitle";
 import FormControl from "@mui/material/FormControl";
 import Grid from "@mui/material/Grid";
 import Icon from "@mui/material/Icon";
@@ -130,6 +134,8 @@ function PhysicalStock() {
   const [erpSearch, setErpSearch] = useState("");
   const [productSearch, setProductSearch] = useState("");
   const [stockListDateFilter, setStockListDateFilter] = useState("");
+  const [uploadModalOpen, setUploadModalOpen] = useState(false);
+  const [uploadDmsDateFilter, setUploadDmsDateFilter] = useState("");
 
   const selectedDmsImportId = useMemo(
     () => resolveDmsImportId(stockListDateFilter, dmsImports),
@@ -193,8 +199,31 @@ function PhysicalStock() {
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
+  const uploadDmsImportId = useMemo(
+    () => resolveDmsImportId(uploadDmsDateFilter, dmsImports),
+    [uploadDmsDateFilter, dmsImports]
+  );
+
+  const resetUploadForm = () => {
+    setSelectedFile(null);
+    setMessage("");
+    setError("");
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  };
+
+  const openUploadModal = () => {
+    resetUploadForm();
+    setUploadDmsDateFilter(stockListDateFilter);
+    setUploadModalOpen(true);
+  };
+
+  const closeUploadModal = () => {
+    setUploadModalOpen(false);
+    resetUploadForm();
+  };
+
   const handleUpload = async () => {
-    if (!selectedDmsImportId) {
+    if (!uploadDmsImportId) {
       setError("Please choose a DMS stock date first.");
       return;
     }
@@ -204,7 +233,7 @@ function PhysicalStock() {
     }
 
     const formData = new FormData();
-    formData.append("dmsImportId", selectedDmsImportId);
+    formData.append("dmsImportId", uploadDmsImportId);
     formData.append("file", selectedFile);
     setUploading(true);
     setMessage("");
@@ -224,6 +253,8 @@ function PhysicalStock() {
       if (data.import?.dms_upload_date) {
         setStockListDateFilter(data.import.dms_upload_date);
       }
+      setUploadModalOpen(false);
+      resetUploadForm();
     } catch (uploadError) {
       setError(uploadError.message);
     } finally {
@@ -251,16 +282,35 @@ function PhysicalStock() {
       <DashboardNavbar />
       <MDBox pt={6} pb={3}>
         <Grid container spacing={3}>
+          {stockImport && (
+            <Grid item xs={12}>
+              <Grid container spacing={2}>
+                <Grid item xs={12} sm={6} md={3}><Metric label="DMS Stock Date" value={formatDate(stockImport.dms_upload_date)} /></Grid>
+                <Grid item xs={12} sm={6} md={3}><Metric label="Rows Stored" value={unitFormat(stockImport.row_count)} /></Grid>
+                <Grid item xs={12} sm={6} md={3}><Metric label="Stock Cases" value={unitFormat(stockImport.total_cases)} /></Grid>
+                <Grid item xs={12} sm={6} md={3}><Metric label="Loose Stock Pcs" value={unitFormat(stockImport.total_loose_pcs)} /></Grid>
+                <Grid item xs={12} sm={6} md={3}><Metric label="Calculated Total Pcs" value={unitFormat(stockImport.total_pieces)} /></Grid>
+                <Grid item xs={12} sm={6} md={3}><Metric label="Calculated Total Value" value={money(stockImport.total_value)} /></Grid>
+              </Grid>
+            </Grid>
+          )}
+
           <Grid item xs={12}>
             <Card>
-              <MDBox p={3} pb={2} display="flex" justifyContent="space-between" alignItems="center">
+              <MDBox p={3} pb={2} display="flex" justifyContent="space-between" alignItems="flex-start" flexWrap="wrap" gap={2}>
                 <MDBox>
                   <MDTypography variant="h5" fontWeight="medium" color="dark">
                     Physical Stock
                   </MDTypography>
-                  <MDTypography variant="caption" color="text">
-                    Choose a DMS upload date first, then upload the matching Physical Stock file.
+                  <MDTypography variant="caption" color="text" display="block">
+                    Use the date filter to view a specific upload. Blue columns are automatically calculated from Case, Pcs/Box, loose Pcs, and Price/Pcs.
                   </MDTypography>
+                  {selectedDmsImport && (
+                    <MDTypography variant="caption" color="text" display="block" mt={0.5}>
+                      DMS date: {formatDate(selectedDmsImport.upload_date)}
+                      {selectedDmsImport.file_name ? ` | File: ${selectedDmsImport.file_name}` : ""}
+                    </MDTypography>
+                  )}
                 </MDBox>
                 <MDBox display="flex" gap={1} flexWrap="wrap" justifyContent="flex-end">
                   <MDButton
@@ -284,90 +334,11 @@ function PhysicalStock() {
                     <Icon sx={{ mr: 1 }}>refresh</Icon>
                     Fetch Data
                   </MDButton>
+                  <MDButton color="info" variant="gradient" onClick={openUploadModal}>
+                    <Icon sx={{ mr: 1 }}>add</Icon>
+                    Add Physical Stock
+                  </MDButton>
                 </MDBox>
-              </MDBox>
-
-              <MDBox px={3} pb={3}>
-                <Grid container spacing={2} alignItems="center">
-                  <Grid item xs={12} md={4}>
-                    <FormControl size="small" fullWidth>
-                      <Select
-                        displayEmpty
-                        value={stockListDateFilter}
-                        onChange={handleDateChange}
-                        sx={{ height: 44, backgroundColor: "#fff" }}
-                      >
-                        <MenuItem value="">Latest Upload</MenuItem>
-                        {dmsImports.map((stock) => (
-                          <MenuItem key={stock.id} value={stock.upload_date}>
-                            {formatDate(stock.upload_date)}
-                          </MenuItem>
-                        ))}
-                      </Select>
-                    </FormControl>
-                  </Grid>
-                  <Grid item xs={12} md={5}>
-                    <MDBox display="flex" alignItems="center" gap={1.5} sx={{ border: "1px dashed #94a3b8", borderRadius: 1, p: 1.5, backgroundColor: "#f8fafc" }}>
-                      <MDButton color="info" variant="outlined" onClick={() => fileInputRef.current?.click()} disabled={!selectedDmsImportId}>
-                        <Icon sx={{ mr: 1 }}>upload_file</Icon>
-                        Choose File
-                      </MDButton>
-                      <MDTypography variant="button" color="dark" sx={{ overflowWrap: "anywhere" }}>
-                        {selectedFile ? selectedFile.name : "CSV, XLS, or XLSX"}
-                      </MDTypography>
-                      <input
-                        ref={fileInputRef}
-                        type="file"
-                        accept=".csv,.xls,.xlsx"
-                        onChange={(event) => {
-                          setSelectedFile(event.target.files?.[0] || null);
-                          setMessage("");
-                          setError("");
-                        }}
-                        style={{ display: "none" }}
-                      />
-                    </MDBox>
-                  </Grid>
-                  <Grid item xs={12} md={3}>
-                    <MDButton color="info" variant="gradient" fullWidth onClick={handleUpload} disabled={!selectedDmsImportId || !selectedFile || uploading}>
-                      <Icon sx={{ mr: 1 }}>cloud_upload</Icon>
-                      {uploading ? "Uploading" : "Upload & Calculate"}
-                    </MDButton>
-                  </Grid>
-                  {(loading || uploading) && <Grid item xs={12}><LinearProgress color="info" /></Grid>}
-                  {message && <Grid item xs={12}><MDTypography variant="button" color="success" fontWeight="medium">{message}</MDTypography></Grid>}
-                  {error && <Grid item xs={12}><MDTypography variant="button" color="error" fontWeight="medium">{error}</MDTypography></Grid>}
-                </Grid>
-              </MDBox>
-            </Card>
-          </Grid>
-
-          {stockImport && (
-            <Grid item xs={12}>
-              <Grid container spacing={2}>
-                <Grid item xs={12} sm={6} md={3}><Metric label="DMS Stock Date" value={formatDate(stockImport.dms_upload_date)} /></Grid>
-                <Grid item xs={12} sm={6} md={3}><Metric label="Rows Stored" value={unitFormat(stockImport.row_count)} /></Grid>
-                <Grid item xs={12} sm={6} md={3}><Metric label="Stock Cases" value={unitFormat(stockImport.total_cases)} /></Grid>
-                <Grid item xs={12} sm={6} md={3}><Metric label="Loose Stock Pcs" value={unitFormat(stockImport.total_loose_pcs)} /></Grid>
-                <Grid item xs={12} sm={6} md={3}><Metric label="Calculated Total Pcs" value={unitFormat(stockImport.total_pieces)} /></Grid>
-                <Grid item xs={12} sm={6} md={3}><Metric label="Calculated Total Value" value={money(stockImport.total_value)} /></Grid>
-              </Grid>
-            </Grid>
-          )}
-
-          <Grid item xs={12}>
-            <Card>
-              <MDBox p={3} pb={2}>
-                <MDTypography variant="h6" fontWeight="medium">Physical Stock Items</MDTypography>
-                <MDTypography variant="caption" color="text" display="block">
-                  Use the date filter to view a specific upload. Blue columns are automatically calculated from Case, Pcs/Box, loose Pcs, and Price/Pcs.
-                </MDTypography>
-                {selectedDmsImport && (
-                  <MDTypography variant="caption" color="text" display="block" mt={0.5}>
-                    DMS date: {formatDate(selectedDmsImport.upload_date)}
-                    {selectedDmsImport.file_name ? ` | File: ${selectedDmsImport.file_name}` : ""}
-                  </MDTypography>
-                )}
               </MDBox>
               <MDBox px={3} pb={3}>
                 <Grid container spacing={2} mb={2} alignItems="center">
@@ -426,7 +397,7 @@ function PhysicalStock() {
                     </TableHead>
                     <TableBody>
                       {items.length === 0 && (
-                        <TableRow><TableCell colSpan={12} align="center" sx={tableBodySx}><MDTypography variant="button" color="text">{selectedDmsImportId ? "No Physical Stock uploaded for this DMS date." : "Choose a DMS stock date first."}</MDTypography></TableCell></TableRow>
+                        <TableRow><TableCell colSpan={12} align="center" sx={tableBodySx}><MDTypography variant="button" color="text">{selectedDmsImportId ? "No Physical Stock uploaded for this DMS date. Click \"Add Physical Stock\" to upload." : "Choose a DMS stock date first."}</MDTypography></TableCell></TableRow>
                       )}
                       {items.length > 0 && filteredItems.length === 0 && (
                         <TableRow><TableCell colSpan={12} align="center" sx={tableBodySx}><MDTypography variant="button" color="text">No rows match the selected filters.</MDTypography></TableCell></TableRow>
@@ -451,11 +422,106 @@ function PhysicalStock() {
                     </TableBody>
                   </Table>
                 </TableContainer>
+                {loading && (
+                  <MDBox mt={2}>
+                    <LinearProgress color="info" />
+                  </MDBox>
+                )}
               </MDBox>
             </Card>
           </Grid>
         </Grid>
       </MDBox>
+
+      <Dialog open={uploadModalOpen} onClose={closeUploadModal} fullWidth maxWidth="sm">
+        <DialogTitle sx={{ fontWeight: "bold", color: "#344767" }}>
+          Add Physical Stock
+        </DialogTitle>
+        <DialogContent dividers>
+          <MDBox pt={1}>
+            <Grid container spacing={2} alignItems="center">
+              <Grid item xs={12}>
+                <MDTypography variant="caption" color="text" display="block" mb={1}>
+                  Choose a DMS upload date first, then upload the matching Physical Stock file.
+                </MDTypography>
+                <FormControl size="small" fullWidth>
+                  <Select
+                    displayEmpty
+                    value={uploadDmsDateFilter}
+                    onChange={(event) => {
+                      setUploadDmsDateFilter(event.target.value);
+                      setSelectedFile(null);
+                      setMessage("");
+                      setError("");
+                      if (fileInputRef.current) fileInputRef.current.value = "";
+                    }}
+                    sx={{ height: 44, backgroundColor: "#fff" }}
+                  >
+                    <MenuItem value="">Latest Upload</MenuItem>
+                    {dmsImports.map((stock) => (
+                      <MenuItem key={stock.id} value={stock.upload_date}>
+                        {formatDate(stock.upload_date)}
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+              </Grid>
+              <Grid item xs={12}>
+                <MDBox display="flex" alignItems="center" gap={1.5} sx={{ border: "1px dashed #94a3b8", borderRadius: 1, p: 1.5, backgroundColor: "#f8fafc" }}>
+                  <MDButton color="info" variant="outlined" onClick={() => fileInputRef.current?.click()} disabled={!uploadDmsImportId}>
+                    <Icon sx={{ mr: 1 }}>upload_file</Icon>
+                    Choose File
+                  </MDButton>
+                  <MDTypography variant="button" color="dark" sx={{ overflowWrap: "anywhere" }}>
+                    {selectedFile ? selectedFile.name : "CSV, XLS, or XLSX"}
+                  </MDTypography>
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept=".csv,.xls,.xlsx"
+                    onChange={(event) => {
+                      setSelectedFile(event.target.files?.[0] || null);
+                      setMessage("");
+                      setError("");
+                    }}
+                    style={{ display: "none" }}
+                  />
+                </MDBox>
+              </Grid>
+              {uploading && (
+                <Grid item xs={12}>
+                  <LinearProgress color="info" />
+                </Grid>
+              )}
+              {message && (
+                <Grid item xs={12}>
+                  <MDTypography variant="button" color="success" fontWeight="medium">{message}</MDTypography>
+                </Grid>
+              )}
+              {error && (
+                <Grid item xs={12}>
+                  <MDTypography variant="button" color="error" fontWeight="medium">{error}</MDTypography>
+                </Grid>
+              )}
+            </Grid>
+          </MDBox>
+        </DialogContent>
+        <DialogActions sx={{ px: 3, py: 2 }}>
+          <MDButton color="dark" variant="outlined" onClick={closeUploadModal} disabled={uploading}>
+            Cancel
+          </MDButton>
+          <MDButton
+            color="info"
+            variant="gradient"
+            onClick={handleUpload}
+            disabled={!uploadDmsImportId || !selectedFile || uploading}
+          >
+            <Icon sx={{ mr: 1 }}>cloud_upload</Icon>
+            {uploading ? "Uploading" : "Upload & Calculate"}
+          </MDButton>
+        </DialogActions>
+      </Dialog>
+
       <Footer />
     </DashboardLayout>
   );

@@ -83,6 +83,7 @@ function CreateStaff() {
   const [employeeSearchInput, setEmployeeSearchInput] = useState("");
   const [editingStaffId, setEditingStaffId] = useState(null);
   const [viewModalOpen, setViewModalOpen] = useState(false);
+  const [staffModalOpen, setStaffModalOpen] = useState(false);
   const [selectedStaffDetails, setSelectedStaffDetails] = useState(null);
 
   const [formData, setFormData] = useState({
@@ -251,11 +252,7 @@ function CreateStaff() {
       });
 
       setEditingStaffId(staff.id);
-
-      window.scrollTo({
-        top: 0,
-        behavior: "smooth",
-      });
+      setStaffModalOpen(true);
     } catch (error) {
       console.error("Error fetching staff details:", error);
       alert("Error loading staff details.");
@@ -274,6 +271,16 @@ function CreateStaff() {
 
     setEditingStaffId(null);
     setActiveTab(0);
+  };
+
+  const openStaffModal = () => {
+    resetForm();
+    setStaffModalOpen(true);
+  };
+
+  const closeStaffModal = () => {
+    setStaffModalOpen(false);
+    resetForm();
   };
 
   // Submit
@@ -310,7 +317,7 @@ function CreateStaff() {
       if (response.ok) {
         alert(editingStaffId ? "Staff updated successfully!" : "Staff created successfully!");
 
-        resetForm();
+        closeStaffModal();
         fetchStaffList();
       } else {
         const err = await response.json().catch(() => ({}));
@@ -328,245 +335,7 @@ function CreateStaff() {
 
       <MDBox pt={6} pb={3}>
         <Grid container spacing={3} justifyContent="center">
-          {/* FORM */}
           <Grid item xs={12}>
-            <Card>
-              <MDBox
-                variant="gradient"
-                bgColor="info"
-                borderRadius="lg"
-                coloredShadow="info"
-                mx={2}
-                mt={-3}
-                p={3}
-                mb={1}
-                textAlign="center"
-              >
-                <MDTypography variant="h4" fontWeight="medium" color="white" mt={1}>
-                  {editingStaffId ? "Edit Staff" : "Create New Staff"}
-                </MDTypography>
-              </MDBox>
-
-              <MDBox pt={4} pb={3} px={3}>
-                <MDBox component="form" role="form">
-                  <Grid container spacing={3}>
-                    <Grid item xs={12} md={6}>
-                      <MDBox mb={2}>
-                        <FormControl fullWidth size="small">
-                          <InputLabel id="staff-type-label">Staff Type</InputLabel>
-                          <Select
-                            labelId="staff-type-label"
-                            value={formData.staffType}
-                            label="Staff Type"
-                            onChange={handleStaffTypeChange}
-                            sx={{ minHeight: 44 }}
-                          >
-                            <MenuItem value="distributor">Distributor</MenuItem>
-                            <MenuItem value="cnf">CNF</MenuItem>
-                          </Select>
-                        </FormControl>
-                      </MDBox>
-                    </Grid>
-
-                    {/* Company Name */}
-                    <Grid item xs={12} md={6}>
-                      <MDBox mb={2}>
-                        <MDInput
-                          type="text"
-                          label="Company Name"
-                          name="companyName"
-                          fullWidth
-                          value={formData.companyName}
-                          onChange={handleInputChange}
-                          helperText="Use comma for multiple companies"
-                        />
-                      </MDBox>
-                    </Grid>
-
-                    {/* Staff Name */}
-                    <Grid item xs={12} md={6}>
-                      <MDBox mb={2}>
-                        <MDInput
-                          type="text"
-                          label="Staff Name"
-                          name="name"
-                          fullWidth
-                          value={formData.name}
-                          onChange={handleInputChange}
-                        />
-                      </MDBox>
-                    </Grid>
-
-                    {/* Contact No */}
-                    <Grid item xs={12} md={6}>
-                      <MDBox mb={2}>
-                        <MDInput
-                          type="number"
-                          label="Contact No"
-                          name="contactNo"
-                          fullWidth
-                          value={formData.contactNo}
-                          onChange={handleInputChange}
-                        />
-                      </MDBox>
-                    </Grid>
-                  </Grid>
-
-                  {/* Assignments */}
-                  <MDBox mt={4} mb={2}>
-                    <MDTypography variant="h6" fontWeight="bold">
-                      Location Assignments
-                    </MDTypography>
-
-                    {formData.staffType === "distributor" ? (
-                      <>
-                        <MDBox sx={{ borderBottom: 1, borderColor: "divider" }}>
-                          <Tabs
-                            value={activeTab}
-                            onChange={handleTabChange}
-                            variant="scrollable"
-                            scrollButtons="auto"
-                          >
-                            {routeDays.map((day) => (
-                              <Tab key={day} label={day} />
-                            ))}
-                          </Tabs>
-                        </MDBox>
-
-                        {routeDays.map((day, index) => (
-                          <MDBox key={day} hidden={activeTab !== index} py={3}>
-                            <MDBox
-                              display="flex"
-                              flexDirection={{ xs: "column", sm: "row" }}
-                              justifyContent="space-between"
-                              alignItems={{ xs: "flex-start", sm: "center" }}
-                              mb={2}
-                              gap={2}
-                            >
-                              <MDTypography variant="subtitle2" color="text">
-                                Assigned Locations for {day}
-                              </MDTypography>
-
-                              <MDButton
-                                variant="gradient"
-                                color="dark"
-                                size="small"
-                                onClick={() => addLocation(day)}
-                              >
-                                <Icon sx={{ mr: 1 }}>add</Icon>
-                                Add Location
-                              </MDButton>
-                            </MDBox>
-
-                            {(formData.assignments[day] || []).map((loc, locIndex) => (
-                              <MDBox
-                                key={locIndex}
-                                mb={2}
-                                p={2}
-                                sx={{
-                                  backgroundColor: "#f8f9fa",
-                                  borderRadius: "10px",
-                                  border: "1px solid #e9ecef",
-                                }}
-                              >
-                                <Grid container spacing={2} alignItems="center">
-                                  <Grid item xs={12} sm={9}>
-                                    <MDInput
-                                      label="Location Name"
-                                      fullWidth
-                                      value={loc.locationName}
-                                      onChange={(e) =>
-                                        handleLocationChange(day, locIndex, e.target.value)
-                                      }
-                                    />
-                                  </Grid>
-
-                                  <Grid item xs={12} sm={3}>
-                                    <CiTrash   onClick={() => removeLocation(day, locIndex)} style={{ cursor: "pointer" }} color="#FF0000" size={20}/>
-                                  </Grid>
-                                </Grid>
-                              </MDBox>
-                            ))}
-                          </MDBox>
-                        ))}
-                      </>
-                    ) : (
-                      <MDBox py={3}>
-                        <MDBox
-                          display="flex"
-                          flexDirection={{ xs: "column", sm: "row" }}
-                          justifyContent="space-between"
-                          alignItems={{ xs: "flex-start", sm: "center" }}
-                          mb={2}
-                          gap={2}
-                        >
-                          <MDTypography variant="subtitle2" color="text">
-                            Assigned CNF Locations
-                          </MDTypography>
-
-                          <MDButton
-                            variant="gradient"
-                            color="dark"
-                            size="small"
-                            onClick={() => addLocation(cnfRouteDay)}
-                          >
-                            <Icon sx={{ mr: 1 }}>add</Icon>
-                            Add Location
-                          </MDButton>
-                        </MDBox>
-
-                        {(formData.assignments[cnfRouteDay] || []).map((loc, locIndex) => (
-                          <MDBox
-                            key={locIndex}
-                            mb={2}
-                            p={2}
-                            sx={{
-                              backgroundColor: "#f8f9fa",
-                              borderRadius: "10px",
-                              border: "1px solid #e9ecef",
-                            }}
-                          >
-                            <Grid container spacing={2} alignItems="center">
-                              <Grid item xs={12} sm={9}>
-                                <MDInput
-                                  label="Location Name"
-                                  fullWidth
-                                  value={loc.locationName}
-                                  onChange={(e) =>
-                                    handleLocationChange(cnfRouteDay, locIndex, e.target.value)
-                                  }
-                                />
-                              </Grid>
-
-                              <Grid item xs={12} sm={3}>
-                                <CiTrash   onClick={() => removeLocation(cnfRouteDay, locIndex)} style={{ cursor: "pointer" }} color="#FF0000" size={20}/>
-                              </Grid>
-                            </Grid>
-                          </MDBox>
-                        ))}
-                      </MDBox>
-                    )}
-                  </MDBox>
-
-                  {/* Buttons */}
-                  <MDBox mt={4} mb={1} display="flex" gap={2}>
-                    <MDButton variant="gradient" color="info" fullWidth onClick={handleSubmit}>
-                      {editingStaffId ? "Update Staff & Locations" : "Save Staff & Locations"}
-                    </MDButton>
-
-                    {editingStaffId && (
-                      <MDButton variant="outlined" color="dark" fullWidth onClick={resetForm}>
-                        Cancel Edit
-                      </MDButton>
-                    )}
-                  </MDBox>
-                </MDBox>
-              </MDBox>
-            </Card>
-          </Grid>
-
-          {/* EMPLOYEE LIST */}
-          <Grid item xs={12} mt={4}>
             <Card>
               <MDBox p={3}>
                 <MDBox
@@ -588,6 +357,10 @@ function CreateStaff() {
                     gap={1.5}
                     sx={{ width: { xs: "100%", sm: "auto" } }}
                   >
+                    <MDButton color="info" variant="gradient" onClick={openStaffModal}>
+                      <Icon sx={{ mr: 1 }}>add</Icon>
+                      Create Staff
+                    </MDButton>
                     <MDInput
                       type="text"
                       label="Search Employee"
@@ -614,7 +387,7 @@ function CreateStaff() {
 
                 {staffList.length === 0 ? (
                   <MDTypography variant="body2" color="text">
-                    No employees added yet.
+                    No employees added yet. Click &quot;Create Staff&quot; to add one.
                   </MDTypography>
                 ) : filteredStaffList.length === 0 ? (
                   <MDTypography variant="body2" color="text">
@@ -710,6 +483,189 @@ function CreateStaff() {
       </MDBox>
 
       <Footer />
+
+      <Dialog open={staffModalOpen} onClose={closeStaffModal} fullWidth maxWidth="md" scroll="paper">
+        <DialogTitle sx={{ fontWeight: "bold", color: "#344767" }}>
+          {editingStaffId ? "Edit Staff" : "Create New Staff"}
+        </DialogTitle>
+        <DialogContent dividers>
+          <MDBox pt={1} component="form" role="form">
+            <Grid container spacing={3}>
+              <Grid item xs={12} md={6}>
+                <MDBox mb={2}>
+                  <FormControl fullWidth size="small">
+                    <InputLabel id="staff-type-label">Staff Type</InputLabel>
+                    <Select
+                      labelId="staff-type-label"
+                      value={formData.staffType}
+                      label="Staff Type"
+                      onChange={handleStaffTypeChange}
+                      sx={{ minHeight: 44 }}
+                    >
+                      <MenuItem value="distributor">Distributor</MenuItem>
+                      <MenuItem value="cnf">CNF</MenuItem>
+                    </Select>
+                  </FormControl>
+                </MDBox>
+              </Grid>
+              <Grid item xs={12} md={6}>
+                <MDBox mb={2}>
+                  <MDInput
+                    type="text"
+                    label="Company Name"
+                    name="companyName"
+                    fullWidth
+                    value={formData.companyName}
+                    onChange={handleInputChange}
+                    helperText="Use comma for multiple companies"
+                  />
+                </MDBox>
+              </Grid>
+              <Grid item xs={12} md={6}>
+                <MDBox mb={2}>
+                  <MDInput
+                    type="text"
+                    label="Staff Name"
+                    name="name"
+                    fullWidth
+                    value={formData.name}
+                    onChange={handleInputChange}
+                  />
+                </MDBox>
+              </Grid>
+              <Grid item xs={12} md={6}>
+                <MDBox mb={2}>
+                  <MDInput
+                    type="number"
+                    label="Contact No"
+                    name="contactNo"
+                    fullWidth
+                    value={formData.contactNo}
+                    onChange={handleInputChange}
+                  />
+                </MDBox>
+              </Grid>
+            </Grid>
+
+            <MDBox mt={2} mb={2}>
+              <MDTypography variant="h6" fontWeight="bold">
+                Location Assignments
+              </MDTypography>
+
+              {formData.staffType === "distributor" ? (
+                <>
+                  <MDBox sx={{ borderBottom: 1, borderColor: "divider" }}>
+                    <Tabs
+                      value={activeTab}
+                      onChange={handleTabChange}
+                      variant="scrollable"
+                      scrollButtons="auto"
+                    >
+                      {routeDays.map((day) => (
+                        <Tab key={day} label={day} />
+                      ))}
+                    </Tabs>
+                  </MDBox>
+
+                  {routeDays.map((day, index) => (
+                    <MDBox key={day} hidden={activeTab !== index} py={3}>
+                      <MDBox
+                        display="flex"
+                        flexDirection={{ xs: "column", sm: "row" }}
+                        justifyContent="space-between"
+                        alignItems={{ xs: "flex-start", sm: "center" }}
+                        mb={2}
+                        gap={2}
+                      >
+                        <MDTypography variant="subtitle2" color="text">
+                          Assigned Locations for {day}
+                        </MDTypography>
+                        <MDButton variant="gradient" color="dark" size="small" onClick={() => addLocation(day)}>
+                          <Icon sx={{ mr: 1 }}>add</Icon>
+                          Add Location
+                        </MDButton>
+                      </MDBox>
+
+                      {(formData.assignments[day] || []).map((loc, locIndex) => (
+                        <MDBox
+                          key={locIndex}
+                          mb={2}
+                          p={2}
+                          sx={{ backgroundColor: "#f8f9fa", borderRadius: "10px", border: "1px solid #e9ecef" }}
+                        >
+                          <Grid container spacing={2} alignItems="center">
+                            <Grid item xs={12} sm={9}>
+                              <MDInput
+                                label="Location Name"
+                                fullWidth
+                                value={loc.locationName}
+                                onChange={(e) => handleLocationChange(day, locIndex, e.target.value)}
+                              />
+                            </Grid>
+                            <Grid item xs={12} sm={3}>
+                              <CiTrash onClick={() => removeLocation(day, locIndex)} style={{ cursor: "pointer" }} color="#FF0000" size={20} />
+                            </Grid>
+                          </Grid>
+                        </MDBox>
+                      ))}
+                    </MDBox>
+                  ))}
+                </>
+              ) : (
+                <MDBox py={3}>
+                  <MDBox
+                    display="flex"
+                    flexDirection={{ xs: "column", sm: "row" }}
+                    justifyContent="space-between"
+                    alignItems={{ xs: "flex-start", sm: "center" }}
+                    mb={2}
+                    gap={2}
+                  >
+                    <MDTypography variant="subtitle2" color="text">
+                      Assigned CNF Locations
+                    </MDTypography>
+                    <MDButton variant="gradient" color="dark" size="small" onClick={() => addLocation(cnfRouteDay)}>
+                      <Icon sx={{ mr: 1 }}>add</Icon>
+                      Add Location
+                    </MDButton>
+                  </MDBox>
+
+                  {(formData.assignments[cnfRouteDay] || []).map((loc, locIndex) => (
+                    <MDBox
+                      key={locIndex}
+                      mb={2}
+                      p={2}
+                      sx={{ backgroundColor: "#f8f9fa", borderRadius: "10px", border: "1px solid #e9ecef" }}
+                    >
+                      <Grid container spacing={2} alignItems="center">
+                        <Grid item xs={12} sm={9}>
+                          <MDInput
+                            label="Location Name"
+                            fullWidth
+                            value={loc.locationName}
+                            onChange={(e) => handleLocationChange(cnfRouteDay, locIndex, e.target.value)}
+                          />
+                        </Grid>
+                        <Grid item xs={12} sm={3}>
+                          <CiTrash onClick={() => removeLocation(cnfRouteDay, locIndex)} style={{ cursor: "pointer" }} color="#FF0000" size={20} />
+                        </Grid>
+                      </Grid>
+                    </MDBox>
+                  ))}
+                </MDBox>
+              )}
+            </MDBox>
+          </MDBox>
+        </DialogContent>
+        <DialogActions sx={{ px: 3, py: 2 }}>
+          <MDButton variant="outlined" color="dark" onClick={closeStaffModal}>
+            Cancel
+          </MDButton>
+          <MDButton variant="gradient" color="info" onClick={handleSubmit}>
+            {editingStaffId ? "Update Staff & Locations" : "Save Staff & Locations"}
+          </MDButton>
+        </DialogActions>
+      </Dialog>
 
       <Dialog open={viewModalOpen} onClose={handleCloseView} fullWidth maxWidth="sm">
         <DialogTitle>Employee Details</DialogTitle>

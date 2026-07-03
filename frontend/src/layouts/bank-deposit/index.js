@@ -279,6 +279,7 @@ function BankDeposit() {
   const [pendingUpiInvoices, setPendingUpiInvoices] = useState([]);
   const [loadingPendingUpi, setLoadingPendingUpi] = useState(false);
   const [editingDepositId, setEditingDepositId] = useState(null);
+  const [depositModalOpen, setDepositModalOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [depositTotalStartDate, setDepositTotalStartDate] = useState("");
   const [depositTotalEndDate, setDepositTotalEndDate] = useState(() => getTodayLocalDate());
@@ -737,8 +738,7 @@ function BankDeposit() {
       );
 
       if (response.ok) {
-        setForm(emptyForm());
-        setEditingDepositId(null);
+        closeDepositModal();
         await fetchDeposits();
       } else {
         const err = await response.json().catch(() => ({}));
@@ -780,12 +780,23 @@ function BankDeposit() {
       upiDetails: parseUpiDetails(deposit),
       cashDetails,
     });
-    window.scrollTo({ top: 0, behavior: "smooth" });
+    setDepositModalOpen(true);
+  };
+
+  const openDepositModal = () => {
+    setEditingDepositId(null);
+    setForm(emptyForm());
+    setDepositModalOpen(true);
+  };
+
+  const closeDepositModal = () => {
+    setDepositModalOpen(false);
+    setEditingDepositId(null);
+    setForm(emptyForm());
   };
 
   const cancelEditDeposit = () => {
-    setEditingDepositId(null);
-    setForm(emptyForm());
+    closeDepositModal();
   };
 
   const deleteDeposit = async (depositId) => {
@@ -1222,13 +1233,122 @@ function BankDeposit() {
           </Grid>
           <Grid item xs={12}>
             <Card>
-              <MDBox p={3} pb={2}>
-                <MDTypography variant="h5" fontWeight="medium" color="dark">
-                  Bank Deposit
+              <MDBox p={3} pb={2} display="flex" justifyContent="space-between" alignItems="center" flexWrap="wrap" gap={2}>
+                <MDTypography variant="h6" fontWeight="medium">
+                  Recent Bank Deposits
                 </MDTypography>
+                <MDButton color="info" variant="gradient" onClick={openDepositModal}>
+                  <Icon sx={{ mr: 1 }}>add</Icon>
+                  Add Deposit
+                </MDButton>
               </MDBox>
               <MDBox px={3} pb={3}>
-                <Grid container spacing={2.5}>
+                <TableContainer component={Paper} sx={paginatedTableContainerSx}>
+                  <Table stickyHeader sx={{ minWidth: 1180 }}>
+                    <TableHead sx={paginatedTableHeadSx()}>
+                      <TableRow>
+                        <TableCell sx={tableHeadSx}>Sr No</TableCell>
+                        <TableCell sx={tableHeadSx}>Deposit ID</TableCell>
+                        <TableCell sx={tableHeadSx}>Date</TableCell>
+                        <TableCell sx={tableHeadSx}>Bank</TableCell>
+                        <TableCell sx={tableHeadSx}>Branch</TableCell>
+                        <TableCell sx={tableHeadSx}>Bank No</TableCell>
+                        {/* IFSC, Store, Mode removed from here */}
+                        <TableCell sx={tableHeadSx}>Cheque / Invoice No</TableCell>
+                        <TableCell sx={tableHeadSx}>Cheque Date / UPI ID</TableCell>
+                        <TableCell align="right" sx={tableHeadSx}>Amount</TableCell>
+                        <TableCell align="center" sx={tableHeadSx}>Action</TableCell>
+                      </TableRow>
+                    </TableHead>
+                    <TableBody>
+                      {paginatedDeposits.length > 0 ? (
+                        paginatedDeposits.map((deposit, index) => (
+                          <TableRow key={deposit.id}>
+                            <TableCell sx={tableBodySx}>{(depositsPage - 1) * ROWS_PER_PAGE + index + 1}</TableCell>
+                            <TableCell sx={{ ...tableBodySx, fontWeight: 700 }}>
+                              {deposit.deposit_ref_no || "N/A"}
+                            </TableCell>
+                            <TableCell sx={tableBodySx}>{formatDate(deposit.deposit_date)}</TableCell>
+                            <TableCell sx={tableBodySx}>{deposit.bank_name}</TableCell>
+                            <TableCell sx={tableBodySx}>{deposit.branch_name}</TableCell>
+                            <TableCell sx={tableBodySx}>{deposit.bank_account_no}</TableCell>
+                            {/* Removed IFSC, Store, Mode from here */}
+                            <TableCell sx={tableBodySx}>
+                              {deposit.deposit_mode === "cheque"
+                                ? chequeDisplayText(deposit, "chequeNo")
+                                : deposit.deposit_mode === "upi"
+                                  ? upiDisplayText(deposit, "invoiceNumber")
+                                  : deposit.cheque_no || "N/A"}
+                            </TableCell>
+                            <TableCell sx={tableBodySx}>
+                              {deposit.deposit_mode === "cheque"
+                                ? formatDate(deposit.cheque_date)
+                                : deposit.deposit_mode === "upi"
+                                  ? upiDisplayText(deposit, "upiId")
+                                  : formatDate(deposit.cheque_date)}
+                            </TableCell>
+                            <TableCell align="right" sx={{ ...tableBodySx, fontWeight: 600 }}>
+                              {formatMoney(deposit.amount)}
+                            </TableCell>
+                            <TableCell align="center" sx={tableBodySx}>
+                              <MDBox display="flex" gap={1} justifyContent="center">
+                                {/* <MDButton color="info" variant="outlined" size="small" onClick={() => handleViewDeposit(deposit)}> */}
+                                  <FaRegEye onClick={() => handleViewDeposit(deposit)} style={{ cursor: "pointer" }} color="" size={20}/> 
+                                {/* </MDButton> */}
+                                {deposit.deposit_mode === "cash" && (
+                                  // <MDButton color="success" variant="outlined" size="small" onClick={() => printCashDetails(deposit)}>
+                                  
+                                    <IoPrintOutline  onClick={() => printCashDetails(deposit)} style={{ cursor: "pointer" }} color="#6C9CF0" size={20}/> 
+                                  // {/* </MDButton> */}
+                                )}
+                                {deposit.deposit_mode === "cheque" && (
+                                    <IoPrintOutline  onClick={() => printChequeDetails(deposit)} style={{ cursor: "pointer" }} color="#6C9CF0" size={20}/> 
+                                )}
+                                {deposit.deposit_mode === "upi" && (
+                                    <IoPrintOutline  onClick={() => printUpiDetails(deposit)} style={{ cursor: "pointer" }} color="#6C9CF0" size={20}/> 
+                                )}
+                                {/* // <MDButton color="info" variant="outlined" size="small" onClick={() => startEditDeposit(deposit)}> */}
+                                <FaRegEdit  onClick={() => startEditDeposit(deposit)} style={{ cursor: "pointer" }} color="#E0E388" size={20}/>
+                                {/* // </MDButton> */}
+                                {/* // <MDButton color="error" variant="outlined" size="small" onClick={() => deleteDeposit(deposit.id)}> */}
+                                  <CiTrash  onClick={() => deleteDeposit(deposit.id)} style={{ cursor: "pointer" }} color="#D2042D" size={20}/>
+                                {/* // </MDButton> */}
+                              </MDBox>
+                            </TableCell>
+                          </TableRow>
+                        ))
+                      ) : (
+                        <TableRow>
+                          <TableCell colSpan={10} align="center" sx={{ py: 3, borderBottom: 0 }}>
+                            <MDTypography variant="body2" color="text">
+                              No bank deposits found. Click &quot;Add Deposit&quot; to create one.
+                            </MDTypography>
+                          </TableCell>
+                        </TableRow>
+                      )}
+                    </TableBody>
+                  </Table>
+                </TableContainer>
+                <TablePaginationFooter
+                  page={depositsPage}
+                  totalPages={depositsTotalPages}
+                  total={deposits.length}
+                  onPageChange={setDepositsPage}
+                />
+              </MDBox>
+            </Card>
+          </Grid>
+        </Grid>
+      </MDBox>
+
+
+      <Dialog open={depositModalOpen} onClose={closeDepositModal} fullWidth maxWidth="lg" scroll="paper">
+        <DialogTitle sx={{ fontWeight: "bold", color: "#344767" }}>
+          {editingDepositId ? "Edit Bank Deposit" : "Add Bank Deposit"}
+        </DialogTitle>
+        <DialogContent dividers>
+          <MDBox pt={1}>
+            <Grid container spacing={2.5}>
                   <Grid item xs={12} md={3}>
                     <MDInput
                       type="date"
@@ -1447,12 +1567,12 @@ function BankDeposit() {
                                           {option.reference_no}
                                         </MDTypography>
                                         <MDTypography variant="caption" color="text" display="block">
-                                          {option.outlet_name || "N/A"} · {formatDate(option.deposit_date)} ·{" "}
+                                          {option.outlet_name || "N/A"} ┬╖ {formatDate(option.deposit_date)} ┬╖{" "}
                                           {formatMoney(option.amount)}
                                           {option.report_status === "due_today"
-                                            ? " · Due today"
+                                            ? " ┬╖ Due today"
                                             : option.report_status === "missed" || option.report_status === "clearing_done"
-                                              ? " · Missed / not deposited"
+                                              ? " ┬╖ Missed / not deposited"
                                               : ""}
                                         </MDTypography>
                                       </MDBox>
@@ -1569,7 +1689,7 @@ function BankDeposit() {
                                           {option.invoice_number}
                                         </MDTypography>
                                         <MDTypography variant="caption" color="text" display="block">
-                                          {option.outlet_name || "N/A"} · {option.reference_no || "No UPI ID"} ·{" "}
+                                          {option.outlet_name || "N/A"} ┬╖ {option.reference_no || "No UPI ID"} ┬╖{" "}
                                           {formatMoney(option.amount)}
                                         </MDTypography>
                                       </MDBox>
@@ -1628,147 +1748,37 @@ function BankDeposit() {
                     </Grid>
                   )}
 
-                  <Grid item xs={12}>
-                    <MDBox display="flex" justifyContent="flex-end">
-                      {form.depositMode === "cash" && (
-                        <MDButton color="success" variant="outlined" onClick={() => printCashDetails()} sx={{ mr: 1 }}>
-                          <Icon sx={{ mr: 1 }}>picture_as_pdf</Icon>
-                          Print Cash PDF
-                        </MDButton>
-                      )}
-                      {form.depositMode === "cheque" && (
-                        <MDButton color="warning" variant="outlined" onClick={() => printChequeDetails()} sx={{ mr: 1 }}>
-                          <Icon sx={{ mr: 1 }}>picture_as_pdf</Icon>
-                          Print Cheque PDF
-                        </MDButton>
-                      )}
-                      {form.depositMode === "upi" && (
-                        <MDButton color="info" variant="outlined" onClick={() => printUpiDetails()} sx={{ mr: 1 }}>
-                          <Icon sx={{ mr: 1 }}>picture_as_pdf</Icon>
-                          Print UPI PDF
-                        </MDButton>
-                      )}
-                      <MDButton color="info" variant="gradient" onClick={handleSubmit} disabled={saving}>
-                        <Icon sx={{ mr: 1 }}>account_balance</Icon>
-                        {saving ? "Saving..." : editingDepositId ? "Update Deposit" : "Save Deposit"}
-                      </MDButton>
-                      {editingDepositId && (
-                        <MDButton color="dark" variant="outlined" onClick={cancelEditDeposit} disabled={saving} sx={{ ml: 1 }}>
-                          Cancel
-                        </MDButton>
-                      )}
-                    </MDBox>
-                  </Grid>
                 </Grid>
-              </MDBox>
-            </Card>
-          </Grid>
-
-          <Grid item xs={12}>
-            <Card>
-              <MDBox p={3} pb={2}>
-                <MDTypography variant="h6" fontWeight="medium">
-                  Recent Bank Deposits
-                </MDTypography>
-              </MDBox>
-              <MDBox px={3} pb={3}>
-                <TableContainer component={Paper} sx={paginatedTableContainerSx}>
-                  <Table stickyHeader sx={{ minWidth: 1180 }}>
-                    <TableHead sx={paginatedTableHeadSx()}>
-                      <TableRow>
-                        <TableCell sx={tableHeadSx}>Sr No</TableCell>
-                        <TableCell sx={tableHeadSx}>Deposit ID</TableCell>
-                        <TableCell sx={tableHeadSx}>Date</TableCell>
-                        <TableCell sx={tableHeadSx}>Bank</TableCell>
-                        <TableCell sx={tableHeadSx}>Branch</TableCell>
-                        <TableCell sx={tableHeadSx}>Bank No</TableCell>
-                        {/* IFSC, Store, Mode removed from here */}
-                        <TableCell sx={tableHeadSx}>Cheque / Invoice No</TableCell>
-                        <TableCell sx={tableHeadSx}>Cheque Date / UPI ID</TableCell>
-                        <TableCell align="right" sx={tableHeadSx}>Amount</TableCell>
-                        <TableCell align="center" sx={tableHeadSx}>Action</TableCell>
-                      </TableRow>
-                    </TableHead>
-                    <TableBody>
-                      {paginatedDeposits.length > 0 ? (
-                        paginatedDeposits.map((deposit, index) => (
-                          <TableRow key={deposit.id}>
-                            <TableCell sx={tableBodySx}>{(depositsPage - 1) * ROWS_PER_PAGE + index + 1}</TableCell>
-                            <TableCell sx={{ ...tableBodySx, fontWeight: 700 }}>
-                              {deposit.deposit_ref_no || "N/A"}
-                            </TableCell>
-                            <TableCell sx={tableBodySx}>{formatDate(deposit.deposit_date)}</TableCell>
-                            <TableCell sx={tableBodySx}>{deposit.bank_name}</TableCell>
-                            <TableCell sx={tableBodySx}>{deposit.branch_name}</TableCell>
-                            <TableCell sx={tableBodySx}>{deposit.bank_account_no}</TableCell>
-                            {/* Removed IFSC, Store, Mode from here */}
-                            <TableCell sx={tableBodySx}>
-                              {deposit.deposit_mode === "cheque"
-                                ? chequeDisplayText(deposit, "chequeNo")
-                                : deposit.deposit_mode === "upi"
-                                  ? upiDisplayText(deposit, "invoiceNumber")
-                                  : deposit.cheque_no || "N/A"}
-                            </TableCell>
-                            <TableCell sx={tableBodySx}>
-                              {deposit.deposit_mode === "cheque"
-                                ? formatDate(deposit.cheque_date)
-                                : deposit.deposit_mode === "upi"
-                                  ? upiDisplayText(deposit, "upiId")
-                                  : formatDate(deposit.cheque_date)}
-                            </TableCell>
-                            <TableCell align="right" sx={{ ...tableBodySx, fontWeight: 600 }}>
-                              {formatMoney(deposit.amount)}
-                            </TableCell>
-                            <TableCell align="center" sx={tableBodySx}>
-                              <MDBox display="flex" gap={1} justifyContent="center">
-                                {/* <MDButton color="info" variant="outlined" size="small" onClick={() => handleViewDeposit(deposit)}> */}
-                                  <FaRegEye onClick={() => handleViewDeposit(deposit)} style={{ cursor: "pointer" }} color="" size={20}/> 
-                                {/* </MDButton> */}
-                                {deposit.deposit_mode === "cash" && (
-                                  // <MDButton color="success" variant="outlined" size="small" onClick={() => printCashDetails(deposit)}>
-                                  
-                                    <IoPrintOutline  onClick={() => printCashDetails(deposit)} style={{ cursor: "pointer" }} color="#6C9CF0" size={20}/> 
-                                  // {/* </MDButton> */}
-                                )}
-                                {deposit.deposit_mode === "cheque" && (
-                                    <IoPrintOutline  onClick={() => printChequeDetails(deposit)} style={{ cursor: "pointer" }} color="#6C9CF0" size={20}/> 
-                                )}
-                                {deposit.deposit_mode === "upi" && (
-                                    <IoPrintOutline  onClick={() => printUpiDetails(deposit)} style={{ cursor: "pointer" }} color="#6C9CF0" size={20}/> 
-                                )}
-                                {/* // <MDButton color="info" variant="outlined" size="small" onClick={() => startEditDeposit(deposit)}> */}
-                                <FaRegEdit  onClick={() => startEditDeposit(deposit)} style={{ cursor: "pointer" }} color="#E0E388" size={20}/>
-                                {/* // </MDButton> */}
-                                {/* // <MDButton color="error" variant="outlined" size="small" onClick={() => deleteDeposit(deposit.id)}> */}
-                                  <CiTrash  onClick={() => deleteDeposit(deposit.id)} style={{ cursor: "pointer" }} color="#D2042D" size={20}/>
-                                {/* // </MDButton> */}
-                              </MDBox>
-                            </TableCell>
-                          </TableRow>
-                        ))
-                      ) : (
-                        <TableRow>
-                          <TableCell colSpan={10} align="center" sx={{ py: 3, borderBottom: 0 }}>
-                            <MDTypography variant="body2" color="text">
-                              No bank deposits found.
-                            </MDTypography>
-                          </TableCell>
-                        </TableRow>
-                      )}
-                    </TableBody>
-                  </Table>
-                </TableContainer>
-                <TablePaginationFooter
-                  page={depositsPage}
-                  totalPages={depositsTotalPages}
-                  total={deposits.length}
-                  onPageChange={setDepositsPage}
-                />
-              </MDBox>
-            </Card>
-          </Grid>
-        </Grid>
-      </MDBox>
+          </MDBox>
+        </DialogContent>
+        <DialogActions sx={{ px: 3, py: 2, flexWrap: "wrap", gap: 1 }}>
+          {form.depositMode === "cash" && (
+            <MDButton color="success" variant="outlined" onClick={() => printCashDetails()} disabled={saving}>
+              <Icon sx={{ mr: 1 }}>picture_as_pdf</Icon>
+              Print Cash PDF
+            </MDButton>
+          )}
+          {form.depositMode === "cheque" && (
+            <MDButton color="warning" variant="outlined" onClick={() => printChequeDetails()} disabled={saving}>
+              <Icon sx={{ mr: 1 }}>picture_as_pdf</Icon>
+              Print Cheque PDF
+            </MDButton>
+          )}
+          {form.depositMode === "upi" && (
+            <MDButton color="info" variant="outlined" onClick={() => printUpiDetails()} disabled={saving}>
+              <Icon sx={{ mr: 1 }}>picture_as_pdf</Icon>
+              Print UPI PDF
+            </MDButton>
+          )}
+          <MDButton color="dark" variant="outlined" onClick={closeDepositModal} disabled={saving}>
+            Cancel
+          </MDButton>
+          <MDButton color="info" variant="gradient" onClick={handleSubmit} disabled={saving}>
+            <Icon sx={{ mr: 1 }}>account_balance</Icon>
+            {saving ? "Saving..." : editingDepositId ? "Update Deposit" : "Save Deposit"}
+          </MDButton>
+        </DialogActions>
+      </Dialog>
 
       {/* View Dialog for IFSC, Store, Mode */}
       <Dialog open={openViewDialog} onClose={closeViewDialog} maxWidth="xs" fullWidth>

@@ -3,11 +3,18 @@ import { useState, useEffect } from "react";
 // @mui material components
 import Grid from "@mui/material/Grid";
 import Card from "@mui/material/Card";
-import FormControl from "@mui/material/FormControl";
-import InputLabel from "@mui/material/InputLabel";
-import MenuItem from "@mui/material/MenuItem";
-import OutlinedInput from "@mui/material/OutlinedInput";
-import Select from "@mui/material/Select";
+import Icon from "@mui/material/Icon";
+import {
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  FormControl,
+  InputLabel,
+  MenuItem,
+  OutlinedInput,
+  Select,
+} from "@mui/material";
 // Material Dashboard 2 React components
 import MDBox from "components/MDBox";
 import MDTypography from "components/MDTypography";
@@ -32,6 +39,7 @@ function AddDeliveryBoy() {
   const [deliveryBoys, setDeliveryBoys] = useState([]);
   const [loadingList, setLoadingList] = useState(true);
   const [editingId, setEditingId] = useState(null);
+  const [deliveryModalOpen, setDeliveryModalOpen] = useState(false);
 
   const API = "https://bawarchee.edunextg.co/api";
 
@@ -79,11 +87,22 @@ function AddDeliveryBoy() {
       .map((id) => Number(id))
       .filter((id) => Number.isInteger(id) && id > 0);
 
+  const openDeliveryModal = () => {
+    resetForm();
+    setDeliveryModalOpen(true);
+  };
+
+  const closeDeliveryModal = () => {
+    setDeliveryModalOpen(false);
+    resetForm();
+  };
+
   const startEditDeliveryBoy = (boy) => {
     setEditingId(boy.id);
     setName(boy.name || "");
     setContactNo(boy.contact_no || "");
     setCompanyIds(parseCompanyIds(boy));
+    setDeliveryModalOpen(true);
   };
 
   const handleSubmit = async () => {
@@ -107,7 +126,7 @@ function AddDeliveryBoy() {
 
       if (response.ok) {
         alert(`Delivery Boy ${editingId ? "updated" : "created"} successfully!`);
-        resetForm();
+        closeDeliveryModal();
         await fetchDeliveryBoys();
       } else {
         const err = await response.json().catch(() => ({}));
@@ -137,7 +156,7 @@ function AddDeliveryBoy() {
       if (response.ok) {
         alert("Delivery Boy deleted successfully!");
         if (editingId === boy.id) {
-          resetForm();
+          closeDeliveryModal();
         }
         await fetchDeliveryBoys();
       } else {
@@ -154,117 +173,26 @@ function AddDeliveryBoy() {
     <DashboardLayout>
       <DashboardNavbar />
       <MDBox pt={6} pb={3}>
-        <Grid container spacing={3} justifyContent="center">
-          <Grid item xs={12} md={8} lg={6}>
-            <Card>
-              <MDBox
-                variant="gradient"
-                bgColor="info"
-                borderRadius="lg"
-                coloredShadow="info"
-                mx={2}
-                mt={-3}
-                p={3}
-                mb={1}
-                textAlign="center"
-              >
-                <MDTypography variant="h4" fontWeight="medium" color="white" mt={1}>
-                  {editingId ? "Edit Delivery Boy" : "Create Delivery Boy"}
-                </MDTypography>
-              </MDBox>
-              <MDBox pt={4} pb={3} px={3}>
-                <MDBox component="form" role="form">
-                  <MDBox mb={2}>
-                    <FormControl fullWidth size="small">
-                      <InputLabel id="delivery-company-label">Company Name</InputLabel>
-                      <Select
-                        labelId="delivery-company-label"
-                        multiple
-                        value={companyIds}
-                        label="Company Name"
-                        onChange={(e) => {
-                          const value = e.target.value;
-                          setCompanyIds(typeof value === "string" ? value.split(",") : value);
-                        }}
-                        input={<OutlinedInput label="Company Name" />}
-                        renderValue={(selected) =>
-                          selected
-                            .map((id) => companyOptions.find((company) => company.id === id)?.name)
-                            .filter(Boolean)
-                            .join(", ")
-                        }
-                        sx={{ minHeight: 44 }}
-                      >
-                        {companyOptions.map((company) => (
-                          <MenuItem key={company.id} value={company.id}>
-                            {company.name}
-                          </MenuItem>
-                        ))}
-                        {companyOptions.length === 0 && (
-                          <MenuItem disabled>No staff company assigned</MenuItem>
-                        )}
-                      </Select>
-                    </FormControl>
-                  </MDBox>
-                  <MDBox mb={2}>
-                    <MDInput
-                      type="text"
-                      label="Name"
-                      fullWidth
-                      value={name}
-                      onChange={(e) => setName(e.target.value)}
-                    />
-                  </MDBox>
-                  <MDBox mb={2}>
-                    <MDInput
-                      type="text"
-                      label="Contact Number"
-                      fullWidth
-                      value={contactNo}
-                      onChange={(e) => setContactNo(e.target.value)}
-                    />
-                  </MDBox>
-                  <MDBox mt={4} mb={1}>
-                    <MDButton
-                      variant="gradient"
-                      color="info"
-                      fullWidth
-                      onClick={handleSubmit}
-                      disabled={submitting}
-                    >
-                      {submitting
-                        ? editingId
-                          ? "Updating..."
-                          : "Creating..."
-                        : editingId
-                          ? "Update Delivery Boy"
-                          : "Create Delivery Boy"}
-                    </MDButton>
-                  </MDBox>
-                  {editingId && (
-                    <MDBox mt={1} mb={1}>
-                      <MDButton
-                        variant="outlined"
-                        color="dark"
-                        fullWidth
-                        onClick={resetForm}
-                        disabled={submitting}
-                      >
-                        Cancel Edit
-                      </MDButton>
-                    </MDBox>
-                  )}
-                </MDBox>
-              </MDBox>
-            </Card>
-          </Grid>
-
-          <Grid item xs={12} md={10} lg={8}>
+        <Grid container spacing={3}>
+          <Grid item xs={12}>
             <Card>
               <MDBox p={3}>
-                <MDTypography variant="h5" fontWeight="medium" mb={3}>
-                  Delivery Boys
-                </MDTypography>
+                <MDBox
+                  display="flex"
+                  flexDirection={{ xs: "column", sm: "row" }}
+                  justifyContent="space-between"
+                  alignItems={{ xs: "stretch", sm: "center" }}
+                  gap={2}
+                  mb={3}
+                >
+                  <MDTypography variant="h5" fontWeight="medium">
+                    Delivery Boys
+                  </MDTypography>
+                  <MDButton color="info" variant="gradient" onClick={openDeliveryModal}>
+                    <Icon sx={{ mr: 1 }}>add</Icon>
+                    Create Delivery Boy
+                  </MDButton>
+                </MDBox>
 
                 {loadingList ? (
                   <MDTypography variant="body2" color="text">
@@ -272,7 +200,7 @@ function AddDeliveryBoy() {
                   </MDTypography>
                 ) : deliveryBoys.length === 0 ? (
                   <MDTypography variant="body2" color="text">
-                    No delivery boys added yet.
+                    No delivery boys added yet. Click &quot;Create Delivery Boy&quot; to add one.
                   </MDTypography>
                 ) : (
                   <MDBox pt={3}>
@@ -346,6 +274,81 @@ function AddDeliveryBoy() {
           </Grid>
         </Grid>
       </MDBox>
+
+      <Dialog open={deliveryModalOpen} onClose={closeDeliveryModal} fullWidth maxWidth="sm">
+        <DialogTitle sx={{ fontWeight: "bold", color: "#344767" }}>
+          {editingId ? "Edit Delivery Boy" : "Create Delivery Boy"}
+        </DialogTitle>
+        <DialogContent dividers>
+          <MDBox pt={1} component="form" role="form">
+            <MDBox mb={2}>
+              <FormControl fullWidth size="small">
+                <InputLabel id="delivery-company-label">Company Name</InputLabel>
+                <Select
+                  labelId="delivery-company-label"
+                  multiple
+                  value={companyIds}
+                  label="Company Name"
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    setCompanyIds(typeof value === "string" ? value.split(",") : value);
+                  }}
+                  input={<OutlinedInput label="Company Name" />}
+                  renderValue={(selected) =>
+                    selected
+                      .map((id) => companyOptions.find((company) => company.id === id)?.name)
+                      .filter(Boolean)
+                      .join(", ")
+                  }
+                  sx={{ minHeight: 44 }}
+                >
+                  {companyOptions.map((company) => (
+                    <MenuItem key={company.id} value={company.id}>
+                      {company.name}
+                    </MenuItem>
+                  ))}
+                  {companyOptions.length === 0 && (
+                    <MenuItem disabled>No staff company assigned</MenuItem>
+                  )}
+                </Select>
+              </FormControl>
+            </MDBox>
+            <MDBox mb={2}>
+              <MDInput
+                type="text"
+                label="Name"
+                fullWidth
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+              />
+            </MDBox>
+            <MDBox mb={2}>
+              <MDInput
+                type="text"
+                label="Contact Number"
+                fullWidth
+                value={contactNo}
+                onChange={(e) => setContactNo(e.target.value)}
+              />
+            </MDBox>
+          </MDBox>
+        </DialogContent>
+        <DialogActions sx={{ px: 3, py: 2 }}>
+          <MDButton variant="outlined" color="dark" onClick={closeDeliveryModal} disabled={submitting}>
+            Cancel
+          </MDButton>
+          <MDButton variant="gradient" color="info" onClick={handleSubmit} disabled={submitting}>
+            {submitting
+              ? editingId
+                ? "Updating..."
+                : "Creating..."
+              : editingId
+                ? "Update Delivery Boy"
+                : "Create Delivery Boy"}
+          </MDButton>
+        </DialogActions>
+      </Dialog>
+
       <Footer />
     </DashboardLayout>
   );

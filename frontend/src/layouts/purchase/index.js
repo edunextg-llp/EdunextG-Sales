@@ -5,6 +5,10 @@ import Card from "@mui/material/Card";
 import Icon from "@mui/material/Icon";
 import Autocomplete from "@mui/material/Autocomplete";
 import {
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
   FormControl,
   MenuItem,
   Select,
@@ -133,6 +137,7 @@ function Purchase() {
   const [loadingSellers, setLoadingSellers] = useState(false);
   const [gstManuallyEdited, setGstManuallyEdited] = useState(false);
   const [editingPurchaseId, setEditingPurchaseId] = useState(null);
+  const [purchaseModalOpen, setPurchaseModalOpen] = useState(false);
   const API = "https://bawarchee.edunextg.co/api";
 
   const totals = useMemo(() => {
@@ -289,6 +294,16 @@ function Purchase() {
     setEditingPurchaseId(null);
   };
 
+  const openAddPurchaseModal = () => {
+    handleReset();
+    setPurchaseModalOpen(true);
+  };
+
+  const closePurchaseModal = () => {
+    setPurchaseModalOpen(false);
+    handleReset();
+  };
+
   const buildPurchasePayload = () => ({
     sellerName: form.sellerName.trim(),
     address: form.address.trim(),
@@ -377,7 +392,7 @@ function Purchase() {
           : [savedPurchase, ...prev]
       );
     }
-    handleReset();
+    closePurchaseModal();
   };
 
   const handleEditPurchase = (purchase) => {
@@ -406,7 +421,7 @@ function Purchase() {
       cgstAmount: normalizeAmountInput(purchase.cgstAmount),
       sgstAmount: normalizeAmountInput(purchase.sgstAmount),
     });
-    window.scrollTo({ top: 0, behavior: "smooth" });
+    setPurchaseModalOpen(true);
   };
 
   const handleDeletePurchase = async (purchase) => {
@@ -419,7 +434,7 @@ function Purchase() {
       if (response.ok) {
         setPurchases((prev) => prev.filter((item) => item.id !== purchase.id));
         if (editingPurchaseId === purchase.id) {
-          handleReset();
+          closePurchaseModal();
         }
       } else {
         const err = await response.json().catch(() => ({}));
@@ -438,13 +453,97 @@ function Purchase() {
         <Grid container spacing={3}>
           <Grid item xs={12}>
             <Card>
-              <MDBox p={3} pb={2}>
+              <MDBox p={3} pb={2} display="flex" justifyContent="space-between" alignItems="center" flexWrap="wrap" gap={2}>
                 <MDTypography variant="h5" fontWeight="medium" color="dark">
                   Purchase
                 </MDTypography>
+                <MDButton color="info" variant="gradient" onClick={openAddPurchaseModal}>
+                  <Icon sx={{ mr: 1 }}>add</Icon>
+                  Add Purchase
+                </MDButton>
               </MDBox>
-
               <MDBox px={3} pb={3}>
+                <TableContainer component={Paper} sx={{ boxShadow: "none", border: "1px solid #e5e7eb" }}>
+                  <Table sx={{ minWidth: 1180 }}>
+                    <TableHead sx={{ display: "table-header-group", backgroundColor: "#f9fafb" }}>
+                      <TableRow>
+                        <TableCell sx={tableHeadSx}>Sr No</TableCell>
+                        <TableCell sx={tableHeadSx}>Seller</TableCell>
+                        <TableCell sx={tableHeadSx}>City</TableCell>
+                        <TableCell sx={tableHeadSx}>State</TableCell>
+                        <TableCell sx={tableHeadSx}>GSTIN</TableCell>
+                        <TableCell sx={tableHeadSx}>PAN</TableCell>
+                        <TableCell sx={tableHeadSx}>Invoice</TableCell>
+                        <TableCell sx={tableHeadSx}>Invoice Date</TableCell>
+                        <TableCell sx={tableHeadSx}>E-Way Bill</TableCell>
+                        <TableCell sx={tableHeadSx}>Sales Order</TableCell>
+                        <TableCell sx={tableHeadSx}>FSSAI</TableCell>
+                        <TableCell align="right" sx={tableHeadSx}>Taxable</TableCell>
+                        <TableCell align="right" sx={tableHeadSx}>GST</TableCell>
+                        <TableCell align="right" sx={tableHeadSx}>Round Off</TableCell>
+                        <TableCell align="right" sx={tableHeadSx}>Total</TableCell>
+                        <TableCell align="center" sx={tableHeadSx}>Action</TableCell>
+                      </TableRow>
+                    </TableHead>
+                    <TableBody>
+                      {purchases.length > 0 ? (
+                        purchases.map((purchase, index) => (
+                          <TableRow key={purchase.id}>
+                            <TableCell sx={tableBodySx}>{index + 1}</TableCell>
+                            <TableCell sx={tableBodySx}>{purchase.sellerName}</TableCell>
+                            <TableCell sx={tableBodySx}>{purchase.city || "N/A"}</TableCell>
+                            <TableCell sx={tableBodySx}>{purchase.state || "N/A"}</TableCell>
+                            <TableCell sx={tableBodySx}>{purchase.gstin || "N/A"}</TableCell>
+                            <TableCell sx={tableBodySx}>{purchase.panNo || "N/A"}</TableCell>
+                            <TableCell sx={tableBodySx}>{purchase.invoiceNumber}</TableCell>
+                            <TableCell sx={tableBodySx}>{purchase.invoiceDate || "N/A"}</TableCell>
+                            <TableCell sx={tableBodySx}>{purchase.ewayBillNo || "N/A"}</TableCell>
+                            <TableCell sx={tableBodySx}>{purchase.salesOrderNumber || "N/A"}</TableCell>
+                            <TableCell sx={tableBodySx}>{purchase.fssaiNumber || "N/A"}</TableCell>
+                            <TableCell align="right" sx={tableBodySx}>{money(purchase.taxableValue)}</TableCell>
+                            <TableCell align="right" sx={tableBodySx}>{money(purchase.totalGstAmount)}</TableCell>
+                            <TableCell align="right" sx={tableBodySx}>{money(purchase.roundOff)}</TableCell>
+                            <TableCell align="right" sx={{ ...tableBodySx, fontWeight: 700 }}>
+                              {money(purchase.roundedTotal)}
+                            </TableCell>
+                            <TableCell align="center" sx={tableBodySx}>
+                              <MDBox display="flex" gap={0.75} justifyContent="center">
+                                <FaRegEdit onClick={() => handleEditPurchase(purchase)} style={{ cursor: "pointer" }} color="#E0E388" size={20} />
+                                <CiTrash onClick={() => handleDeletePurchase(purchase)} style={{ cursor: "pointer" }} color="#FF0000" size={20} />
+                              </MDBox>
+                            </TableCell>
+                          </TableRow>
+                        ))
+                      ) : (
+                        <TableRow>
+                          <TableCell colSpan={16} align="center" sx={{ py: 4 }}>
+                            <MDTypography variant="body2" color="text">
+                              No purchases found. Click &quot;Add Purchase&quot; to create one.
+                            </MDTypography>
+                          </TableCell>
+                        </TableRow>
+                      )}
+                    </TableBody>
+                  </Table>
+                </TableContainer>
+              </MDBox>
+            </Card>
+          </Grid>
+        </Grid>
+      </MDBox>
+
+      <Dialog
+        open={purchaseModalOpen}
+        onClose={closePurchaseModal}
+        fullWidth
+        maxWidth="lg"
+        scroll="paper"
+      >
+        <DialogTitle sx={{ fontWeight: "bold", color: "#344767" }}>
+          {editingPurchaseId ? "Edit Purchase" : "Add Purchase"}
+        </DialogTitle>
+        <DialogContent dividers>
+          <MDBox pt={1}>
                 <Grid container spacing={2.5}>
                   <Grid item xs={12}>
                     <MDTypography variant="button" fontWeight="medium" color="dark">
@@ -747,85 +846,22 @@ function Purchase() {
                       <MDButton color="dark" variant="outlined" onClick={handleReset}>
                         Reset
                       </MDButton>
-                      <MDButton color="info" variant="gradient" onClick={handleSave}>
-                        <Icon sx={{ mr: 1 }}>{editingPurchaseId ? "save" : "receipt_long"}</Icon>
-                        {editingPurchaseId ? "Update Purchase" : "Save Purchase"}
-                      </MDButton>
                     </MDBox>
                   </Grid>
                 </Grid>
-              </MDBox>
-            </Card>
-          </Grid>
+          </MDBox>
+        </DialogContent>
+        <DialogActions sx={{ px: 3, py: 2 }}>
+          <MDButton color="dark" variant="outlined" onClick={closePurchaseModal}>
+            Cancel
+          </MDButton>
+          <MDButton color="info" variant="gradient" onClick={handleSave}>
+            <Icon sx={{ mr: 1 }}>{editingPurchaseId ? "save" : "receipt_long"}</Icon>
+            {editingPurchaseId ? "Update Purchase" : "Save Purchase"}
+          </MDButton>
+        </DialogActions>
+      </Dialog>
 
-          {purchases.length > 0 && (
-            <Grid item xs={12}>
-              <Card>
-                <MDBox p={3} pb={2}>
-                  <MDTypography variant="h6" fontWeight="medium">
-                    Recent Purchases
-                  </MDTypography>
-                </MDBox>
-                <MDBox px={3} pb={3}>
-                  <TableContainer component={Paper} sx={{ boxShadow: "none", border: "1px solid #e5e7eb" }}>
-                    <Table sx={{ minWidth: 1180 }}>
-                      <TableHead sx={{ display: "table-header-group", backgroundColor: "#f9fafb" }}>
-                        <TableRow>
-                          <TableCell sx={tableHeadSx}>Sr No</TableCell>
-                          <TableCell sx={tableHeadSx}>Seller</TableCell>
-                          <TableCell sx={tableHeadSx}>City</TableCell>
-                          <TableCell sx={tableHeadSx}>State</TableCell>
-                          <TableCell sx={tableHeadSx}>GSTIN</TableCell>
-                          <TableCell sx={tableHeadSx}>PAN</TableCell>
-                          <TableCell sx={tableHeadSx}>Invoice</TableCell>
-                          <TableCell sx={tableHeadSx}>Invoice Date</TableCell>
-                          <TableCell sx={tableHeadSx}>E-Way Bill</TableCell>
-                          <TableCell sx={tableHeadSx}>Sales Order</TableCell>
-                          <TableCell sx={tableHeadSx}>FSSAI</TableCell>
-                          <TableCell align="right" sx={tableHeadSx}>Taxable</TableCell>
-                          <TableCell align="right" sx={tableHeadSx}>GST</TableCell>
-                          <TableCell align="right" sx={tableHeadSx}>Round Off</TableCell>
-                          <TableCell align="right" sx={tableHeadSx}>Total</TableCell>
-                          <TableCell align="center" sx={tableHeadSx}>Action</TableCell>
-                        </TableRow>
-                      </TableHead>
-                      <TableBody>
-                        {purchases.map((purchase, index) => (
-                          <TableRow key={purchase.id}>
-                            <TableCell sx={tableBodySx}>{index + 1}</TableCell>
-                            <TableCell sx={tableBodySx}>{purchase.sellerName}</TableCell>
-                            <TableCell sx={tableBodySx}>{purchase.city || "N/A"}</TableCell>
-                            <TableCell sx={tableBodySx}>{purchase.state || "N/A"}</TableCell>
-                            <TableCell sx={tableBodySx}>{purchase.gstin || "N/A"}</TableCell>
-                            <TableCell sx={tableBodySx}>{purchase.panNo || "N/A"}</TableCell>
-                            <TableCell sx={tableBodySx}>{purchase.invoiceNumber}</TableCell>
-                            <TableCell sx={tableBodySx}>{purchase.invoiceDate || "N/A"}</TableCell>
-                            <TableCell sx={tableBodySx}>{purchase.ewayBillNo || "N/A"}</TableCell>
-                            <TableCell sx={tableBodySx}>{purchase.salesOrderNumber || "N/A"}</TableCell>
-                            <TableCell sx={tableBodySx}>{purchase.fssaiNumber || "N/A"}</TableCell>
-                            <TableCell align="right" sx={tableBodySx}>{money(purchase.taxableValue)}</TableCell>
-                            <TableCell align="right" sx={tableBodySx}>{money(purchase.totalGstAmount)}</TableCell>
-                            <TableCell align="right" sx={tableBodySx}>{money(purchase.roundOff)}</TableCell>
-                            <TableCell align="right" sx={{ ...tableBodySx, fontWeight: 700 }}>
-                              {money(purchase.roundedTotal)}
-                            </TableCell>
-                            <TableCell align="center" sx={tableBodySx}>
-                              <MDBox display="flex" gap={0.75} justifyContent="center">
-                                <FaRegEdit   onClick={() => handleEditPurchase(purchase)} style={{ cursor: "pointer" }} color="#E0E388" size={20}/>
-                                <CiTrash   onClick={() => handleDeletePurchase(purchase)} style={{ cursor: "pointer" }} color="#FF0000" size={20}/>
-                              </MDBox>
-                            </TableCell>
-                          </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
-                  </TableContainer>
-                </MDBox>
-              </Card>
-            </Grid>
-          )}
-        </Grid>
-      </MDBox>
       <Footer />
     </DashboardLayout>
   );
