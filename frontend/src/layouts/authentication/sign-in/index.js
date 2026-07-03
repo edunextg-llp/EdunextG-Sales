@@ -3,7 +3,6 @@ import { useNavigate } from "react-router-dom";
 import { useAuth } from "context/AuthContext";
 
 // @mui material components
-import Card from "@mui/material/Card";
 import Switch from "@mui/material/Switch";
 import Grid from "@mui/material/Grid";
 import Icon from "@mui/material/Icon";
@@ -18,10 +17,7 @@ import MDInput from "components/MDInput";
 import MDButton from "components/MDButton";
 
 // Authentication layout components
-import BasicLayout from "layouts/authentication/components/BasicLayout";
-
-// Images
-import bgImage from "assets/images/bg-sign-in-basic.jpeg";
+import PageLayout from "examples/LayoutContainers/PageLayout";
 
 function Basic() {
   const [rememberMe, setRememberMe] = useState(false);
@@ -101,180 +97,215 @@ function Basic() {
   };
 
   return (
-    <BasicLayout image={bgImage}>
-      <Card>
-        <MDBox
-          variant="gradient"
-          bgColor="info"
-          borderRadius="lg"
-          coloredShadow="info"
-          mx={2}
-          mt={-3}
-          p={2}
-          mb={1}
-          textAlign="center"
+    <PageLayout background="white">
+      <Grid container sx={{ minHeight: "100vh", margin: 0, padding: 0, overflow: "hidden" }}>
+        {/* Left Column - Vector Illustration (Only visible on md and up) */}
+        <Grid
+          item
+          xs={0}
+          md={6}
+          lg={7}
+          sx={{
+            display: { xs: "none", md: "flex" },
+            flexDirection: "column",
+            alignItems: "center",
+            justifyContent: "center",
+            backgroundColor: "#f8fafc",
+            padding: 4,
+            borderRight: "1px solid #e2e8f0",
+          }}
         >
-          <MDTypography variant="h4" fontWeight="medium" color="white" mt={1}>
-            Sign in
-          </MDTypography>
-          <Grid container spacing={3} justifyContent="center" sx={{ mt: 1, mb: 2 }}>
-            {/* <Grid item xs={2}>
-              <MDTypography component={MuiLink} href="#" variant="body1" color="white">
-                <FacebookIcon color="inherit" />
+          <MDBox
+            component="img"
+            src="https://mdbcdn.b-cdn.net/img/Photos/new-templates/bootstrap-login-form/draw2.webp"
+            alt="Login illustration"
+            sx={{
+              width: "100%",
+              maxWidth: "600px",
+              height: "auto",
+              maxHeight: "70vh",
+              objectFit: "contain",
+              transition: "transform 0.4s ease-in-out",
+              "&:hover": {
+                transform: "scale(1.02)",
+              },
+            }}
+          />
+        </Grid>
+
+        {/* Right Column - Login Form */}
+        <Grid
+          item
+          xs={12}
+          md={6}
+          lg={5}
+          sx={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: { xs: 3, sm: 6, md: 8 },
+            backgroundColor: "#ffffff",
+          }}
+        >
+          <MDBox width="100%" maxWidth={420} px={2}>
+            <MDBox mb={4}>
+              <MDTypography variant="h3" fontWeight="bold" color="dark" gutterBottom>
+                Sign In
               </MDTypography>
-            </Grid> */}
-            {/* <Grid item xs={2}>
-              <MDTypography component={MuiLink} href="#" variant="body1" color="white">
-                <GitHubIcon color="inherit" />
+              <MDTypography variant="button" color="text" fontWeight="regular">
+                Enter your email and password to log in.
               </MDTypography>
-            </Grid> */}
-            {/* <Grid item xs={2}>
-              <MDTypography component={MuiLink} href="#" variant="body1" color="white">
-                <GoogleIcon color="inherit" />
-              </MDTypography>
-            </Grid> */}
-          </Grid>
-        </MDBox>
-        <MDBox pt={4} pb={3} px={3}>
-          <MDBox component="form" role="form" onSubmit={handleSubmit}>
-            <MDBox mb={2}>
-              <MDInput type="email" label="Email" fullWidth value={email} onChange={(e) => setEmail(e.target.value)} required />
             </MDBox>
-            <MDBox mb={2} position="relative">
-              <MDInput
-                type={showPassword ? "text" : "password"}
-                label="Password"
-                fullWidth
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
-              />
-              <MDBox
-                sx={{
-                  position: "absolute",
-                  top: "50%",
-                  right: 12,
-                  transform: "translateY(-50%)",
-                  cursor: "pointer",
-                  zIndex: 2,
-                  color: "#94a3b8",
-                  display: "flex",
-                  alignItems: "center",
-                }}
-                onClick={() => setShowPassword((show) => !show)}
-              >
-                {showPassword ? <FaEyeSlash size={20} /> : <FaEye size={20} />}
+
+            <MDBox component="form" role="form" onSubmit={handleSubmit}>
+              <MDBox mb={2.5}>
+                <MDInput
+                  type="email"
+                  label="Email address"
+                  fullWidth
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  required
+                />
               </MDBox>
-            </MDBox>
-            <MDBox
-              mb={2}
-              p={2}
-              sx={{
-                border: "1px solid #e5e7eb",
-                borderRadius: "8px",
-                backgroundColor: "#f8fafc",
-              }}
-            >
+              <MDBox mb={2.5} position="relative">
+                <MDInput
+                  type={showPassword ? "text" : "password"}
+                  label="Password"
+                  fullWidth
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  required
+                />
+                <MDBox
+                  sx={{
+                    position: "absolute",
+                    top: "50%",
+                    right: 12,
+                    transform: "translateY(-50%)",
+                    cursor: "pointer",
+                    zIndex: 2,
+                    color: "#94a3b8",
+                    display: "flex",
+                    alignItems: "center",
+                  }}
+                  onClick={() => setShowPassword((show) => !show)}
+                >
+                  {showPassword ? <FaEyeSlash size={20} /> : <FaEye size={20} />}
+                </MDBox>
+              </MDBox>
+
+              {/* CAPTCHA Container */}
               <MDBox
-                mb={1.5}
+                mb={2.5}
+                p={2}
+                sx={{
+                  border: "1px solid #e2e8f0",
+                  borderRadius: "12px",
+                  backgroundColor: "#f8fafc",
+                }}
               >
-                <MDBox>
+                <MDBox mb={1.5}>
                   <MDTypography variant="caption" color="text" fontWeight="medium">
                     CAPTCHA verification
                   </MDTypography>
-                </MDBox>
-                <MDBox display="flex" alignItems="center" gap={1} mt={0.75}>
-                  <MDBox
-                    px={2}
-                    py={1}
-                    sx={{
-                      border: "1px dashed #94a3b8",
-                      borderRadius: "8px",
-                      background:
-                        "repeating-linear-gradient(135deg, #ffffff, #ffffff 8px, #eef2ff 8px, #eef2ff 16px)",
-                      minWidth: 172,
-                      textAlign: "center",
-                    }}
-                  >
-                    <MDTypography
-                      variant="h5"
-                      fontWeight="bold"
-                      color="dark"
+                  <MDBox display="flex" alignItems="center" gap={1.5} mt={1}>
+                    <MDBox
+                      px={2}
+                      py={1}
                       sx={{
-                        letterSpacing: "0.22em",
-                        fontFamily: "monospace",
-                        userSelect: "none",
+                        border: "1px dashed #cbd5e1",
+                        borderRadius: "8px",
+                        background:
+                          "repeating-linear-gradient(135deg, #ffffff, #ffffff 8px, #f1f5f9 8px, #f1f5f9 16px)",
+                        flexGrow: 1,
+                        textAlign: "center",
                       }}
                     >
-                      {captcha?.question || "......"}
-                    </MDTypography>
+                      <MDTypography
+                        variant="h5"
+                        fontWeight="bold"
+                        color="dark"
+                        sx={{
+                          letterSpacing: "0.22em",
+                          fontFamily: "monospace",
+                          userSelect: "none",
+                        }}
+                      >
+                        {captcha?.question || "......"}
+                      </MDTypography>
+                    </MDBox>
+                    <MDButton
+                      variant="outlined"
+                      color="info"
+                      size="small"
+                      onClick={fetchCaptcha}
+                      sx={{ minWidth: 38, width: 38, height: 38, p: 0, borderRadius: "8px" }}
+                    >
+                      <Icon fontSize="small">refresh</Icon>
+                    </MDButton>
                   </MDBox>
-                  <MDButton
-                    variant="outlined"
-                    color="info"
-                    size="small"
-                    onClick={fetchCaptcha}
-                    sx={{ minWidth: 34, width: 34, height: 34, p: 0 }}
-                  >
-                    <Icon fontSize="small">refresh</Icon>
-                  </MDButton>
                 </MDBox>
+                <MDInput
+                  type="text"
+                  label="Type the code shown above"
+                  fullWidth
+                  value={captchaAnswer}
+                  onChange={(e) => setCaptchaAnswer(e.target.value)}
+                  onPaste={(e) => e.preventDefault()}
+                  onCopy={(e) => e.preventDefault()}
+                  onCut={(e) => e.preventDefault()}
+                  required
+                />
               </MDBox>
-              <MDInput
-                type="text"
-                label="Type the code shown above"
-                fullWidth
-                value={captchaAnswer}
-                onChange={(e) => setCaptchaAnswer(e.target.value)}
-                onPaste={(e) => e.preventDefault()}
-                onCopy={(e) => e.preventDefault()}
-                onCut={(e) => e.preventDefault()}
-                required
-              />
-            </MDBox>
 
-            {error && (
-              <MDTypography variant="caption" color="error" fontWeight="medium" textGradient mb={2}>
-                {error}
-              </MDTypography>
-            )}
+              {error && (
+                <MDBox mb={2.5}>
+                  <MDTypography variant="caption" color="error" fontWeight="medium">
+                    {error}
+                  </MDTypography>
+                </MDBox>
+              )}
 
-            <MDBox display="flex" alignItems="center" ml={-1}>
-              <Switch checked={rememberMe} onChange={handleSetRememberMe} />
-              <MDTypography
-                variant="button"
-                fontWeight="regular"
-                color="text"
-                onClick={handleSetRememberMe}
-                sx={{ cursor: "pointer", userSelect: "none", ml: -1 }}
-              >
-                &nbsp;&nbsp;Remember me
-              </MDTypography>
-            </MDBox>
-            <MDBox mt={4} mb={1}>
-              <MDButton variant="gradient" color="info" fullWidth type="submit" disabled={loading}>
-                {loading ? "Signing in..." : "Sign in"}
-              </MDButton>
-            </MDBox>
-            {/* <MDBox mt={3} mb={1} textAlign="center">
-              <MDTypography variant="button" color="text">
-                Don&apos;t have an account?{" "}
-                <MDTypography
-                  component={Link}
-                  to="/authentication/sign-up"
+              {/* Remember Me and Forgot Password Container */}
+              <MDBox display="flex" alignItems="center" justifyContent="space-between" mb={3}>
+                <MDBox display="flex" alignItems="center" ml={-1}>
+                  <Switch checked={rememberMe} onChange={handleSetRememberMe} />
+                  <MDTypography
+                    variant="button"
+                    fontWeight="regular"
+                    color="text"
+                    onClick={handleSetRememberMe}
+                    sx={{ cursor: "pointer", userSelect: "none", ml: -0.5 }}
+                  >
+                    Remember me
+                  </MDTypography>
+                </MDBox>
+                {/* <MDTypography
+                  component="a"
+                  href="#forgot-password"
                   variant="button"
                   color="info"
                   fontWeight="medium"
-                  textGradient
+                  sx={{ textDecoration: "none", "&:hover": { textDecoration: "underline" } }}
                 >
-                  Sign up
-                </MDTypography>
-              </MDTypography>
-            </MDBox> */}
+                  Forgot password?
+                </MDTypography> */}
+              </MDBox>
+
+              {/* Submit button */}
+              <MDBox mt={4} mb={1}>
+                <MDButton variant="gradient" color="info" fullWidth type="submit" disabled={loading} size="large">
+                  {loading ? "Signing in..." : "Sign in"}
+                </MDButton>
+              </MDBox>
+
+
+            </MDBox>
           </MDBox>
-        </MDBox>
-      </Card>
-    </BasicLayout>
+        </Grid>
+      </Grid>
+    </PageLayout>
   );
 }
 
