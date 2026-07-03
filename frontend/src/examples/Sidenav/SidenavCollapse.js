@@ -36,12 +36,16 @@ import {
 // Material Dashboard 2 React context
 import { useMaterialUIController } from "context";
 
-function SidenavCollapse({ icon, name, active, nested, ...rest }) {
+function SidenavCollapse({ icon, name, active, nested, collapsible, open, ...rest }) {
   const [controller] = useMaterialUIController();
   const { miniSidenav, transparentSidenav, whiteSidenav, darkMode, sidenavColor } = controller;
 
+  const textColor = (transparentSidenav && !darkMode && !active) || (whiteSidenav && !active)
+    ? "dark"
+    : "white";
+
   return (
-    <ListItem component="li" sx={nested ? { pl: 2 } : undefined}>
+    <ListItem component="li" sx={nested ? { pl: 4 } : undefined}>
       <MDBox
         {...rest}
         sx={(theme) =>
@@ -77,6 +81,21 @@ function SidenavCollapse({ icon, name, active, nested, ...rest }) {
             })
           }
         />
+
+        {collapsible && !miniSidenav && (
+          <Icon
+            sx={(theme) => ({
+              marginLeft: "auto",
+              marginRight: "10px",
+              fontSize: "1.25rem !important",
+              color: textColor === "dark" ? theme.palette.dark.main : theme.palette.white.main,
+              transition: "transform 0.2s ease-in-out",
+              transform: open ? "rotate(0deg)" : "rotate(-90deg)",
+            })}
+          >
+            expand_more
+          </Icon>
+        )}
       </MDBox>
     </ListItem>
   );
@@ -85,6 +104,9 @@ function SidenavCollapse({ icon, name, active, nested, ...rest }) {
 // Setting default values for the props of SidenavCollapse
 SidenavCollapse.defaultProps = {
   active: false,
+  nested: false,
+  collapsible: false,
+  open: false,
 };
 
 // Typechecking props for the SidenavCollapse
@@ -93,6 +115,8 @@ SidenavCollapse.propTypes = {
   name: PropTypes.string.isRequired,
   active: PropTypes.bool,
   nested: PropTypes.bool,
+  collapsible: PropTypes.bool,
+  open: PropTypes.bool,
 };
 
 export default SidenavCollapse;

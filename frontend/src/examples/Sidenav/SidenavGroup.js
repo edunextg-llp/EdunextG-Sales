@@ -21,7 +21,13 @@ function SidenavGroup({ name, icon, collapse, collapseName }) {
   return (
     <>
       <MDBox onClick={() => setOpen((prev) => !prev)} sx={{ cursor: "pointer" }}>
-        <SidenavCollapse name={name} icon={icon} active={isChildActive} />
+        <SidenavCollapse
+          name={name}
+          icon={icon}
+          active={isChildActive}
+          collapsible
+          open={open}
+        />
       </MDBox>
       <Collapse in={open} timeout="auto" unmountOnExit>
         <List component="div" disablePadding>
