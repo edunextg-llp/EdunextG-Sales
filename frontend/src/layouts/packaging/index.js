@@ -153,8 +153,8 @@ function Packaging() {
       alert("Packing Item cannot be more than No. of Item.");
       return;
     }
-    if (Number.isNaN(boxCount) || boxCount <= 0) {
-      alert("Please enter No. of Box.");
+    if (Number.isNaN(boxCount) || boxCount < 0) {
+      alert("Please enter No. of Box (0 or more).");
       return;
     }
     if (Number.isNaN(packetCount) || packetCount < 0) {
@@ -442,12 +442,12 @@ function Packaging() {
                               <TableCell align="center" sx={{ borderBottom: borderCol, py: 2, color: txColor }}>
                                 <MDInput
                                   type="number"
-                                  value={row.box_count || ""}
+                                  value={row.box_count ?? ""}
                                   onChange={(e) =>
                                     handleRowChange(row.id, "box_count", e.target.value)
                                   }
                                   size="small"
-                                  inputProps={{ min: 1, style: { textAlign: "center" } }}
+                                  inputProps={{ min: 0, style: { textAlign: "center" } }}
                                   sx={{ width: 100, backgroundColor: "#fff" }}
                                 />
                               </TableCell>

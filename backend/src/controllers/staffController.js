@@ -658,7 +658,7 @@ export const updatePackagingStatus = async (req, res) => {
         }
 
         if (hasBoxCount) {
-            const boxValidation = validatePositiveInteger(boxCount, 'No. of box');
+            const boxValidation = validateNonNegativeInteger(boxCount, 'No. of box');
             if (!boxValidation.valid) {
                 return res.status(400).json({ error: boxValidation.error });
             }
