@@ -22,6 +22,9 @@ import DashboardNavbar from "examples/Navbars/DashboardNavbar";
 import Footer from "examples/Footer";
 import { FaRegEdit } from "react-icons/fa";
 import { CiTrash } from "react-icons/ci";
+import { formatGoogleMapsLocation, isValidGoogleMapsShortUrl } from "utils/googleMapsLocation";
+
+const GOOGLE_MAPS_HELPER_TEXT = "Use Google Maps Share link, e.g. https://maps.app.goo.gl/T9zxVHUGoiYcBX2s8";
 
 function AddCounter() {
   const days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
@@ -168,6 +171,19 @@ function AddCounter() {
     setOutlets(updated);
   };
 
+  const handleOutletGoogleLocationBlur = (index) => {
+    const updated = [...outlets];
+    updated[index].googleLocation = formatGoogleMapsLocation(updated[index].googleLocation);
+    setOutlets(updated);
+  };
+
+  const handleEditGoogleLocationBlur = () => {
+    setEditFormData((prev) => ({
+      ...prev,
+      googleLocation: formatGoogleMapsLocation(prev.googleLocation),
+    }));
+  };
+
   const handleSubmit = async () => {
     if (!selectedStaff || !routeDay || !selectedLocation || outlets.length === 0) {
       alert("Please fill in all details and add at least one outlet.");
@@ -175,7 +191,14 @@ function AddCounter() {
     }
 
     const erpIds = outlets.map((outlet) => normalizeText(outlet.outletErpId)).filter(Boolean);
-    const missingGoogleLocation = outlets.some((outlet) => !String(outlet.googleLocation || "").trim());
+    const formattedOutlets = outlets.map((outlet) => ({
+      ...outlet,
+      googleLocation: formatGoogleMapsLocation(outlet.googleLocation),
+    }));
+    const missingGoogleLocation = formattedOutlets.some((outlet) => !String(outlet.googleLocation || "").trim());
+    const invalidGoogleLocation = formattedOutlets.find(
+      (outlet) => outlet.googleLocation && !isValidGoogleMapsShortUrl(outlet.googleLocation)
+    );
     const savedErpIds = new Set(savedOutlets.map((outlet) => normalizeText(outlet.outlet_erp_id)));
     const hasDuplicateErp =
       erpIds.some((erpId, index) => erpIds.indexOf(erpId) !== index) ||
@@ -191,6 +214,13 @@ function AddCounter() {
       return;
     }
 
+    if (invalidGoogleLocation) {
+      alert(`Google Location must be a short link like https://maps.app.goo.gl/T9zxVHUGoiYcBX2s8`);
+      return;
+    }
+
+    setOutlets(formattedOutlets);
+
     try {
       const response = await fetch(`${API}/staff/${selectedStaff.id}/counters`, {
         method: "POST",
@@ -200,7 +230,7 @@ function AddCounter() {
         body: JSON.stringify({
           day: routeDay,
           location: selectedLocation,
-          counters: outlets,
+          counters: formattedOutlets,
         }),
       });
 
@@ -269,13 +299,22 @@ function AddCounter() {
       return;
     }
 
+    const formattedGoogleLocation = formatGoogleMapsLocation(editFormData.googleLocation);
+    if (!isValidGoogleMapsShortUrl(formattedGoogleLocation)) {
+      alert("Google Location must be a short link like https://maps.app.goo.gl/T9zxVHUGoiYcBX2s8");
+      return;
+    }
+
     try {
       const response = await fetch(`${API}/staff/counter/${counterId}`, {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify(editFormData),
+        body: JSON.stringify({
+          ...editFormData,
+          googleLocation: formattedGoogleLocation,
+        }),
       });
 
       if (response.ok) {
@@ -540,6 +579,8 @@ function AddCounter() {
                               onChange={(e) =>
                                 handleOutletChange(index, "googleLocation", e.target.value)
                               }
+                              onBlur={() => handleOutletGoogleLocationBlur(index)}
+                              helperText={GOOGLE_MAPS_HELPER_TEXT}
                             />
                           </Grid>
                           <Grid item xs={12} sm={6} md={12}>
@@ -613,6 +654,8 @@ function AddCounter() {
                                 fullWidth
                                 value={editFormData.googleLocation}
                                 onChange={(e) => setEditFormData({ ...editFormData, googleLocation: e.target.value })}
+                                onBlur={handleEditGoogleLocationBlur}
+                                helperText={GOOGLE_MAPS_HELPER_TEXT}
                               />
                             </Grid>
                             <Grid item xs={12} md={2}>

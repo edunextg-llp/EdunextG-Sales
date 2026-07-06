@@ -15,6 +15,7 @@ import {
     validateRequiredText,
 } from '../utils/validation.js';
 import { normalizeInvoiceNumber } from '../utils/invoiceNumber.js';
+import { validateGoogleMapsLocation } from '../utils/googleMapsLocation.js';
 
 async function parseCollectorPayload(body) {
     const collectorType = String(body.collectorType || 'company_staff').toLowerCase();
@@ -291,12 +292,17 @@ export const addCounter = async (req, res) => {
 
                 const outletErpId = String(counter.outletErpId || '').trim();
                 const outletName = String(counter.outletName || '').trim();
-                const googleLocation = String(counter.googleLocation || '').trim();
+                const googleLocationValidation = validateGoogleMapsLocation(
+                    counter.googleLocation,
+                    `Counter ${i + 1} Google Location`
+                );
                 const normalizedErpId = outletErpId.toLowerCase();
 
-                if (!googleLocation) {
-                    return res.status(400).json({ error: `Counter ${i + 1} Google Location is required.` });
+                if (!googleLocationValidation.valid) {
+                    return res.status(400).json({ error: googleLocationValidation.error });
                 }
+
+                const googleLocation = googleLocationValidation.value;
 
                 if (erpIds.has(normalizedErpId)) {
                     return res.status(400).json({ error: 'Same ERP Id already exists in this entry.' });
@@ -1313,11 +1319,13 @@ export const editCounter = async (req, res) => {
 
         const normalizedOutletErpId = String(outletErpId || '').trim();
         const normalizedOutletName = String(outletName || '').trim();
-        const normalizedGoogleLocation = String(googleLocation || '').trim();
+        const googleLocationValidation = validateGoogleMapsLocation(googleLocation);
 
-        if (!normalizedGoogleLocation) {
-            return res.status(400).json({ error: 'Google Location is required.' });
+        if (!googleLocationValidation.valid) {
+            return res.status(400).json({ error: googleLocationValidation.error });
         }
+
+        const normalizedGoogleLocation = googleLocationValidation.value;
 
         const duplicateCounter = await StaffModel.findDuplicateCounter(
             existingCounter.staff_id,

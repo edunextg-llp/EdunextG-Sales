@@ -265,6 +265,13 @@ export const updateMobileAssignedItemStatus = async (req, res) => {
             status
         );
 
+        if (updatedSale?.locked) {
+            return res.status(409).json({
+                error: 'This delivery has already been submitted and cannot be changed.',
+                packaging_status: updatedSale.packaging_status,
+            });
+        }
+
         if (!updatedSale) {
             return res.status(404).json({ error: 'Assigned delivery item not found' });
         }

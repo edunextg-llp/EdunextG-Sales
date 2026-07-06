@@ -198,7 +198,7 @@ Success `200`:
 
 ## Update Delivery Status
 
-Delivery boy can update only items assigned to his own profile.
+Delivery boy can update only items assigned to his own profile and only while the item is still `out_for_delivery`. Once marked `delivered`, `cancelled`, or `returned`, the mobile app cannot change the status again.
 
 ```http
 PUT /delivery-boy/mobile/items/:saleId/status
@@ -259,4 +259,11 @@ Common errors:
 
 ```json
 { "error": "Status must be delivered, cancelled, or returned" }
+```
+
+```json
+{
+  "error": "This delivery has already been submitted and cannot be changed.",
+  "packaging_status": "delivered"
+}
 ```

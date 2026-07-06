@@ -214,6 +214,11 @@ class DeliveryBoyModel {
                 return null;
             }
 
+            if (sale.packaging_status !== 'out_for_delivery') {
+                await connection.rollback();
+                return { locked: true, packaging_status: sale.packaging_status };
+            }
+
             if (status === 'cancelled') {
                 if (sale.packaging_status !== 'cancelled') {
                     await connection.execute(
