@@ -157,8 +157,8 @@ function Packaging() {
       alert("Please enter No. of Box.");
       return;
     }
-    if (Number.isNaN(packetCount) || packetCount <= 0) {
-      alert("Please enter No. of Packet.");
+    if (Number.isNaN(packetCount) || packetCount < 0) {
+      alert("Please enter No. of Packet (0 or more).");
       return;
     }
 
@@ -454,12 +454,12 @@ function Packaging() {
                               <TableCell align="center" sx={{ borderBottom: borderCol, py: 2, color: txColor }}>
                                 <MDInput
                                   type="number"
-                                  value={row.packet_count || ""}
+                                  value={row.packet_count ?? ""}
                                   onChange={(e) =>
                                     handleRowChange(row.id, "packet_count", e.target.value)
                                   }
                                   size="small"
-                                  inputProps={{ min: 1, style: { textAlign: "center" } }}
+                                  inputProps={{ min: 0, style: { textAlign: "center" } }}
                                   sx={{ width: 100, backgroundColor: "#fff" }}
                                 />
                               </TableCell>

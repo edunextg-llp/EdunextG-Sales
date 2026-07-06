@@ -18,7 +18,7 @@ import BankDeposit from "layouts/bank-deposit";
 import Packaging from "layouts/packaging";
 import Delivery from "layouts/delivery";
 import Delivered from "layouts/delivered";
-import Reports from "layouts/reports";
+// import Reports from "layouts/reports";
 import DmsStock from "layouts/dms-stock";
 import CurrentStock from "layouts/current-stock";
 import PhysicalStock from "layouts/physical-stock";
@@ -35,14 +35,14 @@ const routes = [
     route: "/dashboard",
     component: <Dashboard />,
   },
-  {
-    type: "collapse",
-    name: "Reports",
-    key: "reports",
-    icon: <Icon fontSize="small">summarize</Icon>,
-    route: "/reports",
-    component: <Reports />,
-  },
+  // {
+  //   type: "collapse",
+  //   name: "Reports",
+  //   key: "reports",
+  //   icon: <Icon fontSize="small">summarize</Icon>,
+  //   route: "/reports",
+  //   component: <Reports />,
+  // },
   {
     type: "collapse",
     name: "DMS",

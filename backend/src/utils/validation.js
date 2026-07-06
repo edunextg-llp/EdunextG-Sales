@@ -74,3 +74,18 @@ export function validatePositiveInteger(value, fieldName) {
     }
     return { valid: true, value: num };
 }
+
+/**
+ * Validates a non-negative integer (0 or greater).
+ */
+export function validateNonNegativeInteger(value, fieldName) {
+    const result = validateDigitsOnly(value, fieldName);
+    if (!result.valid) {
+        return result;
+    }
+    const num = parseInt(result.value, 10);
+    if (num < 0) {
+        return { valid: false, error: `${fieldName} cannot be negative` };
+    }
+    return { valid: true, value: num };
+}

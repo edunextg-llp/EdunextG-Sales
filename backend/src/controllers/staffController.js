@@ -11,6 +11,7 @@ import {
     validateDigitsOnly,
     validateNumeric,
     validatePositiveInteger,
+    validateNonNegativeInteger,
     validateRequiredText,
 } from '../utils/validation.js';
 import { normalizeInvoiceNumber } from '../utils/invoiceNumber.js';
@@ -665,7 +666,7 @@ export const updatePackagingStatus = async (req, res) => {
         }
 
         if (hasPacketCount) {
-            const packetValidation = validatePositiveInteger(packetCount, 'No. of packet');
+            const packetValidation = validateNonNegativeInteger(packetCount, 'No. of packet');
             if (!packetValidation.valid) {
                 return res.status(400).json({ error: packetValidation.error });
             }
