@@ -62,6 +62,7 @@ const emptyReportData = {
   chequeReports: [],
   pendingChequeReports: [],
   duesReport: [],
+  staffCollectionByDate: [],
 };
 
 const emptyPurchaseReportData = {
@@ -801,9 +802,12 @@ function Dashboard() {
   const [totalCollectionReportData, setTotalCollectionReportData] = useState({
     collectionByMode: [],
     collectionDetails: [],
+    staffCollectionByDate: [],
   });
   const [collectionDateLoading, setCollectionDateLoading] = useState(false);
   const [totalCollectionLoading, setTotalCollectionLoading] = useState(false);
+  const [collectionStaffOptions, setCollectionStaffOptions] = useState([]);
+  const [selectedCollectionStaffId, setSelectedCollectionStaffId] = useState("");
 
   const monthOptions = useMemo(
     () => getMonthOptions(selectedFinancialYear),
@@ -822,6 +826,10 @@ function Dashboard() {
     if (selectedFinancialYearOption) return selectedFinancialYearOption.label;
     return "All Records";
   }, [selectedMonthOption, selectedFinancialYearOption]);
+
+  const selectedCollectionStaffName =
+    collectionStaffOptions.find((staff) => staff.id === Number(selectedCollectionStaffId))?.name ||
+    "All Staff";
 
   const paidCollectionBreakdown = useMemo(
     () => ({
@@ -896,12 +904,15 @@ function Dashboard() {
     };
   };
 
-  const fetchTotalCollectionReport = async (startDate, endDate) => {
+  const fetchTotalCollectionReport = async (startDate, endDate, staffId = "") => {
     if (!startDate || !endDate) {
-      return { collectionByMode: [], collectionDetails: [] };
+      return { collectionByMode: [], collectionDetails: [], staffCollectionByDate: [] };
     }
 
     const params = new URLSearchParams({ startDate, endDate });
+    if (staffId) {
+      params.set("staffId", staffId);
+    }
     const response = await fetch(`${API}/staff/reports?${params.toString()}`);
     if (!response.ok) {
       throw new Error("Failed to fetch total collection report.");
@@ -911,8 +922,25 @@ function Dashboard() {
     return {
       collectionByMode: data.collectionByMode || [],
       collectionDetails: data.collectionDetails || [],
+      staffCollectionByDate: data.staffCollectionByDate || [],
     };
   };
+
+  useEffect(() => {
+    const fetchCollectionStaffOptions = async () => {
+      try {
+        const response = await fetch(`${API}/staff`);
+        if (response.ok) {
+          const data = await response.json();
+          setCollectionStaffOptions(data);
+        }
+      } catch (error) {
+        console.error("Error fetching staff options:", error);
+      }
+    };
+
+    fetchCollectionStaffOptions();
+  }, []);
 
   useEffect(() => {
     fetchReports();
@@ -955,25 +983,29 @@ function Dashboard() {
 
     const loadTotalCollectionReport = async () => {
       if (!totalCollectionFromDate || !totalCollectionToDate) {
-        setTotalCollectionReportData({ collectionByMode: [], collectionDetails: [] });
+        setTotalCollectionReportData({ collectionByMode: [], collectionDetails: [], staffCollectionByDate: [] });
         return;
       }
 
       if (totalCollectionFromDate > totalCollectionToDate) {
-        setTotalCollectionReportData({ collectionByMode: [], collectionDetails: [] });
+        setTotalCollectionReportData({ collectionByMode: [], collectionDetails: [], staffCollectionByDate: [] });
         return;
       }
 
       setTotalCollectionLoading(true);
       try {
-        const data = await fetchTotalCollectionReport(totalCollectionFromDate, totalCollectionToDate);
+        const data = await fetchTotalCollectionReport(
+          totalCollectionFromDate,
+          totalCollectionToDate,
+          selectedCollectionStaffId
+        );
         if (!ignore) {
           setTotalCollectionReportData(data);
         }
       } catch (error) {
         console.error("Error fetching total collection report:", error);
         if (!ignore) {
-          setTotalCollectionReportData({ collectionByMode: [], collectionDetails: [] });
+          setTotalCollectionReportData({ collectionByMode: [], collectionDetails: [], staffCollectionByDate: [] });
         }
       } finally {
         if (!ignore) {
@@ -988,7 +1020,7 @@ function Dashboard() {
       ignore = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [totalCollectionFromDate, totalCollectionToDate]);
+  }, [totalCollectionFromDate, totalCollectionToDate, selectedCollectionStaffId]);
 
   const handleFinancialYearChange = (value) => {
     setSelectedFinancialYear(value);
@@ -1210,14 +1242,20 @@ function Dashboard() {
     printWindow.document.write("<p style=\"font-family: Arial, sans-serif; padding: 24px;\">Preparing collection report...</p>");
     printWindow.document.close();
 
-    const periodLabel = `${formatDate(totalCollectionFromDate)} to ${formatDate(totalCollectionToDate)}`;
+    const periodLabel = `${formatDate(totalCollectionFromDate)} to ${formatDate(totalCollectionToDate)}${
+      selectedCollectionStaffId ? ` | ${selectedCollectionStaffName}` : ""
+    }`;
 
     try {
       const data =
         totalCollectionReportData.collectionDetails.length > 0 ||
         totalCollectionReportData.collectionByMode.length > 0
           ? totalCollectionReportData
-          : await fetchTotalCollectionReport(totalCollectionFromDate, totalCollectionToDate);
+          : await fetchTotalCollectionReport(
+              totalCollectionFromDate,
+              totalCollectionToDate,
+              selectedCollectionStaffId
+            );
 
       writeCollectionPrintReport(printWindow, data.collectionDetails || [], periodLabel);
     } catch (error) {
@@ -1381,6 +1419,8 @@ function Dashboard() {
 
   const totalCreditDues = Number(reportData.creditDuesSummary?.total_credit_dues) || 0;
   const creditDuesCount = Number(reportData.creditDuesSummary?.credit_dues_count) || 0;
+  const totalPaidAmount = Number(reportData.summary.total_paid) || 0;
+  const netCollection = totalPaidAmount - totalCreditDues;
 
   return (
     <DashboardLayout>
@@ -1776,6 +1816,7 @@ function Dashboard() {
               </MDBox>
             </Grid>
            
+           
             <Grid item xs={12} md={6} lg={3}>
               <MDBox mb={1.5}>
                 <ComplexStatisticsCard
@@ -1787,6 +1828,21 @@ function Dashboard() {
                     color: creditDuesCount > 0 ? "error" : "success",
                     amount: creditDuesCount,
                     label: "open credit entries",
+                  }}
+                />
+              </MDBox>
+            </Grid>
+            <Grid item xs={12} md={6} lg={3}>
+              <MDBox mb={1.5}>
+                <ComplexStatisticsCard
+                  color="primary"
+                  icon="savings"
+                  title="Collection"
+                  count={shortMoney(netCollection)}
+                  percentage={{
+                    color: netCollection >= 0 ? "success" : "error",
+                    amount: "",
+                    label: "Total Paid - Credit Dues",
                   }}
                 />
               </MDBox>
@@ -1877,7 +1933,9 @@ function Dashboard() {
               <MDBox mb={3} width="100%" height={460} sx={{ "& > div": { height: "100%" } }}>
                 <PaymentModePieChart
                   data={collectionModePieData}
-                  title={`Total Collection · ${formatDate(totalCollectionFromDate)} to ${formatDate(totalCollectionToDate)}`}
+                  title={`Total Collection · ${formatDate(totalCollectionFromDate)} to ${formatDate(totalCollectionToDate)}${
+                    selectedCollectionStaffId ? ` · ${selectedCollectionStaffName}` : ""
+                  }`}
                   icon="donut_small"
                   iconColor="warning"
                   actions={
@@ -1888,6 +1946,23 @@ function Dashboard() {
                         </MDTypography>
                       )}
                       <MDBox display="flex" gap={0.75} alignItems="center" flexWrap="wrap">
+                        <FormControl size="small" sx={{ minWidth: 150 }}>
+                          <InputLabel id="total-collection-staff-label">Staff</InputLabel>
+                          <Select
+                            labelId="total-collection-staff-label"
+                            value={selectedCollectionStaffId}
+                            label="Staff"
+                            onChange={(event) => setSelectedCollectionStaffId(event.target.value)}
+                            sx={{ height: 36, fontSize: "0.8125rem", backgroundColor: "#fff" }}
+                          >
+                            <MenuItem value="">All Staff</MenuItem>
+                            {collectionStaffOptions.map((staff) => (
+                              <MenuItem key={staff.id} value={String(staff.id)}>
+                                {staff.name}
+                              </MenuItem>
+                            ))}
+                          </Select>
+                        </FormControl>
                         <TextField
                           type="date"
                           size="small"
@@ -1920,7 +1995,8 @@ function Dashboard() {
                             totalCollectionFromDate > totalCollectionToDate ||
                             totalCollectionLoading
                           }
-                          sx={{ minWidth: 44, p: 1.2, ml: "auto" }}
+                          sx={{ minWidth: 44, p: 1.2 }}
+                          title="Print detailed collection report"
                         >
                           <Icon>print</Icon>
                         </MDButton>
@@ -2060,6 +2136,37 @@ function Dashboard() {
               </MDTypography>
               <MDTypography variant="button" fontWeight="bold" color="dark">
                 {money(paidCollectionTotal)}
+              </MDTypography>
+            </MDBox>
+            <MDBox display="flex" justifyContent="space-between" alignItems="center">
+              <MDTypography variant="button" color="text">
+                Total Paid
+              </MDTypography>
+              <MDTypography variant="button" fontWeight="bold" color="success">
+                {money(totalPaidAmount)}
+              </MDTypography>
+            </MDBox>
+            <MDBox display="flex" justifyContent="space-between" alignItems="center">
+              <MDTypography variant="button" color="text">
+                Total Credit Dues
+              </MDTypography>
+              <MDTypography variant="button" fontWeight="bold" color="error">
+                {money(totalCreditDues)}
+              </MDTypography>
+            </MDBox>
+            <MDBox
+              mt={1}
+              pt={1.5}
+              display="flex"
+              justifyContent="space-between"
+              alignItems="center"
+              sx={{ borderTop: "1px solid #e5e7eb" }}
+            >
+              <MDTypography variant="button" fontWeight="medium" color="dark">
+                Collection (Paid - Credit Dues)
+              </MDTypography>
+              <MDTypography variant="button" fontWeight="bold" color="primary">
+                {money(netCollection)}
               </MDTypography>
             </MDBox>
           </MDBox>

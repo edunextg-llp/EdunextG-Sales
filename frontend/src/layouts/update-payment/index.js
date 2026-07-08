@@ -142,6 +142,7 @@ function UpdatePayment() {
   const [cancellationHistory, setCancellationHistory] = useState([]);
   const [loadingCancellations, setLoadingCancellations] = useState(false);
   const [page, setPage] = useState(1);
+  const [rowsPerPage, setRowsPerPage] = useState(ROWS_PER_PAGE);
 
   const API = "https://bawarchee.edunextg.co/api";
 
@@ -216,7 +217,7 @@ function UpdatePayment() {
 
   useEffect(() => {
     setPage(1);
-  }, [searchQuery]);
+  }, [searchQuery, rowsPerPage]);
 
   useEffect(() => {
     const fetchDeliveryBoys = async () => {
@@ -256,10 +257,10 @@ function UpdatePayment() {
   }, [deliveryBoys, paymentDialogSale]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const filteredSales = salesData.filter((row) => row.packaging_status === "delivered");
-  const totalPages = Math.max(1, Math.ceil(filteredSales.length / ROWS_PER_PAGE));
+  const totalPages = Math.max(1, Math.ceil(filteredSales.length / rowsPerPage));
   const paginatedSales = filteredSales.slice(
-    (page - 1) * ROWS_PER_PAGE,
-    page * ROWS_PER_PAGE
+    (page - 1) * rowsPerPage,
+    page * rowsPerPage
   );
 
   const getRemainingBalance = (sale) => {
@@ -1018,7 +1019,7 @@ function UpdatePayment() {
                             const paid = getPaidAmount(sale);
                             return (
                               <TableRow key={sale.id} sx={getPaymentRowSx(sale)}>
-                                <TableCell align="center">{(page - 1) * ROWS_PER_PAGE + index + 1}</TableCell>
+                                <TableCell align="center">{(page - 1) * rowsPerPage + index + 1}</TableCell>
                                 <TableCell align="left">
                                   <MDTypography variant="button" fontWeight="medium" color="dark">
                                     {sale.outlet_name}
@@ -1084,6 +1085,8 @@ function UpdatePayment() {
                     totalPages={totalPages}
                     total={filteredSales.length}
                     onPageChange={setPage}
+                    limit={rowsPerPage}
+                    onLimitChange={setRowsPerPage}
                   />
                 </MDBox>
               </MDBox>

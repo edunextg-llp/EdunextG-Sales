@@ -1,7 +1,64 @@
 import DeliveryBoyModel from '../models/deliveryBoyModel.js';
+import DeliveryCollectionModel from '../models/deliveryCollectionModel.js';
 import CompanyModel from '../models/companyModel.js';
-import { validateRequiredText, validateDigitsOnly } from '../utils/validation.js';
+import {
+    validateRequiredText,
+    validateDigitsOnly,
+    validateNumeric,
+    validatePositiveInteger,
+} from '../utils/validation.js';
 import jwt from 'jsonwebtoken';
+
+const CASH_NOTE_DENOMINATIONS = [500, 200, 100, 50, 20, 10];
+const CASH_COIN_DENOMINATIONS = [20, 10, 5, 2, 1];
+const CASH_DENOMINATIONS = [
+    ...CASH_NOTE_DENOMINATIONS.map((value) => ({ key: `note_${value}`, value })),
+    ...CASH_COIN_DENOMINATIONS.map((value) => ({ key: `coin_${value}`, value })),
+];
+
+function calculateCashCollectionAmount(cashDetails = {}) {
+    return CASH_DENOMINATIONS.reduce((total, item) => {
+        const count = parseInt(cashDetails[item.key] || 0, 10);
+        return total + item.value * (Number.isNaN(count) ? 0 : count);
+    }, 0);
+}
+
+function normalizeCashCollectionDetails(cashDetails = {}) {
+    const hasCashCount = CASH_DENOMINATIONS.some((item) => {
+        const count = parseInt(cashDetails[item.key] || 0, 10);
+        return !Number.isNaN(count) && count > 0;
+    });
+    if (!hasCashCount) {
+        return { error: 'Please enter cash note or coin count.' };
+    }
+
+    const normalizedCashDetails = {};
+    for (const item of CASH_DENOMINATIONS) {
+        const rawCount = cashDetails[item.key] ?? '';
+        if (rawCount === '') {
+            normalizedCashDetails[item.key] = 0;
+            continue;
+        }
+        const normalizedCount = String(rawCount).trim();
+        if (!/^\d+$/.test(normalizedCount)) {
+            return { error: `Invalid count for ${item.key}` };
+        }
+        normalizedCashDetails[item.key] = parseInt(normalizedCount, 10);
+    }
+
+    return {
+        cashDetails: normalizedCashDetails,
+        amount: calculateCashCollectionAmount(normalizedCashDetails),
+    };
+}
+
+function normalizeDateInput(value) {
+    if (!value) return null;
+    if (value instanceof Date && !Number.isNaN(value.getTime())) {
+        return value.toISOString().split('T')[0];
+    }
+    return String(value).split('T')[0].split(' ')[0];
+}
 
 async function parseAssignedCompanyIds(companyId, companyIds) {
     const requestedCompanyIds = Array.isArray(companyIds) ? companyIds : [companyId];
@@ -242,6 +299,105 @@ export const getMobileAssignedItems = async (req, res) => {
         res.status(200).json(items);
     } catch (error) {
         console.error('Error fetching delivery boy assigned items:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+};
+
+export const getMobileCollections = async (req, res) => {
+    try {
+        const collections = await DeliveryCollectionModel.getForDeliveryBoy(req.deliveryBoyId);
+        res.status(200).json(collections);
+    } catch (error) {
+        console.error('Error fetching delivery boy mobile collections:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+};
+
+export const updateMobileCollection = async (req, res) => {
+    try {
+        const saleId = Number(req.params.saleId);
+        if (!Number.isInteger(saleId) || saleId <= 0) {
+            return res.status(400).json({ error: 'saleId must be a positive integer' });
+        }
+
+        const paymentMode = String(req.body.paymentMode || '').trim().toLowerCase();
+        const allowedModes = ['cash', 'upi', 'cheque', 'credit'];
+        if (!allowedModes.includes(paymentMode)) {
+            return res.status(400).json({ error: 'Invalid payment mode' });
+        }
+
+        let amount = null;
+        let cashDetails = null;
+        let referenceNo = String(req.body.referenceNo || '').trim() || null;
+        let referenceDate = normalizeDateInput(req.body.referenceDate);
+        let creditDays = null;
+        const remarks = String(req.body.remarks || '').trim() || null;
+
+        if (paymentMode === 'cash') {
+            const cashResult = normalizeCashCollectionDetails(req.body.cashDetails || {});
+            if (cashResult.error) {
+                return res.status(400).json({ error: cashResult.error });
+            }
+            cashDetails = cashResult.cashDetails;
+            amount = cashResult.amount;
+        } else {
+            const amountValidation = validateNumeric(req.body.amount, 'Amount');
+            if (!amountValidation.valid) {
+                return res.status(400).json({ error: amountValidation.error });
+            }
+            if (amountValidation.value <= 0) {
+                return res.status(400).json({ error: 'Amount must be greater than zero' });
+            }
+            amount = amountValidation.value;
+        }
+
+        if (paymentMode === 'cheque' && !referenceNo) {
+            return res.status(400).json({ error: 'Cheque number is required' });
+        }
+
+        if (paymentMode === 'credit') {
+            const creditDaysValidation = validatePositiveInteger(req.body.creditDays, 'Credit days');
+            if (!creditDaysValidation.valid) {
+                return res.status(400).json({ error: creditDaysValidation.error });
+            }
+            creditDays = creditDaysValidation.value;
+        }
+
+        const collection = await DeliveryCollectionModel.upsertForDeliveryBoy(
+            req.deliveryBoyId,
+            saleId,
+            {
+                paymentMode,
+                amount,
+                cashDetails,
+                referenceNo,
+                referenceDate,
+                creditDays,
+                remarks,
+            }
+        );
+
+        if (!collection) {
+            return res.status(404).json({ error: 'Assigned delivery item not found' });
+        }
+
+        res.status(200).json({
+            message: 'Collection updated successfully',
+            collection,
+        });
+    } catch (error) {
+        console.error('Error updating delivery boy collection:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+};
+
+export const getDeliveryBoyCollections = async (req, res) => {
+    try {
+        const search = String(req.query.search || '').trim();
+        const collections = await DeliveryCollectionModel.getAll({ search });
+        res.status(200).json(collections);
+    } catch (error) {
+        console.error('Error fetching delivery boy collections:', error);
         res.status(500).json({ error: 'Internal server error' });
     }
 };

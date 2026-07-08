@@ -65,6 +65,7 @@ function Delivered() {
   const [cancelReportOpen, setCancelReportOpen] = useState(false);
   const [activeTab, setActiveTab] = useState("delivered");
   const [page, setPage] = useState(1);
+  const [rowsPerPage, setRowsPerPage] = useState(ROWS_PER_PAGE);
   const API = "https://bawarchee.edunextg.co/api";
 
   const getTodayLocalDate = () => {
@@ -160,6 +161,7 @@ function Delivered() {
     selectedStaffId,
     cancelRangeStart,
     cancelRangeEnd,
+    rowsPerPage,
   ]);
 
   const companyOptions = useMemo(() => {
@@ -266,12 +268,18 @@ function Delivered() {
   const pendingDeliveryTotal = filteredSales.filter((row) => row.packaging_status === "out_for_delivery").length;
   const cancelledTotal = filteredCancelledSales.length;
   const returnedTotal = filteredSales.filter((row) => row.packaging_status === "returned").length;
+  const pendingSales = filteredSales.filter((row) => row.packaging_status === "out_for_delivery");
   const cancelledSales = filteredCancelledSales;
-  const activeList = activeTab === "delivered" ? filteredSales : cancelledSales;
-  const totalPages = Math.max(1, Math.ceil(activeList.length / ROWS_PER_PAGE));
+  const activeList =
+    activeTab === "cancelled"
+      ? cancelledSales
+      : activeTab === "pending"
+        ? pendingSales
+        : filteredSales;
+  const totalPages = Math.max(1, Math.ceil(activeList.length / rowsPerPage));
   const paginatedActiveList = activeList.slice(
-    (page - 1) * ROWS_PER_PAGE,
-    page * ROWS_PER_PAGE
+    (page - 1) * rowsPerPage,
+    page * rowsPerPage
   );
   const cancelledAmount = cancelledSales.reduce(
     (total, row) => total + (Number(row.price) || 0),
@@ -550,6 +558,7 @@ function Delivered() {
                   }}
                 >
                   <Tab label="Active Deliveries" value="delivered" />
+                  <Tab label={`Pending Delivery (${pendingDeliveryTotal})`} value="pending" />
                   <Tab
                     label={`Cancelled Items (${cancelledTotal})`}
                     value="cancelled"
@@ -636,10 +645,11 @@ function Delivered() {
                         px={2}
                         py={1.25}
                         borderRadius="lg"
-                        sx={{ backgroundColor: "#eff6ff", border: "1px solid #bfdbfe" }}
+                        onClick={() => setActiveTab("pending")}
+                        sx={{ backgroundColor: "#eff6ff", border: "1px solid #bfdbfe", cursor: "pointer" }}
                       >
                         <MDTypography variant="caption" color="text">
-                          Pending Deliver
+                          Pending Delivery
                         </MDTypography>
                         <MDTypography variant="h5" color="info" fontWeight="bold">
                           {pendingDeliveryTotal}
@@ -729,7 +739,7 @@ function Delivered() {
                             }}
                           >
                             <TableCell align="center" sx={{ borderBottom: "1px solid #cbd5e1", py: 2 }}>
-                              {(page - 1) * ROWS_PER_PAGE + index + 1}
+                              {(page - 1) * rowsPerPage + index + 1}
                             </TableCell>
                             <TableCell sx={{ borderBottom: "1px solid #cbd5e1", py: 2 }}>{row.staff_name}</TableCell>
                             <TableCell sx={{ borderBottom: "1px solid #cbd5e1", py: 2, fontWeight: "medium" }}>{row.outlet_name}</TableCell>
@@ -766,7 +776,7 @@ function Delivered() {
                               ) : row.packaging_status === 'delivered' ? (
                                 <Chip label="Delivered" color="success" variant="outlined" size="small" />
                               ) : row.packaging_status === 'out_for_delivery' ? (
-                                <Chip label="In Transit" color="warning" variant="outlined" size="small" />
+                                <Chip label="Pending Delivery" color="warning" variant="outlined" size="small" />
                               ) : (
                                 <Chip label={row.packaging_status || "Unknown"} color="default" variant="outlined" size="small" />
                               )}
@@ -807,6 +817,8 @@ function Delivered() {
                   totalPages={totalPages}
                   total={activeList.length}
                   onPageChange={setPage}
+                  limit={rowsPerPage}
+                  onLimitChange={setRowsPerPage}
                 />
                 </>
                 ) : (
@@ -861,7 +873,7 @@ function Delivered() {
                                 sx={{ backgroundColor: "#fff7f7", "&:last-child td, &:last-child th": { border: 0 } }}
                               >
                                 <TableCell align="center" sx={{ borderBottom: "1px solid #fecaca", py: 2 }}>
-                                  {(page - 1) * ROWS_PER_PAGE + index + 1}
+                                  {(page - 1) * rowsPerPage + index + 1}
                                 </TableCell>
                                 <TableCell sx={{ borderBottom: "1px solid #fecaca", py: 2 }}>
                                   {row.staff_name || "N/A"}
@@ -912,6 +924,8 @@ function Delivered() {
                       totalPages={totalPages}
                       total={activeList.length}
                       onPageChange={setPage}
+                      limit={rowsPerPage}
+                      onLimitChange={setRowsPerPage}
                     />
                   </MDBox>
                 )}

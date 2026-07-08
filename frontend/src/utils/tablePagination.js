@@ -1,9 +1,13 @@
 import Pagination from "@mui/material/Pagination";
 import Stack from "@mui/material/Stack";
+import FormControl from "@mui/material/FormControl";
+import Select from "@mui/material/Select";
+import MenuItem from "@mui/material/MenuItem";
 import MDBox from "components/MDBox";
 import MDTypography from "components/MDTypography";
 
 export const ROWS_PER_PAGE = 10;
+export const ROWS_PER_PAGE_OPTIONS = [10, 25, 50, 100];
 
 export const paginatedTableContainerSx = {
   boxShadow: "none",
@@ -74,7 +78,15 @@ export function getPageSliceMeta(page, total, limit = ROWS_PER_PAGE) {
   return { entriesStart, entriesEnd };
 }
 
-export function TablePaginationFooter({ page, totalPages, total, onPageChange, limit = ROWS_PER_PAGE }) {
+export function TablePaginationFooter({
+  page,
+  totalPages,
+  total,
+  onPageChange,
+  limit = ROWS_PER_PAGE,
+  onLimitChange,
+  rowsPerPageOptions = ROWS_PER_PAGE_OPTIONS,
+}) {
   const { entriesStart, entriesEnd } = getPageSliceMeta(page, total, limit);
 
   return (
@@ -86,9 +98,31 @@ export function TablePaginationFooter({ page, totalPages, total, onPageChange, l
       gap={2}
       mt={2}
     >
-      <MDTypography variant="button" color="text" fontWeight="regular">
-        Showing {entriesStart} to {entriesEnd} of {total} entries
-      </MDTypography>
+      <MDBox display="flex" alignItems="center" gap={2} flexWrap="wrap">
+        <MDTypography variant="button" color="text" fontWeight="regular">
+          Showing {entriesStart} to {entriesEnd} of {total} entries
+        </MDTypography>
+        {onLimitChange && (
+          <MDBox display="flex" alignItems="center" gap={1}>
+            <MDTypography variant="caption" color="text">
+              Rows per page
+            </MDTypography>
+            <FormControl size="small" sx={{ minWidth: 72 }}>
+              <Select
+                value={limit}
+                onChange={(event) => onLimitChange(Number(event.target.value))}
+                sx={{ height: 32, fontSize: "0.8125rem" }}
+              >
+                {rowsPerPageOptions.map((option) => (
+                  <MenuItem key={option} value={option}>
+                    {option}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+          </MDBox>
+        )}
+      </MDBox>
       {totalPages > 1 && (
         <Stack spacing={1} alignItems={{ xs: "flex-start", sm: "flex-end" }}>
           <MDTypography variant="caption" color="text">

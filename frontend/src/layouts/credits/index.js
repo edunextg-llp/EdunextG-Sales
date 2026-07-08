@@ -52,6 +52,7 @@ function CreditsPage() {
   const [loadingRemarks, setLoadingRemarks] = useState(false);
   const [savingRemarks, setSavingRemarks] = useState(false);
   const [page, setPage] = useState(1);
+  const [rowsPerPage, setRowsPerPage] = useState(ROWS_PER_PAGE);
   const API = "https://bawarchee.edunextg.co/api";
 
   const getTodayLocalDate = () => {
@@ -82,7 +83,7 @@ function CreditsPage() {
 
   useEffect(() => {
     setPage(1);
-  }, [searchQuery, selectedCompanyId, selectedStaffId]);
+  }, [searchQuery, selectedCompanyId, selectedStaffId, rowsPerPage]);
 
   const getStatus = (saleDateStr, creditDays) => {
     if (!creditDays) return <Chip label="No Term" size="small" variant="outlined" />;
@@ -376,10 +377,10 @@ function CreditsPage() {
     )
   });
 
-  const totalPages = Math.max(1, Math.ceil(filteredCredits.length / ROWS_PER_PAGE));
+  const totalPages = Math.max(1, Math.ceil(filteredCredits.length / rowsPerPage));
   const paginatedCredits = filteredCredits.slice(
-    (page - 1) * ROWS_PER_PAGE,
-    page * ROWS_PER_PAGE
+    (page - 1) * rowsPerPage,
+    page * rowsPerPage
   );
 
   const totalCreditDuesAmount = filteredCredits.reduce(
@@ -1140,7 +1141,7 @@ function CreditsPage() {
                     <TableBody>
                       {paginatedCredits.map((credit, index) => (
                         <TableRow key={credit.id} sx={getCreditRowSx(credit)}>
-                          <TableCell align="center">{(page - 1) * ROWS_PER_PAGE + index + 1}</TableCell>
+                          <TableCell align="center">{(page - 1) * rowsPerPage + index + 1}</TableCell>
                           <TableCell align="left">{credit.outlet_name}</TableCell>
                           <TableCell align="center">{credit.outlet_erp_id || "N/A"}</TableCell>
                           <TableCell align="center">{credit.contact_number || "N/A"}</TableCell>
@@ -1200,6 +1201,8 @@ function CreditsPage() {
                     totalPages={totalPages}
                     total={filteredCredits.length}
                     onPageChange={setPage}
+                    limit={rowsPerPage}
+                    onLimitChange={setRowsPerPage}
                   />
                 </TableContainer>
               </MDBox>

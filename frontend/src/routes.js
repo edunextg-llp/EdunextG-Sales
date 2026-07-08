@@ -18,6 +18,7 @@ import BankDeposit from "layouts/bank-deposit";
 import Packaging from "layouts/packaging";
 import Delivery from "layouts/delivery";
 import Delivered from "layouts/delivered";
+import DBCollection from "layouts/db-collection";
 // import Reports from "layouts/reports";
 import DmsStock from "layouts/dms-stock";
 import CurrentStock from "layouts/current-stock";
@@ -186,6 +187,14 @@ const routes = [
     icon: <Icon fontSize="small">edit_note</Icon>,
     route: "/update-payment",
     component: <UpdatePayment />,
+  },
+  {
+    type: "collapse",
+    name: "D.B. Collection",
+    key: "db-collection",
+    icon: <Icon fontSize="small">payments</Icon>,
+    route: "/db-collection",
+    component: <DBCollection />,
   },
 
   {

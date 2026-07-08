@@ -173,6 +173,27 @@ export async function ensureSchema() {
             );
         `);
 
+        await connection.query(`
+            CREATE TABLE IF NOT EXISTS delivery_boy_collections (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                sale_id INT NOT NULL,
+                delivery_boy_id INT NOT NULL,
+                payment_mode ENUM('cash', 'upi', 'credit', 'cheque') NOT NULL,
+                amount DECIMAL(10, 2) NOT NULL DEFAULT 0.00,
+                cash_details JSON NULL,
+                reference_no VARCHAR(100) NULL,
+                reference_date DATE NULL,
+                credit_days INT NULL,
+                remarks TEXT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                UNIQUE KEY uq_delivery_boy_collections_sale_delivery (sale_id, delivery_boy_id),
+                INDEX idx_delivery_boy_collections_delivery_boy_id (delivery_boy_id),
+                FOREIGN KEY (sale_id) REFERENCES staff_sales(id) ON DELETE CASCADE,
+                FOREIGN KEY (delivery_boy_id) REFERENCES delivery_boys(id) ON DELETE CASCADE
+            );
+        `);
+
         await tryQuery(
             connection,
             `

@@ -38,6 +38,7 @@ function Delivery() {
   const [historyDialog, setHistoryDialog] = useState({ open: false, sale: null, history: [] });
   const [savingSaleIds, setSavingSaleIds] = useState(new Set());
   const [page, setPage] = useState(1);
+  const [rowsPerPage, setRowsPerPage] = useState(ROWS_PER_PAGE);
   const API = "https://bawarchee.edunextg.co/api";
 
   const statusLabels = {
@@ -127,7 +128,7 @@ function Delivery() {
 
   useEffect(() => {
     setPage(1);
-  }, [searchQuery]);
+  }, [searchQuery, rowsPerPage]);
 
   useSalesPolling(fetchSales);
 
@@ -250,10 +251,10 @@ function Delivery() {
     );
   });
 
-  const totalPages = Math.max(1, Math.ceil(filteredSales.length / ROWS_PER_PAGE));
+  const totalPages = Math.max(1, Math.ceil(filteredSales.length / rowsPerPage));
   const paginatedSales = filteredSales.slice(
-    (page - 1) * ROWS_PER_PAGE,
-    page * ROWS_PER_PAGE
+    (page - 1) * rowsPerPage,
+    page * rowsPerPage
   );
 
   return (
@@ -320,7 +321,7 @@ function Delivery() {
                               }}
                             >
                               <TableCell align="center" sx={{ borderBottom: borderCol, py: 2, color: txColor }}>
-                                {(page - 1) * ROWS_PER_PAGE + index + 1}
+                                {(page - 1) * rowsPerPage + index + 1}
                               </TableCell>
                               <TableCell sx={{ borderBottom: borderCol, py: 2, color: txColor }}>
                                 {row.staff_name}
@@ -402,6 +403,8 @@ function Delivery() {
                   totalPages={totalPages}
                   total={filteredSales.length}
                   onPageChange={setPage}
+                  limit={rowsPerPage}
+                  onLimitChange={setRowsPerPage}
                 />
               </MDBox>
             </Card>

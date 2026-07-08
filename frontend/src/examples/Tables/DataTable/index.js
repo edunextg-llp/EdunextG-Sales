@@ -46,6 +46,7 @@ function DataTable({
   table,
   pagination,
   isSorted,
+  showSerialColumn,
   noEndBorder,
 }) {
   const defaultValue = entriesPerPage.defaultValue ? entriesPerPage.defaultValue : 10;
@@ -187,6 +188,11 @@ function DataTable({
         <MDBox component="thead">
           {headerGroups.map((headerGroup, key) => (
             <TableRow key={key} {...headerGroup.getHeaderGroupProps()}>
+              {showSerialColumn && (
+                <DataTableHeadCell width="70px" align="center" sorted={false}>
+                  Sr No
+                </DataTableHeadCell>
+              )}
               {headerGroup.headers.map((column, idx) => (
                 <DataTableHeadCell
                   key={idx}
@@ -206,6 +212,14 @@ function DataTable({
             prepareRow(row);
             return (
               <TableRow key={key} {...row.getRowProps()}>
+                {showSerialColumn && (
+                  <DataTableBodyCell
+                    noBorder={noEndBorder && rows.length - 1 === key}
+                    align="center"
+                  >
+                    {pageIndex * pageSize + key + 1}
+                  </DataTableBodyCell>
+                )}
                 {row.cells.map((cell, idx) => (
                   <DataTableBodyCell
                     key={idx}
@@ -276,6 +290,7 @@ DataTable.defaultProps = {
   showTotalEntries: true,
   pagination: { variant: "gradient", color: "info" },
   isSorted: true,
+  showSerialColumn: true,
   noEndBorder: false,
 };
 
@@ -305,6 +320,7 @@ DataTable.propTypes = {
     ]),
   }),
   isSorted: PropTypes.bool,
+  showSerialColumn: PropTypes.bool,
   noEndBorder: PropTypes.bool,
 };
 

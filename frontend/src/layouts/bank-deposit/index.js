@@ -284,6 +284,7 @@ function BankDeposit() {
   const [depositTotalStartDate, setDepositTotalStartDate] = useState("");
   const [depositTotalEndDate, setDepositTotalEndDate] = useState(() => getTodayLocalDate());
   const [depositsPage, setDepositsPage] = useState(1);
+  const [rowsPerPage, setRowsPerPage] = useState(ROWS_PER_PAGE);
   const API = "https://bawarchee.edunextg.co/api";
 
   const cashAmount = useMemo(
@@ -389,10 +390,10 @@ function BankDeposit() {
 
   const totalDepositAmount = cashDepositTotal + chequeDepositTotal + upiDepositTotal;
 
-  const depositsTotalPages = Math.max(1, Math.ceil(deposits.length / ROWS_PER_PAGE));
+  const depositsTotalPages = Math.max(1, Math.ceil(deposits.length / rowsPerPage));
   const paginatedDeposits = deposits.slice(
-    (depositsPage - 1) * ROWS_PER_PAGE,
-    depositsPage * ROWS_PER_PAGE
+    (depositsPage - 1) * rowsPerPage,
+    depositsPage * rowsPerPage
   );
 
   const fetchDeposits = async () => {
@@ -413,7 +414,7 @@ function BankDeposit() {
 
   useEffect(() => {
     setDepositsPage(1);
-  }, [deposits.length]);
+  }, [deposits.length, rowsPerPage]);
 
   useEffect(() => {
     if (depositTotalStartDate) return;
@@ -1264,7 +1265,7 @@ function BankDeposit() {
                       {paginatedDeposits.length > 0 ? (
                         paginatedDeposits.map((deposit, index) => (
                           <TableRow key={deposit.id}>
-                            <TableCell sx={tableBodySx}>{(depositsPage - 1) * ROWS_PER_PAGE + index + 1}</TableCell>
+                            <TableCell sx={tableBodySx}>{(depositsPage - 1) * rowsPerPage + index + 1}</TableCell>
                             <TableCell sx={{ ...tableBodySx, fontWeight: 700 }}>
                               {deposit.deposit_ref_no || "N/A"}
                             </TableCell>
@@ -1334,6 +1335,8 @@ function BankDeposit() {
                   totalPages={depositsTotalPages}
                   total={deposits.length}
                   onPageChange={setDepositsPage}
+                  limit={rowsPerPage}
+                  onLimitChange={setRowsPerPage}
                 />
               </MDBox>
             </Card>
