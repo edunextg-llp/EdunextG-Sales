@@ -702,7 +702,7 @@ function Delivered() {
                   </Grid>
                 </Grid>
 
-                {activeTab === "delivered" ? (
+                {activeTab !== "cancelled" ? (
                 <>
                 <TableContainer component={Paper} sx={paginatedTableContainerSx}>
                   <Table stickyHeader sx={{ minWidth: 650 }}>
@@ -804,7 +804,9 @@ function Delivered() {
                         <TableRow>
                           <TableCell colSpan={16} align="center" sx={{ py: 3, borderBottom: 0 }}>
                             <MDTypography variant="body2" color="text">
-                              No delivered items found.
+                              {activeTab === "pending"
+                                ? "No pending delivery items found."
+                                : "No delivered items found."}
                             </MDTypography>
                           </TableCell>
                         </TableRow>
