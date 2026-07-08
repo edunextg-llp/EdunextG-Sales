@@ -61,6 +61,8 @@ function Delivered() {
   const [selectedStaffId, setSelectedStaffId] = useState("");
   const [cancelRangeStart, setCancelRangeStart] = useState("");
   const [cancelRangeEnd, setCancelRangeEnd] = useState("");
+  const [deliveryRangeStart, setDeliveryRangeStart] = useState("");
+  const [deliveryRangeEnd, setDeliveryRangeEnd] = useState("");
   const [updatingSaleIds, setUpdatingSaleIds] = useState(new Set());
   const [cancelReportOpen, setCancelReportOpen] = useState(false);
   const [activeTab, setActiveTab] = useState("delivered");
@@ -161,6 +163,8 @@ function Delivered() {
     selectedStaffId,
     cancelRangeStart,
     cancelRangeEnd,
+    deliveryRangeStart,
+    deliveryRangeEnd,
     rowsPerPage,
   ]);
 
@@ -212,9 +216,21 @@ function Delivered() {
     setSelectedStaffId("");
   };
 
+  const matchesDeliveryDateRange = (row) => {
+    const deliveryDate = getDateOnly(row.delivery_date);
+    if (deliveryRangeStart && (!deliveryDate || deliveryDate < deliveryRangeStart)) {
+      return false;
+    }
+    if (deliveryRangeEnd && (!deliveryDate || deliveryDate > deliveryRangeEnd)) {
+      return false;
+    }
+    return true;
+  };
+
   const filteredSales = salesData.filter((row) => {
     const st = row.packaging_status;
     if (st !== 'out_for_delivery' && st !== 'delivered' && st !== 'returned') return false;
+    if (!matchesDeliveryDateRange(row)) return false;
 
     const search = searchQuery.toLowerCase();
     const outletName = row.outlet_name ? row.outlet_name.toLowerCase() : "";
@@ -291,6 +307,12 @@ function Delivered() {
     cancelRangeStart || cancelRangeEnd
       ? `${cancelRangeStart ? formatDate(cancelRangeStart) : "Start"} to ${
           cancelRangeEnd ? formatDate(cancelRangeEnd) : "Today"
+        }`
+      : "All Dates";
+  const deliveryRangeLabel =
+    deliveryRangeStart || deliveryRangeEnd
+      ? `${deliveryRangeStart ? formatDate(deliveryRangeStart) : "Start"} to ${
+          deliveryRangeEnd ? formatDate(deliveryRangeEnd) : "Today"
         }`
       : "All Dates";
 
@@ -577,6 +599,30 @@ function Delivered() {
                       onChange={(e) => setSearchQuery(e.target.value)}
                     />
                   </Grid>
+                  {activeTab !== "cancelled" && (
+                    <>
+                      <Grid item xs={12} md={2}>
+                        <MDInput
+                          type="date"
+                          label="Delivery From"
+                          fullWidth
+                          InputLabelProps={{ shrink: true }}
+                          value={deliveryRangeStart}
+                          onChange={(e) => setDeliveryRangeStart(e.target.value)}
+                        />
+                      </Grid>
+                      <Grid item xs={12} md={2}>
+                        <MDInput
+                          type="date"
+                          label="Delivery To"
+                          fullWidth
+                          InputLabelProps={{ shrink: true }}
+                          value={deliveryRangeEnd}
+                          onChange={(e) => setDeliveryRangeEnd(e.target.value)}
+                        />
+                      </Grid>
+                    </>
+                  )}
                   {activeTab === "cancelled" && (
                     <>
                       <Grid item xs={12} md={2}>
@@ -704,6 +750,12 @@ function Delivered() {
 
                 {activeTab !== "cancelled" ? (
                 <>
+                {(deliveryRangeStart || deliveryRangeEnd) && (
+                  <MDTypography variant="body2" color="text" mb={2}>
+                    Delivery date: {deliveryRangeLabel}
+                    {activeTab === "pending" ? " · Pending only" : " · Delivered, pending, and returned"}
+                  </MDTypography>
+                )}
                 <TableContainer component={Paper} sx={paginatedTableContainerSx}>
                   <Table stickyHeader sx={{ minWidth: 650 }}>
                     <TableHead sx={paginatedTableHeadSx()}>
