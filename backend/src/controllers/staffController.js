@@ -1700,3 +1700,53 @@ export const getOrderCancellations = async (req, res) => {
         res.status(500).json({ error: 'Internal server error' });
     }
 };
+
+export const recordTakenBills = async (req, res) => {
+    try {
+        const { paymentIds, staffId, takenDate } = req.body;
+
+        if (!Array.isArray(paymentIds) || paymentIds.length === 0) {
+            return res.status(400).json({ error: 'Please select one or more bills.' });
+        }
+
+        const staffValidation = validatePositiveInteger(staffId, 'Staff');
+        if (!staffValidation.valid) {
+            return res.status(400).json({ error: staffValidation.error });
+        }
+
+        if (!takenDate) {
+            return res.status(400).json({ error: 'Please choose taken date.' });
+        }
+
+        await StaffModel.recordTakenBills(paymentIds, staffValidation.value, takenDate);
+
+        res.status(200).json({ message: 'Bills recorded as taken successfully' });
+    } catch (error) {
+        console.error('Error recording taken bills:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+};
+
+export const getTakenBillsReport = async (req, res) => {
+    try {
+        const { startDate, endDate, staffId } = req.query;
+
+        if (!startDate || !endDate) {
+            return res.status(400).json({ error: 'Start date and end date are required.' });
+        }
+
+        let parsedStaffId = null;
+        if (staffId) {
+            const staffValidation = validatePositiveInteger(staffId, 'Staff');
+            if (staffValidation.valid) {
+                parsedStaffId = staffValidation.value;
+            }
+        }
+
+        const report = await StaffModel.getTakenBillsReport(startDate, endDate, parsedStaffId);
+        res.status(200).json(report);
+    } catch (error) {
+        console.error('Error fetching taken bills report:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+};

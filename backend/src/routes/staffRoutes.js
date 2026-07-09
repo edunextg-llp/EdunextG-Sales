@@ -15,6 +15,8 @@ router.post('/', staffController.createStaff);
 router.get('/', staffController.getStaff);
 router.get('/search', staffController.searchStaff);
 router.get('/credits/pending', staffController.getPendingCredits);
+router.post('/credits/take', staffController.recordTakenBills);
+router.get('/credits/taken', staffController.getTakenBillsReport);
 router.get('/credits/:paymentId/remarks', staffController.getCreditRemarks);
 router.put('/credits/:paymentId/remarks', staffController.updateCreditRemarks);
 router.get('/bank-deposits', staffController.getBankDeposits);

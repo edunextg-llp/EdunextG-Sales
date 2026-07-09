@@ -809,6 +809,49 @@ class StaffModel {
         );
         return rows;
     }
+
+    static async recordTakenBills(paymentIds, staffId, takenDate) {
+        const values = paymentIds.map(id => [id, staffId, takenDate]);
+        await db.query(
+            "INSERT INTO taken_bills (payment_id, staff_id, taken_date) VALUES ?",
+            [values]
+        );
+    }
+
+    static async getTakenBillsReport(startDate, endDate, staffId = null) {
+        let query = `
+            SELECT tb.id, DATE_FORMAT(tb.taken_date, '%Y-%m-%d') AS taken_date,
+                   sp.amount AS credit_amount,
+                   GREATEST(0, sp.amount - COALESCE(credit_paid.paid_amount, 0)) AS balance_amount,
+                   DATE_FORMAT(sp.payment_date, '%Y-%m-%d') AS sale_date, sp.credit_days,
+                   ss.invoice_number, ss.sticker_number,
+                   sc.outlet_name, sc.outlet_erp_id, sc.contact_number,
+                   s.name AS staff_name, s.id AS staff_id
+            FROM taken_bills tb
+            JOIN sale_payments sp ON tb.payment_id = sp.id
+            JOIN staff_sales ss ON sp.sale_id = ss.id
+            LEFT JOIN staff_counters sc ON ss.outlet_id = sc.id
+            JOIN staff s ON tb.staff_id = s.id
+            LEFT JOIN (
+                SELECT parent_credit_payment_id,
+                       SUM(amount) AS paid_amount
+                FROM sale_payments
+                WHERE parent_credit_payment_id IS NOT NULL
+                  AND payment_mode IN ('cash', 'upi', 'cheque')
+                GROUP BY parent_credit_payment_id
+            ) credit_paid ON credit_paid.parent_credit_payment_id = sp.id
+            WHERE tb.taken_date BETWEEN ? AND ?
+        `;
+        const params = [startDate, endDate];
+        if (staffId) {
+            query += " AND tb.staff_id = ?";
+            params.push(staffId);
+        }
+        query += " ORDER BY tb.taken_date DESC, tb.id DESC";
+        
+        const [rows] = await db.execute(query, params);
+        return rows;
+    }
 }
 
 export default StaffModel;

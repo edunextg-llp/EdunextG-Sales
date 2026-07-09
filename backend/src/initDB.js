@@ -876,7 +876,6 @@ async function initDB() {
         console.log('Balance initialization skipped or already applied');
     }
 
-    await connection.query(`
         CREATE TABLE IF NOT EXISTS sticker_sequence (
             id INT PRIMARY KEY,
             seq_value INT NOT NULL DEFAULT 0
@@ -886,6 +885,19 @@ async function initDB() {
         INSERT IGNORE INTO sticker_sequence (id, seq_value) VALUES (1, 0)
     `);
     console.log('Sticker sequence table ready');
+
+    await connection.query(`
+        CREATE TABLE IF NOT EXISTS taken_bills (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            payment_id INT NOT NULL,
+            staff_id INT NOT NULL,
+            taken_date DATE NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (payment_id) REFERENCES sale_payments(id) ON DELETE CASCADE,
+            FOREIGN KEY (staff_id) REFERENCES staff(id) ON DELETE CASCADE
+        );
+    `);
+    console.log('Taken bills table ready');
 
     await connection.end();
 }

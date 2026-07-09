@@ -751,6 +751,18 @@ export async function ensureSchema() {
             );
         `);
 
+        await connection.query(`
+            CREATE TABLE IF NOT EXISTS taken_bills (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                payment_id INT NOT NULL,
+                staff_id INT NOT NULL,
+                taken_date DATE NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (payment_id) REFERENCES sale_payments(id) ON DELETE CASCADE,
+                FOREIGN KEY (staff_id) REFERENCES staff(id) ON DELETE CASCADE
+            );
+        `);
+
         console.log('Database schema verified');
     } finally {
         await connection.end();

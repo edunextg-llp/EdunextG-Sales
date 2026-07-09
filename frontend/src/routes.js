@@ -14,6 +14,7 @@ import Purchase from "layouts/purchase";
 import AddDeliveryBoy from "layouts/add-delivery-boy";
 import UpdatePayment from "layouts/update-payment";
 import Credits from "layouts/credits";
+import OutBill from "layouts/out-bill";
 import BankDeposit from "layouts/bank-deposit";
 import Packaging from "layouts/packaging";
 import Delivery from "layouts/delivery";
@@ -204,6 +205,14 @@ const routes = [
     icon: <Icon fontSize="small">price_change</Icon>,
     route: "/credits",
     component: <Credits />,
+  },
+  {
+    type: "collapse",
+    name: "Out Bill",
+    key: "out-bill",
+    icon: <Icon fontSize="small">receipt_long</Icon>,
+    route: "/out-bill",
+    component: <OutBill />,
   },
   {
     type: "collapse",
