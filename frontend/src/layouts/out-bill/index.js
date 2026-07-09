@@ -424,11 +424,6 @@ function OutBillPage() {
     reportPage * reportRowsPerPage
   );
 
-  const totalPendingAmount = filteredCredits.reduce(
-    (sum, c) => sum + (Number(c.balance_amount) || 0),
-    0
-  );
-
   const totalTakenAmount = takenBills.reduce(
     (sum, b) => sum + (Number(b.balance_amount) || 0),
     0
@@ -609,6 +604,13 @@ function OutBillPage() {
                       <TableHead sx={paginatedTableHeadSx()}>
                         <TableRow>
                           <TableCell align="center" sx={{ ...paginatedTableHeadCellSx, width: 56 }}>
+                            <Checkbox
+                              checked={isAllSelected}
+                              indeterminate={isSomeSelected}
+                              onChange={handleSelectAllToggle}
+                            />
+                          </TableCell>
+                          <TableCell align="center" sx={{ ...paginatedTableHeadCellSx, width: 56 }}>
                             Sr No
                           </TableCell>
                           <TableCell align="left" sx={paginatedTableHeadCellSx}>Outlet Name</TableCell>
@@ -621,21 +623,17 @@ function OutBillPage() {
                           <TableCell align="center" sx={paginatedTableHeadCellSx}>Issue Date</TableCell>
                           <TableCell align="center" sx={paginatedTableHeadCellSx}>Due Date</TableCell>
                           <TableCell align="center" sx={paginatedTableHeadCellSx}>Status</TableCell>
-                          <TableCell align="center" sx={paginatedTableHeadCellSx}>
-                            <MDBox display="flex" alignItems="center" justifyContent="center" gap={0.5}>
-                              <Checkbox
-                                checked={isAllSelected}
-                                indeterminate={isSomeSelected}
-                                onChange={handleSelectAllToggle}
-                              />
-                              Action
-                            </MDBox>
-                          </TableCell>
                         </TableRow>
                       </TableHead>
                       <TableBody>
                         {paginatedCredits.map((credit, index) => (
                           <TableRow key={credit.id} sx={getCreditRowSx(credit)}>
+                            <TableCell align="center">
+                              <Checkbox
+                                checked={selectedCreditIds.includes(credit.id)}
+                                onChange={() => handleCheckboxToggle(credit.id)}
+                              />
+                            </TableCell>
                             <TableCell align="center">{(page - 1) * rowsPerPage + index + 1}</TableCell>
                             <TableCell align="left">{credit.outlet_name}</TableCell>
                             <TableCell align="center">{credit.outlet_erp_id || "N/A"}</TableCell>
@@ -655,12 +653,6 @@ function OutBillPage() {
                             </TableCell>
                             <TableCell align="center">
                               {getStatus(credit.sale_date, credit.credit_days)}
-                            </TableCell>
-                            <TableCell align="center">
-                              <Checkbox
-                                checked={selectedCreditIds.includes(credit.id)}
-                                onChange={() => handleCheckboxToggle(credit.id)}
-                              />
                             </TableCell>
                           </TableRow>
                         ))}
