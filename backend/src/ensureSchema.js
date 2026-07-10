@@ -81,6 +81,24 @@ export async function ensureSchema() {
             `ALTER TABLE staff_counters ADD COLUMN google_location TEXT NULL`,
             'google_location on staff_counters'
         );
+        await tryQuery(
+            connection,
+            `ALTER TABLE staff_counters ADD COLUMN location_name VARCHAR(255) NULL`,
+            'location_name on staff_counters'
+        );
+        await tryQuery(
+            connection,
+            `UPDATE staff_counters sc
+             INNER JOIN (
+                 SELECT staff_id, day, MIN(location_name) AS location_name
+                 FROM staff_locations
+                 GROUP BY staff_id, day
+                 HAVING COUNT(*) = 1
+             ) sl ON sl.staff_id = sc.staff_id AND sl.day = sc.day
+             SET sc.location_name = sl.location_name
+             WHERE sc.location_name IS NULL OR TRIM(sc.location_name) = ''`,
+            'backfill location_name on staff_counters'
+        );
 
         await tryQuery(
             connection,
@@ -762,6 +780,34 @@ export async function ensureSchema() {
                 FOREIGN KEY (staff_id) REFERENCES staff(id) ON DELETE CASCADE
             );
         `);
+
+        await tryQuery(
+            connection,
+            `ALTER TABLE taken_bills ADD COLUMN collector_type VARCHAR(32) NOT NULL DEFAULT 'company_staff'`,
+            'collector_type on taken_bills'
+        );
+        await tryQuery(
+            connection,
+            `ALTER TABLE taken_bills ADD COLUMN delivery_boy_id INT NULL`,
+            'delivery_boy_id on taken_bills'
+        );
+        await tryQuery(
+            connection,
+            `ALTER TABLE taken_bills MODIFY staff_id INT NULL`,
+            'nullable staff_id on taken_bills'
+        );
+        await tryQuery(
+            connection,
+            `ALTER TABLE taken_bills
+             ADD CONSTRAINT fk_taken_bills_delivery_boy
+             FOREIGN KEY (delivery_boy_id) REFERENCES delivery_boys(id) ON DELETE SET NULL`,
+            'fk_taken_bills_delivery_boy'
+        );
+        await tryQuery(
+            connection,
+            `ALTER TABLE taken_bills ADD COLUMN returned_at DATETIME NULL`,
+            'returned_at on taken_bills'
+        );
 
         console.log('Database schema verified');
     } finally {

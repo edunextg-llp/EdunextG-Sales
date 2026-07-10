@@ -115,6 +115,7 @@ async function initDB() {
             outlet_erp_id VARCHAR(50) NOT NULL,
             outlet_name VARCHAR(255) NOT NULL,
             contact_number VARCHAR(20) NOT NULL,
+            location_name VARCHAR(255) NULL,
             google_location TEXT NULL,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (staff_id) REFERENCES staff(id) ON DELETE CASCADE

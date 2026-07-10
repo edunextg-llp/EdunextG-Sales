@@ -234,12 +234,14 @@ function Delivered() {
 
     const search = searchQuery.toLowerCase();
     const outletName = row.outlet_name ? row.outlet_name.toLowerCase() : "";
+    const outletArea = row.location_name ? row.location_name.toLowerCase() : "";
     const outletErpId = row.outlet_erp_id ? row.outlet_erp_id.toLowerCase() : "";
     const staffName = row.staff_name ? row.staff_name.toLowerCase() : "";
     const saleId = row.sticker_number ? row.sticker_number.toLowerCase() : "";
     const invoiceNumber = row.invoice_number ? String(row.invoice_number).toLowerCase() : "";
     return (
       outletName.includes(search) ||
+      outletArea.includes(search) ||
       outletErpId.includes(search) ||
       staffName.includes(search) ||
       saleId.includes(search) ||
@@ -265,6 +267,7 @@ function Delivered() {
 
     const search = searchQuery.toLowerCase();
     const outletName = row.outlet_name ? row.outlet_name.toLowerCase() : "";
+    const outletArea = row.location_name ? row.location_name.toLowerCase() : "";
     const outletErpId = row.outlet_erp_id ? row.outlet_erp_id.toLowerCase() : "";
     const staffName = row.staff_name ? row.staff_name.toLowerCase() : "";
     const saleId = row.sticker_number ? row.sticker_number.toLowerCase() : "";
@@ -272,6 +275,7 @@ function Delivered() {
     const invoiceNumber = row.invoice_number ? String(row.invoice_number).toLowerCase() : "";
     return (
       outletName.includes(search) ||
+      outletArea.includes(search) ||
       outletErpId.includes(search) ||
       staffName.includes(search) ||
       saleId.includes(search) ||
@@ -382,6 +386,7 @@ function Delivered() {
             <td>${escapeHtml(formatDate(row.delivery_date || row.status_updated_at))}</td>
             <td>${escapeHtml(row.outlet_erp_id || "N/A")}</td>
             <td>${escapeHtml(row.outlet_name || "N/A")}</td>
+            <td>${escapeHtml(row.location_name || "N/A")}</td>
             <td>${escapeHtml(row.invoice_number || "N/A")}</td>
             <td class="right">Rs. ${Number(row.price || 0).toFixed(2)}</td>
           </tr>
@@ -448,6 +453,7 @@ function Delivered() {
                       <th>Cancel Date</th>
                       <th>ERP ID</th>
                       <th>Outlet Name</th>
+                      <th>Area</th>
                       <th>Invoice No</th>
                       <th class="right">Cancel Amount</th>
                     </tr>
@@ -481,7 +487,7 @@ function Delivered() {
       .map((row) => `Range Wise,${csvValue(row.name)},${row.count},${row.amount.toFixed(2)}`)
       .join("\n");
 
-    csv += "\n\nSr No,Sale ID,Staff Name,Company,Invoice Date,Cancel Date,ERP ID,Outlet Name,Invoice No,Cancel Amount\n";
+    csv += "\n\nSr No,Sale ID,Staff Name,Company,Invoice Date,Cancel Date,ERP ID,Outlet Name,Area,Invoice No,Cancel Amount\n";
     cancelledSales.forEach((row, index) => {
       csv +=
         `${index + 1},` +
@@ -492,6 +498,7 @@ function Delivered() {
         `${csvValue(formatDate(row.delivery_date || row.status_updated_at))},` +
         `${csvValue(row.outlet_erp_id || "N/A")},` +
         `${csvValue(row.outlet_name || "N/A")},` +
+        `${csvValue(row.location_name || "N/A")},` +
         `${csvValue(row.invoice_number || "N/A")},` +
         `${Number(row.price || 0).toFixed(2)}\n`;
     });
@@ -593,7 +600,7 @@ function Delivered() {
                   <Grid item xs={12} md={4}>
                     <MDInput
                       type="text"
-                      label="Search by Outlet Name, ID, Staff Name, Sale ID, or Invoice No."
+                      label="Search by Outlet Name, Area, ID, Staff Name, Sale ID, or Invoice No."
                       fullWidth
                       value={searchQuery}
                       onChange={(e) => setSearchQuery(e.target.value)}
@@ -765,6 +772,7 @@ function Delivered() {
                         </TableCell>
                         <TableCell sx={paginatedTableHeadCellSx}>Staff Name</TableCell>
                         <TableCell sx={paginatedTableHeadCellSx}>Outlet Name</TableCell>
+                        <TableCell sx={paginatedTableHeadCellSx}>Area</TableCell>
                         <TableCell sx={paginatedTableHeadCellSx}>ERP ID</TableCell>
                         <TableCell align="center" sx={paginatedTableHeadCellSx}>Sale ID</TableCell>
                         <TableCell align="center" sx={paginatedTableHeadCellSx}>Invoice No</TableCell>
@@ -795,6 +803,7 @@ function Delivered() {
                             </TableCell>
                             <TableCell sx={{ borderBottom: "1px solid #cbd5e1", py: 2 }}>{row.staff_name}</TableCell>
                             <TableCell sx={{ borderBottom: "1px solid #cbd5e1", py: 2, fontWeight: "medium" }}>{row.outlet_name}</TableCell>
+                            <TableCell sx={{ borderBottom: "1px solid #cbd5e1", py: 2 }}>{row.location_name || "N/A"}</TableCell>
                             <TableCell sx={{ borderBottom: "1px solid #cbd5e1", py: 2 }}>{row.outlet_erp_id}</TableCell>
                             <TableCell align="center" sx={{ borderBottom: "1px solid #cbd5e1", py: 2, fontWeight: "bold" }}>{row.sticker_number}</TableCell>
                             <TableCell align="center" sx={{ borderBottom: "1px solid #cbd5e1", py: 2 }}>{row.invoice_number}</TableCell>
@@ -910,6 +919,7 @@ function Delivered() {
                             <TableCell sx={paginatedTableHeadCellErrorSx}>Staff Name</TableCell>
                             <TableCell sx={paginatedTableHeadCellErrorSx}>Company</TableCell>
                             <TableCell sx={paginatedTableHeadCellErrorSx}>Outlet Name</TableCell>
+                            <TableCell sx={paginatedTableHeadCellErrorSx}>Area</TableCell>
                             <TableCell sx={paginatedTableHeadCellErrorSx}>ERP ID</TableCell>
                             <TableCell align="center" sx={paginatedTableHeadCellErrorSx}>Sale ID</TableCell>
                             <TableCell align="center" sx={paginatedTableHeadCellErrorSx}>Invoice No</TableCell>
@@ -937,6 +947,9 @@ function Delivered() {
                                 </TableCell>
                                 <TableCell sx={{ borderBottom: "1px solid #fecaca", py: 2, fontWeight: "medium" }}>
                                   {row.outlet_name || "N/A"}
+                                </TableCell>
+                                <TableCell sx={{ borderBottom: "1px solid #fecaca", py: 2 }}>
+                                  {row.location_name || "N/A"}
                                 </TableCell>
                                 <TableCell sx={{ borderBottom: "1px solid #fecaca", py: 2 }}>
                                   {row.outlet_erp_id || "N/A"}
@@ -1099,6 +1112,7 @@ function Delivered() {
                   <TableCell sx={{ fontWeight: 700 }}>Staff</TableCell>
                   <TableCell sx={{ fontWeight: 700 }}>Company</TableCell>
                   <TableCell sx={{ fontWeight: 700 }}>Outlet Name</TableCell>
+                  <TableCell sx={{ fontWeight: 700 }}>Area</TableCell>
                   <TableCell align="center" sx={{ fontWeight: 700 }}>Invoice Date</TableCell>
                   <TableCell align="center" sx={{ fontWeight: 700 }}>Cancel Date</TableCell>
                   <TableCell align="center" sx={{ fontWeight: 700 }}>Invoice No</TableCell>
@@ -1115,6 +1129,7 @@ function Delivered() {
                     <TableCell>{row.staff_name || "N/A"}</TableCell>
                     <TableCell>{row.company_name || "N/A"}</TableCell>
                     <TableCell>{row.outlet_name || "N/A"}</TableCell>
+                    <TableCell>{row.location_name || "N/A"}</TableCell>
                     <TableCell align="center">{formatDate(row.sale_date)}</TableCell>
                     <TableCell align="center">{formatDate(row.delivery_date || row.status_updated_at)}</TableCell>
                     <TableCell align="center">{row.invoice_number || "N/A"}</TableCell>

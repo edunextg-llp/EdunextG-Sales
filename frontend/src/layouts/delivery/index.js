@@ -120,6 +120,7 @@ function Delivery() {
             <td>${index + 1}</td>
             <td>${escapeHtml(row.staff_name || "N/A")}</td>
             <td>${escapeHtml(row.outlet_name || "N/A")}</td>
+            <td>${escapeHtml(row.location_name || "N/A")}</td>
             <td>${escapeHtml(row.outlet_erp_id || "N/A")}</td>
             <td>${escapeHtml(row.sticker_number || "N/A")}</td>
             <td>${escapeHtml(row.invoice_number || "N/A")}</td>
@@ -177,6 +178,7 @@ function Delivery() {
             <th>Sr No</th>
             <th>Staff Name</th>
             <th>Outlet Name</th>
+            <th>Area</th>
             <th>ERP ID</th>
             <th>Sale ID</th>
             <th>Invoice No</th>
@@ -384,12 +386,14 @@ function Delivery() {
 
     const search = searchQuery.toLowerCase();
     const outletName = row.outlet_name ? row.outlet_name.toLowerCase() : "";
+    const outletArea = row.location_name ? row.location_name.toLowerCase() : "";
     const outletErpId = row.outlet_erp_id ? row.outlet_erp_id.toLowerCase() : "";
     const staffName = row.staff_name ? row.staff_name.toLowerCase() : "";
     const saleId = formatBpSaleId(row).toLowerCase();
     const invoiceNumber = row.invoice_number ? String(row.invoice_number).toLowerCase() : "";
     return (
       outletName.includes(search) ||
+      outletArea.includes(search) ||
       outletErpId.includes(search) ||
       staffName.includes(search) ||
       saleId.includes(search) ||
@@ -418,12 +422,14 @@ function Delivery() {
 
     const search = searchQuery.toLowerCase();
     const outletName = row.outlet_name ? row.outlet_name.toLowerCase() : "";
+    const outletArea = row.location_name ? row.location_name.toLowerCase() : "";
     const outletErpId = row.outlet_erp_id ? row.outlet_erp_id.toLowerCase() : "";
     const staffName = row.staff_name ? row.staff_name.toLowerCase() : "";
     const saleId = formatBpSaleId(row).toLowerCase();
     const invoiceNumber = row.invoice_number ? String(row.invoice_number).toLowerCase() : "";
     return (
       outletName.includes(search) ||
+      outletArea.includes(search) ||
       outletErpId.includes(search) ||
       staffName.includes(search) ||
       saleId.includes(search) ||
@@ -466,7 +472,7 @@ function Delivery() {
                   <Grid item xs={12} md={activeTab === "pending" ? 12 : 3}>
                     <MDInput
                       type="text"
-                      label="Search by Outlet Name, ID, Staff Name, Sale ID, or Invoice No."
+                      label="Search by Outlet Name, Area, ID, Staff Name, Sale ID, or Invoice No."
                       fullWidth
                       value={searchQuery}
                       onChange={(e) => setSearchQuery(e.target.value)}
@@ -538,6 +544,7 @@ function Delivery() {
                         </TableCell>
                         <TableCell sx={paginatedTableHeadCellSx}>Staff Name</TableCell>
                         <TableCell sx={paginatedTableHeadCellSx}>Outlet Name</TableCell>
+                        <TableCell sx={paginatedTableHeadCellSx}>Area</TableCell>
                         <TableCell sx={paginatedTableHeadCellSx}>ERP ID</TableCell>
                         <TableCell align="center" sx={paginatedTableHeadCellSx}>Sale ID</TableCell>
                         <TableCell align="center" sx={paginatedTableHeadCellSx}>Invoice No</TableCell>
@@ -585,6 +592,9 @@ function Delivery() {
                               </TableCell>
                               <TableCell sx={{ borderBottom: borderCol, py: 2, color: txColor, fontWeight: "medium" }}>
                                 {row.outlet_name}
+                              </TableCell>
+                              <TableCell sx={{ borderBottom: borderCol, py: 2, color: txColor }}>
+                                {row.location_name || "N/A"}
                               </TableCell>
                               <TableCell sx={{ borderBottom: borderCol, py: 2, color: txColor }}>
                                 {row.outlet_erp_id}

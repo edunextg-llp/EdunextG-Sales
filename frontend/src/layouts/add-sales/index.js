@@ -143,6 +143,7 @@ function AddSales() {
     outletId: s.outlet_id,
     shopName: s.outlet_name,
     outletErpId: s.outlet_erp_id || "",
+    locationName: s.location_name || "",
     itemCount: s.item_count ?? s.itemCount ?? "",
     invoiceNumber: s.invoice_number,
     stickerNumber: s.sticker_number,
@@ -937,10 +938,13 @@ function AddSales() {
                             <TableCell align="center" sx={{ ...tableHeadSx, width: "6%" }}>
                               Sr No
                             </TableCell>
-                            <TableCell align="left" sx={{ ...tableHeadSx, width: "22%" }}>
+                            <TableCell align="left" sx={{ ...tableHeadSx, width: "18%" }}>
                               Outlet
                             </TableCell>
-                            <TableCell align="left" sx={{ ...tableHeadSx, width: "16%" }}>
+                            <TableCell align="left" sx={{ ...tableHeadSx, width: "12%" }}>
+                              Area
+                            </TableCell>
+                            <TableCell align="left" sx={{ ...tableHeadSx, width: "14%" }}>
                               Staff Name
                             </TableCell>
                             <TableCell align="left" sx={{ ...tableHeadSx, width: "12%" }}>
@@ -962,7 +966,7 @@ function AddSales() {
                             <TableRow>
                               <TableCell sx={{ ...tableBodySx, borderBottom: "1px solid #e5e7eb" }} />
                               <TableCell
-                                colSpan={5}
+                                colSpan={6}
                                 align="center"
                                 sx={{ ...tableBodySx, borderBottom: "1px solid #e5e7eb", py: 3 }}
                               >
@@ -976,7 +980,7 @@ function AddSales() {
                             <TableRow>
                               <TableCell sx={{ ...tableBodySx, borderBottom: "1px solid #e5e7eb" }} />
                               <TableCell
-                                colSpan={5}
+                                colSpan={6}
                                 align="center"
                                 sx={{ ...tableBodySx, borderBottom: "1px solid #e5e7eb", py: 3 }}
                               >
@@ -1052,6 +1056,20 @@ function AddSales() {
                                             </MDTypography>
                                           </MDBox>
                                         </MDBox>
+                                      </TableCell>
+                                    )}
+                                    {index === 0 && (
+                                      <TableCell
+                                        rowSpan={rows.length}
+                                        align="left"
+                                        sx={{
+                                          ...tableBodySx,
+                                          borderBottom: "1px solid #e5e7eb",
+                                          fontSize: "0.875rem",
+                                          color: "#374151",
+                                        }}
+                                      >
+                                        {outlet.location_name || "N/A"}
                                       </TableCell>
                                     )}
                                     {index === 0 && (
@@ -1262,10 +1280,13 @@ function AddSales() {
                             <TableCell align="center" sx={{ ...tableHeadSx, width: "6%" }}>
                               Sr No
                             </TableCell>
-                            <TableCell align="left" sx={{ ...tableHeadSx, width: "22%" }}>
+                            <TableCell align="left" sx={{ ...tableHeadSx, width: "18%" }}>
                               Outlet
                             </TableCell>
-                            <TableCell align="left" sx={{ ...tableHeadSx, width: "16%" }}>
+                            <TableCell align="left" sx={{ ...tableHeadSx, width: "12%" }}>
+                              Area
+                            </TableCell>
+                            <TableCell align="left" sx={{ ...tableHeadSx, width: "14%" }}>
                               Marketing Person
                             </TableCell>
                             <TableCell align="center" sx={{ ...tableHeadSx, width: "11%" }}>
@@ -1316,6 +1337,13 @@ function AddSales() {
                                     </MDTypography>
                                   </MDBox>
                                 </MDBox>
+                              </TableCell>
+
+                              <TableCell
+                                align="left"
+                                sx={{ ...tableBodySx, borderBottom: "1px solid #e5e7eb", fontSize: "0.875rem", color: "#374151" }}
+                              >
+                                {row.locationName || "N/A"}
                               </TableCell>
 
                               <TableCell

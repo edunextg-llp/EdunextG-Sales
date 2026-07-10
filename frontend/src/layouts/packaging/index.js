@@ -259,12 +259,14 @@ function Packaging() {
 
     const search = searchQuery.toLowerCase();
     const outletName = row.outlet_name ? row.outlet_name.toLowerCase() : "";
+    const outletArea = row.location_name ? row.location_name.toLowerCase() : "";
     const outletErpId = row.outlet_erp_id ? row.outlet_erp_id.toLowerCase() : "";
     const staffName = row.staff_name ? row.staff_name.toLowerCase() : "";
     const saleId = formatBpSaleId(row).toLowerCase();
     const invoiceNumber = row.invoice_number ? String(row.invoice_number).toLowerCase() : "";
     return (
       outletName.includes(search) ||
+      outletArea.includes(search) ||
       outletErpId.includes(search) ||
       staffName.includes(search) ||
       saleId.includes(search) ||
@@ -349,6 +351,7 @@ function Packaging() {
                         </TableCell>
                         <TableCell sx={paginatedTableHeadCellSx}>Staff Name</TableCell>
                         <TableCell sx={paginatedTableHeadCellSx}>Outlet Name</TableCell>
+                        <TableCell sx={paginatedTableHeadCellSx}>Area</TableCell>
                         <TableCell sx={paginatedTableHeadCellSx}>ERP ID</TableCell>
                         {dateFilterMode === "all" && (
                           <TableCell sx={paginatedTableHeadCellSx}>Sale Date</TableCell>
@@ -407,6 +410,9 @@ function Packaging() {
                               </TableCell>
                               <TableCell sx={{ borderBottom: borderCol, py: 2, color: txColor, fontWeight: "medium" }}>
                                 {row.outlet_name}
+                              </TableCell>
+                              <TableCell sx={{ borderBottom: borderCol, py: 2, color: txColor }}>
+                                {row.location_name || "N/A"}
                               </TableCell>
                               <TableCell sx={{ borderBottom: borderCol, py: 2, color: txColor }}>
                                 {row.outlet_erp_id}

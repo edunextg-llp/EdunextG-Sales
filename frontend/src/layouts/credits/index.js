@@ -45,6 +45,9 @@ function CreditsPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCompanyId, setSelectedCompanyId] = useState("");
   const [selectedStaffId, setSelectedStaffId] = useState("");
+  const [selectedArea, setSelectedArea] = useState("");
+  const [dueDateFrom, setDueDateFrom] = useState("");
+  const [dueDateTo, setDueDateTo] = useState("");
   const [remarksDialog, setRemarksDialog] = useState({ open: false, mode: "edit", credit: null });
   const [remarksText, setRemarksText] = useState("");
   const [remarksDate, setRemarksDate] = useState("");
@@ -83,7 +86,7 @@ function CreditsPage() {
 
   useEffect(() => {
     setPage(1);
-  }, [searchQuery, selectedCompanyId, selectedStaffId, rowsPerPage]);
+  }, [searchQuery, selectedCompanyId, selectedStaffId, selectedArea, dueDateFrom, dueDateTo, rowsPerPage]);
 
   const getStatus = (saleDateStr, creditDays) => {
     if (!creditDays) return <Chip label="No Term" size="small" variant="outlined" />;
@@ -186,6 +189,28 @@ function CreditsPage() {
     return groups;
   };
 
+  const getDueDateValue = (credit) => {
+    if (!credit?.sale_date || !credit?.credit_days) return "";
+    const date = new Date(credit.sale_date);
+    if (Number.isNaN(date.getTime())) return "";
+    date.setDate(date.getDate() + parseInt(credit.credit_days, 10));
+    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(
+      date.getDate()
+    ).padStart(2, "0")}`;
+  };
+
+  const groupCreditsByArea = (creditsList) => {
+    const groups = {};
+    creditsList.forEach((credit) => {
+      const areaName = credit.location_name || "No Area";
+      if (!groups[areaName]) {
+        groups[areaName] = [];
+      }
+      groups[areaName].push(credit);
+    });
+    return groups;
+  };
+
   const getCreditRowSx = (credit) => {
     if ((Number(credit.remarks_count) || 0) > 0 || credit.remarks?.trim()) {
       return {
@@ -250,6 +275,23 @@ function CreditsPage() {
     companyOptions.find((company) => company.id === Number(selectedCompanyId))?.name || "";
   const selectedStaffName =
     staffOptions.find((staff) => staff.id === Number(selectedStaffId))?.name || "";
+  const areaOptions = React.useMemo(() => {
+    const areas = new Set();
+    credits.forEach((credit) => {
+      if (selectedCompanyId && !getCreditCompanyIds(credit).includes(Number(selectedCompanyId))) {
+        return;
+      }
+      if (selectedStaffId && Number(credit.staff_id) !== Number(selectedStaffId)) {
+        return;
+      }
+      const areaName = String(credit.location_name || "").trim();
+      if (areaName) {
+        areas.add(areaName);
+      }
+    });
+
+    return [...areas].sort((a, b) => a.localeCompare(b));
+  }, [credits, selectedCompanyId, selectedStaffId]);
   const totalCreditLabel = selectedStaffName
     // ? `${selectedStaffName} Credit Dues Amount`
     // : selectedCompanyName
@@ -259,6 +301,12 @@ function CreditsPage() {
   const handleCompanyChange = (value) => {
     setSelectedCompanyId(value);
     setSelectedStaffId("");
+    setSelectedArea("");
+  };
+
+  const handleStaffChange = (value) => {
+    setSelectedStaffId(value);
+    setSelectedArea("");
   };
 
   const openEditRemarks = (credit) => {
@@ -359,9 +407,21 @@ function CreditsPage() {
     if (selectedStaffId && Number(credit.staff_id) !== Number(selectedStaffId)) {
       return false;
     }
+    if (selectedArea && String(credit.location_name || "") !== selectedArea) {
+      return false;
+    }
+
+    const dueDateValue = getDueDateValue(credit);
+    if (dueDateFrom && (!dueDateValue || dueDateValue < dueDateFrom)) {
+      return false;
+    }
+    if (dueDateTo && (!dueDateValue || dueDateValue > dueDateTo)) {
+      return false;
+    }
 
     const search = searchQuery.toLowerCase();
     const outletName = credit.outlet_name ? credit.outlet_name.toLowerCase() : "";
+    const outletArea = credit.location_name ? credit.location_name.toLowerCase() : "";
     const contactNumber = credit.contact_number ? credit.contact_number.toLowerCase() : "";
     const invoiceNum = credit.invoice_number ? credit.invoice_number.toLowerCase() : "";
     const staffName = credit.staff_name ? credit.staff_name.toLowerCase() : "";
@@ -369,6 +429,7 @@ function CreditsPage() {
     const stickerNum = credit.sticker_number ? credit.sticker_number.toLowerCase() : "";
     return (
       outletName.includes(search) ||
+      outletArea.includes(search) ||
       contactNumber.includes(search) ||
       invoiceNum.includes(search) ||
       staffName.includes(search) ||
@@ -387,6 +448,7 @@ function CreditsPage() {
     (total, credit) => total + (Number(credit.balance_amount) || 0),
     0
   );
+  const selectedAreaLabel = selectedArea || "All Areas";
 
   const showPrintButton = Boolean(selectedCompanyId || selectedStaffId);
 
@@ -471,6 +533,127 @@ function CreditsPage() {
               : `<div class="empty">No outstanding credits found for this filter.</div>`
           }
           <div class="total">Total Balance: Rs. ${totalCreditDuesAmount.toFixed(2)}</div>
+        </body>
+      </html>
+    `);
+    printWindow.document.close();
+    printWindow.focus();
+    printWindow.print();
+  };
+
+  const handlePrintAreaWisePdf = () => {
+    const companyLabel = selectedCompanyName || "All Companies";
+    const staffLabel = selectedStaffName || "All Staff";
+    const areaLabel = selectedArea || "All Areas";
+    const generatedOn = new Date().toLocaleString("en-GB");
+    const dueRangeLabel =
+      dueDateFrom || dueDateTo
+        ? `${formatDate(dueDateFrom || dueDateTo)} to ${formatDate(dueDateTo || dueDateFrom)}`
+        : "All Due Dates";
+
+    const groupedByArea = groupCreditsByArea(filteredCredits);
+    const areaNames = Object.keys(groupedByArea).sort((a, b) => a.localeCompare(b));
+    const totalAmount = filteredCredits.reduce((sum, credit) => sum + (Number(credit.balance_amount) || 0), 0);
+
+    let tablesHtml = "";
+    if (areaNames.length === 0) {
+      tablesHtml = `<div class="empty">No outstanding credits found for this filter.</div>`;
+    } else {
+      areaNames.forEach((areaName) => {
+        const areaCredits = [...groupedByArea[areaName]].sort((a, b) =>
+          (a.outlet_name || "").localeCompare(b.outlet_name || "")
+        );
+        const areaTotal = areaCredits.reduce((sum, credit) => sum + (Number(credit.balance_amount) || 0), 0);
+        const rows = areaCredits
+          .map(
+            (credit, index) => `
+              <tr>
+                <td>${index + 1}</td>
+                <td>${escapeHtml(credit.sticker_number || "N/A")}</td>
+                <td>${escapeHtml(credit.invoice_number || "N/A")}</td>
+                <td>${escapeHtml(credit.outlet_name || "N/A")}</td>
+                <td>${escapeHtml(credit.contact_number || "N/A")}</td>
+                <td>${escapeHtml(formatDate(credit.sale_date))}</td>
+                <td>${escapeHtml(calcDueDate(credit.sale_date, credit.credit_days))}</td>
+                <td class="right">Rs. ${Number(credit.balance_amount || 0).toFixed(2)}</td>
+              </tr>
+            `
+          )
+          .join("");
+
+        tablesHtml += `
+          <div class="area-section">
+            <h2>Area: ${escapeHtml(areaName)}</h2>
+            <table>
+              <thead>
+                <tr>
+                  <th style="width: 6%">Sr</th>
+                  <th style="width: 12%">Sale ID</th>
+                  <th style="width: 14%">Invoice</th>
+                  <th>Outlet Name</th>
+                  <th style="width: 14%">Contact</th>
+                  <th style="width: 12%">Issue Date</th>
+                  <th style="width: 12%">Due Date</th>
+                  <th style="width: 16%" class="right">Balance</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${rows}
+                <tr class="area-total-row">
+                  <td colspan="7" class="right"><strong>Total for ${escapeHtml(areaName)}</strong></td>
+                  <td class="right"><strong>Rs. ${areaTotal.toFixed(2)}</strong></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        `;
+      });
+    }
+
+    const printWindow = window.open("", "_blank", "width=1100,height=800");
+    if (!printWindow) {
+      alert("Please allow popups to print the report.");
+      return;
+    }
+
+    printWindow.document.write(`
+      <!doctype html>
+      <html>
+        <head>
+          <title>Area Wise Credit Due Report</title>
+          <style>
+            body { font-family: Arial, sans-serif; color: #111827; margin: 28px; line-height: 1.4; }
+            h1 { font-size: 20px; margin: 0 0 4px; color: #1e3a8a; }
+            h2 { font-size: 14px; margin: 16px 0 6px; color: #1f2937; border-bottom: 2px solid #e5e7eb; padding-bottom: 4px; }
+            .meta { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px 20px; margin-bottom: 20px; font-size: 13px; background: #f8fafc; padding: 12px; border-radius: 6px; border: 1px solid #e2e8f0; }
+            .meta strong { display: inline-block; min-width: 120px; color: #475569; }
+            table { width: 100%; border-collapse: collapse; font-size: 12px; margin-bottom: 8px; }
+            th, td { border: 1px solid #cbd5e1; padding: 6px 8px; text-align: left; }
+            th { background: #f1f5f9; font-weight: 700; color: #334155; }
+            .right { text-align: right; }
+            .area-section { margin-bottom: 24px; page-break-inside: avoid; }
+            .area-total-row { background: #f8fafc; }
+            .grand-total { margin-top: 20px; padding: 12px; text-align: right; font-size: 16px; font-weight: 700; background: #e0f2fe; color: #0369a1; border-radius: 6px; border: 1px solid #bae6fd; }
+            .empty { padding: 30px; text-align: center; color: #64748b; border: 1px solid #cbd5e1; border-radius: 6px; }
+            @media print {
+              body { margin: 12mm; }
+              button { display: none; }
+            }
+          </style>
+        </head>
+        <body>
+          <h1>Area-Wise Credit Due Report</h1>
+          <div style="color: #4b5563; font-size: 12px; margin-bottom: 12px;">Pending credits filtered by staff, area, and due date range.</div>
+          <div class="meta">
+            <div><strong>Company:</strong> ${escapeHtml(companyLabel)}</div>
+            <div><strong>Staff:</strong> ${escapeHtml(staffLabel)}</div>
+            <div><strong>Area:</strong> ${escapeHtml(areaLabel)}</div>
+            <div><strong>Due Date Range:</strong> ${escapeHtml(dueRangeLabel)}</div>
+            <div><strong>Generated:</strong> ${escapeHtml(generatedOn)}</div>
+            <div><strong>Total Balance:</strong> Rs. ${totalAmount.toFixed(2)}</div>
+          </div>
+          ${tablesHtml}
+          ${filteredCredits.length > 0 ? `<div class="grand-total">Grand Total Credit Due: Rs. ${totalAmount.toFixed(2)}</div>` : ""}
         </body>
       </html>
     `);
@@ -951,7 +1134,7 @@ function CreditsPage() {
                 <Grid item xs={12} md={6} lg={3}>
                     <MDInput
                       type="text"
-                      label="Search Outlet, Contact, Invoice, Staff, or Sale ID..."
+                      label="Search Outlet, Area, Contact, Invoice, Staff, or Sale ID..."
                       fullWidth
                       value={searchQuery}
                       onChange={(e) => setSearchQuery(e.target.value)}
@@ -983,7 +1166,7 @@ function CreditsPage() {
                         labelId="credit-staff-filter-label"
                         value={selectedStaffId}
                         label="Staff"
-                        onChange={(e) => setSelectedStaffId(e.target.value)}
+                        onChange={(e) => handleStaffChange(e.target.value)}
                         sx={{ height: 44 }}
                       >
                         <MenuItem value="">All Staff</MenuItem>
@@ -994,6 +1177,45 @@ function CreditsPage() {
                         ))}
                       </Select>
                     </FormControl>
+                  </Grid>
+                  <Grid item xs={12} md={6} lg={3}>
+                    <FormControl size="small" fullWidth>
+                      <InputLabel id="credit-area-filter-label">Area</InputLabel>
+                      <Select
+                        labelId="credit-area-filter-label"
+                        value={selectedArea}
+                        label="Area"
+                        onChange={(e) => setSelectedArea(e.target.value)}
+                        sx={{ height: 44 }}
+                      >
+                        <MenuItem value="">All Areas</MenuItem>
+                        {areaOptions.map((area) => (
+                          <MenuItem key={area} value={area}>
+                            {area}
+                          </MenuItem>
+                        ))}
+                      </Select>
+                    </FormControl>
+                  </Grid>
+                  <Grid item xs={12} md={6} lg={3}>
+                    <MDInput
+                      type="date"
+                      label="Due Date From"
+                      fullWidth
+                      InputLabelProps={{ shrink: true }}
+                      value={dueDateFrom}
+                      onChange={(e) => setDueDateFrom(e.target.value)}
+                    />
+                  </Grid>
+                  <Grid item xs={12} md={6} lg={3}>
+                    <MDInput
+                      type="date"
+                      label="Due Date To"
+                      fullWidth
+                      InputLabelProps={{ shrink: true }}
+                      value={dueDateTo}
+                      onChange={(e) => setDueDateTo(e.target.value)}
+                    />
                   </Grid>
                   {showPrintButton && (
                     <Grid item xs={6} md={4} lg={2}>
@@ -1011,6 +1233,20 @@ function CreditsPage() {
                       {/* </MDButton> */}
                     </Grid>
                   )}
+                  {selectedStaffId && (
+                    <Grid item xs={12} md={6} lg={3}>
+                      <MDButton
+                        color="info"
+                        variant="gradient"
+                        fullWidth
+                        onClick={handlePrintAreaWisePdf}
+                        disabled={filteredCredits.length === 0}
+                        sx={{ height: 44 }}
+                      >
+                        <Icon sx={{ mr: 0.5 }}>print</Icon> Area Wise PDF
+                      </MDButton>
+                    </Grid>
+                  )}
                  
                   <Grid item xs={6} md={3} lg={2}>
                     <MDBox display="flex" justifyContent={{ xs: "flex-start", md: "flex-end" }}>
@@ -1025,6 +1261,9 @@ function CreditsPage() {
                         </MDTypography>
                         <MDTypography variant="h5" color="error" fontWeight="bold">
                           ₹{totalCreditDuesAmount.toFixed(2)}
+                        </MDTypography>
+                        <MDTypography variant="caption" color="text" display="block" mt={0.5}>
+                          {selectedStaffName || "All Staff"} · {selectedAreaLabel}
                         </MDTypography>
                       </MDBox>
                     </MDBox>
@@ -1126,6 +1365,7 @@ function CreditsPage() {
                           Sr No
                         </TableCell>
                         <TableCell align="left" sx={paginatedTableHeadCellSx}>Outlet Name</TableCell>
+                        <TableCell align="center" sx={paginatedTableHeadCellSx}>Area</TableCell>
                         <TableCell align="center" sx={paginatedTableHeadCellSx}>ERP ID</TableCell>
                         <TableCell align="center" sx={paginatedTableHeadCellSx}>Contact No</TableCell>
                         <TableCell align="center" sx={paginatedTableHeadCellSx}>Sale ID</TableCell>
@@ -1143,6 +1383,7 @@ function CreditsPage() {
                         <TableRow key={credit.id} sx={getCreditRowSx(credit)}>
                           <TableCell align="center">{(page - 1) * rowsPerPage + index + 1}</TableCell>
                           <TableCell align="left">{credit.outlet_name}</TableCell>
+                          <TableCell align="center">{credit.location_name || "N/A"}</TableCell>
                           <TableCell align="center">{credit.outlet_erp_id || "N/A"}</TableCell>
                           <TableCell align="center">{credit.contact_number || "N/A"}</TableCell>
                           <TableCell align="center">{credit.sticker_number}</TableCell>

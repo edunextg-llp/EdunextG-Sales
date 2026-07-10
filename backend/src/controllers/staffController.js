@@ -1703,26 +1703,71 @@ export const getOrderCancellations = async (req, res) => {
 
 export const recordTakenBills = async (req, res) => {
     try {
-        const { paymentIds, staffId, takenDate } = req.body;
+        const { paymentIds, staffId, deliveryBoyId, collectorType, takenDate } = req.body;
+        const normalizedCollectorType = String(collectorType || 'company_staff').toLowerCase();
 
         if (!Array.isArray(paymentIds) || paymentIds.length === 0) {
             return res.status(400).json({ error: 'Please select one or more bills.' });
-        }
-
-        const staffValidation = validatePositiveInteger(staffId, 'Staff');
-        if (!staffValidation.valid) {
-            return res.status(400).json({ error: staffValidation.error });
         }
 
         if (!takenDate) {
             return res.status(400).json({ error: 'Please choose taken date.' });
         }
 
-        await StaffModel.recordTakenBills(paymentIds, staffValidation.value, takenDate);
+        let parsedStaffId = null;
+        let parsedDeliveryBoyId = null;
+
+        if (normalizedCollectorType === 'bawarchee_staff') {
+            const deliveryBoyValidation = validatePositiveInteger(deliveryBoyId, 'Delivery boy');
+            if (!deliveryBoyValidation.valid) {
+                return res.status(400).json({ error: deliveryBoyValidation.error });
+            }
+            const deliveryBoy = await DeliveryBoyModel.getById(deliveryBoyValidation.value);
+            if (!deliveryBoy) {
+                return res.status(400).json({ error: 'Delivery boy not found.' });
+            }
+            parsedDeliveryBoyId = deliveryBoyValidation.value;
+        } else {
+            const staffValidation = validatePositiveInteger(staffId, 'Staff');
+            if (!staffValidation.valid) {
+                return res.status(400).json({ error: staffValidation.error });
+            }
+            parsedStaffId = staffValidation.value;
+        }
+
+        await StaffModel.recordTakenBills(paymentIds, {
+            collectorType: normalizedCollectorType === 'bawarchee_staff' ? 'bawarchee_staff' : 'company_staff',
+            staffId: parsedStaffId,
+            deliveryBoyId: parsedDeliveryBoyId,
+            takenDate,
+        });
 
         res.status(200).json({ message: 'Bills recorded as taken successfully' });
     } catch (error) {
+        if (error.message === 'ALREADY_TAKEN') {
+            return res.status(400).json({ error: 'One or more bills are already taken.', paymentIds: error.paymentIds });
+        }
         console.error('Error recording taken bills:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+};
+
+export const returnTakenBills = async (req, res) => {
+    try {
+        const { takenBillIds } = req.body;
+
+        if (!Array.isArray(takenBillIds) || takenBillIds.length === 0) {
+            return res.status(400).json({ error: 'Please select one or more taken bills to return.' });
+        }
+
+        const returnedCount = await StaffModel.returnTakenBills(takenBillIds);
+        if (returnedCount === 0) {
+            return res.status(404).json({ error: 'No active taken bills found to return.' });
+        }
+
+        res.status(200).json({ message: 'Bills returned successfully', returnedCount });
+    } catch (error) {
+        console.error('Error returning taken bills:', error);
         res.status(500).json({ error: 'Internal server error' });
     }
 };

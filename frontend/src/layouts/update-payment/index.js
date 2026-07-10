@@ -944,6 +944,13 @@ function UpdatePayment() {
 
   const topLevelPayments = payments.filter((payment) => !payment.parent_credit_payment_id);
 
+  const hasCreditEntry = topLevelPayments.some((payment) => payment.payment_mode === "credit");
+
+  const showPaymentForm =
+    !!editingPaymentId ||
+    !!activeCreditPayment ||
+    (dialogRemaining > 0 && !hasCreditEntry);
+
   const totalCreditOnAccount = payments
     .filter((p) => p.payment_mode === "credit")
     .reduce((sum, p) => sum + (parseFloat(p.amount) || 0), 0);
@@ -982,7 +989,7 @@ function UpdatePayment() {
                   <Grid item xs={12} md={4}>
                     <MDInput
                       type="text"
-                      label="Search by Outlet Name, ID, Staff Name, Sale ID, or Invoice No"
+                      label="Search by Outlet Name, Area, ID, Staff Name, Sale ID, or Invoice No"
                       fullWidth
                       value={searchQuery}
                       onChange={(e) => setSearchQuery(e.target.value)}
@@ -1002,6 +1009,7 @@ function UpdatePayment() {
                             Sr No
                           </TableCell>
                           <TableCell align="left" sx={paginatedTableHeadCellSx}>Outlet Name</TableCell>
+                          <TableCell align="left" sx={paginatedTableHeadCellSx}>Area</TableCell>
                           <TableCell align="center" sx={paginatedTableHeadCellSx}>Sale ID</TableCell>
                           <TableCell align="center" sx={paginatedTableHeadCellSx}>Invoice No</TableCell>
                           <TableCell align="center" sx={paginatedTableHeadCellSx}>No. of Box</TableCell>
@@ -1028,6 +1036,7 @@ function UpdatePayment() {
                                     Staff: {sale.staff_name || "N/A"}
                                   </MDTypography>
                                 </TableCell>
+                                <TableCell align="left">{sale.location_name || "N/A"}</TableCell>
                                 <TableCell align="center">{sale.sticker_number}</TableCell>
                                 <TableCell align="center">{sale.invoice_number}</TableCell>
                                 <TableCell align="center">{sale.box_count || "N/A"}</TableCell>
@@ -1341,7 +1350,7 @@ function UpdatePayment() {
               )}
 
 
-              {(dialogRemaining > 0 || editingPaymentId) && (
+              {showPaymentForm && (
                 <MDBox>
                   <MDTypography variant="h6" fontWeight="medium" mb={2}>
                     {editingPaymentId

@@ -519,6 +519,48 @@ const defaultPaymentModes = [
   { payment_mode: "cheque", total_amount: 0 },
 ];
 
+function buildMonthlySalesDataset(monthlyList, startDate, endDate) {
+  const salesMap = {};
+  (monthlyList || []).forEach((row) => {
+    salesMap[String(row.period || "")] = Number(row.total_sales) || 0;
+  });
+
+  const periods = [];
+  if (startDate && endDate) {
+    const rangeStart = new Date(`${startDate}T00:00:00`);
+    const rangeEnd = new Date(`${endDate}T00:00:00`);
+    const cursor = new Date(rangeStart.getFullYear(), rangeStart.getMonth(), 1);
+
+    while (cursor <= rangeEnd) {
+      const period = `${cursor.getFullYear()}-${String(cursor.getMonth() + 1).padStart(2, "0")}`;
+      periods.push(period);
+      cursor.setMonth(cursor.getMonth() + 1);
+    }
+  }
+
+  return periods.map((period) => {
+    const match = period.match(/^(\d{4})-(\d{2})$/);
+    if (!match) {
+      return { month: period, sales: salesMap[period] || 0 };
+    }
+
+    const year = Number(match[1]);
+    const monthIndex = Number(match[2]) - 1;
+    const monthName = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"][
+      monthIndex
+    ];
+
+    return {
+      month: periods.length > 12 ? `${monthName} ${String(year).slice(-2)}` : monthName,
+      sales: salesMap[period] || 0,
+    };
+  });
+}
+
+function salesChartValueFormatter(value) {
+  return money(Number(value) || 0);
+}
+
 function getCollectionAmountByMode(apiRows, mode) {
   const row = (apiRows || []).find((item) => item.payment_mode === mode);
   return Number(row?.total_amount || 0);
@@ -808,6 +850,11 @@ function Dashboard() {
   const [totalCollectionLoading, setTotalCollectionLoading] = useState(false);
   const [collectionStaffOptions, setCollectionStaffOptions] = useState([]);
   const [selectedCollectionStaffId, setSelectedCollectionStaffId] = useState("");
+  const [salesChartFromDate, setSalesChartFromDate] = useState(getMonthStartLocalDate());
+  const [salesChartToDate, setSalesChartToDate] = useState(getTodayLocalDate());
+  const [selectedSalesStaffId, setSelectedSalesStaffId] = useState("");
+  const [salesChartMonthlyData, setSalesChartMonthlyData] = useState([]);
+  const [salesChartLoading, setSalesChartLoading] = useState(false);
 
   const monthOptions = useMemo(
     () => getMonthOptions(selectedFinancialYear),
@@ -829,6 +876,10 @@ function Dashboard() {
 
   const selectedCollectionStaffName =
     collectionStaffOptions.find((staff) => staff.id === Number(selectedCollectionStaffId))?.name ||
+    "All Staff";
+
+  const selectedSalesStaffName =
+    collectionStaffOptions.find((staff) => staff.id === Number(selectedSalesStaffId))?.name ||
     "All Staff";
 
   const paidCollectionBreakdown = useMemo(
@@ -926,6 +977,24 @@ function Dashboard() {
     };
   };
 
+  const fetchSalesChartReport = async (startDate, endDate, staffId = "") => {
+    if (!startDate || !endDate) {
+      return [];
+    }
+
+    const params = new URLSearchParams({ startDate, endDate });
+    if (staffId) {
+      params.set("staffId", staffId);
+    }
+    const response = await fetch(`${API}/staff/reports?${params.toString()}`);
+    if (!response.ok) {
+      throw new Error("Failed to fetch sales chart report.");
+    }
+
+    const data = await response.json();
+    return data.salesByPeriod?.monthly || [];
+  };
+
   useEffect(() => {
     const fetchCollectionStaffOptions = async () => {
       try {
@@ -1021,6 +1090,50 @@ function Dashboard() {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [totalCollectionFromDate, totalCollectionToDate, selectedCollectionStaffId]);
+
+  useEffect(() => {
+    let ignore = false;
+
+    const loadSalesChartReport = async () => {
+      if (!salesChartFromDate || !salesChartToDate) {
+        setSalesChartMonthlyData([]);
+        return;
+      }
+
+      if (salesChartFromDate > salesChartToDate) {
+        setSalesChartMonthlyData([]);
+        return;
+      }
+
+      setSalesChartLoading(true);
+      try {
+        const data = await fetchSalesChartReport(
+          salesChartFromDate,
+          salesChartToDate,
+          selectedSalesStaffId
+        );
+        if (!ignore) {
+          setSalesChartMonthlyData(data);
+        }
+      } catch (error) {
+        console.error("Error fetching sales chart report:", error);
+        if (!ignore) {
+          setSalesChartMonthlyData([]);
+        }
+      } finally {
+        if (!ignore) {
+          setSalesChartLoading(false);
+        }
+      }
+    };
+
+    loadSalesChartReport();
+
+    return () => {
+      ignore = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [salesChartFromDate, salesChartToDate, selectedSalesStaffId]);
 
   const handleFinancialYearChange = (value) => {
     setSelectedFinancialYear(value);
@@ -1266,27 +1379,15 @@ function Dashboard() {
     }
   };
 
-  const monthlySalesChart = useMemo(() => {
-    const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-    const salesByMonth = monthNames.map(() => 0);
+  const monthlySalesDataset = useMemo(
+    () => buildMonthlySalesDataset(salesChartMonthlyData, salesChartFromDate, salesChartToDate),
+    [salesChartMonthlyData, salesChartFromDate, salesChartToDate]
+  );
 
-    const monthlyList = reportData.salesByPeriod?.monthly || [];
-    monthlyList.forEach((row) => {
-      const match = String(row.period || "").match(/^(\d{4})-(\d{2})$/);
-      if (match) {
-        const monthIndex = Number(match[2]) - 1;
-        salesByMonth[monthIndex] = Number(row.total_sales) || 0;
-      }
-    });
-
-    return {
-      labels: monthNames,
-      datasets: {
-        label: "Monthly Sales",
-        data: salesByMonth,
-      },
-    };
-  }, [reportData.salesByPeriod.monthly]);
+  const monthlySalesTotal = useMemo(
+    () => monthlySalesDataset.reduce((sum, row) => sum + (Number(row.sales) || 0), 0),
+    [monthlySalesDataset]
+  );
 
   const monthlyPurchaseChart = useMemo(() => {
     const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -1908,14 +2009,100 @@ function Dashboard() {
         <MDBox mt={4.5}>
           <Grid container spacing={3}>
             <Grid item xs={12} md={6} lg={4} display="flex">
-              <MDBox mb={3} width="100%" height={380} sx={{ "& > div": { height: "100%" } }}>
-                <ReportsBarChart
-                  color="info"
-                  title="monthly sales"
-                  description="Invoice value by month"
-                  date="all records"
-                  chart={monthlySalesChart}
-                />
+              <MDBox mb={3} width="100%" height={460}>
+                <Card sx={{ height: "100%" }}>
+                  <MDBox p={3}>
+                    <MDBox display="flex" alignItems="center" mb={1.5}>
+                      <MDBox
+                        width="3.25rem"
+                        height="3.25rem"
+                        bgColor="info"
+                        variant="gradient"
+                        coloredShadow="info"
+                        borderRadius="xl"
+                        display="flex"
+                        justifyContent="center"
+                        alignItems="center"
+                        color="white"
+                        mr={1.5}
+                      >
+                        <Icon sx={{ fontSize: "1.25rem" }}>bar_chart</Icon>
+                      </MDBox>
+                      <MDBox>
+                        <MDTypography variant="h6" sx={{ fontSize: "1rem", lineHeight: 1.3 }}>
+                          {`Monthly Sales · ${formatDate(salesChartFromDate)} to ${formatDate(salesChartToDate)}${
+                            selectedSalesStaffId ? ` · ${selectedSalesStaffName}` : ""
+                          }`}
+                        </MDTypography>
+                        <MDTypography variant="button" color="text" fontWeight="medium" sx={{ fontSize: "0.9rem" }}>
+                          {money(monthlySalesTotal)} · Invoice value by month
+                        </MDTypography>
+                      </MDBox>
+                    </MDBox>
+                    {salesChartLoading && (
+                      <MDTypography variant="caption" color="text" display="block" mb={1}>
+                        Loading sales for selected period...
+                      </MDTypography>
+                    )}
+                    <MDBox display="flex" gap={0.75} alignItems="center" flexWrap="wrap" mb={2}>
+                      <FormControl size="small" sx={{ minWidth: 150 }}>
+                        <InputLabel id="sales-chart-staff-label">Staff</InputLabel>
+                        <Select
+                          labelId="sales-chart-staff-label"
+                          value={selectedSalesStaffId}
+                          label="Staff"
+                          onChange={(event) => setSelectedSalesStaffId(event.target.value)}
+                          sx={{ height: 36, fontSize: "0.8125rem", backgroundColor: "#fff" }}
+                        >
+                          <MenuItem value="">All Staff</MenuItem>
+                          {collectionStaffOptions.map((staff) => (
+                            <MenuItem key={`sales-staff-${staff.id}`} value={String(staff.id)}>
+                              {staff.name}
+                            </MenuItem>
+                          ))}
+                        </Select>
+                      </FormControl>
+                      <TextField
+                        type="date"
+                        size="small"
+                        label="From"
+                        value={salesChartFromDate}
+                        onChange={(event) => setSalesChartFromDate(event.target.value)}
+                        InputLabelProps={{ shrink: true }}
+                        sx={compactDateFieldSx}
+                      />
+                      <MDTypography variant="button" color="text" sx={{ px: 0.25 }}>
+                        to
+                      </MDTypography>
+                      <TextField
+                        type="date"
+                        size="small"
+                        label="To"
+                        value={salesChartToDate}
+                        onChange={(event) => setSalesChartToDate(event.target.value)}
+                        InputLabelProps={{ shrink: true }}
+                        sx={compactDateFieldSx}
+                      />
+                    </MDBox>
+                    <MDBox width="100%">
+                      <BarChart
+                        dataset={monthlySalesDataset}
+                        xAxis={[{ dataKey: "month", scaleType: "band", tickLabelPlacement: "middle" }]}
+                        yAxis={[{ label: "Sales (Rs.)", width: 72 }]}
+                        series={[
+                          {
+                            dataKey: "sales",
+                            label: "Monthly Sales",
+                            valueFormatter: salesChartValueFormatter,
+                            color: "#1A73E8",
+                          },
+                        ]}
+                        height={260}
+                        margin={{ left: 0, top: 10, right: 10, bottom: 30 }}
+                      />
+                    </MDBox>
+                  </MDBox>
+                </Card>
               </MDBox>
             </Grid>
             {/* <Grid item xs={12} md={6} lg={4}>

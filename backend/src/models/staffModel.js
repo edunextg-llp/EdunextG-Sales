@@ -79,11 +79,10 @@ class StaffModel {
 
     static async addCounter(staffId, day, location, counterData) {
         const { outletErpId, outletName, contactNumber, googleLocation } = counterData;
+        const locationName = String(location || '').trim() || null;
         await db.execute(
-            // `staff_counters` schema (see initDB.js) does not include a `location` column.
-            // Frontend still sends `location`, but we ignore it here and store outlets by (staff_id, day).
-            'INSERT INTO staff_counters (staff_id, day, outlet_erp_id, outlet_name, contact_number, google_location) VALUES (?, ?, ?, ?, ?, ?)',
-            [staffId, day, outletErpId, outletName, contactNumber, googleLocation || null]
+            'INSERT INTO staff_counters (staff_id, day, location_name, outlet_erp_id, outlet_name, contact_number, google_location) VALUES (?, ?, ?, ?, ?, ?, ?)',
+            [staffId, day, locationName, outletErpId, outletName, contactNumber, googleLocation || null]
         );
     }
 
@@ -110,7 +109,7 @@ class StaffModel {
 
     static async getCounterById(counterId) {
         const [rows] = await db.execute(
-            'SELECT id, staff_id, outlet_erp_id, outlet_name, contact_number, google_location FROM staff_counters WHERE id = ?',
+            'SELECT id, staff_id, outlet_erp_id, outlet_name, contact_number, location_name, google_location FROM staff_counters WHERE id = ?',
             [counterId]
         );
         return rows[0] || null;
@@ -175,7 +174,7 @@ class StaffModel {
 
     static async getOutletsForStaffAndDay(staffId, dayName) {
         const [rows] = await db.execute(
-            'SELECT id, outlet_erp_id, outlet_name, contact_number, google_location FROM staff_counters WHERE staff_id = ? AND day = ?',
+            'SELECT id, outlet_erp_id, outlet_name, contact_number, location_name, google_location FROM staff_counters WHERE staff_id = ? AND day = ?',
             [staffId, dayName]
         );
         return rows;
@@ -183,7 +182,7 @@ class StaffModel {
 
     static async getAllCountersForStaff(staffId) {
         const [rows] = await db.execute(
-            'SELECT id, outlet_erp_id, outlet_name, contact_number, google_location, day FROM staff_counters WHERE staff_id = ?',
+            'SELECT id, outlet_erp_id, outlet_name, contact_number, location_name, google_location, day FROM staff_counters WHERE staff_id = ?',
             [staffId]
         );
         return rows;
@@ -191,7 +190,7 @@ class StaffModel {
 
     static async getMissingSalesOutletsForDate(staffId, dayName, date) {
         const [rows] = await db.execute(
-            `SELECT c.id, c.outlet_erp_id, c.outlet_name, c.contact_number, c.google_location 
+            `SELECT c.id, c.outlet_erp_id, c.outlet_name, c.contact_number, c.location_name, c.google_location 
              FROM staff_counters c
              INNER JOIN staff s ON s.id = c.staff_id
              WHERE c.staff_id = ?
@@ -341,7 +340,7 @@ class StaffModel {
                     DATE_FORMAT(ssh.packing_date, '%Y-%m-%d') AS packing_date,
                     ss.paid_amount, ss.balance_amount, ss.payment_mode,
                     COALESCE(sp.payment_count, 0) AS payment_count,
-                    sc.outlet_name, sc.outlet_erp_id, sc.google_location, s.name as staff_name,
+                    sc.outlet_name, sc.outlet_erp_id, sc.location_name, sc.google_location, s.name as staff_name,
                     outlet_staff.id AS outlet_staff_id, outlet_staff.name AS outlet_staff_name,
                     DATE_FORMAT(ss.sale_date, '%d-%m-%Y') as formatted_date,
                     db.name as delivery_boy_name
@@ -377,12 +376,13 @@ class StaffModel {
             conditions.push(`(
                 sc.outlet_name LIKE ?
                 OR sc.outlet_erp_id LIKE ?
+                OR sc.location_name LIKE ?
                 OR s.name LIKE ?
                 OR ss.sticker_number LIKE ?
                 OR ss.invoice_number LIKE ?
                 OR CAST(ss.id AS CHAR) LIKE ?
             )`);
-            params.push(searchTerm, searchTerm, searchTerm, searchTerm, searchTerm, searchTerm);
+            params.push(searchTerm, searchTerm, searchTerm, searchTerm, searchTerm, searchTerm, searchTerm);
         }
 
         if (conditions.length) {
@@ -404,7 +404,7 @@ class StaffModel {
                     DATE_FORMAT(ss.delivery_date, '%Y-%m-%d') AS delivery_date,
                     ss.packaging_status,
                     DATE_FORMAT(ssh.status_updated_at, '%Y-%m-%d %H:%i:%s') AS status_updated_at,
-                    sc.outlet_name, sc.outlet_erp_id, s.name AS staff_name,
+                    sc.outlet_name, sc.outlet_erp_id, sc.location_name, s.name AS staff_name,
                     db.name as delivery_boy_name
              FROM staff_sales ss
              LEFT JOIN staff_counters sc ON ss.outlet_id = sc.id
@@ -428,7 +428,7 @@ class StaffModel {
                     ss.sticker_number, ss.paid_amount, ss.balance_amount, ss.packaging_status,
                     DATE_FORMAT(ss.delivery_date, '%Y-%m-%d') AS delivery_date,
                     DATE_FORMAT(ssh.status_updated_at, '%Y-%m-%d %H:%i:%s') AS status_updated_at,
-                    sc.outlet_name, sc.outlet_erp_id, s.name AS staff_name,
+                    sc.outlet_name, sc.outlet_erp_id, sc.location_name, s.name AS staff_name,
                     db.name AS delivery_boy_name, ss.vehicle_no
              FROM staff_sales ss
              LEFT JOIN staff_counters sc ON ss.outlet_id = sc.id
@@ -619,7 +619,7 @@ class StaffModel {
                         COALESCE(cancel_hist.cancel_date, legacy_cancel.status_updated_at),
                         '%Y-%m-%d'
                     ) AS delivery_date,
-                    sc.outlet_name, sc.outlet_erp_id, s.name AS staff_name,
+                    sc.outlet_name, sc.outlet_erp_id, sc.location_name, s.name AS staff_name,
                     COALESCE(staff_company.company_names, c.name) AS company_name,
                     COALESCE(staff_company.company_ids, s.company_id) AS company_ids
              FROM staff_sales ss
@@ -678,10 +678,15 @@ class StaffModel {
                     COALESCE(cpr.latest_remarks, sp.remarks) AS remarks,
                     COALESCE(cpr.remarks_count, CASE WHEN sp.remarks IS NULL OR TRIM(sp.remarks) = '' THEN 0 ELSE 1 END) AS remarks_count,
                     DATE_FORMAT(cpr.latest_remark_date, '%Y-%m-%d') AS latest_remark_date,
-                    ss.invoice_number, sc.outlet_name, sc.outlet_erp_id, sc.contact_number,
+                    ss.invoice_number, sc.outlet_name, sc.outlet_erp_id, sc.location_name, sc.contact_number,
                     s.id AS staff_id, s.name AS staff_name,
                     COALESCE(staff_company.company_names, c.name) AS company_name,
-                    COALESCE(staff_company.company_ids, s.company_id) AS company_ids
+                    COALESCE(staff_company.company_ids, s.company_id) AS company_ids,
+                    CASE WHEN tb.id IS NOT NULL THEN 1 ELSE 0 END AS is_taken,
+                    tb.id AS taken_bill_id,
+                    DATE_FORMAT(tb.taken_date, '%Y-%m-%d') AS taken_date,
+                    tb.collector_type AS taken_collector_type,
+                    COALESCE(ts.name, db.name) AS taker_name
              FROM sale_payments sp
              JOIN staff_sales ss ON sp.sale_id = ss.id
              LEFT JOIN staff_counters sc ON ss.outlet_id = sc.id
@@ -715,6 +720,9 @@ class StaffModel {
                  FROM credit_payment_remarks r
                  GROUP BY r.payment_id
              ) cpr ON cpr.payment_id = sp.id
+             LEFT JOIN taken_bills tb ON tb.payment_id = sp.id AND tb.returned_at IS NULL
+             LEFT JOIN staff ts ON tb.staff_id = ts.id
+             LEFT JOIN delivery_boys db ON tb.delivery_boy_id = db.id
              WHERE sp.payment_mode = 'credit'
                AND ss.balance_amount > 0
              HAVING balance_amount > 0
@@ -810,28 +818,70 @@ class StaffModel {
         return rows;
     }
 
-    static async recordTakenBills(paymentIds, staffId, takenDate) {
-        const values = paymentIds.map(id => [id, staffId, takenDate]);
+    static async recordTakenBills(paymentIds, { collectorType, staffId, deliveryBoyId, takenDate }) {
+        const uniqueIds = [...new Set(paymentIds.map((id) => Number(id)).filter((id) => Number.isInteger(id) && id > 0))];
+        if (!uniqueIds.length) {
+            throw new Error('NO_PAYMENT_IDS');
+        }
+
+        const placeholders = uniqueIds.map(() => '?').join(', ');
+        const [alreadyTaken] = await db.execute(
+            `SELECT payment_id FROM taken_bills
+             WHERE payment_id IN (${placeholders}) AND returned_at IS NULL`,
+            uniqueIds
+        );
+        if (alreadyTaken.length > 0) {
+            const err = new Error('ALREADY_TAKEN');
+            err.paymentIds = alreadyTaken.map((row) => row.payment_id);
+            throw err;
+        }
+
+        const values = uniqueIds.map((id) => [
+            id,
+            collectorType === 'company_staff' ? staffId : null,
+            takenDate,
+            collectorType,
+            collectorType === 'bawarchee_staff' ? deliveryBoyId : null,
+        ]);
         await db.query(
-            "INSERT INTO taken_bills (payment_id, staff_id, taken_date) VALUES ?",
+            'INSERT INTO taken_bills (payment_id, staff_id, taken_date, collector_type, delivery_boy_id) VALUES ?',
             [values]
         );
     }
 
+    static async returnTakenBills(takenBillIds) {
+        const uniqueIds = [...new Set(takenBillIds.map((id) => Number(id)).filter((id) => Number.isInteger(id) && id > 0))];
+        if (!uniqueIds.length) {
+            return 0;
+        }
+
+        const placeholders = uniqueIds.map(() => '?').join(', ');
+        const [result] = await db.execute(
+            `UPDATE taken_bills
+             SET returned_at = NOW()
+             WHERE id IN (${placeholders}) AND returned_at IS NULL`,
+            uniqueIds
+        );
+        return result.affectedRows;
+    }
+
     static async getTakenBillsReport(startDate, endDate, staffId = null) {
         let query = `
-            SELECT tb.id, DATE_FORMAT(tb.taken_date, '%Y-%m-%d') AS taken_date,
+            SELECT tb.id, tb.payment_id, DATE_FORMAT(tb.taken_date, '%Y-%m-%d') AS taken_date,
+                   tb.collector_type,
                    sp.amount AS credit_amount,
                    GREATEST(0, sp.amount - COALESCE(credit_paid.paid_amount, 0)) AS balance_amount,
                    DATE_FORMAT(sp.payment_date, '%Y-%m-%d') AS sale_date, sp.credit_days,
                    ss.invoice_number, ss.sticker_number,
-                   sc.outlet_name, sc.outlet_erp_id, sc.contact_number,
-                   s.name AS staff_name, s.id AS staff_id
+                   sc.outlet_name, sc.outlet_erp_id, sc.location_name, sc.contact_number,
+                   COALESCE(s.name, db.name) AS staff_name,
+                   COALESCE(tb.staff_id, tb.delivery_boy_id) AS staff_id
             FROM taken_bills tb
             JOIN sale_payments sp ON tb.payment_id = sp.id
             JOIN staff_sales ss ON sp.sale_id = ss.id
             LEFT JOIN staff_counters sc ON ss.outlet_id = sc.id
-            JOIN staff s ON tb.staff_id = s.id
+            LEFT JOIN staff s ON tb.staff_id = s.id
+            LEFT JOIN delivery_boys db ON tb.delivery_boy_id = db.id
             LEFT JOIN (
                 SELECT parent_credit_payment_id,
                        SUM(amount) AS paid_amount
@@ -841,6 +891,7 @@ class StaffModel {
                 GROUP BY parent_credit_payment_id
             ) credit_paid ON credit_paid.parent_credit_payment_id = sp.id
             WHERE tb.taken_date BETWEEN ? AND ?
+              AND tb.returned_at IS NULL
         `;
         const params = [startDate, endDate];
         if (staffId) {

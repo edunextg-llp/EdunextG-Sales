@@ -44,6 +44,8 @@ function OutBillPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedStaffId, setSelectedStaffId] = useState("");
   const [selectedCreditIds, setSelectedCreditIds] = useState([]);
+  const [selectedTakenBillIds, setSelectedTakenBillIds] = useState([]);
+  const [returningBills, setReturningBills] = useState(false);
   const [page, setPage] = useState(1);
   const [rowsPerPage, setRowsPerPage] = useState(ROWS_PER_PAGE);
 
@@ -52,9 +54,13 @@ function OutBillPage() {
 
   // Take Bill Dialog State
   const [isTakeDialogOpen, setIsTakeDialogOpen] = useState(false);
+  const [takeCollectorType, setTakeCollectorType] = useState("company_staff");
   const [takeStaffId, setTakeStaffId] = useState("");
+  const [takeDeliveryBoyId, setTakeDeliveryBoyId] = useState("");
   const [takeDate, setTakeDate] = useState("");
   const [submittingTake, setSubmittingTake] = useState(false);
+  const [companyStaffList, setCompanyStaffList] = useState([]);
+  const [deliveryBoys, setDeliveryBoys] = useState([]);
 
   // Taken Bills Report State
   const [takenBills, setTakenBills] = useState([]);
@@ -65,6 +71,8 @@ function OutBillPage() {
   const [reportRowsPerPage, setReportRowsPerPage] = useState(ROWS_PER_PAGE);
 
   const API = "https://bawarchee.edunextg.co/api";
+
+  const isCreditTaken = (credit) => Number(credit?.is_taken) === 1;
 
   const getTodayLocalDate = () => {
     const now = new Date();
@@ -125,6 +133,28 @@ function OutBillPage() {
   }, [fetchCredits]);
 
   useEffect(() => {
+    const fetchCollectorOptions = async () => {
+      try {
+        const [staffResponse, deliveryBoyResponse] = await Promise.all([
+          fetch(`${API}/staff`),
+          fetch(`${API}/delivery-boy`),
+        ]);
+        if (staffResponse.ok) {
+          const staffData = await staffResponse.json();
+          setCompanyStaffList(staffData);
+        }
+        if (deliveryBoyResponse.ok) {
+          const deliveryBoyData = await deliveryBoyResponse.json();
+          setDeliveryBoys(deliveryBoyData);
+        }
+      } catch (error) {
+        console.error("Error fetching collector options:", error);
+      }
+    };
+    fetchCollectorOptions();
+  }, [API]);
+
+  useEffect(() => {
     fetchTakenBills();
   }, [fetchTakenBills]);
 
@@ -134,7 +164,17 @@ function OutBillPage() {
 
   useEffect(() => {
     setReportPage(1);
+    setSelectedTakenBillIds([]);
   }, [reportStaffId, reportStartDate, reportEndDate, reportRowsPerPage]);
+
+  useEffect(() => {
+    setSelectedCreditIds((prev) =>
+      prev.filter((id) => {
+        const credit = credits.find((c) => c.id === id);
+        return credit && !isCreditTaken(credit);
+      })
+    );
+  }, [credits]);
 
   const getStatus = (saleDateStr, creditDays) => {
     if (!creditDays) return <Chip label="No Term" size="small" variant="outlined" />;
@@ -171,6 +211,12 @@ function OutBillPage() {
     return date.toLocaleDateString("en-GB");
   };
 
+  const formatTakerName = (bill) => {
+    const name = bill.staff_name || "N/A";
+    const typeLabel = bill.collector_type === "bawarchee_staff" ? "db" : "staff";
+    return `${name} (${typeLabel})`;
+  };
+
   const escapeHtml = (value) =>
     String(value ?? "")
       .replace(/&/g, "&amp;")
@@ -190,11 +236,12 @@ function OutBillPage() {
           <tr>
             <td>${index + 1}</td>
             <td>${escapeHtml(bill.outlet_name || "N/A")}</td>
+            <td>${escapeHtml(bill.location_name || "N/A")}</td>
             <td>${escapeHtml(bill.outlet_erp_id || "N/A")}</td>
             <td>${escapeHtml(bill.contact_number || "N/A")}</td>
             <td>${escapeHtml(bill.sticker_number || "N/A")}</td>
             <td>${escapeHtml(bill.invoice_number || "N/A")}</td>
-            <td>${escapeHtml(bill.staff_name || "N/A")}</td>
+            <td>${escapeHtml(formatTakerName(bill))}</td>
             <td class="right">Rs. ${Number(bill.balance_amount || 0).toFixed(2)}</td>
             <td>${escapeHtml(formatDate(bill.sale_date))}</td>
             <td>${escapeHtml(calcDueDate(bill.sale_date, bill.credit_days))}</td>
@@ -246,6 +293,7 @@ function OutBillPage() {
           <tr>
             <th>Sr No</th>
             <th>Outlet Name</th>
+            <th>Area</th>
             <th>ERP ID</th>
             <th>Contact No</th>
             <th>Sale ID</th>
@@ -271,6 +319,8 @@ function OutBillPage() {
     printWindow.focus();
     printWindow.print();
   };
+
+  const selectableCredits = (creditsList) => creditsList.filter((credit) => !isCreditTaken(credit));
 
   const staffOptions = React.useMemo(() => {
     const staff = new Map();
@@ -298,6 +348,7 @@ function OutBillPage() {
 
     const search = searchQuery.toLowerCase();
     const outletName = credit.outlet_name ? credit.outlet_name.toLowerCase() : "";
+    const outletArea = credit.location_name ? credit.location_name.toLowerCase() : "";
     const contactNumber = credit.contact_number ? credit.contact_number.toLowerCase() : "";
     const invoiceNum = credit.invoice_number ? credit.invoice_number.toLowerCase() : "";
     const staffName = credit.staff_name ? credit.staff_name.toLowerCase() : "";
@@ -305,6 +356,7 @@ function OutBillPage() {
     const stickerNum = credit.sticker_number ? credit.sticker_number.toLowerCase() : "";
     return (
       outletName.includes(search) ||
+      outletArea.includes(search) ||
       contactNumber.includes(search) ||
       invoiceNum.includes(search) ||
       staffName.includes(search) ||
@@ -319,28 +371,46 @@ function OutBillPage() {
     page * rowsPerPage
   );
 
-  const isAllSelected = paginatedCredits.length > 0 && paginatedCredits.every((c) => selectedCreditIds.includes(c.id));
-  const isSomeSelected = paginatedCredits.length > 0 && paginatedCredits.some((c) => selectedCreditIds.includes(c.id)) && !isAllSelected;
+  const selectablePaginatedCredits = selectableCredits(paginatedCredits);
+  const isAllSelected =
+    selectablePaginatedCredits.length > 0 &&
+    selectablePaginatedCredits.every((c) => selectedCreditIds.includes(c.id));
+  const isSomeSelected =
+    selectablePaginatedCredits.length > 0 &&
+    selectablePaginatedCredits.some((c) => selectedCreditIds.includes(c.id)) &&
+    !isAllSelected;
 
   const handleSelectAllToggle = () => {
     if (isAllSelected) {
-      const pageIds = paginatedCredits.map((c) => c.id);
+      const pageIds = selectablePaginatedCredits.map((c) => c.id);
       setSelectedCreditIds((prev) => prev.filter((id) => !pageIds.includes(id)));
     } else {
-      const pageIds = paginatedCredits.map((c) => c.id);
+      const pageIds = selectablePaginatedCredits.map((c) => c.id);
       setSelectedCreditIds((prev) => [...new Set([...prev, ...pageIds])]);
     }
   };
 
-  const handleCheckboxToggle = (creditId) => {
+  const handleCheckboxToggle = (credit) => {
+    if (isCreditTaken(credit)) return;
     setSelectedCreditIds((prev) =>
-      prev.includes(creditId)
-        ? prev.filter((id) => id !== creditId)
-        : [...prev, creditId]
+      prev.includes(credit.id)
+        ? prev.filter((id) => id !== credit.id)
+        : [...prev, credit.id]
     );
   };
 
   const getCreditRowSx = (credit) => {
+    if (isCreditTaken(credit)) {
+      return {
+        backgroundColor: "#f1f5f9",
+        opacity: 0.55,
+        filter: "blur(0.4px)",
+        transform: "scale(0.98)",
+        transformOrigin: "center",
+        "& td": { fontSize: "0.8rem", color: "text.disabled" },
+        "&:hover": { backgroundColor: "#f1f5f9" },
+      };
+    }
     if (selectedCreditIds.includes(credit.id)) {
       return {
         backgroundColor: "#e0f2fe",
@@ -363,24 +433,48 @@ function OutBillPage() {
   const handleOpenTakeDialog = () => {
     if (selectedCreditIds.length === 0) return;
     const firstSelected = credits.find((c) => selectedCreditIds.includes(c.id));
+    setTakeCollectorType("company_staff");
     if (firstSelected && firstSelected.staff_id) {
-      setTakeStaffId(firstSelected.staff_id);
+      setTakeStaffId(String(firstSelected.staff_id));
     } else {
       setTakeStaffId("");
     }
+    setTakeDeliveryBoyId("");
     setTakeDate(getTodayLocalDate());
     setIsTakeDialogOpen(true);
   };
 
   const handleCloseTakeDialog = () => {
     setIsTakeDialogOpen(false);
+    setTakeCollectorType("company_staff");
     setTakeStaffId("");
+    setTakeDeliveryBoyId("");
     setTakeDate(getTodayLocalDate());
   };
 
+  const handleTakeCollectorTypeChange = (value) => {
+    setTakeCollectorType(value);
+    setTakeStaffId("");
+    setTakeDeliveryBoyId("");
+  };
+
   const handleSubmitTakeBill = async () => {
-    if (!takeStaffId) {
-      alert("Please select a staff member.");
+    const billsToTake = selectedCreditIds.filter((id) => {
+      const credit = credits.find((c) => c.id === id);
+      return credit && !isCreditTaken(credit);
+    });
+
+    if (billsToTake.length === 0) {
+      alert("Please select bills that are not already taken.");
+      return;
+    }
+
+    if (takeCollectorType === "company_staff" && !takeStaffId) {
+      alert("Please select a company staff member.");
+      return;
+    }
+    if (takeCollectorType === "bawarchee_staff" && !takeDeliveryBoyId) {
+      alert("Please select a delivery boy.");
       return;
     }
     if (!takeDate) {
@@ -394,8 +488,10 @@ function OutBillPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          paymentIds: selectedCreditIds,
-          staffId: takeStaffId,
+          paymentIds: billsToTake,
+          collectorType: takeCollectorType,
+          staffId: takeCollectorType === "company_staff" ? takeStaffId : null,
+          deliveryBoyId: takeCollectorType === "bawarchee_staff" ? takeDeliveryBoyId : null,
           takenDate: takeDate,
         }),
       });
@@ -424,6 +520,59 @@ function OutBillPage() {
     reportPage * reportRowsPerPage
   );
 
+  const handleTakenBillCheckboxToggle = (takenBillId) => {
+    setSelectedTakenBillIds((prev) =>
+      prev.includes(takenBillId)
+        ? prev.filter((id) => id !== takenBillId)
+        : [...prev, takenBillId]
+    );
+  };
+
+  const isAllTakenSelected =
+    paginatedTakenBills.length > 0 &&
+    paginatedTakenBills.every((bill) => selectedTakenBillIds.includes(bill.id));
+  const isSomeTakenSelected =
+    paginatedTakenBills.length > 0 &&
+    paginatedTakenBills.some((bill) => selectedTakenBillIds.includes(bill.id)) &&
+    !isAllTakenSelected;
+
+  const handleSelectAllTakenToggle = () => {
+    if (isAllTakenSelected) {
+      const pageIds = paginatedTakenBills.map((bill) => bill.id);
+      setSelectedTakenBillIds((prev) => prev.filter((id) => !pageIds.includes(id)));
+    } else {
+      const pageIds = paginatedTakenBills.map((bill) => bill.id);
+      setSelectedTakenBillIds((prev) => [...new Set([...prev, ...pageIds])]);
+    }
+  };
+
+  const handleReturnTakenBills = async () => {
+    if (selectedTakenBillIds.length === 0) return;
+
+    setReturningBills(true);
+    try {
+      const response = await fetch(`${API}/staff/credits/return`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ takenBillIds: selectedTakenBillIds }),
+      });
+
+      if (response.ok) {
+        setSelectedTakenBillIds([]);
+        await fetchCredits();
+        await fetchTakenBills();
+      } else {
+        const data = await response.json().catch(() => ({}));
+        alert(data.error || "Failed to return bills.");
+      }
+    } catch (error) {
+      console.error("Error returning bills:", error);
+      alert("Error returning bills.");
+    } finally {
+      setReturningBills(false);
+    }
+  };
+
   const totalTakenAmount = takenBills.reduce(
     (sum, b) => sum + (Number(b.balance_amount) || 0),
     0
@@ -447,6 +596,7 @@ function OutBillPage() {
                     onChange={(_, value) => {
                       setActiveTab(value);
                       setSelectedCreditIds([]);
+                      setSelectedTakenBillIds([]);
                     }}
                     sx={{
                       minHeight: 40,
@@ -469,6 +619,17 @@ function OutBillPage() {
                     Take Bill ({selectedCreditIds.length})
                   </MDButton>
                 )}
+                {activeTab === "taken" && selectedTakenBillIds.length > 0 && (
+                  <MDButton
+                    color="warning"
+                    variant="gradient"
+                    size="medium"
+                    onClick={handleReturnTakenBills}
+                    disabled={returningBills}
+                  >
+                    {returningBills ? "Returning..." : `Return Bill (${selectedTakenBillIds.length})`}
+                  </MDButton>
+                )}
               </MDBox>
 
               {/* Filters and Summary Row */}
@@ -476,16 +637,8 @@ function OutBillPage() {
                 <Grid container spacing={3} mb={3}>
                   {activeTab === "pending" ? (
                     <>
-                      <Grid item xs={12} md={6}>
-                        <MDInput
-                          type="text"
-                          label="Search Outlet, Contact, Invoice, Staff, or Sale ID..."
-                          fullWidth
-                          value={searchQuery}
-                          onChange={(e) => setSearchQuery(e.target.value)}
-                        />
-                      </Grid>
-                      <Grid item xs={12} md={6}>
+                     
+                      <Grid item xs={5} md={3}>
                         <FormControl size="small" fullWidth>
                           <InputLabel id="credit-staff-filter-label">Staff</InputLabel>
                           <Select
@@ -503,6 +656,15 @@ function OutBillPage() {
                             ))}
                           </Select>
                         </FormControl>
+                      </Grid>
+                       <Grid item xs={4} md={3}>
+                        <MDInput
+                          type="text"
+                          label="Search Outlet, Contact, Invoice, Staff, or Sale ID..."
+                          fullWidth
+                          value={searchQuery}
+                          onChange={(e) => setSearchQuery(e.target.value)}
+                        />
                       </Grid>
                     </>
                   ) : (
@@ -614,6 +776,7 @@ function OutBillPage() {
                             Sr No
                           </TableCell>
                           <TableCell align="left" sx={paginatedTableHeadCellSx}>Outlet Name</TableCell>
+                          <TableCell align="center" sx={paginatedTableHeadCellSx}>Area</TableCell>
                           <TableCell align="center" sx={paginatedTableHeadCellSx}>ERP ID</TableCell>
                           <TableCell align="center" sx={paginatedTableHeadCellSx}>Contact No</TableCell>
                           <TableCell align="center" sx={paginatedTableHeadCellSx}>Sale ID</TableCell>
@@ -631,11 +794,23 @@ function OutBillPage() {
                             <TableCell align="center">
                               <Checkbox
                                 checked={selectedCreditIds.includes(credit.id)}
-                                onChange={() => handleCheckboxToggle(credit.id)}
+                                disabled={isCreditTaken(credit)}
+                                onChange={() => handleCheckboxToggle(credit)}
                               />
                             </TableCell>
                             <TableCell align="center">{(page - 1) * rowsPerPage + index + 1}</TableCell>
-                            <TableCell align="left">{credit.outlet_name}</TableCell>
+                            <TableCell align="left">
+                              {credit.outlet_name}
+                              {isCreditTaken(credit) && (
+                                <Chip
+                                  label={`Taken${credit.taker_name ? ` by ${credit.taker_name}` : ""}`}
+                                  size="small"
+                                  color="default"
+                                  sx={{ ml: 1, height: 20, fontSize: "0.7rem" }}
+                                />
+                              )}
+                            </TableCell>
+                            <TableCell align="center">{credit.location_name || "N/A"}</TableCell>
                             <TableCell align="center">{credit.outlet_erp_id || "N/A"}</TableCell>
                             <TableCell align="center">{credit.contact_number || "N/A"}</TableCell>
                             <TableCell align="center">{credit.sticker_number}</TableCell>
@@ -683,9 +858,17 @@ function OutBillPage() {
                       <TableHead sx={paginatedTableHeadSx()}>
                         <TableRow>
                           <TableCell align="center" sx={{ ...paginatedTableHeadCellSx, width: 56 }}>
+                            <Checkbox
+                              checked={isAllTakenSelected}
+                              indeterminate={isSomeTakenSelected}
+                              onChange={handleSelectAllTakenToggle}
+                            />
+                          </TableCell>
+                          <TableCell align="center" sx={{ ...paginatedTableHeadCellSx, width: 56 }}>
                             Sr No
                           </TableCell>
                           <TableCell align="left" sx={paginatedTableHeadCellSx}>Outlet Name</TableCell>
+                          <TableCell align="center" sx={paginatedTableHeadCellSx}>Area</TableCell>
                           <TableCell align="center" sx={paginatedTableHeadCellSx}>ERP ID</TableCell>
                           <TableCell align="center" sx={paginatedTableHeadCellSx}>Contact No</TableCell>
                           <TableCell align="center" sx={paginatedTableHeadCellSx}>Sale ID</TableCell>
@@ -700,13 +883,20 @@ function OutBillPage() {
                       <TableBody>
                         {paginatedTakenBills.map((bill, index) => (
                           <TableRow key={bill.id}>
+                            <TableCell align="center">
+                              <Checkbox
+                                checked={selectedTakenBillIds.includes(bill.id)}
+                                onChange={() => handleTakenBillCheckboxToggle(bill.id)}
+                              />
+                            </TableCell>
                             <TableCell align="center">{(reportPage - 1) * reportRowsPerPage + index + 1}</TableCell>
                             <TableCell align="left">{bill.outlet_name}</TableCell>
+                            <TableCell align="center">{bill.location_name || "N/A"}</TableCell>
                             <TableCell align="center">{bill.outlet_erp_id || "N/A"}</TableCell>
                             <TableCell align="center">{bill.contact_number || "N/A"}</TableCell>
                             <TableCell align="center">{bill.sticker_number}</TableCell>
                             <TableCell align="center">{bill.invoice_number}</TableCell>
-                            <TableCell align="center">{bill.staff_name}</TableCell>
+                            <TableCell align="center">{formatTakerName(bill)}</TableCell>
                             <TableCell
                               align="center"
                               sx={{ color: "error.main", fontWeight: "bold" }}
@@ -759,25 +949,58 @@ function OutBillPage() {
         <DialogContent dividers>
           <MDBox display="flex" flexDirection="column" gap={2}>
             <MDTypography variant="body2" color="text">
-              Assign {selectedCreditIds.length} selected bills to the following collector staff:
+              Assign {selectedCreditIds.length} selected bills to the following collector:
             </MDTypography>
             <FormControl fullWidth>
-              <InputLabel id="dialog-staff-select-label">Collector Staff</InputLabel>
+              <InputLabel id="dialog-collector-type-label">Collector Type</InputLabel>
               <Select
-                labelId="dialog-staff-select-label"
-                value={takeStaffId}
-                label="Collector Staff"
-                onChange={(e) => setTakeStaffId(e.target.value)}
+                labelId="dialog-collector-type-label"
+                value={takeCollectorType}
+                label="Collector Type"
+                onChange={(e) => handleTakeCollectorTypeChange(e.target.value)}
                 sx={{ height: 44 }}
               >
-                <MenuItem value="">Select Staff</MenuItem>
-                {staffOptions.map((staff) => (
-                  <MenuItem key={staff.id} value={staff.id}>
-                    {staff.name}
-                  </MenuItem>
-                ))}
+                <MenuItem value="company_staff">Company Staff</MenuItem>
+                <MenuItem value="bawarchee_staff">Delivery Boy</MenuItem>
               </Select>
             </FormControl>
+            {takeCollectorType === "company_staff" ? (
+              <FormControl fullWidth>
+                <InputLabel id="dialog-staff-select-label">Company Staff</InputLabel>
+                <Select
+                  labelId="dialog-staff-select-label"
+                  value={takeStaffId}
+                  label="Company Staff"
+                  onChange={(e) => setTakeStaffId(e.target.value)}
+                  sx={{ height: 44 }}
+                >
+                  <MenuItem value="">Select Staff</MenuItem>
+                  {companyStaffList.map((staff) => (
+                    <MenuItem key={staff.id} value={String(staff.id)}>
+                      {staff.name}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            ) : (
+              <FormControl fullWidth>
+                <InputLabel id="dialog-delivery-boy-select-label">Delivery Boy</InputLabel>
+                <Select
+                  labelId="dialog-delivery-boy-select-label"
+                  value={takeDeliveryBoyId}
+                  label="Delivery Boy"
+                  onChange={(e) => setTakeDeliveryBoyId(e.target.value)}
+                  sx={{ height: 44 }}
+                >
+                  <MenuItem value="">Select Delivery Boy</MenuItem>
+                  {deliveryBoys.map((boy) => (
+                    <MenuItem key={boy.id} value={String(boy.id)}>
+                      {boy.name}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            )}
             <MDInput
               type="date"
               label="Taken Date"
