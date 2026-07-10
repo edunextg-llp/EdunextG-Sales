@@ -850,7 +850,7 @@ function Dashboard() {
   const [totalCollectionLoading, setTotalCollectionLoading] = useState(false);
   const [collectionStaffOptions, setCollectionStaffOptions] = useState([]);
   const [selectedCollectionStaffId, setSelectedCollectionStaffId] = useState("");
-  const [salesChartFromDate, setSalesChartFromDate] = useState(getMonthStartLocalDate());
+  const [salesChartFromDate, setSalesChartFromDate] = useState("2026-01-01");
   const [salesChartToDate, setSalesChartToDate] = useState(getTodayLocalDate());
   const [selectedSalesStaffId, setSelectedSalesStaffId] = useState("");
   const [salesChartMonthlyData, setSalesChartMonthlyData] = useState([]);
