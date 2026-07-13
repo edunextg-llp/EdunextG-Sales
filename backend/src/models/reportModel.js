@@ -150,7 +150,8 @@ class ReportModel {
     static async getTodayCollectionDetails(startDate, endDate) {
         const dateWhere = ReportModel.buildDateWhere('sp.payment_date', startDate, endDate);
         const [rows] = await db.execute(
-            `SELECT outlet_staff.id AS outlet_staff_id,
+            `SELECT DATE_FORMAT(sp.payment_date, '%Y-%m-%d') AS collection_date,
+                    outlet_staff.id AS outlet_staff_id,
                     outlet_staff.name AS outlet_staff_name,
                     sc.id AS outlet_id,
                     sc.outlet_name,
@@ -179,10 +180,10 @@ class ReportModel {
              LEFT JOIN staff_counters sc ON sc.id = ss.outlet_id
              LEFT JOIN staff outlet_staff ON outlet_staff.id = sc.staff_id
              ${dateWhere.sql ? `${dateWhere.sql} AND` : 'WHERE sp.payment_date = CURDATE() AND'} sp.payment_mode IN ('cash', 'upi', 'cheque')
-             GROUP BY outlet_staff.id, outlet_staff.name, sc.id, sc.outlet_name, sc.outlet_erp_id,
+             GROUP BY collection_date, outlet_staff.id, outlet_staff.name, sc.id, sc.outlet_name, sc.outlet_erp_id,
                       ss.id, ss.invoice_number, sp.collector_staff_id, sp.collector_name,
                       collector.id, collector.name, sale_staff.id, sale_staff.name
-             ORDER BY outlet_staff.name ASC, sc.outlet_name ASC,
+             ORDER BY collection_date DESC, outlet_staff.name ASC, sc.outlet_name ASC,
                       CASE
                           WHEN sp.collector_name IS NOT NULL
                                AND TRIM(sp.collector_name) <> ''
@@ -199,7 +200,8 @@ class ReportModel {
         const dateWhere = ReportModel.buildDateWhere('sp.payment_date', startDate, endDate);
         const staffFilter = ReportModel.buildOutletStaffFilter(staffId);
         const [rows] = await db.execute(
-            `SELECT outlet_staff.id AS outlet_staff_id,
+            `SELECT DATE_FORMAT(sp.payment_date, '%Y-%m-%d') AS collection_date,
+                    outlet_staff.id AS outlet_staff_id,
                     outlet_staff.name AS outlet_staff_name,
                     sc.id AS outlet_id,
                     sc.outlet_name,
@@ -228,7 +230,7 @@ class ReportModel {
              LEFT JOIN staff_counters sc ON sc.id = ss.outlet_id
              LEFT JOIN staff outlet_staff ON outlet_staff.id = sc.staff_id
              ${dateWhere.sql ? `${dateWhere.sql} AND` : 'WHERE'} sp.payment_mode IN ('cash', 'upi', 'cheque')${staffFilter.sql}
-             GROUP BY outlet_staff.id, outlet_staff.name, sc.id, sc.outlet_name, sc.outlet_erp_id,
+             GROUP BY collection_date, outlet_staff.id, outlet_staff.name, sc.id, sc.outlet_name, sc.outlet_erp_id,
                       ss.id, ss.invoice_number, sp.collector_staff_id, sp.collector_name,
                       collector.id, collector.name, sale_staff.id, sale_staff.name
              ORDER BY outlet_staff.name ASC, sc.outlet_name ASC,
