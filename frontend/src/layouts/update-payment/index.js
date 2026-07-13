@@ -121,8 +121,7 @@ const toInputDate = (value) => {
 
 function UpdatePayment() {
   const [searchQuery, setSearchQuery] = useState("");
-  const [collectionStartDate, setCollectionStartDate] = useState(getTodayLocalDate());
-  const [collectionEndDate, setCollectionEndDate] = useState(getTodayLocalDate());
+  const [collectionDate, setCollectionDate] = useState(getTodayLocalDate());
   const [collectionRows, setCollectionRows] = useState([]);
   const [collectionDeliveryBoyName, setCollectionDeliveryBoyName] = useState("");
   const [collectionCompanyStaffId, setCollectionCompanyStaffId] = useState("");
@@ -215,8 +214,10 @@ function UpdatePayment() {
   const fetchCollectionReport = async () => {
     try {
       const params = new URLSearchParams();
-      if (collectionStartDate) params.set("startDate", collectionStartDate);
-      if (collectionEndDate) params.set("endDate", collectionEndDate);
+      if (collectionDate) {
+        params.set("startDate", collectionDate);
+        params.set("endDate", collectionDate);
+      }
       const response = await fetch(`${API}/staff/reports?${params.toString()}`);
       if (!response.ok) throw new Error("Unable to load collection report");
 
@@ -226,10 +227,10 @@ function UpdatePayment() {
         const collectorName = row.collector_type === "bawarchee_staff"
           ? row.bawarchee_collector_name || "Unassigned"
           : row.company_collector_name || "Unassigned";
-        const key = [row.collection_date || collectionStartDate || "N/A", collectorType, collectorName, row.sale_id].join("|");
+        const key = [row.collection_date || collectionDate || "N/A", collectorType, collectorName, row.sale_id].join("|");
         if (!result[key]) {
           result[key] = {
-            collectionDate: row.collection_date || collectionStartDate || "N/A",
+            collectionDate: row.collection_date || collectionDate || "N/A",
             collectorType,
             collectorName,
             outletName: row.outlet_name || "N/A",
@@ -263,8 +264,10 @@ function UpdatePayment() {
   }, [searchQuery]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
+    setCollectionDeliveryBoyName("");
+    setCollectionCompanyStaffId("");
     fetchCollectionReport();
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [collectionDate]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     const fetchCompanyStaff = async () => {
@@ -309,6 +312,16 @@ function UpdatePayment() {
       .map((row) => row.collectorName)
   )].sort((first, second) => first.localeCompare(second));
 
+  const collectionAmounts = filteredCollectionRows.reduce(
+    (amounts, row) => ({
+      cash: amounts.cash + row.cash,
+      upi: amounts.upi + row.upi,
+      cheque: amounts.cheque + row.cheque,
+      total: amounts.total + row.total,
+    }),
+    { cash: 0, upi: 0, cheque: 0, total: 0 }
+  );
+
   const escapeHtml = (value) => String(value ?? "").replace(/[&<>"']/g, (character) => ({
     "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#039;",
   }[character]));
@@ -327,7 +340,7 @@ function UpdatePayment() {
         <td>${formatReportCurrency(row.cheque)}</td>
         <td>${formatReportCurrency(row.total)}</td>
       </tr>`).join("");
-    const total = filteredCollectionRows.reduce((sum, row) => sum + row.total, 0);
+    const total = collectionAmounts.total;
     const printWindow = window.open("", "_blank", "width=1100,height=800");
     if (!printWindow) {
       alert("Please allow popups to download the PDF.");
@@ -335,7 +348,7 @@ function UpdatePayment() {
     }
     printWindow.document.write(`<!doctype html><html><head><title>Payment Collection Report</title><style>
       body { font-family: Arial, sans-serif; color: #1f2937; padding: 28px; } h1 { margin: 0 0 6px; font-size: 20px; } p { margin: 0 0 22px; color: #4b5563; } table { width: 100%; border-collapse: collapse; font-size: 12px; } th, td { border: 1px solid #d1d5db; padding: 9px; text-align: left; } th { background: #0ea5e9; color: white; } td:nth-last-child(-n+4), th:nth-last-child(-n+4) { text-align: right; } tfoot td { font-weight: bold; background: #f3f4f6; } @media print { body { padding: 0; } }
-      </style></head><body><h1>Payment Collection Report</h1><p>Period: ${escapeHtml(collectionStartDate)} to ${escapeHtml(collectionEndDate)}</p><table><thead><tr><th>Date</th><th>Collected By</th><th>Staff Name</th><th>Outlet Name</th><th>Invoice No.</th><th>Cash</th><th>UPI</th><th>Cheque</th><th>Total</th></tr></thead><tbody>${rows}</tbody><tfoot><tr><td colspan="8">Grand Total</td><td>${formatReportCurrency(total)}</td></tr></tfoot></table><script>window.onload = function () { window.print(); };</script></body></html>`);
+      </style></head><body><h1>Payment Collection Report</h1><p>Date: ${escapeHtml(collectionDate)}</p><table><thead><tr><th>Date</th><th>Collected By</th><th>Staff Name</th><th>Outlet Name</th><th>Invoice No.</th><th>Cash</th><th>UPI</th><th>Cheque</th><th>Total</th></tr></thead><tbody>${rows}</tbody><tfoot><tr><td colspan="8">Grand Total</td><td>${formatReportCurrency(total)}</td></tr></tfoot></table><script>window.onload = function () { window.print(); };</script></body></html>`);
     printWindow.document.close();
   };
 
@@ -1106,9 +1119,20 @@ function UpdatePayment() {
                     <MDTypography variant="h5" fontWeight="medium">
                       Date-wise Collection Details
                     </MDTypography>
-                    <MDTypography variant="button" color="text">
-                      Cash, UPI and cheque collections by company staff and delivery boy.
-                    </MDTypography>
+                    <MDBox display="flex" alignItems="center" flexWrap="wrap" gap={1}>
+                      <MDTypography variant="button" color="text">
+                        Cash, UPI and cheque collections by company staff and delivery boy.
+                      </MDTypography>
+                      <MDTypography variant="button" fontWeight="bold" color="info">
+                        Cash: {formatReportCurrency(collectionAmounts.cash)}
+                      </MDTypography>
+                      <MDTypography variant="button" fontWeight="bold" color="info">
+                        UPI: {formatReportCurrency(collectionAmounts.upi)}
+                      </MDTypography>
+                      <MDTypography variant="button" fontWeight="bold" color="info">
+                        Cheque: {formatReportCurrency(collectionAmounts.cheque)}
+                      </MDTypography>
+                    </MDBox>
                   </MDBox>
                   <MDButton
                     variant="outlined"
@@ -1126,21 +1150,11 @@ function UpdatePayment() {
                   <Grid item xs={12} sm={6} md={3}>
                     <MDInput
                       type="date"
-                      label="From date"
+                      label="Date"
                       fullWidth
                       InputLabelProps={{ shrink: true }}
-                      value={collectionStartDate}
-                      onChange={(event) => setCollectionStartDate(event.target.value)}
-                    />
-                  </Grid>
-                  <Grid item xs={12} sm={6} md={3}>
-                    <MDInput
-                      type="date"
-                      label="To date"
-                      fullWidth
-                      InputLabelProps={{ shrink: true }}
-                      value={collectionEndDate}
-                      onChange={(event) => setCollectionEndDate(event.target.value)}
+                      value={collectionDate}
+                      onChange={(event) => setCollectionDate(event.target.value)}
                     />
                   </Grid>
                   <Grid item xs={12} sm={6} md={3}>
@@ -1150,6 +1164,7 @@ function UpdatePayment() {
                         labelId="collection-delivery-boy-filter-label"
                         label="Delivery Boy"
                         value={collectionDeliveryBoyName}
+                        sx={{ height: 43 }}
                         onChange={(event) => {
                           setCollectionDeliveryBoyName(event.target.value);
                           setCollectionCompanyStaffId("");
@@ -1169,6 +1184,7 @@ function UpdatePayment() {
                         labelId="collection-company-staff-filter-label"
                         label="Company Staff"
                         value={collectionCompanyStaffId}
+                        sx={{ height: 43 }}
                         onChange={(event) => {
                           setCollectionCompanyStaffId(event.target.value);
                           setCollectionDeliveryBoyName("");
