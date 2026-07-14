@@ -781,6 +781,85 @@ export async function ensureSchema() {
             );
         `);
 
+        await connection.query(`
+            CREATE TABLE IF NOT EXISTS chalan_sequence (
+                id INT PRIMARY KEY,
+                seq_value INT NOT NULL DEFAULT 0
+            );
+        `);
+        await connection.query(`
+            INSERT IGNORE INTO chalan_sequence (id, seq_value) VALUES (1, 0)
+        `);
+
+        await connection.query(`
+            CREATE TABLE IF NOT EXISTS chalan_sales (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                chalan_code VARCHAR(20) NOT NULL UNIQUE,
+                sale_date DATE NOT NULL,
+                assignee_type ENUM('company_staff', 'delivery_boy') NOT NULL,
+                staff_id INT NULL,
+                delivery_boy_id INT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (staff_id) REFERENCES staff(id) ON DELETE SET NULL,
+                FOREIGN KEY (delivery_boy_id) REFERENCES delivery_boys(id) ON DELETE SET NULL
+            );
+        `);
+
+        await connection.query(`
+            CREATE TABLE IF NOT EXISTS chalan_sale_items (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                chalan_sale_id INT NOT NULL,
+                sr_no INT NOT NULL,
+                item_name VARCHAR(255) NOT NULL,
+                qty DECIMAL(10, 2) NOT NULL,
+                mrp DECIMAL(10, 2) NOT NULL,
+                FOREIGN KEY (chalan_sale_id) REFERENCES chalan_sales(id) ON DELETE CASCADE
+            );
+        `);
+
+        await tryQuery(
+            connection,
+            `ALTER TABLE chalan_sales ADD COLUMN packaging_status
+             ENUM('not_packing', 'packing', 'packing_done', 'out_for_delivery', 'delivered', 'cancelled', 'returned')
+             NOT NULL DEFAULT 'not_packing'`,
+            'packaging_status on chalan_sales'
+        );
+        await tryQuery(
+            connection,
+            `ALTER TABLE chalan_sales ADD COLUMN packed_item_count INT NULL`,
+            'packed_item_count on chalan_sales'
+        );
+        await tryQuery(
+            connection,
+            `ALTER TABLE chalan_sales ADD COLUMN box_count INT NULL`,
+            'box_count on chalan_sales'
+        );
+        await tryQuery(
+            connection,
+            `ALTER TABLE chalan_sales ADD COLUMN packet_count INT NULL`,
+            'packet_count on chalan_sales'
+        );
+        await tryQuery(
+            connection,
+            `ALTER TABLE chalan_sales ADD COLUMN vehicle_no VARCHAR(50) NULL`,
+            'vehicle_no on chalan_sales'
+        );
+        await tryQuery(
+            connection,
+            `ALTER TABLE chalan_sales ADD COLUMN delivery_date DATE NULL`,
+            'delivery_date on chalan_sales'
+        );
+
+        await connection.query(`
+            CREATE TABLE IF NOT EXISTS chalan_sale_status_history (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                chalan_sale_id INT NOT NULL,
+                status VARCHAR(32) NOT NULL,
+                changed_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (chalan_sale_id) REFERENCES chalan_sales(id) ON DELETE CASCADE
+            );
+        `);
+
         await tryQuery(
             connection,
             `ALTER TABLE taken_bills ADD COLUMN collector_type VARCHAR(32) NOT NULL DEFAULT 'company_staff'`,

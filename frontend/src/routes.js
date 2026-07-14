@@ -20,6 +20,11 @@ import Packaging from "layouts/packaging";
 import Delivery from "layouts/delivery";
 import Delivered from "layouts/delivered";
 import DBCollection from "layouts/db-collection";
+import ChalanAddSales from "layouts/chalan/add-sales";
+import ChalanPackagingDelivery from "layouts/chalan/packaging-delivery";
+import ChalanDelivery from "layouts/chalan/delivery";
+import ChalanDelivered from "layouts/chalan/delivered";
+import ChalanReturn from "layouts/chalan/return";
 // import Reports from "layouts/reports";
 import DmsStock from "layouts/dms-stock";
 import CurrentStock from "layouts/current-stock";
@@ -178,6 +183,54 @@ const routes = [
         icon: <Icon fontSize="small">verified</Icon>,
         route: "/delivered",
         component: <Delivered />,
+      },
+    ],
+  },
+  {
+    type: "collapse",
+    name: "Chalan",
+    key: "chalan",
+    icon: <Icon fontSize="small">description</Icon>,
+    collapse: [
+      {
+        type: "collapse",
+        name: "Add Sales",
+        key: "chalan-add-sales",
+        icon: <Icon fontSize="small">payments</Icon>,
+        route: "/chalan-add-sales",
+        component: <ChalanAddSales />,
+      },
+      {
+        type: "collapse",
+        name: "Packaging Delivery",
+        key: "chalan-packaging-delivery",
+        icon: <Icon fontSize="small">inventory_2</Icon>,
+        route: "/chalan-packaging-delivery",
+        component: <ChalanPackagingDelivery />,
+      },
+      {
+        type: "collapse",
+        name: "Delivery",
+        key: "chalan-delivery",
+        icon: <Icon fontSize="small">local_shipping</Icon>,
+        route: "/chalan-delivery",
+        component: <ChalanDelivery />,
+      },
+      {
+        type: "collapse",
+        name: "Delivered",
+        key: "chalan-delivered",
+        icon: <Icon fontSize="small">verified</Icon>,
+        route: "/chalan-delivered",
+        component: <ChalanDelivered />,
+      },
+      {
+        type: "collapse",
+        name: "Return",
+        key: "chalan-return",
+        icon: <Icon fontSize="small">keyboard_return</Icon>,
+        route: "/chalan-return",
+        component: <ChalanReturn />,
       },
     ],
   },

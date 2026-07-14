@@ -3,6 +3,7 @@ import cors from 'cors';
 import bodyParser from 'body-parser';
 import staffRoutes from './routes/staffRoutes.js';
 import deliveryBoyRoutes from './routes/deliveryBoyRoutes.js';
+import chalanRoutes from './routes/chalanRoutes.js';
 import authRoutes from './routes/authRoutes.js';
 import { verifyTokenMiddleware } from './middlewares/authMiddleware.js';
 import rateLimit from 'express-rate-limit';
@@ -30,6 +31,7 @@ app.use('/api/auth', authRoutes);
 // Protected Routes
 app.use('/api/staff', verifyTokenMiddleware, staffRoutes);
 app.use('/api/delivery-boy', deliveryBoyRoutes);
+app.use('/api/chalan', verifyTokenMiddleware, chalanRoutes);
 
 // Basic health check
 app.get('/', (req, res) => {

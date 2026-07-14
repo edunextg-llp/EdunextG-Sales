@@ -31,7 +31,7 @@ function SidenavGroup({ name, icon, collapse, collapseName }) {
       </MDBox>
       <Collapse in={open} timeout="auto" unmountOnExit>
         <List component="div" disablePadding>
-          {collapse.map((item) => (
+          {collapse.filter((item) => !item.hidden).map((item) => (
             <NavLink key={item.key} to={item.route}>
               <SidenavCollapse
                 name={item.name}
