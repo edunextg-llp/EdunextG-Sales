@@ -5,6 +5,7 @@ import Grid from "@mui/material/Grid";
 import Card from "@mui/material/Card";
 import Icon from "@mui/material/Icon";
 import Autocomplete from "@mui/material/Autocomplete";
+import { Checkbox } from "@mui/material";
 import InputLabel from "@mui/material/InputLabel";
 import MenuItem from "@mui/material/MenuItem";
 import FormControl from "@mui/material/FormControl";
@@ -43,6 +44,8 @@ function AddCounter() {
     outletErpId: "",
     outletName: "",
     contactNumber: "",
+    whatsappNumber: "",
+    whatsappSameAsContact: false,
     googleLocation: "",
   });
 
@@ -156,7 +159,17 @@ function AddCounter() {
   }, [selectedStaff, routeDay]);
 
   const addOutletField = () => {
-    setOutlets([...outlets, { outletErpId: "", outletName: "", contactNumber: "", googleLocation: "" }]);
+    setOutlets([
+      ...outlets,
+      {
+        outletErpId: "",
+        outletName: "",
+        contactNumber: "",
+        whatsappNumber: "",
+        whatsappSameAsContact: false,
+        googleLocation: "",
+      },
+    ]);
   };
 
   const removeOutletField = (index) => {
@@ -167,7 +180,25 @@ function AddCounter() {
 
   const handleOutletChange = (index, field, value) => {
     const updated = [...outlets];
-    updated[index][field] = value;
+    const nextValue = field === "contactNumber" || field === "whatsappNumber"
+      ? String(value || "").replace(/\D/g, "")
+      : value;
+
+    updated[index][field] = nextValue;
+
+    if (field === "contactNumber" && updated[index].whatsappSameAsContact) {
+      updated[index].whatsappNumber = nextValue;
+    }
+
+    setOutlets(updated);
+  };
+
+  const handleWhatsappSameAsContact = (index, checked) => {
+    const updated = [...outlets];
+    updated[index].whatsappSameAsContact = checked;
+    if (checked) {
+      updated[index].whatsappNumber = updated[index].contactNumber || "";
+    }
     setOutlets(updated);
   };
 
@@ -192,7 +223,12 @@ function AddCounter() {
 
     const erpIds = outlets.map((outlet) => normalizeText(outlet.outletErpId)).filter(Boolean);
     const formattedOutlets = outlets.map((outlet) => ({
-      ...outlet,
+      outletErpId: outlet.outletErpId,
+      outletName: outlet.outletName,
+      contactNumber: outlet.contactNumber,
+      whatsappNumber: outlet.whatsappSameAsContact
+        ? outlet.contactNumber
+        : outlet.whatsappNumber,
       googleLocation: formatGoogleMapsLocation(outlet.googleLocation),
     }));
     const missingGoogleLocation = formattedOutlets.some((outlet) => !String(outlet.googleLocation || "").trim());
@@ -219,7 +255,13 @@ function AddCounter() {
       return;
     }
 
-    setOutlets(formattedOutlets);
+    setOutlets((prev) =>
+      prev.map((outlet, index) => ({
+        ...outlet,
+        googleLocation: formattedOutlets[index].googleLocation,
+        whatsappNumber: formattedOutlets[index].whatsappNumber,
+      }))
+    );
 
     try {
       const response = await fetch(`${API}/staff/${selectedStaff.id}/counters`, {
@@ -267,18 +309,51 @@ function AddCounter() {
   };
 
   const handleEditClick = (outlet) => {
+    const contactNumber = outlet.contact_number || "";
+    const whatsappNumber = outlet.whatsapp_number || contactNumber;
     setEditingOutletId(outlet.id);
     setEditFormData({
       outletErpId: outlet.outlet_erp_id,
       outletName: outlet.outlet_name,
-      contactNumber: outlet.contact_number,
+      contactNumber,
+      whatsappNumber,
+      whatsappSameAsContact: Boolean(contactNumber) && contactNumber === whatsappNumber,
       googleLocation: outlet.google_location || "",
     });
   };
 
   const handleCancelEdit = () => {
     setEditingOutletId(null);
-    setEditFormData({ outletErpId: "", outletName: "", contactNumber: "", googleLocation: "" });
+    setEditFormData({
+      outletErpId: "",
+      outletName: "",
+      contactNumber: "",
+      whatsappNumber: "",
+      whatsappSameAsContact: false,
+      googleLocation: "",
+    });
+  };
+
+  const handleEditFormChange = (field, value) => {
+    const nextValue = field === "contactNumber" || field === "whatsappNumber"
+      ? String(value || "").replace(/\D/g, "")
+      : value;
+
+    setEditFormData((prev) => {
+      const updated = { ...prev, [field]: nextValue };
+      if (field === "contactNumber" && updated.whatsappSameAsContact) {
+        updated.whatsappNumber = nextValue;
+      }
+      return updated;
+    });
+  };
+
+  const handleEditWhatsappSameAsContact = (checked) => {
+    setEditFormData((prev) => ({
+      ...prev,
+      whatsappSameAsContact: checked,
+      whatsappNumber: checked ? prev.contactNumber || "" : prev.whatsappNumber,
+    }));
   };
 
   const handleSaveEdit = async (counterId) => {
@@ -312,7 +387,12 @@ function AddCounter() {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          ...editFormData,
+          outletErpId: editFormData.outletErpId,
+          outletName: editFormData.outletName,
+          contactNumber: editFormData.contactNumber,
+          whatsappNumber: editFormData.whatsappSameAsContact
+            ? editFormData.contactNumber
+            : editFormData.whatsappNumber,
           googleLocation: formattedGoogleLocation,
         }),
       });
@@ -548,7 +628,7 @@ function AddCounter() {
                               }
                             />
                           </Grid>
-                          <Grid item xs={12} sm={6} md={4}>
+                          <Grid item xs={12} sm={6} md={3}>
                             <MDInput
                               label="Outlet Name"
                               fullWidth
@@ -572,6 +652,31 @@ function AddCounter() {
                           </Grid>
                           <Grid item xs={12} sm={6} md={3}>
                             <MDInput
+                              label="WhatsApp Number"
+                              fullWidth
+                              InputProps={{ sx: { minHeight: 48 } }}
+                              value={outlet.whatsappNumber}
+                              disabled={outlet.whatsappSameAsContact}
+                              onChange={(e) =>
+                                handleOutletChange(index, "whatsappNumber", e.target.value)
+                              }
+                            />
+                          </Grid>
+                          <Grid item xs={12} sm={6} md={6}>
+                            <MDBox display="flex" alignItems="center">
+                              <Checkbox
+                                checked={Boolean(outlet.whatsappSameAsContact)}
+                                onChange={(e) =>
+                                  handleWhatsappSameAsContact(index, e.target.checked)
+                                }
+                              />
+                              <MDTypography variant="body2">
+                                WhatsApp number same as contact number
+                              </MDTypography>
+                            </MDBox>
+                          </Grid>
+                          <Grid item xs={12} sm={6} md={6}>
+                            <MDInput
                               label="Google Location"
                               fullWidth
                               InputProps={{ sx: { minHeight: 48 } }}
@@ -583,7 +688,7 @@ function AddCounter() {
                               helperText={GOOGLE_MAPS_HELPER_TEXT}
                             />
                           </Grid>
-                          <Grid item xs={12} sm={6} md={12}>
+                          <Grid item xs={12}>
                             <MDButton
                               color="error"
                               variant="text"
@@ -629,15 +734,15 @@ function AddCounter() {
                                 label="ERP Id"
                                 fullWidth
                                 value={editFormData.outletErpId}
-                                onChange={(e) => setEditFormData({ ...editFormData, outletErpId: e.target.value })}
+                                onChange={(e) => handleEditFormChange("outletErpId", e.target.value)}
                               />
                             </Grid>
-                            <Grid item xs={12} sm={6} md={3}>
+                            <Grid item xs={12} sm={6} md={2}>
                               <MDInput
                                 label="Outlet Name"
                                 fullWidth
                                 value={editFormData.outletName}
-                                onChange={(e) => setEditFormData({ ...editFormData, outletName: e.target.value })}
+                                onChange={(e) => handleEditFormChange("outletName", e.target.value)}
                               />
                             </Grid>
                             <Grid item xs={12} sm={6} md={2}>
@@ -645,15 +750,24 @@ function AddCounter() {
                                 label="Contact"
                                 fullWidth
                                 value={editFormData.contactNumber}
-                                onChange={(e) => setEditFormData({ ...editFormData, contactNumber: e.target.value })}
+                                onChange={(e) => handleEditFormChange("contactNumber", e.target.value)}
                               />
                             </Grid>
-                            <Grid item xs={12} sm={6} md={3}>
+                            <Grid item xs={12} sm={6} md={2}>
+                              <MDInput
+                                label="WhatsApp Number"
+                                fullWidth
+                                value={editFormData.whatsappNumber}
+                                disabled={editFormData.whatsappSameAsContact}
+                                onChange={(e) => handleEditFormChange("whatsappNumber", e.target.value)}
+                              />
+                            </Grid>
+                            <Grid item xs={12} sm={6} md={2}>
                               <MDInput
                                 label="Google Location"
                                 fullWidth
                                 value={editFormData.googleLocation}
-                                onChange={(e) => setEditFormData({ ...editFormData, googleLocation: e.target.value })}
+                                onChange={(e) => handleEditFormChange("googleLocation", e.target.value)}
                                 onBlur={handleEditGoogleLocationBlur}
                                 helperText={GOOGLE_MAPS_HELPER_TEXT}
                               />
@@ -668,6 +782,17 @@ function AddCounter() {
                                 </MDButton>
                               </MDBox>
                             </Grid>
+                            <Grid item xs={12}>
+                              <MDBox display="flex" alignItems="center">
+                                <Checkbox
+                                  checked={Boolean(editFormData.whatsappSameAsContact)}
+                                  onChange={(e) => handleEditWhatsappSameAsContact(e.target.checked)}
+                                />
+                                <MDTypography variant="body2">
+                                  WhatsApp number same as contact number
+                                </MDTypography>
+                              </MDBox>
+                            </Grid>
                           </Grid>
                         ) : (
                           <Grid container spacing={1.5} alignItems="center">
@@ -676,7 +801,7 @@ function AddCounter() {
                                 {saved.outlet_erp_id}
                               </MDTypography>
                             </Grid>
-                            <Grid item xs={12} sm={6} md={3}>
+                            <Grid item xs={12} sm={6} md={2}>
                               <MDTypography variant="body2" fontWeight="medium">
                                 {saved.outlet_name}
                               </MDTypography>
@@ -686,7 +811,12 @@ function AddCounter() {
                                 {saved.contact_number}
                               </MDTypography>
                             </Grid>
-                            <Grid item xs={12} sm={6} md={3}>
+                            <Grid item xs={12} sm={6} md={2}>
+                              <MDTypography variant="body2" fontWeight="medium">
+                                WA: {saved.whatsapp_number || saved.contact_number || "-"}
+                              </MDTypography>
+                            </Grid>
+                            <Grid item xs={12} sm={6} md={2}>
                               {saved.google_location ? (
                                 <MDTypography
                                   component="a"

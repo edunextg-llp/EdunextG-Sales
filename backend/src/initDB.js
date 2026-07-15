@@ -115,6 +115,7 @@ async function initDB() {
             outlet_erp_id VARCHAR(50) NOT NULL,
             outlet_name VARCHAR(255) NOT NULL,
             contact_number VARCHAR(20) NOT NULL,
+            whatsapp_number VARCHAR(20) NULL,
             location_name VARCHAR(255) NULL,
             google_location TEXT NULL,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -142,6 +143,15 @@ async function initDB() {
         console.log('Added google_location to staff_counters table');
     } catch (err) {
         console.log('google_location column may already exist on staff_counters');
+    }
+
+    try {
+        await connection.query(`
+            ALTER TABLE staff_counters ADD COLUMN whatsapp_number VARCHAR(20) NULL
+        `);
+        console.log('Added whatsapp_number to staff_counters table');
+    } catch (err) {
+        console.log('whatsapp_number column may already exist on staff_counters');
     }
 
     // Create Staff Sales table
@@ -955,7 +965,30 @@ async function initDB() {
             FOREIGN KEY (staff_id) REFERENCES staff(id) ON DELETE CASCADE
         );
     `);
-    console.log('Taken bills table ready');
+        console.log('Taken bills table ready');
+
+    await connection.query(`
+        CREATE TABLE IF NOT EXISTS overdue_sale_permissions (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            staff_id INT NOT NULL,
+            sale_date DATE NOT NULL,
+            outlet_id INT NOT NULL,
+            outlet_erp_id VARCHAR(50) NOT NULL,
+            outlet_name VARCHAR(255) NULL,
+            max_overdue_days INT NOT NULL,
+            overdue_credit_ids TEXT NULL,
+            overdue_details TEXT NULL,
+            permission_note TEXT NULL,
+            permitted_by_admin_id INT NULL,
+            permitted_by_name VARCHAR(255) NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            INDEX idx_overdue_sale_permissions_erp (outlet_erp_id),
+            INDEX idx_overdue_sale_permissions_staff_date (staff_id, sale_date),
+            FOREIGN KEY (staff_id) REFERENCES staff(id) ON DELETE CASCADE,
+            FOREIGN KEY (outlet_id) REFERENCES staff_counters(id) ON DELETE CASCADE
+        );
+    `);
+    console.log('Overdue sale permissions table ready');
 
     await connection.end();
 }

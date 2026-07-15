@@ -16,6 +16,10 @@ import {
   TableContainer,
   TableHead,
   TableRow,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
 } from "@mui/material";
 
 // Material Dashboard 2 React components
@@ -74,6 +78,13 @@ function AddSales() {
   const [editingSaleId, setEditingSaleId] = useState(null);
   const [editForm, setEditForm] = useState({ itemCount: "", invoiceNumber: "", price: "" });
   const [savingEdit, setSavingEdit] = useState(false);
+  const [permissionDialog, setPermissionDialog] = useState({
+    open: false,
+    overdueOutlets: [],
+    pendingPayload: null,
+    submittedOutletIds: [],
+    permissionNote: "",
+  });
 
   const API = "https://bawarchee.edunextg.co/api";
   const isCnfStaff = selectedStaff?.staff_type === "cnf";
@@ -442,6 +453,92 @@ function AddSales() {
     });
   };
 
+  const applySalesSuccess = async (submittedOutletIds = []) => {
+    await refreshSubmittedSales();
+
+    const outletIdSet = new Set((submittedOutletIds || []).map((id) => Number(id)));
+    setOutlets((prev) => prev.filter((o) => !outletIdSet.has(Number(o.id))));
+    setSearchOutlets((prev) => prev.filter((o) => !outletIdSet.has(Number(o.id))));
+
+    setSalesData((prev) => {
+      const next = { ...prev };
+      outletIdSet.forEach((id) => delete next[outletKey(id)]);
+      return next;
+    });
+
+    window.scrollTo({ top: document.body.scrollHeight, behavior: "smooth" });
+  };
+
+  const closePermissionDialog = () => {
+    setPermissionDialog({
+      open: false,
+      overdueOutlets: [],
+      pendingPayload: null,
+      submittedOutletIds: [],
+      permissionNote: "",
+    });
+  };
+
+  const submitSalesPayload = async (
+    payload,
+    submittedOutletIds = [],
+    { permissionGranted = false, permissionNote = "" } = {}
+  ) => {
+    setSubmitting(true);
+    try {
+      const response = await fetch(`${API}/staff/${selectedStaff.id}/sales`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          ...payload,
+          permissionGranted,
+          permissionNote,
+        }),
+      });
+
+      if (response.ok) {
+        closePermissionDialog();
+        await applySalesSuccess(submittedOutletIds);
+        return true;
+      }
+
+      const err = await response.json().catch(() => ({}));
+      if (response.status === 409 && err.code === "OVERDUE_PERMISSION_REQUIRED") {
+        setPermissionDialog({
+          open: true,
+          overdueOutlets: err.overdueOutlets || [],
+          pendingPayload: payload,
+          submittedOutletIds,
+          permissionNote: "",
+        });
+        return false;
+      }
+
+      alert(err.error || "Failed to record sales.");
+      return false;
+    } catch (error) {
+      console.error("Error submitting sales:", error);
+      alert("Error submitting form.");
+      return false;
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleGrantPermissionAndSave = async () => {
+    if (!permissionDialog.pendingPayload) return;
+    await submitSalesPayload(
+      permissionDialog.pendingPayload,
+      permissionDialog.submittedOutletIds,
+      {
+        permissionGranted: true,
+        permissionNote: permissionDialog.permissionNote,
+      }
+    );
+  };
+
   const handleSaveRow = async (outletId) => {
     const key = outletKey(outletId);
     const dataList = salesData[key] || [];
@@ -489,47 +586,15 @@ function AddSales() {
 
     const payload = {
       date: selectedDate,
-      sales: validRows.map(d => ({
+      sales: validRows.map((d) => ({
         outletId: parseInt(outletId, 10),
         itemCount: parseInt(d.itemCount, 10),
         invoiceNumber: d.invoiceNumber.trim(),
         price: parseFloat(d.price),
-      }))
+      })),
     };
 
-    setSubmitting(true);
-    try {
-      const response = await fetch(`${API}/staff/${selectedStaff.id}/sales`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(payload),
-      });
-
-      if (response.ok) {
-        await refreshSubmittedSales();
-
-        // Remove the submitted outlet
-        setOutlets((prev) => prev.filter((o) => outletKey(o.id) !== key));
-        setSearchOutlets((prev) => prev.filter((o) => outletKey(o.id) !== key));
-
-        setSalesData((prev) => {
-          const next = { ...prev };
-          delete next[key];
-          return next;
-        });
-        window.scrollTo({ top: document.body.scrollHeight, behavior: "smooth" });
-      } else {
-        const err = await response.json().catch(() => ({}));
-        alert(err.error || "Failed to record sale.");
-      }
-    } catch (error) {
-      console.error("Error submitting sale:", error);
-      alert("Error submitting form.");
-    } finally {
-      setSubmitting(false);
-    }
+    await submitSalesPayload(payload, [parseInt(outletId, 10)]);
   };
 
   const handleSubmit = async () => {
@@ -558,7 +623,7 @@ function AddSales() {
               outletId: parseInt(key, 10),
               itemCount: parseInt(d.itemCount, 10),
               invoiceNumber: d.invoiceNumber.trim(),
-              price: parseFloat(d.price)
+              price: parseFloat(d.price),
             });
           });
         }
@@ -583,40 +648,7 @@ function AddSales() {
       sales: allSales,
     };
 
-    setSubmitting(true);
-    try {
-      const response = await fetch(`${API}/staff/${selectedStaff.id}/sales`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(payload),
-      });
-
-      if (response.ok) {
-        await refreshSubmittedSales();
-
-        // Remove the submitted outlets
-        setOutlets((prev) => prev.filter((o) => !submittedOutletIds.has(o.id)));
-
-
-        setSalesData((prev) => {
-          const next = { ...prev };
-          submittedOutletIds.forEach((id) => delete next[outletKey(id)]);
-          return next;
-        });
-
-        window.scrollTo({ top: document.body.scrollHeight, behavior: "smooth" });
-      } else {
-        const err = await response.json().catch(() => ({}));
-        alert(err.error || "Failed to record sales.");
-      }
-    } catch (error) {
-      console.error("Error submitting sales:", error);
-      alert("Error submitting form.");
-    } finally {
-      setSubmitting(false);
-    }
+    await submitSalesPayload(payload, [...submittedOutletIds]);
   };
 
   const startEditSale = (row) => {
@@ -1463,6 +1495,71 @@ function AddSales() {
           </Grid>
         </Grid>
       </MDBox>
+
+      <Dialog
+        open={permissionDialog.open}
+        onClose={submitting ? undefined : closePermissionDialog}
+        maxWidth="md"
+        fullWidth
+      >
+        <DialogTitle>Permission Required — Overdue Credit</DialogTitle>
+        <DialogContent dividers>
+          <MDTypography variant="body2" color="text" mb={2}>
+            This ERP ID has credit overdue by more than 3 days. Grant permission to add a new sale
+            for the same ERP ID. This permission will be stored in the database.
+          </MDTypography>
+
+          {(permissionDialog.overdueOutlets || []).map((outlet) => (
+            <MDBox
+              key={`${outlet.outletId}-${outlet.outletErpId}`}
+              mb={2}
+              p={2}
+              sx={{ backgroundColor: "#fff7f7", border: "1px solid #fecaca", borderRadius: "8px" }}
+            >
+              <MDTypography variant="button" fontWeight="bold" color="error">
+                ERP: {outlet.outletErpId} — {outlet.outletName}
+              </MDTypography>
+              <MDTypography variant="caption" display="block" color="text" mb={1}>
+                Max overdue: {outlet.maxOverdueDays} day(s)
+              </MDTypography>
+              {(outlet.credits || []).map((credit) => (
+                <MDTypography key={credit.creditPaymentId} variant="caption" display="block" color="text">
+                  Invoice {credit.invoiceNumber || "-"} | Balance ₹{Number(credit.balanceAmount || 0).toFixed(2)} | Due{" "}
+                  {credit.dueDate || "-"} | Overdue {credit.overdueDays} day(s)
+                  {credit.creditStaffName ? ` | Staff: ${credit.creditStaffName}` : ""}
+                </MDTypography>
+              ))}
+            </MDBox>
+          ))}
+
+          <MDBox mt={1}>
+            <MDInput
+              label="Permission note (optional)"
+              fullWidth
+              multiline
+              rows={2}
+              value={permissionDialog.permissionNote}
+              onChange={(e) =>
+                setPermissionDialog((prev) => ({ ...prev, permissionNote: e.target.value }))
+              }
+            />
+          </MDBox>
+        </DialogContent>
+        <DialogActions>
+          <MDButton color="secondary" variant="outlined" onClick={closePermissionDialog} disabled={submitting}>
+            Cancel
+          </MDButton>
+          <MDButton
+            color="warning"
+            variant="gradient"
+            onClick={handleGrantPermissionAndSave}
+            disabled={submitting}
+          >
+            {submitting ? "Saving..." : "Grant Permission & Save"}
+          </MDButton>
+        </DialogActions>
+      </Dialog>
+
       <Footer />
     </DashboardLayout>
   );

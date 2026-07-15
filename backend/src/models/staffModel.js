@@ -78,11 +78,11 @@ class StaffModel {
     }
 
     static async addCounter(staffId, day, location, counterData) {
-        const { outletErpId, outletName, contactNumber, googleLocation } = counterData;
+        const { outletErpId, outletName, contactNumber, whatsappNumber, googleLocation } = counterData;
         const locationName = String(location || '').trim() || null;
         await db.execute(
-            'INSERT INTO staff_counters (staff_id, day, location_name, outlet_erp_id, outlet_name, contact_number, google_location) VALUES (?, ?, ?, ?, ?, ?, ?)',
-            [staffId, day, locationName, outletErpId, outletName, contactNumber, googleLocation || null]
+            'INSERT INTO staff_counters (staff_id, day, location_name, outlet_erp_id, outlet_name, contact_number, whatsapp_number, google_location) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+            [staffId, day, locationName, outletErpId, outletName, contactNumber, whatsappNumber || null, googleLocation || null]
         );
     }
 
@@ -109,17 +109,17 @@ class StaffModel {
 
     static async getCounterById(counterId) {
         const [rows] = await db.execute(
-            'SELECT id, staff_id, outlet_erp_id, outlet_name, contact_number, location_name, google_location FROM staff_counters WHERE id = ?',
+            'SELECT id, staff_id, outlet_erp_id, outlet_name, contact_number, whatsapp_number, location_name, google_location FROM staff_counters WHERE id = ?',
             [counterId]
         );
         return rows[0] || null;
     }
 
     static async editCounter(counterId, counterData) {
-        const { outletErpId, outletName, contactNumber, googleLocation } = counterData;
+        const { outletErpId, outletName, contactNumber, whatsappNumber, googleLocation } = counterData;
         await db.execute(
-            'UPDATE staff_counters SET outlet_erp_id = ?, outlet_name = ?, contact_number = ?, google_location = ? WHERE id = ?',
-            [outletErpId, outletName, contactNumber, googleLocation || null, counterId]
+            'UPDATE staff_counters SET outlet_erp_id = ?, outlet_name = ?, contact_number = ?, whatsapp_number = ?, google_location = ? WHERE id = ?',
+            [outletErpId, outletName, contactNumber, whatsappNumber || null, googleLocation || null, counterId]
         );
     }
 
@@ -174,7 +174,7 @@ class StaffModel {
 
     static async getOutletsForStaffAndDay(staffId, dayName) {
         const [rows] = await db.execute(
-            'SELECT id, outlet_erp_id, outlet_name, contact_number, location_name, google_location FROM staff_counters WHERE staff_id = ? AND day = ?',
+            'SELECT id, outlet_erp_id, outlet_name, contact_number, whatsapp_number, location_name, google_location FROM staff_counters WHERE staff_id = ? AND day = ?',
             [staffId, dayName]
         );
         return rows;
@@ -182,7 +182,7 @@ class StaffModel {
 
     static async getAllCountersForStaff(staffId) {
         const [rows] = await db.execute(
-            'SELECT id, outlet_erp_id, outlet_name, contact_number, location_name, google_location, day FROM staff_counters WHERE staff_id = ?',
+            'SELECT id, outlet_erp_id, outlet_name, contact_number, whatsapp_number, location_name, google_location, day FROM staff_counters WHERE staff_id = ?',
             [staffId]
         );
         return rows;
@@ -190,7 +190,7 @@ class StaffModel {
 
     static async getMissingSalesOutletsForDate(staffId, dayName, date) {
         const [rows] = await db.execute(
-            `SELECT c.id, c.outlet_erp_id, c.outlet_name, c.contact_number, c.location_name, c.google_location 
+            `SELECT c.id, c.outlet_erp_id, c.outlet_name, c.contact_number, c.whatsapp_number, c.location_name, c.google_location 
              FROM staff_counters c
              INNER JOIN staff s ON s.id = c.staff_id
              WHERE c.staff_id = ?
@@ -902,6 +902,121 @@ class StaffModel {
         
         const [rows] = await db.execute(query, params);
         return rows;
+    }
+
+    static async getCountersByIds(counterIds = []) {
+        const ids = [...new Set((counterIds || []).map((id) => Number(id)).filter((id) => Number.isInteger(id) && id > 0))];
+        if (ids.length === 0) return [];
+
+        const placeholders = ids.map(() => '?').join(', ');
+        const [rows] = await db.execute(
+            `SELECT id, outlet_erp_id, outlet_name, contact_number, location_name
+             FROM staff_counters
+             WHERE id IN (${placeholders})`,
+            ids
+        );
+        return rows;
+    }
+
+    static async getCreditsOverdueByErp(erpIds = [], minOverdueDays = 3) {
+        const normalizedErpIds = [
+            ...new Set(
+                (erpIds || [])
+                    .map((erpId) => String(erpId || '').trim().toLowerCase())
+                    .filter(Boolean)
+            ),
+        ];
+        if (normalizedErpIds.length === 0) return [];
+
+        const placeholders = normalizedErpIds.map(() => '?').join(', ');
+        const minDays = Number(minOverdueDays);
+        const overdueThreshold = Number.isFinite(minDays) && minDays > 0 ? minDays : 3;
+
+        const [rows] = await db.execute(
+            `SELECT sp.id AS credit_payment_id,
+                    sp.sale_id,
+                    sp.amount AS credit_amount,
+                    GREATEST(0, sp.amount - COALESCE(credit_paid.paid_amount, 0)) AS balance_amount,
+                    DATE_FORMAT(sp.payment_date, '%Y-%m-%d') AS issue_date,
+                    sp.credit_days,
+                    DATEDIFF(
+                        CURDATE(),
+                        DATE_ADD(sp.payment_date, INTERVAL COALESCE(sp.credit_days, 0) DAY)
+                    ) AS overdue_days,
+                    DATE_FORMAT(
+                        DATE_ADD(sp.payment_date, INTERVAL COALESCE(sp.credit_days, 0) DAY),
+                        '%Y-%m-%d'
+                    ) AS due_date,
+                    sc.id AS outlet_id,
+                    sc.outlet_erp_id,
+                    sc.outlet_name,
+                    sc.location_name,
+                    ss.invoice_number,
+                    ss.sticker_number,
+                    s.id AS credit_staff_id,
+                    s.name AS credit_staff_name
+             FROM sale_payments sp
+             INNER JOIN staff_sales ss ON sp.sale_id = ss.id
+             INNER JOIN staff_counters sc ON ss.outlet_id = sc.id
+             LEFT JOIN staff s ON ss.staff_id = s.id
+             LEFT JOIN (
+                 SELECT parent_credit_payment_id,
+                        SUM(amount) AS paid_amount
+                 FROM sale_payments
+                 WHERE parent_credit_payment_id IS NOT NULL
+                   AND payment_mode IN ('cash', 'upi', 'cheque')
+                 GROUP BY parent_credit_payment_id
+             ) credit_paid ON credit_paid.parent_credit_payment_id = sp.id
+             WHERE sp.payment_mode = 'credit'
+               AND ss.balance_amount > 0
+               AND LOWER(TRIM(sc.outlet_erp_id)) IN (${placeholders})
+               AND DATEDIFF(
+                    CURDATE(),
+                    DATE_ADD(sp.payment_date, INTERVAL COALESCE(sp.credit_days, 0) DAY)
+               ) > ?
+             HAVING balance_amount > 0
+             ORDER BY overdue_days DESC, sp.payment_date ASC`,
+            [...normalizedErpIds, overdueThreshold]
+        );
+        return rows;
+    }
+
+    static async createOverdueSalePermission(permissionData) {
+        const {
+            staffId,
+            saleDate,
+            outletId,
+            outletErpId,
+            outletName,
+            maxOverdueDays,
+            overdueCreditIds,
+            overdueDetails,
+            permissionNote,
+            permittedByAdminId,
+            permittedByName,
+        } = permissionData;
+
+        const [result] = await db.execute(
+            `INSERT INTO overdue_sale_permissions (
+                staff_id, sale_date, outlet_id, outlet_erp_id, outlet_name,
+                max_overdue_days, overdue_credit_ids, overdue_details,
+                permission_note, permitted_by_admin_id, permitted_by_name
+             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            [
+                staffId,
+                saleDate,
+                outletId,
+                outletErpId,
+                outletName || null,
+                maxOverdueDays || 0,
+                overdueCreditIds ? JSON.stringify(overdueCreditIds) : null,
+                overdueDetails ? JSON.stringify(overdueDetails) : null,
+                permissionNote || null,
+                permittedByAdminId || null,
+                permittedByName || null,
+            ]
+        );
+        return result.insertId;
     }
 }
 

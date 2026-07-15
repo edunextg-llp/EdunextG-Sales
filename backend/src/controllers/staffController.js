@@ -290,6 +290,15 @@ export const addCounter = async (req, res) => {
                     return res.status(400).json({ error: contactValidation.error });
                 }
 
+                const whatsappSource = String(counter.whatsappNumber || '').trim() || contactValidation.value;
+                const whatsappValidation = validateDigitsOnly(
+                    whatsappSource,
+                    `Counter ${i + 1} WhatsApp number`
+                );
+                if (!whatsappValidation.valid) {
+                    return res.status(400).json({ error: whatsappValidation.error });
+                }
+
                 const outletErpId = String(counter.outletErpId || '').trim();
                 const outletName = String(counter.outletName || '').trim();
                 const googleLocationValidation = validateGoogleMapsLocation(
@@ -320,6 +329,7 @@ export const addCounter = async (req, res) => {
                     outletErpId,
                     outletName,
                     contactNumber: contactValidation.value,
+                    whatsappNumber: whatsappValidation.value,
                     googleLocation,
                 });
             }
@@ -439,7 +449,7 @@ export const getAllOutletsForStaff = async (req, res) => {
 export const recordSales = async (req, res) => {
     try {
         const { id } = req.params;
-        const { date, sales } = req.body;
+        const { date, sales, permissionGranted, permissionNote } = req.body;
 
         if (!date || !Array.isArray(sales)) {
             return res.status(400).json({ error: 'Date and sales array are required' });
@@ -515,6 +525,90 @@ export const recordSales = async (req, res) => {
                 vehicleNo,
                 paymentMode: 'cash',
             });
+        }
+
+        const outletIds = [...new Set(validatedSales.map((sale) => sale.outletId))];
+        const counters = await StaffModel.getCountersByIds(outletIds);
+        const counterById = new Map(counters.map((counter) => [Number(counter.id), counter]));
+        const erpIds = counters.map((counter) => counter.outlet_erp_id).filter(Boolean);
+        const overdueCredits = await StaffModel.getCreditsOverdueByErp(erpIds, 3);
+
+        if (overdueCredits.length > 0) {
+            const overdueByErp = new Map();
+            overdueCredits.forEach((credit) => {
+                const erpKey = String(credit.outlet_erp_id || '').trim().toLowerCase();
+                if (!erpKey) return;
+                if (!overdueByErp.has(erpKey)) {
+                    overdueByErp.set(erpKey, []);
+                }
+                overdueByErp.get(erpKey).push(credit);
+            });
+
+            const overdueOutlets = outletIds
+                .map((outletId) => {
+                    const counter = counterById.get(Number(outletId));
+                    if (!counter) return null;
+                    const erpKey = String(counter.outlet_erp_id || '').trim().toLowerCase();
+                    const credits = overdueByErp.get(erpKey) || [];
+                    if (credits.length === 0) return null;
+
+                    const maxOverdueDays = Math.max(
+                        ...credits.map((credit) => Number(credit.overdue_days) || 0)
+                    );
+                    return {
+                        outletId: Number(outletId),
+                        outletErpId: counter.outlet_erp_id,
+                        outletName: counter.outlet_name,
+                        maxOverdueDays,
+                        credits: credits.map((credit) => ({
+                            creditPaymentId: credit.credit_payment_id,
+                            saleId: credit.sale_id,
+                            invoiceNumber: credit.invoice_number,
+                            stickerNumber: credit.sticker_number,
+                            creditAmount: credit.credit_amount,
+                            balanceAmount: credit.balance_amount,
+                            issueDate: credit.issue_date,
+                            dueDate: credit.due_date,
+                            creditDays: credit.credit_days,
+                            overdueDays: credit.overdue_days,
+                            creditStaffName: credit.credit_staff_name,
+                            creditOutletName: credit.outlet_name,
+                        })),
+                    };
+                })
+                .filter(Boolean);
+
+            if (overdueOutlets.length > 0 && !permissionGranted) {
+                return res.status(409).json({
+                    code: 'OVERDUE_PERMISSION_REQUIRED',
+                    error:
+                        'One or more outlets have credit overdue by more than 3 days. Permission is required to add sales.',
+                    overdueOutlets,
+                });
+            }
+
+            if (overdueOutlets.length > 0 && permissionGranted) {
+                const permittedByAdminId = req.user?.id || null;
+                const permittedByName =
+                    req.user?.username || req.user?.email || (permittedByAdminId ? `Admin #${permittedByAdminId}` : 'Admin');
+                const note = String(permissionNote || '').trim() || null;
+
+                for (const overdueOutlet of overdueOutlets) {
+                    await StaffModel.createOverdueSalePermission({
+                        staffId: id,
+                        saleDate: date,
+                        outletId: overdueOutlet.outletId,
+                        outletErpId: overdueOutlet.outletErpId,
+                        outletName: overdueOutlet.outletName,
+                        maxOverdueDays: overdueOutlet.maxOverdueDays,
+                        overdueCreditIds: overdueOutlet.credits.map((credit) => credit.creditPaymentId),
+                        overdueDetails: overdueOutlet.credits,
+                        permissionNote: note,
+                        permittedByAdminId,
+                        permittedByName,
+                    });
+                }
+            }
         }
 
         const staff = await StaffModel.getDetails(id);
@@ -1311,7 +1405,7 @@ export const fetchSalesByDate = async (req, res) => {
 export const editCounter = async (req, res) => {
     try {
         const { counterId } = req.params;
-        const { outletErpId, outletName, contactNumber, googleLocation } = req.body;
+        const { outletErpId, outletName, contactNumber, whatsappNumber, googleLocation } = req.body;
         const existingCounter = await StaffModel.getCounterById(counterId);
         if (!existingCounter) {
             return res.status(404).json({ error: 'Counter not found' });
@@ -1319,6 +1413,17 @@ export const editCounter = async (req, res) => {
 
         const normalizedOutletErpId = String(outletErpId || '').trim();
         const normalizedOutletName = String(outletName || '').trim();
+        const contactValidation = validateDigitsOnly(contactNumber, 'Contact number');
+        if (!contactValidation.valid) {
+            return res.status(400).json({ error: contactValidation.error });
+        }
+
+        const whatsappSource = String(whatsappNumber || '').trim() || contactValidation.value;
+        const whatsappValidation = validateDigitsOnly(whatsappSource, 'WhatsApp number');
+        if (!whatsappValidation.valid) {
+            return res.status(400).json({ error: whatsappValidation.error });
+        }
+
         const googleLocationValidation = validateGoogleMapsLocation(googleLocation);
 
         if (!googleLocationValidation.valid) {
@@ -1340,7 +1445,8 @@ export const editCounter = async (req, res) => {
         await StaffModel.editCounter(counterId, {
             outletErpId: normalizedOutletErpId,
             outletName: normalizedOutletName,
-            contactNumber,
+            contactNumber: contactValidation.value,
+            whatsappNumber: whatsappValidation.value,
             googleLocation: normalizedGoogleLocation,
         });
         res.status(200).json({ message: 'Counter updated successfully' });

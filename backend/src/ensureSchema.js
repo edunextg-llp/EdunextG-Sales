@@ -83,6 +83,11 @@ export async function ensureSchema() {
         );
         await tryQuery(
             connection,
+            `ALTER TABLE staff_counters ADD COLUMN whatsapp_number VARCHAR(20) NULL`,
+            'whatsapp_number on staff_counters'
+        );
+        await tryQuery(
+            connection,
             `ALTER TABLE staff_counters ADD COLUMN location_name VARCHAR(255) NULL`,
             'location_name on staff_counters'
         );
@@ -887,6 +892,29 @@ export async function ensureSchema() {
             `ALTER TABLE taken_bills ADD COLUMN returned_at DATETIME NULL`,
             'returned_at on taken_bills'
         );
+
+        await connection.query(`
+            CREATE TABLE IF NOT EXISTS overdue_sale_permissions (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                staff_id INT NOT NULL,
+                sale_date DATE NOT NULL,
+                outlet_id INT NOT NULL,
+                outlet_erp_id VARCHAR(50) NOT NULL,
+                outlet_name VARCHAR(255) NULL,
+                max_overdue_days INT NOT NULL,
+                overdue_credit_ids TEXT NULL,
+                overdue_details TEXT NULL,
+                permission_note TEXT NULL,
+                permitted_by_admin_id INT NULL,
+                permitted_by_name VARCHAR(255) NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                INDEX idx_overdue_sale_permissions_erp (outlet_erp_id),
+                INDEX idx_overdue_sale_permissions_staff_date (staff_id, sale_date),
+                FOREIGN KEY (staff_id) REFERENCES staff(id) ON DELETE CASCADE,
+                FOREIGN KEY (outlet_id) REFERENCES staff_counters(id) ON DELETE CASCADE
+            );
+        `);
+        console.log('overdue_sale_permissions table verified');
 
         console.log('Database schema verified');
     } finally {
