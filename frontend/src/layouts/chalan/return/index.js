@@ -28,7 +28,6 @@ import DashboardLayout from "examples/LayoutContainers/DashboardLayout";
 import DashboardNavbar from "examples/Navbars/DashboardNavbar";
 import Footer from "examples/Footer";
 import { useSalesPolling } from "utils/salesSync";
-import { printChalanReturnReportPdf } from "utils/printChalanReturnReportPdf";
 import {
   ROWS_PER_PAGE,
   TablePaginationFooter,
@@ -71,14 +70,6 @@ function ChalanReturn() {
     returnPackedItemCount: "",
     returnAmount: "",
   });
-  const [reportStartDate, setReportStartDate] = useState(() => {
-    const now = new Date();
-    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-01`;
-  });
-  const [reportEndDate, setReportEndDate] = useState(() => {
-    const now = new Date();
-    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
-  });
   const API = "https://bawarchee.edunextg.co/api";
 
   const getTodayLocalDate = () => {
@@ -95,11 +86,6 @@ function ChalanReturn() {
     const parts = dateOnly.split("-");
     if (parts.length === 3) return `${parts[2]}-${parts[1]}-${parts[0]}`;
     return value;
-  };
-
-  const getDateOnly = (value) => {
-    if (!value) return "";
-    return String(value).split("T")[0].split(" ")[0];
   };
 
   const fetchSales = useCallback(
@@ -365,54 +351,6 @@ function ChalanReturn() {
 
   const dialogPending = returnDialog.row ? getPending(returnDialog.row) : null;
 
-  const downloadReturnReport = () => {
-    if (!reportStartDate || !reportEndDate) {
-      alert("Please select both from and to dates for the report.");
-      return;
-    }
-
-    if (reportStartDate > reportEndDate) {
-      alert("From date cannot be after to date.");
-      return;
-    }
-
-    const reportRows = returnRecords
-      .filter((row) => {
-        const returnDate = getDateOnly(row.return_date || row.returnDate);
-        if (!returnDate) return false;
-        if (reportStartDate && returnDate < reportStartDate) return false;
-        if (reportEndDate && returnDate > reportEndDate) return false;
-        return matchesSearch(row);
-      })
-      .map((row) => {
-        const returnType = row.return_type || row.returnType || "partial";
-        return {
-          chalanCode: row.chalan_code || row.chalanCode || "N/A",
-          assigneeName: row.assignee_name || row.assigneeName || "N/A",
-          returnType,
-          returnTypeLabel: returnType === "full" ? "Full" : "Partial",
-          returnItemCount: row.return_item_count ?? row.returnItemCount ?? 0,
-          returnPackedItemCount: row.return_packed_item_count ?? row.returnPackedItemCount ?? 0,
-          returnAmount: Number(row.return_amount || row.returnAmount || 0),
-          returnDate: formatDate(row.return_date || row.returnDate),
-          deliveryBoyName: row.delivery_boy_name || "N/A",
-          vehicleNo: row.vehicle_no || "N/A",
-        };
-      });
-
-    if (!reportRows.length) {
-      alert("No returned chalans found for the selected date range.");
-      return;
-    }
-
-    printChalanReturnReportPdf({
-      fromDate: reportStartDate,
-      toDate: reportEndDate,
-      generatedOn: getTodayLocalDate(),
-      rows: reportRows,
-    });
-  };
-
   return (
     <DashboardLayout>
       <DashboardNavbar />
@@ -443,7 +381,7 @@ function ChalanReturn() {
 
               <MDBox pb={3} px={3}>
                 <Grid container spacing={3} mb={3}>
-                  <Grid item xs={12} md={3}>
+                  <Grid item xs={12} md={4}>
                     <MDInput
                       type="text"
                       label="Search by Code or Staff / Delivery Name"
@@ -452,38 +390,7 @@ function ChalanReturn() {
                       onChange={(e) => setSearchQuery(e.target.value)}
                     />
                   </Grid>
-                  <Grid item xs={12} md={2}>
-                    <MDInput
-                      type="date"
-                      label="Report From"
-                      fullWidth
-                      InputLabelProps={{ shrink: true }}
-                      value={reportStartDate}
-                      onChange={(e) => setReportStartDate(e.target.value)}
-                    />
-                  </Grid>
-                  <Grid item xs={12} md={2}>
-                    <MDInput
-                      type="date"
-                      label="Report To"
-                      fullWidth
-                      InputLabelProps={{ shrink: true }}
-                      value={reportEndDate}
-                      onChange={(e) => setReportEndDate(e.target.value)}
-                    />
-                  </Grid>
-                  <Grid item xs={12} md={2}>
-                    <MDButton
-                      color="dark"
-                      variant="gradient"
-                      fullWidth
-                      onClick={downloadReturnReport}
-                      sx={{ height: 44, mt: { xs: 0, md: 0.5 } }}
-                    >
-                      Download Report
-                    </MDButton>
-                  </Grid>
-                  <Grid item xs={12} md={3}>
+                  <Grid item xs={12} md={8}>
                     <MDBox
                       display="flex"
                       gap={2}

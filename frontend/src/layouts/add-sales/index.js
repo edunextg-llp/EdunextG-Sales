@@ -36,6 +36,7 @@ import Footer from "examples/Footer";
 import { printSalesStickers } from "utils/printSalesStickers";
 import { FaRegEdit } from "react-icons/fa";
 import { CiTrash } from "react-icons/ci";
+import SalesInvoiceDialog from "layouts/add-sales/components/SalesInvoiceDialog";
 
 const tableHeadSx = {
   color: "#6b7280",
@@ -75,8 +76,6 @@ function AddSales() {
   const [outletSearch, setOutletSearch] = useState("");
   const [searchOutlets, setSearchOutlets] = useState([]);
   const [searchingOutlets, setSearchingOutlets] = useState(false);
-  const [editingSaleId, setEditingSaleId] = useState(null);
-  const [editForm, setEditForm] = useState({ itemCount: "", invoiceNumber: "", price: "" });
   const [savingEdit, setSavingEdit] = useState(false);
   const [permissionDialog, setPermissionDialog] = useState({
     open: false,
@@ -84,6 +83,15 @@ function AddSales() {
     pendingPayload: null,
     submittedOutletIds: [],
     permissionNote: "",
+  });
+  const [invoiceDialog, setInvoiceDialog] = useState({
+    open: false,
+    outlet: null,
+    rowIndex: 0,
+    invoiceNumber: "",
+    editSaleId: null,
+    initialItemCount: "",
+    initialPrice: "",
   });
 
   const API = "https://bawarchee.edunextg.co/api";
@@ -121,9 +129,6 @@ function AddSales() {
     return Array.from(map.values());
   };
 
-  const rowHasDraft = (row) =>
-    Boolean(row?.itemCount?.toString().trim() || row?.invoiceNumber?.trim() || row?.price?.toString().trim());
-
   const normalizeInvoice = (value) =>
     String(value || "")
       .trim()
@@ -142,11 +147,6 @@ function AddSales() {
     );
 
     return hasDuplicateInEntry || hasDuplicateSubmitted;
-  };
-
-  const outletHasDraft = (id) => {
-    const rows = salesData[outletKey(id)] || [];
-    return rows.some(rowHasDraft);
   };
 
   const mapSaleFromApi = (s) => ({
@@ -206,27 +206,8 @@ function AddSales() {
         matchesOutletSearch(outlet, query)
       );
     }
-    return mergeOutletsById(
-      outlets,
-      searchOutlets.filter((o) => outletHasDraft(o.id))
-    );
+    return mergeOutletsById(outlets, searchOutlets);
   }, [outlets, searchOutlets, outletSearch, salesData, allOutlets]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  const hasSubmittableSales = useMemo(
-    () =>
-      Object.values(salesData).some((dataList) =>
-        (dataList || []).some(
-          (d) =>
-            d.itemCount?.toString().trim() &&
-            d.invoiceNumber?.trim() &&
-            d.price?.toString().trim() &&
-            !Number.isNaN(parseInt(d.itemCount, 10)) &&
-            parseInt(d.itemCount, 10) > 0 &&
-            !Number.isNaN(parseFloat(d.price))
-        )
-      ),
-    [salesData]
-  );
 
   const showEntryTable = Boolean(selectedStaff);
 
@@ -235,8 +216,7 @@ function AddSales() {
     outlets.length === 0 &&
     !outletSearch.trim() &&
     searchOutlets.length === 0 &&
-    displayOutlets.length === 0 &&
-    !hasSubmittableSales;
+    displayOutlets.length === 0;
 
   const buildSubmittedSummary = (staff, date, sales) => ({
     date,
@@ -413,50 +393,6 @@ function AddSales() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [outletSearch, selectedStaff, selectedDate, allOutlets]);
 
-  const handleSalesChange = (outletId, index, field, value) => {
-    const key = outletKey(outletId);
-    setSalesData((prev) => {
-      const existing = prev[key] || [
-        { ...emptySaleRow },
-      ];
-      const outletSales = [...existing];
-      outletSales[index] = { ...outletSales[index], [field]: value };
-      return {
-        ...prev,
-        [key]: outletSales,
-      };
-    });
-  };
-
-  const handleAddRow = (outletId) => {
-    const key = outletKey(outletId);
-    setSalesData((prev) => ({
-      ...prev,
-      [key]: [
-        ...(prev[key] || [{ ...emptySaleRow }]),
-        { ...emptySaleRow },
-      ],
-    }));
-  };
-
-  const handleRemoveRow = (outletId, index) => {
-    const key = outletKey(outletId);
-    setSalesData((prev) => {
-      const outletSales = [...(prev[key] || [])];
-      if (outletSales.length <= 1) {
-        return {
-          ...prev,
-          [key]: [{ ...emptySaleRow }],
-        };
-      }
-      outletSales.splice(index, 1);
-      return {
-        ...prev,
-        [key]: outletSales,
-      };
-    });
-  };
-
   const applySalesSuccess = async (submittedOutletIds = []) => {
     await refreshSubmittedSales();
 
@@ -548,180 +484,121 @@ function AddSales() {
     );
   };
 
-  const handleSaveRow = async (outletId) => {
-    const key = outletKey(outletId);
-    const dataList = salesData[key] || [];
-    const validRows = dataList.filter(
-      (d) =>
-        d.itemCount?.toString().trim() &&
-        d.invoiceNumber?.trim() &&
-        d.price?.toString().trim() &&
-        !Number.isNaN(parseInt(d.itemCount, 10)) &&
-        parseInt(d.itemCount, 10) > 0 &&
-        !Number.isNaN(parseFloat(d.price))
+  const getPrevBillNoForOutlet = (outletId) => {
+    const outletSales = (submittedSummary?.sales || []).filter(
+      (sale) => Number(sale.outletId) === Number(outletId)
     );
-
-    if (validRows.length === 0) {
-      alert("Please enter at least one valid no. of item, invoice number, and price.");
-      return;
-    }
-
-    const hasInvalidFormat = validRows.some(
-      (d) => Number.isNaN(parseInt(d.itemCount, 10)) || Number.isNaN(parseFloat(d.price))
-    );
-    if (hasInvalidFormat) {
-      alert("Please enter valid numeric values for no. of item and price.");
-      return;
-    }
-
-    const hasIncomplete = dataList.some(
-      (d) =>
-        rowHasDraft(d) &&
-        (!d.itemCount?.toString().trim() ||
-          !d.invoiceNumber?.trim() ||
-          !d.price?.toString().trim() ||
-          Number.isNaN(parseInt(d.itemCount, 10)) ||
-          parseInt(d.itemCount, 10) <= 0 ||
-          Number.isNaN(parseFloat(d.price)))
-    );
-    if (hasIncomplete) {
-      alert("Please complete partially filled rows or remove them.");
-      return;
-    }
-    if (hasDuplicateInvoiceNumbers(validRows.map((d) => d.invoiceNumber))) {
-      alert("Same invoice number already exists. Please use a unique invoice number.");
-      return;
-    }
-
-    const payload = {
-      date: selectedDate,
-      sales: validRows.map((d) => ({
-        outletId: parseInt(outletId, 10),
-        itemCount: parseInt(d.itemCount, 10),
-        invoiceNumber: d.invoiceNumber.trim(),
-        price: parseFloat(d.price),
-      })),
-    };
-
-    await submitSalesPayload(payload, [parseInt(outletId, 10)]);
+    if (!outletSales.length) return "";
+    return outletSales[outletSales.length - 1]?.invoiceNumber || "";
   };
 
-  const handleSubmit = async () => {
-    const allSales = [];
-    const submittedOutletIds = new Set();
-    let hasError = false;
-
-    Object.entries(salesData).forEach(([key, dataList]) => {
-      const filledRows = dataList.filter(rowHasDraft);
-      if (filledRows.length > 0) {
-        const incomplete = filledRows.some(
-          (d) =>
-            !d.invoiceNumber?.trim() ||
-            !d.itemCount?.toString().trim() ||
-            !d.price?.toString().trim() ||
-            Number.isNaN(parseInt(d.itemCount, 10)) ||
-            parseInt(d.itemCount, 10) <= 0 ||
-            Number.isNaN(parseFloat(d.price))
-        );
-        if (incomplete) {
-          hasError = true;
-        } else {
-          submittedOutletIds.add(parseInt(key, 10));
-          filledRows.forEach((d) => {
-            allSales.push({
-              outletId: parseInt(key, 10),
-              itemCount: parseInt(d.itemCount, 10),
-              invoiceNumber: d.invoiceNumber.trim(),
-              price: parseFloat(d.price),
-            });
-          });
-        }
-      }
+  const openInvoiceDialog = (outlet, index) => {
+    const row = (salesData[outletKey(outlet.id)] || [])[index];
+    setInvoiceDialog({
+      open: true,
+      outlet,
+      rowIndex: index,
+      invoiceNumber: row?.invoiceNumber?.trim() || "",
+      editSaleId: null,
+      initialItemCount: "",
+      initialPrice: "",
     });
-
-    if (!selectedStaff || !selectedDate || allSales.length === 0) {
-      alert("Please select staff, date, and enter at least one valid no. of item, invoice, and price.");
-      return;
-    }
-    if (hasError) {
-      alert("Some rows are partially filled or invalid. Please provide no. of item, invoice number, and numeric price, or clear/remove the row.");
-      return;
-    }
-    if (hasDuplicateInvoiceNumbers(allSales.map((sale) => sale.invoiceNumber))) {
-      alert("Same invoice number already exists. Please use unique invoice numbers.");
-      return;
-    }
-
-    const payload = {
-      date: selectedDate,
-      sales: allSales,
-    };
-
-    await submitSalesPayload(payload, [...submittedOutletIds]);
   };
 
-  const startEditSale = (row) => {
-    setEditingSaleId(row.id);
-    setEditForm({
-      itemCount: String(row.itemCount ?? ""),
+  const closeInvoiceDialog = () => {
+    setInvoiceDialog({
+      open: false,
+      outlet: null,
+      rowIndex: 0,
+      invoiceNumber: "",
+      editSaleId: null,
+      initialItemCount: "",
+      initialPrice: "",
+    });
+  };
+
+  const openEditSaleDialog = (row) => {
+    setInvoiceDialog({
+      open: true,
+      outlet: {
+        id: row.outletId,
+        outlet_name: row.shopName || "",
+        outlet_erp_id: row.outletErpId || "",
+        location_name: row.locationName || "",
+      },
+      rowIndex: 0,
       invoiceNumber: row.invoiceNumber || "",
-      price: String(row.amount ?? ""),
+      editSaleId: row.id,
+      initialItemCount: row.itemCount ?? "",
+      initialPrice: row.amount ?? "",
     });
   };
 
-  const cancelEditSale = () => {
-    setEditingSaleId(null);
-    setEditForm({ itemCount: "", invoiceNumber: "", price: "" });
-  };
+  const handleInvoiceSubmit = async ({ invoiceNumber, itemCount, price, addAnother }) => {
+    const outlet = invoiceDialog.outlet;
+    if (!outlet) return false;
 
-  const saveEditSale = async (saleId) => {
-    if (!editForm.itemCount.toString().trim() || !editForm.invoiceNumber.trim() || !editForm.price.trim()) {
-      alert("No. of item, invoice number, and price are required.");
-      return;
-    }
-    const itemCount = parseInt(editForm.itemCount, 10);
-    const price = parseFloat(editForm.price);
-    if (Number.isNaN(itemCount) || itemCount <= 0) {
-      alert("Please enter a valid no. of item.");
-      return;
-    }
-    if (Number.isNaN(price)) {
-      alert("Please enter a valid price.");
-      return;
-    }
-    if (hasDuplicateInvoiceNumbers([editForm.invoiceNumber], saleId)) {
+    const editSaleId = invoiceDialog.editSaleId;
+
+    if (hasDuplicateInvoiceNumbers([invoiceNumber], editSaleId)) {
       alert("Same invoice number already exists. Please use a unique invoice number.");
-      return;
+      return false;
     }
 
-    setSavingEdit(true);
-    try {
-      const response = await fetch(`${API}/staff/sales/${saleId}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          invoiceNumber: editForm.invoiceNumber.trim(),
-          itemCount,
-          price,
-        }),
-      });
-      if (response.ok) {
-        const data = await response.json();
-        setSubmittedSummary((prev) => ({
-          ...prev,
-          sales: prev.sales.map((s) => (s.id === saleId ? { ...s, ...data.sale } : s)),
-        }));
-        cancelEditSale();
-      } else {
+    // Edit existing submitted sale
+    if (editSaleId) {
+      setSavingEdit(true);
+      try {
+        const response = await fetch(`${API}/staff/sales/${editSaleId}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            invoiceNumber: invoiceNumber.trim(),
+            itemCount: parseInt(itemCount, 10),
+            price: parseFloat(price),
+          }),
+        });
+        if (response.ok) {
+          const data = await response.json();
+          setSubmittedSummary((prev) => ({
+            ...prev,
+            sales: prev.sales.map((s) => (s.id === editSaleId ? { ...s, ...data.sale } : s)),
+          }));
+          closeInvoiceDialog();
+          return true;
+        }
         const err = await response.json().catch(() => ({}));
         alert(err.error || "Failed to update sale.");
+        return false;
+      } catch (error) {
+        console.error("Error updating sale:", error);
+        alert("Error updating sale.");
+        return false;
+      } finally {
+        setSavingEdit(false);
       }
-    } catch (error) {
-      console.error("Error updating sale:", error);
-      alert("Error updating sale.");
-    } finally {
-      setSavingEdit(false);
     }
+
+    const payload = {
+      date: selectedDate,
+      sales: [
+        {
+          outletId: parseInt(outlet.id, 10),
+          itemCount: parseInt(itemCount, 10),
+          invoiceNumber,
+          price: parseFloat(price),
+        },
+      ],
+    };
+
+    const success = await submitSalesPayload(payload, [parseInt(outlet.id, 10)]);
+    if (success) {
+      if (!addAnother) {
+        closeInvoiceDialog();
+      }
+      return true;
+    }
+    return false;
   };
 
   const handleDeleteSale = async (saleId) => {
@@ -972,13 +849,11 @@ function AddSales() {
                         }}
                       >
                         <colgroup>
-                          <col style={{ width: "6%" }} />
+                          <col style={{ width: "8%" }} />
+                          <col style={{ width: "34%" }} />
                           <col style={{ width: "22%" }} />
-                          <col style={{ width: "16%" }} />
-                          <col style={{ width: "12%" }} />
-                          <col style={{ width: "16%" }} />
-                          <col style={{ width: "12%" }} />
-                          <col style={{ width: "16%" }} />
+                          <col style={{ width: "22%" }} />
+                          <col style={{ width: "14%" }} />
                         </colgroup>
                         <TableHead sx={tableHeadRowSx}>
                           <TableRow>
@@ -994,15 +869,6 @@ function AddSales() {
                             <TableCell align="left" sx={{ ...tableHeadSx, width: "14%" }}>
                               Staff Name
                             </TableCell>
-                            <TableCell align="left" sx={{ ...tableHeadSx, width: "12%" }}>
-                              No. of Item
-                            </TableCell>
-                            <TableCell align="left" sx={{ ...tableHeadSx, width: "16%" }}>
-                              Invoice No
-                            </TableCell>
-                            <TableCell align="left" sx={{ ...tableHeadSx, width: "12%" }}>
-                              Price
-                            </TableCell>
                             <TableCell align="center" sx={{ ...tableHeadSx, width: "16%" }}>
                               Action
                             </TableCell>
@@ -1013,7 +879,7 @@ function AddSales() {
                             <TableRow>
                               <TableCell sx={{ ...tableBodySx, borderBottom: "1px solid #e5e7eb" }} />
                               <TableCell
-                                colSpan={6}
+                                colSpan={3}
                                 align="center"
                                 sx={{ ...tableBodySx, borderBottom: "1px solid #e5e7eb", py: 3 }}
                               >
@@ -1027,7 +893,7 @@ function AddSales() {
                             <TableRow>
                               <TableCell sx={{ ...tableBodySx, borderBottom: "1px solid #e5e7eb" }} />
                               <TableCell
-                                colSpan={6}
+                                colSpan={3}
                                 align="center"
                                 sx={{ ...tableBodySx, borderBottom: "1px solid #e5e7eb", py: 3 }}
                               >
@@ -1042,7 +908,7 @@ function AddSales() {
                           ) : (
                             displayOutlets.map((outlet, outletIndex) => {
                               const rows = salesData[outletKey(outlet.id)] || [];
-                              return rows.map((row, index) => {
+                              return rows.map((_, index) => {
                                 const rowBorder =
                                   index === rows.length - 1
                                     ? { borderBottom: "1px solid #e5e7eb" }
@@ -1133,108 +999,17 @@ function AddSales() {
                                         {selectedStaff?.name || "N/A"}
                                       </TableCell>
                                     )}
-                                    <TableCell align="left" sx={{ ...tableBodySx, ...rowBorder }}>
-                                      <MDInput
-                                        type="number"
-                                        placeholder="Items"
-                                        size="small"
-                                        fullWidth
-                                        inputProps={{ min: 1 }}
-                                        sx={{ "& .MuiInputBase-root": { height: "36px" } }}
-                                        value={row.itemCount || ""}
-                                        onChange={(e) =>
-                                          handleSalesChange(outlet.id, index, "itemCount", e.target.value)
-                                        }
-                                      />
-                                    </TableCell>
-                                    <TableCell align="left" sx={{ ...tableBodySx, ...rowBorder }}>
-                                      <MDInput
-                                        type="text"
-                                        placeholder="Invoice..."
-                                        size="small"
-
-                                        fullWidth
-                                        sx={{ "& .MuiInputBase-root": { height: "36px" } }}
-                                        value={row.invoiceNumber || ""}
-                                        onChange={(e) =>
-                                          handleSalesChange(outlet.id, index, "invoiceNumber", e.target.value)
-
-                                        }
-                                      />
-                                    </TableCell>
-                                    <TableCell align="left" sx={{ ...tableBodySx, ...rowBorder }}>
-                                      <MDInput
-                                        type="number"
-                                        placeholder="0.00"
-                                        size="small"
-
-                                        fullWidth
-                                        disabled={!row.invoiceNumber?.trim()}
-                                        sx={{
-                                          "& .MuiInputBase-root": { height: "36px" },
-                                          "& .Mui-disabled": { opacity: 0.8, backgroundColor: "#f3f4f6" },
-                                        }}
-                                        value={row.price || ""}
-                                        onChange={(e) =>
-                                          handleSalesChange(outlet.id, index, "price", e.target.value)
-                                        }
-                                      />
-                                    </TableCell>
                                     <TableCell align="center" sx={{ ...tableBodySx, ...rowBorder }}>
-                                      <MDBox
-                                        display="flex"
-                                        gap={0.5}
-                                        justifyContent="center"
-                                        alignItems="center"
-                                        flexWrap="nowrap"
+                                      <MDButton
+                                        variant="gradient"
+                                        color="info"
+                                        size="small"
+                                        onClick={() => openInvoiceDialog(outlet, index)}
+                                        disabled={submitting}
+                                        sx={{ minWidth: 72 }}
                                       >
-                                        {index === 0 && (
-                                          <MDButton
-                                            variant="gradient"
-                                            color="info"
-                                            size="small"
-                                            onClick={() => handleSaveRow(outlet.id)}
-                                            disabled={
-                                              submitting ||
-                                              !rows.some(
-                                                (r) =>
-                                                  r.itemCount?.toString().trim() &&
-                                                  r.invoiceNumber?.trim() &&
-                                                  r.price?.trim()
-                                              )
-                                            }
-                                            sx={{ minWidth: 64 }}
-                                          >
-                                            Save
-                                          </MDButton>
-                                        )}
-                                        {index === rows.length - 1 && (
-                                          <MDButton
-                                            variant="outlined"
-                                            color="dark"
-                                            size="small"
-                                            iconOnly
-                                            circular
-                                            sx={{ minWidth: 32, width: 32, height: 32 }}
-                                            onClick={() => handleAddRow(outlet.id)}
-                                          >
-                                            <Icon>add</Icon>
-                                          </MDButton>
-                                        )}
-                                        {rows.length > 1 && (
-                                          <MDButton
-                                            variant="outlined"
-                                            color="error"
-                                            size="small"
-                                            iconOnly
-                                            circular
-                                            sx={{ minWidth: 32, width: 32, height: 32 }}
-                                            onClick={() => handleRemoveRow(outlet.id, index)}
-                                          >
-                                            <Icon>close</Icon>
-                                          </MDButton>
-                                        )}
-                                      </MDBox>
+                                        Sales
+                                      </MDButton>
                                     </TableCell>
                                   </TableRow>
                                 );
@@ -1246,17 +1021,6 @@ function AddSales() {
                       </Table>
                     </TableContainer>
 
-                    <MDBox mt={4}>
-                      <MDButton
-                        variant="gradient"
-                        color="info"
-                        fullWidth
-                        onClick={handleSubmit}
-                        disabled={submitting || !hasSubmittableSales}
-                      >
-                        {submitting ? "Submitting..." : "Submit"}
-                      </MDButton>
-                    </MDBox>
                   </MDBox>
                 )}
 
@@ -1314,8 +1078,9 @@ function AddSales() {
                       >
                         <colgroup>
                           <col style={{ width: "6%" }} />
-                          <col style={{ width: "22%" }} />
-                          <col style={{ width: "16%" }} />
+                          <col style={{ width: "18%" }} />
+                          <col style={{ width: "12%" }} />
+                          <col style={{ width: "14%" }} />
                           <col style={{ width: "11%" }} />
                           <col style={{ width: "13%" }} />
                           <col style={{ width: "12%" }} />
@@ -1404,40 +1169,14 @@ function AddSales() {
                                 align="center"
                                 sx={{ ...tableBodySx, borderBottom: "1px solid #e5e7eb", fontSize: "0.875rem", color: "#374151" }}
                               >
-                                {editingSaleId === row.id ? (
-                                  <MDInput
-                                    type="number"
-                                    size="small"
-                                    value={editForm.itemCount}
-                                    onChange={(e) =>
-                                      setEditForm((f) => ({ ...f, itemCount: e.target.value }))
-                                    }
-                                    inputProps={{ min: 1, style: { textAlign: "center" } }}
-                                    sx={{ width: "100%" }}
-                                  />
-                                ) : (
-                                  row.itemCount || "N/A"
-                                )}
+                                {row.itemCount || "N/A"}
                               </TableCell>
 
                               <TableCell
                                 align="center"
                                 sx={{ ...tableBodySx, borderBottom: "1px solid #e5e7eb", fontSize: "0.875rem", color: "#374151" }}
                               >
-                                {editingSaleId === row.id ? (
-                                  <MDInput
-                                    type="text"
-                                    size="small"
-                                    value={editForm.invoiceNumber}
-                                    onChange={(e) =>
-                                      setEditForm((f) => ({ ...f, invoiceNumber: e.target.value }))
-                                    }
-                                    inputProps={{ style: { textAlign: "center" } }}
-                                    sx={{ width: "100%" }}
-                                  />
-                                ) : (
-                                  row.invoiceNumber
-                                )}
+                                {row.invoiceNumber}
                               </TableCell>
 
                               <TableCell
@@ -1457,40 +1196,24 @@ function AddSales() {
                                   color: "#111827",
                                 }}
                               >
-                                {editingSaleId === row.id ? (
-                                  <MDInput
-                                    type="number"
-                                    size="small"
-                                    value={editForm.price}
-                                    onChange={(e) =>
-                                      setEditForm((f) => ({ ...f, price: e.target.value }))
-                                    }
-                                    inputProps={{ style: { textAlign: "right" } }}
-                                    sx={{ width: "100%" }}
-                                  />
-                                ) : (
-                                  `₹${Number(row.amount).toFixed(2)}`
-                                )}
+                                {`₹${Number(row.amount).toFixed(2)}`}
                               </TableCell>
 
                               <TableCell align="center" sx={{ ...tableBodySx, borderBottom: "1px solid #e5e7eb" }}>
                                 {row.id ? (
                                   <MDBox display="flex" gap={0.5} justifyContent="center" alignItems="center" flexWrap="wrap">
-                                    {editingSaleId === row.id ? (
-                                      <>
-                                        <MDButton variant="gradient" color="info" size="small" onClick={() => saveEditSale(row.id)} disabled={savingEdit}>
-                                          Save
-                                        </MDButton>
-                                        <MDButton variant="outlined" color="dark" size="small" onClick={cancelEditSale}>
-                                          Cancel
-                                        </MDButton>
-                                      </>
-                                    ) : (
-                                      <>
-                                        <FaRegEdit   onClick={() => startEditSale(row)} style={{ cursor: "pointer" }} color="#E0E388" size={20}/>
-                                        <CiTrash   onClick={() => handleDeleteSale(row.id)} style={{ cursor: "pointer" }} color="#FF0000" size={20}/>
-                                      </>
-                                    )}
+                                    <FaRegEdit
+                                      onClick={() => openEditSaleDialog(row)}
+                                      style={{ cursor: "pointer" }}
+                                      color="#E0E388"
+                                      size={20}
+                                    />
+                                    <CiTrash
+                                      onClick={() => handleDeleteSale(row.id)}
+                                      style={{ cursor: "pointer" }}
+                                      color="#FF0000"
+                                      size={20}
+                                    />
                                   </MDBox>
                                 ) : (
                                   "—"
@@ -1510,6 +1233,22 @@ function AddSales() {
           </Grid>
         </Grid>
       </MDBox>
+
+      <SalesInvoiceDialog
+        open={invoiceDialog.open}
+        onClose={closeInvoiceDialog}
+        outlet={invoiceDialog.outlet}
+        selectedDate={selectedDate}
+        invoiceNumber={invoiceDialog.invoiceNumber}
+        editMode={Boolean(invoiceDialog.editSaleId)}
+        initialItemCount={invoiceDialog.initialItemCount}
+        initialPrice={invoiceDialog.initialPrice}
+        prevBillNo={
+          invoiceDialog.outlet ? getPrevBillNoForOutlet(invoiceDialog.outlet.id) : ""
+        }
+        submitting={submitting || savingEdit}
+        onSubmit={handleInvoiceSubmit}
+      />
 
       <Dialog
         open={permissionDialog.open}
