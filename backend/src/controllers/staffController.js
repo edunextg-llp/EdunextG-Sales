@@ -588,10 +588,18 @@ export const recordSales = async (req, res) => {
             }
 
             if (overdueOutlets.length > 0 && permissionGranted) {
+                const note = String(permissionNote || '').trim();
+                if (!note) {
+                    return res.status(400).json({
+                        code: 'PERMISSION_NOTE_REQUIRED',
+                        error: 'Permission note is required to add sales for overdue ERP credit.',
+                        overdueOutlets,
+                    });
+                }
+
                 const permittedByAdminId = req.user?.id || null;
                 const permittedByName =
                     req.user?.username || req.user?.email || (permittedByAdminId ? `Admin #${permittedByAdminId}` : 'Admin');
-                const note = String(permissionNote || '').trim() || null;
 
                 for (const overdueOutlet of overdueOutlets) {
                     await StaffModel.createOverdueSalePermission({

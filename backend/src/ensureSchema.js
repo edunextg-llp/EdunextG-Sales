@@ -893,6 +893,36 @@ export async function ensureSchema() {
             'returned_at on taken_bills'
         );
 
+        await tryQuery(
+            connection,
+            `ALTER TABLE chalan_sales ADD COLUMN returned_item_count INT NOT NULL DEFAULT 0`,
+            'returned_item_count on chalan_sales'
+        );
+        await tryQuery(
+            connection,
+            `ALTER TABLE chalan_sales ADD COLUMN returned_packed_item_count INT NOT NULL DEFAULT 0`,
+            'returned_packed_item_count on chalan_sales'
+        );
+        await tryQuery(
+            connection,
+            `ALTER TABLE chalan_sales ADD COLUMN returned_amount DECIMAL(12, 2) NOT NULL DEFAULT 0`,
+            'returned_amount on chalan_sales'
+        );
+
+        await connection.query(`
+            CREATE TABLE IF NOT EXISTS chalan_sale_returns (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                chalan_sale_id INT NOT NULL,
+                return_type ENUM('full', 'partial') NOT NULL,
+                return_item_count INT NOT NULL,
+                return_packed_item_count INT NOT NULL,
+                return_amount DECIMAL(12, 2) NOT NULL,
+                return_date DATE NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (chalan_sale_id) REFERENCES chalan_sales(id) ON DELETE CASCADE
+            );
+        `);
+
         await connection.query(`
             CREATE TABLE IF NOT EXISTS overdue_sale_permissions (
                 id INT AUTO_INCREMENT PRIMARY KEY,

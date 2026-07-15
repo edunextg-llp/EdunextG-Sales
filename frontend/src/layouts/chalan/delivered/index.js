@@ -13,6 +13,7 @@ import {
   Tabs,
   Tab,
 } from "@mui/material";
+import { FaRegEdit } from "react-icons/fa";
 
 import MDBox from "components/MDBox";
 import MDTypography from "components/MDTypography";
@@ -131,7 +132,9 @@ function ChalanDelivered() {
   const deliveredSales = salesData.filter(
     (row) => row.packaging_status === "delivered" && matchesSearch(row)
   );
-  const cancelledSales = cancelledSalesData.filter(matchesSearch);
+  const cancelledSales = cancelledSalesData.filter(
+    (row) => row.packaging_status === "cancelled" && matchesSearch(row)
+  );
 
   const activeList =
     activeTab === "cancelled"
@@ -150,11 +153,17 @@ function ChalanDelivered() {
   const handleUpdateStatus = async (row, newStatus) => {
     if (updatingSaleIds.has(row.id)) return;
 
-    const actionLabel = newStatus === "cancelled" ? "Cancel" : "Deliver";
-    const confirmed = window.confirm(
-      `${actionLabel} chalan ${row.chalan_code || row.chalanCode}?`
-    );
-    if (!confirmed) return;
+    const chalanCode = row.chalan_code || row.chalanCode || "";
+    if (newStatus === "out_for_delivery") {
+      const confirmed = window.confirm(
+        `Edit chalan ${chalanCode}? It will move back to Pending Delivery so you can Deliver or Cancel again.`
+      );
+      if (!confirmed) return;
+    } else {
+      const actionLabel = newStatus === "cancelled" ? "Cancel" : "Deliver";
+      const confirmed = window.confirm(`${actionLabel} chalan ${chalanCode}?`);
+      if (!confirmed) return;
+    }
 
     setUpdatingSaleIds((prev) => new Set(prev).add(row.id));
 
@@ -163,7 +172,12 @@ function ChalanDelivered() {
         packagingStatus: newStatus,
         deliveryBoyId: row.delivery_boy_id || null,
         vehicleNo: row.vehicle_no || null,
-        deliveryDate: row.delivery_date || getTodayLocalDate(),
+        deliveryDate:
+          newStatus === "out_for_delivery" ||
+          newStatus === "delivered" ||
+          newStatus === "cancelled"
+            ? row.delivery_date || getTodayLocalDate()
+            : null,
         expectedStatus: row.packaging_status,
         statusDate: getTodayLocalDate(),
       };
@@ -176,13 +190,31 @@ function ChalanDelivered() {
 
       if (response.ok) {
         const data = await response.json();
+        const updatedSale = { ...row, ...(data.sale || {}), packaging_status: newStatus };
+
         if (newStatus === "cancelled") {
           setSalesData((prev) => prev.filter((item) => item.id !== row.id));
-          fetchCancelledSales({ silent: true });
+          setCancelledSalesData((prev) => {
+            const without = prev.filter((item) => item.id !== row.id);
+            return [updatedSale, ...without];
+          });
           setActiveTab("cancelled");
+          fetchCancelledSales({ silent: true });
+        } else if (newStatus === "out_for_delivery") {
+          setCancelledSalesData((prev) => prev.filter((item) => item.id !== row.id));
+          setSalesData((prev) => {
+            const exists = prev.some((item) => item.id === row.id);
+            if (exists) {
+              return prev.map((item) => (item.id === row.id ? updatedSale : item));
+            }
+            return [updatedSale, ...prev];
+          });
+          setActiveTab("pending");
+          fetchSales({ silent: true });
+          fetchCancelledSales({ silent: true });
         } else {
           setSalesData((prev) =>
-            prev.map((item) => (item.id === row.id ? { ...item, ...data.sale } : item))
+            prev.map((item) => (item.id === row.id ? { ...item, ...updatedSale } : item))
           );
           setActiveTab("delivered");
         }
@@ -190,6 +222,7 @@ function ChalanDelivered() {
         const err = await response.json().catch(() => ({}));
         alert(err.error || "This record was updated by another user.");
         fetchSales();
+        fetchCancelledSales();
       } else {
         const err = await response.json().catch(() => ({}));
         alert(err.error || "Failed to update status.");
@@ -360,11 +393,9 @@ function ChalanDelivered() {
                         <TableCell align="center" sx={paginatedTableHeadCellSx}>
                           Status
                         </TableCell>
-                        {activeTab === "pending" && (
-                          <TableCell align="center" sx={paginatedTableHeadCellSx}>
-                            Action
-                          </TableCell>
-                        )}
+                        <TableCell align="center" sx={paginatedTableHeadCellSx}>
+                          Action
+                        </TableCell>
                       </TableRow>
                     </TableHead>
                     <TableBody>
@@ -421,11 +452,11 @@ function ChalanDelivered() {
                             <TableCell align="center" sx={{ borderBottom: "1px solid #cbd5e1", py: 2 }}>
                               {renderStatusChip(row.packaging_status)}
                             </TableCell>
-                            {activeTab === "pending" && (
-                              <TableCell
-                                align="center"
-                                sx={{ borderBottom: "1px solid #cbd5e1", py: 2 }}
-                              >
+                            <TableCell
+                              align="center"
+                              sx={{ borderBottom: "1px solid #cbd5e1", py: 2 }}
+                            >
+                              {row.packaging_status === "out_for_delivery" ? (
                                 <MDBox display="flex" gap={1} justifyContent="center" flexWrap="wrap">
                                   <MDButton
                                     color="error"
@@ -446,17 +477,28 @@ function ChalanDelivered() {
                                     Delivered
                                   </MDButton>
                                 </MDBox>
-                              </TableCell>
-                            )}
+                              ) : (
+                                <FaRegEdit
+                                  onClick={() => {
+                                    if (!updatingSaleIds.has(row.id)) {
+                                      handleUpdateStatus(row, "out_for_delivery");
+                                    }
+                                  }}
+                                  style={{
+                                    cursor: updatingSaleIds.has(row.id) ? "not-allowed" : "pointer",
+                                    opacity: updatingSaleIds.has(row.id) ? 0.5 : 1,
+                                  }}
+                                  color="#E0E388"
+                                  size={20}
+                                  title="Edit"
+                                />
+                              )}
+                            </TableCell>
                           </TableRow>
                         ))
                       ) : (
                         <TableRow>
-                          <TableCell
-                            colSpan={activeTab === "pending" ? 11 : 10}
-                            align="center"
-                            sx={{ py: 3, borderBottom: 0 }}
-                          >
+                          <TableCell colSpan={11} align="center" sx={{ py: 3, borderBottom: 0 }}>
                             <MDTypography variant="body2" color="text">
                               No chalan found.
                             </MDTypography>

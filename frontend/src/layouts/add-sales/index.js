@@ -188,16 +188,29 @@ function AddSales() {
     }
   };
 
+  const matchesOutletSearch = (outlet, query) => {
+    const q = String(query || "").trim().toLowerCase();
+    if (!q) return true;
+    return (
+      String(outlet.outlet_name || "").toLowerCase().includes(q) ||
+      String(outlet.outlet_erp_id || "").toLowerCase().includes(q) ||
+      String(outlet.location_name || "").toLowerCase().includes(q)
+    );
+  };
+
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const displayOutlets = useMemo(() => {
-    if (outletSearch.trim()) {
-      return mergeOutletsById(outlets, searchOutlets);
+    const query = outletSearch.trim();
+    if (query) {
+      return mergeOutletsById(allOutlets, outlets, searchOutlets).filter((outlet) =>
+        matchesOutletSearch(outlet, query)
+      );
     }
     return mergeOutletsById(
       outlets,
       searchOutlets.filter((o) => outletHasDraft(o.id))
     );
-  }, [outlets, searchOutlets, outletSearch, salesData]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [outlets, searchOutlets, outletSearch, salesData, allOutlets]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const hasSubmittableSales = useMemo(
     () =>
@@ -307,6 +320,7 @@ function AddSales() {
   useEffect(() => {
     if (!selectedStaff || !selectedDate) {
       setOutlets([]);
+      setAllOutlets([]);
       setSearchOutlets([]);
       setSalesData({});
       setSubmittedSummary(null);
@@ -314,6 +328,7 @@ function AddSales() {
     }
 
     setOutlets([]);
+    setAllOutlets([]);
     setSearchOutlets([]);
     setSalesData({});
     setSubmittedSummary(null);
@@ -333,11 +348,6 @@ function AddSales() {
           const data = await outletsResponse.json();
           setOutlets(data);
 
-          if (allCountersResponse.ok) {
-            const allCounters = await allCountersResponse.json();
-            setAllOutlets(allCounters);
-          }
-
           const initialSales = {};
           data.forEach((outlet) => {
             initialSales[outletKey(outlet.id)] = [
@@ -345,6 +355,11 @@ function AddSales() {
             ];
           });
           setSalesData(initialSales);
+        }
+
+        if (allCountersResponse.ok) {
+          const allCounters = await allCountersResponse.json();
+          setAllOutlets(allCounters);
         }
 
         if (salesRes.ok) {
@@ -367,47 +382,36 @@ function AddSales() {
   }, [selectedStaff, selectedDate]);
 
   useEffect(() => {
-    if (!selectedStaff || !selectedDate || !outletSearch.trim()) {
+    if (!selectedStaff || !outletSearch.trim()) {
       setSearchingOutlets(false);
+      if (!outletSearch.trim()) {
+        setSearchOutlets([]);
+      }
       return undefined;
     }
 
-    const timer = setTimeout(async () => {
-      setSearchingOutlets(true);
-      try {
-        const params = new URLSearchParams({
-          date: selectedDate,
-          search: outletSearch.trim(),
+    setSearchingOutlets(true);
+    const timer = setTimeout(() => {
+      const matched = (allOutlets || []).filter((outlet) =>
+        matchesOutletSearch(outlet, outletSearch)
+      );
+      setSearchOutlets(matched);
+      setSalesData((prev) => {
+        const next = { ...prev };
+        matched.forEach((outlet) => {
+          const key = outletKey(outlet.id);
+          if (!next[key]) {
+            next[key] = [{ ...emptySaleRow }];
+          }
         });
-        const response = await fetch(
-          `${API}/staff/${selectedStaff.id}/outlets-by-date?${params.toString()}`
-        );
-        if (response.ok) {
-          const data = await response.json();
-          setSearchOutlets((prev) => mergeOutletsById(prev, data));
-          setSalesData((prev) => {
-            const next = { ...prev };
-            data.forEach((outlet) => {
-              const key = outletKey(outlet.id);
-              if (!next[key]) {
-                next[key] = [
-                  { ...emptySaleRow },
-                ];
-              }
-            });
-            return next;
-          });
-        }
-      } catch (error) {
-        console.error("Error searching outlets:", error);
-      } finally {
-        setSearchingOutlets(false);
-      }
-    }, 300);
+        return next;
+      });
+      setSearchingOutlets(false);
+    }, 200);
 
     return () => clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [outletSearch, selectedStaff, selectedDate]);
+  }, [outletSearch, selectedStaff, selectedDate, allOutlets]);
 
   const handleSalesChange = (outletId, index, field, value) => {
     const key = outletKey(outletId);
@@ -529,12 +533,17 @@ function AddSales() {
 
   const handleGrantPermissionAndSave = async () => {
     if (!permissionDialog.pendingPayload) return;
+    const note = String(permissionDialog.permissionNote || "").trim();
+    if (!note) {
+      alert("Permission note is required.");
+      return;
+    }
     await submitSalesPayload(
       permissionDialog.pendingPayload,
       permissionDialog.submittedOutletIds,
       {
         permissionGranted: true,
-        permissionNote: permissionDialog.permissionNote,
+        permissionNote: note,
       }
     );
   };
@@ -906,6 +915,12 @@ function AddSales() {
                         fullWidth
                         value={outletSearch}
                         onChange={(e) => setOutletSearch(e.target.value)}
+                        disabled={!selectedStaff}
+                        helperText={
+                          selectedStaff
+                            ? "Search by outlet name, ERP ID, or area across all route days."
+                            : ""
+                        }
                       />
                     </MDBox>
                     {!isCnfStaff && (
@@ -922,8 +937,8 @@ function AddSales() {
                                 setOutlets([...outlets, ...outletsToAdd]);
                                 setSalesData((prev) => {
                                   const newData = { ...prev };
-                                  outletsToAdd.forEach(o => {
-                                    newData[o.id] = [{ ...emptySaleRow }];
+                                  outletsToAdd.forEach((o) => {
+                                    newData[outletKey(o.id)] = [{ ...emptySaleRow }];
                                   });
                                   return newData;
                                 });
@@ -1505,8 +1520,8 @@ function AddSales() {
         <DialogTitle>Permission Required — Overdue Credit</DialogTitle>
         <DialogContent dividers>
           <MDTypography variant="body2" color="text" mb={2}>
-            This ERP ID has credit overdue by more than 3 days. Grant permission to add a new sale
-            for the same ERP ID. This permission will be stored in the database.
+            This ERP ID has credit overdue by more than 3 days. Permission note is required to add a
+            new sale for the same ERP ID. This permission will be stored in the database.
           </MDTypography>
 
           {(permissionDialog.overdueOutlets || []).map((outlet) => (
@@ -1534,10 +1549,11 @@ function AddSales() {
 
           <MDBox mt={1}>
             <MDInput
-              label="Permission note (optional)"
+              label="Permission note *"
               fullWidth
               multiline
               rows={2}
+              required
               value={permissionDialog.permissionNote}
               onChange={(e) =>
                 setPermissionDialog((prev) => ({ ...prev, permissionNote: e.target.value }))
@@ -1553,7 +1569,7 @@ function AddSales() {
             color="warning"
             variant="gradient"
             onClick={handleGrantPermissionAndSave}
-            disabled={submitting}
+            disabled={submitting || !String(permissionDialog.permissionNote || "").trim()}
           >
             {submitting ? "Saving..." : "Grant Permission & Save"}
           </MDButton>

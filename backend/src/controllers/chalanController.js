@@ -356,3 +356,80 @@ export const getChalanSaleStatusHistory = async (req, res) => {
         res.status(500).json({ error: 'Internal server error' });
     }
 };
+
+export const getChalanReturnRecords = async (req, res) => {
+    try {
+        const records = await ChalanModel.getReturnRecords();
+        res.status(200).json(records);
+    } catch (error) {
+        console.error('Error fetching chalan return records:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+};
+
+export const processChalanReturn = async (req, res) => {
+    try {
+        const saleId = parseInt(req.params.id, 10);
+        if (!saleId) {
+            return res.status(400).json({ error: 'Invalid chalan id.' });
+        }
+
+        const { returnType, returnItemCount, returnPackedItemCount, returnAmount, returnDate } =
+            req.body;
+
+        if (!['full', 'partial'].includes(returnType)) {
+            return res.status(400).json({ error: 'Return type must be full or partial.' });
+        }
+
+        const result = await ChalanModel.processReturn(saleId, {
+            returnType,
+            returnItemCount,
+            returnPackedItemCount,
+            returnAmount,
+            returnDate: normalizeDateInput(returnDate),
+        });
+
+        if (!result) {
+            return res.status(404).json({ error: 'Chalan not found.' });
+        }
+
+        if (result.error) {
+            return res.status(400).json({ error: result.error });
+        }
+
+        res.status(200).json({
+            message: 'Chalan return recorded successfully',
+            sale: result.sale,
+            returnRecord: result.returnRecord,
+        });
+    } catch (error) {
+        console.error('Error processing chalan return:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+};
+
+export const revertChalanReturn = async (req, res) => {
+    try {
+        const saleId = parseInt(req.params.id, 10);
+        if (!saleId) {
+            return res.status(400).json({ error: 'Invalid chalan id.' });
+        }
+
+        const result = await ChalanModel.revertReturn(saleId);
+        if (!result) {
+            return res.status(404).json({ error: 'Chalan not found.' });
+        }
+
+        if (result.error) {
+            return res.status(400).json({ error: result.error });
+        }
+
+        res.status(200).json({
+            message: 'Chalan return reverted successfully',
+            sale: result,
+        });
+    } catch (error) {
+        console.error('Error reverting chalan return:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+};

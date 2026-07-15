@@ -923,6 +923,9 @@ async function initDB() {
             packet_count INT NULL,
             vehicle_no VARCHAR(50) NULL,
             delivery_date DATE NULL,
+            returned_item_count INT NOT NULL DEFAULT 0,
+            returned_packed_item_count INT NOT NULL DEFAULT 0,
+            returned_amount DECIMAL(12, 2) NOT NULL DEFAULT 0,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (staff_id) REFERENCES staff(id) ON DELETE SET NULL,
             FOREIGN KEY (delivery_boy_id) REFERENCES delivery_boys(id) ON DELETE SET NULL
@@ -953,6 +956,21 @@ async function initDB() {
         );
     `);
     console.log('Chalan sale status history table ready');
+
+    await connection.query(`
+        CREATE TABLE IF NOT EXISTS chalan_sale_returns (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            chalan_sale_id INT NOT NULL,
+            return_type ENUM('full', 'partial') NOT NULL,
+            return_item_count INT NOT NULL,
+            return_packed_item_count INT NOT NULL,
+            return_amount DECIMAL(12, 2) NOT NULL,
+            return_date DATE NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (chalan_sale_id) REFERENCES chalan_sales(id) ON DELETE CASCADE
+        );
+    `);
+    console.log('Chalan sale returns table ready');
 
     await connection.query(`
         CREATE TABLE IF NOT EXISTS taken_bills (
