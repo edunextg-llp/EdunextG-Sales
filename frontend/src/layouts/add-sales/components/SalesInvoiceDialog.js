@@ -215,6 +215,7 @@ export default function SalesInvoiceDialog({
   editMode = false,
   initialItemCount = "",
   initialPrice = "",
+  initialLineItems = [],
   submitting  = false,
   onSubmit,
 }) {
@@ -254,7 +255,11 @@ export default function SalesInvoiceDialog({
     if (!open) return;
     setBillNo(invoiceNumber || "");
     if (editMode) {
-      setLineItems([buildExistingSaleLine(initialItemCount, initialPrice)]);
+      if (Array.isArray(initialLineItems) && initialLineItems.length > 0) {
+        setLineItems(initialLineItems.map((item) => ({ ...item })));
+      } else {
+        setLineItems([buildExistingSaleLine(initialItemCount, initialPrice)]);
+      }
     } else {
       setLineItems([]);
     }
@@ -264,7 +269,7 @@ export default function SalesInvoiceDialog({
     setRoundOff("0");
     setRemarks("");
     setEditPopup({ open: false, index: null, draft: { ...emptyLineItem } });
-  }, [open, invoiceNumber, editMode, initialItemCount, initialPrice]);
+  }, [open, invoiceNumber, editMode, initialItemCount, initialPrice, initialLineItems]);
 
   /* load DMS stock */
   useEffect(() => {

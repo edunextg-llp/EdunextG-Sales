@@ -600,6 +600,7 @@ async function initDB() {
         CREATE TABLE IF NOT EXISTS purchase_entries (
             id INT AUTO_INCREMENT PRIMARY KEY,
             seller_id INT NOT NULL,
+            company_id INT NULL,
             invoice_number VARCHAR(100) NOT NULL,
             eway_bill_no VARCHAR(100) NULL,
             eway_bill_date DATE NULL,
@@ -619,10 +620,17 @@ async function initDB() {
             rounded_total DECIMAL(12, 2) NOT NULL DEFAULT 0.00,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (seller_id) REFERENCES purchase_sellers(id) ON DELETE RESTRICT,
+            FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE SET NULL,
             INDEX idx_purchase_entries_seller_id (seller_id)
         );
     `);
     console.log('Purchase entries table created');
+
+    try {
+        await connection.query('ALTER TABLE purchase_entries ADD COLUMN company_id INT NULL AFTER seller_id');
+    } catch (err) {
+        if (err.code !== 'ER_DUP_FIELDNAME') console.log('company_id column may already exist on purchase_entries');
+    }
 
     await connection.query(`
         CREATE TABLE IF NOT EXISTS dms_stock_imports (

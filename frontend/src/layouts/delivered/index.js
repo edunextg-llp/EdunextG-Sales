@@ -20,6 +20,7 @@ import {
   MenuItem,
   Tabs,
   Tab,
+  Icon,
 } from "@mui/material";
 
 import MDBox from "components/MDBox";
@@ -39,6 +40,7 @@ import {
   paginatedTableHeadCellErrorSx,
   paginatedTableHeadSx,
 } from "utils/tablePagination";
+import { printSalesInvoicePdf } from "utils/printSalesInvoicePdf";
 // import { formatBpSaleId } from "utils/saleId";
 // import { IoSaveOutline } from "react-icons/io5";
 import { FaRegEdit } from "react-icons/fa";
@@ -319,6 +321,80 @@ function Delivered() {
           deliveryRangeEnd ? formatDate(deliveryRangeEnd) : "Today"
         }`
       : "All Dates";
+
+  const mapSaleForInvoicePdf = (row) => ({
+    invoiceNumber: row.invoice_number,
+    stickerNumber: row.sticker_number,
+    itemCount: row.item_count ?? row.packed_item_count ?? "",
+    amount: row.price,
+    lineItems: [],
+    outletId: row.outlet_id,
+    shopName: row.outlet_name,
+    outletErpId: row.outlet_erp_id || "",
+    locationName: row.location_name || "",
+    staffName: row.staff_name || "",
+  });
+
+  const downloadOutletInvoicePdf = (row) => {
+    const outletSales = filteredSales
+      .filter((sale) => Number(sale.outlet_id) === Number(row.outlet_id))
+      .map(mapSaleForInvoicePdf);
+
+    if (!outletSales.length) {
+      alert("No invoices found for this outlet.");
+      return;
+    }
+
+    printSalesInvoicePdf({
+      outletName: row.outlet_name,
+      outletErpId: row.outlet_erp_id || "",
+      locationName: row.location_name || "",
+      saleDate: formatDate(row.delivery_date || row.sale_date) || deliveryRangeLabel,
+      staffName: row.staff_name || "",
+      companyName: row.company_name || "",
+      invoices: outletSales,
+    });
+  };
+
+  const downloadAllDeliveredInvoicePdfs = () => {
+    const sourceRows =
+      activeTab === "pending"
+        ? pendingSales
+        : filteredSales.filter(
+            (row) =>
+              row.packaging_status === "delivered" ||
+              row.packaging_status === "returned" ||
+              row.packaging_status === "out_for_delivery"
+          );
+
+    const byOutlet = new Map();
+    sourceRows.forEach((row) => {
+      const key = String(row.outlet_id ?? "");
+      if (!byOutlet.has(key)) byOutlet.set(key, []);
+      byOutlet.get(key).push(row);
+    });
+
+    const groups = Array.from(byOutlet.values());
+    if (!groups.length) {
+      alert("No invoices available to download.");
+      return;
+    }
+
+    groups.forEach((outletRows, index) => {
+      const first = outletRows[0];
+      setTimeout(() => {
+        printSalesInvoicePdf({
+          outletName: first.outlet_name,
+          outletErpId: first.outlet_erp_id || "",
+          locationName: first.location_name || "",
+          saleDate: formatDate(first.delivery_date || first.sale_date) || deliveryRangeLabel,
+          staffName: first.staff_name || "",
+          companyName: first.company_name || "",
+          invoices: outletRows.map(mapSaleForInvoicePdf),
+        });
+      }, index * 500);
+    });
+  };
 
   const buildSummary = (rows, getKey) => {
     const summary = new Map();
@@ -763,6 +839,17 @@ function Delivered() {
                     {activeTab === "pending" ? " · Pending only" : " · Delivered, pending, and returned"}
                   </MDTypography>
                 )}
+                <MDBox display="flex" justifyContent="flex-end" mb={2}>
+                  <MDButton
+                    color="info"
+                    variant="outlined"
+                    size="small"
+                    onClick={downloadAllDeliveredInvoicePdfs}
+                  >
+                    <Icon sx={{ mr: 1 }}>picture_as_pdf</Icon>
+                    Download Invoice PDF
+                  </MDButton>
+                </MDBox>
                 <TableContainer component={Paper} sx={paginatedTableContainerSx}>
                   <Table stickyHeader sx={{ minWidth: 650 }}>
                     <TableHead sx={paginatedTableHeadSx()}>
@@ -844,7 +931,14 @@ function Delivered() {
                             </TableCell>
                             <TableCell align="center" sx={{ borderBottom: "1px solid #cbd5e1", py: 2 }}>
                               {row.packaging_status === 'out_for_delivery' ? (
-                                <MDBox display="flex" gap={1} justifyContent="center" flexWrap="wrap">
+                                <MDBox display="flex" gap={1} justifyContent="center" alignItems="center" flexWrap="wrap">
+                                  <Icon
+                                    onClick={() => downloadOutletInvoicePdf(row)}
+                                    sx={{ cursor: "pointer", color: "#2563eb", fontSize: 22 }}
+                                    titleAccess="Download Invoice PDF"
+                                  >
+                                    picture_as_pdf
+                                  </Icon>
                                   <MDButton color="error" variant="contained" size="small" onClick={() => handleUpdateStatus(row.id, 'cancelled', row.delivery_boy_id, row.vehicle_no, row.delivery_date)}>
                                     Cancel
                                   </MDButton>
@@ -856,7 +950,16 @@ function Delivered() {
                                   </MDButton>
                                 </MDBox>
                               ) : (
-                                <FaRegEdit   onClick={() => handleUpdateStatus(row.id, 'out_for_delivery', row.delivery_boy_id, row.vehicle_no, row.delivery_date)} style={{ cursor: "pointer" }} color="#E0E388" size={20}/>
+                                <MDBox display="flex" gap={1} justifyContent="center" alignItems="center">
+                                  <Icon
+                                    onClick={() => downloadOutletInvoicePdf(row)}
+                                    sx={{ cursor: "pointer", color: "#2563eb", fontSize: 22 }}
+                                    titleAccess="Download Invoice PDF"
+                                  >
+                                    picture_as_pdf
+                                  </Icon>
+                                  <FaRegEdit   onClick={() => handleUpdateStatus(row.id, 'out_for_delivery', row.delivery_boy_id, row.vehicle_no, row.delivery_date)} style={{ cursor: "pointer" }} color="#E0E388" size={20}/>
+                                </MDBox>
                               )}
                             </TableCell>
                           </TableRow>

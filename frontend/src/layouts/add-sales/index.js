@@ -34,6 +34,7 @@ import DashboardLayout from "examples/LayoutContainers/DashboardLayout";
 import DashboardNavbar from "examples/Navbars/DashboardNavbar";
 import Footer from "examples/Footer";
 import { printSalesStickers } from "utils/printSalesStickers";
+import { printSalesInvoicePdf } from "utils/printSalesInvoicePdf";
 import { FaRegEdit } from "react-icons/fa";
 import { CiTrash } from "react-icons/ci";
 import SalesInvoiceDialog from "layouts/add-sales/components/SalesInvoiceDialog";
@@ -77,12 +78,14 @@ function AddSales() {
   const [searchOutlets, setSearchOutlets] = useState([]);
   const [searchingOutlets, setSearchingOutlets] = useState(false);
   const [savingEdit, setSavingEdit] = useState(false);
+  const [saleLineItemsMap, setSaleLineItemsMap] = useState({});
   const [permissionDialog, setPermissionDialog] = useState({
     open: false,
     overdueOutlets: [],
     pendingPayload: null,
     submittedOutletIds: [],
     permissionNote: "",
+    lineMapPatch: {},
   });
   const [invoiceDialog, setInvoiceDialog] = useState({
     open: false,
@@ -92,6 +95,20 @@ function AddSales() {
     editSaleId: null,
     initialItemCount: "",
     initialPrice: "",
+    initialLineItems: [],
+  });
+  const [billChoiceDialog, setBillChoiceDialog] = useState({
+    open: false,
+    outlet: null,
+    rowIndex: 0,
+  });
+  const [manualOutletIds, setManualOutletIds] = useState([]);
+  const [manualEditDialog, setManualEditDialog] = useState({
+    open: false,
+    sale: null,
+    itemCount: "",
+    invoiceNumber: "",
+    price: "",
   });
 
   const API = "https://bawarchee.edunextg.co/api";
@@ -149,6 +166,20 @@ function AddSales() {
     return hasDuplicateInEntry || hasDuplicateSubmitted;
   };
 
+  const lineItemsKey = (outletId, invoiceNumber) =>
+    `${outletKey(outletId)}::${normalizeInvoice(invoiceNumber)}`;
+
+  const attachLineItemsToSales = (sales, lineMap = saleLineItemsMap) =>
+    (sales || []).map((sale) => ({
+      ...sale,
+      lineItems:
+        lineMap[lineItemsKey(sale.outletId, sale.invoiceNumber)] ||
+        sale.lineItems ||
+        [],
+    }));
+
+  const isDetailedBill = (sale) => Array.isArray(sale?.lineItems) && sale.lineItems.length > 0;
+
   const mapSaleFromApi = (s) => ({
     id: s.id != null ? Number(s.id) : null,
     outletId: s.outlet_id,
@@ -163,12 +194,13 @@ function AddSales() {
     deliveryBoyName: s.delivery_boy_name || "",
     vehicleNo: s.vehicle_no || "",
     staffName: s.staff_name || selectedStaff?.name || "",
+    lineItems: [],
   });
 
   const activeSalesForAddSales = (sales) =>
     (sales || []).filter((s) => s.packaging_status !== "cancelled");
 
-  const refreshSubmittedSales = async () => {
+  const refreshSubmittedSales = async (lineMapPatch = {}) => {
     if (!selectedStaff || !selectedDate) return;
     try {
       const salesRes = await fetch(
@@ -176,13 +208,21 @@ function AddSales() {
       );
       if (!salesRes.ok) return;
       const salesDataList = activeSalesForAddSales(await salesRes.json());
-      if (salesDataList.length > 0) {
-        setSubmittedSummary(
-          buildSubmittedSummary(selectedStaff, selectedDate, salesDataList.map(mapSaleFromApi))
-        );
-      } else {
-        setSubmittedSummary(null);
-      }
+      setSaleLineItemsMap((prev) => {
+        const nextMap = { ...prev, ...lineMapPatch };
+        if (salesDataList.length > 0) {
+          setSubmittedSummary(
+            buildSubmittedSummary(
+              selectedStaff,
+              selectedDate,
+              attachLineItemsToSales(salesDataList.map(mapSaleFromApi), nextMap)
+            )
+          );
+        } else {
+          setSubmittedSummary(null);
+        }
+        return nextMap;
+      });
     } catch (error) {
       console.error("Error refreshing submitted sales:", error);
     }
@@ -250,7 +290,11 @@ function AddSales() {
         const salesDataList = activeSalesForAddSales(await salesRes.json());
         if (salesDataList.length > 0) {
           setSubmittedSummary(
-            buildSubmittedSummary(selectedStaff, selectedDate, salesDataList.map(mapSaleFromApi))
+            buildSubmittedSummary(
+              selectedStaff,
+              selectedDate,
+              attachLineItemsToSales(salesDataList.map(mapSaleFromApi))
+            )
           );
         } else {
           setSubmittedSummary(null);
@@ -303,6 +347,7 @@ function AddSales() {
       setAllOutlets([]);
       setSearchOutlets([]);
       setSalesData({});
+      setManualOutletIds([]);
       setSubmittedSummary(null);
       return;
     }
@@ -311,6 +356,7 @@ function AddSales() {
     setAllOutlets([]);
     setSearchOutlets([]);
     setSalesData({});
+    setManualOutletIds([]);
     setSubmittedSummary(null);
 
     const fetchAllData = async () => {
@@ -346,7 +392,11 @@ function AddSales() {
           const salesDataList = activeSalesForAddSales(await salesRes.json());
           if (salesDataList.length > 0) {
             setSubmittedSummary(
-              buildSubmittedSummary(selectedStaff, date, salesDataList.map(mapSaleFromApi))
+              buildSubmittedSummary(
+                selectedStaff,
+                date,
+                attachLineItemsToSales(salesDataList.map(mapSaleFromApi))
+              )
             );
           } else {
             setSubmittedSummary(null);
@@ -393,8 +443,8 @@ function AddSales() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [outletSearch, selectedStaff, selectedDate, allOutlets]);
 
-  const applySalesSuccess = async (submittedOutletIds = []) => {
-    await refreshSubmittedSales();
+  const applySalesSuccess = async (submittedOutletIds = [], lineMapPatch = {}) => {
+    await refreshSubmittedSales(lineMapPatch);
 
     const outletIdSet = new Set((submittedOutletIds || []).map((id) => Number(id)));
     setOutlets((prev) => prev.filter((o) => !outletIdSet.has(Number(o.id))));
@@ -405,6 +455,7 @@ function AddSales() {
       outletIdSet.forEach((id) => delete next[outletKey(id)]);
       return next;
     });
+    setManualOutletIds((prev) => prev.filter((id) => !outletIdSet.has(Number(id))));
 
     window.scrollTo({ top: document.body.scrollHeight, behavior: "smooth" });
   };
@@ -416,13 +467,14 @@ function AddSales() {
       pendingPayload: null,
       submittedOutletIds: [],
       permissionNote: "",
+      lineMapPatch: {},
     });
   };
 
   const submitSalesPayload = async (
     payload,
     submittedOutletIds = [],
-    { permissionGranted = false, permissionNote = "" } = {}
+    { permissionGranted = false, permissionNote = "", lineMapPatch = {} } = {}
   ) => {
     setSubmitting(true);
     try {
@@ -440,7 +492,7 @@ function AddSales() {
 
       if (response.ok) {
         closePermissionDialog();
-        await applySalesSuccess(submittedOutletIds);
+        await applySalesSuccess(submittedOutletIds, lineMapPatch);
         return true;
       }
 
@@ -452,6 +504,7 @@ function AddSales() {
           pendingPayload: payload,
           submittedOutletIds,
           permissionNote: "",
+          lineMapPatch,
         });
         return false;
       }
@@ -480,6 +533,7 @@ function AddSales() {
       {
         permissionGranted: true,
         permissionNote: note,
+        lineMapPatch: permissionDialog.lineMapPatch || {},
       }
     );
   };
@@ -502,6 +556,7 @@ function AddSales() {
       editSaleId: null,
       initialItemCount: "",
       initialPrice: "",
+      initialLineItems: [],
     });
   };
 
@@ -514,10 +569,99 @@ function AddSales() {
       editSaleId: null,
       initialItemCount: "",
       initialPrice: "",
+      initialLineItems: [],
     });
   };
 
+  const openBillChoiceDialog = (outlet, index) => {
+    setBillChoiceDialog({ open: true, outlet, rowIndex: index });
+  };
+
+  const closeBillChoiceDialog = () => {
+    setBillChoiceDialog({ open: false, outlet: null, rowIndex: 0 });
+  };
+
+  const chooseCreateBill = () => {
+    const { outlet, rowIndex } = billChoiceDialog;
+    closeBillChoiceDialog();
+    if (outlet) openInvoiceDialog(outlet, rowIndex);
+  };
+
+  const chooseManualEntry = () => {
+    const { outlet } = billChoiceDialog;
+    closeBillChoiceDialog();
+    if (!outlet) return;
+    const id = outletKey(outlet.id);
+    setManualOutletIds((prev) => (prev.includes(id) ? prev : [...prev, id]));
+    setSalesData((prev) => ({
+      ...prev,
+      [id]: prev[id]?.length ? prev[id] : [{ ...emptySaleRow }],
+    }));
+  };
+
+  const handleManualSalesChange = (outletId, index, field, value) => {
+    const key = outletKey(outletId);
+    setSalesData((prev) => {
+      const rows = [...(prev[key] || [{ ...emptySaleRow }])];
+      rows[index] = { ...rows[index], [field]: value };
+      return { ...prev, [key]: rows };
+    });
+  };
+
+  const handleAddManualRow = (outletId) => {
+    const key = outletKey(outletId);
+    setSalesData((prev) => ({
+      ...prev,
+      [key]: [...(prev[key] || [{ ...emptySaleRow }]), { ...emptySaleRow }],
+    }));
+  };
+
+  const handleRemoveManualRow = (outletId, index) => {
+    const key = outletKey(outletId);
+    setSalesData((prev) => {
+      const rows = [...(prev[key] || [])];
+      if (rows.length <= 1) return { ...prev, [key]: [{ ...emptySaleRow }] };
+      rows.splice(index, 1);
+      return { ...prev, [key]: rows };
+    });
+  };
+
+  const handleSaveManualOutlet = async (outletId) => {
+    const rows = salesData[outletKey(outletId)] || [];
+    const hasDraft = (row) => row.itemCount || row.invoiceNumber || row.price;
+    const filledRows = rows.filter(hasDraft);
+    const invalid = filledRows.some((row) => {
+      const itemCount = Number(row.itemCount);
+      const price = Number(row.price);
+      return !String(row.invoiceNumber || "").trim() || !Number.isInteger(itemCount) || itemCount <= 0 || !Number.isFinite(price) || price < 0;
+    });
+
+    if (!filledRows.length || invalid) {
+      alert("Enter a valid No. of Item, Invoice No., and Invoice Amount for every manual row.");
+      return;
+    }
+    if (hasDuplicateInvoiceNumbers(filledRows.map((row) => row.invoiceNumber))) {
+      alert("Same invoice number already exists. Please use unique invoice numbers.");
+      return;
+    }
+
+    await submitSalesPayload(
+      {
+        date: selectedDate,
+        sales: filledRows.map((row) => ({
+          outletId: Number(outletId),
+          itemCount: Number(row.itemCount),
+          invoiceNumber: row.invoiceNumber.trim(),
+          price: Number(row.price),
+        })),
+      },
+      [Number(outletId)]
+    );
+  };
+
   const openEditSaleDialog = (row) => {
+    const storedLineItems =
+      saleLineItemsMap[lineItemsKey(row.outletId, row.invoiceNumber)] || row.lineItems || [];
     setInvoiceDialog({
       open: true,
       outlet: {
@@ -531,14 +675,82 @@ function AddSales() {
       editSaleId: row.id,
       initialItemCount: row.itemCount ?? "",
       initialPrice: row.amount ?? "",
+      initialLineItems: storedLineItems,
     });
   };
 
-  const handleInvoiceSubmit = async ({ invoiceNumber, itemCount, price, addAnother }) => {
+  const openManualEditDialog = (row) => {
+    setManualEditDialog({
+      open: true,
+      sale: row,
+      itemCount: String(row.itemCount ?? ""),
+      invoiceNumber: row.invoiceNumber || "",
+      price: String(row.amount ?? ""),
+    });
+  };
+
+  const closeManualEditDialog = () => {
+    setManualEditDialog({ open: false, sale: null, itemCount: "", invoiceNumber: "", price: "" });
+  };
+
+  const handleManualEditSave = async () => {
+    const { sale, itemCount, invoiceNumber, price } = manualEditDialog;
+    const parsedItemCount = Number(itemCount);
+    const parsedPrice = Number(price);
+    if (!sale) return;
+    if (!Number.isInteger(parsedItemCount) || parsedItemCount <= 0 || !invoiceNumber.trim() || !Number.isFinite(parsedPrice) || parsedPrice < 0) {
+      alert("Enter a valid No. of Item, Invoice No., and Invoice Amount.");
+      return;
+    }
+    if (hasDuplicateInvoiceNumbers([invoiceNumber], sale.id)) {
+      alert("Same invoice number already exists. Please use a unique invoice number.");
+      return;
+    }
+
+    setSavingEdit(true);
+    try {
+      const response = await fetch(`${API}/staff/sales/${sale.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          itemCount: parsedItemCount,
+          invoiceNumber: invoiceNumber.trim(),
+          price: parsedPrice,
+        }),
+      });
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({}));
+        throw new Error(err.error || "Failed to update manual entry.");
+      }
+      const data = await response.json();
+      setSubmittedSummary((prev) => ({
+        ...prev,
+        sales: prev.sales.map((entry) =>
+          entry.id === sale.id ? { ...entry, ...data.sale, lineItems: [] } : entry
+        ),
+      }));
+      closeManualEditDialog();
+    } catch (error) {
+      alert(error.message || "Error updating manual entry.");
+    } finally {
+      setSavingEdit(false);
+    }
+  };
+
+  const handleInvoiceSubmit = async ({
+    invoiceNumber,
+    itemCount,
+    price,
+    addAnother,
+    lineItems = [],
+  }) => {
     const outlet = invoiceDialog.outlet;
     if (!outlet) return false;
 
     const editSaleId = invoiceDialog.editSaleId;
+    const lineMapPatch = {
+      [lineItemsKey(outlet.id, invoiceNumber)]: Array.isArray(lineItems) ? lineItems : [],
+    };
 
     if (hasDuplicateInvoiceNumbers([invoiceNumber], editSaleId)) {
       alert("Same invoice number already exists. Please use a unique invoice number.");
@@ -560,10 +772,27 @@ function AddSales() {
         });
         if (response.ok) {
           const data = await response.json();
-          setSubmittedSummary((prev) => ({
-            ...prev,
-            sales: prev.sales.map((s) => (s.id === editSaleId ? { ...s, ...data.sale } : s)),
-          }));
+          setSaleLineItemsMap((prev) => {
+            const nextMap = { ...prev, ...lineMapPatch };
+            // Drop old invoice key if bill number changed
+            const oldSale = (submittedSummary?.sales || []).find((s) => s.id === editSaleId);
+            if (
+              oldSale &&
+              normalizeInvoice(oldSale.invoiceNumber) !== normalizeInvoice(invoiceNumber)
+            ) {
+              delete nextMap[lineItemsKey(oldSale.outletId, oldSale.invoiceNumber)];
+            }
+            setSubmittedSummary((summaryPrev) => ({
+              ...summaryPrev,
+              sales: attachLineItemsToSales(
+                summaryPrev.sales.map((s) =>
+                  s.id === editSaleId ? { ...s, ...data.sale, lineItems } : s
+                ),
+                nextMap
+              ),
+            }));
+            return nextMap;
+          });
           closeInvoiceDialog();
           return true;
         }
@@ -591,7 +820,10 @@ function AddSales() {
       ],
     };
 
-    const success = await submitSalesPayload(payload, [parseInt(outlet.id, 10)]);
+    setSaleLineItemsMap((prev) => ({ ...prev, ...lineMapPatch }));
+    const success = await submitSalesPayload(payload, [parseInt(outlet.id, 10)], {
+      lineMapPatch,
+    });
     if (success) {
       if (!addAnother) {
         closeInvoiceDialog();
@@ -599,6 +831,31 @@ function AddSales() {
       return true;
     }
     return false;
+  };
+
+  const downloadOutletInvoicePdf = (row) => {
+    const outletSales = attachLineItemsToSales(
+      (submittedSummary?.sales || []).filter(
+        (sale) => Number(sale.outletId) === Number(row.outletId)
+      )
+    ).filter(isDetailedBill);
+
+    if (!outletSales.length) {
+      alert("No invoices found for this outlet.");
+      return;
+    }
+
+    printSalesInvoicePdf({
+      outletName: row.shopName,
+      outletErpId: row.outletErpId,
+      locationName: row.locationName,
+      saleDate: submittedSummary?.date
+        ? new Date(`${submittedSummary.date}T12:00:00`).toLocaleDateString("en-IN")
+        : selectedDate,
+      staffName: submittedSummary?.staffName || selectedStaff?.name || "",
+      companyName: submittedSummary?.companyName || selectedStaff?.company_name || "",
+      invoices: outletSales,
+    });
   };
 
   const handleDeleteSale = async (saleId) => {
@@ -849,11 +1106,14 @@ function AddSales() {
                         }}
                       >
                         <colgroup>
-                          <col style={{ width: "8%" }} />
-                          <col style={{ width: "34%" }} />
-                          <col style={{ width: "22%" }} />
-                          <col style={{ width: "22%" }} />
+                          <col style={{ width: "5%" }} />
+                          <col style={{ width: "19%" }} />
+                          <col style={{ width: "12%" }} />
+                          <col style={{ width: "13%" }} />
+                          <col style={{ width: "12%" }} />
                           <col style={{ width: "14%" }} />
+                          <col style={{ width: "13%" }} />
+                          <col style={{ width: "12%" }} />
                         </colgroup>
                         <TableHead sx={tableHeadRowSx}>
                           <TableRow>
@@ -869,6 +1129,9 @@ function AddSales() {
                             <TableCell align="left" sx={{ ...tableHeadSx, width: "14%" }}>
                               Staff Name
                             </TableCell>
+                            <TableCell align="center" sx={tableHeadSx}>No. of Item</TableCell>
+                            <TableCell align="center" sx={tableHeadSx}>Invoice No.</TableCell>
+                            <TableCell align="center" sx={tableHeadSx}>Invoice Amount</TableCell>
                             <TableCell align="center" sx={{ ...tableHeadSx, width: "16%" }}>
                               Action
                             </TableCell>
@@ -879,7 +1142,7 @@ function AddSales() {
                             <TableRow>
                               <TableCell sx={{ ...tableBodySx, borderBottom: "1px solid #e5e7eb" }} />
                               <TableCell
-                                colSpan={3}
+                                colSpan={6}
                                 align="center"
                                 sx={{ ...tableBodySx, borderBottom: "1px solid #e5e7eb", py: 3 }}
                               >
@@ -893,7 +1156,7 @@ function AddSales() {
                             <TableRow>
                               <TableCell sx={{ ...tableBodySx, borderBottom: "1px solid #e5e7eb" }} />
                               <TableCell
-                                colSpan={3}
+                                colSpan={6}
                                 align="center"
                                 sx={{ ...tableBodySx, borderBottom: "1px solid #e5e7eb", py: 3 }}
                               >
@@ -908,7 +1171,8 @@ function AddSales() {
                           ) : (
                             displayOutlets.map((outlet, outletIndex) => {
                               const rows = salesData[outletKey(outlet.id)] || [];
-                              return rows.map((_, index) => {
+                              const isManualEntry = manualOutletIds.includes(outletKey(outlet.id));
+                              return rows.map((row, index) => {
                                 const rowBorder =
                                   index === rows.length - 1
                                     ? { borderBottom: "1px solid #e5e7eb" }
@@ -1000,16 +1264,59 @@ function AddSales() {
                                       </TableCell>
                                     )}
                                     <TableCell align="center" sx={{ ...tableBodySx, ...rowBorder }}>
-                                      <MDButton
-                                        variant="gradient"
-                                        color="info"
-                                        size="small"
-                                        onClick={() => openInvoiceDialog(outlet, index)}
-                                        disabled={submitting}
-                                        sx={{ minWidth: 72 }}
-                                      >
-                                        Sales
-                                      </MDButton>
+                                      {isManualEntry && (
+                                        <MDInput
+                                          type="number"
+                                          inputProps={{ min: 1 }}
+                                          value={row.itemCount || ""}
+                                          onChange={(e) => handleManualSalesChange(outlet.id, index, "itemCount", e.target.value)}
+                                          sx={{ width: "100%" }}
+                                        />
+                                      )}
+                                    </TableCell>
+                                    <TableCell align="center" sx={{ ...tableBodySx, ...rowBorder }}>
+                                      {isManualEntry && (
+                                        <MDInput
+                                          value={row.invoiceNumber || ""}
+                                          onChange={(e) => handleManualSalesChange(outlet.id, index, "invoiceNumber", e.target.value)}
+                                          sx={{ width: "100%" }}
+                                        />
+                                      )}
+                                    </TableCell>
+                                    <TableCell align="center" sx={{ ...tableBodySx, ...rowBorder }}>
+                                      {isManualEntry && (
+                                        <MDInput
+                                          type="number"
+                                          inputProps={{ min: 0, step: "0.01" }}
+                                          value={row.price || ""}
+                                          onChange={(e) => handleManualSalesChange(outlet.id, index, "price", e.target.value)}
+                                          sx={{ width: "100%" }}
+                                        />
+                                      )}
+                                    </TableCell>
+                                    <TableCell align="center" sx={{ ...tableBodySx, ...rowBorder }}>
+                                      {isManualEntry ? (
+                                        <MDBox display="flex" gap={0.5} justifyContent="center" flexWrap="wrap">
+                                          <MDButton size="small" color="info" variant="outlined" onClick={() => handleAddManualRow(outlet.id)} disabled={submitting}>Add</MDButton>
+                                          {rows.length > 1 && (
+                                            <MDButton size="small" color="error" variant="text" onClick={() => handleRemoveManualRow(outlet.id, index)} disabled={submitting}>Remove</MDButton>
+                                          )}
+                                          {index === rows.length - 1 && (
+                                            <MDButton size="small" color="success" variant="gradient" onClick={() => handleSaveManualOutlet(outlet.id)} disabled={submitting}>Save</MDButton>
+                                          )}
+                                        </MDBox>
+                                      ) : (
+                                        <MDButton
+                                          variant="gradient"
+                                          color="info"
+                                          size="small"
+                                          onClick={() => openBillChoiceDialog(outlet, index)}
+                                          disabled={submitting}
+                                          sx={{ minWidth: 72 }}
+                                        >
+                                          Sales
+                                        </MDButton>
+                                      )}
                                     </TableCell>
                                   </TableRow>
                                 );
@@ -1045,19 +1352,61 @@ function AddSales() {
                       border: "1px solid #dee2e6",
                     }}
                   >
-                    <MDBox display="flex" justifyContent="space-between" alignItems="center" mb={2}>
+                    <MDBox display="flex" justifyContent="space-between" alignItems="center" mb={2} flexWrap="wrap" gap={1}>
                       <MDTypography variant="h6" fontWeight="bold">
                         Submitted Details
                       </MDTypography>
-                      <MDButton
-                        variant="outlined"
-                        color="dark"
-                        size="small"
-                        onClick={() => printSalesStickers(submittedSummary.sales)}
-                      >
-                        <Icon sx={{ mr: 1 }}>label</Icon>
-                        Print Stickers
-                      </MDButton>
+                      <MDBox display="flex" gap={1} flexWrap="wrap">
+                        {(submittedSummary.sales || []).some((sale) => isDetailedBill(sale)) && (
+                        <MDButton
+                          variant="outlined"
+                          color="info"
+                          size="small"
+                          onClick={() => {
+                            const sales = attachLineItemsToSales(submittedSummary.sales || []).filter(isDetailedBill);
+                            const byOutlet = new Map();
+                            sales.forEach((sale) => {
+                              const key = outletKey(sale.outletId);
+                              if (!byOutlet.has(key)) byOutlet.set(key, []);
+                              byOutlet.get(key).push(sale);
+                            });
+                            const groups = Array.from(byOutlet.values());
+                            if (!groups.length) {
+                              alert("No invoices available to download.");
+                              return;
+                            }
+                            groups.forEach((outletSales, index) => {
+                              const first = outletSales[0];
+                              setTimeout(() => {
+                                printSalesInvoicePdf({
+                                  outletName: first.shopName,
+                                  outletErpId: first.outletErpId,
+                                  locationName: first.locationName,
+                                  saleDate: submittedSummary.date
+                                    ? new Date(`${submittedSummary.date}T12:00:00`).toLocaleDateString("en-IN")
+                                    : selectedDate,
+                                  staffName: submittedSummary.staffName || "",
+                                  companyName: submittedSummary.companyName || "",
+                                  invoices: outletSales,
+                                });
+                              }, index * 500);
+                            });
+                          }}
+                        >
+                          <Icon sx={{ mr: 1 }}>picture_as_pdf</Icon>
+                          Download PDF
+                        </MDButton>
+                        )}
+                        <MDButton
+                          variant="outlined"
+                          color="dark"
+                          size="small"
+                          onClick={() => printSalesStickers(submittedSummary.sales)}
+                        >
+                          <Icon sx={{ mr: 1 }}>label</Icon>
+                          Print Stickers
+                        </MDButton>
+                      </MDBox>
                     </MDBox>
                     <TableContainer
                       sx={{
@@ -1202,8 +1551,17 @@ function AddSales() {
                               <TableCell align="center" sx={{ ...tableBodySx, borderBottom: "1px solid #e5e7eb" }}>
                                 {row.id ? (
                                   <MDBox display="flex" gap={0.5} justifyContent="center" alignItems="center" flexWrap="wrap">
+                                    {isDetailedBill(row) && (
+                                    <Icon
+                                      onClick={() => downloadOutletInvoicePdf(row)}
+                                      sx={{ cursor: "pointer", color: "#2563eb", fontSize: 22 }}
+                                      titleAccess="Download PDF"
+                                    >
+                                      picture_as_pdf
+                                    </Icon>
+                                    )}
                                     <FaRegEdit
-                                      onClick={() => openEditSaleDialog(row)}
+                                      onClick={() => (isDetailedBill(row) ? openEditSaleDialog(row) : openManualEditDialog(row))}
                                       style={{ cursor: "pointer" }}
                                       color="#E0E388"
                                       size={20}
@@ -1243,12 +1601,74 @@ function AddSales() {
         editMode={Boolean(invoiceDialog.editSaleId)}
         initialItemCount={invoiceDialog.initialItemCount}
         initialPrice={invoiceDialog.initialPrice}
+        initialLineItems={invoiceDialog.initialLineItems}
         prevBillNo={
           invoiceDialog.outlet ? getPrevBillNoForOutlet(invoiceDialog.outlet.id) : ""
         }
         submitting={submitting || savingEdit}
         onSubmit={handleInvoiceSubmit}
       />
+
+      <Dialog open={billChoiceDialog.open} onClose={closeBillChoiceDialog} maxWidth="xs" fullWidth>
+        <DialogTitle>Create Bill?</DialogTitle>
+        <DialogContent dividers>
+          <MDTypography variant="body2" color="text">
+            Do you want to create a detailed sales bill for this outlet? Choose No to enter No. of Item, Invoice No., and Invoice Amount manually.
+          </MDTypography>
+        </DialogContent>
+        <DialogActions>
+          <MDButton color="secondary" variant="outlined" onClick={chooseManualEntry}>
+            No, Manual Entry
+          </MDButton>
+          <MDButton color="info" variant="gradient" onClick={chooseCreateBill}>
+            Yes, Create Bill
+          </MDButton>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={manualEditDialog.open} onClose={savingEdit ? undefined : closeManualEditDialog} maxWidth="xs" fullWidth>
+        <DialogTitle>Edit Manual Entry</DialogTitle>
+        <DialogContent dividers>
+          <Grid container spacing={2} pt={0.5}>
+            <Grid item xs={12}>
+              <MDInput
+                label="No. of Item"
+                type="number"
+                fullWidth
+                inputProps={{ min: 1 }}
+                value={manualEditDialog.itemCount}
+                onChange={(e) => setManualEditDialog((prev) => ({ ...prev, itemCount: e.target.value }))}
+              />
+            </Grid>
+            <Grid item xs={12}>
+              <MDInput
+                label="Invoice No."
+                fullWidth
+                value={manualEditDialog.invoiceNumber}
+                onChange={(e) => setManualEditDialog((prev) => ({ ...prev, invoiceNumber: e.target.value }))}
+              />
+            </Grid>
+            <Grid item xs={12}>
+              <MDInput
+                label="Invoice Amount"
+                type="number"
+                fullWidth
+                inputProps={{ min: 0, step: "0.01" }}
+                value={manualEditDialog.price}
+                onChange={(e) => setManualEditDialog((prev) => ({ ...prev, price: e.target.value }))}
+              />
+            </Grid>
+          </Grid>
+        </DialogContent>
+        <DialogActions>
+          <MDButton color="secondary" variant="outlined" onClick={closeManualEditDialog} disabled={savingEdit}>
+            Cancel
+          </MDButton>
+          <MDButton color="info" variant="gradient" onClick={handleManualEditSave} disabled={savingEdit}>
+            {savingEdit ? "Saving..." : "Save Changes"}
+          </MDButton>
+        </DialogActions>
+      </Dialog>
 
       <Dialog
         open={permissionDialog.open}

@@ -923,6 +923,15 @@ export const searchPurchaseSellers = async (req, res) => {
     }
 };
 
+export const getCompanies = async (req, res) => {
+    try {
+        res.status(200).json(await CompanyModel.getAll());
+    } catch (error) {
+        console.error('Error fetching companies:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+};
+
 export const savePurchaseSeller = async (req, res) => {
     try {
         const sellerValidation = validateRequiredText(req.body.sellerName, 'Seller name');
@@ -956,6 +965,10 @@ export const getPurchases = async (req, res) => {
 };
 
 function buildPurchasePayload(req) {
+    const companyId = Number(req.body.companyId);
+    if (!Number.isInteger(companyId) || companyId <= 0) {
+        return { error: 'Company is required' };
+    }
     const sellerValidation = validateRequiredText(req.body.sellerName, 'Seller name');
     if (!sellerValidation.valid) return { error: sellerValidation.error };
     const invoiceValidation = validateRequiredText(req.body.invoiceNumber, 'Invoice number');
@@ -988,6 +1001,7 @@ function buildPurchasePayload(req) {
 
     return {
         payload: {
+            companyId,
             sellerName: sellerValidation.value,
             address: req.body.address ? String(req.body.address).trim() : '',
             city: req.body.city ? String(req.body.city).trim() : '',

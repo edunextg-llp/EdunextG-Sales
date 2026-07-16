@@ -33,6 +33,7 @@ import { FaRegEdit } from "react-icons/fa";
 import { CiTrash } from "react-icons/ci";
 
 const emptyForm = () => ({
+  companyId: "",
   sellerName: "",
   address: "",
   city: "",
@@ -134,6 +135,7 @@ function Purchase() {
   const [form, setForm] = useState(emptyForm());
   const [purchases, setPurchases] = useState([]);
   const [sellerDirectory, setSellerDirectory] = useState([]);
+  const [companies, setCompanies] = useState([]);
   const [loadingSellers, setLoadingSellers] = useState(false);
   const [gstManuallyEdited, setGstManuallyEdited] = useState(false);
   const [editingPurchaseId, setEditingPurchaseId] = useState(null);
@@ -228,8 +230,19 @@ function Purchase() {
     }
   };
 
+  const fetchCompanies = async () => {
+    try {
+      const response = await fetch(`${API}/staff/companies`);
+      if (response.ok) setCompanies(await response.json());
+    } catch (error) {
+      console.error("Error fetching companies:", error);
+    }
+  };
+
   const mapPurchaseFromApi = (purchase) => ({
     id: purchase.id,
+    companyId: purchase.company_id ? String(purchase.company_id) : "",
+    companyName: purchase.company_name || "",
     sellerName: purchase.seller_name || "",
     address: purchase.address || "",
     city: purchase.city || "",
@@ -271,6 +284,7 @@ function Purchase() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     fetchSellers();
+    fetchCompanies();
     fetchPurchases();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -305,6 +319,7 @@ function Purchase() {
   };
 
   const buildPurchasePayload = () => ({
+    companyId: Number(form.companyId),
     sellerName: form.sellerName.trim(),
     address: form.address.trim(),
     city: form.city.trim(),
@@ -368,6 +383,10 @@ function Purchase() {
   };
 
   const handleSave = async () => {
+    if (!form.companyId) {
+      alert("Company is required.");
+      return;
+    }
     if (!form.sellerName.trim()) {
       alert("Seller name is required.");
       return;
@@ -399,6 +418,7 @@ function Purchase() {
     setEditingPurchaseId(purchase.id);
     setGstManuallyEdited(true);
     setForm({
+      companyId: purchase.companyId || "",
       sellerName: purchase.sellerName || "",
       address: purchase.address || "",
       city: purchase.city || "",
@@ -549,6 +569,23 @@ function Purchase() {
                     <MDTypography variant="button" fontWeight="medium" color="dark">
                       Seller Details
                     </MDTypography>
+                  </Grid>
+                  <Grid item xs={12} md={3}>
+                    <FormControl size="small" fullWidth required>
+                      <Select
+                        displayEmpty
+                        value={form.companyId}
+                        onChange={(e) => handleChange("companyId", e.target.value)}
+                        sx={{ height: 44, backgroundColor: "#fff" }}
+                      >
+                        <MenuItem value="" disabled>Choose Company</MenuItem>
+                        {companies.map((company) => (
+                          <MenuItem key={company.id} value={String(company.id)}>
+                            {company.name}
+                          </MenuItem>
+                        ))}
+                      </Select>
+                    </FormControl>
                   </Grid>
                   <Grid item xs={12} md={3}>
                     <Autocomplete

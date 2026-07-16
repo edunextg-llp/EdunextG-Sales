@@ -26,13 +26,14 @@ class PurchaseModel {
 
         const [result] = await db.execute(
             `INSERT INTO purchase_entries
-             (seller_id, invoice_number, eway_bill_no, eway_bill_date, invoice_date,
+             (seller_id, company_id, invoice_number, eway_bill_no, eway_bill_date, invoice_date,
               sales_order_number, fssai_number, gross_amount, trader_discount_value,
               primary_discount_value, secondary_discount_value, cash_discount_value,
               taxable_value, cgst_amount, sgst_amount, total_gst_amount, round_off, rounded_total)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
             [
                 seller.id,
+                data.companyId,
                 data.invoiceNumber,
                 data.ewayBillNo || null,
                 data.ewayBillDate || null,
@@ -61,7 +62,7 @@ class PurchaseModel {
 
         const [result] = await db.execute(
             `UPDATE purchase_entries
-             SET seller_id = ?,
+             SET seller_id = ?, company_id = ?,
                  invoice_number = ?,
                  eway_bill_no = ?,
                  eway_bill_date = ?,
@@ -82,6 +83,7 @@ class PurchaseModel {
              WHERE id = ?`,
             [
                 seller.id,
+                data.companyId,
                 data.invoiceNumber,
                 data.ewayBillNo || null,
                 data.ewayBillDate || null,
@@ -120,7 +122,7 @@ class PurchaseModel {
 
     static async getById(id) {
         const [rows] = await db.execute(
-            `SELECT pe.id, pe.seller_id, pe.invoice_number, pe.eway_bill_no,
+            `SELECT pe.id, pe.seller_id, pe.company_id, c.name AS company_name, pe.invoice_number, pe.eway_bill_no,
                     DATE_FORMAT(pe.eway_bill_date, '%Y-%m-%d') AS eway_bill_date,
                     DATE_FORMAT(pe.invoice_date, '%Y-%m-%d') AS invoice_date,
                     pe.sales_order_number, pe.fssai_number, pe.gross_amount,
@@ -132,6 +134,7 @@ class PurchaseModel {
                     DATE_FORMAT(pe.created_at, '%Y-%m-%d %H:%i:%s') AS created_at
              FROM purchase_entries pe
              JOIN purchase_sellers ps ON ps.id = pe.seller_id
+             LEFT JOIN companies c ON c.id = pe.company_id
              WHERE pe.id = ?`,
             [id]
         );
@@ -140,7 +143,7 @@ class PurchaseModel {
 
     static async getRecent() {
         const [rows] = await db.execute(
-            `SELECT pe.id, pe.seller_id, pe.invoice_number, pe.eway_bill_no,
+            `SELECT pe.id, pe.seller_id, pe.company_id, c.name AS company_name, pe.invoice_number, pe.eway_bill_no,
                     DATE_FORMAT(pe.eway_bill_date, '%Y-%m-%d') AS eway_bill_date,
                     DATE_FORMAT(pe.invoice_date, '%Y-%m-%d') AS invoice_date,
                     pe.sales_order_number, pe.fssai_number, pe.gross_amount,
@@ -152,6 +155,7 @@ class PurchaseModel {
                     DATE_FORMAT(pe.created_at, '%Y-%m-%d %H:%i:%s') AS created_at
              FROM purchase_entries pe
              JOIN purchase_sellers ps ON ps.id = pe.seller_id
+             LEFT JOIN companies c ON c.id = pe.company_id
              ORDER BY pe.id DESC
              LIMIT 200`
         );

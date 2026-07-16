@@ -28,6 +28,7 @@ router.get('/bank-deposits/upi-invoices', staffController.searchUpiInvoices);
 router.put('/bank-deposits/:depositId', staffController.updateBankDeposit);
 router.delete('/bank-deposits/:depositId', staffController.deleteBankDeposit);
 router.get('/purchase-sellers', staffController.searchPurchaseSellers);
+router.get('/companies', staffController.getCompanies);
 router.post('/purchase-sellers', staffController.savePurchaseSeller);
 router.get('/purchases', staffController.getPurchases);
 router.post('/purchases', staffController.createPurchase);
