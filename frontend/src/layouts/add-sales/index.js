@@ -1597,6 +1597,7 @@ function AddSales() {
         onClose={closeInvoiceDialog}
         outlet={invoiceDialog.outlet}
         selectedDate={selectedDate}
+        companyName={selectedCompanyName}
         invoiceNumber={invoiceDialog.invoiceNumber}
         editMode={Boolean(invoiceDialog.editSaleId)}
         initialItemCount={invoiceDialog.initialItemCount}

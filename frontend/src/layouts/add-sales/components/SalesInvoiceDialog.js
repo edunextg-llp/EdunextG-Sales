@@ -210,6 +210,7 @@ export default function SalesInvoiceDialog({
   onClose,
   outlet,
   selectedDate,
+  companyName = "",
   invoiceNumber,
   prevBillNo = "",
   editMode = false,
@@ -234,6 +235,14 @@ export default function SalesInvoiceDialog({
     index: null,
     draft: { ...emptyLineItem },
   });
+
+  const companyDmsItems = useMemo(() => {
+    const selectedCompany = String(companyName || "").trim().toLowerCase();
+    if (!selectedCompany) return dmsItems;
+    return dmsItems.filter(
+      (item) => String(item.product_division || "").trim().toLowerCase() === selectedCompany
+    );
+  }, [dmsItems, companyName]);
 
   const buildExistingSaleLine = (itemCount, price) => {
     const qty = Math.max(1, Number(itemCount) || 1);
@@ -557,10 +566,10 @@ export default function SalesInvoiceDialog({
           <Grid item xs={12} md={3.5}>
             <MDTypography sx={colLabelSx}>Description Name</MDTypography>
             <Autocomplete
-              options={dmsItems}
+              options={companyDmsItems}
               loading={loadingDms}
               size="small"
-              value={dmsItems.find((x) => x.product_erp_id === draft.productErpId) || null}
+              value={companyDmsItems.find((x) => x.product_erp_id === draft.productErpId) || null}
               onChange={(_, prod) => handleProductChange(prod)}
               getOptionLabel={(item) => {
                 const orig  = Number(item.total_current_stock_in_pcs) || 0;
@@ -978,10 +987,10 @@ export default function SalesInvoiceDialog({
             <Grid item xs={12}>
               <MDTypography sx={colLabelSx}>Description Name</MDTypography>
               <Autocomplete
-                options={dmsItems}
+                options={companyDmsItems}
                 loading={loadingDms}
                 size="small"
-                value={dmsItems.find((x) => x.product_erp_id === editPopup.draft.productErpId) || null}
+                value={companyDmsItems.find((x) => x.product_erp_id === editPopup.draft.productErpId) || null}
                 onChange={(_, prod) => handleEditPopupProductChange(prod)}
                 getOptionLabel={(item) => {
                   const orig = Number(item.total_current_stock_in_pcs) || 0;
