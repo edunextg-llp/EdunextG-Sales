@@ -1,6 +1,9 @@
 import { useState, useEffect, useCallback } from "react";
 import Grid from "@mui/material/Grid";
 import Card from "@mui/material/Card";
+import Icon from "@mui/material/Icon";
+import IconButton from "@mui/material/IconButton";
+import Tooltip from "@mui/material/Tooltip";
 import {
   Table,
   TableBody,
@@ -17,7 +20,6 @@ import {
   DialogContent,
   DialogActions,
 } from "@mui/material";
-import { FaRegEdit } from "react-icons/fa";
 
 import MDBox from "components/MDBox";
 import MDTypography from "components/MDTypography";
@@ -28,6 +30,7 @@ import DashboardLayout from "examples/LayoutContainers/DashboardLayout";
 import DashboardNavbar from "examples/Navbars/DashboardNavbar";
 import Footer from "examples/Footer";
 import { useSalesPolling } from "utils/salesSync";
+import { printChalanReturnPdf } from "utils/printChalanReturnPdf";
 import {
   ROWS_PER_PAGE,
   TablePaginationFooter,
@@ -36,23 +39,24 @@ import {
   paginatedTableHeadSx,
 } from "utils/tablePagination";
 
+const actionIconSx = {
+  fontSize: "1.35rem !important",
+};
+
 function formatSrNo(index) {
   return String(index + 1).padStart(2, "0");
 }
 
 function getPending(row) {
   const totalItems = Number(row.item_count || 0);
-  const totalPacked = Number(row.packed_item_count ?? row.item_count ?? 0);
   const totalAmount = Number(row.total_amount || 0);
   const returnedItems = Number(row.returned_item_count || 0);
-  const returnedPacked = Number(row.returned_packed_item_count || 0);
   const returnedAmount = Number(row.returned_amount || 0);
 
   return {
     itemCount: Math.max(0, totalItems - returnedItems),
-    packedItemCount: Math.max(0, totalPacked - returnedPacked),
     amount: Math.max(0, totalAmount - returnedAmount),
-    hasPartialReturn: returnedItems > 0 || returnedPacked > 0 || returnedAmount > 0,
+    hasPartialReturn: returnedItems > 0 || returnedAmount > 0,
   };
 }
 
@@ -65,10 +69,12 @@ function ChalanReturn() {
   const [page, setPage] = useState(1);
   const [rowsPerPage, setRowsPerPage] = useState(ROWS_PER_PAGE);
   const [returnDialog, setReturnDialog] = useState({ open: false, row: null, mode: "full" });
-  const [partialForm, setPartialForm] = useState({
-    returnItemCount: "",
-    returnPackedItemCount: "",
-    returnAmount: "",
+  const [itemReturnRows, setItemReturnRows] = useState([]);
+  const [loadingSaleItems, setLoadingSaleItems] = useState(false);
+  const [viewDialog, setViewDialog] = useState({
+    open: false,
+    title: "",
+    records: [],
   });
   const API = "https://bawarchee.edunextg.co/api";
 
@@ -157,7 +163,7 @@ function ChalanReturn() {
     const pending = getPending(row);
     return (
       matchesSearch(row) &&
-      (pending.itemCount > 0 || pending.packedItemCount > 0 || pending.amount > 0)
+      (pending.itemCount > 0 || pending.amount > 0)
     );
   });
 
@@ -171,23 +177,101 @@ function ChalanReturn() {
     0
   );
 
-  const openReturnDialog = (row, mode) => {
-    const pending = getPending(row);
-    setReturnDialog({ open: true, row, mode });
-    setPartialForm({
-      returnItemCount: String(pending.itemCount || ""),
-      returnPackedItemCount: String(pending.packedItemCount || ""),
-      returnAmount: String(pending.amount || ""),
+  const getReturnsForSale = (saleId) =>
+    returnRecords
+      .filter((record) => Number(record.chalan_sale_id || record.chalanSaleId) === Number(saleId))
+      .sort((a, b) => {
+        const dateA = String(a.return_date || a.returnDate || "");
+        const dateB = String(b.return_date || b.returnDate || "");
+        if (dateA === dateB) return Number(b.id) - Number(a.id);
+        return dateB.localeCompare(dateA);
+      });
+
+  const openViewReturns = (saleId, chalanCode) => {
+    const records = getReturnsForSale(saleId);
+    if (!records.length) {
+      alert("No return history found for this chalan.");
+      return;
+    }
+    setViewDialog({
+      open: true,
+      title: `Return History — ${chalanCode || "N/A"}`,
+      records,
     });
+  };
+
+  const openViewSingleReturn = (record) => {
+    setViewDialog({
+      open: true,
+      title: `Return Details — ${record.chalan_code || record.chalanCode || "N/A"}`,
+      records: [record],
+    });
+  };
+
+  const closeViewDialog = () => {
+    setViewDialog({ open: false, title: "", records: [] });
+  };
+
+  const handlePrintReturn = (record) => {
+    if (!record?.returnItems?.length) {
+      alert("No item details found for this return. Refresh and try again.");
+      return;
+    }
+    printChalanReturnPdf(record);
+  };
+
+  const openReturnDialog = async (row, mode) => {
+    setReturnDialog({ open: true, row, mode });
+    setLoadingSaleItems(true);
+    setItemReturnRows([]);
+
+    try {
+      const response = await fetch(`${API}/chalan/sales/${row.id}`);
+      const sale = await response.json();
+      if (!response.ok) {
+        throw new Error(sale.error || "Failed to load chalan items.");
+      }
+
+      const rows = (sale.items || []).map((item) => {
+        const qty = Number(item.qty || 0);
+        const returnedQty = Number(item.returnedQty || 0);
+        const pendingQty = Number(
+          item.pendingQty ?? Math.max(0, qty - returnedQty)
+        );
+        return {
+          itemId: item.id,
+          srNo: item.srNo,
+          itemName: item.itemName,
+          qty,
+          returnedQty,
+          pendingQty,
+          mrp: Number(item.mrp || 0),
+          returnQty: mode === "full" ? String(pendingQty) : "",
+        };
+      });
+
+      setItemReturnRows(rows);
+    } catch (error) {
+      alert(error.message || "Failed to load chalan items.");
+      setReturnDialog({ open: false, row: null, mode: "full" });
+      setItemReturnRows([]);
+    } finally {
+      setLoadingSaleItems(false);
+    }
   };
 
   const closeReturnDialog = () => {
     setReturnDialog({ open: false, row: null, mode: "full" });
-    setPartialForm({
-      returnItemCount: "",
-      returnPackedItemCount: "",
-      returnAmount: "",
-    });
+    setItemReturnRows([]);
+    setLoadingSaleItems(false);
+  };
+
+  const handleReturnQtyChange = (itemId, value) => {
+    setItemReturnRows((prev) =>
+      prev.map((item) =>
+        item.itemId === itemId ? { ...item, returnQty: value } : item
+      )
+    );
   };
 
   const handleProcessReturn = async () => {
@@ -195,44 +279,34 @@ function ChalanReturn() {
     if (!row || updatingSaleIds.has(row.id)) return;
 
     const chalanCode = row.chalan_code || row.chalanCode || "";
-    const pending = getPending(row);
     const isFull = returnDialog.mode === "full";
 
     if (isFull) {
       const confirmed = window.confirm(`Mark full return for chalan ${chalanCode}?`);
       if (!confirmed) return;
     } else {
-      const returnItemCount = Number(partialForm.returnItemCount);
-      const returnPackedItemCount = Number(partialForm.returnPackedItemCount);
-      const returnAmount = Number(partialForm.returnAmount);
+      const returnItems = itemReturnRows
+        .map((item) => ({
+          itemId: item.itemId,
+          returnQty: Number(item.returnQty),
+        }))
+        .filter((item) => item.returnQty > 0);
 
-      if (
-        !Number.isFinite(returnItemCount) ||
-        !Number.isFinite(returnPackedItemCount) ||
-        !Number.isFinite(returnAmount)
-      ) {
-        alert("Please enter valid numbers for return item, packing item, and amount.");
+      if (!returnItems.length) {
+        alert("Enter return quantity for at least one item.");
         return;
       }
 
-      if (returnItemCount <= 0 && returnPackedItemCount <= 0 && returnAmount <= 0) {
-        alert("At least one return value must be greater than zero.");
-        return;
-      }
-
-      if (returnItemCount > pending.itemCount) {
-        alert("Return item count cannot exceed pending item count.");
-        return;
-      }
-
-      if (returnPackedItemCount > pending.packedItemCount) {
-        alert("Return packing item count cannot exceed pending packing item count.");
-        return;
-      }
-
-      if (returnAmount > pending.amount) {
-        alert("Return amount cannot exceed pending amount.");
-        return;
+      for (const item of itemReturnRows) {
+        const returnQty = Number(item.returnQty);
+        if (!Number.isFinite(returnQty) || returnQty < 0) {
+          alert(`Enter a valid return quantity for "${item.itemName}".`);
+          return;
+        }
+        if (returnQty > item.pendingQty) {
+          alert(`Return quantity for "${item.itemName}" cannot exceed pending quantity (${item.pendingQty}).`);
+          return;
+        }
       }
 
       const confirmed = window.confirm(`Record partial return for chalan ${chalanCode}?`);
@@ -248,9 +322,12 @@ function ChalanReturn() {
       };
 
       if (!isFull) {
-        payload.returnItemCount = Number(partialForm.returnItemCount);
-        payload.returnPackedItemCount = Number(partialForm.returnPackedItemCount);
-        payload.returnAmount = Number(partialForm.returnAmount);
+        payload.returnItems = itemReturnRows
+          .map((item) => ({
+            itemId: item.itemId,
+            returnQty: Number(item.returnQty),
+          }))
+          .filter((item) => item.returnQty > 0);
       }
 
       const response = await fetch(`${API}/chalan/sales/${row.id}/return`, {
@@ -273,12 +350,17 @@ function ChalanReturn() {
 
         closeReturnDialog();
 
+        if (data.returnRecord) {
+          const shouldPrint = window.confirm(
+            `${isFull ? "Full" : "Partial"} return saved. Print return sheet now?`
+          );
+          if (shouldPrint) {
+            handlePrintReturn(data.returnRecord);
+          }
+        }
+
         const stillPending = getPending(updatedSale);
-        if (
-          stillPending.itemCount <= 0 &&
-          stillPending.packedItemCount <= 0 &&
-          stillPending.amount <= 0
-        ) {
+        if (stillPending.itemCount <= 0 && stillPending.amount <= 0) {
           setActiveTab("returned");
         }
       } else {
@@ -350,6 +432,14 @@ function ChalanReturn() {
   };
 
   const dialogPending = returnDialog.row ? getPending(returnDialog.row) : null;
+  const dialogReturnTotal = itemReturnRows.reduce((sum, item) => {
+    const qty = Number(item.returnQty || 0);
+    return sum + (Number.isFinite(qty) ? qty * item.mrp : 0);
+  }, 0);
+  const dialogReturnQty = itemReturnRows.reduce((sum, item) => {
+    const qty = Number(item.returnQty || 0);
+    return sum + (Number.isFinite(qty) ? qty : 0);
+  }, 0);
 
   return (
     <DashboardLayout>
@@ -459,10 +549,7 @@ function ChalanReturn() {
                               Pending Amount
                             </TableCell>
                             <TableCell align="center" sx={paginatedTableHeadCellSx}>
-                              Pending Item
-                            </TableCell>
-                            <TableCell align="center" sx={paginatedTableHeadCellSx}>
-                              Pending Packing
+                              Pending Qty
                             </TableCell>
                             <TableCell align="center" sx={paginatedTableHeadCellSx}>
                               Already Returned
@@ -477,10 +564,7 @@ function ChalanReturn() {
                               Return Amount
                             </TableCell>
                             <TableCell align="center" sx={paginatedTableHeadCellSx}>
-                              Return Item
-                            </TableCell>
-                            <TableCell align="center" sx={paginatedTableHeadCellSx}>
-                              Return Packing
+                              Return Qty
                             </TableCell>
                             <TableCell align="center" sx={paginatedTableHeadCellSx}>
                               Return Date
@@ -559,17 +643,10 @@ function ChalanReturn() {
                                   align="center"
                                   sx={{ borderBottom: "1px solid #cbd5e1", py: 2 }}
                                 >
-                                  {pending.packedItemCount}
-                                </TableCell>
-                                <TableCell
-                                  align="center"
-                                  sx={{ borderBottom: "1px solid #cbd5e1", py: 2 }}
-                                >
                                   {pending.hasPartialReturn ? (
                                     <MDTypography variant="caption" color="warning">
                                       ₹{Number(row.returned_amount || 0).toFixed(2)} /{" "}
-                                      {Number(row.returned_item_count || 0)} item /{" "}
-                                      {Number(row.returned_packed_item_count || 0)} pack
+                                      {Number(row.returned_item_count || 0)} qty
                                     </MDTypography>
                                   ) : (
                                     "—"
@@ -619,28 +696,50 @@ function ChalanReturn() {
                                 >
                                   <MDBox
                                     display="flex"
-                                    gap={1}
+                                    gap={0.5}
                                     justifyContent="center"
-                                    flexWrap="wrap"
+                                    alignItems="center"
                                   >
-                                    <MDButton
-                                      color="warning"
-                                      variant="contained"
-                                      size="small"
-                                      disabled={updatingSaleIds.has(row.id)}
-                                      onClick={() => openReturnDialog(row, "full")}
-                                    >
-                                      Full Return
-                                    </MDButton>
-                                    <MDButton
-                                      color="info"
-                                      variant="outlined"
-                                      size="small"
-                                      disabled={updatingSaleIds.has(row.id)}
-                                      onClick={() => openReturnDialog(row, "partial")}
-                                    >
-                                      Partial Return
-                                    </MDButton>
+                                    {pending.hasPartialReturn && (
+                                      <Tooltip title="View partial returns">
+                                        <IconButton
+                                          size="small"
+                                          color="info"
+                                          onClick={() =>
+                                            openViewReturns(
+                                              row.id,
+                                              row.chalan_code || row.chalanCode
+                                            )
+                                          }
+                                        >
+                                          <Icon sx={actionIconSx}>visibility</Icon>
+                                        </IconButton>
+                                      </Tooltip>
+                                    )}
+                                    <Tooltip title="Full Return">
+                                      <span>
+                                        <IconButton
+                                          size="small"
+                                          color="warning"
+                                          disabled={updatingSaleIds.has(row.id)}
+                                          onClick={() => openReturnDialog(row, "full")}
+                                        >
+                                          <Icon sx={actionIconSx}>assignment_return</Icon>
+                                        </IconButton>
+                                      </span>
+                                    </Tooltip>
+                                    <Tooltip title="Partial Return">
+                                      <span>
+                                        <IconButton
+                                          size="small"
+                                          color="info"
+                                          disabled={updatingSaleIds.has(row.id)}
+                                          onClick={() => openReturnDialog(row, "partial")}
+                                        >
+                                          <Icon sx={actionIconSx}>playlist_add</Icon>
+                                        </IconButton>
+                                      </span>
+                                    </Tooltip>
                                   </MDBox>
                                 </TableCell>
                               </TableRow>
@@ -696,42 +795,53 @@ function ChalanReturn() {
                                 {row.return_item_count ?? row.returnItemCount ?? 0}
                               </TableCell>
                               <TableCell align="center" sx={{ borderBottom: "1px solid #cbd5e1", py: 2 }}>
-                                {row.return_packed_item_count ?? row.returnPackedItemCount ?? 0}
-                              </TableCell>
-                              <TableCell align="center" sx={{ borderBottom: "1px solid #cbd5e1", py: 2 }}>
                                 {formatDate(row.return_date || row.returnDate)}
                               </TableCell>
                               <TableCell align="center" sx={{ borderBottom: "1px solid #cbd5e1", py: 2 }}>
                                 <Chip label="Returned" color="warning" variant="outlined" size="small" />
                               </TableCell>
                               <TableCell align="center" sx={{ borderBottom: "1px solid #cbd5e1", py: 2 }}>
-                                {returnType === "full" ? (
-                                  <FaRegEdit
-                                    onClick={() => {
-                                      const saleId = row.chalan_sale_id || row.chalanSaleId;
-                                      if (!updatingSaleIds.has(saleId)) {
-                                        handleRevertReturn(row);
-                                      }
-                                    }}
-                                    style={{
-                                      cursor: updatingSaleIds.has(
-                                        row.chalan_sale_id || row.chalanSaleId
-                                      )
-                                        ? "not-allowed"
-                                        : "pointer",
-                                      opacity: updatingSaleIds.has(
-                                        row.chalan_sale_id || row.chalanSaleId
-                                      )
-                                        ? 0.5
-                                        : 1,
-                                    }}
-                                    color="#E0E388"
-                                    size={20}
-                                    title="Revert full return"
-                                  />
-                                ) : (
-                                  "—"
-                                )}
+                                <MDBox
+                                  display="flex"
+                                  gap={0.5}
+                                  justifyContent="center"
+                                  alignItems="center"
+                                >
+                                  <Tooltip title="View return items">
+                                    <IconButton
+                                      size="small"
+                                      color="info"
+                                      onClick={() => openViewSingleReturn(row)}
+                                    >
+                                      <Icon sx={actionIconSx}>visibility</Icon>
+                                    </IconButton>
+                                  </Tooltip>
+                                  <Tooltip title="Print return">
+                                    <IconButton
+                                      size="small"
+                                      onClick={() => handlePrintReturn(row)}
+                                      sx={{ color: "#344767" }}
+                                    >
+                                      <Icon sx={actionIconSx}>print</Icon>
+                                    </IconButton>
+                                  </Tooltip>
+                                  {returnType === "full" && (
+                                    <Tooltip title="Revert full return">
+                                      <span>
+                                        <IconButton
+                                          size="small"
+                                          color="warning"
+                                          disabled={updatingSaleIds.has(
+                                            row.chalan_sale_id || row.chalanSaleId
+                                          )}
+                                          onClick={() => handleRevertReturn(row)}
+                                        >
+                                          <Icon sx={actionIconSx}>undo</Icon>
+                                        </IconButton>
+                                      </span>
+                                    </Tooltip>
+                                  )}
+                                </MDBox>
                               </TableCell>
                             </TableRow>
                           );
@@ -739,7 +849,7 @@ function ChalanReturn() {
                       ) : (
                         <TableRow>
                           <TableCell
-                            colSpan={activeTab === "pending" ? 12 : 10}
+                            colSpan={activeTab === "pending" ? 11 : 9}
                             align="center"
                             sx={{ py: 3, borderBottom: 0 }}
                           >
@@ -770,7 +880,7 @@ function ChalanReturn() {
       </MDBox>
       <Footer />
 
-      <Dialog open={returnDialog.open} onClose={closeReturnDialog} fullWidth maxWidth="sm">
+      <Dialog open={returnDialog.open} onClose={closeReturnDialog} fullWidth maxWidth="md">
         <DialogTitle>
           {returnDialog.mode === "full" ? "Full Return" : "Partial Return"}
         </DialogTitle>
@@ -785,74 +895,279 @@ function ChalanReturn() {
             </MDTypography>
           </MDBox>
 
-          {returnDialog.mode === "full" ? (
+          {loadingSaleItems ? (
+            <MDTypography variant="body2" color="text">
+              Loading items...
+            </MDTypography>
+          ) : itemReturnRows.length === 0 ? (
+            <MDTypography variant="body2" color="text">
+              No items found for this chalan.
+            </MDTypography>
+          ) : (
             <MDBox>
-              <MDTypography variant="body2" color="text" mb={1}>
-                This will return all pending items for this chalan.
+              <MDTypography variant="body2" color="text" mb={1.5}>
+                {returnDialog.mode === "full"
+                  ? "All pending item quantities will be returned."
+                  : "Enter return quantity item-wise. Remaining quantities will stay in Pending Return."}
               </MDTypography>
+
+              <TableContainer component={Paper} sx={{ boxShadow: "none", mb: 2 }}>
+                <Table size="small" sx={{ tableLayout: "fixed", width: "100%" }}>
+                  <TableHead
+                    sx={{
+                      display: "table-header-group",
+                      backgroundColor: "#f9fafb",
+                      "& .MuiTableCell-root": {
+                        backgroundColor: "#f9fafb",
+                        fontSize: "0.7rem",
+                        fontWeight: 600,
+                        py: 1,
+                        color: "#6b7280",
+                      },
+                    }}
+                  >
+                    <TableRow>
+                      <TableCell align="center" sx={{ width: "8%" }}>
+                        SR
+                      </TableCell>
+                      <TableCell sx={{ width: "28%" }}>Item Name</TableCell>
+                      <TableCell align="right" sx={{ width: "12%" }}>
+                        Total Qty
+                      </TableCell>
+                      <TableCell align="right" sx={{ width: "12%" }}>
+                        Returned
+                      </TableCell>
+                      <TableCell align="right" sx={{ width: "12%" }}>
+                        Pending
+                      </TableCell>
+                      <TableCell align="right" sx={{ width: "12%" }}>
+                        MRP
+                      </TableCell>
+                      <TableCell align="right" sx={{ width: "16%" }}>
+                        Return Qty
+                      </TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {itemReturnRows.map((item) => (
+                      <TableRow key={item.itemId}>
+                        <TableCell align="center" sx={{ py: 1, fontSize: "0.75rem" }}>
+                          {formatSrNo(item.srNo - 1)}
+                        </TableCell>
+                        <TableCell sx={{ py: 1, fontSize: "0.75rem" }}>{item.itemName}</TableCell>
+                        <TableCell align="right" sx={{ py: 1, fontSize: "0.75rem" }}>
+                          {item.qty}
+                        </TableCell>
+                        <TableCell align="right" sx={{ py: 1, fontSize: "0.75rem" }}>
+                          {item.returnedQty}
+                        </TableCell>
+                        <TableCell align="right" sx={{ py: 1, fontSize: "0.75rem" }}>
+                          {item.pendingQty}
+                        </TableCell>
+                        <TableCell align="right" sx={{ py: 1, fontSize: "0.75rem" }}>
+                          ₹{item.mrp.toFixed(2)}
+                        </TableCell>
+                        <TableCell align="right" sx={{ py: 1, fontSize: "0.75rem" }}>
+                          {returnDialog.mode === "full" ? (
+                            item.pendingQty
+                          ) : (
+                            <MDInput
+                              type="number"
+                              value={item.returnQty}
+                              onChange={(e) =>
+                                handleReturnQtyChange(item.itemId, e.target.value)
+                              }
+                              inputProps={{ min: 0, max: item.pendingQty, step: "any" }}
+                              sx={{
+                                width: 80,
+                                "& .MuiInputBase-input": { fontSize: "0.75rem", py: 0.75 },
+                              }}
+                            />
+                          )}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </TableContainer>
+
               <MDTypography variant="body2" fontWeight="medium">
                 Pending Amount: ₹{dialogPending?.amount.toFixed(2) || "0.00"}
               </MDTypography>
               <MDTypography variant="body2" fontWeight="medium">
-                Pending Item: {dialogPending?.itemCount ?? 0}
+                Pending Qty: {dialogPending?.itemCount ?? 0}
               </MDTypography>
-              <MDTypography variant="body2" fontWeight="medium">
-                Pending Packing: {dialogPending?.packedItemCount ?? 0}
-              </MDTypography>
-            </MDBox>
-          ) : (
-            <MDBox display="flex" flexDirection="column" gap={2}>
-              <MDTypography variant="caption" color="text">
-                Max pending — Amount: ₹{dialogPending?.amount.toFixed(2) || "0.00"} | Item:{" "}
-                {dialogPending?.itemCount ?? 0} | Packing: {dialogPending?.packedItemCount ?? 0}
-              </MDTypography>
-              <MDInput
-                type="number"
-                label="Return No. of Item"
-                fullWidth
-                value={partialForm.returnItemCount}
-                onChange={(e) =>
-                  setPartialForm((prev) => ({ ...prev, returnItemCount: e.target.value }))
-                }
-              />
-              <MDInput
-                type="number"
-                label="Return Packing Item"
-                fullWidth
-                value={partialForm.returnPackedItemCount}
-                onChange={(e) =>
-                  setPartialForm((prev) => ({ ...prev, returnPackedItemCount: e.target.value }))
-                }
-              />
-              <MDInput
-                type="number"
-                label="Return Amount"
-                fullWidth
-                value={partialForm.returnAmount}
-                onChange={(e) =>
-                  setPartialForm((prev) => ({ ...prev, returnAmount: e.target.value }))
-                }
-              />
-              <MDTypography variant="caption" color="text">
-                Remaining amount and items will stay in Pending Return.
+              <MDTypography variant="body2" fontWeight="medium" mt={0.5}>
+                This Return: {dialogReturnQty} qty | ₹{dialogReturnTotal.toFixed(2)}
               </MDTypography>
             </MDBox>
           )}
         </DialogContent>
         <DialogActions>
-          <MDButton onClick={closeReturnDialog} color="dark">
+          <MDButton
+            onClick={closeReturnDialog}
+            color="dark"
+            variant="outlined"
+            startIcon={<Icon>close</Icon>}
+          >
             Cancel
           </MDButton>
           <MDButton
             onClick={handleProcessReturn}
             color={returnDialog.mode === "full" ? "warning" : "info"}
             variant="contained"
+            startIcon={
+              <Icon>
+                {returnDialog.mode === "full" ? "assignment_return" : "playlist_add_check"}
+              </Icon>
+            }
             disabled={
               !returnDialog.row ||
+              loadingSaleItems ||
+              itemReturnRows.length === 0 ||
               updatingSaleIds.has(returnDialog.row?.id)
             }
           >
             {returnDialog.mode === "full" ? "Confirm Full Return" : "Save Partial Return"}
+          </MDButton>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={viewDialog.open} onClose={closeViewDialog} fullWidth maxWidth="md">
+        <DialogTitle sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+          <Icon color="info">visibility</Icon>
+          {viewDialog.title}
+        </DialogTitle>
+        <DialogContent dividers>
+          {viewDialog.records.length === 0 ? (
+            <MDTypography variant="body2" color="text">
+              No return records found.
+            </MDTypography>
+          ) : (
+            viewDialog.records.map((record) => {
+              const returnType = record.return_type || record.returnType;
+              const items = record.returnItems || [];
+              return (
+                <MDBox
+                  key={record.id}
+                  mb={2.5}
+                  p={2}
+                  borderRadius="lg"
+                  sx={{ border: "1px solid #e5e7eb", backgroundColor: "#fafafa" }}
+                >
+                  <MDBox
+                    display="flex"
+                    justifyContent="space-between"
+                    alignItems="center"
+                    flexWrap="wrap"
+                    gap={1}
+                    mb={1.5}
+                  >
+                    <MDBox>
+                      <MDTypography variant="button" fontWeight="medium">
+                        Date: {formatDate(record.return_date || record.returnDate)}
+                      </MDTypography>
+                      <MDBox display="flex" alignItems="center" gap={1} mt={0.5}>
+                        <Chip
+                          label={returnType === "full" ? "Full Return" : "Partial Return"}
+                          color={returnType === "full" ? "warning" : "info"}
+                          size="small"
+                          variant="outlined"
+                        />
+                        <MDTypography variant="caption" color="text">
+                          Qty: {record.return_item_count ?? record.returnItemCount ?? 0} | Amount: ₹
+                          {Number(record.return_amount || record.returnAmount || 0).toFixed(2)}
+                        </MDTypography>
+                      </MDBox>
+                    </MDBox>
+                    <Tooltip title="Print this return">
+                      <IconButton
+                        size="small"
+                        onClick={() => handlePrintReturn(record)}
+                        sx={{ color: "#344767" }}
+                      >
+                        <Icon sx={actionIconSx}>print</Icon>
+                      </IconButton>
+                    </Tooltip>
+                  </MDBox>
+
+                  {items.length === 0 ? (
+                    <MDTypography variant="caption" color="text">
+                      No item details available for this return.
+                    </MDTypography>
+                  ) : (
+                    <TableContainer component={Paper} sx={{ boxShadow: "none" }}>
+                      <Table size="small" sx={{ tableLayout: "fixed", width: "100%" }}>
+                        <TableHead
+                          sx={{
+                            display: "table-header-group",
+                            backgroundColor: "#f3f4f6",
+                            "& .MuiTableCell-root": {
+                              backgroundColor: "#f3f4f6",
+                              fontSize: "0.7rem",
+                              fontWeight: 600,
+                              py: 1,
+                              color: "#6b7280",
+                            },
+                          }}
+                        >
+                          <TableRow>
+                            <TableCell align="center" sx={{ width: "10%" }}>
+                              SR
+                            </TableCell>
+                            <TableCell sx={{ width: "40%" }}>Item Name</TableCell>
+                            <TableCell align="right" sx={{ width: "15%" }}>
+                              Qty
+                            </TableCell>
+                            <TableCell align="right" sx={{ width: "15%" }}>
+                              Rate
+                            </TableCell>
+                            <TableCell align="right" sx={{ width: "20%" }}>
+                              Amount
+                            </TableCell>
+                          </TableRow>
+                        </TableHead>
+                        <TableBody>
+                          {items.map((item, itemIndex) => {
+                            const qty = Number(item.returnQty || 0);
+                            const rate = Number(item.mrp || 0);
+                            return (
+                              <TableRow key={`${record.id}-${item.itemId || itemIndex}`}>
+                                <TableCell align="center" sx={{ py: 1, fontSize: "0.75rem" }}>
+                                  {formatSrNo((item.srNo || itemIndex + 1) - 1)}
+                                </TableCell>
+                                <TableCell sx={{ py: 1, fontSize: "0.75rem" }}>
+                                  {item.itemName || "—"}
+                                </TableCell>
+                                <TableCell align="right" sx={{ py: 1, fontSize: "0.75rem" }}>
+                                  {qty}
+                                </TableCell>
+                                <TableCell align="right" sx={{ py: 1, fontSize: "0.75rem" }}>
+                                  ₹{rate.toFixed(2)}
+                                </TableCell>
+                                <TableCell align="right" sx={{ py: 1, fontSize: "0.75rem" }}>
+                                  ₹{(qty * rate).toFixed(2)}
+                                </TableCell>
+                              </TableRow>
+                            );
+                          })}
+                        </TableBody>
+                      </Table>
+                    </TableContainer>
+                  )}
+                </MDBox>
+              );
+            })
+          )}
+        </DialogContent>
+        <DialogActions>
+          <MDButton
+            onClick={closeViewDialog}
+            color="dark"
+            variant="outlined"
+            startIcon={<Icon>close</Icon>}
+          >
+            Close
           </MDButton>
         </DialogActions>
       </Dialog>

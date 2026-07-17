@@ -1,6 +1,6 @@
 import ejs from "ejs/ejs.min.js";
 
-import chalanPrintTemplate from "templates/chalanPrintTemplate";
+import chalanReturnPrintTemplate from "templates/chalanReturnPrintTemplate";
 
 const ONES = [
   "",
@@ -60,6 +60,9 @@ const numberToIndianWords = (value) => {
 
 const formatDisplayDate = (value) => {
   if (!value) return "—";
+  const dateOnly = String(value).split("T")[0].split(" ")[0];
+  const parts = dateOnly.split("-");
+  if (parts.length === 3) return `${parts[2]}-${parts[1]}-${parts[0]}`;
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return String(value);
   return date.toLocaleDateString("en-IN", {
@@ -71,35 +74,44 @@ const formatDisplayDate = (value) => {
 
 const formatSrNo = (value) => String(value).padStart(2, "0");
 
-export function printChalanPdf(sale) {
-  if (!sale?.items?.length) {
+export function printChalanReturnPdf(returnRecord) {
+  const items = returnRecord?.returnItems || [];
+  if (!items.length) {
+    alert("No return items found to print.");
     return;
   }
 
-  const totalQty = sale.items.reduce((sum, item) => sum + Number(item.qty || 0), 0);
-  const totalAmount = sale.items.reduce(
-    (sum, item) => sum + Number(item.qty || 0) * Number(item.mrp || 0),
+  const totalQty = items.reduce((sum, item) => sum + Number(item.returnQty || 0), 0);
+  const totalAmount = items.reduce(
+    (sum, item) =>
+      sum + Number(item.returnQty || 0) * Number(item.mrp || item.rate || 0),
     0
   );
 
-  const printableRows = sale.items.map((item) => ({
-    srNoText: formatSrNo(item.srNo),
-    itemName: item.itemName,
-    qty: Number(item.qty || 0),
-    mrpText: formatMoneyForPrint(item.mrp),
-    amountText: formatMoneyForPrint(Number(item.qty || 0) * Number(item.mrp || 0)),
-  }));
+  const printableRows = items.map((item, index) => {
+    const qty = Number(item.returnQty || 0);
+    const rate = Number(item.mrp || item.rate || 0);
+    return {
+      srNoText: formatSrNo(item.srNo || index + 1),
+      itemName: item.itemName || "—",
+      qty,
+      rateText: formatMoneyForPrint(rate),
+      amountText: formatMoneyForPrint(qty * rate),
+    };
+  });
 
-  const html = ejs.render(chalanPrintTemplate, {
+  const returnType = returnRecord.returnType || returnRecord.return_type || "partial";
+
+  const html = ejs.render(chalanReturnPrintTemplate, {
     companyName: "BAWARCHEE FOOD PACKAGING PRIVATE LIMITED",
-    companySubtitle: "Chalan Print",
+    companySubtitle: "Chalan Return Print",
     companyAddress:
       "Head Office: Holding No. 82, 121 Aswini Dutta Road, South Dum Dum, PO - Dum Dum, PS - Baguiati, South Dum Dum Municipality, Distt - North 24 Paragnas, West Bengal - 700028",
     companyLegal: "CIN: U15549WB2021PTC245833    GSTN: 19AAJCB9178Q1ZJ    PAN NUMBER: AAJCB9178Q",
-    chalanCode: sale.chalanCode || "—",
-    saleDate: formatDisplayDate(sale.saleDate),
-    assigneeTypeLabel: sale.assigneeType === "company_staff" ? "Company Staff" : "Delivery Boy",
-    assigneeName: sale.assigneeName || "—",
+    chalanCode: returnRecord.chalanCode || returnRecord.chalan_code || "—",
+    returnDate: formatDisplayDate(returnRecord.returnDate || returnRecord.return_date),
+    returnTypeLabel: returnType === "full" ? "Full Return" : "Partial Return",
+    assigneeName: returnRecord.assigneeName || returnRecord.assignee_name || "—",
     rows: printableRows,
     totalQty,
     totalAmount: formatMoneyForPrint(totalAmount),
@@ -108,7 +120,7 @@ export function printChalanPdf(sale) {
 
   const printWindow = window.open("", "_blank", "width=900,height=900");
   if (!printWindow) {
-    alert("Please allow popups to print chalan PDF.");
+    alert("Please allow popups to print chalan return PDF.");
     return;
   }
 
