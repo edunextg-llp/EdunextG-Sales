@@ -30,6 +30,7 @@ router.delete('/bank-deposits/:depositId', staffController.deleteBankDeposit);
 router.get('/purchase-sellers', staffController.searchPurchaseSellers);
 router.get('/companies', staffController.getCompanies);
 router.post('/companies', staffController.createCompany);
+router.put('/companies/:id', staffController.updateCompany);
 router.delete('/companies/:id', staffController.deleteCompany);
 router.post('/purchase-sellers', staffController.savePurchaseSeller);
 router.get('/purchases', staffController.getPurchases);

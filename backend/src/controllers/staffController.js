@@ -1988,13 +1988,68 @@ export const createCompany = async (req, res) => {
             }
         }
 
-        const id = await CompanyModel.create(name, type, about || null);
-        res.status(201).json({ id, name, type, about });
+        const { id, code } = await CompanyModel.create(name, type, about || null);
+        res.status(201).json({ id, code, name, type, about });
     } catch (error) {
         if (error.code === 'ER_DUP_ENTRY') {
             return res.status(409).json({ error: 'A company with this name already exists.' });
         }
         console.error('Error creating company:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+};
+
+export const updateCompany = async (req, res) => {
+    try {
+        const idValidation = validatePositiveInteger(req.params.id, 'Company ID');
+        if (!idValidation.valid) {
+            return res.status(400).json({ error: idValidation.error });
+        }
+
+        const name = String(req.body.name || '').trim();
+        const type = String(req.body.type || '').trim().toLowerCase();
+        const about = String(req.body.about || '').trim();
+
+        if (!name) {
+            return res.status(400).json({ error: 'Company name is required.' });
+        }
+        if (!['distributor', 'cnf'].includes(type)) {
+            return res.status(400).json({ error: 'Company type must be "distributor" or "cnf".' });
+        }
+
+        if (about) {
+            const wordCount = about.split(/\s+/).filter(Boolean).length;
+            if (wordCount > 200) {
+                return res.status(400).json({ error: 'About must not exceed 200 words.' });
+            }
+        }
+
+        const existing = await CompanyModel.getById(idValidation.value);
+        if (!existing) {
+            return res.status(404).json({ error: 'Company not found.' });
+        }
+
+        const affectedRows = await CompanyModel.updateById(idValidation.value, {
+            name,
+            type,
+            about: about || null,
+        });
+        if (affectedRows === 0) {
+            return res.status(404).json({ error: 'Company not found.' });
+        }
+
+        res.status(200).json({
+            id: idValidation.value,
+            code: existing.code,
+            name,
+            type,
+            about: about || null,
+        });
+    } catch (error) {
+        if (error.code === 'ER_DUP_ENTRY') {
+            return res.status(409).json({ error: 'A company with this name already exists.' });
+        }
+        console.error('Error updating company:', error);
         res.status(500).json({ error: 'Internal server error' });
     }
 };

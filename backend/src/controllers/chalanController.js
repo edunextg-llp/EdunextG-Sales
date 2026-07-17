@@ -374,8 +374,7 @@ export const processChalanReturn = async (req, res) => {
             return res.status(400).json({ error: 'Invalid chalan id.' });
         }
 
-        const { returnType, returnItemCount, returnPackedItemCount, returnAmount, returnDate } =
-            req.body;
+        const { returnType, returnItems, returnDate } = req.body;
 
         if (!['full', 'partial'].includes(returnType)) {
             return res.status(400).json({ error: 'Return type must be full or partial.' });
@@ -383,9 +382,7 @@ export const processChalanReturn = async (req, res) => {
 
         const result = await ChalanModel.processReturn(saleId, {
             returnType,
-            returnItemCount,
-            returnPackedItemCount,
-            returnAmount,
+            returnItems,
             returnDate: normalizeDateInput(returnDate),
         });
 

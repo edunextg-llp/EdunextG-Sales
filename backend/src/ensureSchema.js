@@ -56,11 +56,49 @@ export async function ensureSchema() {
             `ALTER TABLE companies ADD COLUMN type ENUM('distributor', 'cnf') NULL`,
             'type on companies'
         );
+
         await tryQuery(
             connection,
             `ALTER TABLE companies ADD COLUMN about TEXT NULL`,
             'about on companies'
         );
+
+        await connection.query(`
+            CREATE TABLE IF NOT EXISTS company_sequence (
+                id INT PRIMARY KEY,
+                seq_value INT NOT NULL DEFAULT 0
+            );
+        `);
+        await connection.query(`
+            INSERT IGNORE INTO company_sequence (id, seq_value) VALUES (1, 0)
+        `);
+
+        await tryQuery(
+            connection,
+            `ALTER TABLE companies ADD COLUMN code VARCHAR(20) NULL UNIQUE`,
+            'code on companies'
+        );
+
+        const [companiesMissingCode] = await connection.query(`
+            SELECT id FROM companies WHERE code IS NULL OR code = '' ORDER BY id
+        `);
+        for (const row of companiesMissingCode) {
+            await connection.query(`
+                INSERT IGNORE INTO company_sequence (id, seq_value) VALUES (1, 0)
+            `);
+            await connection.query(`
+                UPDATE company_sequence SET seq_value = seq_value + 1 WHERE id = 1
+            `);
+            const [seqRows] = await connection.query(`
+                SELECT seq_value FROM company_sequence WHERE id = 1
+            `);
+            const seqValue = seqRows[0]?.seq_value || 1;
+            const generatedCode = `BFPCO${String(seqValue).padStart(3, '0')}`;
+            await connection.query(
+                `UPDATE companies SET code = ? WHERE id = ?`,
+                [generatedCode, row.id]
+            );
+        }
 
         await connection.query(`
             CREATE TABLE IF NOT EXISTS staff_companies (
@@ -851,6 +889,12 @@ export async function ensureSchema() {
 
         await tryQuery(
             connection,
+            `ALTER TABLE chalan_sale_items ADD COLUMN returned_qty DECIMAL(10, 2) NOT NULL DEFAULT 0`,
+            'returned_qty on chalan_sale_items'
+        );
+
+        await tryQuery(
+            connection,
             `ALTER TABLE chalan_sales ADD COLUMN packaging_status
              ENUM('not_packing', 'packing', 'packing_done', 'out_for_delivery', 'delivered', 'cancelled', 'returned')
              NOT NULL DEFAULT 'not_packing'`,
@@ -947,6 +991,17 @@ export async function ensureSchema() {
                 return_date DATE NOT NULL,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY (chalan_sale_id) REFERENCES chalan_sales(id) ON DELETE CASCADE
+            );
+        `);
+
+        await connection.query(`
+            CREATE TABLE IF NOT EXISTS chalan_sale_return_items (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                chalan_sale_return_id INT NOT NULL,
+                chalan_sale_item_id INT NOT NULL,
+                return_qty DECIMAL(10, 2) NOT NULL,
+                FOREIGN KEY (chalan_sale_return_id) REFERENCES chalan_sale_returns(id) ON DELETE CASCADE,
+                FOREIGN KEY (chalan_sale_item_id) REFERENCES chalan_sale_items(id) ON DELETE CASCADE
             );
         `);
 

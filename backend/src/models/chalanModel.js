@@ -55,26 +55,35 @@ class ChalanModel {
         };
 
         if (items) {
-            mapped.items = items.map((item) => ({
-                id: item.id,
-                srNo: item.sr_no,
-                itemName: item.item_name,
-                qty: Number(item.qty),
-                mrp: Number(item.mrp),
-                amount: Number(item.qty) * Number(item.mrp),
-            }));
+            mapped.items = items.map((item) => {
+                const qty = Number(item.qty);
+                const returnedQty = Number(item.returned_qty || 0);
+                const mrp = Number(item.mrp);
+                const pendingQty = Math.max(0, qty - returnedQty);
+                return {
+                    id: item.id,
+                    srNo: item.sr_no,
+                    itemName: item.item_name,
+                    qty,
+                    mrp,
+                    amount: qty * mrp,
+                    returnedQty,
+                    pendingQty,
+                    pendingAmount: pendingQty * mrp,
+                };
+            });
         }
 
         return mapped;
     }
 
-    static mapReturnRow(row) {
+    static mapReturnRow(row, returnItems = null) {
         const assigneeName =
             row.assignee_type === 'company_staff'
                 ? row.staff_name || ''
                 : row.delivery_boy_name || '';
 
-        return {
+        const mapped = {
             id: row.id,
             chalan_sale_id: row.chalan_sale_id,
             chalanSaleId: row.chalan_sale_id,
@@ -98,6 +107,20 @@ class ChalanModel {
             created_at: row.created_at,
             createdAt: row.created_at,
         };
+
+        if (returnItems) {
+            mapped.returnItems = returnItems.map((item) => ({
+                id: item.id,
+                itemId: item.chalan_sale_item_id,
+                itemName: item.item_name,
+                srNo: item.sr_no,
+                returnQty: Number(item.return_qty),
+                mrp: Number(item.mrp),
+                amount: Number(item.return_qty) * Number(item.mrp),
+            }));
+        }
+
+        return mapped;
     }
 
     static async getNextChalanCode(connection) {
@@ -224,7 +247,7 @@ class ChalanModel {
         }
 
         const [items] = await db.execute(
-            `SELECT id, sr_no, item_name, qty, mrp
+            `SELECT id, sr_no, item_name, qty, mrp, COALESCE(returned_qty, 0) AS returned_qty
              FROM chalan_sale_items
              WHERE chalan_sale_id = ?
              ORDER BY sr_no ASC`,
@@ -571,6 +594,41 @@ class ChalanModel {
         return result.affectedRows > 0;
     }
 
+    static async attachReturnItems(returnRows) {
+        if (!returnRows.length) {
+            return [];
+        }
+
+        const returnIds = returnRows.map((row) => row.id);
+        const placeholders = returnIds.map(() => '?').join(', ');
+        const [itemRows] = await db.execute(
+            `SELECT
+                csri.id,
+                csri.chalan_sale_return_id,
+                csri.chalan_sale_item_id,
+                csri.return_qty,
+                csi.sr_no,
+                csi.item_name,
+                csi.mrp
+             FROM chalan_sale_return_items csri
+             INNER JOIN chalan_sale_items csi ON csi.id = csri.chalan_sale_item_id
+             WHERE csri.chalan_sale_return_id IN (${placeholders})
+             ORDER BY csi.sr_no ASC`,
+            returnIds
+        );
+
+        const itemsByReturnId = itemRows.reduce((acc, item) => {
+            const key = item.chalan_sale_return_id;
+            if (!acc[key]) acc[key] = [];
+            acc[key].push(item);
+            return acc;
+        }, {});
+
+        return returnRows.map((row) =>
+            ChalanModel.mapReturnRow(row, itemsByReturnId[row.id] || [])
+        );
+    }
+
     static async getReturnRecords() {
         const [rows] = await db.execute(
             `SELECT
@@ -595,16 +653,47 @@ class ChalanModel {
              ORDER BY csr.created_at DESC, csr.id DESC`
         );
 
-        return rows.map((row) => ChalanModel.mapReturnRow(row));
+        return ChalanModel.attachReturnItems(rows);
+    }
+
+    static async getReturnRecordById(returnId) {
+        const [rows] = await db.execute(
+            `SELECT
+                csr.id,
+                csr.chalan_sale_id,
+                csr.return_type,
+                csr.return_item_count,
+                csr.return_packed_item_count,
+                csr.return_amount,
+                DATE_FORMAT(csr.return_date, '%Y-%m-%d') AS return_date,
+                csr.created_at,
+                cs.chalan_code,
+                cs.assignee_type,
+                cs.packaging_status,
+                cs.vehicle_no,
+                s.name AS staff_name,
+                db.name AS delivery_boy_name
+             FROM chalan_sale_returns csr
+             INNER JOIN chalan_sales cs ON cs.id = csr.chalan_sale_id
+             LEFT JOIN staff s ON s.id = cs.staff_id
+             LEFT JOIN delivery_boys db ON db.id = cs.delivery_boy_id
+             WHERE csr.id = ?`,
+            [returnId]
+        );
+
+        if (!rows[0]) {
+            return null;
+        }
+
+        const [mapped] = await ChalanModel.attachReturnItems(rows);
+        return mapped || null;
     }
 
     static async processReturn(
         id,
         {
             returnType,
-            returnItemCount = null,
-            returnPackedItemCount = null,
-            returnAmount = null,
+            returnItems = null,
             returnDate = null,
         }
     ) {
@@ -614,24 +703,9 @@ class ChalanModel {
             await connection.beginTransaction();
 
             const [saleRows] = await connection.execute(
-                `SELECT
-                    cs.id,
-                    cs.packaging_status,
-                    cs.packed_item_count,
-                    COALESCE(items.item_count, 0) AS item_count,
-                    COALESCE(items.total_amount, 0) AS total_amount,
-                    COALESCE(cs.returned_item_count, 0) AS returned_item_count,
-                    COALESCE(cs.returned_packed_item_count, 0) AS returned_packed_item_count,
-                    COALESCE(cs.returned_amount, 0) AS returned_amount
-                 FROM chalan_sales cs
-                 LEFT JOIN (
-                     SELECT chalan_sale_id,
-                            SUM(qty) AS item_count,
-                            SUM(qty * mrp) AS total_amount
-                     FROM chalan_sale_items
-                     GROUP BY chalan_sale_id
-                 ) items ON items.chalan_sale_id = cs.id
-                 WHERE cs.id = ?
+                `SELECT id, packaging_status
+                 FROM chalan_sales
+                 WHERE id = ?
                  FOR UPDATE`,
                 [id]
             );
@@ -647,152 +721,179 @@ class ChalanModel {
                 return { error: 'Only delivered chalans can be returned.' };
             }
 
-            const totalItems = Number(sale.item_count || 0);
-            const totalPacked =
-                sale.packed_item_count != null ? Number(sale.packed_item_count) : totalItems;
-            const totalAmount = Number(sale.total_amount || 0);
-            const alreadyReturnedItems = Number(sale.returned_item_count || 0);
-            const alreadyReturnedPacked = Number(sale.returned_packed_item_count || 0);
-            const alreadyReturnedAmount = Number(sale.returned_amount || 0);
+            const [saleItems] = await connection.execute(
+                `SELECT id, sr_no, item_name, qty, mrp, COALESCE(returned_qty, 0) AS returned_qty
+                 FROM chalan_sale_items
+                 WHERE chalan_sale_id = ?
+                 ORDER BY sr_no ASC
+                 FOR UPDATE`,
+                [id]
+            );
 
-            const pendingItems = Math.max(0, totalItems - alreadyReturnedItems);
-            const pendingPacked = Math.max(0, totalPacked - alreadyReturnedPacked);
-            const pendingAmount = Math.max(0, totalAmount - alreadyReturnedAmount);
+            if (!saleItems.length) {
+                await connection.rollback();
+                return { error: 'No items found for this chalan.' };
+            }
 
-            if (pendingItems <= 0 && pendingPacked <= 0 && pendingAmount <= 0) {
+            const pendingByItemId = saleItems.reduce((acc, item) => {
+                const qty = Number(item.qty);
+                const returnedQty = Number(item.returned_qty || 0);
+                acc[item.id] = {
+                    ...item,
+                    qty,
+                    returnedQty,
+                    pendingQty: Math.max(0, qty - returnedQty),
+                    mrp: Number(item.mrp),
+                };
+                return acc;
+            }, {});
+
+            const totalPendingQty = Object.values(pendingByItemId).reduce(
+                (sum, item) => sum + item.pendingQty,
+                0
+            );
+
+            if (totalPendingQty <= 0) {
                 await connection.rollback();
                 return { error: 'Nothing left to return for this chalan.' };
             }
 
-            let nextReturnItems;
-            let nextReturnPacked;
-            let nextReturnAmount;
-            let normalizedReturnType = returnType === 'full' ? 'full' : 'partial';
+            const normalizedReturnType = returnType === 'full' ? 'full' : 'partial';
+            const returnQtyByItemId = {};
 
             if (normalizedReturnType === 'full') {
-                nextReturnItems = pendingItems;
-                nextReturnPacked = pendingPacked;
-                nextReturnAmount = pendingAmount;
+                Object.values(pendingByItemId).forEach((item) => {
+                    if (item.pendingQty > 0) {
+                        returnQtyByItemId[item.id] = item.pendingQty;
+                    }
+                });
             } else {
-                nextReturnItems = Number(returnItemCount);
-                nextReturnPacked = Number(returnPackedItemCount);
-                nextReturnAmount = Number(returnAmount);
-
-                if (
-                    !Number.isFinite(nextReturnItems) ||
-                    !Number.isFinite(nextReturnPacked) ||
-                    !Number.isFinite(nextReturnAmount)
-                ) {
+                if (!Array.isArray(returnItems) || returnItems.length === 0) {
                     await connection.rollback();
-                    return { error: 'Return item count, packing item count, and amount are required.' };
+                    return { error: 'Return items are required for partial return.' };
                 }
 
-                if (nextReturnItems <= 0 && nextReturnPacked <= 0 && nextReturnAmount <= 0) {
-                    await connection.rollback();
-                    return { error: 'At least one return value must be greater than zero.' };
-                }
+                for (const entry of returnItems) {
+                    const itemId = Number(entry.itemId);
+                    const returnQty = Number(entry.returnQty);
 
-                if (nextReturnItems > pendingItems) {
-                    await connection.rollback();
-                    return { error: 'Return item count cannot exceed pending item count.' };
-                }
+                    if (!itemId || !Number.isFinite(returnQty)) {
+                        await connection.rollback();
+                        return { error: 'Each return item must include itemId and returnQty.' };
+                    }
 
-                if (nextReturnPacked > pendingPacked) {
-                    await connection.rollback();
-                    return { error: 'Return packing item count cannot exceed pending packing item count.' };
-                }
+                    if (!pendingByItemId[itemId]) {
+                        await connection.rollback();
+                        return { error: 'One or more return items do not belong to this chalan.' };
+                    }
 
-                if (nextReturnAmount > pendingAmount) {
-                    await connection.rollback();
-                    return { error: 'Return amount cannot exceed pending amount.' };
+                    if (returnQty < 0) {
+                        await connection.rollback();
+                        return { error: 'Return quantity cannot be negative.' };
+                    }
+
+                    if (returnQty > pendingByItemId[itemId].pendingQty) {
+                        await connection.rollback();
+                        return {
+                            error: `Return quantity for "${pendingByItemId[itemId].item_name}" cannot exceed pending quantity.`,
+                        };
+                    }
+
+                    returnQtyByItemId[itemId] = (returnQtyByItemId[itemId] || 0) + returnQty;
                 }
             }
 
-            const normalizedReturnDate = returnDate || new Date().toISOString().split('T')[0];
-            const updatedReturnedItems = alreadyReturnedItems + nextReturnItems;
-            const updatedReturnedPacked = alreadyReturnedPacked + nextReturnPacked;
-            const updatedReturnedAmount = alreadyReturnedAmount + nextReturnAmount;
+            const entriesToReturn = Object.entries(returnQtyByItemId).filter(
+                ([, qty]) => Number(qty) > 0
+            );
 
-            const remainingItems = Math.max(0, totalItems - updatedReturnedItems);
-            const remainingPacked = Math.max(0, totalPacked - updatedReturnedPacked);
-            const remainingAmount = Math.max(0, totalAmount - updatedReturnedAmount);
-            const isFullyReturned =
-                remainingItems <= 0 && remainingPacked <= 0 && remainingAmount <= 0;
+            if (!entriesToReturn.length) {
+                await connection.rollback();
+                return { error: 'At least one item return quantity must be greater than zero.' };
+            }
+
+            let nextReturnItems = 0;
+            let nextReturnAmount = 0;
+
+            for (const [itemId, returnQty] of entriesToReturn) {
+                const item = pendingByItemId[itemId];
+                const qtyValue = Number(returnQty);
+                nextReturnItems += qtyValue;
+                nextReturnAmount += qtyValue * item.mrp;
+
+                await connection.execute(
+                    `UPDATE chalan_sale_items
+                     SET returned_qty = returned_qty + ?
+                     WHERE id = ?`,
+                    [qtyValue, itemId]
+                );
+            }
+
+            const normalizedReturnDate = returnDate || new Date().toISOString().split('T')[0];
 
             const [insertResult] = await connection.execute(
                 `INSERT INTO chalan_sale_returns
                     (chalan_sale_id, return_type, return_item_count, return_packed_item_count, return_amount, return_date)
-                 VALUES (?, ?, ?, ?, ?, ?)`,
-                [
-                    id,
-                    normalizedReturnType,
-                    nextReturnItems,
-                    nextReturnPacked,
-                    nextReturnAmount,
-                    normalizedReturnDate,
-                ]
+                 VALUES (?, ?, ?, 0, ?, ?)`,
+                [id, normalizedReturnType, nextReturnItems, nextReturnAmount, normalizedReturnDate]
             );
+
+            for (const [itemId, returnQty] of entriesToReturn) {
+                await connection.execute(
+                    `INSERT INTO chalan_sale_return_items
+                        (chalan_sale_return_id, chalan_sale_item_id, return_qty)
+                     VALUES (?, ?, ?)`,
+                    [insertResult.insertId, itemId, Number(returnQty)]
+                );
+            }
+
+            const [updatedItemTotals] = await connection.execute(
+                `SELECT
+                    COALESCE(SUM(returned_qty), 0) AS returned_item_count,
+                    COALESCE(SUM(returned_qty * mrp), 0) AS returned_amount,
+                    COALESCE(SUM(qty), 0) AS total_qty
+                 FROM chalan_sale_items
+                 WHERE chalan_sale_id = ?`,
+                [id]
+            );
+
+            const updatedReturnedItems = Number(updatedItemTotals[0]?.returned_item_count || 0);
+            const updatedReturnedAmount = Number(updatedItemTotals[0]?.returned_amount || 0);
+            const totalQty = Number(updatedItemTotals[0]?.total_qty || 0);
+            const isFullyReturned = updatedReturnedItems >= totalQty && totalQty > 0;
 
             await connection.execute(
                 `UPDATE chalan_sales
                  SET returned_item_count = ?,
-                     returned_packed_item_count = ?,
+                     returned_packed_item_count = 0,
                      returned_amount = ?,
                      packaging_status = ?
                  WHERE id = ?`,
                 [
                     updatedReturnedItems,
-                    updatedReturnedPacked,
                     updatedReturnedAmount,
                     isFullyReturned ? 'returned' : 'delivered',
                     id,
                 ]
             );
 
-            if (isFullyReturned) {
-                await connection.execute(
-                    `INSERT INTO chalan_sale_status_history (chalan_sale_id, status, changed_at)
-                     VALUES (?, 'returned', ?)`,
-                    [id, `${normalizedReturnDate} 00:00:00`]
-                );
-            } else {
-                await connection.execute(
-                    `INSERT INTO chalan_sale_status_history (chalan_sale_id, status, changed_at)
-                     VALUES (?, 'partial_returned', ?)`,
-                    [id, `${normalizedReturnDate} 00:00:00`]
-                );
-            }
+            await connection.execute(
+                `INSERT INTO chalan_sale_status_history (chalan_sale_id, status, changed_at)
+                 VALUES (?, ?, ?)`,
+                [
+                    id,
+                    isFullyReturned ? 'returned' : 'partial_returned',
+                    `${normalizedReturnDate} 00:00:00`,
+                ]
+            );
 
             await connection.commit();
 
-            const [returnRows] = await db.execute(
-                `SELECT
-                    csr.id,
-                    csr.chalan_sale_id,
-                    csr.return_type,
-                    csr.return_item_count,
-                    csr.return_packed_item_count,
-                    csr.return_amount,
-                    DATE_FORMAT(csr.return_date, '%Y-%m-%d') AS return_date,
-                    csr.created_at,
-                    cs.chalan_code,
-                    cs.assignee_type,
-                    cs.packaging_status,
-                    cs.vehicle_no,
-                    s.name AS staff_name,
-                    db.name AS delivery_boy_name
-                 FROM chalan_sale_returns csr
-                 INNER JOIN chalan_sales cs ON cs.id = csr.chalan_sale_id
-                 LEFT JOIN staff s ON s.id = cs.staff_id
-                 LEFT JOIN delivery_boys db ON db.id = cs.delivery_boy_id
-                 WHERE csr.id = ?`,
-                [insertResult.insertId]
-            );
-
             const updatedSale = await ChalanModel.getSaleById(id);
+            const returnRecord = await ChalanModel.getReturnRecordById(insertResult.insertId);
             return {
                 sale: updatedSale,
-                returnRecord: ChalanModel.mapReturnRow(returnRows[0]),
+                returnRecord,
             };
         } catch (error) {
             await connection.rollback();
@@ -824,6 +925,12 @@ class ChalanModel {
             }
 
             await connection.execute('DELETE FROM chalan_sale_returns WHERE chalan_sale_id = ?', [id]);
+            await connection.execute(
+                `UPDATE chalan_sale_items
+                 SET returned_qty = 0
+                 WHERE chalan_sale_id = ?`,
+                [id]
+            );
             await connection.execute(
                 `UPDATE chalan_sales
                  SET packaging_status = 'delivered',
