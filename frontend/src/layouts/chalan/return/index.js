@@ -71,6 +71,8 @@ function ChalanReturn() {
   const [returnDialog, setReturnDialog] = useState({ open: false, row: null, mode: "full" });
   const [itemReturnRows, setItemReturnRows] = useState([]);
   const [loadingSaleItems, setLoadingSaleItems] = useState(false);
+  const [returnDate, setReturnDate] = useState("");
+  const [filterReturnDate, setFilterReturnDate] = useState("");
   const [viewDialog, setViewDialog] = useState({
     open: false,
     title: "",
@@ -84,6 +86,11 @@ function ChalanReturn() {
     const month = String(now.getMonth() + 1).padStart(2, "0");
     const day = String(now.getDate()).padStart(2, "0");
     return `${year}-${month}-${day}`;
+  };
+
+  const getDateOnly = (value) => {
+    if (!value) return "";
+    return String(value).split("T")[0].split(" ")[0];
   };
 
   const formatDate = (value) => {
@@ -142,7 +149,7 @@ function ChalanReturn() {
 
   useEffect(() => {
     setPage(1);
-  }, [activeTab, searchQuery, rowsPerPage]);
+  }, [activeTab, searchQuery, filterReturnDate, rowsPerPage]);
 
   const matchesSearch = (row) => {
     const search = searchQuery.toLowerCase();
@@ -167,7 +174,11 @@ function ChalanReturn() {
     );
   });
 
-  const filteredReturnRecords = returnRecords.filter((row) => matchesSearch(row));
+  const filteredReturnRecords = returnRecords.filter((row) => {
+    if (!matchesSearch(row)) return false;
+    if (!filterReturnDate) return true;
+    return getDateOnly(row.return_date || row.returnDate) === filterReturnDate;
+  });
 
   const activeList = activeTab === "returned" ? filteredReturnRecords : pendingReturnSales;
   const totalPages = Math.max(1, Math.ceil(activeList.length / rowsPerPage));
@@ -222,6 +233,7 @@ function ChalanReturn() {
 
   const openReturnDialog = async (row, mode) => {
     setReturnDialog({ open: true, row, mode });
+    setReturnDate(getTodayLocalDate());
     setLoadingSaleItems(true);
     setItemReturnRows([]);
 
@@ -255,6 +267,7 @@ function ChalanReturn() {
       alert(error.message || "Failed to load chalan items.");
       setReturnDialog({ open: false, row: null, mode: "full" });
       setItemReturnRows([]);
+      setReturnDate("");
     } finally {
       setLoadingSaleItems(false);
     }
@@ -263,6 +276,7 @@ function ChalanReturn() {
   const closeReturnDialog = () => {
     setReturnDialog({ open: false, row: null, mode: "full" });
     setItemReturnRows([]);
+    setReturnDate("");
     setLoadingSaleItems(false);
   };
 
@@ -280,9 +294,17 @@ function ChalanReturn() {
 
     const chalanCode = row.chalan_code || row.chalanCode || "";
     const isFull = returnDialog.mode === "full";
+    const selectedReturnDate = getDateOnly(returnDate);
+
+    if (!selectedReturnDate) {
+      alert("Please select a return date.");
+      return;
+    }
 
     if (isFull) {
-      const confirmed = window.confirm(`Mark full return for chalan ${chalanCode}?`);
+      const confirmed = window.confirm(
+        `Mark full return for chalan ${chalanCode} on ${formatDate(selectedReturnDate)}?`
+      );
       if (!confirmed) return;
     } else {
       const returnItems = itemReturnRows
@@ -309,7 +331,9 @@ function ChalanReturn() {
         }
       }
 
-      const confirmed = window.confirm(`Record partial return for chalan ${chalanCode}?`);
+      const confirmed = window.confirm(
+        `Record partial return for chalan ${chalanCode} on ${formatDate(selectedReturnDate)}?`
+      );
       if (!confirmed) return;
     }
 
@@ -318,7 +342,7 @@ function ChalanReturn() {
     try {
       const payload = {
         returnType: isFull ? "full" : "partial",
-        returnDate: getTodayLocalDate(),
+        returnDate: selectedReturnDate,
       };
 
       if (!isFull) {
@@ -471,7 +495,7 @@ function ChalanReturn() {
 
               <MDBox pb={3} px={3}>
                 <Grid container spacing={3} mb={3}>
-                  <Grid item xs={12} md={4}>
+                  <Grid item xs={12} md={activeTab === "returned" ? 4 : 4}>
                     <MDInput
                       type="text"
                       label="Search by Code or Staff / Delivery Name"
@@ -480,7 +504,19 @@ function ChalanReturn() {
                       onChange={(e) => setSearchQuery(e.target.value)}
                     />
                   </Grid>
-                  <Grid item xs={12} md={8}>
+                  {activeTab === "returned" && (
+                    <Grid item xs={12} md={3}>
+                      <MDInput
+                        type="date"
+                        label="Filter by Return Date"
+                        fullWidth
+                        value={filterReturnDate}
+                        onChange={(e) => setFilterReturnDate(e.target.value)}
+                        InputLabelProps={{ shrink: true }}
+                      />
+                    </Grid>
+                  )}
+                  <Grid item xs={12} md={activeTab === "returned" ? 5 : 8}>
                     <MDBox
                       display="flex"
                       gap={2}
@@ -893,6 +929,16 @@ function ChalanReturn() {
               Staff / Delivery:{" "}
               {returnDialog.row?.assignee_name || returnDialog.row?.assigneeName || "N/A"}
             </MDTypography>
+            <MDBox mt={2} maxWidth={240}>
+              <MDInput
+                type="date"
+                label="Return Date *"
+                fullWidth
+                value={returnDate}
+                onChange={(e) => setReturnDate(e.target.value)}
+                InputLabelProps={{ shrink: true }}
+              />
+            </MDBox>
           </MDBox>
 
           {loadingSaleItems ? (
@@ -1023,6 +1069,7 @@ function ChalanReturn() {
             }
             disabled={
               !returnDialog.row ||
+              !returnDate ||
               loadingSaleItems ||
               itemReturnRows.length === 0 ||
               updatingSaleIds.has(returnDialog.row?.id)
