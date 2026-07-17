@@ -44,6 +44,25 @@ export async function ensureSchema() {
         `);
 
         await connection.query(`
+            CREATE TABLE IF NOT EXISTS companies (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                name VARCHAR(255) NOT NULL UNIQUE,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+        `);
+
+        await tryQuery(
+            connection,
+            `ALTER TABLE companies ADD COLUMN type ENUM('distributor', 'cnf') NULL`,
+            'type on companies'
+        );
+        await tryQuery(
+            connection,
+            `ALTER TABLE companies ADD COLUMN about TEXT NULL`,
+            'about on companies'
+        );
+
+        await connection.query(`
             CREATE TABLE IF NOT EXISTS staff_companies (
                 staff_id INT NOT NULL,
                 company_id INT NOT NULL,

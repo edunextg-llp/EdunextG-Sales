@@ -69,6 +69,7 @@ function AddCompany() {
 
   const fetchCompanies = useCallback(async () => {
     setLoadingList(true);
+    setError("");
     try {
       const url = filterType
         ? `${API}/staff/companies?type=${filterType}`
@@ -76,10 +77,16 @@ function AddCompany() {
       const res = await fetch(url, {
         headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
       });
-      const data = await res.json();
+      const data = await res.json().catch(() => null);
+      if (!res.ok) {
+        setCompanies([]);
+        setError(data?.error || `Failed to load companies (${res.status}).`);
+        return;
+      }
       setCompanies(Array.isArray(data) ? data : []);
     } catch {
       setCompanies([]);
+      setError("Network error while loading companies.");
     } finally {
       setLoadingList(false);
     }
@@ -317,8 +324,8 @@ function AddCompany() {
                   </MDBox>
                 ) : companies.length === 0 ? (
                   <MDBox p={4} textAlign="center">
-                    <MDTypography variant="body2" color="text">
-                      No companies found. Add one above.
+                    <MDTypography variant="body2" color={error ? "error" : "text"}>
+                      {error || "No companies found. Add one above."}
                     </MDTypography>
                   </MDBox>
                 ) : (
