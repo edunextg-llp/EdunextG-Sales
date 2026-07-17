@@ -45,13 +45,15 @@ function AddDeliveryBoy() {
 
   const fetchCompanyOptions = async () => {
     try {
-      const response = await fetch(`${API}/delivery-boy/companies`);
+      const response = await fetch(`${API}/staff/companies`, {
+        headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
+      });
       if (response.ok) {
         const data = await response.json();
         setCompanyOptions(data);
       }
     } catch (error) {
-      console.error("Error fetching staff assigned companies:", error);
+      console.error("Error fetching companies:", error);
     }
   };
 

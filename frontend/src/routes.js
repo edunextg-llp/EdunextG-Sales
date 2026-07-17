@@ -8,6 +8,7 @@ import Dashboard from "layouts/dashboard";
 // import SignIn from "layouts/authentication/sign-in";
 // import SignUp from "layouts/authentication/sign-up";
 import CreateStaff from "layouts/create-staff";
+import AddCompany from "layouts/add-company";
 import AddCounter from "layouts/add-counter";
 import AddSales from "layouts/add-sales";
 import Purchase from "layouts/purchase";
@@ -114,6 +115,14 @@ const routes = [
     collapse: [
       {
         type: "collapse",
+        name: "Add Company",
+        key: "add-company",
+        icon: <Icon fontSize="small">domain</Icon>,
+        route: "/add-company",
+        component: <AddCompany />,
+      },
+      {
+        type: "collapse",
         name: "Create Staff",
         key: "create-staff",
         icon: <Icon fontSize="small">person_add</Icon>,
@@ -128,6 +137,7 @@ const routes = [
         route: "/add-delivery-boy",
         component: <AddDeliveryBoy />,
       },
+
     ],
   },
   {

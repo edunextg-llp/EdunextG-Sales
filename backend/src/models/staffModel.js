@@ -1,6 +1,6 @@
 import db from '../config/db.js';
 import { formatStickerNumber } from '../utils/stickerNumber.js';
-import { normalizeInvoiceNumber } from '../utils/invoiceNumber.js';
+import { getCompanyBillPrefix, normalizeInvoiceNumber } from '../utils/invoiceNumber.js';
 
 class StaffModel {
     static async create(name, contactNo, companyId = null, staffType = 'distributor') {
@@ -443,6 +443,37 @@ class StaffModel {
             [saleId]
         );
         return rows[0] || null;
+    }
+
+    static async generateUniqueBillNumber(staffId, companyName, reserved = []) {
+        const prefix = getCompanyBillPrefix(companyName);
+        const [rows] = await db.execute(
+            'SELECT invoice_number FROM staff_sales WHERE staff_id = ?',
+            [staffId]
+        );
+
+        const used = new Set(
+            rows
+                .map((row) => normalizeInvoiceNumber(row.invoice_number))
+                .filter(Boolean)
+        );
+
+        reserved.forEach((value) => {
+            const normalized = normalizeInvoiceNumber(value);
+            if (normalized) {
+                used.add(normalized);
+            }
+        });
+
+        for (let attempt = 0; attempt < 100; attempt += 1) {
+            const randomPart = String(Math.floor(100000 + Math.random() * 900000));
+            const billNo = `${prefix}${randomPart}`;
+            if (!used.has(normalizeInvoiceNumber(billNo))) {
+                return billNo;
+            }
+        }
+
+        return `${prefix}${Date.now().toString().slice(-6)}`;
     }
 
     static async findSaleByInvoice(staffId, invoiceNumber, excludeSaleId = null) {

@@ -538,6 +538,30 @@ function AddSales() {
     );
   };
 
+  const fetchNextBillNumber = async () => {
+    if (!selectedStaff?.id) return "";
+    try {
+      const params = new URLSearchParams();
+      if (selectedCompanyName) {
+        params.set("companyName", selectedCompanyName);
+      }
+      const query = params.toString();
+      const response = await fetch(
+        `${API}/staff/${selectedStaff.id}/next-bill-number${query ? `?${query}` : ""}`
+      );
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({}));
+        throw new Error(err.error || "Failed to generate bill number.");
+      }
+      const data = await response.json();
+      return data.billNumber || "";
+    } catch (error) {
+      console.error("Error fetching bill number:", error);
+      alert(error.message || "Could not generate bill number.");
+      return "";
+    }
+  };
+
   const getPrevBillNoForOutlet = (outletId) => {
     const outletSales = (submittedSummary?.sales || []).filter(
       (sale) => Number(sale.outletId) === Number(outletId)
@@ -546,13 +570,18 @@ function AddSales() {
     return outletSales[outletSales.length - 1]?.invoiceNumber || "";
   };
 
-  const openInvoiceDialog = (outlet, index) => {
+  const openInvoiceDialog = async (outlet, index) => {
     const row = (salesData[outletKey(outlet.id)] || [])[index];
+    let invoiceNumber = row?.invoiceNumber?.trim() || "";
+    if (!invoiceNumber) {
+      invoiceNumber = await fetchNextBillNumber();
+      if (!invoiceNumber) return;
+    }
     setInvoiceDialog({
       open: true,
       outlet,
       rowIndex: index,
-      invoiceNumber: row?.invoiceNumber?.trim() || "",
+      invoiceNumber,
       editSaleId: null,
       initialItemCount: "",
       initialPrice: "",
@@ -657,6 +686,16 @@ function AddSales() {
       },
       [Number(outletId)]
     );
+  };
+
+  const cancelManualEntry = (outletId) => {
+    const key = outletKey(outletId);
+    setManualOutletIds((prev) => prev.filter((id) => id !== key));
+    setSalesData((prev) => {
+      const next = { ...prev };
+      next[key] = [{ ...emptySaleRow }];
+      return next;
+    });
   };
 
   const openEditSaleDialog = (row) => {
@@ -810,6 +849,7 @@ function AddSales() {
 
     const payload = {
       date: selectedDate,
+      companyName: selectedCompanyName,
       sales: [
         {
           outletId: parseInt(outlet.id, 10),
@@ -1297,12 +1337,31 @@ function AddSales() {
                                     <TableCell align="center" sx={{ ...tableBodySx, ...rowBorder }}>
                                       {isManualEntry ? (
                                         <MDBox display="flex" gap={0.5} justifyContent="center" flexWrap="wrap">
-                                          <MDButton size="small" color="info" variant="outlined" onClick={() => handleAddManualRow(outlet.id)} disabled={submitting}>Add</MDButton>
+                                          <MDButton size="small" color="info" variant="outlined" onClick={() => handleAddManualRow(outlet.id)} disabled={submitting} sx={{ minWidth: 0, px: 1 }} title="Add row">
+                                            <Icon sx={{ fontSize: "1rem !important" }}>add</Icon>
+                                          </MDButton>
                                           {rows.length > 1 && (
-                                            <MDButton size="small" color="error" variant="text" onClick={() => handleRemoveManualRow(outlet.id, index)} disabled={submitting}>Remove</MDButton>
+                                            <MDButton size="small" color="error" variant="text" onClick={() => handleRemoveManualRow(outlet.id, index)} disabled={submitting} sx={{ minWidth: 0, px: 1 }} title="Remove row">
+                                              <Icon sx={{ fontSize: "1rem !important" }}>remove</Icon>
+                                            </MDButton>
                                           )}
                                           {index === rows.length - 1 && (
-                                            <MDButton size="small" color="success" variant="gradient" onClick={() => handleSaveManualOutlet(outlet.id)} disabled={submitting}>Save</MDButton>
+                                            <MDButton size="small" color="success" variant="gradient" onClick={() => handleSaveManualOutlet(outlet.id)} disabled={submitting} sx={{ minWidth: 0, px: 1 }} title="Save">
+                                              <Icon sx={{ fontSize: "1rem !important" }}>check</Icon>
+                                            </MDButton>
+                                          )}
+                                          {index === rows.length - 1 && (
+                                            <MDButton
+                                              size="small"
+                                              color="error"
+                                              variant="outlined"
+                                              onClick={() => cancelManualEntry(outlet.id)}
+                                              disabled={submitting}
+                                              sx={{ minWidth: 0, px: 1 }}
+                                              title="Cancel"
+                                            >
+                                              <Icon sx={{ fontSize: "1rem !important" }}>close</Icon>
+                                            </MDButton>
                                           )}
                                         </MDBox>
                                       ) : (
@@ -1606,6 +1665,7 @@ function AddSales() {
         prevBillNo={
           invoiceDialog.outlet ? getPrevBillNoForOutlet(invoiceDialog.outlet.id) : ""
         }
+        fetchNextBillNumber={fetchNextBillNumber}
         submitting={submitting || savingEdit}
         onSubmit={handleInvoiceSubmit}
       />

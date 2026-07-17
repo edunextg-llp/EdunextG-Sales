@@ -446,14 +446,46 @@ export const getAllOutletsForStaff = async (req, res) => {
     }
 };
 
+export const getNextBillNumber = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const staff = await StaffModel.getDetails(id);
+        if (!staff) {
+            return res.status(404).json({ error: 'Staff not found' });
+        }
+
+        const requestedCompany = String(req.query.companyName || '').trim();
+        const fallbackCompany = String(staff.company_name || '')
+            .split(',')
+            .map((name) => name.trim())
+            .find(Boolean);
+        const companyName = requestedCompany || fallbackCompany || '';
+        const billNumber = await StaffModel.generateUniqueBillNumber(id, companyName);
+
+        res.status(200).json({ billNumber });
+    } catch (error) {
+        console.error('Error generating bill number:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+};
+
 export const recordSales = async (req, res) => {
     try {
         const { id } = req.params;
-        const { date, sales, permissionGranted, permissionNote } = req.body;
+        const { date, sales, permissionGranted, permissionNote, companyName: requestCompanyName } = req.body;
 
         if (!date || !Array.isArray(sales)) {
             return res.status(400).json({ error: 'Date and sales array are required' });
         }
+
+        const staff = await StaffModel.getDetails(id);
+        const resolvedCompanyName =
+            String(requestCompanyName || '').trim() ||
+            String(staff?.company_name || '')
+                .split(',')
+                .map((name) => name.trim())
+                .find(Boolean) ||
+            '';
 
         const deliveryBoyCache = new Map();
         const validatedSales = [];
@@ -464,8 +496,18 @@ export const recordSales = async (req, res) => {
             if (!outletValidation.valid) {
                 return res.status(400).json({ error: outletValidation.error });
             }
+
+            let invoiceValue = String(item.invoiceNumber || '').trim();
+            if (!invoiceValue) {
+                invoiceValue = await StaffModel.generateUniqueBillNumber(
+                    id,
+                    resolvedCompanyName,
+                    [...invoiceNumbers]
+                );
+            }
+
             const invoiceValidation = validateRequiredText(
-                item.invoiceNumber,
+                invoiceValue,
                 `Sale ${i + 1} invoice number`
             );
             if (!invoiceValidation.valid) {
@@ -619,7 +661,6 @@ export const recordSales = async (req, res) => {
             }
         }
 
-        const staff = await StaffModel.getDetails(id);
         const savedSales = await StaffModel.saveSales(id, date, validatedSales);
         const dayName = new Intl.DateTimeFormat('en-US', { weekday: 'long' }).format(
             new Date(`${date}T12:00:00`)
@@ -925,7 +966,9 @@ export const searchPurchaseSellers = async (req, res) => {
 
 export const getCompanies = async (req, res) => {
     try {
-        res.status(200).json(await CompanyModel.getAll());
+        const { type } = req.query;
+        const companies = await CompanyModel.getAll(type || null);
+        res.status(200).json(companies);
     } catch (error) {
         console.error('Error fetching companies:', error);
         res.status(500).json({ error: 'Internal server error' });
@@ -1923,3 +1966,53 @@ export const getTakenBillsReport = async (req, res) => {
         res.status(500).json({ error: 'Internal server error' });
     }
 };
+
+export const createCompany = async (req, res) => {
+    try {
+        const name = String(req.body.name || '').trim();
+        const type = String(req.body.type || '').trim().toLowerCase();
+        const about = String(req.body.about || '').trim();
+
+        if (!name) {
+            return res.status(400).json({ error: 'Company name is required.' });
+        }
+        if (!['distributor', 'cnf'].includes(type)) {
+            return res.status(400).json({ error: 'Company type must be "distributor" or "cnf".' });
+        }
+
+        // Validate about word count (max 200)
+        if (about) {
+            const wordCount = about.split(/\s+/).filter(Boolean).length;
+            if (wordCount > 200) {
+                return res.status(400).json({ error: 'About must not exceed 200 words.' });
+            }
+        }
+
+        const id = await CompanyModel.create(name, type, about || null);
+        res.status(201).json({ id, name, type, about });
+    } catch (error) {
+        if (error.code === 'ER_DUP_ENTRY') {
+            return res.status(409).json({ error: 'A company with this name already exists.' });
+        }
+        console.error('Error creating company:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+};
+
+export const deleteCompany = async (req, res) => {
+    try {
+        const idValidation = validatePositiveInteger(req.params.id, 'Company ID');
+        if (!idValidation.valid) {
+            return res.status(400).json({ error: idValidation.error });
+        }
+        const affectedRows = await CompanyModel.deleteById(idValidation.value);
+        if (affectedRows === 0) {
+            return res.status(404).json({ error: 'Company not found.' });
+        }
+        res.status(200).json({ message: 'Company deleted successfully.' });
+    } catch (error) {
+        console.error('Error deleting company:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+};
+

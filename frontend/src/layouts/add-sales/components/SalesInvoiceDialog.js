@@ -13,6 +13,7 @@ import {
   TableRow,
   IconButton,
   Autocomplete,
+  Icon,
 } from "@mui/material";
 import { FaRegEdit } from "react-icons/fa";
 import { CiTrash } from "react-icons/ci";
@@ -25,12 +26,12 @@ import MDButton from "components/MDButton";
 /* ─────────────────────────────────────────────────────────────
    THEME TOKENS  (matches the reference screenshot precisely)
 ───────────────────────────────────────────────────────────── */
-const PURPLE      = "#6b3fa0";       // header / footer bar
+const PURPLE = "#6b3fa0";       // header / footer bar
 const PURPLE_DARK = "#5a3285";       // right-panel sidebar
-const GOLD_BAR    = "#c9a252";       // product-entry bar
-const GOLD_LIGHT  = "#e8d49e";       // table header row
-const WHITE       = "#ffffff";
-const FIELD_BG    = "#f5f0fa";       // table-area background
+const GOLD_BAR = "#c9a252";       // product-entry bar
+const GOLD_LIGHT = "#e8d49e";       // table header row
+const WHITE = "#ffffff";
+const FIELD_BG = "#f5f0fa";       // table-area background
 
 /* ─────────────────────────────────────────────────────────────
    SHARED INPUT STYLES
@@ -77,9 +78,9 @@ const mkInput = (bgColor = WHITE) => ({
   },
 });
 
-const headerInput    = mkInput(WHITE);
-const goldInput      = mkInput(WHITE);
-const sidebarInput   = mkInput(WHITE);
+const headerInput = mkInput(WHITE);
+const goldInput = mkInput(WHITE);
+const sidebarInput = mkInput(WHITE);
 
 /* small bold label used above each input column in gold bar */
 const colLabelSx = {
@@ -196,8 +197,8 @@ function formatDisplayDate(value) {
 }
 
 function calcLine(item) {
-  const qty   = Number(item.qty)  || 0;
-  const rate  = Number(item.rate) || 0;
+  const qty = Number(item.qty) || 0;
+  const rate = Number(item.rate) || 0;
   const total = qty * rate;
   return { qty, rate, total, disc: 0, taxable: total, netTotal: total };
 }
@@ -213,24 +214,25 @@ export default function SalesInvoiceDialog({
   companyName = "",
   invoiceNumber,
   prevBillNo = "",
+  fetchNextBillNumber,
   editMode = false,
   initialItemCount = "",
   initialPrice = "",
   initialLineItems = [],
-  submitting  = false,
+  submitting = false,
   onSubmit,
 }) {
   /* ── state ── */
-  const [billNo,        setBillNo]        = useState("");
-  const [lineItems,     setLineItems]     = useState([]);
-  const [draft,         setDraft]         = useState({ ...emptyLineItem });
-  const [editingIdx,    setEditingIdx]    = useState(null);
-  const [flatDiscount,  setFlatDiscount]  = useState("");
-  const [roundOff,      setRoundOff]      = useState("0");
-  const [remarks,       setRemarks]       = useState("");
-  const [dmsItems,      setDmsItems]      = useState([]);
-  const [loadingDms,    setLoadingDms]    = useState(false);
-  const [editPopup,     setEditPopup]     = useState({
+  const [billNo, setBillNo] = useState("");
+  const [lineItems, setLineItems] = useState([]);
+  const [draft, setDraft] = useState({ ...emptyLineItem });
+  const [editingIdx, setEditingIdx] = useState(null);
+  const [flatDiscount, setFlatDiscount] = useState("");
+  const [roundOff, setRoundOff] = useState("0");
+  const [remarks, setRemarks] = useState("");
+  const [dmsItems, setDmsItems] = useState([]);
+  const [loadingDms, setLoadingDms] = useState(false);
+  const [editPopup, setEditPopup] = useState({
     open: false,
     index: null,
     draft: { ...emptyLineItem },
@@ -297,7 +299,7 @@ export default function SalesInvoiceDialog({
   }, [open]);
 
   /* ── derived strings ── */
-  const saleTo  = outlet ? `${outlet.outlet_name || ""}${outlet.outlet_erp_id ? `, Class: 0 Section: 0 Adm. No. : ${outlet.outlet_erp_id}` : ""}` : "";
+  // const saleTo  = outlet ? `${outlet.outlet_name || ""}${outlet.outlet_erp_id ? `, Class: 0 Section: 0 Adm. No. : ${outlet.outlet_erp_id}` : ""}` : "";
   const address = outlet ? `${outlet.location_name || ""}${outlet.contact_number ? ` Mobile:-${outlet.contact_number}` : ""}` : "";
 
   /* ── totals ── */
@@ -305,17 +307,17 @@ export default function SalesInvoiceDialog({
     const base = lineItems.reduce(
       (acc, it) => {
         const c = calcLine(it);
-        acc.amount   += c.total;
-        acc.disc     += c.disc;
-        acc.taxable  += c.taxable;
-        acc.qty      += c.qty;
+        acc.amount += c.total;
+        acc.disc += c.disc;
+        acc.taxable += c.taxable;
+        acc.qty += c.qty;
         return acc;
       },
       { amount: 0, disc: 0, taxable: 0, qty: 0 }
     );
-    const flatDisc   = Number(flatDiscount) || 0;
+    const flatDisc = Number(flatDiscount) || 0;
     const grandTotal = Math.max(0, base.taxable - flatDisc);
-    const round      = Number(roundOff) || 0;
+    const round = Number(roundOff) || 0;
     const netPayable = Math.max(0, grandTotal + round);
     return { ...base, flatDisc, grandTotal, round, netPayable, items: lineItems.length };
   }, [lineItems, flatDiscount, roundOff]);
@@ -357,22 +359,22 @@ export default function SalesInvoiceDialog({
     if (!product) { resetDraft(); return; }
     setDraft((prev) => ({
       ...prev,
-      productErpId:   product.product_erp_id   || "",
-      productName:    product.product_name      || "",
-      productDivision:product.product_division  || "",
-      variantName:    product.variant_name      || "",
+      productErpId: product.product_erp_id || "",
+      productName: product.product_name || "",
+      productDivision: product.product_division || "",
+      variantName: product.variant_name || "",
       availableStock: Number(product.total_current_stock_in_pcs) || 0,
-      rate:           product.mrp || product.price_per_piece || "",
+      rate: product.mrp || product.price_per_piece || "",
     }));
   };
 
   const handleAddItem = () => {
-    if (!draft.productErpId)                        return alert("Please select a product.");
-    if (!draft.qty || Number(draft.qty) <= 0)       return alert("Enter a valid quantity.");
-    if (Number(draft.qty) > availableStock)          return alert("Qty exceeds available stock.");
-    if (!draft.rate || Number(draft.rate) < 0)      return alert("Enter a valid rate.");
+    if (!draft.productErpId) return alert("Please select a product.");
+    if (!draft.qty || Number(draft.qty) <= 0) return alert("Enter a valid quantity.");
+    if (Number(draft.qty) > availableStock) return alert("Qty exceeds available stock.");
+    if (!draft.rate || Number(draft.rate) < 0) return alert("Enter a valid rate.");
 
-    const p    = dmsItems.find((x) => x.product_erp_id === draft.productErpId);
+    const p = dmsItems.find((x) => x.product_erp_id === draft.productErpId);
     const orig = p ? (Number(p.total_current_stock_in_pcs) || 0) : 0;
     const payload = { ...draft, availableStock: orig };
 
@@ -436,16 +438,16 @@ export default function SalesInvoiceDialog({
     closeEditPopup();
   };
 
-  const handleDelete = (i)  => {
+  const handleDelete = (i) => {
     setLineItems((prev) => prev.filter((_, j) => j !== i));
     if (editingIdx === i) resetDraft();
     if (editPopup.index === i) closeEditPopup();
   };
 
   const validateForm = () => {
-    if (!billNo.trim())          { alert("Bill No. is required.");              return false; }
-    if (lineItems.length === 0)  { alert("Add at least one item.");             return false; }
-    if (totals.netPayable <= 0)  { alert("Net payable must be > 0.");           return false; }
+    if (!billNo.trim()) { alert("Bill No. is required."); return false; }
+    if (lineItems.length === 0) { alert("Add at least one item."); return false; }
+    if (totals.netPayable <= 0) { alert("Net payable must be > 0."); return false; }
     return true;
   };
 
@@ -453,8 +455,8 @@ export default function SalesInvoiceDialog({
     if (!validateForm()) return;
     onSubmit({
       invoiceNumber: billNo.trim(),
-      itemCount:     totals.qty || lineItems.length,
-      price:         totals.netPayable,
+      itemCount: totals.qty || lineItems.length,
+      price: totals.netPayable,
       remarks,
       lineItems,
       totals,
@@ -466,20 +468,17 @@ export default function SalesInvoiceDialog({
     if (!validateForm()) return;
     const ok = await onSubmit({
       invoiceNumber: billNo.trim(),
-      itemCount:     totals.qty || lineItems.length,
-      price:         totals.netPayable,
+      itemCount: totals.qty || lineItems.length,
+      price: totals.netPayable,
       remarks,
       lineItems,
       totals,
       addAnother: true,
     });
     if (ok) {
-      const m = billNo.trim().match(/^(.*?)(\d+)$/);
-      if (m) {
-        setBillNo(m[1] + String(Number(m[2]) + 1).padStart(m[2].length, "0"));
-      } else {
-        setBillNo("");
-      }
+      const nextBillNo =
+        typeof fetchNextBillNumber === "function" ? await fetchNextBillNumber() : "";
+      setBillNo(nextBillNo);
       setLineItems([]); setDraft({ ...emptyLineItem }); setEditingIdx(null);
       setFlatDiscount(""); setRoundOff("0"); setRemarks("");
     }
@@ -506,8 +505,24 @@ export default function SalesInvoiceDialog({
       {/* ══════════════════════════════════════════════
           ROW 1 — PURPLE HEADER  (Bill No, Sale To, Date)
       ══════════════════════════════════════════════ */}
-      <MDBox sx={{ backgroundColor: PURPLE, px: 2, py: 1.2 }}>
-        <Grid container spacing={1.5} alignItems="flex-end">
+      <MDBox sx={{ backgroundColor: PURPLE, px: 2, py: 1.2, position: "relative" }}>
+        <IconButton
+          aria-label="Close"
+          onClick={onClose}
+          disabled={submitting}
+          sx={{
+            position: "absolute",
+            top: 8,
+            right: 8,
+            color: WHITE,
+            backgroundColor: "rgba(255,255,255,0.12)",
+            "&:hover": { backgroundColor: "rgba(255,255,255,0.22)" },
+            zIndex: 1,
+          }}
+        >
+          <Icon sx={{ fontSize: "1.25rem !important" }}>close</Icon>
+        </IconButton>
+        <Grid container spacing={1.5} alignItems="flex-end" pr={4}>
 
           {/* Bill No + Prev Bill */}
           <Grid item xs={12} md={2.5}>
@@ -518,23 +533,24 @@ export default function SalesInvoiceDialog({
                   fullWidth
                   value={billNo}
                   onChange={(e) => setBillNo(e.target.value)}
+                  disabled={!editMode}
                   sx={headerInput}
                 />
               </Grid>
-              <Grid item xs={12}>
+              {/* <Grid item xs={12}>
                 <MDTypography sx={{ ...colLabelSx, color: "#e2c9ff" }}>Prev. Sold Bill No.</MDTypography>
                 <MDInput fullWidth value={prevBillNo} disabled sx={headerInput} />
-              </Grid>
+              </Grid> */}
             </Grid>
           </Grid>
 
           {/* Sale To + Address */}
           <Grid item xs={12} md={6.5}>
             <Grid container spacing={1}>
-              <Grid item xs={12}>
+              {/* <Grid item xs={12}>
                 <MDTypography sx={{ ...colLabelSx, color: "#e2c9ff" }}>Sale To</MDTypography>
                 <MDInput fullWidth value={saleTo} disabled sx={headerInput} />
-              </Grid>
+              </Grid> */}
               <Grid item xs={12}>
                 <MDTypography sx={{ ...colLabelSx, color: "#e2c9ff" }}>Address</MDTypography>
                 <MDInput fullWidth value={address} disabled sx={headerInput} />
@@ -572,8 +588,8 @@ export default function SalesInvoiceDialog({
               value={companyDmsItems.find((x) => x.product_erp_id === draft.productErpId) || null}
               onChange={(_, prod) => handleProductChange(prod)}
               getOptionLabel={(item) => {
-                const orig  = Number(item.total_current_stock_in_pcs) || 0;
-                const used  = lineItems.reduce((s, li, i) =>
+                const orig = Number(item.total_current_stock_in_pcs) || 0;
+                const used = lineItems.reduce((s, li, i) =>
                   i !== editingIdx && li.productErpId === item.product_erp_id
                     ? s + (Number(li.qty) || 0) : s, 0);
                 return `${item.product_erp_id} — ${item.product_name}${item.variant_name ? ` (${item.variant_name})` : ""} [${Math.max(0, orig - used)}]`;
@@ -820,11 +836,11 @@ export default function SalesInvoiceDialog({
           }}
         >
           {/* Totals */}
-          <SummaryRow label="Total Amount"   value={fmt(totals.amount)}   />
-          <SummaryRow label="Total Discount"  value={fmt(totals.disc)}     />
-          <SummaryRow label="Total Taxable"   value={fmt(totals.taxable)}  />
-          <SummaryRow label="Total GST"       value={fmt(0)}               />
-          <SummaryRow label="Grand. Total"    value={fmt(totals.grandTotal)} highlight />
+          <SummaryRow label="Total Amount" value={fmt(totals.amount)} />
+          <SummaryRow label="Total Discount" value={fmt(totals.disc)} />
+          <SummaryRow label="Total Taxable" value={fmt(totals.taxable)} />
+          <SummaryRow label="Total GST" value={fmt(0)} />
+          <SummaryRow label="Grand. Total" value={fmt(totals.grandTotal)} highlight />
 
           {/* Flat Discount input */}
           <MDBox mt={0.5}>

@@ -1016,7 +1016,22 @@ async function initDB() {
     `);
     console.log('Overdue sale permissions table ready');
 
+    // Add type and about columns to companies table
+    try {
+        await connection.query(`
+            ALTER TABLE companies
+            ADD COLUMN type ENUM('distributor', 'cnf') NULL,
+            ADD COLUMN about TEXT NULL
+        `);
+        console.log('Added type and about columns to companies table');
+    } catch (err) {
+        if (err.code !== 'ER_DUP_FIELDNAME') {
+            console.log('type/about columns may already exist on companies table');
+        }
+    }
+
     await connection.end();
+
 }
 
 initDB().catch(err => {
