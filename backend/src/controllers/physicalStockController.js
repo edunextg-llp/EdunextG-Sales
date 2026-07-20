@@ -192,3 +192,127 @@ export const uploadPhysicalStock = async (req, res) => {
         return res.status(error.statusCode || 500).json({ error: error.message || 'Internal server error' });
     }
 };
+
+export const getPhysicalStockDmsProducts = async (req, res) => {
+    try {
+        const dmsImportId = parseDmsImportId(req.query.dmsImportId);
+        if (!dmsImportId) {
+            return res.status(400).json({ error: 'Please choose a DMS stock upload date.' });
+        }
+
+        const dmsResult = await DmsStockModel.getImportById(dmsImportId);
+        if (!dmsResult) {
+            return res.status(404).json({ error: 'Selected DMS stock upload was not found.' });
+        }
+
+        const search = String(req.query.search || '').trim();
+        const products = await DmsStockModel.getProductsByImportId(dmsImportId, search);
+        return res.status(200).json({ products });
+    } catch (error) {
+        console.error('Error fetching physical stock DMS products:', error);
+        return res.status(500).json({ error: 'Internal server error' });
+    }
+};
+
+export const lookupPhysicalStockProduct = async (req, res) => {
+    try {
+        const dmsImportId = parseDmsImportId(req.query.dmsImportId);
+        const erpId = String(req.query.erpId || '').trim();
+
+        if (!dmsImportId) {
+            return res.status(400).json({ error: 'Please choose a DMS stock upload date.' });
+        }
+        if (!erpId) {
+            return res.status(400).json({ error: 'Product ERP ID is required.' });
+        }
+
+        const product = await DmsStockModel.getProductByErpIdInImport(dmsImportId, erpId);
+        if (!product) {
+            return res.status(404).json({ error: 'Product not found in selected DMS stock.' });
+        }
+
+        return res.status(200).json({ product });
+    } catch (error) {
+        console.error('Error looking up physical stock product:', error);
+        return res.status(500).json({ error: 'Internal server error' });
+    }
+};
+
+async function buildPhysicalRowFromDmsProduct(dmsImportId, item) {
+    const erpId = String(item?.productErpId || '').trim();
+    if (!erpId) {
+        const error = new Error('Product ERP ID is required.');
+        error.statusCode = 400;
+        throw error;
+    }
+
+    const product = await DmsStockModel.getProductByErpIdInImport(dmsImportId, erpId);
+    if (!product) {
+        const error = new Error(`Product not found in DMS stock for ERP ID: ${erpId}`);
+        error.statusCode = 404;
+        throw error;
+    }
+
+    return normalizePhysicalStockRow({
+        'Product ERP ID': product.product_erp_id,
+        'SKU Name': product.product_name,
+        'Product Division': product.product_division,
+        'Variant Name': product.variant_name,
+        'Pcs/Box': product.pcs_per_box,
+        'Physical Stock In Case': item.physicalStockInCase ?? 0,
+        'Physical Stock In Pcs': item.physicalStockInPcs ?? 0,
+        'Price/Pcs': product.price_per_piece,
+        MRP: product.mrp,
+        'Expired Stock': item.expiredStockDate || '',
+    });
+}
+
+export const createManualPhysicalStock = async (req, res) => {
+    try {
+        const dmsImportId = parseDmsImportId(req.body?.dmsImportId);
+        if (!dmsImportId) {
+            return res.status(400).json({ error: 'Please choose a DMS stock upload date.' });
+        }
+
+        const dmsResult = await DmsStockModel.getImportById(dmsImportId);
+        if (!dmsResult) {
+            return res.status(404).json({ error: 'Selected DMS stock upload was not found.' });
+        }
+
+        const items = Array.isArray(req.body?.items) ? req.body.items : [];
+        if (!items.length) {
+            return res.status(400).json({ error: 'Please select a product.' });
+        }
+
+        const rows = [];
+        for (const item of items) {
+            rows.push(await buildPhysicalRowFromDmsProduct(dmsImportId, item));
+        }
+
+        const existingImport = await PhysicalStockModel.getManualImportByDmsImportId(dmsImportId);
+        let result;
+
+        if (existingImport) {
+            result = await PhysicalStockModel.upsertItemsToImport(existingImport.id, rows);
+        } else {
+            const summary = buildPhysicalStockSummary(rows);
+            result = await PhysicalStockModel.createImport({
+                dmsImportId,
+                fileName: 'Manual Entry',
+                rowCount: rows.length,
+                summary,
+                rows,
+            });
+        }
+
+        return res.status(201).json({
+            message: existingImport
+                ? 'Physical stock updated successfully'
+                : 'Physical stock saved successfully',
+            ...result,
+        });
+    } catch (error) {
+        console.error('Error saving manual physical stock:', error);
+        return res.status(error.statusCode || 500).json({ error: error.message || 'Internal server error' });
+    }
+};

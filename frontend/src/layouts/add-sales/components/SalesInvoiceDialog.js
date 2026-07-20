@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Dialog,
   DialogTitle,
@@ -203,9 +203,8 @@ function calcLine(item) {
   return { qty, rate, total, disc: 0, taxable: total, netTotal: total };
 }
 
-/* ─────────────────────────────────────────────────────────────
-   COMPONENT
-───────────────────────────────────────────────────────────── */
+const API = "https://bawarchee.edunextg.co/api";
+
 export default function SalesInvoiceDialog({
   open,
   onClose,
@@ -232,22 +231,17 @@ export default function SalesInvoiceDialog({
   const [remarks, setRemarks] = useState("");
   const [stockItems, setStockItems] = useState([]);
   const [loadingStock, setLoadingStock] = useState(false);
+  const [stockError, setStockError] = useState("");
   const [editPopup, setEditPopup] = useState({
     open: false,
     index: null,
     draft: { ...emptyLineItem },
   });
 
-  const companyStockItems = useMemo(() => {
-    const selectedCompany = String(companyName || "").trim().toLowerCase();
-    const items = stockItems.filter(
-      (item) => Number(item.total_current_stock_in_pcs) > 0 || item.product_erp_id
-    );
-    if (!selectedCompany) return items;
-    return items.filter(
-      (item) => String(item.product_division || "").trim().toLowerCase() === selectedCompany
-    );
-  }, [stockItems, companyName]);
+  const companyStockItems = useMemo(
+    () => stockItems.filter((item) => String(item.product_erp_id || "").trim()),
+    [stockItems]
+  );
 
   const buildExistingSaleLine = (itemCount, price) => {
     const qty = Math.max(1, Number(itemCount) || 1);
@@ -285,27 +279,39 @@ export default function SalesInvoiceDialog({
     setEditPopup({ open: false, index: null, draft: { ...emptyLineItem } });
   }, [open, invoiceNumber, editMode, initialItemCount, initialPrice, initialLineItems]);
 
-  /* load Current Stock (Physical − DMS), not raw DMS stock */
+  /* load Current Stock (Physical − DMS) for the selected company */
+  const fetchCurrentStock = useCallback(async () => {
+    const selectedCompany = String(companyName || "").trim();
+    if (!selectedCompany) {
+      setStockItems([]);
+      setStockError("Select a company first to load current stock.");
+      setLoadingStock(false);
+      return;
+    }
+
+    setLoadingStock(true);
+    setStockError("");
+
+    try {
+      const params = new URLSearchParams({ companyName: selectedCompany });
+      const response = await fetch(`${API}/staff/current-stock?${params.toString()}`);
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "Failed to load current stock");
+      setStockItems(data.items || []);
+      setStockError("");
+    } catch (fetchError) {
+      setStockItems([]);
+      setStockError(fetchError.message || "Failed to load current stock");
+    } finally {
+      setLoadingStock(false);
+    }
+  }, [companyName]);
+
   useEffect(() => {
     if (!open) return undefined;
-    let active = true;
-    setLoadingStock(true);
-    fetch("https://bawarchee.edunextg.co/api/staff/current-stock")
-      .then((r) => r.json().then((d) => ({ r, d })))
-      .then(({ r, d }) => {
-        if (!r.ok) throw new Error(d.error || "Failed to load current stock");
-        if (active) setStockItems(d.items || []);
-      })
-      .catch(() => {
-        if (active) setStockItems([]);
-      })
-      .finally(() => {
-        if (active) setLoadingStock(false);
-      });
-    return () => {
-      active = false;
-    };
-  }, [open]);
+    fetchCurrentStock();
+    return undefined;
+  }, [open, fetchCurrentStock]);
 
   /* ── derived strings ── */
   // const saleTo  = outlet ? `${outlet.outlet_name || ""}${outlet.outlet_erp_id ? `, Class: 0 Section: 0 Adm. No. : ${outlet.outlet_erp_id}` : ""}` : "";
@@ -487,6 +493,7 @@ export default function SalesInvoiceDialog({
       addAnother: true,
     });
     if (ok) {
+      await fetchCurrentStock();
       const nextBillNo =
         typeof fetchNextBillNumber === "function" ? await fetchNextBillNumber() : "";
       setBillNo(nextBillNo);
@@ -587,6 +594,11 @@ export default function SalesInvoiceDialog({
           ROW 2 — GOLD PRODUCT ENTRY BAR
       ══════════════════════════════════════════════ */}
       <MDBox sx={{ backgroundColor: GOLD_BAR, px: 2, py: 1 }}>
+        {stockError && (
+          <MDTypography variant="caption" color="error" fontWeight="medium" display="block" mb={0.5}>
+            {stockError}
+          </MDTypography>
+        )}
         <Grid container spacing={1} alignItems="flex-end">
 
           {/* Description (Autocomplete) */}

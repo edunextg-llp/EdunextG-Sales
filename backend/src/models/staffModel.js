@@ -1,6 +1,7 @@
 import db from '../config/db.js';
 import { formatStickerNumber } from '../utils/stickerNumber.js';
 import { getCompanyBillPrefix, normalizeInvoiceNumber } from '../utils/invoiceNumber.js';
+import PhysicalStockModel from './physicalStockModel.js';
 
 class StaffModel {
     static async create(name, contactNo, companyId = null, staffType = 'distributor', profile = {}) {
@@ -282,8 +283,9 @@ class StaffModel {
         return formatStickerNumber(rows[0].seq_value);
     }
 
-    static async saveSales(staffId, date, salesData) {
-        // salesData: [{ outletId, itemCount, invoiceNumber, price }] -> returns sticker print data
+    static async saveSales(staffId, date, salesData, options = {}) {
+        // salesData: [{ outletId, itemCount, invoiceNumber, price, lineItems? }] -> returns sticker print data
+        const companyName = String(options.companyName || '').trim();
         const connection = await db.getConnection();
 
         try {
@@ -380,6 +382,19 @@ class StaffModel {
                     deliveryBoyName: deliveryBoyRows[0]?.name || '',
                     vehicleNo: item.vehicleNo || '',
                 });
+            }
+
+            if (companyName) {
+                const detailedLineItems = salesData.flatMap((sale) =>
+                    Array.isArray(sale.lineItems) ? sale.lineItems : []
+                );
+                if (detailedLineItems.length) {
+                    await PhysicalStockModel.deductStockForCompany(
+                        connection,
+                        companyName,
+                        detailedLineItems
+                    );
+                }
             }
 
             await connection.commit();

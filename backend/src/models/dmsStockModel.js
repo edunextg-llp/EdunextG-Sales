@@ -20,6 +20,368 @@ class DmsStockModel {
         return rows.map(DmsStockModel.normalizeImport);
     }
 
+    static async getManualImportByCompanyAndDate(companyId, uploadDate) {
+        if (!companyId || !uploadDate) return null;
+
+        const [rows] = await db.execute(
+            `SELECT i.id, i.file_name, i.company_id, c.name AS company_name, i.row_count,
+                    DATE_FORMAT(i.upload_date, '%Y-%m-%d') AS upload_date,
+                    i.total_stock_cases, i.total_stock_pcs, i.total_pieces, i.total_value,
+                    DATE_FORMAT(i.created_at, '%Y-%m-%d %H:%i:%s') AS created_at
+             FROM dms_stock_imports i
+             LEFT JOIN companies c ON i.company_id = c.id
+             WHERE i.company_id = ? AND i.upload_date = ? AND i.file_name = 'Manual Entry'
+             ORDER BY i.id DESC
+             LIMIT 1`,
+            [companyId, uploadDate]
+        );
+        return rows[0] || null;
+    }
+
+    static async getItemByErpIdInImport(importId, productErpId) {
+        const erpId = String(productErpId || '').trim();
+        if (!importId || !erpId) {
+            return null;
+        }
+
+        const [rows] = await db.execute(
+            `SELECT id, product_erp_id
+             FROM dms_stock_items
+             WHERE import_id = ? AND LOWER(TRIM(product_erp_id)) = LOWER(?)
+             LIMIT 1`,
+            [importId, erpId]
+        );
+        return rows[0] || null;
+    }
+
+    static async recalculateImportTotals(connection, importId) {
+        const [countRows] = await connection.execute(
+            `SELECT
+                COUNT(*) AS row_count,
+                COALESCE(SUM(current_stock_in_case), 0) AS total_stock_cases,
+                COALESCE(SUM(current_stock_in_pcs), 0) AS total_stock_pcs,
+                COALESCE(SUM(total_pieces), 0) AS total_pieces,
+                COALESCE(SUM(total_value), 0) AS total_value,
+                COALESCE(SUM(total_purchases_in_stock_unit), 0) AS total_purchase_units,
+                COALESCE(SUM(purchases_in_stock_value), 0) AS total_purchase_value,
+                COALESCE(SUM(total_invoiced_stock_unit), 0) AS total_invoiced_units,
+                COALESCE(SUM(invoiced_stock_value), 0) AS total_invoiced_value,
+                COALESCE(SUM(total_closing_stock_unit), 0) AS total_closing_units,
+                COALESCE(SUM(closing_stock_value), 0) AS total_closing_value,
+                COALESCE(SUM(total_in_transit_stock_quantity_unit), 0) AS total_in_transit_units,
+                COALESCE(SUM(in_transit_stock_value), 0) AS total_in_transit_value
+             FROM dms_stock_items
+             WHERE import_id = ?`,
+            [importId]
+        );
+
+        const totals = countRows[0] || {};
+
+        await connection.execute(
+            `UPDATE dms_stock_imports
+             SET row_count = ?,
+                 total_stock_cases = ?,
+                 total_stock_pcs = ?,
+                 total_pieces = ?,
+                 total_value = ?,
+                 total_purchase_units = ?,
+                 total_purchase_value = ?,
+                 total_invoiced_units = ?,
+                 total_invoiced_value = ?,
+                 total_closing_units = ?,
+                 total_closing_value = ?,
+                 total_in_transit_units = ?,
+                 total_in_transit_value = ?
+             WHERE id = ?`,
+            [
+                totals.row_count || 0,
+                totals.total_stock_cases || 0,
+                totals.total_stock_pcs || 0,
+                totals.total_pieces || 0,
+                totals.total_value || 0,
+                totals.total_purchase_units || 0,
+                totals.total_purchase_value || 0,
+                totals.total_invoiced_units || 0,
+                totals.total_invoiced_value || 0,
+                totals.total_closing_units || 0,
+                totals.total_closing_value || 0,
+                totals.total_in_transit_units || 0,
+                totals.total_in_transit_value || 0,
+                importId,
+            ]
+        );
+    }
+
+    static normalizeProductItem(row) {
+        if (!row) {
+            return null;
+        }
+
+        return {
+            id: row.id,
+            product_erp_id: row.product_erp_id || '',
+            product_name: row.product_name || '',
+            variant_name: row.variant_name || '',
+            pcs_per_box: toNumber(row.pcs_per_box),
+            current_stock_in_case: toNumber(row.current_stock_in_case),
+            current_stock_in_pcs: toNumber(row.current_stock_in_pcs),
+            total_current_stock_in_pcs: toNumber(row.total_current_stock_in_pcs),
+            price_per_piece: toNumber(row.price_per_piece),
+            mrp: toNumber(row.mrp),
+            total_value: toNumber(row.total_value),
+        };
+    }
+
+    static async searchProductsByErpId(companyId, search = '', limit = 20) {
+        const company = parseInt(companyId, 10);
+        if (!Number.isFinite(company) || company <= 0) {
+            return [];
+        }
+
+        const term = String(search || '').trim();
+        const likeTerm = `%${term}%`;
+        const numericLimit = Math.min(Math.max(parseInt(limit, 10) || 20, 1), 50);
+
+        const [rows] = await db.execute(
+            `SELECT dsi.id, dsi.product_erp_id, dsi.product_name, dsi.variant_name,
+                    dsi.pcs_per_box, dsi.current_stock_in_case, dsi.current_stock_in_pcs,
+                    dsi.total_current_stock_in_pcs, dsi.price_per_piece, dsi.mrp, dsi.total_value
+             FROM dms_stock_items dsi
+             INNER JOIN dms_stock_imports i ON i.id = dsi.import_id
+             INNER JOIN (
+                 SELECT dsi2.product_erp_id, MAX(dsi2.id) AS latest_item_id
+                 FROM dms_stock_items dsi2
+                 INNER JOIN dms_stock_imports i2 ON i2.id = dsi2.import_id
+                 WHERE i2.company_id = ?
+                   AND dsi2.product_erp_id IS NOT NULL
+                   AND TRIM(dsi2.product_erp_id) <> ''
+                 GROUP BY dsi2.product_erp_id
+             ) latest ON latest.latest_item_id = dsi.id
+             WHERE i.company_id = ?
+               AND (dsi.product_erp_id LIKE ? OR dsi.product_name LIKE ?)
+             ORDER BY dsi.product_erp_id ASC
+             LIMIT ${numericLimit}`,
+            [company, company, likeTerm, likeTerm]
+        );
+
+        return rows.map(DmsStockModel.normalizeProductItem);
+    }
+
+    static async getLatestProductByErpId(companyId, productErpId) {
+        const company = parseInt(companyId, 10);
+        const erpId = String(productErpId || '').trim();
+        if (!Number.isFinite(company) || company <= 0 || !erpId) {
+            return null;
+        }
+
+        const [rows] = await db.execute(
+            `SELECT dsi.id, dsi.product_erp_id, dsi.product_name, dsi.variant_name,
+                    dsi.pcs_per_box, dsi.current_stock_in_case, dsi.current_stock_in_pcs,
+                    dsi.total_current_stock_in_pcs, dsi.price_per_piece, dsi.mrp, dsi.total_value
+             FROM dms_stock_items dsi
+             INNER JOIN dms_stock_imports i ON i.id = dsi.import_id
+             WHERE i.company_id = ?
+               AND LOWER(TRIM(dsi.product_erp_id)) = LOWER(?)
+             ORDER BY dsi.id DESC
+             LIMIT 1`,
+            [company, erpId]
+        );
+
+        return DmsStockModel.normalizeProductItem(rows[0]);
+    }
+
+    static async getProductsByImportId(importId, search = '', limit = 500) {
+        const dmsImportId = parseInt(importId, 10);
+        if (!Number.isFinite(dmsImportId) || dmsImportId <= 0) {
+            return [];
+        }
+
+        const term = String(search || '').trim();
+        const likeTerm = `%${term}%`;
+        const numericLimit = Math.min(Math.max(parseInt(limit, 10) || 500, 1), 1000);
+        const params = [dmsImportId];
+        let searchClause = '';
+
+        if (term) {
+            searchClause = ' AND (dsi.product_erp_id LIKE ? OR dsi.product_name LIKE ?)';
+            params.push(likeTerm, likeTerm);
+        }
+
+        const [rows] = await db.execute(
+            `SELECT dsi.id, dsi.product_erp_id, dsi.product_name, dsi.product_division, dsi.variant_name,
+                    dsi.pcs_per_box, dsi.current_stock_in_case, dsi.current_stock_in_pcs,
+                    dsi.total_current_stock_in_pcs, dsi.price_per_piece, dsi.mrp, dsi.total_value
+             FROM dms_stock_items dsi
+             WHERE dsi.import_id = ?${searchClause}
+             ORDER BY dsi.product_erp_id ASC
+             LIMIT ${numericLimit}`,
+            params
+        );
+
+        return rows.map((row) => ({
+            ...DmsStockModel.normalizeProductItem(row),
+            product_division: row.product_division || '',
+        }));
+    }
+
+    static async getProductByErpIdInImport(importId, productErpId) {
+        const dmsImportId = parseInt(importId, 10);
+        const erpId = String(productErpId || '').trim();
+        if (!Number.isFinite(dmsImportId) || dmsImportId <= 0 || !erpId) {
+            return null;
+        }
+
+        const [rows] = await db.execute(
+            `SELECT dsi.id, dsi.product_erp_id, dsi.product_name, dsi.product_division, dsi.variant_name,
+                    dsi.pcs_per_box, dsi.current_stock_in_case, dsi.current_stock_in_pcs,
+                    dsi.total_current_stock_in_pcs, dsi.price_per_piece, dsi.mrp, dsi.total_value
+             FROM dms_stock_items dsi
+             WHERE dsi.import_id = ? AND LOWER(TRIM(dsi.product_erp_id)) = LOWER(?)
+             LIMIT 1`,
+            [dmsImportId, erpId]
+        );
+
+        if (!rows[0]) {
+            return null;
+        }
+
+        return {
+            ...DmsStockModel.normalizeProductItem(rows[0]),
+            product_division: rows[0].product_division || '',
+        };
+    }
+
+    static async upsertItemsToImport(importId, rows) {
+        if (!rows.length) {
+            return DmsStockModel.getImportById(importId);
+        }
+
+        const connection = await db.getConnection();
+
+        try {
+            await connection.beginTransaction();
+
+            for (const row of rows) {
+                const [existingRows] = await connection.execute(
+                    `SELECT id
+                     FROM dms_stock_items
+                     WHERE import_id = ? AND LOWER(TRIM(product_erp_id)) = LOWER(?)
+                     LIMIT 1`,
+                    [importId, String(row.productErpId || '').trim()]
+                );
+                const existing = existingRows[0];
+
+                if (existing) {
+                    await connection.execute(
+                        `UPDATE dms_stock_items
+                         SET product_erp_id = ?,
+                             product_name = ?,
+                             product_division = ?,
+                             variant_name = ?,
+                             pcs_per_box = ?,
+                             current_stock_in_case = ?,
+                             current_stock_in_pcs = ?,
+                             total_current_stock_in_pcs = ?,
+                             price_per_piece = ?,
+                             mrp = ?,
+                             total_purchases_in_stock_unit = ?,
+                             purchases_in_stock_value = ?,
+                             dp_per_unit_stock = ?,
+                             total_invoiced_stock_unit = ?,
+                             invoiced_stock_value = ?,
+                             total_closing_stock_unit = ?,
+                             closing_stock_value = ?,
+                             total_in_transit_stock_quantity_unit = ?,
+                             in_transit_stock_value = ?,
+                             total_pieces = ?,
+                             total_value = ?,
+                             purchase_price = ?,
+                             raw_data = ?
+                         WHERE id = ?`,
+                        [
+                            row.productErpId,
+                            row.productName,
+                            row.productDivision,
+                            row.variantName,
+                            row.pcsPerBox,
+                            row.currentStockInCase,
+                            row.currentStockInPcs,
+                            row.totalCurrentStockInPcs,
+                            row.pricePerPiece,
+                            row.mrp,
+                            row.totalPurchasesInStockUnit,
+                            row.purchasesInStockValue,
+                            row.dpPerUnitStock,
+                            row.totalInvoicedStockUnit,
+                            row.invoicedStockValue,
+                            row.totalClosingStockUnit,
+                            row.closingStockValue,
+                            row.totalInTransitStockQuantityUnit,
+                            row.inTransitStockValue,
+                            row.totalPieces,
+                            row.totalValue,
+                            row.purchasePrice,
+                            JSON.stringify(row.rawData),
+                            existing.id,
+                        ]
+                    );
+                } else {
+                    await connection.execute(
+                        `INSERT INTO dms_stock_items
+                         (import_id, product_erp_id, product_name, product_division, variant_name,
+                          pcs_per_box, current_stock_in_case, current_stock_in_pcs,
+                          total_current_stock_in_pcs, price_per_piece, mrp,
+                          total_purchases_in_stock_unit, purchases_in_stock_value, dp_per_unit_stock,
+                          total_invoiced_stock_unit, invoiced_stock_value, total_closing_stock_unit,
+                          closing_stock_value, total_in_transit_stock_quantity_unit, in_transit_stock_value,
+                          total_pieces, total_value, purchase_price, raw_data)
+                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                        [
+                            importId,
+                            row.productErpId,
+                            row.productName,
+                            row.productDivision,
+                            row.variantName,
+                            row.pcsPerBox,
+                            row.currentStockInCase,
+                            row.currentStockInPcs,
+                            row.totalCurrentStockInPcs,
+                            row.pricePerPiece,
+                            row.mrp,
+                            row.totalPurchasesInStockUnit,
+                            row.purchasesInStockValue,
+                            row.dpPerUnitStock,
+                            row.totalInvoicedStockUnit,
+                            row.invoicedStockValue,
+                            row.totalClosingStockUnit,
+                            row.closingStockValue,
+                            row.totalInTransitStockQuantityUnit,
+                            row.inTransitStockValue,
+                            row.totalPieces,
+                            row.totalValue,
+                            row.purchasePrice,
+                            JSON.stringify(row.rawData),
+                        ]
+                    );
+                }
+            }
+
+            await DmsStockModel.recalculateImportTotals(connection, importId);
+
+            await connection.commit();
+            return DmsStockModel.getImportById(importId);
+        } catch (error) {
+            await connection.rollback();
+            throw error;
+        } finally {
+            connection.release();
+        }
+    }
+
+    static async appendItemsToImport(importId, rows) {
+        return DmsStockModel.upsertItemsToImport(importId, rows);
+    }
+
     static async createImport({ fileName, companyId, uploadDate, rowCount, summary, rows }) {
         const connection = await db.getConnection();
 
@@ -144,6 +506,32 @@ class DmsStockModel {
              ORDER BY i.id DESC
              LIMIT 1`
         );
+        return rows[0] || null;
+    }
+
+    static async getLatestImportByCompanyName(companyName) {
+        const name = String(companyName || '').trim();
+        if (!name) {
+            return null;
+        }
+
+        const [rows] = await db.execute(
+            `SELECT i.id, i.file_name, i.company_id, c.name AS company_name, i.row_count,
+                    DATE_FORMAT(i.upload_date, '%Y-%m-%d') AS upload_date,
+                    i.total_purchase_units, i.total_purchase_value,
+                    i.total_invoiced_units, i.total_invoiced_value,
+                    i.total_closing_units, i.total_closing_value,
+                    i.total_in_transit_units, i.total_in_transit_value,
+                    i.total_stock_cases, i.total_stock_pcs, i.total_pieces, i.total_value,
+                    DATE_FORMAT(i.created_at, '%Y-%m-%d %H:%i:%s') AS created_at
+             FROM dms_stock_imports i
+             LEFT JOIN companies c ON i.company_id = c.id
+             WHERE LOWER(TRIM(c.name)) = LOWER(?)
+             ORDER BY i.id DESC
+             LIMIT 1`,
+            [name]
+        );
+
         return rows[0] || null;
     }
 

@@ -99,11 +99,17 @@ const formatExpiredStockDate = (value) => {
   return `${d}-${months[m]}-${String(y).slice(-2)}`;
 };
 
-const resolveDmsImportId = (uploadDate, imports) => {
+const formatDmsImportLabel = (stock) => {
+  const date = formatDate(stock.upload_date);
+  const company = stock.company_name ? ` - ${stock.company_name}` : "";
+  const source = stock.file_name ? ` (${stock.file_name})` : "";
+  return `${date}${company}${source}`;
+};
+
+const resolveSelectedImportId = (importFilter, imports) => {
   if (!imports.length) return "";
-  if (!uploadDate) return String(imports[0].id);
-  const match = imports.find((entry) => entry.upload_date === uploadDate);
-  return match ? String(match.id) : "";
+  if (!importFilter) return String(imports[0].id);
+  return String(importFilter);
 };
 
 function Metric({ label, value }) {
@@ -129,11 +135,11 @@ function CurrentStock() {
   const [divisionFilter, setDivisionFilter] = useState("");
   const [erpSearch, setErpSearch] = useState("");
   const [productSearch, setProductSearch] = useState("");
-  const [stockListDateFilter, setStockListDateFilter] = useState("");
+  const [stockListImportFilter, setStockListImportFilter] = useState("");
 
   const selectedDmsImportId = useMemo(
-    () => resolveDmsImportId(stockListDateFilter, dmsImports),
-    [stockListDateFilter, dmsImports]
+    () => resolveSelectedImportId(stockListImportFilter, dmsImports),
+    [stockListImportFilter, dmsImports]
   );
 
   const selectedDmsImport = useMemo(
@@ -186,10 +192,10 @@ function CurrentStock() {
     if (!dmsImports.length) return;
     fetchCurrentStock(selectedDmsImportId);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [stockListDateFilter, dmsImports]);
+  }, [stockListImportFilter, dmsImports]);
 
-  const handleDateChange = (event) => {
-    setStockListDateFilter(event.target.value);
+  const handleImportChange = (event) => {
+    setStockListImportFilter(event.target.value);
     setMessage("");
     setError("");
   };
@@ -242,6 +248,7 @@ function CurrentStock() {
           {stockImport && (
             <Grid item xs={12}>
               <Grid container spacing={2}>
+                <Grid item xs={12} sm={6} md={3}><Metric label="Company" value={stockImport.company_name || "N/A"} /></Grid>
                 <Grid item xs={12} sm={6} md={3}><Metric label="DMS Stock Date" value={formatDate(stockImport.dms_upload_date)} /></Grid>
                 <Grid item xs={12} sm={6} md={3}><Metric label="Products Compared" value={unitFormat(stockImport.row_count)} /></Grid>
                 <Grid item xs={12} sm={6} md={3}><Metric label="Physical Total Pcs" value={unitFormat(stockImport.total_physical_pieces)} /></Grid>
@@ -259,12 +266,11 @@ function CurrentStock() {
               <MDBox p={3} pb={2}>
                 <MDTypography variant="h6" fontWeight="medium">Current Stock Items</MDTypography>
                 <MDTypography variant="caption" color="text" display="block">
-                  Use the date filter to calculate Current Stock for a specific DMS upload.
+                  Select a DMS import to auto-calculate Current Stock. No manual entry is required.
                 </MDTypography>
                 {selectedDmsImport && (
                   <MDTypography variant="caption" color="text" display="block" mt={0.5}>
-                    DMS date: {formatDate(selectedDmsImport.upload_date)}
-                    {selectedDmsImport.file_name ? ` | File: ${selectedDmsImport.file_name}` : ""}
+                    DMS import: {formatDmsImportLabel(selectedDmsImport)}
                   </MDTypography>
                 )}
                 <MDTypography variant="caption" color="info" display="block" mt={0.5}>
@@ -277,14 +283,14 @@ function CurrentStock() {
                     <FormControl size="small" fullWidth>
                       <Select
                         displayEmpty
-                        value={stockListDateFilter}
-                        onChange={handleDateChange}
+                        value={stockListImportFilter}
+                        onChange={handleImportChange}
                         sx={{ height: 44, backgroundColor: "#fff" }}
                       >
-                        <MenuItem value="">Latest Upload</MenuItem>
+                        <MenuItem value="">Latest Import</MenuItem>
                         {dmsImports.map((stock) => (
-                          <MenuItem key={stock.id} value={stock.upload_date}>
-                            {formatDate(stock.upload_date)}
+                          <MenuItem key={stock.id} value={String(stock.id)}>
+                            {formatDmsImportLabel(stock)}
                           </MenuItem>
                         ))}
                       </Select>
@@ -301,7 +307,7 @@ function CurrentStock() {
                   <Grid item xs={12} md={2}><MDInput label="Search ERP ID" fullWidth value={erpSearch} onChange={(event) => setErpSearch(event.target.value)} /></Grid>
                   <Grid item xs={12} md={3}><MDInput label="Search Product" fullWidth value={productSearch} onChange={(event) => setProductSearch(event.target.value)} /></Grid>
                   <Grid item xs={12} md={2}>
-                    <MDButton color="dark" variant="outlined" fullWidth onClick={() => { setStockListDateFilter(""); setDivisionFilter(""); setErpSearch(""); setProductSearch(""); }}>
+                    <MDButton color="dark" variant="outlined" fullWidth onClick={() => { setStockListImportFilter(""); setDivisionFilter(""); setErpSearch(""); setProductSearch(""); }}>
                       <Icon sx={{ mr: 1 }}>filter_alt_off</Icon>Clear
                     </MDButton>
                   </Grid>
@@ -333,7 +339,7 @@ function CurrentStock() {
                     </TableHead>
                     <TableBody>
                       {items.length === 0 && (
-                        <TableRow><TableCell colSpan={17} align="center" sx={tableBodySx}><MDTypography variant="button" color="text">{selectedDmsImportId ? "Upload Physical Stock for this DMS date, then calculate Current Stock." : "Choose a DMS stock date first."}</MDTypography></TableCell></TableRow>
+                        <TableRow><TableCell colSpan={17} align="center" sx={tableBodySx}><MDTypography variant="button" color="text">{selectedDmsImportId ? "Add Physical Stock for this DMS import to auto-calculate Current Stock." : "Choose a DMS import first."}</MDTypography></TableCell></TableRow>
                       )}
                       {items.length > 0 && filteredItems.length === 0 && (
                         <TableRow><TableCell colSpan={17} align="center" sx={tableBodySx}><MDTypography variant="button" color="text">No rows match the selected filters.</MDTypography></TableCell></TableRow>

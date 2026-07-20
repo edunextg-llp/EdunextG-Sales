@@ -131,6 +131,17 @@ const parseDmsImportId = (value) => {
 export const getCurrentStock = async (req, res) => {
     try {
         let dmsImportId = parseDmsImportId(req.query.dmsImportId);
+        const companyName = String(req.query.companyName || '').trim();
+
+        if (!dmsImportId && companyName) {
+            const companyImport = await DmsStockModel.getLatestImportByCompanyName(companyName);
+            if (!companyImport) {
+                return res.status(404).json({
+                    error: `No DMS stock upload found for company "${companyName}".`,
+                });
+            }
+            dmsImportId = companyImport.id;
+        }
 
         if (!dmsImportId) {
             const latestImport = await DmsStockModel.getLatestImport();
@@ -149,23 +160,39 @@ export const getCurrentStock = async (req, res) => {
             return res.status(404).json({ error: 'Selected DMS stock upload was not found.' });
         }
 
-        const physicalResult = await PhysicalStockModel.getLatestByDmsImportId(dmsImportId);
-        if (!physicalResult?.items?.length) {
+        const [physicalItems, physicalImports, dmsItems] = await Promise.all([
+            PhysicalStockModel.getMergedItemsByDmsImportId(dmsImportId, 2000),
+            PhysicalStockModel.getImportsByDmsImportId(dmsImportId),
+            DmsStockModel.getItems(dmsImportId, 2000),
+        ]);
+
+        if (!physicalItems.length) {
             return res.status(404).json({
-                error: 'Physical stock is not uploaded for this DMS date. Upload Physical Stock first.',
+                error: 'Physical stock is not available for this DMS import. Add Physical Stock first.',
             });
         }
 
-        const dmsItems = await DmsStockModel.getItems(dmsImportId, 2000);
-        const items = buildCurrentStockDiff(physicalResult.items, dmsItems);
+        if (!dmsItems.length) {
+            return res.status(404).json({
+                error: 'DMS stock has no products for this import.',
+            });
+        }
+
+        const items = buildCurrentStockDiff(physicalItems, dmsItems)
+            .sort((left, right) => String(left.product_erp_id || '').localeCompare(String(right.product_erp_id || '')));
         const summary = buildCurrentStockSummary(items);
+        const physicalFileNames = [...new Set(physicalImports.map((entry) => entry.file_name).filter(Boolean))];
 
         return res.status(200).json({
             import: {
                 dms_import_id: dmsImportId,
+                company_id: dmsResult.import.company_id || null,
+                company_name: dmsResult.import.company_name || null,
                 dms_upload_date: dmsResult.import.upload_date,
                 dms_file_name: dmsResult.import.file_name,
-                physical_file_name: physicalResult.import?.file_name || null,
+                physical_file_name: physicalFileNames[0] || null,
+                physical_file_names: physicalFileNames,
+                physical_import_count: physicalImports.length,
                 row_count: items.length,
                 ...summary,
             },

@@ -752,6 +752,14 @@ export const recordSales = async (req, res) => {
                 deliveryBoyId,
                 vehicleNo,
                 paymentMode: 'cash',
+                lineItems: Array.isArray(item.lineItems)
+                    ? item.lineItems
+                        .map((line) => ({
+                            productErpId: String(line.productErpId || line.product_erp_id || '').trim(),
+                            qty: Number(line.qty) || 0,
+                        }))
+                        .filter((line) => line.productErpId && line.productErpId !== '__existing_sale__' && line.qty > 0)
+                    : [],
             });
         }
 
@@ -847,7 +855,9 @@ export const recordSales = async (req, res) => {
             }
         }
 
-        const savedSales = await StaffModel.saveSales(id, date, validatedSales);
+        const savedSales = await StaffModel.saveSales(id, date, validatedSales, {
+            companyName: resolvedCompanyName,
+        });
         const dayName = new Intl.DateTimeFormat('en-US', { weekday: 'long' }).format(
             new Date(`${date}T12:00:00`)
         );
@@ -864,6 +874,14 @@ export const recordSales = async (req, res) => {
         });
     } catch (error) {
         console.error('Error recording sales:', error);
+        if (
+            error.message?.includes('Insufficient stock')
+            || error.message?.includes('not available in current stock')
+            || error.message?.includes('Physical stock is not available')
+            || error.message?.includes('No DMS stock upload found')
+        ) {
+            return res.status(400).json({ error: error.message });
+        }
         if (error.code === 'ER_DUP_ENTRY') {
             return res.status(400).json({
                 error:

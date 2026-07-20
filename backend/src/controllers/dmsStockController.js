@@ -294,3 +294,118 @@ export const getDmsStockImports = async (req, res) => {
         res.status(500).json({ error: 'Internal server error' });
     }
 };
+
+export const searchDmsStockProducts = async (req, res) => {
+    try {
+        const companyId = parseInt(req.query.companyId, 10);
+        if (!Number.isFinite(companyId) || companyId <= 0) {
+            return res.status(400).json({ error: 'Please select a company.' });
+        }
+
+        const search = String(req.query.search || '').trim();
+        const products = await DmsStockModel.searchProductsByErpId(companyId, search);
+        res.status(200).json({ products });
+    } catch (error) {
+        console.error('Error searching DMS stock products:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+};
+
+export const lookupDmsStockProduct = async (req, res) => {
+    try {
+        const companyId = parseInt(req.query.companyId, 10);
+        const erpId = String(req.query.erpId || '').trim();
+
+        if (!Number.isFinite(companyId) || companyId <= 0) {
+            return res.status(400).json({ error: 'Please select a company.' });
+        }
+        if (!erpId) {
+            return res.status(400).json({ error: 'Product ERP ID is required.' });
+        }
+
+        const product = await DmsStockModel.getLatestProductByErpId(companyId, erpId);
+        if (!product) {
+            return res.status(404).json({ error: 'Product not found for this ERP ID.' });
+        }
+
+        res.status(200).json({ product });
+    } catch (error) {
+        console.error('Error looking up DMS stock product:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+};
+
+function manualItemToRow(item = {}) {
+    return {
+        'Product ERP ID': item.productErpId,
+        'SKU Name': item.productName,
+        'Variant Name': item.variantName,
+        'Pcs/Box': item.pcsPerBox,
+        'Current Stock In Case': item.currentStockInCase,
+        'Current Stock In Pcs': item.currentStockInPcs,
+        'Total Current Stock In Pcs': item.totalCurrentStockInPcs,
+        'Price/Pcs': item.pricePerPiece,
+        MRP: item.mrp,
+        'Total Value': item.totalValue,
+    };
+}
+
+export const createManualDmsStock = async (req, res) => {
+    try {
+        const companyId = parseInt(req.body?.companyId, 10);
+        if (!Number.isFinite(companyId) || companyId <= 0) {
+            return res.status(400).json({ error: 'Please select a company.' });
+        }
+
+        const company = await CompanyModel.getById(companyId);
+        if (!company) {
+            return res.status(400).json({ error: 'Selected company was not found.' });
+        }
+
+        const items = Array.isArray(req.body?.items) ? req.body.items : [];
+        if (!items.length) {
+            return res.status(400).json({ error: 'Please add at least one stock item.' });
+        }
+
+        const productDivision = String(company.name || '').trim();
+        const rows = items
+            .map((item) => normalizeStockRow(manualItemToRow(item)))
+            .filter((row) => row.productErpId || row.productName)
+            .map((row) => ({
+                ...row,
+                productDivision,
+            }));
+
+        if (!rows.length) {
+            return res.status(400).json({ error: 'No valid stock rows found. Product ERP ID or SKU Name is required.' });
+        }
+
+        const uploadDate = normalizeUploadDate(req.body?.uploadDate);
+        const existingImport = await DmsStockModel.getManualImportByCompanyAndDate(companyId, uploadDate);
+
+        let result;
+        if (existingImport) {
+            result = await DmsStockModel.upsertItemsToImport(existingImport.id, rows);
+        } else {
+            const summary = buildSummary(rows);
+            result = await DmsStockModel.createImport({
+                fileName: 'Manual Entry',
+                companyId,
+                uploadDate,
+                rowCount: rows.length,
+                summary,
+                rows,
+            });
+        }
+
+        res.status(201).json({
+            message: existingImport
+                ? 'DMS stock updated successfully'
+                : 'DMS stock saved successfully',
+            ...result,
+        });
+    } catch (error) {
+        console.error('Error saving manual DMS stock:', error);
+        res.status(error.statusCode || 500).json({ error: error.message || 'Internal server error' });
+    }
+};

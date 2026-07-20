@@ -856,6 +856,7 @@ function AddSales() {
           itemCount: parseInt(itemCount, 10),
           invoiceNumber,
           price: parseFloat(price),
+          lineItems: Array.isArray(lineItems) ? lineItems : [],
         },
       ],
     };
