@@ -129,13 +129,25 @@ function DmsStock() {
   const [uploading, setUploading] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
-  const [divisionFilter, setDivisionFilter] = useState("");
   const [erpSearch, setErpSearch] = useState("");
   const [productSearch, setProductSearch] = useState("");
-  const [stockListDateFilter, setStockListDateFilter] = useState("");
+  const [stockListImportFilter, setStockListImportFilter] = useState("");
   const [importDates, setImportDates] = useState([]);
   const [uploadDate, setUploadDate] = useState(() => getTodayLocalDate());
   const [uploadModalOpen, setUploadModalOpen] = useState(false);
+  const [companies, setCompanies] = useState([]);
+  const [selectedCompanyId, setSelectedCompanyId] = useState("");
+
+  const fetchCompanies = async () => {
+    try {
+      const response = await fetch(`${API}/staff/companies`);
+      if (response.ok) {
+        setCompanies(await response.json());
+      }
+    } catch (fetchError) {
+      console.error("Error fetching companies:", fetchError);
+    }
+  };
 
   const fetchImportDates = async () => {
     try {
@@ -149,13 +161,13 @@ function DmsStock() {
     }
   };
 
-  const fetchLatestStock = async (uploadDateFilter = stockListDateFilter) => {
+  const fetchLatestStock = async (importFilter = stockListImportFilter) => {
     setLoading(true);
     setError("");
     try {
       const params = new URLSearchParams();
-      if (uploadDateFilter) {
-        params.set("uploadDate", uploadDateFilter);
+      if (importFilter) {
+        params.set("importId", importFilter);
       }
       const query = params.toString();
       const response = await fetch(`${API}/staff/dms-stock${query ? `?${query}` : ""}`);
@@ -174,24 +186,17 @@ function DmsStock() {
 
   useEffect(() => {
     fetchImportDates();
+    fetchCompanies();
   }, []);
 
   useEffect(() => {
-    fetchLatestStock(stockListDateFilter);
+    fetchLatestStock(stockListImportFilter);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [stockListDateFilter]);
+  }, [stockListImportFilter]);
 
   const uploadDisabled = useMemo(
-    () => !selectedFile || !uploadDate || uploading,
-    [selectedFile, uploadDate, uploading]
-  );
-
-  const divisionOptions = useMemo(
-    () =>
-      [...new Set(items.map((item) => item.product_division).filter(Boolean))].sort((a, b) =>
-        a.localeCompare(b)
-      ),
-    [items]
+    () => !selectedFile || !uploadDate || !selectedCompanyId || uploading,
+    [selectedFile, uploadDate, selectedCompanyId, uploading]
   );
 
   const filteredItems = useMemo(() => {
@@ -199,7 +204,6 @@ function DmsStock() {
     const normalizedProductSearch = productSearch.trim().toLowerCase();
 
     return items.filter((item) => {
-      const matchesDivision = !divisionFilter || item.product_division === divisionFilter;
       const matchesErp =
         !normalizedErpSearch ||
         String(item.product_erp_id || "").toLowerCase().includes(normalizedErpSearch);
@@ -207,9 +211,9 @@ function DmsStock() {
         !normalizedProductSearch ||
         String(item.product_name || "").toLowerCase().includes(normalizedProductSearch);
 
-      return matchesDivision && matchesErp && matchesProduct;
+      return matchesErp && matchesProduct;
     });
-  }, [divisionFilter, erpSearch, items, productSearch]);
+  }, [erpSearch, items, productSearch]);
 
   const handleFileChange = (event) => {
     const file = event.target.files?.[0] || null;
@@ -220,6 +224,7 @@ function DmsStock() {
 
   const resetUploadForm = () => {
     setSelectedFile(null);
+    setSelectedCompanyId("");
     setMessage("");
     setError("");
     setUploadDate(getTodayLocalDate());
@@ -241,10 +246,15 @@ function DmsStock() {
       setError("Please choose a CSV or Excel file.");
       return;
     }
+    if (!selectedCompanyId) {
+      setError("Please select a company.");
+      return;
+    }
 
     const formData = new FormData();
     formData.append("file", selectedFile);
     formData.append("uploadDate", uploadDate);
+    formData.append("companyId", selectedCompanyId);
 
     setUploading(true);
     setMessage("");
@@ -264,7 +274,9 @@ function DmsStock() {
       if (fileInputRef.current) fileInputRef.current.value = "";
       setMessage(data.message || "DMS stock uploaded successfully.");
       await fetchImportDates();
-      setStockListDateFilter(uploadDate);
+      if (data.import?.id) {
+        setStockListImportFilter(String(data.import.id));
+      }
       setUploadModalOpen(false);
       resetUploadForm();
     } catch (uploadError) {
@@ -284,6 +296,9 @@ function DmsStock() {
               <Grid container spacing={2}>
                 <Grid item xs={12} sm={6} md={3}>
                   <Metric label="Upload Date" value={formatUploadDate(getImportUploadDate(stockImport))} />
+                </Grid>
+                <Grid item xs={12} sm={6} md={3}>
+                  <Metric label="Company" value={stockImport.company_name || "N/A"} />
                 </Grid>
                 <Grid item xs={12} sm={6} md={3}>
                   <Metric label="Rows Stored" value={unitFormat(stockImport.row_count)} />
@@ -317,6 +332,7 @@ function DmsStock() {
                   {stockImport && (
                     <MDTypography variant="caption" color="text" display="block" mt={0.5}>
                       Upload Date: {formatUploadDate(getImportUploadDate(stockImport))}
+                      {stockImport.company_name ? ` | Company: ${stockImport.company_name}` : ""}
                       {stockImport.file_name ? ` | File: ${stockImport.file_name}` : ""}
                     </MDTypography>
                   )}
@@ -346,35 +362,19 @@ function DmsStock() {
               </MDBox>
               <MDBox px={3} pb={3}>
                 <Grid container spacing={2} mb={2} alignItems="center">
-                  <Grid item xs={12} md={2}>
+                  <Grid item xs={12} md={3}>
                     <FormControl size="small" fullWidth>
                       <Select
                         displayEmpty
-                        value={stockListDateFilter}
-                        onChange={(event) => setStockListDateFilter(event.target.value)}
+                        value={stockListImportFilter}
+                        onChange={(event) => setStockListImportFilter(event.target.value)}
                         sx={{ height: 44, backgroundColor: "#fff" }}
                       >
                         <MenuItem value="">Latest Upload</MenuItem>
                         {importDates.map((entry) => (
-                          <MenuItem key={entry.id} value={entry.upload_date}>
+                          <MenuItem key={entry.id} value={String(entry.id)}>
                             {formatUploadDate(entry.upload_date)}
-                          </MenuItem>
-                        ))}
-                      </Select>
-                    </FormControl>
-                  </Grid>
-                  <Grid item xs={12} md={2}>
-                    <FormControl size="small" fullWidth>
-                      <Select
-                        displayEmpty
-                        value={divisionFilter}
-                        onChange={(event) => setDivisionFilter(event.target.value)}
-                        sx={{ height: 44, backgroundColor: "#fff" }}
-                      >
-                        <MenuItem value="">All Divisions</MenuItem>
-                        {divisionOptions.map((division) => (
-                          <MenuItem key={division} value={division}>
-                            {division}
+                            {entry.company_name ? ` - ${entry.company_name}` : ""}
                           </MenuItem>
                         ))}
                       </Select>
@@ -388,7 +388,7 @@ function DmsStock() {
                       onChange={(event) => setErpSearch(event.target.value)}
                     />
                   </Grid>
-                  <Grid item xs={12} md={3}>
+                  <Grid item xs={12} md={4}>
                     <MDInput
                       label="Search Product"
                       fullWidth
@@ -402,8 +402,7 @@ function DmsStock() {
                       variant="outlined"
                       fullWidth
                       onClick={() => {
-                        setStockListDateFilter("");
-                        setDivisionFilter("");
+                        setStockListImportFilter("");
                         setErpSearch("");
                         setProductSearch("");
                       }}
@@ -414,13 +413,13 @@ function DmsStock() {
                   </Grid>
                 </Grid>
                 <TableContainer component={Paper} sx={stickyTableContainerSx}>
-                  <Table sx={stickyTableSx(1320)}>
+                  <Table sx={stickyTableSx(1280)}>
                     <TableHead sx={{ display: "table-header-group", backgroundColor: "#f9fafb" }}>
                       <TableRow>
                         <TableCell sx={stickyColumnSx(0, { isHead: true, baseSx: tableHeadSx })}>Sr No</TableCell>
                         <TableCell sx={stickyColumnSx(1, { isHead: true, baseSx: tableHeadSx })}>Product ERP ID</TableCell>
                         <TableCell sx={stickyColumnSx(2, { isHead: true, baseSx: tableHeadSx })}>SKU Name</TableCell>
-                        <TableCell sx={stickyColumnSx(3, { isHead: true, baseSx: tableHeadSx })}>Product Division</TableCell>
+                        <TableCell sx={stickyColumnSx(3, { isHead: true, baseSx: tableHeadSx })}>Company</TableCell>
                         <TableCell sx={stickyHeadRowSx(tableHeadSx)}>Upload Date</TableCell>
                         <TableCell sx={stickyHeadRowSx(tableHeadSx)}>Variant Name</TableCell>
                         <TableCell align="right" sx={stickyHeadRowSx(tableHeadSx)}>Pcs/Box</TableCell>
@@ -456,7 +455,9 @@ function DmsStock() {
                           <TableCell sx={stickyColumnSx(0, { baseSx: tableBodySx })}>{index + 1}</TableCell>
                           <TableCell sx={stickyColumnSx(1, { baseSx: tableBodySx })}>{item.product_erp_id}</TableCell>
                           <TableCell sx={stickyColumnSx(2, { baseSx: { ...tableBodySx, overflow: "hidden", textOverflow: "ellipsis" } })}>{item.product_name}</TableCell>
-                          <TableCell sx={stickyColumnSx(3, { baseSx: tableBodySx })}>{item.product_division}</TableCell>
+                          <TableCell sx={stickyColumnSx(3, { baseSx: tableBodySx })}>
+                            {item.company_name || stockImport?.company_name || item.product_division || "N/A"}
+                          </TableCell>
                           <TableCell sx={tableBodySx}>
                             {formatUploadDate(item.upload_date || getImportUploadDate(stockImport))}
                           </TableCell>
@@ -491,6 +492,28 @@ function DmsStock() {
         <DialogContent dividers>
           <MDBox pt={1}>
             <Grid container spacing={2} alignItems="center">
+              <Grid item xs={12}>
+                <FormControl fullWidth>
+                  <MDTypography variant="caption" color="text" fontWeight="medium" mb={0.5}>
+                    Company
+                  </MDTypography>
+                  <Select
+                    displayEmpty
+                    value={selectedCompanyId}
+                    onChange={(event) => setSelectedCompanyId(event.target.value)}
+                    sx={{ height: 44, backgroundColor: "#fff" }}
+                  >
+                    <MenuItem value="" disabled>
+                      Choose Company
+                    </MenuItem>
+                    {companies.map((company) => (
+                      <MenuItem key={company.id} value={String(company.id)}>
+                        {company.name}
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+              </Grid>
               <Grid item xs={12}>
                 <MDBox
                   display="flex"

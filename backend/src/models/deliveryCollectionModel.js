@@ -96,6 +96,28 @@ class DeliveryCollectionModel {
         return rows.map(DeliveryCollectionModel.normalizeRow);
     }
 
+    static async getBySaleId(saleId) {
+        const [rows] = await db.execute(
+            `SELECT dbc.id, dbc.sale_id, dbc.delivery_boy_id, dbc.payment_mode, dbc.amount,
+                    dbc.cash_details, dbc.reference_no,
+                    DATE_FORMAT(dbc.reference_date, '%Y-%m-%d') AS reference_date,
+                    dbc.credit_days, dbc.remarks,
+                    DATE_FORMAT(dbc.created_at, '%Y-%m-%d %H:%i:%s') AS created_at,
+                    DATE_FORMAT(dbc.updated_at, '%Y-%m-%d %H:%i:%s') AS updated_at,
+                    ss.invoice_number, ss.price, ss.packaging_status,
+                    sc.outlet_name,
+                    dboy.name AS delivery_boy_name
+             FROM delivery_boy_collections dbc
+             INNER JOIN staff_sales ss ON ss.id = dbc.sale_id
+             LEFT JOIN staff_counters sc ON sc.id = ss.outlet_id
+             LEFT JOIN delivery_boys dboy ON dboy.id = dbc.delivery_boy_id
+             WHERE dbc.sale_id = ?
+             ORDER BY dbc.updated_at DESC, dbc.id DESC`,
+            [saleId]
+        );
+        return rows.map(DeliveryCollectionModel.normalizeRow);
+    }
+
     static async getAll({ search = '' } = {}) {
         const params = [];
         let where = '';

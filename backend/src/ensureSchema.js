@@ -120,6 +120,41 @@ export async function ensureSchema() {
             `ALTER TABLE staff ADD COLUMN staff_type ENUM('distributor', 'cnf') NOT NULL DEFAULT 'distributor'`,
             'staff_type on staff'
         );
+        await tryQuery(
+            connection,
+            `ALTER TABLE staff ADD COLUMN dob DATE NULL`,
+            'dob on staff'
+        );
+        await tryQuery(
+            connection,
+            `ALTER TABLE staff ADD COLUMN whatsapp_number VARCHAR(20) NULL`,
+            'whatsapp_number on staff'
+        );
+        await tryQuery(
+            connection,
+            `ALTER TABLE staff ADD COLUMN aadhar_no VARCHAR(20) NULL`,
+            'aadhar_no on staff'
+        );
+        await tryQuery(
+            connection,
+            `ALTER TABLE staff ADD COLUMN aadhar_document_url TEXT NULL`,
+            'aadhar_document_url on staff'
+        );
+        await tryQuery(
+            connection,
+            `ALTER TABLE staff ADD COLUMN pcc_certificate_url TEXT NULL`,
+            'pcc_certificate_url on staff'
+        );
+        await tryQuery(
+            connection,
+            `ALTER TABLE staff ADD COLUMN staff_category ENUM('company_staff', 'bawarchee_staff') NOT NULL DEFAULT 'company_staff'`,
+            'staff_category on staff'
+        );
+        await tryQuery(
+            connection,
+            `ALTER TABLE staff ADD COLUMN is_active TINYINT(1) NOT NULL DEFAULT 1`,
+            'is_active on staff'
+        );
 
         await tryQuery(
             connection,
@@ -147,6 +182,11 @@ export async function ensureSchema() {
             connection,
             `ALTER TABLE staff_counters ADD COLUMN location_name VARCHAR(255) NULL`,
             'location_name on staff_counters'
+        );
+        await tryQuery(
+            connection,
+            `ALTER TABLE staff_counters ADD COLUMN address TEXT NULL`,
+            'address on staff_counters'
         );
         await tryQuery(
             connection,
@@ -188,6 +228,21 @@ export async function ensureSchema() {
             connection,
             `ALTER TABLE delivery_boys ADD COLUMN delivery_passcode_hash VARCHAR(255) NULL`,
             'delivery_passcode_hash on delivery_boys'
+        );
+        await tryQuery(
+            connection,
+            `ALTER TABLE delivery_boys ADD COLUMN role ENUM('delivery_boy', 'packaging_staff') NOT NULL DEFAULT 'delivery_boy'`,
+            'role on delivery_boys'
+        );
+        await tryQuery(
+            connection,
+            `ALTER TABLE delivery_boys ADD COLUMN is_active TINYINT(1) NOT NULL DEFAULT 1`,
+            'is_active on delivery_boys'
+        );
+        await tryQuery(
+            connection,
+            `ALTER TABLE delivery_boys ADD COLUMN aadhar_no VARCHAR(20) NULL`,
+            'aadhar_no on delivery_boys'
         );
 
         await connection.query(`
@@ -336,6 +391,19 @@ export async function ensureSchema() {
             connection,
             `ALTER TABLE staff_sales MODIFY COLUMN box_count INT NULL`,
             'box_count nullable on staff_sales'
+        );
+
+        await tryQuery(
+            connection,
+            `ALTER TABLE staff_sales ADD COLUMN packed_by_id INT NULL`,
+            'packed_by_id on staff_sales'
+        );
+
+        await tryQuery(
+            connection,
+            `ALTER TABLE staff_sales ADD CONSTRAINT fk_staff_sales_packed_by
+             FOREIGN KEY (packed_by_id) REFERENCES delivery_boys(id) ON DELETE SET NULL`,
+            'packed_by_id foreign key on staff_sales'
         );
 
         await tryQuery(
@@ -543,6 +611,12 @@ export async function ensureSchema() {
         })) {
             await tryQuery(connection, `ALTER TABLE dms_stock_imports ADD COLUMN ${column} ${definition}`, `${column} on dms_stock_imports`);
         }
+
+        await tryQuery(
+            connection,
+            `ALTER TABLE dms_stock_imports ADD COLUMN company_id INT NULL AFTER file_name`,
+            'company_id on dms_stock_imports'
+        );
 
         for (const [column, definition] of Object.entries({
             pcs_per_box: 'DECIMAL(14, 4) NOT NULL DEFAULT 0.0000',

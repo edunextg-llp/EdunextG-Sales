@@ -270,11 +270,13 @@ function ChalanDelivery() {
     const assigneeName = String(row.assignee_name || row.assigneeName || "").toLowerCase();
     const staffName = String(row.staff_name || "").toLowerCase();
     const deliveryBoyName = String(row.delivery_boy_name || "").toLowerCase();
+    const companyName = String(row.company_name || row.companyName || "").toLowerCase();
     return (
       code.includes(search) ||
       assigneeName.includes(search) ||
       staffName.includes(search) ||
-      deliveryBoyName.includes(search)
+      deliveryBoyName.includes(search) ||
+      companyName.includes(search)
     );
   };
 
@@ -405,6 +407,7 @@ function ChalanDelivery() {
                         </TableCell>
                         <TableCell sx={paginatedTableHeadCellSx}>Code</TableCell>
                         <TableCell sx={paginatedTableHeadCellSx}>Staff / Delivery Name</TableCell>
+                        <TableCell sx={paginatedTableHeadCellSx}>Company</TableCell>
                         <TableCell align="right" sx={paginatedTableHeadCellSx}>
                           Amount
                         </TableCell>
@@ -483,6 +486,9 @@ function ChalanDelivery() {
                               </TableCell>
                               <TableCell sx={{ borderBottom: borderCol, py: 2, color: txColor }}>
                                 {row.assignee_name || row.assigneeName || "—"}
+                              </TableCell>
+                              <TableCell sx={{ borderBottom: borderCol, py: 2, color: txColor }}>
+                                {row.company_name || row.companyName || "N/A"}
                               </TableCell>
                               <TableCell
                                 align="right"
@@ -633,7 +639,7 @@ function ChalanDelivery() {
                         })
                       ) : (
                         <TableRow>
-                          <TableCell colSpan={16} align="center" sx={{ py: 3, borderBottom: 0 }}>
+                          <TableCell colSpan={17} align="center" sx={{ py: 3, borderBottom: 0 }}>
                             <MDTypography variant="body2" color="text">
                               No deliveries found.
                             </MDTypography>

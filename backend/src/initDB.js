@@ -47,6 +47,13 @@ async function initDB() {
             contact_no VARCHAR(20) NOT NULL,
             staff_type ENUM('distributor', 'cnf') NOT NULL DEFAULT 'distributor',
             company_id INT NULL,
+            dob DATE NULL,
+            whatsapp_number VARCHAR(20) NULL,
+            aadhar_no VARCHAR(20) NULL,
+            aadhar_document_url TEXT NULL,
+            pcc_certificate_url TEXT NULL,
+            staff_category ENUM('company_staff', 'bawarchee_staff') NOT NULL DEFAULT 'company_staff',
+            is_active TINYINT(1) NOT NULL DEFAULT 1,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE SET NULL
         );
@@ -93,6 +100,25 @@ async function initDB() {
         }
     }
 
+    const staffProfileColumns = [
+        { sql: 'ALTER TABLE staff ADD COLUMN dob DATE NULL', label: 'dob' },
+        { sql: 'ALTER TABLE staff ADD COLUMN whatsapp_number VARCHAR(20) NULL', label: 'whatsapp_number' },
+        { sql: 'ALTER TABLE staff ADD COLUMN aadhar_no VARCHAR(20) NULL', label: 'aadhar_no' },
+        { sql: 'ALTER TABLE staff ADD COLUMN aadhar_document_url TEXT NULL', label: 'aadhar_document_url' },
+        { sql: 'ALTER TABLE staff ADD COLUMN pcc_certificate_url TEXT NULL', label: 'pcc_certificate_url' },
+        { sql: "ALTER TABLE staff ADD COLUMN staff_category ENUM('company_staff', 'bawarchee_staff') NOT NULL DEFAULT 'company_staff'", label: 'staff_category' },
+        { sql: 'ALTER TABLE staff ADD COLUMN is_active TINYINT(1) NOT NULL DEFAULT 1', label: 'is_active' },
+    ];
+
+    for (const column of staffProfileColumns) {
+        try {
+            await connection.query(column.sql);
+            console.log(`Added ${column.label} to staff table`);
+        } catch (err) {
+            console.log(`${column.label} column may already exist on staff`);
+        }
+    }
+
     // Create Staff Locations table
     await connection.query(`
         CREATE TABLE IF NOT EXISTS staff_locations (
@@ -117,6 +143,7 @@ async function initDB() {
             contact_number VARCHAR(20) NOT NULL,
             whatsapp_number VARCHAR(20) NULL,
             location_name VARCHAR(255) NULL,
+            address TEXT NULL,
             google_location TEXT NULL,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (staff_id) REFERENCES staff(id) ON DELETE CASCADE
@@ -152,6 +179,15 @@ async function initDB() {
         console.log('Added whatsapp_number to staff_counters table');
     } catch (err) {
         console.log('whatsapp_number column may already exist on staff_counters');
+    }
+
+    try {
+        await connection.query(`
+            ALTER TABLE staff_counters ADD COLUMN address TEXT NULL
+        `);
+        console.log('Added address to staff_counters table');
+    } catch (err) {
+        console.log('address column may already exist on staff_counters');
     }
 
     // Create Staff Sales table
@@ -228,6 +264,9 @@ async function initDB() {
             delivery_passcode VARCHAR(20) NULL,
             delivery_passcode_hash VARCHAR(255) NULL,
             company_id INT NULL,
+            role ENUM('delivery_boy', 'packaging_staff') NOT NULL DEFAULT 'delivery_boy',
+            is_active TINYINT(1) NOT NULL DEFAULT 1,
+            aadhar_no VARCHAR(20) NULL,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             ,FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE SET NULL
         );
@@ -278,6 +317,27 @@ async function initDB() {
         if (err.code !== 'ER_DUP_FIELDNAME') {
             console.log('delivery_passcode_hash column may already exist on delivery_boys');
         }
+    }
+
+    try {
+        await connection.query(`ALTER TABLE delivery_boys ADD COLUMN role ENUM('delivery_boy', 'packaging_staff') NOT NULL DEFAULT 'delivery_boy'`);
+        console.log('Added role to delivery_boys table');
+    } catch (err) {
+        console.log('role column may already exist on delivery_boys');
+    }
+
+    try {
+        await connection.query(`ALTER TABLE delivery_boys ADD COLUMN is_active TINYINT(1) NOT NULL DEFAULT 1`);
+        console.log('Added is_active to delivery_boys table');
+    } catch (err) {
+        console.log('is_active column may already exist on delivery_boys');
+    }
+
+    try {
+        await connection.query(`ALTER TABLE delivery_boys ADD COLUMN aadhar_no VARCHAR(20) NULL`);
+        console.log('Added aadhar_no to delivery_boys table');
+    } catch (err) {
+        console.log('aadhar_no column may already exist on delivery_boys');
     }
 
     await connection.query(`
@@ -507,6 +567,17 @@ async function initDB() {
     } catch (err) {
         if (err.code !== 'ER_DUP_FIELDNAME') {
             console.log('packet_count column may already exist on staff_sales');
+        }
+    }
+
+    try {
+        await connection.query(`
+            ALTER TABLE staff_sales ADD COLUMN packed_by_id INT NULL
+        `);
+        console.log('Added packed_by_id to staff_sales table');
+    } catch (err) {
+        if (err.code !== 'ER_DUP_FIELDNAME') {
+            console.log('packed_by_id column may already exist on staff_sales');
         }
     }
 

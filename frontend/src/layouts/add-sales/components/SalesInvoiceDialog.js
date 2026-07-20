@@ -230,21 +230,24 @@ export default function SalesInvoiceDialog({
   const [flatDiscount, setFlatDiscount] = useState("");
   const [roundOff, setRoundOff] = useState("0");
   const [remarks, setRemarks] = useState("");
-  const [dmsItems, setDmsItems] = useState([]);
-  const [loadingDms, setLoadingDms] = useState(false);
+  const [stockItems, setStockItems] = useState([]);
+  const [loadingStock, setLoadingStock] = useState(false);
   const [editPopup, setEditPopup] = useState({
     open: false,
     index: null,
     draft: { ...emptyLineItem },
   });
 
-  const companyDmsItems = useMemo(() => {
+  const companyStockItems = useMemo(() => {
     const selectedCompany = String(companyName || "").trim().toLowerCase();
-    if (!selectedCompany) return dmsItems;
-    return dmsItems.filter(
+    const items = stockItems.filter(
+      (item) => Number(item.total_current_stock_in_pcs) > 0 || item.product_erp_id
+    );
+    if (!selectedCompany) return items;
+    return items.filter(
       (item) => String(item.product_division || "").trim().toLowerCase() === selectedCompany
     );
-  }, [dmsItems, companyName]);
+  }, [stockItems, companyName]);
 
   const buildExistingSaleLine = (itemCount, price) => {
     const qty = Math.max(1, Number(itemCount) || 1);
@@ -282,25 +285,33 @@ export default function SalesInvoiceDialog({
     setEditPopup({ open: false, index: null, draft: { ...emptyLineItem } });
   }, [open, invoiceNumber, editMode, initialItemCount, initialPrice, initialLineItems]);
 
-  /* load DMS stock */
+  /* load Current Stock (Physical − DMS), not raw DMS stock */
   useEffect(() => {
     if (!open) return undefined;
     let active = true;
-    setLoadingDms(true);
-    fetch("https://bawarchee.edunextg.co/api/staff/dms-stock")
+    setLoadingStock(true);
+    fetch("https://bawarchee.edunextg.co/api/staff/current-stock")
       .then((r) => r.json().then((d) => ({ r, d })))
       .then(({ r, d }) => {
-        if (!r.ok) throw new Error(d.error || "Failed");
-        if (active) setDmsItems(d.items || []);
+        if (!r.ok) throw new Error(d.error || "Failed to load current stock");
+        if (active) setStockItems(d.items || []);
       })
-      .catch(() => { if (active) setDmsItems([]); })
-      .finally(() => { if (active) setLoadingDms(false); });
-    return () => { active = false; };
+      .catch(() => {
+        if (active) setStockItems([]);
+      })
+      .finally(() => {
+        if (active) setLoadingStock(false);
+      });
+    return () => {
+      active = false;
+    };
   }, [open]);
 
   /* ── derived strings ── */
   // const saleTo  = outlet ? `${outlet.outlet_name || ""}${outlet.outlet_erp_id ? `, Class: 0 Section: 0 Adm. No. : ${outlet.outlet_erp_id}` : ""}` : "";
-  const address = outlet ? `${outlet.location_name || ""}${outlet.contact_number ? ` Mobile:-${outlet.contact_number}` : ""}` : "";
+  const address = outlet
+    ? `${outlet.address || outlet.location_name || ""}${outlet.contact_number ? ` Mobile:-${outlet.contact_number}` : ""}`
+    : "";
 
   /* ── totals ── */
   const totals = useMemo(() => {
@@ -325,7 +336,7 @@ export default function SalesInvoiceDialog({
   /* ── available stock (minus already-added qty of same ERP) ── */
   const availableStock = useMemo(() => {
     if (!draft.productErpId) return 0;
-    const p = dmsItems.find((x) => x.product_erp_id === draft.productErpId);
+    const p = stockItems.find((x) => x.product_erp_id === draft.productErpId);
     if (!p) return 0;
     const orig = Number(p.total_current_stock_in_pcs) || 0;
     const used = lineItems.reduce((s, it, i) => {
@@ -333,14 +344,14 @@ export default function SalesInvoiceDialog({
       return it.productErpId === draft.productErpId ? s + (Number(it.qty) || 0) : s;
     }, 0);
     return Math.max(0, orig - used);
-  }, [draft.productErpId, dmsItems, lineItems, editingIdx]);
+  }, [draft.productErpId, stockItems, lineItems, editingIdx]);
 
   const draftCalc = calcLine(draft);
 
   const editPopupStock = useMemo(() => {
     const { draft: editDraft, index: editIndex } = editPopup;
     if (!editDraft.productErpId) return 0;
-    const p = dmsItems.find((x) => x.product_erp_id === editDraft.productErpId);
+    const p = stockItems.find((x) => x.product_erp_id === editDraft.productErpId);
     if (!p) return Number(editDraft.availableStock) || 0;
     const orig = Number(p.total_current_stock_in_pcs) || 0;
     const used = lineItems.reduce((s, it, i) => {
@@ -348,7 +359,7 @@ export default function SalesInvoiceDialog({
       return it.productErpId === editDraft.productErpId ? s + (Number(it.qty) || 0) : s;
     }, 0);
     return Math.max(0, orig - used);
-  }, [editPopup, dmsItems, lineItems]);
+  }, [editPopup, stockItems, lineItems]);
 
   const editPopupCalc = calcLine(editPopup.draft);
 
@@ -374,7 +385,7 @@ export default function SalesInvoiceDialog({
     if (Number(draft.qty) > availableStock) return alert("Qty exceeds available stock.");
     if (!draft.rate || Number(draft.rate) < 0) return alert("Enter a valid rate.");
 
-    const p = dmsItems.find((x) => x.product_erp_id === draft.productErpId);
+    const p = stockItems.find((x) => x.product_erp_id === draft.productErpId);
     const orig = p ? (Number(p.total_current_stock_in_pcs) || 0) : 0;
     const payload = { ...draft, availableStock: orig };
 
@@ -428,7 +439,7 @@ export default function SalesInvoiceDialog({
     }
     if (!editDraft.rate || Number(editDraft.rate) < 0) return alert("Enter a valid rate.");
 
-    const p = dmsItems.find((x) => x.product_erp_id === editDraft.productErpId);
+    const p = stockItems.find((x) => x.product_erp_id === editDraft.productErpId);
     const orig = p
       ? (Number(p.total_current_stock_in_pcs) || 0)
       : (Number(editDraft.availableStock) || 0);
@@ -582,10 +593,10 @@ export default function SalesInvoiceDialog({
           <Grid item xs={12} md={3.5}>
             <MDTypography sx={colLabelSx}>Description Name</MDTypography>
             <Autocomplete
-              options={companyDmsItems}
-              loading={loadingDms}
+              options={companyStockItems}
+              loading={loadingStock}
               size="small"
-              value={companyDmsItems.find((x) => x.product_erp_id === draft.productErpId) || null}
+              value={companyStockItems.find((x) => x.product_erp_id === draft.productErpId) || null}
               onChange={(_, prod) => handleProductChange(prod)}
               getOptionLabel={(item) => {
                 const orig = Number(item.total_current_stock_in_pcs) || 0;
@@ -594,9 +605,9 @@ export default function SalesInvoiceDialog({
                     ? s + (Number(li.qty) || 0) : s, 0);
                 return `${item.product_erp_id} — ${item.product_name}${item.variant_name ? ` (${item.variant_name})` : ""} [${Math.max(0, orig - used)}]`;
               }}
-              isOptionEqualToValue={(o, v) => o.id === v.id}
+              isOptionEqualToValue={(o, v) => o.product_erp_id === v.product_erp_id}
               renderInput={(params) => (
-                <MDInput {...params} placeholder="Search product…" fullWidth sx={goldInput} />
+                <MDInput {...params} placeholder="Search product from current stock…" fullWidth sx={goldInput} />
               )}
               sx={{
                 "& .MuiAutocomplete-inputRoot": { height: 26, fontSize: "0.78rem" },
@@ -1003,10 +1014,10 @@ export default function SalesInvoiceDialog({
             <Grid item xs={12}>
               <MDTypography sx={colLabelSx}>Description Name</MDTypography>
               <Autocomplete
-                options={companyDmsItems}
-                loading={loadingDms}
+                options={companyStockItems}
+                loading={loadingStock}
                 size="small"
-                value={companyDmsItems.find((x) => x.product_erp_id === editPopup.draft.productErpId) || null}
+                value={companyStockItems.find((x) => x.product_erp_id === editPopup.draft.productErpId) || null}
                 onChange={(_, prod) => handleEditPopupProductChange(prod)}
                 getOptionLabel={(item) => {
                   const orig = Number(item.total_current_stock_in_pcs) || 0;
@@ -1015,9 +1026,9 @@ export default function SalesInvoiceDialog({
                       ? s + (Number(li.qty) || 0) : s, 0);
                   return `${item.product_erp_id} — ${item.product_name}${item.variant_name ? ` (${item.variant_name})` : ""} [${Math.max(0, orig - used)}]`;
                 }}
-                isOptionEqualToValue={(o, v) => o.id === v.id}
+                isOptionEqualToValue={(o, v) => o.product_erp_id === v.product_erp_id}
                 renderInput={(params) => (
-                  <MDInput {...params} placeholder="Search product…" fullWidth sx={goldInput} />
+                  <MDInput {...params} placeholder="Search product from current stock…" fullWidth sx={goldInput} />
                 )}
               />
             </Grid>

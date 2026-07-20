@@ -157,11 +157,13 @@ function ChalanReturn() {
     const assigneeName = String(row.assignee_name || row.assigneeName || "").toLowerCase();
     const staffName = String(row.staff_name || "").toLowerCase();
     const deliveryBoyName = String(row.delivery_boy_name || "").toLowerCase();
+    const companyName = String(row.company_name || row.companyName || "").toLowerCase();
     return (
       code.includes(search) ||
       assigneeName.includes(search) ||
       staffName.includes(search) ||
-      deliveryBoyName.includes(search)
+      deliveryBoyName.includes(search) ||
+      companyName.includes(search)
     );
   };
 
@@ -579,6 +581,7 @@ function ChalanReturn() {
                         </TableCell>
                         <TableCell sx={paginatedTableHeadCellSx}>Code</TableCell>
                         <TableCell sx={paginatedTableHeadCellSx}>Staff / Delivery Name</TableCell>
+                        <TableCell sx={paginatedTableHeadCellSx}>Company</TableCell>
                         {activeTab === "pending" ? (
                           <>
                             <TableCell align="right" sx={paginatedTableHeadCellSx}>
@@ -658,6 +661,9 @@ function ChalanReturn() {
                                 </TableCell>
                                 <TableCell sx={{ borderBottom: "1px solid #cbd5e1", py: 2 }}>
                                   {row.assignee_name || row.assigneeName || "—"}
+                                </TableCell>
+                                <TableCell sx={{ borderBottom: "1px solid #cbd5e1", py: 2 }}>
+                                  {row.company_name || row.companyName || "N/A"}
                                 </TableCell>
                                 <TableCell
                                   align="right"
@@ -809,6 +815,9 @@ function ChalanReturn() {
                               <TableCell sx={{ borderBottom: "1px solid #cbd5e1", py: 2 }}>
                                 {row.assignee_name || row.assigneeName || "—"}
                               </TableCell>
+                              <TableCell sx={{ borderBottom: "1px solid #cbd5e1", py: 2 }}>
+                                {row.company_name || row.companyName || "N/A"}
+                              </TableCell>
                               <TableCell align="center" sx={{ borderBottom: "1px solid #cbd5e1", py: 2 }}>
                                 <Chip
                                   label={returnType === "full" ? "Full" : "Partial"}
@@ -885,7 +894,7 @@ function ChalanReturn() {
                       ) : (
                         <TableRow>
                           <TableCell
-                            colSpan={activeTab === "pending" ? 11 : 9}
+                            colSpan={activeTab === "pending" ? 12 : 10}
                             align="center"
                             sx={{ py: 3, borderBottom: 0 }}
                           >

@@ -17,6 +17,7 @@ import {
   DialogTitle,
   DialogContent,
   DialogActions,
+  InputLabel,
 } from "@mui/material";
 
 import MDBox from "components/MDBox";
@@ -51,6 +52,14 @@ function Packaging() {
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [historyDialog, setHistoryDialog] = useState({ open: false, sale: null, history: [] });
+  const [packerDialog, setPackerDialog] = useState({
+    open: false,
+    saleId: null,
+    selectedPackerId: "",
+    previousStatus: "",
+    fromSave: false,
+  });
+  const [packagingStaff, setPackagingStaff] = useState([]);
   const [savingSaleIds, setSavingSaleIds] = useState(new Set());
   const [page, setPage] = useState(1);
   const [rowsPerPage, setRowsPerPage] = useState(ROWS_PER_PAGE);
@@ -110,6 +119,23 @@ function Packaging() {
   }, [selectedDate, fetchSales]);
 
   useEffect(() => {
+    const fetchPackagingStaff = async () => {
+      try {
+        const response = await fetch(`${API}/delivery-boy`);
+        if (response.ok) {
+          const data = await response.json();
+          setPackagingStaff(
+            data.filter((person) => person.role === "packaging_staff" && Number(person.is_active) === 1)
+          );
+        }
+      } catch (error) {
+        console.error("Error fetching packaging staff:", error);
+      }
+    };
+    fetchPackagingStaff();
+  }, [API]);
+
+  useEffect(() => {
     setPage(1);
   }, [searchQuery, statusFilter, dateFilterMode, selectedDate, rowsPerPage]);
 
@@ -119,10 +145,31 @@ function Packaging() {
     const newData = [...salesData];
     const index = newData.findIndex(r => r.id === saleId);
     if (index === -1) return;
+
+    if (field === "packaging_status" && value === "packing_done") {
+      newData[index] = {
+        ...newData[index],
+        packaging_status: value,
+        status_update_date: "",
+        status_update_date_changed: false,
+      };
+      setSalesData(newData);
+      setPackerDialog({
+        open: true,
+        saleId,
+        selectedPackerId: newData[index].packed_by_id ? String(newData[index].packed_by_id) : "",
+        previousStatus: newData[index].original_packaging_status || "not_packing",
+        fromSave: false,
+      });
+      return;
+    }
+
     newData[index] = { ...newData[index], [field]: value };
     if (field === "packaging_status" && value !== newData[index].original_packaging_status) {
       newData[index].status_update_date = "";
       newData[index].status_update_date_changed = false;
+      newData[index].packed_by_id = "";
+      newData[index].packed_by_name = "";
     }
     if (field === "status_update_date") {
       newData[index].status_update_date_changed = true;
@@ -130,9 +177,89 @@ function Packaging() {
     setSalesData(newData);
   };
 
-  const handleSavePackaging = async (saleId) => {
+  const handleClosePackerDialog = (confirmed = false) => {
+    const { saleId, selectedPackerId, previousStatus, fromSave } = packerDialog;
+    if (confirmed && saleId) {
+      const selectedStaff = packagingStaff.find(
+        (person) => Number(person.id) === Number(selectedPackerId)
+      );
+      if (!selectedStaff) {
+        alert("Please select who completed the packing.");
+        return;
+      }
+      setSalesData((prev) =>
+        prev.map((row) =>
+          row.id === saleId
+            ? {
+                ...row,
+                packed_by_id: selectedStaff.id,
+                packed_by_name: selectedStaff.name,
+              }
+            : row
+        )
+      );
+      setPackerDialog({
+        open: false,
+        saleId: null,
+        selectedPackerId: "",
+        previousStatus: "",
+        fromSave: false,
+      });
+      if (fromSave) {
+        handleSavePackaging(saleId, {
+          packedById: selectedStaff.id,
+          packedByName: selectedStaff.name,
+        });
+      }
+      return;
+    }
+
+    if (saleId && !fromSave) {
+      setSalesData((prev) =>
+        prev.map((row) =>
+          row.id === saleId
+            ? {
+                ...row,
+                packaging_status: previousStatus || row.original_packaging_status || "not_packing",
+                packed_by_id: row.original_packed_by_id ?? "",
+                packed_by_name: row.original_packed_by_name ?? "",
+              }
+            : row
+        )
+      );
+    }
+    setPackerDialog({
+      open: false,
+      saleId: null,
+      selectedPackerId: "",
+      previousStatus: "",
+      fromSave: false,
+    });
+  };
+
+  const openPackerDialogForSave = (saleId, row, { fromSave = false } = {}) => {
+    setPackerDialog({
+      open: true,
+      saleId,
+      selectedPackerId: row.packed_by_id ? String(row.packed_by_id) : "",
+      previousStatus: fromSave
+        ? row.original_packaging_status || "not_packing"
+        : row.packaging_status || row.original_packaging_status || "not_packing",
+      fromSave,
+    });
+  };
+
+  const handleSavePackaging = async (saleId, overrides = {}) => {
     const row = salesData.find(r => r.id === saleId);
     if (!row || savingSaleIds.has(saleId)) return;
+
+    const packedById = overrides.packedById ?? row.packed_by_id;
+    const packagingStatus = row.packaging_status || "not_packing";
+
+    if (packagingStatus === "packing_done" && !packedById) {
+      openPackerDialogForSave(saleId, row, { fromSave: true });
+      return;
+    }
 
     if (
       row.original_packaging_status !== row.packaging_status &&
@@ -167,12 +294,13 @@ function Packaging() {
 
     try {
       const payload = {
-        packagingStatus: row.packaging_status || "not_packing",
+        packagingStatus,
         statusDate: row.status_update_date || null,
         expectedStatus: row.original_packaging_status,
         packedItemCount,
         boxCount,
         packetCount,
+        packedById: packagingStatus === "packing_done" ? Number(packedById) : null,
       };
 
       const response = await fetch(`${API}/staff/sales/${row.id}/packaging`, {
@@ -183,7 +311,11 @@ function Packaging() {
 
       if (response.ok) {
         const data = await response.json();
-        const updated = enhancePackagingRow(data.sale);
+        const updated = enhancePackagingRow({
+          ...data.sale,
+          packed_by_id: overrides.packedById ?? data.sale?.packed_by_id,
+          packed_by_name: overrides.packedByName ?? data.sale?.packed_by_name,
+        });
         recentlySavedRef.current.set(saleId, Date.now());
 
         if (updated.packaging_status === "packing_done") {
@@ -262,6 +394,7 @@ function Packaging() {
     const outletArea = row.location_name ? row.location_name.toLowerCase() : "";
     const outletErpId = row.outlet_erp_id ? row.outlet_erp_id.toLowerCase() : "";
     const staffName = row.staff_name ? row.staff_name.toLowerCase() : "";
+    const companyName = row.company_name ? row.company_name.toLowerCase() : "";
     const saleId = formatBpSaleId(row).toLowerCase();
     const invoiceNumber = row.invoice_number ? String(row.invoice_number).toLowerCase() : "";
     return (
@@ -269,6 +402,7 @@ function Packaging() {
       outletArea.includes(search) ||
       outletErpId.includes(search) ||
       staffName.includes(search) ||
+      companyName.includes(search) ||
       saleId.includes(search) ||
       invoiceNumber.includes(search)
     );
@@ -350,6 +484,7 @@ function Packaging() {
                           Sr No
                         </TableCell>
                         <TableCell sx={paginatedTableHeadCellSx}>Staff Name</TableCell>
+                        <TableCell sx={paginatedTableHeadCellSx}>Company</TableCell>
                         <TableCell sx={paginatedTableHeadCellSx}>Outlet Name</TableCell>
                         <TableCell sx={paginatedTableHeadCellSx}>Area</TableCell>
                         <TableCell sx={paginatedTableHeadCellSx}>ERP ID</TableCell>
@@ -381,6 +516,9 @@ function Packaging() {
                           Status
                         </TableCell>
                         <TableCell align="center" sx={paginatedTableHeadCellSx}>
+                          Packed By
+                        </TableCell>
+                        <TableCell align="center" sx={paginatedTableHeadCellSx}>
                           Status Date
                         </TableCell>
                         <TableCell align="center" sx={paginatedTableHeadCellSx}>
@@ -407,6 +545,9 @@ function Packaging() {
                               </TableCell>
                               <TableCell sx={{ borderBottom: borderCol, py: 2, color: txColor }}>
                                 {row.staff_name}
+                              </TableCell>
+                              <TableCell sx={{ borderBottom: borderCol, py: 2, color: txColor }}>
+                                {row.company_name || "N/A"}
                               </TableCell>
                               <TableCell sx={{ borderBottom: borderCol, py: 2, color: txColor, fontWeight: "medium" }}>
                                 {row.outlet_name}
@@ -484,6 +625,20 @@ function Packaging() {
                                 </FormControl>
                               </TableCell>
                               <TableCell align="center" sx={{ borderBottom: borderCol, py: 2, color: txColor }}>
+                                {row.packaging_status === "packing_done"
+                                  ? row.packed_by_name || (
+                                      <MDTypography
+                                        component="span"
+                                        variant="caption"
+                                        sx={{ color: "#b45309", cursor: "pointer", textDecoration: "underline" }}
+                                        onClick={() => openPackerDialogForSave(row.id, row)}
+                                      >
+                                        Select packer
+                                      </MDTypography>
+                                    )
+                                  : "—"}
+                              </TableCell>
+                              <TableCell align="center" sx={{ borderBottom: borderCol, py: 2, color: txColor }}>
                                 <MDInput
                                   type="date"
                                   value={row.status_update_date || ""}
@@ -507,7 +662,7 @@ function Packaging() {
                         })
                       ) : (
                         <TableRow>
-                          <TableCell colSpan={dateFilterMode === "all" ? 15 : 14} align="center" sx={{ py: 3, borderBottom: 0 }}>
+                          <TableCell colSpan={dateFilterMode === "all" ? 17 : 16} align="center" sx={{ py: 3, borderBottom: 0 }}>
                             <MDTypography variant="body2" color="text">
                               No sales found.
                             </MDTypography>
@@ -581,6 +736,52 @@ function Packaging() {
         <DialogActions>
           <MDButton color="dark" onClick={() => setHistoryDialog({ open: false, sale: null, history: [] })}>
             Close
+          </MDButton>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog
+        open={packerDialog.open}
+        onClose={() => handleClosePackerDialog(false)}
+        fullWidth
+        maxWidth="xs"
+      >
+        <DialogTitle>Who Completed Packing?</DialogTitle>
+        <DialogContent dividers>
+          <MDTypography variant="body2" color="text" mb={2}>
+            Select the packaging staff member who finished this order.
+          </MDTypography>
+          <FormControl size="small" fullWidth>
+            <InputLabel id="packer-select-label">Packaging Staff</InputLabel>
+            <Select
+              labelId="packer-select-label"
+              label="Packaging Staff"
+              value={packerDialog.selectedPackerId}
+              onChange={(event) =>
+                setPackerDialog((prev) => ({ ...prev, selectedPackerId: event.target.value }))
+              }
+              sx={{ height: 44 }}
+            >
+              <MenuItem value="">
+                <em>Select packaging staff</em>
+              </MenuItem>
+              {packagingStaff.map((person) => (
+                <MenuItem key={person.id} value={String(person.id)}>
+                  {person.name}
+                </MenuItem>
+              ))}
+              {packagingStaff.length === 0 && (
+                <MenuItem disabled>No packaging staff found</MenuItem>
+              )}
+            </Select>
+          </FormControl>
+        </DialogContent>
+        <DialogActions>
+          <MDButton color="secondary" onClick={() => handleClosePackerDialog(false)}>
+            Cancel
+          </MDButton>
+          <MDButton color="info" variant="gradient" onClick={() => handleClosePackerDialog(true)}>
+            Confirm
           </MDButton>
         </DialogActions>
       </Dialog>

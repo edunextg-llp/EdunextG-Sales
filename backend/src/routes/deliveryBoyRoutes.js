@@ -39,6 +39,7 @@ router.get('/companies', verifyTokenMiddleware, deliveryBoyController.getStaffAs
 router.get('/collections', verifyTokenMiddleware, deliveryBoyController.getDeliveryBoyCollections);
 router.get('/', verifyTokenMiddleware, deliveryBoyController.getDeliveryBoys);
 router.post('/:id/credentials', verifyTokenMiddleware, deliveryBoyController.generateDeliveryBoyCredentials);
+router.put('/:id/toggle-active', verifyTokenMiddleware, deliveryBoyController.toggleDeliveryBoyActive);
 router.put('/:id', verifyTokenMiddleware, deliveryBoyController.updateDeliveryBoy);
 router.delete('/:id', verifyTokenMiddleware, deliveryBoyController.deleteDeliveryBoy);
 

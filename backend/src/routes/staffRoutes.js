@@ -12,6 +12,7 @@ const upload = multer({
 });
 
 router.post('/', staffController.createStaff);
+router.post('/upload-document', upload.single('file'), staffController.uploadStaffDocument);
 router.get('/', staffController.getStaff);
 router.get('/search', staffController.searchStaff);
 router.get('/credits/pending', staffController.getPendingCredits);
@@ -45,10 +46,12 @@ router.get('/current-stock', currentStockController.getCurrentStock);
 router.get('/physical-stock', physicalStockController.getPhysicalStock);
 router.post('/physical-stock/upload', upload.single('file'), physicalStockController.uploadPhysicalStock);
 router.get('/sales/by-date', staffController.getAllSalesByDate);
+router.get('/sales/lookup', staffController.lookupSaleByInvoice);
 router.get('/sales/cancelled', staffController.getCancelledDeliverySales);
 router.get('/reports', staffController.getReports);
 router.get('/:id', staffController.getStaffFullDetails);
 router.put('/:id', staffController.updateStaff);
+router.put('/:id/toggle-active', staffController.toggleStaffActive);
 router.get('/:id/locations', staffController.getStaffLocations);
 router.get('/:id/outlets-by-date', staffController.getOutletsByStaffAndDate);
 router.get('/:id/all-counters', staffController.getAllOutletsForStaff);

@@ -91,7 +91,7 @@ export function printChalanPdf(sale) {
   }));
 
   const html = ejs.render(chalanPrintTemplate, {
-    companyName: "BAWARCHEE FOOD PACKAGING PRIVATE LIMITED",
+    companyName: sale.companyName || sale.company_name || "—",
     companySubtitle: "Chalan Print",
     companyAddress:
       "Head Office: Holding No. 82, 121 Aswini Dutta Road, South Dum Dum, PO - Dum Dum, PS - Baguiati, South Dum Dum Municipality, Distt - North 24 Paragnas, West Bengal - 700028",

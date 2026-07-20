@@ -117,6 +117,24 @@ class ReportModel {
         return { sql: ` AND ${alias}.id = ?`, params: [staffId] };
     }
 
+    static buildCompanyFilter(companyId, outletStaffAlias = 'outlet_staff', saleStaffAlias = 'sale_staff') {
+        if (!companyId) {
+            return { sql: '', params: [] };
+        }
+        return {
+            sql: ` AND (
+                EXISTS (
+                    SELECT 1
+                    FROM staff_companies sc_filter
+                    WHERE sc_filter.staff_id = ${outletStaffAlias}.id
+                      AND sc_filter.company_id = ?
+                )
+                OR ${saleStaffAlias}.company_id = ?
+            )`,
+            params: [companyId, companyId],
+        };
+    }
+
     static async getCollectionByMode(startDate, endDate, staffId = null) {
         const dateWhere = ReportModel.buildDateWhere('sp.payment_date', startDate, endDate);
         const staffFilter = ReportModel.buildOutletStaffFilter(staffId);
@@ -147,8 +165,9 @@ class ReportModel {
         return toNumberRows(rows);
     }
 
-    static async getTodayCollectionDetails(startDate, endDate) {
+    static async getTodayCollectionDetails(startDate, endDate, companyId = null) {
         const dateWhere = ReportModel.buildDateWhere('sp.payment_date', startDate, endDate);
+        const companyFilter = ReportModel.buildCompanyFilter(companyId);
         const [rows] = await db.execute(
             `SELECT DATE_FORMAT(sp.payment_date, '%Y-%m-%d') AS collection_date,
                     outlet_staff.id AS outlet_staff_id,
@@ -158,6 +177,8 @@ class ReportModel {
                     sc.outlet_erp_id,
                     ss.id AS sale_id,
                     ss.invoice_number,
+                    db.name AS delivery_boy_name,
+                    COALESCE(outlet_staff_company.company_names, sale_company.name, 'N/A') AS company_name,
                     CASE
                         WHEN sp.collector_name IS NOT NULL
                              AND TRIM(sp.collector_name) <> ''
@@ -179,9 +200,19 @@ class ReportModel {
              LEFT JOIN staff collector ON collector.id = sp.collector_staff_id
              LEFT JOIN staff_counters sc ON sc.id = ss.outlet_id
              LEFT JOIN staff outlet_staff ON outlet_staff.id = sc.staff_id
-             ${dateWhere.sql ? `${dateWhere.sql} AND` : 'WHERE sp.payment_date = CURDATE() AND'} sp.payment_mode IN ('cash', 'upi', 'cheque')
+             LEFT JOIN delivery_boys db ON db.id = ss.delivery_boy_id
+             LEFT JOIN companies sale_company ON sale_company.id = sale_staff.company_id
+             LEFT JOIN (
+                 SELECT sc_map.staff_id,
+                        GROUP_CONCAT(c2.name ORDER BY c2.name SEPARATOR ', ') AS company_names
+                 FROM staff_companies sc_map
+                 INNER JOIN companies c2 ON c2.id = sc_map.company_id
+                 GROUP BY sc_map.staff_id
+             ) outlet_staff_company ON outlet_staff_company.staff_id = outlet_staff.id
+             ${dateWhere.sql ? `${dateWhere.sql} AND` : 'WHERE sp.payment_date = CURDATE() AND'} sp.payment_mode IN ('cash', 'upi', 'cheque')${companyFilter.sql}
              GROUP BY collection_date, outlet_staff.id, outlet_staff.name, sc.id, sc.outlet_name, sc.outlet_erp_id,
-                      ss.id, ss.invoice_number, sp.collector_staff_id, sp.collector_name,
+                      ss.id, ss.invoice_number, db.name, outlet_staff_company.company_names, sale_company.name,
+                      sp.collector_staff_id, sp.collector_name,
                       collector.id, collector.name, sale_staff.id, sale_staff.name
              ORDER BY collection_date DESC, outlet_staff.name ASC, sc.outlet_name ASC,
                       CASE
@@ -191,14 +222,15 @@ class ReportModel {
                           ELSE 0
                       END ASC,
                       ss.invoice_number ASC`,
-            dateWhere.params
+            [...dateWhere.params, ...companyFilter.params]
         );
         return toNumberRows(rows);
     }
 
-    static async getCollectionDetails(startDate, endDate, staffId = null) {
+    static async getCollectionDetails(startDate, endDate, staffId = null, companyId = null) {
         const dateWhere = ReportModel.buildDateWhere('sp.payment_date', startDate, endDate);
         const staffFilter = ReportModel.buildOutletStaffFilter(staffId);
+        const companyFilter = ReportModel.buildCompanyFilter(companyId);
         const [rows] = await db.execute(
             `SELECT DATE_FORMAT(sp.payment_date, '%Y-%m-%d') AS collection_date,
                     outlet_staff.id AS outlet_staff_id,
@@ -208,6 +240,8 @@ class ReportModel {
                     sc.outlet_erp_id,
                     ss.id AS sale_id,
                     ss.invoice_number,
+                    db.name AS delivery_boy_name,
+                    COALESCE(outlet_staff_company.company_names, sale_company.name, 'N/A') AS company_name,
                     CASE
                         WHEN sp.collector_name IS NOT NULL
                              AND TRIM(sp.collector_name) <> ''
@@ -229,9 +263,19 @@ class ReportModel {
              LEFT JOIN staff collector ON collector.id = sp.collector_staff_id
              LEFT JOIN staff_counters sc ON sc.id = ss.outlet_id
              LEFT JOIN staff outlet_staff ON outlet_staff.id = sc.staff_id
-             ${dateWhere.sql ? `${dateWhere.sql} AND` : 'WHERE'} sp.payment_mode IN ('cash', 'upi', 'cheque')${staffFilter.sql}
+             LEFT JOIN delivery_boys db ON db.id = ss.delivery_boy_id
+             LEFT JOIN companies sale_company ON sale_company.id = sale_staff.company_id
+             LEFT JOIN (
+                 SELECT sc_map.staff_id,
+                        GROUP_CONCAT(c2.name ORDER BY c2.name SEPARATOR ', ') AS company_names
+                 FROM staff_companies sc_map
+                 INNER JOIN companies c2 ON c2.id = sc_map.company_id
+                 GROUP BY sc_map.staff_id
+             ) outlet_staff_company ON outlet_staff_company.staff_id = outlet_staff.id
+             ${dateWhere.sql ? `${dateWhere.sql} AND` : 'WHERE'} sp.payment_mode IN ('cash', 'upi', 'cheque')${staffFilter.sql}${companyFilter.sql}
              GROUP BY collection_date, outlet_staff.id, outlet_staff.name, sc.id, sc.outlet_name, sc.outlet_erp_id,
-                      ss.id, ss.invoice_number, sp.collector_staff_id, sp.collector_name,
+                      ss.id, ss.invoice_number, db.name, outlet_staff_company.company_names, sale_company.name,
+                      sp.collector_staff_id, sp.collector_name,
                       collector.id, collector.name, sale_staff.id, sale_staff.name
              ORDER BY outlet_staff.name ASC, sc.outlet_name ASC,
                       CASE
@@ -241,7 +285,7 @@ class ReportModel {
                           ELSE 0
                       END ASC,
                       ss.invoice_number ASC`,
-            [...dateWhere.params, ...staffFilter.params]
+            [...dateWhere.params, ...staffFilter.params, ...companyFilter.params]
         );
         return toNumberRows(rows);
     }
@@ -680,9 +724,9 @@ class ReportModel {
         ] = await Promise.all([
             ReportModel.getSummary(startDate, endDate, companyId, staffId),
             ReportModel.getCollectionByMode(startDate, endDate, staffId),
-            ReportModel.getCollectionDetails(startDate, endDate, staffId),
+            ReportModel.getCollectionDetails(startDate, endDate, staffId, companyId),
             ReportModel.getTodayCollection(startDate, endDate),
-            ReportModel.getTodayCollectionDetails(startDate, endDate),
+            ReportModel.getTodayCollectionDetails(startDate, endDate, companyId),
             ReportModel.getMonthlyCollection(startDate, endDate),
             ReportModel.getYearlyCollection(startDate, endDate),
             ReportModel.getSalesByPeriod(startDate, endDate, companyId, staffId),

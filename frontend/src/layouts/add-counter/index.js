@@ -5,7 +5,7 @@ import Grid from "@mui/material/Grid";
 import Card from "@mui/material/Card";
 import Icon from "@mui/material/Icon";
 import Autocomplete from "@mui/material/Autocomplete";
-import { Checkbox } from "@mui/material";
+import { Checkbox, Chip, Divider, FormControlLabel, IconButton } from "@mui/material";
 import InputLabel from "@mui/material/InputLabel";
 import MenuItem from "@mui/material/MenuItem";
 import FormControl from "@mui/material/FormControl";
@@ -27,6 +27,23 @@ import { formatGoogleMapsLocation, isValidGoogleMapsShortUrl } from "utils/googl
 
 const GOOGLE_MAPS_HELPER_TEXT = "Use Google Maps Share link, e.g. https://maps.app.goo.gl/T9zxVHUGoiYcBX2s8";
 
+const sectionLabelSx = {
+  fontSize: "0.7rem",
+  fontWeight: 700,
+  letterSpacing: "0.08em",
+  textTransform: "uppercase",
+  color: "#64748b",
+  mb: 1.5,
+};
+
+const outletCardSx = {
+  border: "1px solid #e2e8f0",
+  borderRadius: "12px",
+  overflow: "hidden",
+  boxShadow: "0 1px 3px rgba(15, 23, 42, 0.06)",
+  backgroundColor: "#fff",
+};
+
 function AddCounter() {
   const days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
   const cnfRouteDay = "CNF";
@@ -46,6 +63,7 @@ function AddCounter() {
     contactNumber: "",
     whatsappNumber: "",
     whatsappSameAsContact: false,
+    address: "",
     googleLocation: "",
   });
 
@@ -167,6 +185,7 @@ function AddCounter() {
         contactNumber: "",
         whatsappNumber: "",
         whatsappSameAsContact: false,
+        address: "",
         googleLocation: "",
       },
     ]);
@@ -229,6 +248,7 @@ function AddCounter() {
       whatsappNumber: outlet.whatsappSameAsContact
         ? outlet.contactNumber
         : outlet.whatsappNumber,
+      address: String(outlet.address || "").trim(),
       googleLocation: formatGoogleMapsLocation(outlet.googleLocation),
     }));
     const missingGoogleLocation = formattedOutlets.some((outlet) => !String(outlet.googleLocation || "").trim());
@@ -318,6 +338,7 @@ function AddCounter() {
       contactNumber,
       whatsappNumber,
       whatsappSameAsContact: Boolean(contactNumber) && contactNumber === whatsappNumber,
+      address: outlet.address || "",
       googleLocation: outlet.google_location || "",
     });
   };
@@ -330,6 +351,7 @@ function AddCounter() {
       contactNumber: "",
       whatsappNumber: "",
       whatsappSameAsContact: false,
+      address: "",
       googleLocation: "",
     });
   };
@@ -393,6 +415,7 @@ function AddCounter() {
           whatsappNumber: editFormData.whatsappSameAsContact
             ? editFormData.contactNumber
             : editFormData.whatsappNumber,
+          address: String(editFormData.address || "").trim(),
           googleLocation: formattedGoogleLocation,
         }),
       });
@@ -592,122 +615,256 @@ function AddCounter() {
 
                 {selectedLocation && (
                   <MDBox mt={4}>
-                    <MDBox display="flex" justifyContent="space-between" alignItems="center" mb={2}>
-                      <MDTypography variant="h6">Add Outlets for {selectedLocation}</MDTypography>
-                      <MDButton
-                        variant="gradient"
-                        color="dark"
-                        size="small"
-                        onClick={addOutletField}
-                      >
-                        <Icon sx={{ mr: 1 }}>add</Icon> Add Outlet
-                      </MDButton>
-                    </MDBox>
-
-                    {outlets.map((outlet, index) => (
+                    <Card sx={{ boxShadow: "0 4px 6px -1px rgb(0 0 0 / 0.08)", border: "1px solid #e5e7eb" }}>
                       <MDBox
-                        key={index}
-                        mb={2}
-                        p={3}
-                        sx={{
-                          backgroundColor: "#f8f9fa",
-                          borderRadius: "10px",
-                          border: "1px solid #e9ecef",
-                          minHeight: 110,
-                        }}
+                        px={3}
+                        py={2.5}
+                        display="flex"
+                        justifyContent="space-between"
+                        alignItems={{ xs: "flex-start", sm: "center" }}
+                        flexDirection={{ xs: "column", sm: "row" }}
+                        gap={2}
+                        sx={{ borderBottom: "1px solid #e5e7eb", backgroundColor: "#f8fafc" }}
                       >
-                        <Grid container spacing={2} alignItems="center">
-                          <Grid item xs={12} sm={6} md={3}>
-                            <MDInput
-                              label="ERP Id"
-                              fullWidth
-                              InputProps={{ sx: { minHeight: 48 } }}
-                              value={outlet.outletErpId}
-                              onChange={(e) =>
-                                handleOutletChange(index, "outletErpId", e.target.value)
-                              }
+                        <MDBox>
+                          <MDTypography variant="h6" fontWeight="medium" color="dark">
+                            Add Outlets
+                          </MDTypography>
+                          <MDBox display="flex" alignItems="center" gap={1} mt={0.75} flexWrap="wrap">
+                            <MDTypography variant="body2" color="text">
+                              Location:
+                            </MDTypography>
+                            <Chip
+                              icon={<Icon sx={{ fontSize: "16px !important" }}>place</Icon>}
+                              label={selectedLocation}
+                              size="small"
+                              color="info"
+                              variant="outlined"
+                              sx={{ fontWeight: 600 }}
                             />
-                          </Grid>
-                          <Grid item xs={12} sm={6} md={3}>
-                            <MDInput
-                              label="Outlet Name"
-                              fullWidth
-                              InputProps={{ sx: { minHeight: 48 } }}
-                              value={outlet.outletName}
-                              onChange={(e) =>
-                                handleOutletChange(index, "outletName", e.target.value)
-                              }
-                            />
-                          </Grid>
-                          <Grid item xs={12} sm={6} md={3}>
-                            <MDInput
-                              label="Contact"
-                              fullWidth
-                              InputProps={{ sx: { minHeight: 48 } }}
-                              value={outlet.contactNumber}
-                              onChange={(e) =>
-                                handleOutletChange(index, "contactNumber", e.target.value)
-                              }
-                            />
-                          </Grid>
-                          <Grid item xs={12} sm={6} md={3}>
-                            <MDInput
-                              label="WhatsApp Number"
-                              fullWidth
-                              InputProps={{ sx: { minHeight: 48 } }}
-                              value={outlet.whatsappNumber}
-                              disabled={outlet.whatsappSameAsContact}
-                              onChange={(e) =>
-                                handleOutletChange(index, "whatsappNumber", e.target.value)
-                              }
-                            />
-                          </Grid>
-                          <Grid item xs={12} sm={6} md={6}>
-                            <MDBox display="flex" alignItems="center">
-                              <Checkbox
-                                checked={Boolean(outlet.whatsappSameAsContact)}
-                                onChange={(e) =>
-                                  handleWhatsappSameAsContact(index, e.target.checked)
-                                }
+                            {outlets.length > 0 && (
+                              <Chip
+                                label={`${outlets.length} outlet${outlets.length > 1 ? "s" : ""}`}
+                                size="small"
+                                sx={{ backgroundColor: "#e0f2fe", color: "#0369a1", fontWeight: 600 }}
                               />
-                              <MDTypography variant="body2">
-                                WhatsApp number same as contact number
-                              </MDTypography>
-                            </MDBox>
-                          </Grid>
-                          <Grid item xs={12} sm={6} md={6}>
-                            <MDInput
-                              label="Google Location"
-                              fullWidth
-                              InputProps={{ sx: { minHeight: 48 } }}
-                              value={outlet.googleLocation}
-                              onChange={(e) =>
-                                handleOutletChange(index, "googleLocation", e.target.value)
-                              }
-                              onBlur={() => handleOutletGoogleLocationBlur(index)}
-                              helperText={GOOGLE_MAPS_HELPER_TEXT}
-                            />
-                          </Grid>
-                          <Grid item xs={12}>
-                            <MDButton
-                              color="error"
-                              variant="text"
-                              fullWidth
-                              sx={{ minHeight: 48 }}
-                              onClick={() => removeOutletField(index)}
-                            >
-                              <Icon sx={{ mr: 1 }}>delete</Icon> Remove
-                            </MDButton>
-                          </Grid>
-                        </Grid>
+                            )}
+                          </MDBox>
+                        </MDBox>
+                        <MDButton
+                          variant="gradient"
+                          color="dark"
+                          size="small"
+                          onClick={addOutletField}
+                          startIcon={<Icon>add</Icon>}
+                          sx={{ flexShrink: 0 }}
+                        >
+                          Add Outlet
+                        </MDButton>
                       </MDBox>
-                    ))}
 
-                    <MDBox mt={4}>
-                      <MDButton variant="gradient" color="info" fullWidth onClick={handleSubmit}>
-                        Save Outlets
-                      </MDButton>
-                    </MDBox>
+                      <MDBox p={3}>
+                        {outlets.length === 0 ? (
+                          <MDBox
+                            py={5}
+                            px={2}
+                            textAlign="center"
+                            sx={{
+                              border: "2px dashed #cbd5e1",
+                              borderRadius: "12px",
+                              backgroundColor: "#f8fafc",
+                            }}
+                          >
+                            <Icon sx={{ fontSize: 40, color: "#94a3b8", mb: 1 }}>storefront</Icon>
+                            <MDTypography variant="body2" color="text" fontWeight="medium">
+                              No outlets added yet
+                            </MDTypography>
+                            <MDTypography variant="caption" color="text" display="block" mt={0.5} mb={2}>
+                              Click &quot;Add Outlet&quot; to start adding outlet details for this location.
+                            </MDTypography>
+                            <MDButton
+                              variant="outlined"
+                              color="info"
+                              size="small"
+                              onClick={addOutletField}
+                              startIcon={<Icon>add</Icon>}
+                            >
+                              Add First Outlet
+                            </MDButton>
+                          </MDBox>
+                        ) : (
+                          outlets.map((outlet, index) => (
+                            <MDBox key={index} mb={index < outlets.length - 1 ? 3 : 0} sx={outletCardSx}>
+                              <MDBox
+                                px={2.5}
+                                py={1.5}
+                                display="flex"
+                                justifyContent="space-between"
+                                alignItems="center"
+                                sx={{ backgroundColor: "#f1f5f9", borderBottom: "1px solid #e2e8f0" }}
+                              >
+                                <MDBox display="flex" alignItems="center" gap={1}>
+                                  <MDBox
+                                    sx={{
+                                      width: 28,
+                                      height: 28,
+                                      borderRadius: "8px",
+                                      backgroundColor: "#0ea5e9",
+                                      color: "#fff",
+                                      display: "flex",
+                                      alignItems: "center",
+                                      justifyContent: "center",
+                                      fontSize: "0.8rem",
+                                      fontWeight: 700,
+                                    }}
+                                  >
+                                    {index + 1}
+                                  </MDBox>
+                                  <MDTypography variant="button" fontWeight="medium" color="dark">
+                                    Outlet {index + 1}
+                                  </MDTypography>
+                                </MDBox>
+                                <IconButton
+                                  size="small"
+                                  color="error"
+                                  onClick={() => removeOutletField(index)}
+                                  title="Remove outlet"
+                                >
+                                  <Icon fontSize="small">delete_outline</Icon>
+                                </IconButton>
+                              </MDBox>
+
+                              <MDBox p={2.5}>
+                                <MDTypography sx={sectionLabelSx}>Outlet Details</MDTypography>
+                                <Grid container spacing={2} mb={2.5}>
+                                  <Grid item xs={12} sm={6} md={4}>
+                                    <MDInput
+                                      label="ERP Id"
+                                      fullWidth
+                                      InputProps={{ sx: { minHeight: 44 } }}
+                                      value={outlet.outletErpId}
+                                      onChange={(e) =>
+                                        handleOutletChange(index, "outletErpId", e.target.value)
+                                      }
+                                    />
+                                  </Grid>
+                                  <Grid item xs={12} sm={6} md={8}>
+                                    <MDInput
+                                      label="Outlet Name"
+                                      fullWidth
+                                      InputProps={{ sx: { minHeight: 44 } }}
+                                      value={outlet.outletName}
+                                      onChange={(e) =>
+                                        handleOutletChange(index, "outletName", e.target.value)
+                                      }
+                                    />
+                                  </Grid>
+                                </Grid>
+
+                                <Divider sx={{ mb: 2.5 }} />
+
+                                <MDTypography sx={sectionLabelSx}>Contact</MDTypography>
+                                <Grid container spacing={2} mb={1}>
+                                  <Grid item xs={12} sm={6}>
+                                    <MDInput
+                                      label="Contact Number"
+                                      fullWidth
+                                      InputProps={{ sx: { minHeight: 44 } }}
+                                      value={outlet.contactNumber}
+                                      onChange={(e) =>
+                                        handleOutletChange(index, "contactNumber", e.target.value)
+                                      }
+                                    />
+                                  </Grid>
+                                  <Grid item xs={12} sm={6}>
+                                    <MDInput
+                                      label="WhatsApp Number"
+                                      fullWidth
+                                      InputProps={{ sx: { minHeight: 44 } }}
+                                      value={outlet.whatsappNumber}
+                                      disabled={outlet.whatsappSameAsContact}
+                                      onChange={(e) =>
+                                        handleOutletChange(index, "whatsappNumber", e.target.value)
+                                      }
+                                    />
+                                  </Grid>
+                                  <Grid item xs={12}>
+                                    <FormControlLabel
+                                      control={
+                                        <Checkbox
+                                          size="small"
+                                          checked={Boolean(outlet.whatsappSameAsContact)}
+                                          onChange={(e) =>
+                                            handleWhatsappSameAsContact(index, e.target.checked)
+                                          }
+                                        />
+                                      }
+                                      label={
+                                        <MDTypography variant="body2" color="text">
+                                          WhatsApp number same as contact number
+                                        </MDTypography>
+                                      }
+                                      sx={{ ml: 0 }}
+                                    />
+                                  </Grid>
+                                </Grid>
+
+                                <Divider sx={{ mb: 2.5 }} />
+
+                                <MDTypography sx={sectionLabelSx}>Location</MDTypography>
+                                <Grid container spacing={2}>
+                                  <Grid item xs={12}>
+                                    <MDInput
+                                      label="Address"
+                                      fullWidth
+                                      multiline
+                                      rows={2}
+                                      value={outlet.address}
+                                      onChange={(e) =>
+                                        handleOutletChange(index, "address", e.target.value)
+                                      }
+                                    />
+                                  </Grid>
+                                  <Grid item xs={12}>
+                                    <MDInput
+                                      label="Google Location"
+                                      fullWidth
+                                      InputProps={{ sx: { minHeight: 44 } }}
+                                      value={outlet.googleLocation}
+                                      onChange={(e) =>
+                                        handleOutletChange(index, "googleLocation", e.target.value)
+                                      }
+                                      onBlur={() => handleOutletGoogleLocationBlur(index)}
+                                      helperText={GOOGLE_MAPS_HELPER_TEXT}
+                                    />
+                                  </Grid>
+                                </Grid>
+                              </MDBox>
+                            </MDBox>
+                          ))
+                        )}
+
+                        {outlets.length > 0 && (
+                          <MDBox mt={3} pt={2.5} display="flex" justifyContent="flex-end" gap={1.5} sx={{ borderTop: "1px solid #e5e7eb" }}>
+                            <MDButton
+                              variant="outlined"
+                              color="dark"
+                              onClick={() => setOutlets([])}
+                            >
+                              Clear All
+                            </MDButton>
+                            <MDButton
+                              variant="gradient"
+                              color="info"
+                              onClick={handleSubmit}
+                              startIcon={<Icon>save</Icon>}
+                            >
+                              Save {outlets.length} Outlet{outlets.length > 1 ? "s" : ""}
+                            </MDButton>
+                          </MDBox>
+                        )}
+                      </MDBox>
+                    </Card>
                   </MDBox>
                 )}
 
@@ -764,6 +921,16 @@ function AddCounter() {
                             </Grid>
                             <Grid item xs={12} sm={6} md={2}>
                               <MDInput
+                                label="Address"
+                                fullWidth
+                                multiline
+                                rows={2}
+                                value={editFormData.address}
+                                onChange={(e) => handleEditFormChange("address", e.target.value)}
+                              />
+                            </Grid>
+                            <Grid item xs={12} sm={6} md={2}>
+                              <MDInput
                                 label="Google Location"
                                 fullWidth
                                 value={editFormData.googleLocation}
@@ -814,6 +981,11 @@ function AddCounter() {
                             <Grid item xs={12} sm={6} md={2}>
                               <MDTypography variant="body2" fontWeight="medium">
                                 WA: {saved.whatsapp_number || saved.contact_number || "-"}
+                              </MDTypography>
+                            </Grid>
+                            <Grid item xs={12} sm={6} md={2}>
+                              <MDTypography variant="body2" fontWeight="medium">
+                                {saved.address || "-"}
                               </MDTypography>
                             </Grid>
                             <Grid item xs={12} sm={6} md={2}>

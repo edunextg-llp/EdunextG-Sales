@@ -7,6 +7,7 @@ import BankDepositModel from '../models/bankDepositModel.js';
 import PurchaseSellerModel from '../models/purchaseSellerModel.js';
 import PurchaseModel from '../models/purchaseModel.js';
 import OrderCancellationModel from '../models/orderCancellationModel.js';
+import DeliveryCollectionModel from '../models/deliveryCollectionModel.js';
 import {
     validateDigitsOnly,
     validateNumeric,
@@ -16,6 +17,40 @@ import {
 } from '../utils/validation.js';
 import { normalizeInvoiceNumber } from '../utils/invoiceNumber.js';
 import { validateGoogleMapsLocation } from '../utils/googleMapsLocation.js';
+import { uploadBufferToCloudinary, isCloudinaryConfigured } from '../utils/cloudinary.js';
+
+function buildStaffProfile(body = {}) {
+    const whatsappSource = String(body.whatsappNumber || '').trim() || String(body.contactNo || '').trim();
+
+    return {
+        dob: normalizeDateInput(body.dob),
+        whatsappNumber: whatsappSource || null,
+        aadharNo: body.aadharNo ? String(body.aadharNo).replace(/\D/g, '') : null,
+        aadharDocumentUrl: body.aadharDocumentUrl ? String(body.aadharDocumentUrl).trim() : null,
+        pccCertificateUrl: body.pccCertificateUrl ? String(body.pccCertificateUrl).trim() : null,
+        staffCategory: normalizeStaffCategory(body.staffCategory),
+    };
+}
+
+function buildStaffCompanies(staff) {
+    const companyIds = String(staff?.company_ids || '')
+        .split(',')
+        .map((value) => Number(value))
+        .filter((value) => Number.isInteger(value) && value > 0);
+    const companyNames = String(staff?.company_name || '')
+        .split(',')
+        .map((name) => name.trim())
+        .filter(Boolean);
+
+    return companyIds.map((id, index) => ({
+        id,
+        name: companyNames[index] || '',
+    })).filter((company) => company.name);
+}
+
+function normalizeStaffCategory(value) {
+    return value === 'bawarchee_staff' ? 'bawarchee_staff' : 'company_staff';
+}
 
 async function parseCollectorPayload(body) {
     const collectorType = String(body.collectorType || 'company_staff').toLowerCase();
@@ -39,7 +74,15 @@ async function parseCollectorPayload(body) {
     return { collectorStaffId: collectorValidation.value, collectorName: null };
 }
 
-async function resolveCompanyIds(companyNames, fallbackCompanyName) {
+async function resolveCompanyIds(companyNames, fallbackCompanyName, companyIds = []) {
+    const normalizedIds = Array.isArray(companyIds)
+        ? [...new Set(companyIds.map((id) => Number(id)).filter((id) => Number.isInteger(id) && id > 0))]
+        : [];
+
+    if (normalizedIds.length > 0) {
+        return normalizedIds;
+    }
+
     const names = Array.isArray(companyNames)
         ? companyNames
         : String(fallbackCompanyName || '')
@@ -47,13 +90,13 @@ async function resolveCompanyIds(companyNames, fallbackCompanyName) {
             .map(name => name.trim());
 
     const uniqueNames = [...new Set(names.map(name => String(name || '').trim()).filter(Boolean))];
-    const companyIds = [];
+    const resolvedCompanyIds = [];
 
     for (const companyName of uniqueNames) {
-        companyIds.push(await CompanyModel.findOrCreateByName(companyName));
+        resolvedCompanyIds.push(await CompanyModel.findOrCreateByName(companyName));
     }
 
-    return companyIds;
+    return resolvedCompanyIds;
 }
 
 function normalizeDateInput(value) {
@@ -209,25 +252,67 @@ function normalizeBankDepositUpiDetails(reqBody) {
 
 export const createStaff = async (req, res) => {
     try {
-        const { name, contactNo, companyName, companyNames, staffType = 'distributor', assignments = {} } = req.body;
+        const {
+            name,
+            contactNo,
+            companyName,
+            companyNames,
+            companyIds,
+            staffType = 'distributor',
+            assignments = {},
+            dob,
+            whatsappNumber,
+            aadharNo,
+            aadharDocumentUrl,
+            pccCertificateUrl,
+            staffCategory = 'company_staff',
+        } = req.body;
         const normalizedStaffType = staffType === 'cnf' ? 'cnf' : 'distributor';
+        const normalizedStaffCategory = normalizeStaffCategory(staffCategory);
 
         const contactValidation = validateDigitsOnly(contactNo, 'Contact number');
         if (!contactValidation.valid) {
             return res.status(400).json({ error: contactValidation.error });
         }
 
-        const companyIds = await resolveCompanyIds(companyNames, companyName);
-        const companyId = companyIds[0] || null;
+        const whatsappSource = String(whatsappNumber || '').trim() || contactValidation.value;
+        const whatsappValidation = validateDigitsOnly(whatsappSource, 'WhatsApp number');
+        if (!whatsappValidation.valid) {
+            return res.status(400).json({ error: whatsappValidation.error });
+        }
 
-        // Create staff entry
+        const normalizedAadharNo = aadharNo ? String(aadharNo).replace(/\D/g, '') : '';
+        if (normalizedAadharNo && normalizedAadharNo.length !== 12) {
+            return res.status(400).json({ error: 'Aadhar number must be 12 digits.' });
+        }
+
+        const resolvedCompanyIds = normalizedStaffCategory === 'company_staff'
+            ? await resolveCompanyIds(companyNames, companyName, companyIds)
+            : [];
+
+        if (normalizedStaffCategory === 'company_staff' && resolvedCompanyIds.length === 0) {
+            return res.status(400).json({ error: 'Please select at least one company.' });
+        }
+
+        const companyId = resolvedCompanyIds[0] || null;
+        const profile = buildStaffProfile({
+            dob,
+            whatsappNumber: whatsappValidation.value,
+            aadharNo: normalizedAadharNo,
+            aadharDocumentUrl,
+            pccCertificateUrl,
+            contactNo: contactValidation.value,
+            staffCategory: normalizedStaffCategory,
+        });
+
         const staffId = await StaffModel.create(
             name,
             contactValidation.value,
             companyId,
-            normalizedStaffType
+            normalizedStaffType,
+            profile
         );
-        await StaffModel.setCompanies(staffId, companyIds);
+        await StaffModel.setCompanies(staffId, resolvedCompanyIds);
 
         // Add location assignments
         // assignments: { Monday: [{ locationName: "..." }], Tuesday: [...] }
@@ -248,6 +333,40 @@ export const createStaff = async (req, res) => {
     } catch (error) {
         console.error('Error creating staff:', error);
         res.status(500).json({ error: 'Internal server error' });
+    }
+};
+
+export const uploadStaffDocument = async (req, res) => {
+    try {
+        if (!isCloudinaryConfigured()) {
+            return res.status(500).json({ error: 'Cloudinary is not configured on the server.' });
+        }
+
+        if (!req.file) {
+            return res.status(400).json({ error: 'Please select a file to upload.' });
+        }
+
+        const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'application/pdf'];
+        if (!allowedTypes.includes(req.file.mimetype)) {
+            return res.status(400).json({ error: 'Only JPG, PNG, WEBP or PDF files are allowed.' });
+        }
+
+        const documentType = String(req.body.documentType || 'document').trim().toLowerCase();
+        const result = await uploadBufferToCloudinary(req.file.buffer, {
+            folder: 'staff-documents',
+            uploadOptions: {
+                public_id: `${documentType}_${Date.now()}`,
+            },
+        });
+
+        res.status(200).json({
+            url: result.secure_url,
+            publicId: result.public_id,
+            resourceType: result.resource_type,
+        });
+    } catch (error) {
+        console.error('Error uploading staff document:', error);
+        res.status(500).json({ error: 'Failed to upload document.' });
     }
 };
 
@@ -301,6 +420,7 @@ export const addCounter = async (req, res) => {
 
                 const outletErpId = String(counter.outletErpId || '').trim();
                 const outletName = String(counter.outletName || '').trim();
+                const address = String(counter.address || '').trim();
                 const googleLocationValidation = validateGoogleMapsLocation(
                     counter.googleLocation,
                     `Counter ${i + 1} Google Location`
@@ -328,6 +448,7 @@ export const addCounter = async (req, res) => {
                     ...counter,
                     outletErpId,
                     outletName,
+                    address,
                     contactNumber: contactValidation.value,
                     whatsappNumber: whatsappValidation.value,
                     googleLocation,
@@ -342,9 +463,28 @@ export const addCounter = async (req, res) => {
     }
 };
 
+export const toggleStaffActive = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const staff = await StaffModel.getDetails(id);
+        if (!staff) {
+            return res.status(404).json({ error: 'Staff not found' });
+        }
+        const result = await StaffModel.toggleActive(id);
+        res.status(200).json({
+            message: result.is_active ? 'Staff activated' : 'Staff deactivated',
+            isActive: Boolean(result.is_active),
+        });
+    } catch (error) {
+        console.error('Error toggling staff active status:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+};
+
 export const getStaff = async (req, res) => {
     try {
-        const staff = await StaffModel.getAll();
+        const includeInactive = req.query.includeInactive === 'true';
+        const staff = await StaffModel.getAll(includeInactive);
         res.status(200).json(staff);
     } catch (error) {
         res.status(500).json({ error: 'Internal server error' });
@@ -370,9 +510,7 @@ export const getStaffFullDetails = async (req, res) => {
             }
         });
 
-        const companies = staff.company_name
-            ? staff.company_name.split(',').map(name => name.trim()).filter(Boolean)
-            : [];
+        const companies = buildStaffCompanies(staff);
 
         res.status(200).json({ ...staff, companies, assignments });
     } catch (error) {
@@ -383,20 +521,68 @@ export const getStaffFullDetails = async (req, res) => {
 export const updateStaff = async (req, res) => {
     try {
         const { id } = req.params;
-        const { name, contactNo, companyName, companyNames, staffType = 'distributor', assignments = {} } = req.body;
+        const {
+            name,
+            contactNo,
+            companyName,
+            companyNames,
+            companyIds,
+            staffType = 'distributor',
+            assignments = {},
+            dob,
+            whatsappNumber,
+            aadharNo,
+            aadharDocumentUrl,
+            pccCertificateUrl,
+            staffCategory = 'company_staff',
+        } = req.body;
         const normalizedStaffType = staffType === 'cnf' ? 'cnf' : 'distributor';
+        const normalizedStaffCategory = normalizeStaffCategory(staffCategory);
 
         const contactValidation = validateDigitsOnly(contactNo, 'Contact number');
         if (!contactValidation.valid) {
             return res.status(400).json({ error: contactValidation.error });
         }
 
-        const companyIds = await resolveCompanyIds(companyNames, companyName);
-        const companyId = companyIds[0] || null;
+        const whatsappSource = String(whatsappNumber || '').trim() || contactValidation.value;
+        const whatsappValidation = validateDigitsOnly(whatsappSource, 'WhatsApp number');
+        if (!whatsappValidation.valid) {
+            return res.status(400).json({ error: whatsappValidation.error });
+        }
 
-        // Update staff info
-        await StaffModel.update(id, name, contactValidation.value, companyId, normalizedStaffType);
-        await StaffModel.setCompanies(id, companyIds);
+        const normalizedAadharNo = aadharNo ? String(aadharNo).replace(/\D/g, '') : '';
+        if (normalizedAadharNo && normalizedAadharNo.length !== 12) {
+            return res.status(400).json({ error: 'Aadhar number must be 12 digits.' });
+        }
+
+        const resolvedCompanyIds = normalizedStaffCategory === 'company_staff'
+            ? await resolveCompanyIds(companyNames, companyName, companyIds)
+            : [];
+
+        if (normalizedStaffCategory === 'company_staff' && resolvedCompanyIds.length === 0) {
+            return res.status(400).json({ error: 'Please select at least one company.' });
+        }
+
+        const companyId = resolvedCompanyIds[0] || null;
+        const profile = buildStaffProfile({
+            dob,
+            whatsappNumber: whatsappValidation.value,
+            aadharNo: normalizedAadharNo,
+            aadharDocumentUrl,
+            pccCertificateUrl,
+            contactNo: contactValidation.value,
+            staffCategory: normalizedStaffCategory,
+        });
+
+        await StaffModel.update(
+            id,
+            name,
+            contactValidation.value,
+            companyId,
+            normalizedStaffType,
+            profile
+        );
+        await StaffModel.setCompanies(id, resolvedCompanyIds);
 
         // Replace locations
         await StaffModel.deleteLocations(id);
@@ -766,7 +952,7 @@ export const deleteSale = async (req, res) => {
 export const updatePackagingStatus = async (req, res) => {
     try {
         const { saleId } = req.params;
-        const { packagingStatus, deliveryBoyId, vehicleNo, deliveryDate, statusDate, expectedStatus, packedItemCount, boxCount, packetCount } = req.body;
+        const { packagingStatus, deliveryBoyId, vehicleNo, deliveryDate, statusDate, expectedStatus, packedItemCount, boxCount, packetCount, packedById } = req.body;
 
         if (!['not_packing', 'packing', 'packing_done', 'out_for_delivery', 'delivered', 'cancelled', 'returned'].includes(packagingStatus)) {
             return res.status(400).json({ error: 'Invalid packaging status' });
@@ -822,6 +1008,19 @@ export const updatePackagingStatus = async (req, res) => {
             normalizedPacketCount = packetValidation.value;
         }
 
+        let normalizedPackedById = null;
+        if (packagingStatus === 'packing_done') {
+            const packedByValidation = validatePositiveInteger(packedById, 'Packaging staff');
+            if (!packedByValidation.valid) {
+                return res.status(400).json({ error: 'Please select who completed the packing.' });
+            }
+            const packer = await DeliveryBoyModel.getById(packedByValidation.value);
+            if (!packer || packer.role !== 'packaging_staff' || Number(packer.is_active) !== 1) {
+                return res.status(400).json({ error: 'Selected packaging staff is invalid or inactive.' });
+            }
+            normalizedPackedById = packedByValidation.value;
+        }
+
         await StaffModel.updatePackagingStatus(
             saleId,
             packagingStatus,
@@ -831,7 +1030,8 @@ export const updatePackagingStatus = async (req, res) => {
             normalizedStatusDate,
             normalizedPackedItemCount,
             normalizedBoxCount,
-            normalizedPacketCount
+            normalizedPacketCount,
+            normalizedPackedById
         );
         const updated = await StaffModel.getSaleById(saleId);
         res.status(200).json({
@@ -1440,6 +1640,75 @@ export const getAllSalesByDate = async (req, res) => {
     }
 };
 
+async function buildSaleFullDetails(saleId) {
+    const statusData = await StaffModel.getSaleStatusHistory(saleId);
+    if (!statusData) {
+        return null;
+    }
+
+    const sale = await StaffModel.getSaleDetailsById(saleId) || statusData.sale;
+
+    const payments = await PaymentModel.getBySaleId(saleId);
+    const cancellations = await OrderCancellationModel.getBySaleId(saleId);
+    const collections = await DeliveryCollectionModel.getBySaleId(saleId);
+    const takenBills = await StaffModel.getTakenBillsForSale(saleId);
+
+    const price = parseFloat(sale.price) || 0;
+    const paidAmount = parseFloat(sale.paid_amount) || 0;
+    const balanceAmount = parseFloat(sale.balance_amount) || 0;
+
+    return {
+        sale,
+        history: statusData.history || [],
+        payments,
+        cancellations,
+        collections,
+        takenBills,
+        summary: {
+            price,
+            paidAmount,
+            balanceAmount,
+            invoiceNumber: sale.invoice_number,
+        },
+    };
+}
+
+export const lookupSaleByInvoice = async (req, res) => {
+    try {
+        const { invoiceNumber, saleId } = req.query;
+
+        if (saleId) {
+            const details = await buildSaleFullDetails(saleId);
+            if (!details) {
+                return res.status(404).json({ error: 'Sale not found', results: [] });
+            }
+            return res.status(200).json({ results: [details], multiple: false });
+        }
+
+        const term = String(invoiceNumber || '').trim();
+        if (!term) {
+            return res.status(400).json({ error: 'Invoice number is required' });
+        }
+
+        const matches = await StaffModel.searchSalesByInvoice(term);
+        if (!matches.length) {
+            return res.status(404).json({ error: 'No invoice found', results: [] });
+        }
+
+        const results = await Promise.all(
+            matches.map((match) => buildSaleFullDetails(match.id))
+        );
+
+        return res.status(200).json({
+            results: results.filter(Boolean),
+            multiple: matches.length > 1,
+        });
+    } catch (error) {
+        console.error('Error looking up invoice:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+};
+
 export const getCancelledDeliverySales = async (req, res) => {
     try {
         const sales = await StaffModel.getCancelledDeliverySales();
@@ -1470,7 +1739,7 @@ export const fetchSalesByDate = async (req, res) => {
 export const editCounter = async (req, res) => {
     try {
         const { counterId } = req.params;
-        const { outletErpId, outletName, contactNumber, whatsappNumber, googleLocation } = req.body;
+        const { outletErpId, outletName, contactNumber, whatsappNumber, address, googleLocation } = req.body;
         const existingCounter = await StaffModel.getCounterById(counterId);
         if (!existingCounter) {
             return res.status(404).json({ error: 'Counter not found' });
@@ -1512,6 +1781,7 @@ export const editCounter = async (req, res) => {
             outletName: normalizedOutletName,
             contactNumber: contactValidation.value,
             whatsappNumber: whatsappValidation.value,
+            address: String(address || '').trim(),
             googleLocation: normalizedGoogleLocation,
         });
         res.status(200).json({ message: 'Counter updated successfully' });

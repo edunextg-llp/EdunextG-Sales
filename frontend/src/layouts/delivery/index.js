@@ -119,6 +119,7 @@ function Delivery() {
           <tr>
             <td>${index + 1}</td>
             <td>${escapeHtml(row.staff_name || "N/A")}</td>
+            <td>${escapeHtml(row.company_name || "N/A")}</td>
             <td>${escapeHtml(row.outlet_name || "N/A")}</td>
             <td>${escapeHtml(row.location_name || "N/A")}</td>
             <td>${escapeHtml(row.outlet_erp_id || "N/A")}</td>
@@ -177,6 +178,7 @@ function Delivery() {
           <tr>
             <th>Sr No</th>
             <th>Staff Name</th>
+            <th>Company</th>
             <th>Outlet Name</th>
             <th>Area</th>
             <th>ERP ID</th>
@@ -389,6 +391,7 @@ function Delivery() {
     const outletArea = row.location_name ? row.location_name.toLowerCase() : "";
     const outletErpId = row.outlet_erp_id ? row.outlet_erp_id.toLowerCase() : "";
     const staffName = row.staff_name ? row.staff_name.toLowerCase() : "";
+    const companyName = row.company_name ? row.company_name.toLowerCase() : "";
     const saleId = formatBpSaleId(row).toLowerCase();
     const invoiceNumber = row.invoice_number ? String(row.invoice_number).toLowerCase() : "";
     return (
@@ -396,6 +399,7 @@ function Delivery() {
       outletArea.includes(search) ||
       outletErpId.includes(search) ||
       staffName.includes(search) ||
+      companyName.includes(search) ||
       saleId.includes(search) ||
       invoiceNumber.includes(search)
     );
@@ -425,6 +429,7 @@ function Delivery() {
     const outletArea = row.location_name ? row.location_name.toLowerCase() : "";
     const outletErpId = row.outlet_erp_id ? row.outlet_erp_id.toLowerCase() : "";
     const staffName = row.staff_name ? row.staff_name.toLowerCase() : "";
+    const companyName = row.company_name ? row.company_name.toLowerCase() : "";
     const saleId = formatBpSaleId(row).toLowerCase();
     const invoiceNumber = row.invoice_number ? String(row.invoice_number).toLowerCase() : "";
     return (
@@ -432,6 +437,7 @@ function Delivery() {
       outletArea.includes(search) ||
       outletErpId.includes(search) ||
       staffName.includes(search) ||
+      companyName.includes(search) ||
       saleId.includes(search) ||
       invoiceNumber.includes(search)
     );
@@ -543,6 +549,7 @@ function Delivery() {
                           Sr No
                         </TableCell>
                         <TableCell sx={paginatedTableHeadCellSx}>Staff Name</TableCell>
+                        <TableCell sx={paginatedTableHeadCellSx}>Company</TableCell>
                         <TableCell sx={paginatedTableHeadCellSx}>Outlet Name</TableCell>
                         <TableCell sx={paginatedTableHeadCellSx}>Area</TableCell>
                         <TableCell sx={paginatedTableHeadCellSx}>ERP ID</TableCell>
@@ -589,6 +596,9 @@ function Delivery() {
                               </TableCell>
                               <TableCell sx={{ borderBottom: borderCol, py: 2, color: txColor }}>
                                 {row.staff_name}
+                              </TableCell>
+                              <TableCell sx={{ borderBottom: borderCol, py: 2, color: txColor }}>
+                                {row.company_name || "N/A"}
                               </TableCell>
                               <TableCell sx={{ borderBottom: borderCol, py: 2, color: txColor, fontWeight: "medium" }}>
                                 {row.outlet_name}
@@ -675,7 +685,7 @@ function Delivery() {
                         })
                       ) : (
                         <TableRow>
-                          <TableCell colSpan={16} align="center" sx={{ py: 3, borderBottom: 0 }}>
+                          <TableCell colSpan={17} align="center" sx={{ py: 3, borderBottom: 0 }}>
                             <MDTypography variant="body2" color="text">
                               No deliveries found.
                             </MDTypography>

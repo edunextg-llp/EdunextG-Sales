@@ -1,11 +1,11 @@
 import { parse } from 'csv-parse/sync';
 import xlsx from 'xlsx';
+import CompanyModel from '../models/companyModel.js';
 import DmsStockModel from '../models/dmsStockModel.js';
 
 const HEADER_ALIASES = {
     productErpId: ['product erp id'],
     productName: ['sku name', 'product name'],
-    productDivision: ['product division'],
     variantName: ['variant name'],
     pcsPerBox: ['pcs/box', 'pcs per box'],
     currentStockInCase: ['current stock in case'],
@@ -143,7 +143,7 @@ export function normalizeStockRow(row) {
     return {
         productErpId: textValue(findValue(row, 'productErpId')),
         productName: textValue(findValue(row, 'productName')),
-        productDivision: textValue(findValue(row, 'productDivision')),
+        productDivision: '',
         variantName: textValue(findValue(row, 'variantName')),
         pcsPerBox,
         currentStockInCase,
@@ -216,10 +216,25 @@ export const uploadDmsStock = async (req, res) => {
             return res.status(400).json({ error: 'Please upload a stock Excel or CSV file.' });
         }
 
+        const companyId = parseInt(req.body?.companyId, 10);
+        if (!Number.isFinite(companyId) || companyId <= 0) {
+            return res.status(400).json({ error: 'Please select a company.' });
+        }
+
+        const company = await CompanyModel.getById(companyId);
+        if (!company) {
+            return res.status(400).json({ error: 'Selected company was not found.' });
+        }
+
         const parsedRows = parseRows(req.file);
+        const productDivision = String(company.name || '').trim();
         const rows = parsedRows
             .map(normalizeStockRow)
-            .filter((row) => row.productErpId || row.productName);
+            .filter((row) => row.productErpId || row.productName)
+            .map((row) => ({
+                ...row,
+                productDivision,
+            }));
 
         if (!rows.length) {
             return res.status(400).json({ error: 'No stock rows found in the uploaded file.' });
@@ -228,6 +243,7 @@ export const uploadDmsStock = async (req, res) => {
         const summary = buildSummary(rows);
         const result = await DmsStockModel.createImport({
             fileName: req.file.originalname,
+            companyId,
             uploadDate: normalizeUploadDate(req.body?.uploadDate),
             rowCount: rows.length,
             summary,
@@ -247,9 +263,16 @@ export const uploadDmsStock = async (req, res) => {
 export const getLatestDmsStock = async (req, res) => {
     try {
         const uploadDate = String(req.query.uploadDate || '').trim();
-        const latestImport = uploadDate
-            ? await DmsStockModel.getImportByUploadDate(uploadDate)
-            : await DmsStockModel.getLatestImport();
+        const importId = parseInt(req.query.importId, 10);
+        let latestImport = null;
+
+        if (Number.isFinite(importId) && importId > 0) {
+            latestImport = { id: importId };
+        } else if (uploadDate) {
+            latestImport = await DmsStockModel.getImportByUploadDate(uploadDate);
+        } else {
+            latestImport = await DmsStockModel.getLatestImport();
+        }
         if (!latestImport) {
             return res.status(200).json({ import: null, items: [] });
         }

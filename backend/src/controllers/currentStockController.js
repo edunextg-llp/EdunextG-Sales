@@ -130,9 +130,18 @@ const parseDmsImportId = (value) => {
 
 export const getCurrentStock = async (req, res) => {
     try {
-        const dmsImportId = parseDmsImportId(req.query.dmsImportId);
+        let dmsImportId = parseDmsImportId(req.query.dmsImportId);
+
         if (!dmsImportId) {
-            return res.status(400).json({ error: 'Please choose a DMS stock upload date.' });
+            const latestImport = await DmsStockModel.getLatestImport();
+            if (!latestImport) {
+                return res.status(200).json({
+                    import: null,
+                    items: [],
+                    error: 'No DMS stock upload found. Upload DMS and Physical Stock first.',
+                });
+            }
+            dmsImportId = latestImport.id;
         }
 
         const dmsResult = await DmsStockModel.getImportById(dmsImportId);

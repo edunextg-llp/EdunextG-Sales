@@ -275,12 +275,14 @@ function ChalanPackagingDelivery() {
     const assigneeName = String(row.assignee_name || row.assigneeName || "").toLowerCase();
     const staffName = String(row.staff_name || "").toLowerCase();
     const deliveryBoyName = String(row.delivery_boy_name || "").toLowerCase();
+    const companyName = String(row.company_name || row.companyName || "").toLowerCase();
 
     return (
       code.includes(search) ||
       assigneeName.includes(search) ||
       staffName.includes(search) ||
-      deliveryBoyName.includes(search)
+      deliveryBoyName.includes(search) ||
+      companyName.includes(search)
     );
   });
 
@@ -358,6 +360,7 @@ function ChalanPackagingDelivery() {
                         </TableCell>
                         <TableCell sx={paginatedTableHeadCellSx}>Code</TableCell>
                         <TableCell sx={paginatedTableHeadCellSx}>Staff / Delivery Name</TableCell>
+                        <TableCell sx={paginatedTableHeadCellSx}>Company</TableCell>
                         {dateFilterMode === "all" && (
                           <TableCell sx={paginatedTableHeadCellSx}>Sale Date</TableCell>
                         )}
@@ -419,6 +422,9 @@ function ChalanPackagingDelivery() {
                               </TableCell>
                               <TableCell sx={{ borderBottom: borderCol, py: 2, color: txColor }}>
                                 {row.assignee_name || row.assigneeName || "—"}
+                              </TableCell>
+                              <TableCell sx={{ borderBottom: borderCol, py: 2, color: txColor }}>
+                                {row.company_name || row.companyName || "N/A"}
                               </TableCell>
                               {dateFilterMode === "all" && (
                                 <TableCell sx={{ borderBottom: borderCol, py: 2, color: txColor }}>
@@ -564,7 +570,7 @@ function ChalanPackagingDelivery() {
                       ) : (
                         <TableRow>
                           <TableCell
-                            colSpan={dateFilterMode === "all" ? 12 : 11}
+                            colSpan={dateFilterMode === "all" ? 13 : 12}
                             align="center"
                             sx={{ py: 3, borderBottom: 0 }}
                           >

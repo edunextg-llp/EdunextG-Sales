@@ -14,6 +14,11 @@ import {
   MenuItem,
   OutlinedInput,
   Select,
+  Switch,
+  FormControlLabel,
+  RadioGroup,
+  Radio,
+  FormLabel,
 } from "@mui/material";
 // Material Dashboard 2 React components
 import MDBox from "components/MDBox";
@@ -33,6 +38,7 @@ import { CiTrash } from "react-icons/ci";
 function AddDeliveryBoy() {
   const [name, setName] = useState("");
   const [contactNo, setContactNo] = useState("");
+  const [aadharNo, setAadharNo] = useState("");
   const [companyIds, setCompanyIds] = useState([]);
   const [companyOptions, setCompanyOptions] = useState([]);
   const [submitting, setSubmitting] = useState(false);
@@ -40,6 +46,8 @@ function AddDeliveryBoy() {
   const [loadingList, setLoadingList] = useState(true);
   const [editingId, setEditingId] = useState(null);
   const [deliveryModalOpen, setDeliveryModalOpen] = useState(false);
+  const [role, setRole] = useState("delivery_boy");
+  const [showInactive, setShowInactive] = useState(false);
 
   const API = "https://bawarchee.edunextg.co/api";
 
@@ -59,7 +67,7 @@ function AddDeliveryBoy() {
 
   const fetchDeliveryBoys = async () => {
     try {
-      const response = await fetch(`${API}/delivery-boy`);
+      const response = await fetch(`${API}/delivery-boy?includeInactive=${showInactive}`);
       if (response.ok) {
         const data = await response.json();
         setDeliveryBoys(data);
@@ -73,14 +81,19 @@ function AddDeliveryBoy() {
 
   useEffect(() => {
     fetchCompanyOptions();
-    fetchDeliveryBoys();
   }, []);
+
+  useEffect(() => {
+    fetchDeliveryBoys();
+  }, [showInactive]);
 
   const resetForm = () => {
     setCompanyIds([]);
     setName("");
     setContactNo("");
+    setAadharNo("");
     setEditingId(null);
+    setRole("delivery_boy");
   };
 
   const parseCompanyIds = (boy) =>
@@ -103,13 +116,20 @@ function AddDeliveryBoy() {
     setEditingId(boy.id);
     setName(boy.name || "");
     setContactNo(boy.contact_no || "");
+    setAadharNo(boy.aadhar_no || "");
     setCompanyIds(parseCompanyIds(boy));
+    setRole(boy.role || "delivery_boy");
     setDeliveryModalOpen(true);
   };
 
   const handleSubmit = async () => {
     if (companyIds.length === 0 || !name.trim() || !contactNo.trim()) {
       alert("Please choose Company Name and enter both Name and Contact Number.");
+      return;
+    }
+
+    if (aadharNo && aadharNo.length !== 12) {
+      alert("Aadhar number must be 12 digits.");
       return;
     }
 
@@ -122,7 +142,13 @@ function AddDeliveryBoy() {
           headers: {
             "Content-Type": "application/json",
           },
-          body: JSON.stringify({ name, contactNo, companyIds }),
+          body: JSON.stringify({
+            name,
+            contactNo,
+            companyIds,
+            role,
+            aadharNo: aadharNo || null,
+          }),
         }
       );
 
@@ -139,6 +165,26 @@ function AddDeliveryBoy() {
       alert("Error submitting form.");
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const handleToggleActive = async (boy) => {
+    try {
+      const response = await fetch(`${API}/delivery-boy/${boy.id}/toggle-active`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${localStorage.getItem("token")}`,
+        },
+      });
+      if (response.ok) {
+        await fetchDeliveryBoys();
+      } else {
+        const err = await response.json().catch(() => ({}));
+        alert(err.error || "Failed to update status.");
+      }
+    } catch (error) {
+      console.error("Error toggling active status:", error);
     }
   };
 
@@ -190,10 +236,21 @@ function AddDeliveryBoy() {
                   <MDTypography variant="h5" fontWeight="medium">
                     Delivery Boys
                   </MDTypography>
-                  <MDButton color="info" variant="gradient" onClick={openDeliveryModal}>
-                    <Icon sx={{ mr: 1 }}>add</Icon>
-                    Create Delivery Boy
-                  </MDButton>
+                  <MDBox display="flex" alignItems="center" gap={2}>
+                    <FormControlLabel
+                      control={
+                        <Switch
+                          checked={showInactive}
+                          onChange={(e) => setShowInactive(e.target.checked)}
+                        />
+                      }
+                      label="Show Inactive"
+                    />
+                    <MDButton color="info" variant="gradient" onClick={openDeliveryModal}>
+                      <Icon sx={{ mr: 1 }}>add</Icon>
+                      Create Delivery Boy
+                    </MDButton>
+                  </MDBox>
                 </MDBox>
 
                 {loadingList ? (
@@ -212,54 +269,60 @@ function AddDeliveryBoy() {
                           { Header: <MDTypography variant="subtitle2" color="dark" fontWeight="bold">#</MDTypography>, accessor: "id", width: "10%", align: "left" },
                           { Header: <MDTypography variant="subtitle2" color="dark" fontWeight="bold">Company</MDTypography>, accessor: "company", width: "30%", align: "left" },
                           { Header: <MDTypography variant="subtitle2" color="dark" fontWeight="bold">Name</MDTypography>, accessor: "name", width: "30%", align: "left" },
+                          { Header: <MDTypography variant="subtitle2" color="dark" fontWeight="bold">Role</MDTypography>, accessor: "role", align: "center" },
                           { Header: <MDTypography variant="subtitle2" color="dark" fontWeight="bold">Contact Number</MDTypography>, accessor: "contact", align: "center" },
                           { Header: <MDTypography variant="subtitle2" color="dark" fontWeight="bold">Login ID</MDTypography>, accessor: "loginId", align: "center" },
                           { Header: <MDTypography variant="subtitle2" color="dark" fontWeight="bold">Passcode</MDTypography>, accessor: "passcode", align: "center" },
+                          { Header: <MDTypography variant="subtitle2" color="dark" fontWeight="bold">Status</MDTypography>, accessor: "status", align: "center" },
                           { Header: <MDTypography variant="subtitle2" color="dark" fontWeight="bold">Action</MDTypography>, accessor: "action", align: "center" },
                         ],
                         rows: deliveryBoys.map((boy, index) => ({
                           id: (
-                            <MDTypography component="span" variant="caption" color="text" fontWeight="medium">
+                            <MDTypography component="span" variant="caption" color="text" fontWeight="medium" sx={{ opacity: boy.is_active === 0 ? 0.5 : 1 }}>
                               {index + 1}
                             </MDTypography>
                           ),
                           name: (
-                            <MDTypography component="span" variant="caption" color="text" fontWeight="medium">
+                            <MDTypography component="span" variant="caption" color="text" fontWeight="medium" sx={{ opacity: boy.is_active === 0 ? 0.5 : 1 }}>
                               {boy.name}
                             </MDTypography>
                           ),
                           company: (
-                            <MDTypography component="span" variant="caption" color="text" fontWeight="medium">
+                            <MDTypography component="span" variant="caption" color="text" fontWeight="medium" sx={{ opacity: boy.is_active === 0 ? 0.5 : 1 }}>
                               {boy.company_name || "—"}
                             </MDTypography>
                           ),
+                          role: (
+                            <MDTypography component="span" variant="caption" color="text" fontWeight="medium" sx={{ opacity: boy.is_active === 0 ? 0.5 : 1 }}>
+                              {boy.role === "packaging_staff" ? "Packaging Staff" : "Delivery Boy"}
+                            </MDTypography>
+                          ),
                           contact: (
-                            <MDTypography component="span" variant="caption" color="text" fontWeight="medium">
+                            <MDTypography component="span" variant="caption" color="text" fontWeight="medium" sx={{ opacity: boy.is_active === 0 ? 0.5 : 1 }}>
                               {boy.contact_no}
                             </MDTypography>
                           ),
                           loginId: (
-                            <MDTypography component="span" variant="caption" color="text" fontWeight="bold">
+                            <MDTypography component="span" variant="caption" color="text" fontWeight="bold" sx={{ opacity: boy.is_active === 0 ? 0.5 : 1 }}>
                               {boy.delivery_login_id || "N/A"}
                             </MDTypography>
                           ),
                           passcode: (
-                            <MDTypography component="span" variant="caption" color="text" fontWeight="bold">
+                            <MDTypography component="span" variant="caption" color="text" fontWeight="bold" sx={{ opacity: boy.is_active === 0 ? 0.5 : 1 }}>
                               {boy.delivery_passcode || "N/A"}
                             </MDTypography>
                           ),
+                          status: (
+                            <Switch
+                              checked={boy.is_active === 1}
+                              onChange={() => handleToggleActive(boy)}
+                              color="primary"
+                            />
+                          ),
                           action: (
                             <MDBox display="flex" gap={1} justifyContent="center" flexWrap="wrap">
-                              {/* <MDButton
-                                variant="outlined"
-                                color="info"
-                                size="small"
-                                onClick={() => startEditDeliveryBoy(boy)}
-                              >
-                                Edit
-                              </MDButton> */}
-                              <FaRegEdit   onClick={() => startEditDeliveryBoy(boy)} style={{ cursor: "pointer" }} color="#E0E388" size={20}/>
-                              <CiTrash   onClick={() => handleDeleteDeliveryBoy(boy)} style={{ cursor: "pointer" }} color="#FF0000" size={20}/>
+                              <FaRegEdit onClick={() => startEditDeliveryBoy(boy)} style={{ cursor: "pointer" }} color="#E0E388" size={20}/>
+                              <CiTrash onClick={() => handleDeleteDeliveryBoy(boy)} style={{ cursor: "pointer" }} color="#FF0000" size={20}/>
                             </MDBox>
                           ),
                         })),
@@ -283,6 +346,21 @@ function AddDeliveryBoy() {
         </DialogTitle>
         <DialogContent dividers>
           <MDBox pt={1} component="form" role="form">
+            <MDBox mb={2}>
+              <FormControl component="fieldset">
+                <FormLabel component="legend" sx={{ fontSize: "0.875rem", fontWeight: "bold", color: "#344767" }}>
+                  Role
+                </FormLabel>
+                <RadioGroup
+                  row
+                  value={role}
+                  onChange={(e) => setRole(e.target.value)}
+                >
+                  <FormControlLabel value="delivery_boy" control={<Radio />} label="Delivery Boy" />
+                  <FormControlLabel value="packaging_staff" control={<Radio />} label="Packaging Staff" />
+                </RadioGroup>
+              </FormControl>
+            </MDBox>
             <MDBox mb={2}>
               <FormControl fullWidth size="small">
                 <InputLabel id="delivery-company-label">Company Name</InputLabel>
@@ -330,7 +408,18 @@ function AddDeliveryBoy() {
                 label="Contact Number"
                 fullWidth
                 value={contactNo}
-                onChange={(e) => setContactNo(e.target.value)}
+                onChange={(e) => setContactNo(e.target.value.replace(/\D/g, ""))}
+              />
+            </MDBox>
+            <MDBox mb={2}>
+              <MDInput
+                type="text"
+                label="Aadhar Number (Optional)"
+                fullWidth
+                value={aadharNo}
+                onChange={(e) => setAadharNo(e.target.value.replace(/\D/g, "").slice(0, 12))}
+                inputProps={{ maxLength: 12 }}
+                helperText="12 digit Aadhar number — document upload not required"
               />
             </MDBox>
           </MDBox>

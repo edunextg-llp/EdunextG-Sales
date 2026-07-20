@@ -241,6 +241,7 @@ function OutBillPage() {
             <td>${escapeHtml(bill.contact_number || "N/A")}</td>
             <td>${escapeHtml(bill.sticker_number || "N/A")}</td>
             <td>${escapeHtml(bill.invoice_number || "N/A")}</td>
+            <td>${escapeHtml(bill.company_name || "N/A")}</td>
             <td>${escapeHtml(formatTakerName(bill))}</td>
             <td class="right">Rs. ${Number(bill.balance_amount || 0).toFixed(2)}</td>
             <td>${escapeHtml(formatDate(bill.sale_date))}</td>
@@ -298,6 +299,7 @@ function OutBillPage() {
             <th>Contact No</th>
             <th>Sale ID</th>
             <th>Invoice No</th>
+            <th>Company</th>
             <th>Staff (Taker)</th>
             <th class="right">Outstanding Balance</th>
             <th>Issue Date</th>
@@ -352,6 +354,7 @@ function OutBillPage() {
     const contactNumber = credit.contact_number ? credit.contact_number.toLowerCase() : "";
     const invoiceNum = credit.invoice_number ? credit.invoice_number.toLowerCase() : "";
     const staffName = credit.staff_name ? credit.staff_name.toLowerCase() : "";
+    const companyName = credit.company_name ? credit.company_name.toLowerCase() : "";
     const remarks = credit.remarks ? credit.remarks.toLowerCase() : "";
     const stickerNum = credit.sticker_number ? credit.sticker_number.toLowerCase() : "";
     return (
@@ -360,6 +363,7 @@ function OutBillPage() {
       contactNumber.includes(search) ||
       invoiceNum.includes(search) ||
       staffName.includes(search) ||
+      companyName.includes(search) ||
       remarks.includes(search) ||
       stickerNum.includes(search)
     );
@@ -782,6 +786,7 @@ function OutBillPage() {
                           <TableCell align="center" sx={paginatedTableHeadCellSx}>Sale ID</TableCell>
                           <TableCell align="center" sx={paginatedTableHeadCellSx}>Invoice No</TableCell>
                           <TableCell align="center" sx={paginatedTableHeadCellSx}>Staff</TableCell>
+                          <TableCell align="center" sx={paginatedTableHeadCellSx}>Company</TableCell>
                           <TableCell align="center" sx={paginatedTableHeadCellSx}>Outstanding Balance</TableCell>
                           <TableCell align="center" sx={paginatedTableHeadCellSx}>Issue Date</TableCell>
                           <TableCell align="center" sx={paginatedTableHeadCellSx}>Due Date</TableCell>
@@ -816,6 +821,7 @@ function OutBillPage() {
                             <TableCell align="center">{credit.sticker_number}</TableCell>
                             <TableCell align="center">{credit.invoice_number}</TableCell>
                             <TableCell align="center">{credit.staff_name}</TableCell>
+                            <TableCell align="center">{credit.company_name || "N/A"}</TableCell>
                             <TableCell
                               align="center"
                               sx={{ color: "error.main", fontWeight: "bold" }}
@@ -874,6 +880,7 @@ function OutBillPage() {
                           <TableCell align="center" sx={paginatedTableHeadCellSx}>Sale ID</TableCell>
                           <TableCell align="center" sx={paginatedTableHeadCellSx}>Invoice No</TableCell>
                           <TableCell align="center" sx={paginatedTableHeadCellSx}>Staff (Taker)</TableCell>
+                          <TableCell align="center" sx={paginatedTableHeadCellSx}>Company</TableCell>
                           <TableCell align="center" sx={paginatedTableHeadCellSx}>Outstanding Balance</TableCell>
                           <TableCell align="center" sx={paginatedTableHeadCellSx}>Issue Date</TableCell>
                           <TableCell align="center" sx={paginatedTableHeadCellSx}>Due Date</TableCell>
@@ -897,6 +904,7 @@ function OutBillPage() {
                             <TableCell align="center">{bill.sticker_number}</TableCell>
                             <TableCell align="center">{bill.invoice_number}</TableCell>
                             <TableCell align="center">{formatTakerName(bill)}</TableCell>
+                            <TableCell align="center">{bill.company_name || "N/A"}</TableCell>
                             <TableCell
                               align="center"
                               sx={{ color: "error.main", fontWeight: "bold" }}

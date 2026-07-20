@@ -11,16 +11,17 @@ class DeliveryBoyModel {
         return generateDeliveryPasscode();
     }
 
-    static async create(name, contactNo, companyId = null) {
+    static async create(name, contactNo, companyId = null, role = 'delivery_boy', aadharNo = null) {
         const deliveryPasscode = DeliveryBoyModel.generatePasscode();
         const passcodeHash = await bcrypt.hash(deliveryPasscode, 10);
         const connection = await db.getConnection();
 
         try {
             await connection.beginTransaction();
+            const normalizedRole = role === 'packaging_staff' ? 'packaging_staff' : 'delivery_boy';
             const [result] = await connection.execute(
-                'INSERT INTO delivery_boys (name, contact_no, company_id, delivery_passcode_hash) VALUES (?, ?, ?, ?)',
-                [name, contactNo, companyId, passcodeHash]
+                'INSERT INTO delivery_boys (name, contact_no, company_id, delivery_passcode_hash, role, aadhar_no) VALUES (?, ?, ?, ?, ?, ?)',
+                [name, contactNo, companyId, passcodeHash, normalizedRole, aadharNo]
             );
             const deliveryLoginId = DeliveryBoyModel.formatLoginId(result.insertId);
             await connection.execute(
@@ -55,9 +56,11 @@ class DeliveryBoyModel {
         }
     }
 
-    static async getAll() {
+    static async getAll(includeInactive = false) {
+        const activeClause = includeInactive ? '' : 'WHERE db.is_active = 1';
         const [rows] = await db.execute(
             `SELECT db.id, db.name, db.contact_no, db.company_id, db.delivery_login_id,
+                    db.role, db.is_active, db.aadhar_no,
                     COALESCE(dbc.company_names, c.name) AS company_name,
                     dbc.company_ids
              FROM delivery_boys db
@@ -70,6 +73,7 @@ class DeliveryBoyModel {
                  INNER JOIN companies c2 ON c2.id = dbc.company_id
                  GROUP BY dbc.delivery_boy_id
              ) dbc ON dbc.delivery_boy_id = db.id
+             ${activeClause}
              ORDER BY db.name`
         );
         return rows;
@@ -78,6 +82,7 @@ class DeliveryBoyModel {
     static async getById(id) {
         const [rows] = await db.execute(
             `SELECT db.id, db.name, db.contact_no, db.company_id, db.delivery_login_id,
+                    db.role, db.is_active, db.aadhar_no,
                     COALESCE(dbc.company_names, c.name) AS company_name,
                     dbc.company_ids
              FROM delivery_boys db
@@ -118,12 +123,25 @@ class DeliveryBoyModel {
         return safeDeliveryBoy;
     }
 
-    static async update(id, name, contactNo, companyId = null) {
+    static async update(id, name, contactNo, companyId = null, role = 'delivery_boy', aadharNo = null) {
+        const normalizedRole = role === 'packaging_staff' ? 'packaging_staff' : 'delivery_boy';
         const [result] = await db.execute(
-            'UPDATE delivery_boys SET name = ?, contact_no = ?, company_id = ? WHERE id = ?',
-            [name, contactNo, companyId, id]
+            'UPDATE delivery_boys SET name = ?, contact_no = ?, company_id = ?, role = ?, aadhar_no = ? WHERE id = ?',
+            [name, contactNo, companyId, normalizedRole, aadharNo, id]
         );
         return result.affectedRows > 0;
+    }
+
+    static async toggleActive(id) {
+        await db.execute(
+            'UPDATE delivery_boys SET is_active = NOT is_active WHERE id = ?',
+            [id]
+        );
+        const [rows] = await db.execute(
+            'SELECT is_active FROM delivery_boys WHERE id = ?',
+            [id]
+        );
+        return rows[0];
     }
 
     static async generateCredentials(id) {

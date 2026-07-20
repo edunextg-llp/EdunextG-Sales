@@ -97,6 +97,13 @@ function formatDisplayDate(value) {
   return date.toLocaleDateString();
 }
 
+function getStaffCompanies(staff) {
+  return String(staff?.company_name || "")
+    .split(",")
+    .map((company) => company.trim())
+    .filter(Boolean);
+}
+
 function ChalanAddSales() {
   const API = "https://bawarchee.edunextg.co/api";
 
@@ -104,6 +111,7 @@ function ChalanAddSales() {
   const [assigneeType, setAssigneeType] = useState("");
   const [staffOptions, setStaffOptions] = useState([]);
   const [deliveryBoyOptions, setDeliveryBoyOptions] = useState([]);
+  const [selectedCompanyName, setSelectedCompanyName] = useState("");
   const [selectedStaffId, setSelectedStaffId] = useState("");
   const [selectedDeliveryBoyId, setSelectedDeliveryBoyId] = useState("");
   const [items, setItems] = useState([{ ...emptyItem }]);
@@ -138,6 +146,7 @@ function ChalanAddSales() {
 
   const resetEntryForm = () => {
     setItems([{ ...emptyItem }]);
+    setSelectedCompanyName("");
     setSelectedStaffId("");
     setSelectedDeliveryBoyId("");
     setAssigneeType("");
@@ -172,6 +181,25 @@ function ChalanAddSales() {
     fetchChalanList(selectedDate);
   }, [selectedDate]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  useEffect(() => {
+    if (
+      assigneeType !== "company_staff" ||
+      !selectedStaffId ||
+      selectedCompanyName ||
+      staffOptions.length === 0
+    ) {
+      return;
+    }
+
+    const staff = staffOptions.find(
+      (option) => Number(option.id) === Number(selectedStaffId)
+    );
+    const companies = getStaffCompanies(staff);
+    if (companies.length > 0) {
+      setSelectedCompanyName(companies[0]);
+    }
+  }, [assigneeType, selectedStaffId, selectedCompanyName, staffOptions]);
+
   const totalAmount = useMemo(
     () =>
       items.reduce((sum, item) => {
@@ -185,10 +213,34 @@ function ChalanAddSales() {
     [items]
   );
 
+  const companyOptions = useMemo(
+    () =>
+      [...new Set(staffOptions.flatMap(getStaffCompanies))].sort((a, b) =>
+        a.localeCompare(b)
+      ),
+    [staffOptions]
+  );
+
+  const filteredStaffOptions = useMemo(
+    () =>
+      staffOptions.filter((staff) => {
+        if (!selectedCompanyName) return false;
+        return getStaffCompanies(staff).includes(selectedCompanyName);
+      }),
+    [staffOptions, selectedCompanyName]
+  );
+
   const handleAssigneeTypeChange = (value) => {
     setAssigneeType(value);
+    setSelectedCompanyName("");
     setSelectedStaffId("");
     setSelectedDeliveryBoyId("");
+    setErrorMessage("");
+  };
+
+  const handleCompanyChange = (value) => {
+    setSelectedCompanyName(value);
+    setSelectedStaffId("");
     setErrorMessage("");
   };
 
@@ -215,6 +267,9 @@ function ChalanAddSales() {
     }
     if (!assigneeType) {
       return "Please choose company staff or delivery boy.";
+    }
+    if (assigneeType === "company_staff" && !selectedCompanyName) {
+      return "Please choose a company.";
     }
     if (assigneeType === "company_staff" && !selectedStaffId) {
       return "Please choose a company staff name.";
@@ -332,8 +387,27 @@ function ChalanAddSales() {
       const saleDate = String(sale.saleDate).split("T")[0];
       setSelectedDate(saleDate);
       setAssigneeType(sale.assigneeType);
-      setSelectedStaffId(sale.staffId || "");
-      setSelectedDeliveryBoyId(sale.deliveryBoyId || "");
+
+      if (sale.assigneeType === "company_staff") {
+        const staff = staffOptions.find((option) => Number(option.id) === Number(sale.staffId));
+        const staffCompanies = getStaffCompanies(staff);
+        const saleCompany = String(sale.companyName || sale.company_name || "")
+          .split(",")
+          .map((name) => name.trim())
+          .find(Boolean);
+        setSelectedCompanyName(
+          saleCompany && staffCompanies.includes(saleCompany)
+            ? saleCompany
+            : staffCompanies[0] || saleCompany || ""
+        );
+        setSelectedStaffId(sale.staffId || "");
+        setSelectedDeliveryBoyId("");
+      } else {
+        setSelectedCompanyName("");
+        setSelectedStaffId("");
+        setSelectedDeliveryBoyId(sale.deliveryBoyId || "");
+      }
+
       setItems(
         sale.items.length > 0
           ? sale.items.map((item) => ({
@@ -425,27 +499,59 @@ function ChalanAddSales() {
                   </Grid>
 
                   {assigneeType === "company_staff" && (
-                    <Grid item xs={12} md={4}>
-                      <FormControl fullWidth size="small">
-                        <InputLabel id="staff-name-label">Company Staff Name</InputLabel>
-                        <Select
-                          labelId="staff-name-label"
-                          label="Company Staff Name"
-                          value={selectedStaffId}
-                          onChange={(event) => {
-                            setSelectedStaffId(event.target.value);
-                            setErrorMessage("");
-                          }}
-                          sx={selectFieldSx}
-                        >
-                          {staffOptions.map((staff) => (
-                            <MenuItem key={staff.id} value={staff.id}>
-                              {staff.name}
+                    <>
+                      <Grid item xs={12} md={4}>
+                        <FormControl fullWidth size="small">
+                          <InputLabel id="company-name-label">Company Name</InputLabel>
+                          <Select
+                            labelId="company-name-label"
+                            label="Company Name"
+                            value={selectedCompanyName}
+                            onChange={(event) => handleCompanyChange(event.target.value)}
+                            sx={selectFieldSx}
+                          >
+                            <MenuItem value="">
+                              <em>Select Company</em>
                             </MenuItem>
-                          ))}
-                        </Select>
-                      </FormControl>
-                    </Grid>
+                            {companyOptions.map((companyName) => (
+                              <MenuItem key={companyName} value={companyName}>
+                                {companyName}
+                              </MenuItem>
+                            ))}
+                            {companyOptions.length === 0 && (
+                              <MenuItem disabled>No company found</MenuItem>
+                            )}
+                          </Select>
+                        </FormControl>
+                      </Grid>
+                      <Grid item xs={12} md={4}>
+                        <FormControl fullWidth size="small" disabled={!selectedCompanyName}>
+                          <InputLabel id="staff-name-label">Company Staff Name</InputLabel>
+                          <Select
+                            labelId="staff-name-label"
+                            label="Company Staff Name"
+                            value={selectedStaffId}
+                            onChange={(event) => {
+                              setSelectedStaffId(event.target.value);
+                              setErrorMessage("");
+                            }}
+                            sx={selectFieldSx}
+                          >
+                            <MenuItem value="">
+                              <em>Select Staff</em>
+                            </MenuItem>
+                            {filteredStaffOptions.map((staff) => (
+                              <MenuItem key={staff.id} value={staff.id}>
+                                {staff.name}
+                              </MenuItem>
+                            ))}
+                            {selectedCompanyName && filteredStaffOptions.length === 0 && (
+                              <MenuItem disabled>No staff found for this company</MenuItem>
+                            )}
+                          </Select>
+                        </FormControl>
+                      </Grid>
+                    </>
                   )}
 
                   {assigneeType === "delivery_boy" && (
@@ -622,8 +728,9 @@ function ChalanAddSales() {
                         </TableCell>
                         <TableCell sx={{ ...tableHeadSx, width: "16%" }}>Code</TableCell>
                         <TableCell sx={{ ...tableHeadSx, width: "12%" }}>Date</TableCell>
-                        <TableCell sx={{ ...tableHeadSx, width: "26%" }}>Staff / Delivery Name</TableCell>
-                        <TableCell align="center" sx={{ ...tableHeadSx, width: "12%" }}>
+                        <TableCell sx={{ ...tableHeadSx, width: "22%" }}>Staff / Delivery Name</TableCell>
+                        <TableCell sx={{ ...tableHeadSx, width: "18%" }}>Company</TableCell>
+                        <TableCell align="center" sx={{ ...tableHeadSx, width: "10%" }}>
                           PDF
                         </TableCell>
                         <TableCell align="center" sx={{ ...tableHeadSx, width: "13%" }}>
@@ -637,13 +744,13 @@ function ChalanAddSales() {
                     <TableBody>
                       {loadingList ? (
                         <TableRow>
-                          <TableCell colSpan={7} align="center" sx={tableBodySx}>
+                          <TableCell colSpan={8} align="center" sx={tableBodySx}>
                             Loading...
                           </TableCell>
                         </TableRow>
                       ) : chalanList.length === 0 ? (
                         <TableRow>
-                          <TableCell colSpan={7} align="center" sx={tableBodySx}>
+                          <TableCell colSpan={8} align="center" sx={tableBodySx}>
                             No chalan found for selected date.
                           </TableCell>
                         </TableRow>
@@ -656,6 +763,7 @@ function ChalanAddSales() {
                             <TableCell sx={tableBodySx}>{row.chalanCode}</TableCell>
                             <TableCell sx={tableBodySx}>{formatDisplayDate(row.saleDate)}</TableCell>
                             <TableCell sx={tableBodySx}>{row.assigneeName || "—"}</TableCell>
+                            <TableCell sx={tableBodySx}>{row.companyName || row.company_name || "N/A"}</TableCell>
                             <TableCell align="center" sx={tableBodySx}>
                               <Icon
                                 fontSize="small"

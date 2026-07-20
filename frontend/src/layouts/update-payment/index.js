@@ -125,6 +125,8 @@ function UpdatePayment() {
   const [collectionRows, setCollectionRows] = useState([]);
   const [collectionDeliveryBoyName, setCollectionDeliveryBoyName] = useState("");
   const [collectionCompanyStaffId, setCollectionCompanyStaffId] = useState("");
+  const [collectionCompanyId, setCollectionCompanyId] = useState("");
+  const [companyOptions, setCompanyOptions] = useState([]);
   const [companyStaff, setCompanyStaff] = useState([]);
   const [salesData, setSalesData] = useState([]);
   const [paymentDialogSale, setPaymentDialogSale] = useState(null);
@@ -150,6 +152,12 @@ function UpdatePayment() {
   const [rowsPerPage, setRowsPerPage] = useState(ROWS_PER_PAGE);
 
   const API = "https://bawarchee.edunextg.co/api";
+
+  const getStaffCompanyIds = (staff) =>
+    String(staff?.company_ids || staff?.company_id || "")
+      .split(",")
+      .map((id) => Number(id))
+      .filter((id) => Number.isInteger(id) && id > 0);
 
   const getDeliveryBoyById = (boyId) =>
     deliveryBoys.find((boy) => String(boy.id) === String(boyId));
@@ -218,6 +226,9 @@ function UpdatePayment() {
         params.set("startDate", collectionDate);
         params.set("endDate", collectionDate);
       }
+      if (collectionCompanyId) {
+        params.set("companyId", collectionCompanyId);
+      }
       const response = await fetch(`${API}/staff/reports?${params.toString()}`);
       if (!response.ok) throw new Error("Unable to load collection report");
 
@@ -227,12 +238,22 @@ function UpdatePayment() {
         const collectorName = row.collector_type === "bawarchee_staff"
           ? row.bawarchee_collector_name || "Unassigned"
           : row.company_collector_name || "Unassigned";
-        const key = [row.collection_date || collectionDate || "N/A", collectorType, collectorName, row.sale_id].join("|");
+        const deliveryBoyName = row.delivery_boy_name || row.bawarchee_collector_name || "N/A";
+        const key = [
+          row.collection_date || collectionDate || "N/A",
+          collectorType,
+          collectorName,
+          deliveryBoyName,
+          row.company_name || "N/A",
+          row.sale_id,
+        ].join("|");
         if (!result[key]) {
           result[key] = {
             collectionDate: row.collection_date || collectionDate || "N/A",
             collectorType,
             collectorName,
+            deliveryBoyName,
+            companyName: row.company_name || "N/A",
             outletName: row.outlet_name || "N/A",
             invoiceNumber: row.invoice_number || "N/A",
             cash: 0,
@@ -267,7 +288,7 @@ function UpdatePayment() {
     setCollectionDeliveryBoyName("");
     setCollectionCompanyStaffId("");
     fetchCollectionReport();
-  }, [collectionDate]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [collectionDate, collectionCompanyId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     const fetchCompanyStaff = async () => {
@@ -281,15 +302,33 @@ function UpdatePayment() {
       }
     };
 
+    const fetchCompanyOptions = async () => {
+      try {
+        const response = await fetch(`${API}/staff/companies`);
+        if (response.ok) {
+          setCompanyOptions(await response.json());
+        }
+      } catch (error) {
+        console.error("Error fetching companies:", error);
+      }
+    };
+
     fetchCompanyStaff();
+    fetchCompanyOptions();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const filteredCompanyStaffOptions = companyStaff.filter((staff) => {
+    if (!collectionCompanyId) return false;
+    return getStaffCompanyIds(staff).includes(Number(collectionCompanyId));
+  });
 
   const formatReportCurrency = (amount) =>
     `Rs. ${Number(amount || 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
   const filteredCollectionRows = collectionRows.filter((row) => {
     if (collectionDeliveryBoyName && (
-      row.collectorType !== "Delivery boy" || row.collectorName !== collectionDeliveryBoyName
+      row.deliveryBoyName !== collectionDeliveryBoyName
+      && !(row.collectorType === "Delivery boy" && row.collectorName === collectionDeliveryBoyName)
     )) {
       return false;
     }
@@ -307,9 +346,16 @@ function UpdatePayment() {
   });
 
   const collectionDeliveryBoyOptions = [...new Set(
-    collectionRows
-      .filter((row) => row.collectorType === "Delivery boy")
-      .map((row) => row.collectorName)
+    collectionRows.flatMap((row) => {
+      const names = [];
+      if (row.deliveryBoyName && row.deliveryBoyName !== "N/A") {
+        names.push(row.deliveryBoyName);
+      }
+      if (row.collectorType === "Delivery boy" && row.collectorName && row.collectorName !== "Unassigned") {
+        names.push(row.collectorName);
+      }
+      return names;
+    })
   )].sort((first, second) => first.localeCompare(second));
 
   const collectionAmounts = filteredCollectionRows.reduce(
@@ -331,8 +377,10 @@ function UpdatePayment() {
     const rows = filteredCollectionRows.map((row) => `
       <tr>
         <td>${escapeHtml(row.collectionDate)}</td>
+        <td>${escapeHtml(row.companyName)}</td>
         <td>${escapeHtml(row.collectorType)}</td>
-        <td>${escapeHtml(row.collectorName)}</td>
+        <td>${escapeHtml(row.deliveryBoyName)}</td>
+        <td>${escapeHtml(row.collectorType === "Company staff" ? row.collectorName : "N/A")}</td>
         <td>${escapeHtml(row.outletName)}</td>
         <td>${escapeHtml(row.invoiceNumber)}</td>
         <td>${formatReportCurrency(row.cash)}</td>
@@ -348,7 +396,7 @@ function UpdatePayment() {
     }
     printWindow.document.write(`<!doctype html><html><head><title>Payment Collection Report</title><style>
       body { font-family: Arial, sans-serif; color: #1f2937; padding: 28px; } h1 { margin: 0 0 6px; font-size: 20px; } p { margin: 0 0 22px; color: #4b5563; } table { width: 100%; border-collapse: collapse; font-size: 12px; } th, td { border: 1px solid #d1d5db; padding: 9px; text-align: left; } th { background: #0ea5e9; color: white; } td:nth-last-child(-n+4), th:nth-last-child(-n+4) { text-align: right; } tfoot td { font-weight: bold; background: #f3f4f6; } @media print { body { padding: 0; } }
-      </style></head><body><h1>Payment Collection Report</h1><p>Date: ${escapeHtml(collectionDate)}</p><table><thead><tr><th>Date</th><th>Collected By</th><th>Staff Name</th><th>Outlet Name</th><th>Invoice No.</th><th>Cash</th><th>UPI</th><th>Cheque</th><th>Total</th></tr></thead><tbody>${rows}</tbody><tfoot><tr><td colspan="8">Grand Total</td><td>${formatReportCurrency(total)}</td></tr></tfoot></table><script>window.onload = function () { window.print(); };</script></body></html>`);
+      </style></head><body><h1>Payment Collection Report</h1><p>Date: ${escapeHtml(collectionDate)}</p><table><thead><tr><th>Date</th><th>Company</th><th>Collected By</th><th>Delivery Boy</th><th>Company Staff</th><th>Outlet Name</th><th>Invoice No.</th><th>Cash</th><th>UPI</th><th>Cheque</th><th>Total</th></tr></thead><tbody>${rows}</tbody><tfoot><tr><td colspan="10">Grand Total</td><td>${formatReportCurrency(total)}</td></tr></tfoot></table><script>window.onload = function () { window.print(); };</script></body></html>`);
     printWindow.document.close();
   };
 
@@ -1146,7 +1194,7 @@ function UpdatePayment() {
                   </MDButton>
                 </MDBox>
 
-                <Grid container spacing={2} alignItems="center" mb={3}>
+                <Grid container spacing={2} alignItems="center">
                   <Grid item xs={12} sm={6} md={3}>
                     <MDInput
                       type="date"
@@ -1156,6 +1204,50 @@ function UpdatePayment() {
                       value={collectionDate}
                       onChange={(event) => setCollectionDate(event.target.value)}
                     />
+                  </Grid>
+                  <Grid item xs={12} sm={6} md={3}>
+                    <FormControl fullWidth>
+                      <InputLabel id="collection-company-filter-label">Company</InputLabel>
+                      <Select
+                        labelId="collection-company-filter-label"
+                        label="Company"
+                        value={collectionCompanyId}
+                        sx={{ height: 43 }}
+                        onChange={(event) => {
+                          setCollectionCompanyId(event.target.value);
+                          setCollectionCompanyStaffId("");
+                          setCollectionDeliveryBoyName("");
+                        }}
+                      >
+                        <MenuItem value="">All Companies</MenuItem>
+                        {companyOptions.map((company) => (
+                          <MenuItem key={company.id} value={String(company.id)}>{company.name}</MenuItem>
+                        ))}
+                      </Select>
+                    </FormControl>
+                  </Grid>
+                  <Grid item xs={12} sm={6} md={3}>
+                    <FormControl fullWidth>
+                      <InputLabel id="collection-company-staff-filter-label">Company Staff</InputLabel>
+                      <Select
+                        labelId="collection-company-staff-filter-label"
+                        label="Company Staff"
+                        value={collectionCompanyStaffId}
+                        sx={{ height: 43 }}
+                        disabled={!collectionCompanyId}
+                        onChange={(event) => {
+                          setCollectionCompanyStaffId(event.target.value);
+                          setCollectionDeliveryBoyName("");
+                        }}
+                      >
+                        <MenuItem value="">
+                          {collectionCompanyId ? "All Company Staff" : "Choose company first"}
+                        </MenuItem>
+                        {filteredCompanyStaffOptions.map((staff) => (
+                          <MenuItem key={staff.id} value={String(staff.id)}>{staff.name}</MenuItem>
+                        ))}
+                      </Select>
+                    </FormControl>
                   </Grid>
                   <Grid item xs={12} sm={6} md={3}>
                     <FormControl fullWidth>
@@ -1177,27 +1269,6 @@ function UpdatePayment() {
                       </Select>
                     </FormControl>
                   </Grid>
-                  <Grid item xs={12} sm={6} md={3}>
-                    <FormControl fullWidth>
-                      <InputLabel id="collection-company-staff-filter-label">Company Staff</InputLabel>
-                      <Select
-                        labelId="collection-company-staff-filter-label"
-                        label="Company Staff"
-                        value={collectionCompanyStaffId}
-                        sx={{ height: 43 }}
-                        onChange={(event) => {
-                          setCollectionCompanyStaffId(event.target.value);
-                          setCollectionDeliveryBoyName("");
-                        }}
-                      >
-                        <MenuItem value="">All Company Staff</MenuItem>
-                        {companyStaff.map((staff) => (
-                          <MenuItem key={staff.id} value={String(staff.id)}>{staff.name}</MenuItem>
-                        ))}
-                      </Select>
-                    </FormControl>
-                  </Grid>
-               
                 </Grid>
 
               </MDBox>
@@ -1245,6 +1316,7 @@ function UpdatePayment() {
                             Sr No
                           </TableCell>
                           <TableCell align="left" sx={paginatedTableHeadCellSx}>Outlet Name</TableCell>
+                          <TableCell align="left" sx={paginatedTableHeadCellSx}>Company</TableCell>
                           <TableCell align="left" sx={paginatedTableHeadCellSx}>Area</TableCell>
                           <TableCell align="center" sx={paginatedTableHeadCellSx}>Sale ID</TableCell>
                           <TableCell align="center" sx={paginatedTableHeadCellSx}>Invoice No</TableCell>
@@ -1272,6 +1344,7 @@ function UpdatePayment() {
                                     Staff: {sale.staff_name || "N/A"}
                                   </MDTypography>
                                 </TableCell>
+                                <TableCell align="left">{sale.company_name || "N/A"}</TableCell>
                                 <TableCell align="left">{sale.location_name || "N/A"}</TableCell>
                                 <TableCell align="center">{sale.sticker_number}</TableCell>
                                 <TableCell align="center">{sale.invoice_number}</TableCell>
@@ -1315,7 +1388,7 @@ function UpdatePayment() {
                           })
                         ) : (
                           <TableRow>
-                            <TableCell colSpan={10} align="center" sx={{ py: 4 }}>
+                            <TableCell colSpan={12} align="center" sx={{ py: 4 }}>
                               <MDTypography variant="body2" color="text">
                                 No delivered items found matching your search.
                               </MDTypography>

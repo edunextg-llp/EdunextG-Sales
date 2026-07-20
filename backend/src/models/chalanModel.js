@@ -1,6 +1,30 @@
 import db from '../config/db.js';
 import { formatChalanCode } from '../utils/chalanCode.js';
 
+const CHALAN_COMPANY_SELECT = `
+                CASE
+                    WHEN cs.assignee_type = 'company_staff' THEN COALESCE(staff_co.company_names, sc.name)
+                    ELSE COALESCE(db_co.company_names, dc.name)
+                END AS company_name`;
+
+const CHALAN_COMPANY_JOINS = `
+             LEFT JOIN companies sc ON sc.id = s.company_id
+             LEFT JOIN (
+                 SELECT sc_map.staff_id,
+                        GROUP_CONCAT(c2.name ORDER BY c2.name SEPARATOR ', ') AS company_names
+                 FROM staff_companies sc_map
+                 INNER JOIN companies c2 ON c2.id = sc_map.company_id
+                 GROUP BY sc_map.staff_id
+             ) staff_co ON staff_co.staff_id = cs.staff_id
+             LEFT JOIN companies dc ON dc.id = db.company_id
+             LEFT JOIN (
+                 SELECT dbc.delivery_boy_id,
+                        GROUP_CONCAT(c2.name ORDER BY c2.name SEPARATOR ', ') AS company_names
+                 FROM delivery_boy_companies dbc
+                 INNER JOIN companies c2 ON c2.id = dbc.company_id
+                 GROUP BY dbc.delivery_boy_id
+             ) db_co ON db_co.delivery_boy_id = cs.delivery_boy_id`;
+
 class ChalanModel {
     static mapSaleRow(sale, items = null) {
         const assigneeName =
@@ -30,6 +54,8 @@ class ChalanModel {
             deliveryBoyId: sale.delivery_boy_id,
             staff_name: sale.staff_name || '',
             staffName: sale.staff_name || '',
+            company_name: sale.company_name || '',
+            companyName: sale.company_name || '',
             delivery_boy_name: sale.delivery_boy_name || '',
             deliveryBoyName: sale.delivery_boy_name || '',
             assignee_name: assigneeName,
@@ -91,6 +117,8 @@ class ChalanModel {
             chalanCode: row.chalan_code,
             assignee_name: assigneeName,
             assigneeName,
+            company_name: row.company_name || '',
+            companyName: row.company_name || '',
             return_type: row.return_type,
             returnType: row.return_type,
             return_item_count: Number(row.return_item_count),
@@ -220,12 +248,14 @@ class ChalanModel {
                 cs.created_at,
                 s.name AS staff_name,
                 db.name AS delivery_boy_name,
+                ${CHALAN_COMPANY_SELECT},
                 COALESCE(items.item_count, 0) AS item_count,
                 COALESCE(items.total_amount, 0) AS total_amount,
                 DATE_FORMAT(status_hist.status_updated_at, '%Y-%m-%d %H:%i:%s') AS status_updated_at
              FROM chalan_sales cs
              LEFT JOIN staff s ON s.id = cs.staff_id
              LEFT JOIN delivery_boys db ON db.id = cs.delivery_boy_id
+             ${CHALAN_COMPANY_JOINS}
              LEFT JOIN (
                  SELECT chalan_sale_id,
                         SUM(qty) AS item_count,
@@ -277,11 +307,13 @@ class ChalanModel {
                 COALESCE(cs.returned_amount, 0) AS returned_amount,
                 s.name AS staff_name,
                 db.name AS delivery_boy_name,
+                ${CHALAN_COMPANY_SELECT},
                 COALESCE(items.item_count, 0) AS item_count,
                 COALESCE(items.total_amount, 0) AS total_amount
              FROM chalan_sales cs
              LEFT JOIN staff s ON s.id = cs.staff_id
              LEFT JOIN delivery_boys db ON db.id = cs.delivery_boy_id
+             ${CHALAN_COMPANY_JOINS}
              LEFT JOIN (
                  SELECT chalan_sale_id,
                         SUM(qty) AS item_count,
@@ -318,6 +350,7 @@ class ChalanModel {
                 cs.created_at,
                 s.name AS staff_name,
                 db.name AS delivery_boy_name,
+                ${CHALAN_COMPANY_SELECT},
                 COALESCE(items.item_count, 0) AS item_count,
                 COALESCE(items.total_amount, 0) AS total_amount,
                 DATE_FORMAT(status_hist.status_updated_at, '%Y-%m-%d %H:%i:%s') AS status_updated_at,
@@ -325,6 +358,7 @@ class ChalanModel {
              FROM chalan_sales cs
              LEFT JOIN staff s ON s.id = cs.staff_id
              LEFT JOIN delivery_boys db ON db.id = cs.delivery_boy_id
+             ${CHALAN_COMPANY_JOINS}
              LEFT JOIN (
                  SELECT chalan_sale_id,
                         SUM(qty) AS item_count,
@@ -370,6 +404,7 @@ class ChalanModel {
                 cs.created_at,
                 s.name AS staff_name,
                 db.name AS delivery_boy_name,
+                ${CHALAN_COMPANY_SELECT},
                 COALESCE(items.item_count, 0) AS item_count,
                 COALESCE(items.total_amount, 0) AS total_amount,
                 DATE_FORMAT(
@@ -380,6 +415,7 @@ class ChalanModel {
              FROM chalan_sales cs
              LEFT JOIN staff s ON s.id = cs.staff_id
              LEFT JOIN delivery_boys db ON db.id = cs.delivery_boy_id
+             ${CHALAN_COMPANY_JOINS}
              LEFT JOIN (
                  SELECT chalan_sale_id,
                         SUM(qty) AS item_count,
@@ -645,11 +681,13 @@ class ChalanModel {
                 cs.packaging_status,
                 cs.vehicle_no,
                 s.name AS staff_name,
-                db.name AS delivery_boy_name
+                db.name AS delivery_boy_name,
+                ${CHALAN_COMPANY_SELECT}
              FROM chalan_sale_returns csr
              INNER JOIN chalan_sales cs ON cs.id = csr.chalan_sale_id
              LEFT JOIN staff s ON s.id = cs.staff_id
              LEFT JOIN delivery_boys db ON db.id = cs.delivery_boy_id
+             ${CHALAN_COMPANY_JOINS}
              ORDER BY csr.created_at DESC, csr.id DESC`
         );
 
@@ -672,11 +710,13 @@ class ChalanModel {
                 cs.packaging_status,
                 cs.vehicle_no,
                 s.name AS staff_name,
-                db.name AS delivery_boy_name
+                db.name AS delivery_boy_name,
+                ${CHALAN_COMPANY_SELECT}
              FROM chalan_sale_returns csr
              INNER JOIN chalan_sales cs ON cs.id = csr.chalan_sale_id
              LEFT JOIN staff s ON s.id = cs.staff_id
              LEFT JOIN delivery_boys db ON db.id = cs.delivery_boy_id
+             ${CHALAN_COMPANY_JOINS}
              WHERE csr.id = ?`,
             [returnId]
         );

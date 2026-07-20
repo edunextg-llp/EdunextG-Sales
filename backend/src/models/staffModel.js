@@ -3,10 +3,33 @@ import { formatStickerNumber } from '../utils/stickerNumber.js';
 import { getCompanyBillPrefix, normalizeInvoiceNumber } from '../utils/invoiceNumber.js';
 
 class StaffModel {
-    static async create(name, contactNo, companyId = null, staffType = 'distributor') {
+    static async create(name, contactNo, companyId = null, staffType = 'distributor', profile = {}) {
+        const {
+            dob = null,
+            whatsappNumber = null,
+            aadharNo = null,
+            aadharDocumentUrl = null,
+            pccCertificateUrl = null,
+            staffCategory = 'company_staff',
+        } = profile;
+
         const [result] = await db.execute(
-            'INSERT INTO staff (name, contact_no, company_id, staff_type) VALUES (?, ?, ?, ?)',
-            [name, contactNo, companyId, staffType]
+            `INSERT INTO staff (
+                name, contact_no, company_id, staff_type, staff_category, dob, whatsapp_number,
+                aadhar_no, aadhar_document_url, pcc_certificate_url
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            [
+                name,
+                contactNo,
+                companyId,
+                staffType,
+                staffCategory,
+                dob,
+                whatsappNumber,
+                aadharNo,
+                aadharDocumentUrl,
+                pccCertificateUrl,
+            ]
         );
         return result.insertId;
     }
@@ -50,15 +73,28 @@ class StaffModel {
                  INNER JOIN companies c2 ON c2.id = sc.company_id
                  GROUP BY sc.staff_id
              ) sc ON sc.staff_id = s.id
-             WHERE s.name LIKE ?`,
+             WHERE s.name LIKE ? AND s.is_active = 1`,
             [`%${query}%`]
         );
         return rows;
     }
 
+    static async toggleActive(id) {
+        await db.execute(
+            'UPDATE staff SET is_active = NOT is_active WHERE id = ?',
+            [id]
+        );
+        const [rows] = await db.execute(
+            'SELECT is_active FROM staff WHERE id = ?',
+            [id]
+        );
+        return rows[0];
+    }
+
     static async getDetails(id) {
         const [rows] = await db.execute(
-            `SELECT s.id, s.name, s.contact_no, s.company_id, s.staff_type,
+            `SELECT s.id, s.name, s.contact_no, s.company_id, s.staff_type, s.staff_category, s.is_active,
+                    s.dob, s.whatsapp_number, s.aadhar_no, s.aadhar_document_url, s.pcc_certificate_url,
                     COALESCE(sc.company_names, c.name) AS company_name,
                     sc.company_ids
              FROM staff s
@@ -78,11 +114,11 @@ class StaffModel {
     }
 
     static async addCounter(staffId, day, location, counterData) {
-        const { outletErpId, outletName, contactNumber, whatsappNumber, googleLocation } = counterData;
+        const { outletErpId, outletName, contactNumber, whatsappNumber, address, googleLocation } = counterData;
         const locationName = String(location || '').trim() || null;
         await db.execute(
-            'INSERT INTO staff_counters (staff_id, day, location_name, outlet_erp_id, outlet_name, contact_number, whatsapp_number, google_location) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-            [staffId, day, locationName, outletErpId, outletName, contactNumber, whatsappNumber || null, googleLocation || null]
+            'INSERT INTO staff_counters (staff_id, day, location_name, outlet_erp_id, outlet_name, contact_number, whatsapp_number, address, google_location) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+            [staffId, day, locationName, outletErpId, outletName, contactNumber, whatsappNumber || null, address || null, googleLocation || null]
         );
     }
 
@@ -109,17 +145,17 @@ class StaffModel {
 
     static async getCounterById(counterId) {
         const [rows] = await db.execute(
-            'SELECT id, staff_id, outlet_erp_id, outlet_name, contact_number, whatsapp_number, location_name, google_location FROM staff_counters WHERE id = ?',
+            'SELECT id, staff_id, outlet_erp_id, outlet_name, contact_number, whatsapp_number, location_name, address, google_location FROM staff_counters WHERE id = ?',
             [counterId]
         );
         return rows[0] || null;
     }
 
     static async editCounter(counterId, counterData) {
-        const { outletErpId, outletName, contactNumber, whatsappNumber, googleLocation } = counterData;
+        const { outletErpId, outletName, contactNumber, whatsappNumber, address, googleLocation } = counterData;
         await db.execute(
-            'UPDATE staff_counters SET outlet_erp_id = ?, outlet_name = ?, contact_number = ?, whatsapp_number = ?, google_location = ? WHERE id = ?',
-            [outletErpId, outletName, contactNumber, whatsappNumber || null, googleLocation || null, counterId]
+            'UPDATE staff_counters SET outlet_erp_id = ?, outlet_name = ?, contact_number = ?, whatsapp_number = ?, address = ?, google_location = ? WHERE id = ?',
+            [outletErpId, outletName, contactNumber, whatsappNumber || null, address || null, googleLocation || null, counterId]
         );
     }
 
@@ -130,10 +166,34 @@ class StaffModel {
         );
     }
 
-    static async update(id, name, contactNo, companyId = null, staffType = 'distributor') {
+    static async update(id, name, contactNo, companyId = null, staffType = 'distributor', profile = {}) {
+        const {
+            dob = null,
+            whatsappNumber = null,
+            aadharNo = null,
+            aadharDocumentUrl = null,
+            pccCertificateUrl = null,
+            staffCategory = 'company_staff',
+        } = profile;
+
         await db.execute(
-            'UPDATE staff SET name = ?, contact_no = ?, company_id = ?, staff_type = ? WHERE id = ?',
-            [name, contactNo, companyId, staffType, id]
+            `UPDATE staff
+             SET name = ?, contact_no = ?, company_id = ?, staff_type = ?, staff_category = ?,
+                 dob = ?, whatsapp_number = ?, aadhar_no = ?, aadhar_document_url = ?, pcc_certificate_url = ?
+             WHERE id = ?`,
+            [
+                name,
+                contactNo,
+                companyId,
+                staffType,
+                staffCategory,
+                dob,
+                whatsappNumber,
+                aadharNo,
+                aadharDocumentUrl,
+                pccCertificateUrl,
+                id,
+            ]
         );
     }
 
@@ -152,9 +212,10 @@ class StaffModel {
         return rows;
     }
 
-    static async getAll() {
+    static async getAll(includeInactive = false) {
+        const activeClause = includeInactive ? '' : 'WHERE s.is_active = 1';
         const [rows] = await db.execute(
-            `SELECT s.id, s.name, s.contact_no, s.company_id, s.staff_type,
+            `SELECT s.id, s.name, s.contact_no, s.company_id, s.staff_type, s.staff_category, s.is_active,
                     COALESCE(sc.company_names, c.name) AS company_name,
                     sc.company_ids
              FROM staff s
@@ -167,6 +228,7 @@ class StaffModel {
                  INNER JOIN companies c2 ON c2.id = sc.company_id
                  GROUP BY sc.staff_id
              ) sc ON sc.staff_id = s.id
+             ${activeClause}
              ORDER BY s.name`
         );
         return rows;
@@ -174,7 +236,7 @@ class StaffModel {
 
     static async getOutletsForStaffAndDay(staffId, dayName) {
         const [rows] = await db.execute(
-            'SELECT id, outlet_erp_id, outlet_name, contact_number, whatsapp_number, location_name, google_location FROM staff_counters WHERE staff_id = ? AND day = ?',
+            'SELECT id, outlet_erp_id, outlet_name, contact_number, whatsapp_number, location_name, address, google_location FROM staff_counters WHERE staff_id = ? AND day = ?',
             [staffId, dayName]
         );
         return rows;
@@ -182,7 +244,7 @@ class StaffModel {
 
     static async getAllCountersForStaff(staffId) {
         const [rows] = await db.execute(
-            'SELECT id, outlet_erp_id, outlet_name, contact_number, whatsapp_number, location_name, google_location, day FROM staff_counters WHERE staff_id = ?',
+            'SELECT id, outlet_erp_id, outlet_name, contact_number, whatsapp_number, location_name, address, google_location, day FROM staff_counters WHERE staff_id = ?',
             [staffId]
         );
         return rows;
@@ -190,7 +252,7 @@ class StaffModel {
 
     static async getMissingSalesOutletsForDate(staffId, dayName, date) {
         const [rows] = await db.execute(
-            `SELECT c.id, c.outlet_erp_id, c.outlet_name, c.contact_number, c.whatsapp_number, c.location_name, c.google_location 
+            `SELECT c.id, c.outlet_erp_id, c.outlet_name, c.contact_number, c.whatsapp_number, c.location_name, c.address, c.google_location 
              FROM staff_counters c
              INNER JOIN staff s ON s.id = c.staff_id
              WHERE c.staff_id = ?
@@ -334,7 +396,7 @@ class StaffModel {
         let query = `
             SELECT ss.id,
                     ss.staff_id, ss.outlet_id, ss.sale_date, ss.item_count, ss.packed_item_count, ss.box_count, ss.packet_count, ss.price, ss.invoice_number, 
-                    ss.sticker_number, ss.packaging_status, ss.delivery_boy_id, ss.vehicle_no,
+                    ss.sticker_number, ss.packaging_status, ss.delivery_boy_id, ss.packed_by_id, ss.vehicle_no,
                     DATE_FORMAT(ss.delivery_date, '%Y-%m-%d') AS delivery_date,
                     DATE_FORMAT(ssh.status_updated_at, '%Y-%m-%d %H:%i:%s') AS status_updated_at,
                     DATE_FORMAT(ssh.packing_date, '%Y-%m-%d') AS packing_date,
@@ -343,12 +405,25 @@ class StaffModel {
                     sc.outlet_name, sc.outlet_erp_id, sc.location_name, sc.google_location, s.name as staff_name,
                     outlet_staff.id AS outlet_staff_id, outlet_staff.name AS outlet_staff_name,
                     DATE_FORMAT(ss.sale_date, '%d-%m-%Y') as formatted_date,
-                    db.name as delivery_boy_name
+                    db.name as delivery_boy_name,
+                    packer.name AS packed_by_name,
+                    COALESCE(staff_company.company_names, c.name) AS company_name,
+                    COALESCE(staff_company.company_ids, s.company_id) AS company_ids
              FROM staff_sales ss
              LEFT JOIN staff_counters sc ON ss.outlet_id = sc.id
              LEFT JOIN staff s ON ss.staff_id = s.id
              LEFT JOIN staff outlet_staff ON outlet_staff.id = sc.staff_id
              LEFT JOIN delivery_boys db ON ss.delivery_boy_id = db.id
+             LEFT JOIN delivery_boys packer ON ss.packed_by_id = packer.id
+             LEFT JOIN companies c ON s.company_id = c.id
+             LEFT JOIN (
+                 SELECT sc_map.staff_id,
+                        GROUP_CONCAT(c2.name ORDER BY c2.name SEPARATOR ', ') AS company_names,
+                        GROUP_CONCAT(c2.id ORDER BY c2.name) AS company_ids
+                 FROM staff_companies sc_map
+                 INNER JOIN companies c2 ON c2.id = sc_map.company_id
+                 GROUP BY sc_map.staff_id
+             ) staff_company ON staff_company.staff_id = s.id
              LEFT JOIN (
                  SELECT sale_id, COUNT(*) AS payment_count
                  FROM sale_payments
@@ -426,14 +501,16 @@ class StaffModel {
                 `SELECT ss.id,
                     ss.staff_id, ss.outlet_id, ss.sale_date, ss.item_count, ss.packed_item_count, ss.box_count, ss.packet_count, ss.price, ss.invoice_number,
                     ss.sticker_number, ss.paid_amount, ss.balance_amount, ss.packaging_status,
+                    ss.packed_by_id,
                     DATE_FORMAT(ss.delivery_date, '%Y-%m-%d') AS delivery_date,
                     DATE_FORMAT(ssh.status_updated_at, '%Y-%m-%d %H:%i:%s') AS status_updated_at,
                     sc.outlet_name, sc.outlet_erp_id, sc.location_name, s.name AS staff_name,
-                    db.name AS delivery_boy_name, ss.vehicle_no
+                    db.name AS delivery_boy_name, packer.name AS packed_by_name, ss.vehicle_no
              FROM staff_sales ss
              LEFT JOIN staff_counters sc ON ss.outlet_id = sc.id
              LEFT JOIN staff s ON ss.staff_id = s.id
              LEFT JOIN delivery_boys db ON ss.delivery_boy_id = db.id
+             LEFT JOIN delivery_boys packer ON ss.packed_by_id = packer.id
              LEFT JOIN (
                  SELECT sale_id, MAX(changed_at) AS status_updated_at
                  FROM staff_sale_status_history
@@ -501,6 +578,153 @@ class StaffModel {
         return rows.find((row) => normalizeInvoiceNumber(row.invoice_number) === normalizedInvoiceNumber) || null;
     }
 
+    static async searchSalesByInvoice(invoiceNumber) {
+        const term = String(invoiceNumber || '').trim();
+        if (!term) {
+            return [];
+        }
+
+        const normalizedTerm = normalizeInvoiceNumber(term);
+        const likeTerm = `%${term}%`;
+
+        const [rows] = await db.execute(
+            `SELECT ss.id,
+                    ss.staff_id, ss.outlet_id, ss.sale_date, ss.item_count, ss.packed_item_count,
+                    ss.box_count, ss.packet_count, ss.price, ss.invoice_number,
+                    ss.sticker_number, ss.packaging_status, ss.delivery_boy_id, ss.packed_by_id, ss.vehicle_no,
+                    DATE_FORMAT(ss.delivery_date, '%Y-%m-%d') AS delivery_date,
+                    DATE_FORMAT(ssh.status_updated_at, '%Y-%m-%d %H:%i:%s') AS status_updated_at,
+                    DATE_FORMAT(ssh.packing_date, '%Y-%m-%d') AS packing_date,
+                    ss.paid_amount, ss.balance_amount, ss.payment_mode,
+                    ss.reference_no, ss.reference_date, ss.credit_days,
+                    COALESCE(sp.payment_count, 0) AS payment_count,
+                    sc.outlet_name, sc.outlet_erp_id, sc.location_name, sc.google_location, sc.contact_number,
+                    s.name AS staff_name,
+                    outlet_staff.id AS outlet_staff_id, outlet_staff.name AS outlet_staff_name,
+                    DATE_FORMAT(ss.sale_date, '%d-%m-%Y') AS formatted_date,
+                    db.name AS delivery_boy_name,
+                    packer.name AS packed_by_name,
+                    COALESCE(staff_company.company_names, c.name) AS company_name,
+                    COALESCE(staff_company.company_ids, s.company_id) AS company_ids
+             FROM staff_sales ss
+             LEFT JOIN staff_counters sc ON ss.outlet_id = sc.id
+             LEFT JOIN staff s ON ss.staff_id = s.id
+             LEFT JOIN staff outlet_staff ON outlet_staff.id = sc.staff_id
+             LEFT JOIN delivery_boys db ON ss.delivery_boy_id = db.id
+             LEFT JOIN delivery_boys packer ON ss.packed_by_id = packer.id
+             LEFT JOIN companies c ON s.company_id = c.id
+             LEFT JOIN (
+                 SELECT sc_map.staff_id,
+                        GROUP_CONCAT(c2.name ORDER BY c2.name SEPARATOR ', ') AS company_names,
+                        GROUP_CONCAT(c2.id ORDER BY c2.name) AS company_ids
+                 FROM staff_companies sc_map
+                 INNER JOIN companies c2 ON c2.id = sc_map.company_id
+                 GROUP BY sc_map.staff_id
+             ) staff_company ON staff_company.staff_id = s.id
+             LEFT JOIN (
+                 SELECT sale_id, COUNT(*) AS payment_count
+                 FROM sale_payments
+                 GROUP BY sale_id
+             ) sp ON sp.sale_id = ss.id
+             LEFT JOIN (
+                 SELECT sale_id,
+                        MAX(changed_at) AS status_updated_at,
+                        MIN(CASE WHEN status = 'packing_done' THEN changed_at END) AS packing_date
+                 FROM staff_sale_status_history
+                 GROUP BY sale_id
+             ) ssh ON ssh.sale_id = ss.id
+             WHERE ss.invoice_number LIKE ?
+                OR ss.sticker_number LIKE ?
+                OR CAST(ss.id AS CHAR) LIKE ?
+             ORDER BY ss.sale_date DESC, ss.id DESC
+             LIMIT 50`,
+            [likeTerm, likeTerm, likeTerm]
+        );
+
+        if (normalizedTerm) {
+            rows.sort((a, b) => {
+                const aExact = normalizeInvoiceNumber(a.invoice_number) === normalizedTerm ? 0 : 1;
+                const bExact = normalizeInvoiceNumber(b.invoice_number) === normalizedTerm ? 0 : 1;
+                return aExact - bExact;
+            });
+        }
+
+        return rows;
+    }
+
+    static async getSaleDetailsById(saleId) {
+        const [rows] = await db.execute(
+            `SELECT ss.id,
+                    ss.staff_id, ss.outlet_id, ss.sale_date, ss.item_count, ss.packed_item_count,
+                    ss.box_count, ss.packet_count, ss.price, ss.invoice_number,
+                    ss.sticker_number, ss.packaging_status, ss.delivery_boy_id, ss.packed_by_id, ss.vehicle_no,
+                    DATE_FORMAT(ss.delivery_date, '%Y-%m-%d') AS delivery_date,
+                    DATE_FORMAT(ssh.status_updated_at, '%Y-%m-%d %H:%i:%s') AS status_updated_at,
+                    DATE_FORMAT(ssh.packing_date, '%Y-%m-%d') AS packing_date,
+                    ss.paid_amount, ss.balance_amount, ss.payment_mode,
+                    ss.reference_no, ss.reference_date, ss.credit_days,
+                    COALESCE(sp.payment_count, 0) AS payment_count,
+                    sc.outlet_name, sc.outlet_erp_id, sc.location_name, sc.google_location, sc.contact_number,
+                    s.name AS staff_name,
+                    outlet_staff.id AS outlet_staff_id, outlet_staff.name AS outlet_staff_name,
+                    DATE_FORMAT(ss.sale_date, '%d-%m-%Y') AS formatted_date,
+                    db.name AS delivery_boy_name,
+                    packer.name AS packed_by_name,
+                    COALESCE(staff_company.company_names, c.name) AS company_name,
+                    COALESCE(staff_company.company_ids, s.company_id) AS company_ids
+             FROM staff_sales ss
+             LEFT JOIN staff_counters sc ON ss.outlet_id = sc.id
+             LEFT JOIN staff s ON ss.staff_id = s.id
+             LEFT JOIN staff outlet_staff ON outlet_staff.id = sc.staff_id
+             LEFT JOIN delivery_boys db ON ss.delivery_boy_id = db.id
+             LEFT JOIN delivery_boys packer ON ss.packed_by_id = packer.id
+             LEFT JOIN companies c ON s.company_id = c.id
+             LEFT JOIN (
+                 SELECT sc_map.staff_id,
+                        GROUP_CONCAT(c2.name ORDER BY c2.name SEPARATOR ', ') AS company_names,
+                        GROUP_CONCAT(c2.id ORDER BY c2.name) AS company_ids
+                 FROM staff_companies sc_map
+                 INNER JOIN companies c2 ON c2.id = sc_map.company_id
+                 GROUP BY sc_map.staff_id
+             ) staff_company ON staff_company.staff_id = s.id
+             LEFT JOIN (
+                 SELECT sale_id, COUNT(*) AS payment_count
+                 FROM sale_payments
+                 GROUP BY sale_id
+             ) sp ON sp.sale_id = ss.id
+             LEFT JOIN (
+                 SELECT sale_id,
+                        MAX(changed_at) AS status_updated_at,
+                        MIN(CASE WHEN status = 'packing_done' THEN changed_at END) AS packing_date
+                 FROM staff_sale_status_history
+                 GROUP BY sale_id
+             ) ssh ON ssh.sale_id = ss.id
+             WHERE ss.id = ?
+             LIMIT 1`,
+            [saleId]
+        );
+        return rows[0] || null;
+    }
+
+    static async getTakenBillsForSale(saleId) {
+        const [rows] = await db.execute(
+            `SELECT tb.id, tb.payment_id, tb.collector_type,
+                    DATE_FORMAT(tb.taken_date, '%Y-%m-%d') AS taken_date,
+                    DATE_FORMAT(tb.returned_at, '%Y-%m-%d %H:%i:%s') AS returned_at,
+                    sp.amount AS credit_amount, sp.payment_mode,
+                    ts.name AS staff_name,
+                    db.name AS delivery_boy_name
+             FROM taken_bills tb
+             INNER JOIN sale_payments sp ON sp.id = tb.payment_id
+             LEFT JOIN staff ts ON tb.staff_id = ts.id
+             LEFT JOIN delivery_boys db ON tb.delivery_boy_id = db.id
+             WHERE sp.sale_id = ?
+             ORDER BY tb.taken_date DESC, tb.id DESC`,
+            [saleId]
+        );
+        return rows;
+    }
+
     static async updateSale(saleId, invoiceNumber, price, itemCount) {
         await db.execute(
             `UPDATE staff_sales
@@ -547,7 +771,8 @@ class StaffModel {
         statusDate = null,
         packedItemCount = null,
         boxCount = null,
-        packetCount = null
+        packetCount = null,
+        packedById = null
     ) {
         const connection = await db.getConnection();
 
@@ -606,9 +831,17 @@ class StaffModel {
                      SET packaging_status = ?, delivery_boy_id = NULL, vehicle_no = NULL, delivery_date = NULL,
                          packed_item_count = COALESCE(?, packed_item_count),
                          box_count = COALESCE(?, box_count),
-                         packet_count = COALESCE(?, packet_count)
+                         packet_count = COALESCE(?, packet_count),
+                         packed_by_id = ?
                      WHERE id = ?`,
-                    [status, packedItemCount, boxCount, packetCount, saleId]
+                    [
+                        status,
+                        packedItemCount,
+                        boxCount,
+                        packetCount,
+                        status === 'packing_done' ? packedById : null,
+                        saleId,
+                    ]
                 );
             }
 
@@ -906,13 +1139,23 @@ class StaffModel {
                    ss.invoice_number, ss.sticker_number,
                    sc.outlet_name, sc.outlet_erp_id, sc.location_name, sc.contact_number,
                    COALESCE(s.name, db.name) AS staff_name,
-                   COALESCE(tb.staff_id, tb.delivery_boy_id) AS staff_id
+                   COALESCE(tb.staff_id, tb.delivery_boy_id) AS staff_id,
+                   COALESCE(staff_company.company_names, sale_company.name) AS company_name
             FROM taken_bills tb
             JOIN sale_payments sp ON tb.payment_id = sp.id
             JOIN staff_sales ss ON sp.sale_id = ss.id
             LEFT JOIN staff_counters sc ON ss.outlet_id = sc.id
             LEFT JOIN staff s ON tb.staff_id = s.id
             LEFT JOIN delivery_boys db ON tb.delivery_boy_id = db.id
+            LEFT JOIN staff sale_staff ON ss.staff_id = sale_staff.id
+            LEFT JOIN companies sale_company ON sale_staff.company_id = sale_company.id
+            LEFT JOIN (
+                SELECT sc_map.staff_id,
+                       GROUP_CONCAT(c2.name ORDER BY c2.name SEPARATOR ', ') AS company_names
+                FROM staff_companies sc_map
+                INNER JOIN companies c2 ON c2.id = sc_map.company_id
+                GROUP BY sc_map.staff_id
+            ) staff_company ON staff_company.staff_id = sale_staff.id
             LEFT JOIN (
                 SELECT parent_credit_payment_id,
                        SUM(amount) AS paid_amount

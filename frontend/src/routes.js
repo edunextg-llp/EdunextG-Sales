@@ -14,6 +14,7 @@ import AddSales from "layouts/add-sales";
 import Purchase from "layouts/purchase";
 import AddDeliveryBoy from "layouts/add-delivery-boy";
 import UpdatePayment from "layouts/update-payment";
+import InvoiceLookup from "layouts/invoice-lookup";
 import Credits from "layouts/credits";
 import OutBill from "layouts/out-bill";
 import BankDeposit from "layouts/bank-deposit";
@@ -243,6 +244,14 @@ const routes = [
         component: <ChalanReturn />,
       },
     ],
+  },
+  {
+    type: "collapse",
+    name: "Invoice Lookup",
+    key: "invoice-lookup",
+    icon: <Icon fontSize="small">manage_search</Icon>,
+    route: "/invoice-lookup",
+    component: <InvoiceLookup />,
   },
   {
     type: "collapse",

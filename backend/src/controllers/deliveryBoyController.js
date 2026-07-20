@@ -86,7 +86,7 @@ async function parseAssignedCompanyIds(companyId, companyIds) {
 
 export const createDeliveryBoy = async (req, res) => {
     try {
-        const { name, contactNo, companyId, companyIds } = req.body;
+        const { name, contactNo, companyId, companyIds, role, aadharNo } = req.body;
         
         const nameValidation = validateRequiredText(name, 'Delivery Boy name');
         if (!nameValidation.valid) {
@@ -98,6 +98,11 @@ export const createDeliveryBoy = async (req, res) => {
             return res.status(400).json({ error: contactValidation.error });
         }
 
+        const normalizedAadharNo = aadharNo ? String(aadharNo).replace(/\D/g, '') : '';
+        if (normalizedAadharNo && normalizedAadharNo.length !== 12) {
+            return res.status(400).json({ error: 'Aadhar number must be 12 digits.' });
+        }
+
         const companyParse = await parseAssignedCompanyIds(companyId, companyIds);
         if (companyParse.error) {
             return res.status(400).json({ error: companyParse.error });
@@ -107,7 +112,9 @@ export const createDeliveryBoy = async (req, res) => {
         const createdDeliveryBoy = await DeliveryBoyModel.create(
             nameValidation.value,
             contactValidation.value,
-            parsedCompanyIds[0]
+            parsedCompanyIds[0],
+            role || 'delivery_boy',
+            normalizedAadharNo || null
         );
         await DeliveryBoyModel.setCompanies(createdDeliveryBoy.deliveryBoyId, parsedCompanyIds);
         res.status(201).json({
@@ -133,7 +140,7 @@ export const getStaffAssignedCompanies = async (req, res) => {
 export const updateDeliveryBoy = async (req, res) => {
     try {
         const { id } = req.params;
-        const { name, contactNo, companyId, companyIds } = req.body;
+        const { name, contactNo, companyId, companyIds, role, aadharNo } = req.body;
 
         const existing = await DeliveryBoyModel.getById(id);
         if (!existing) {
@@ -150,6 +157,11 @@ export const updateDeliveryBoy = async (req, res) => {
             return res.status(400).json({ error: contactValidation.error });
         }
 
+        const normalizedAadharNo = aadharNo ? String(aadharNo).replace(/\D/g, '') : '';
+        if (normalizedAadharNo && normalizedAadharNo.length !== 12) {
+            return res.status(400).json({ error: 'Aadhar number must be 12 digits.' });
+        }
+
         const companyParse = await parseAssignedCompanyIds(companyId, companyIds);
         if (companyParse.error) {
             return res.status(400).json({ error: companyParse.error });
@@ -160,7 +172,9 @@ export const updateDeliveryBoy = async (req, res) => {
             id,
             nameValidation.value,
             contactValidation.value,
-            parsedCompanyIds[0]
+            parsedCompanyIds[0],
+            role || 'delivery_boy',
+            normalizedAadharNo || null
         );
         await DeliveryBoyModel.setCompanies(id, parsedCompanyIds);
 
@@ -211,10 +225,25 @@ export const deleteDeliveryBoy = async (req, res) => {
 
 export const getDeliveryBoys = async (req, res) => {
     try {
-        const deliveryBoys = await DeliveryBoyModel.getAll();
+        const includeInactive = req.query.includeInactive === 'true';
+        const deliveryBoys = await DeliveryBoyModel.getAll(includeInactive);
         res.status(200).json(deliveryBoys);
     } catch (error) {
         console.error('Error fetching delivery boys:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+};
+
+export const toggleDeliveryBoyActive = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const result = await DeliveryBoyModel.toggleActive(id);
+        if (!result) {
+            return res.status(404).json({ error: 'Delivery Boy not found' });
+        }
+        res.status(200).json({ message: 'Status updated', is_active: result.is_active });
+    } catch (error) {
+        console.error('Error toggling delivery boy active status:', error);
         res.status(500).json({ error: 'Internal server error' });
     }
 };

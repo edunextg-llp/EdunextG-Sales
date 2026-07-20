@@ -103,7 +103,7 @@ export function printChalanReturnPdf(returnRecord) {
   const returnType = returnRecord.returnType || returnRecord.return_type || "partial";
 
   const html = ejs.render(chalanReturnPrintTemplate, {
-    companyName: "BAWARCHEE FOOD PACKAGING PRIVATE LIMITED",
+    companyName: returnRecord.companyName || returnRecord.company_name || "—",
     companySubtitle: "Chalan Return Print",
     companyAddress:
       "Head Office: Holding No. 82, 121 Aswini Dutta Road, South Dum Dum, PO - Dum Dum, PS - Baguiati, South Dum Dum Municipality, Distt - North 24 Paragnas, West Bengal - 700028",

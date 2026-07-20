@@ -425,6 +425,7 @@ function CreditsPage() {
     const contactNumber = credit.contact_number ? credit.contact_number.toLowerCase() : "";
     const invoiceNum = credit.invoice_number ? credit.invoice_number.toLowerCase() : "";
     const staffName = credit.staff_name ? credit.staff_name.toLowerCase() : "";
+    const companyName = credit.company_name ? credit.company_name.toLowerCase() : "";
     const remarks = credit.remarks ? credit.remarks.toLowerCase() : "";
     const stickerNum = credit.sticker_number ? credit.sticker_number.toLowerCase() : "";
     return (
@@ -433,6 +434,7 @@ function CreditsPage() {
       contactNumber.includes(search) ||
       invoiceNum.includes(search) ||
       staffName.includes(search) ||
+      companyName.includes(search) ||
       remarks.includes(search) ||
       stickerNum.includes(search)
     )
@@ -1371,6 +1373,7 @@ function CreditsPage() {
                         <TableCell align="center" sx={paginatedTableHeadCellSx}>Sale ID</TableCell>
                         <TableCell align="center" sx={paginatedTableHeadCellSx}>Invoice No</TableCell>
                         <TableCell align="center" sx={paginatedTableHeadCellSx}>Staff</TableCell>
+                        <TableCell align="center" sx={paginatedTableHeadCellSx}>Company</TableCell>
                         <TableCell align="center" sx={paginatedTableHeadCellSx}>Outstanding Balance</TableCell>
                         <TableCell align="center" sx={paginatedTableHeadCellSx}>Issue Date</TableCell>
                         <TableCell align="center" sx={paginatedTableHeadCellSx}>Due Date</TableCell>
@@ -1389,6 +1392,7 @@ function CreditsPage() {
                           <TableCell align="center">{credit.sticker_number}</TableCell>
                           <TableCell align="center">{credit.invoice_number}</TableCell>
                           <TableCell align="center">{credit.staff_name}</TableCell>
+                          <TableCell align="center">{credit.company_name || "N/A"}</TableCell>
                           <TableCell
                             align="center"
                             sx={{ color: "error.main", fontWeight: "bold" }}

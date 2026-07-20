@@ -239,6 +239,7 @@ function Delivered() {
     const outletArea = row.location_name ? row.location_name.toLowerCase() : "";
     const outletErpId = row.outlet_erp_id ? row.outlet_erp_id.toLowerCase() : "";
     const staffName = row.staff_name ? row.staff_name.toLowerCase() : "";
+    const companyName = row.company_name ? row.company_name.toLowerCase() : "";
     const saleId = row.sticker_number ? row.sticker_number.toLowerCase() : "";
     const invoiceNumber = row.invoice_number ? String(row.invoice_number).toLowerCase() : "";
     return (
@@ -246,6 +247,7 @@ function Delivered() {
       outletArea.includes(search) ||
       outletErpId.includes(search) ||
       staffName.includes(search) ||
+      companyName.includes(search) ||
       saleId.includes(search) ||
       invoiceNumber.includes(search)
     );
@@ -858,6 +860,7 @@ function Delivered() {
                           Sr No
                         </TableCell>
                         <TableCell sx={paginatedTableHeadCellSx}>Staff Name</TableCell>
+                        <TableCell sx={paginatedTableHeadCellSx}>Company</TableCell>
                         <TableCell sx={paginatedTableHeadCellSx}>Outlet Name</TableCell>
                         <TableCell sx={paginatedTableHeadCellSx}>Area</TableCell>
                         <TableCell sx={paginatedTableHeadCellSx}>ERP ID</TableCell>
@@ -889,6 +892,7 @@ function Delivered() {
                               {(page - 1) * rowsPerPage + index + 1}
                             </TableCell>
                             <TableCell sx={{ borderBottom: "1px solid #cbd5e1", py: 2 }}>{row.staff_name}</TableCell>
+                            <TableCell sx={{ borderBottom: "1px solid #cbd5e1", py: 2 }}>{row.company_name || "N/A"}</TableCell>
                             <TableCell sx={{ borderBottom: "1px solid #cbd5e1", py: 2, fontWeight: "medium" }}>{row.outlet_name}</TableCell>
                             <TableCell sx={{ borderBottom: "1px solid #cbd5e1", py: 2 }}>{row.location_name || "N/A"}</TableCell>
                             <TableCell sx={{ borderBottom: "1px solid #cbd5e1", py: 2 }}>{row.outlet_erp_id}</TableCell>
@@ -966,7 +970,7 @@ function Delivered() {
                         ))
                       ) : (
                         <TableRow>
-                          <TableCell colSpan={16} align="center" sx={{ py: 3, borderBottom: 0 }}>
+                          <TableCell colSpan={17} align="center" sx={{ py: 3, borderBottom: 0 }}>
                             <MDTypography variant="body2" color="text">
                               {activeTab === "pending"
                                 ? "No pending delivery items found."
