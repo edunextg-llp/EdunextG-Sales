@@ -190,9 +190,9 @@ function AddItem() {
     if (!selectedCompanyId) return "Please choose a company first.";
     if (!selectedSellerId) return "Please choose a seller.";
     if (!data.productErpId.trim()) return "Product ERP ID is required.";
-    if (!data.skuName.trim()) return "SKU Name is required.";
-    if (!data.pcsPerBox || Number(data.pcsPerBox) <= 0) {
-      return "Pieces per box must be greater than zero.";
+    if (!data.variantName.trim()) return "Variant Name is required.";
+    if (!Number.isInteger(Number(data.pcsPerBox)) || Number(data.pcsPerBox) <= 0) {
+      return "Pieces per box must be a whole number greater than zero.";
     }
     if (!String(data.gstPercent ?? "").trim()) return "GST is required.";
     if (Number.isNaN(Number(data.gstPercent)) || Number(data.gstPercent) < 0) {
@@ -421,7 +421,7 @@ function AddItem() {
 
                       <Grid item xs={12} md={3}>
                         <MDInput
-                          label="SKU Name *"
+                          label="SKU Name"
                           fullWidth
                           value={form.skuName}
                           onChange={(e) => handleChange("skuName", e.target.value)}
@@ -430,7 +430,7 @@ function AddItem() {
 
                       <Grid item xs={12} md={3}>
                         <MDInput
-                          label="Variant Name"
+                          label="Variant Name *"
                           fullWidth
                           value={form.variantName}
                           onChange={(e) => handleChange("variantName", e.target.value)}
@@ -595,7 +595,7 @@ function AddItem() {
                               {formatPercent(item.sgst_percent)}
                             </TableCell>
                             <TableCell sx={{ ...tableBodySx, borderBottom: "1px solid #e5e7eb" }}>
-                              {item.pcs_per_box || "—"}
+                              {item.pcs_per_box ? Math.trunc(Number(item.pcs_per_box)) : "—"}
                             </TableCell>
                             <TableCell sx={{ ...tableBodySx, borderBottom: "1px solid #e5e7eb", textAlign: "center" }}>
                               <MDBox display="flex" alignItems="center" justifyContent="center" gap={0.5}>
@@ -651,7 +651,7 @@ function AddItem() {
               </Grid>
               <Grid item xs={12}>
                 <MDInput
-                  label="SKU Name *"
+                  label="SKU Name"
                   fullWidth
                   value={editForm.skuName}
                   onChange={(e) => handleEditChange("skuName", e.target.value)}
@@ -659,7 +659,7 @@ function AddItem() {
               </Grid>
               <Grid item xs={12}>
                 <MDInput
-                  label="Variant Name"
+                  label="Variant Name *"
                   fullWidth
                   value={editForm.variantName}
                   onChange={(e) => handleEditChange("variantName", e.target.value)}

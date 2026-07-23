@@ -1349,12 +1349,17 @@ function buildSellerItemPayload(body) {
     const productErpValidation = validateRequiredText(body.productErpId, 'Product ERP ID');
     if (!productErpValidation.valid) return { error: productErpValidation.error };
 
-    const skuValidation = validateRequiredText(body.skuName, 'SKU Name');
-    if (!skuValidation.valid) return { error: skuValidation.error };
+    const skuName = body.skuName ? String(body.skuName).trim() : '';
+    const variantValidation = validateRequiredText(body.variantName, 'Variant name');
+    if (!variantValidation.valid) return { error: variantValidation.error };
 
     const pcsPerBoxValidation = validateNumeric(body.pcsPerBox, 'Pieces per box');
-    if (!pcsPerBoxValidation.valid || pcsPerBoxValidation.value <= 0) {
-        return { error: 'Pieces per box must be greater than zero' };
+    if (
+        !pcsPerBoxValidation.valid
+        || pcsPerBoxValidation.value <= 0
+        || !Number.isInteger(pcsPerBoxValidation.value)
+    ) {
+        return { error: 'Pieces per box must be a whole number greater than zero' };
     }
     const gstValidation = validateNumeric(body.gstPercent ?? 5, 'GST');
     if (!gstValidation.valid) return { error: gstValidation.error };
@@ -1366,8 +1371,8 @@ function buildSellerItemPayload(body) {
         companyId,
         sellerId,
         productErpId: productErpValidation.value,
-        skuName: skuValidation.value,
-        variantName: body.variantName ? String(body.variantName).trim() : '',
+        skuName,
+        variantName: variantValidation.value,
         hsnCode: body.hsnCode ? String(body.hsnCode).trim().toUpperCase() : '',
         gstPercent: gstSplit.gstPercent,
         cgstPercent: gstSplit.cgstPercent,

@@ -1106,7 +1106,7 @@ function DmsStock() {
                 </MDTypography>
                 <MDInput
                   fullWidth
-                  value={manualItem.pcsPerBox}
+                  value={manualItem.pcsPerBox ? Math.trunc(Number(manualItem.pcsPerBox)) : ""}
                   disabled
                   sx={{ "& .MuiInputBase-root": { backgroundColor: "#f1f5f9", height: 40 } }}
                 />
@@ -1294,7 +1294,9 @@ function DmsStock() {
                         <TableCell sx={pendingBodyCellSx(100)} title={item.variantName || ""}>
                           {item.variantName || "—"}
                         </TableCell>
-                        <TableCell sx={pendingBodyCellSx(80, "right")}>{item.pcsPerBox}</TableCell>
+                        <TableCell sx={pendingBodyCellSx(80, "right")}>
+                          {item.pcsPerBox ? Math.trunc(Number(item.pcsPerBox)) : 0}
+                        </TableCell>
                         <TableCell sx={pendingBodyCellSx(70, "right")}>{item.currentStockInCase}</TableCell>
                         <TableCell sx={pendingBodyCellSx(70, "right")}>{item.currentStockInPcs || 0}</TableCell>
                         <TableCell sx={pendingBodyCellSx(90, "right")}>{item.totalCurrentStockInPcs}</TableCell>
