@@ -508,6 +508,126 @@ export async function ensureSchema() {
             'in_code on purchase_sellers'
         );
 
+        await tryQuery(
+            connection,
+            `ALTER TABLE purchase_sellers ADD COLUMN company_id INT NULL`,
+            'company_id on purchase_sellers'
+        );
+
+        await tryQuery(
+            connection,
+            `ALTER TABLE purchase_sellers ADD COLUMN contact VARCHAR(20) NULL`,
+            'contact on purchase_sellers'
+        );
+
+        await tryQuery(
+            connection,
+            `ALTER TABLE purchase_sellers ADD COLUMN district VARCHAR(100) NULL`,
+            'district on purchase_sellers'
+        );
+
+        await tryQuery(
+            connection,
+            `ALTER TABLE purchase_sellers ADD COLUMN has_gst TINYINT(1) NOT NULL DEFAULT 0`,
+            'has_gst on purchase_sellers'
+        );
+
+        await tryQuery(
+            connection,
+            `ALTER TABLE purchase_sellers ADD CONSTRAINT fk_purchase_sellers_company FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE SET NULL`,
+            'fk_purchase_sellers_company'
+        );
+
+        await tryQuery(
+            connection,
+            `ALTER TABLE purchase_sellers DROP INDEX seller_name`,
+            'drop seller_name unique on purchase_sellers'
+        );
+
+        await tryQuery(
+            connection,
+            `ALTER TABLE purchase_sellers ADD UNIQUE INDEX uq_company_seller (company_id, seller_name)`,
+            'uq_company_seller on purchase_sellers'
+        );
+
+        await connection.query(`
+            CREATE TABLE IF NOT EXISTS seller_sequence (
+                id INT PRIMARY KEY,
+                seq_value INT NOT NULL DEFAULT 0
+            );
+        `);
+        await connection.query(`
+            INSERT IGNORE INTO seller_sequence (id, seq_value) VALUES (1, 0)
+        `);
+
+        await tryQuery(
+            connection,
+            `ALTER TABLE purchase_sellers ADD COLUMN seller_code VARCHAR(20) NULL UNIQUE`,
+            'seller_code on purchase_sellers'
+        );
+
+        const [sellersMissingCode] = await connection.query(`
+            SELECT id FROM purchase_sellers WHERE seller_code IS NULL OR seller_code = '' ORDER BY id
+        `);
+        for (const row of sellersMissingCode) {
+            await connection.query(`
+                INSERT IGNORE INTO seller_sequence (id, seq_value) VALUES (1, 0)
+            `);
+            await connection.query(`
+                UPDATE seller_sequence SET seq_value = seq_value + 1 WHERE id = 1
+            `);
+            const [seqRows] = await connection.query(`
+                SELECT seq_value FROM seller_sequence WHERE id = 1
+            `);
+            const seqValue = seqRows[0]?.seq_value || 1;
+            const generatedCode = `BFPSL${String(seqValue).padStart(4, '0')}`;
+            await connection.query(
+                `UPDATE purchase_sellers SET seller_code = ? WHERE id = ?`,
+                [generatedCode, row.id]
+            );
+        }
+
+        await connection.query(`
+            CREATE TABLE IF NOT EXISTS seller_items (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                company_id INT NOT NULL,
+                seller_id INT NOT NULL,
+                product_erp_id VARCHAR(100) NOT NULL,
+                sku_name VARCHAR(255) NOT NULL,
+                variant_name VARCHAR(255) NULL,
+                hsn_code VARCHAR(50) NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE CASCADE,
+                FOREIGN KEY (seller_id) REFERENCES purchase_sellers(id) ON DELETE CASCADE,
+                UNIQUE KEY uq_seller_product (seller_id, product_erp_id),
+                INDEX idx_seller_items_company_id (company_id),
+                INDEX idx_seller_items_seller_id (seller_id)
+            );
+        `);
+
+        await connection.query(`
+            CREATE TABLE IF NOT EXISTS company_item_sequence (
+                company_id INT PRIMARY KEY,
+                seq_value INT NOT NULL DEFAULT 0,
+                FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE CASCADE
+            );
+        `);
+
+        const [itemSeqRows] = await connection.query(`
+            SELECT si.company_id, MAX(CAST(SUBSTRING(si.product_erp_id, 6) AS UNSIGNED)) AS max_seq
+            FROM seller_items si
+            WHERE si.product_erp_id REGEXP '^BFP[A-Z]{2}[0-9]+$'
+            GROUP BY si.company_id
+        `);
+        for (const row of itemSeqRows) {
+            await connection.query(
+                `INSERT INTO company_item_sequence (company_id, seq_value)
+                 VALUES (?, ?)
+                 ON DUPLICATE KEY UPDATE seq_value = GREATEST(seq_value, VALUES(seq_value))`,
+                [row.company_id, row.max_seq || 0]
+            );
+        }
+
         await connection.query(`
             CREATE TABLE IF NOT EXISTS purchase_entries (
                 id INT AUTO_INCREMENT PRIMARY KEY,

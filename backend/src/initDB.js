@@ -667,6 +667,97 @@ async function initDB() {
         if (err.code !== 'ER_DUP_FIELDNAME') console.log('in_code column may already exist on purchase_sellers');
     }
 
+    const purchaseSellerColumns = [
+        { sql: 'ALTER TABLE purchase_sellers ADD COLUMN company_id INT NULL', label: 'company_id' },
+        { sql: 'ALTER TABLE purchase_sellers ADD COLUMN contact VARCHAR(20) NULL', label: 'contact' },
+        { sql: 'ALTER TABLE purchase_sellers ADD COLUMN district VARCHAR(100) NULL', label: 'district' },
+        { sql: 'ALTER TABLE purchase_sellers ADD COLUMN has_gst TINYINT(1) NOT NULL DEFAULT 0', label: 'has_gst' },
+    ];
+
+    for (const column of purchaseSellerColumns) {
+        try {
+            await connection.query(column.sql);
+            console.log(`Added ${column.label} to purchase_sellers`);
+        } catch (err) {
+            if (err.code !== 'ER_DUP_FIELDNAME') console.log(`${column.label} column may already exist on purchase_sellers`);
+        }
+    }
+
+    try {
+        await connection.query(`
+            ALTER TABLE purchase_sellers ADD CONSTRAINT fk_purchase_sellers_company
+            FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE SET NULL
+        `);
+        console.log('Added fk_purchase_sellers_company');
+    } catch (err) {
+        if (err.code !== 'ER_DUP_FIELDNAME' && err.code !== 'ER_CANT_CREATE_TABLE') {
+            console.log('fk_purchase_sellers_company may already exist');
+        }
+    }
+
+    try {
+        await connection.query(`ALTER TABLE purchase_sellers DROP INDEX seller_name`);
+        console.log('Dropped seller_name unique index on purchase_sellers');
+    } catch (err) {
+        console.log('seller_name unique index may already be dropped on purchase_sellers');
+    }
+
+    try {
+        await connection.query(`
+            ALTER TABLE purchase_sellers ADD UNIQUE INDEX uq_company_seller (company_id, seller_name)
+        `);
+        console.log('Added uq_company_seller on purchase_sellers');
+    } catch (err) {
+        if (err.code !== 'ER_DUP_KEYNAME') console.log('uq_company_seller may already exist on purchase_sellers');
+    }
+
+    await connection.query(`
+        CREATE TABLE IF NOT EXISTS seller_sequence (
+            id INT PRIMARY KEY,
+            seq_value INT NOT NULL DEFAULT 0
+        );
+    `);
+    await connection.query(`
+        INSERT IGNORE INTO seller_sequence (id, seq_value) VALUES (1, 0)
+    `);
+
+    try {
+        await connection.query(`
+            ALTER TABLE purchase_sellers ADD COLUMN seller_code VARCHAR(20) NULL UNIQUE
+        `);
+        console.log('Added seller_code to purchase_sellers');
+    } catch (err) {
+        if (err.code !== 'ER_DUP_FIELDNAME') console.log('seller_code column may already exist on purchase_sellers');
+    }
+
+    await connection.query(`
+        CREATE TABLE IF NOT EXISTS seller_items (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            company_id INT NOT NULL,
+            seller_id INT NOT NULL,
+            product_erp_id VARCHAR(100) NOT NULL,
+            sku_name VARCHAR(255) NOT NULL,
+            variant_name VARCHAR(255) NULL,
+            hsn_code VARCHAR(50) NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE CASCADE,
+            FOREIGN KEY (seller_id) REFERENCES purchase_sellers(id) ON DELETE CASCADE,
+            UNIQUE KEY uq_seller_product (seller_id, product_erp_id),
+            INDEX idx_seller_items_company_id (company_id),
+            INDEX idx_seller_items_seller_id (seller_id)
+        );
+    `);
+    console.log('Seller items table created');
+
+    await connection.query(`
+        CREATE TABLE IF NOT EXISTS company_item_sequence (
+            company_id INT PRIMARY KEY,
+            seq_value INT NOT NULL DEFAULT 0,
+            FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE CASCADE
+        );
+    `);
+    console.log('Company item sequence table created');
+
     await connection.query(`
         CREATE TABLE IF NOT EXISTS purchase_entries (
             id INT AUTO_INCREMENT PRIMARY KEY,

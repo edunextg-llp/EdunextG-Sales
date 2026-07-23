@@ -29,6 +29,8 @@ import ChalanDelivered from "layouts/chalan/delivered";
 import ChalanReturn from "layouts/chalan/return";
 // import Reports from "layouts/reports";
 import DmsStock from "layouts/dms-stock";
+import AddSeller from "layouts/add-seller";
+import AddItem from "layouts/add-item";
 import CurrentStock from "layouts/current-stock";
 import PhysicalStock from "layouts/physical-stock";
 // import ExpiredStock from "layouts/expired-stock";
@@ -58,6 +60,22 @@ const routes = [
     key: "dms",
     icon: <Icon fontSize="small">inventory</Icon>,
     collapse: [
+      {
+        type: "collapse",
+        name: "Add Seller",
+        key: "add-seller",
+        icon: <Icon fontSize="small">storefront</Icon>,
+        route: "/add-seller",
+        component: <AddSeller />,
+      },
+      {
+        type: "collapse",
+        name: "Add Item",
+        key: "add-item",
+        icon: <Icon fontSize="small">category</Icon>,
+        route: "/add-item",
+        component: <AddItem />,
+      },
       {
         type: "collapse",
         name: "DMS Stock",

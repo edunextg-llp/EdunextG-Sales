@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
-import Autocomplete from "@mui/material/Autocomplete";
 import Card from "@mui/material/Card";
 import Dialog from "@mui/material/Dialog";
 import DialogActions from "@mui/material/DialogActions";
@@ -149,6 +148,30 @@ const emptyManualItem = () => ({
   sourceItemId: null,
 });
 
+const formatSellerItemLabel = (item) => {
+  const parts = [item.product_erp_id, item.sku_name].filter(Boolean);
+  if (item.variant_name) parts.push(item.variant_name);
+  return parts.join(" · ");
+};
+
+const mapSellerItemToManualItem = (sellerItem) => {
+  if (!sellerItem) return emptyManualItem();
+
+  return {
+    productErpId: sellerItem.product_erp_id || "",
+    productName: sellerItem.sku_name || "",
+    variantName: sellerItem.variant_name || "",
+    pcsPerBox: "",
+    currentStockInCase: "",
+    currentStockInPcs: "",
+    totalCurrentStockInPcs: "",
+    pricePerPiece: "",
+    mrp: "",
+    totalValue: "",
+    sourceItemId: sellerItem.id || null,
+  };
+};
+
 const normalizeErpKey = (value) => String(value || "").trim().toLowerCase();
 
 const calcManualTotals = (item) => {
@@ -161,28 +184,15 @@ const calcManualTotals = (item) => {
   const totalValue = totalCurrentStockInPcs * pricePerPiece;
 
   return {
-    totalCurrentStockInPcs: totalCurrentStockInPcs ? totalCurrentStockInPcs.toFixed(2) : "",
+    totalCurrentStockInPcs: totalCurrentStockInPcs ? String(totalCurrentStockInPcs) : "",
     totalValue: totalValue ? totalValue.toFixed(2) : "",
   };
 };
 
-const mapProductToManualItem = (product) => {
-  if (!product) return emptyManualItem();
-
-  const item = {
-    productErpId: product.product_erp_id || "",
-    productName: product.product_name || "",
-    variantName: product.variant_name || "",
-    pcsPerBox: product.pcs_per_box ?? "",
-    currentStockInCase: product.current_stock_in_case ?? "",
-    currentStockInPcs: product.current_stock_in_pcs ?? "",
-    pricePerPiece: product.price_per_piece ?? "",
-    mrp: product.mrp ?? "",
-    sourceItemId: product.id || null,
-  };
-  const totals = calcManualTotals(item);
-  return { ...item, ...totals };
-};
+const getAuthHeaders = () => ({
+  Authorization: `Bearer ${localStorage.getItem("token")}`,
+  "Content-Type": "application/json",
+});
 
 const entryFormSx = {
   border: "2px solid #7eb8da",
@@ -239,26 +249,73 @@ function DmsStock() {
   const [uploadModalOpen, setUploadModalOpen] = useState(false);
   const [manualModalOpen, setManualModalOpen] = useState(false);
   const [manualCompanyId, setManualCompanyId] = useState("");
+  const [manualSellerId, setManualSellerId] = useState("");
   const [manualUploadDate, setManualUploadDate] = useState(() => getTodayLocalDate());
   const [manualItem, setManualItem] = useState(emptyManualItem);
   const [pendingItems, setPendingItems] = useState([]);
   const [savingManual, setSavingManual] = useState(false);
-  const [erpOptions, setErpOptions] = useState([]);
-  const [erpSearchLoading, setErpSearchLoading] = useState(false);
-  const [selectedErpOption, setSelectedErpOption] = useState(null);
-  const [erpInputValue, setErpInputValue] = useState("");
-  const erpSearchTimerRef = useRef(null);
+  const [sellers, setSellers] = useState([]);
+  const [sellerItems, setSellerItems] = useState([]);
+  const [selectedSellerItemId, setSelectedSellerItemId] = useState("");
+  const [loadingSellers, setLoadingSellers] = useState(false);
+  const [loadingSellerItems, setLoadingSellerItems] = useState(false);
   const [companies, setCompanies] = useState([]);
   const [selectedCompanyId, setSelectedCompanyId] = useState("");
 
   const fetchCompanies = async () => {
     try {
-      const response = await fetch(`${API}/staff/companies`);
+      const response = await fetch(`${API}/staff/companies`, { headers: getAuthHeaders() });
       if (response.ok) {
         setCompanies(await response.json());
       }
     } catch (fetchError) {
       console.error("Error fetching companies:", fetchError);
+    }
+  };
+
+  const fetchManualSellers = async (companyId) => {
+    if (!companyId) {
+      setSellers([]);
+      return;
+    }
+
+    setLoadingSellers(true);
+    try {
+      const response = await fetch(`${API}/staff/purchase-sellers/company/${companyId}`, {
+        headers: getAuthHeaders(),
+      });
+      const data = await response.json();
+      setSellers(Array.isArray(data) ? data : []);
+    } catch (fetchError) {
+      console.error("Error fetching sellers:", fetchError);
+      setSellers([]);
+    } finally {
+      setLoadingSellers(false);
+    }
+  };
+
+  const fetchManualSellerItems = async (companyId, sellerId) => {
+    if (!companyId || !sellerId) {
+      setSellerItems([]);
+      return;
+    }
+
+    setLoadingSellerItems(true);
+    try {
+      const params = new URLSearchParams({
+        companyId: String(companyId),
+        sellerId: String(sellerId),
+      });
+      const response = await fetch(`${API}/staff/seller-items?${params.toString()}`, {
+        headers: getAuthHeaders(),
+      });
+      const data = await response.json();
+      setSellerItems(Array.isArray(data) ? data : []);
+    } catch (fetchError) {
+      console.error("Error fetching seller items:", fetchError);
+      setSellerItems([]);
+    } finally {
+      setLoadingSellerItems(false);
     }
   };
 
@@ -357,12 +414,13 @@ function DmsStock() {
   const resetManualForm = () => {
     pendingIdRef.current = 0;
     setManualCompanyId("");
+    setManualSellerId("");
     setManualUploadDate(getTodayLocalDate());
     setManualItem(emptyManualItem());
     setPendingItems([]);
-    setErpOptions([]);
-    setSelectedErpOption(null);
-    setErpInputValue("");
+    setSellers([]);
+    setSellerItems([]);
+    setSelectedSellerItemId("");
     setMessage("");
     setError("");
   };
@@ -377,6 +435,33 @@ function DmsStock() {
     resetManualForm();
   };
 
+  const handleManualCompanyChange = (companyId) => {
+    setManualCompanyId(companyId);
+    setManualSellerId("");
+    setSelectedSellerItemId("");
+    setSellerItems([]);
+    setManualItem(emptyManualItem());
+    setMessage("");
+    setError("");
+    fetchManualSellers(companyId);
+  };
+
+  const handleManualSellerChange = (sellerId) => {
+    setManualSellerId(sellerId);
+    setSelectedSellerItemId("");
+    setManualItem(emptyManualItem());
+    setMessage("");
+    setError("");
+    fetchManualSellerItems(manualCompanyId, sellerId);
+  };
+
+  const handleSellerItemSelect = (itemId) => {
+    setSelectedSellerItemId(itemId);
+    const sellerItem = sellerItems.find((item) => String(item.id) === String(itemId));
+    setManualItem(mapSellerItemToManualItem(sellerItem));
+    setMessage("Item details loaded. Enter stock and price fields below.");
+  };
+
   const updateManualItem = (field, value) => {
     setManualItem((prev) => {
       const next = { ...prev, [field]: value };
@@ -385,106 +470,34 @@ function DmsStock() {
     });
   };
 
-  const fetchErpOptions = async (companyId, search = "") => {
-    if (!companyId) {
-      setErpOptions([]);
-      return;
-    }
-
-    setErpSearchLoading(true);
-    try {
-      const params = new URLSearchParams({
-        companyId: String(companyId),
-        search: String(search || "").trim(),
-      });
-      const response = await fetch(`${API}/staff/dms-stock/product-search?${params}`);
-      const data = await response.json();
-      if (response.ok) {
-        setErpOptions(data.products || []);
-      }
-    } catch (fetchError) {
-      console.error("Error searching ERP products:", fetchError);
-    } finally {
-      setErpSearchLoading(false);
-    }
-  };
-
-  const applyProductToForm = (product) => {
-    const mapped = mapProductToManualItem(product);
-    setManualItem(mapped);
-    setErpInputValue(mapped.productErpId);
-    setSelectedErpOption(product);
-    setMessage("Product details loaded. You can edit and update.");
-  };
-
-  const handleErpOptionSelect = async (event, option) => {
-    if (!option) {
-      setSelectedErpOption(null);
-      return;
-    }
-
-    if (typeof option === "string") {
-      updateManualItem("productErpId", option);
-      setSelectedErpOption(null);
-      return;
-    }
-
-    applyProductToForm(option);
-  };
-
-  const handleErpInputChange = (event, value, reason) => {
-    setErpInputValue(value);
-    if (reason === "input") {
-      updateManualItem("productErpId", value);
-      setSelectedErpOption(null);
-
-      if (erpSearchTimerRef.current) {
-        clearTimeout(erpSearchTimerRef.current);
-      }
-
-      if (!manualCompanyId) {
-        setErpOptions([]);
-        return;
-      }
-
-      erpSearchTimerRef.current = setTimeout(() => {
-        fetchErpOptions(manualCompanyId, value);
-      }, 300);
-    }
-  };
-
-  useEffect(() => {
-    if (!manualModalOpen || !manualCompanyId) {
-      return undefined;
-    }
-
-    fetchErpOptions(manualCompanyId, erpInputValue);
-
-    return () => {
-      if (erpSearchTimerRef.current) {
-        clearTimeout(erpSearchTimerRef.current);
-      }
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [manualCompanyId, manualModalOpen]);
-
   const handleAddManualItem = () => {
     setError("");
     if (!manualCompanyId) {
       setError("Please select a company.");
       return;
     }
-    if (!manualItem.productErpId.trim() && !manualItem.productName.trim()) {
-      setError("Product ERP ID or SKU Name is required.");
+    if (!manualSellerId) {
+      setError("Please select a seller.");
+      return;
+    }
+    if (!selectedSellerItemId || !manualItem.productErpId.trim()) {
+      setError("Please select an item.");
       return;
     }
     if (!manualItem.pcsPerBox && !manualItem.currentStockInCase) {
       setError("Please enter Pcs/Box and stock quantity.");
       return;
     }
+    if (!manualItem.pricePerPiece) {
+      setError("Please enter Price/Pcs.");
+      return;
+    }
 
     const totals = calcManualTotals(manualItem);
     const erpKey = normalizeErpKey(manualItem.productErpId);
+    const replacingExisting = erpKey && pendingItems.some(
+      (item) => normalizeErpKey(item.productErpId) === erpKey
+    );
     const snapshot = {
       productErpId: String(manualItem.productErpId || "").trim(),
       productName: String(manualItem.productName || "").trim(),
@@ -497,7 +510,7 @@ function DmsStock() {
       mrp: manualItem.mrp,
       totalValue: totals.totalValue,
       sourceItemId: manualItem.sourceItemId || null,
-      isUpdate: Boolean(manualItem.sourceItemId),
+      isUpdate: replacingExisting,
     };
 
     setPendingItems((prev) => {
@@ -515,8 +528,7 @@ function DmsStock() {
       ];
     });
     setManualItem(emptyManualItem());
-    setSelectedErpOption(null);
-    setErpInputValue("");
+    setSelectedSellerItemId("");
     setMessage(
       snapshot.isUpdate
         ? `ERP ID ${snapshot.productErpId} updated in list. Save to apply changes.`
@@ -935,7 +947,7 @@ function DmsStock() {
             </MDTypography>
 
             <Grid container spacing={2}>
-              <Grid item xs={12} md={6}>
+              <Grid item xs={12} md={4}>
                 <MDTypography sx={fieldLabelSx}>
                   Company{requiredMark}
                 </MDTypography>
@@ -943,7 +955,7 @@ function DmsStock() {
                   <Select
                     displayEmpty
                     value={manualCompanyId}
-                    onChange={(event) => setManualCompanyId(event.target.value)}
+                    onChange={(event) => handleManualCompanyChange(event.target.value)}
                     sx={{ backgroundColor: "#fff", height: 40 }}
                   >
                     <MenuItem value="" disabled>
@@ -957,7 +969,33 @@ function DmsStock() {
                   </Select>
                 </FormControl>
               </Grid>
-              <Grid item xs={12} md={6}>
+              <Grid item xs={12} md={4}>
+                <MDTypography sx={fieldLabelSx}>
+                  Seller{requiredMark}
+                </MDTypography>
+                <FormControl fullWidth size="small" disabled={!manualCompanyId || loadingSellers}>
+                  <Select
+                    displayEmpty
+                    value={manualSellerId}
+                    onChange={(event) => handleManualSellerChange(event.target.value)}
+                    sx={{ backgroundColor: "#fff", height: 40 }}
+                  >
+                    <MenuItem value="" disabled>
+                      {loadingSellers ? "Loading sellers..." : "Select Seller"}
+                    </MenuItem>
+                    {sellers.map((seller) => (
+                      <MenuItem key={seller.id} value={String(seller.id)}>
+                        {seller.seller_name}
+                        {seller.seller_code ? ` (${seller.seller_code})` : ""}
+                      </MenuItem>
+                    ))}
+                    {manualCompanyId && !loadingSellers && sellers.length === 0 && (
+                      <MenuItem disabled>No sellers found</MenuItem>
+                    )}
+                  </Select>
+                </FormControl>
+              </Grid>
+              <Grid item xs={12} md={4}>
                 <MDTypography sx={fieldLabelSx}>
                   Upload Date{requiredMark}
                 </MDTypography>
@@ -971,47 +1009,41 @@ function DmsStock() {
                 />
               </Grid>
 
+              <Grid item xs={12}>
+                <MDTypography sx={fieldLabelSx}>
+                  Select Item{requiredMark}
+                </MDTypography>
+                <FormControl fullWidth size="small" disabled={!manualSellerId || loadingSellerItems}>
+                  <Select
+                    displayEmpty
+                    value={selectedSellerItemId}
+                    onChange={(event) => handleSellerItemSelect(event.target.value)}
+                    sx={{ backgroundColor: "#fff", height: 40 }}
+                  >
+                    <MenuItem value="" disabled>
+                      {loadingSellerItems ? "Loading items..." : "Select Item"}
+                    </MenuItem>
+                    {sellerItems.map((item) => (
+                      <MenuItem key={item.id} value={String(item.id)}>
+                        {formatSellerItemLabel(item)}
+                      </MenuItem>
+                    ))}
+                    {manualSellerId && !loadingSellerItems && sellerItems.length === 0 && (
+                      <MenuItem disabled>No items found for this seller</MenuItem>
+                    )}
+                  </Select>
+                </FormControl>
+              </Grid>
+
               <Grid item xs={12} md={4}>
                 <MDTypography sx={fieldLabelSx}>
                   Product ERP ID{requiredMark}
                 </MDTypography>
-                <Autocomplete
-                  freeSolo
-                  options={erpOptions}
-                  loading={erpSearchLoading}
-                  value={selectedErpOption}
-                  inputValue={erpInputValue}
-                  onChange={handleErpOptionSelect}
-                  onInputChange={handleErpInputChange}
-                  disabled={!manualCompanyId}
-                  getOptionLabel={(option) => {
-                    if (typeof option === "string") return option;
-                    return option.product_erp_id || "";
-                  }}
-                  isOptionEqualToValue={(option, value) =>
-                    normalizeErpKey(option?.product_erp_id) === normalizeErpKey(value?.product_erp_id)
-                  }
-                  filterOptions={(options) => options}
-                  renderOption={(props, option) => (
-                    <li {...props} key={option.id || option.product_erp_id}>
-                      <MDBox>
-                        <MDTypography variant="button" fontWeight="bold" color="dark">
-                          {option.product_erp_id}
-                        </MDTypography>
-                        <MDTypography variant="caption" color="text" display="block">
-                          {option.product_name}
-                          {option.variant_name ? ` | ${option.variant_name}` : ""}
-                        </MDTypography>
-                      </MDBox>
-                    </li>
-                  )}
-                  renderInput={(params) => (
-                    <MDInput
-                      {...params}
-                      placeholder={manualCompanyId ? "Search ERP ID..." : "Select company first"}
-                      sx={{ "& .MuiInputBase-root": { backgroundColor: "#fff", height: 40 } }}
-                    />
-                  )}
+                <MDInput
+                  fullWidth
+                  value={manualItem.productErpId}
+                  disabled
+                  sx={{ "& .MuiInputBase-root": { backgroundColor: "#f1f5f9", height: 40 } }}
                 />
               </Grid>
               <Grid item xs={12} md={4}>
@@ -1020,20 +1052,18 @@ function DmsStock() {
                 </MDTypography>
                 <MDInput
                   fullWidth
-                  placeholder="SKU Name"
                   value={manualItem.productName}
-                  onChange={(event) => updateManualItem("productName", event.target.value)}
-                  sx={{ "& .MuiInputBase-root": { backgroundColor: "#fff", height: 40 } }}
+                  disabled
+                  sx={{ "& .MuiInputBase-root": { backgroundColor: "#f1f5f9", height: 40 } }}
                 />
               </Grid>
               <Grid item xs={12} md={4}>
                 <MDTypography sx={fieldLabelSx}>Variant Name</MDTypography>
                 <MDInput
                   fullWidth
-                  placeholder="Variant Name"
                   value={manualItem.variantName}
-                  onChange={(event) => updateManualItem("variantName", event.target.value)}
-                  sx={{ "& .MuiInputBase-root": { backgroundColor: "#fff", height: 40 } }}
+                  disabled
+                  sx={{ "& .MuiInputBase-root": { backgroundColor: "#f1f5f9", height: 40 } }}
                 />
               </Grid>
 
@@ -1124,8 +1154,7 @@ function DmsStock() {
             <MDBox display="flex" justifyContent="flex-end" gap={1} mt={3}>
               <MDButton type="button" color="dark" variant="outlined" onClick={() => {
                 setManualItem(emptyManualItem());
-                setSelectedErpOption(null);
-                setErpInputValue("");
+                setSelectedSellerItemId("");
               }}>
                 Clear Row
               </MDButton>

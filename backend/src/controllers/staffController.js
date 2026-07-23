@@ -5,6 +5,7 @@ import DeliveryBoyModel from '../models/deliveryBoyModel.js';
 import ReportModel from '../models/reportModel.js';
 import BankDepositModel from '../models/bankDepositModel.js';
 import PurchaseSellerModel from '../models/purchaseSellerModel.js';
+import SellerItemModel from '../models/sellerItemModel.js';
 import PurchaseModel from '../models/purchaseModel.js';
 import OrderCancellationModel from '../models/orderCancellationModel.js';
 import DeliveryCollectionModel from '../models/deliveryCollectionModel.js';
@@ -1174,10 +1175,25 @@ export const searchUpiInvoices = async (req, res) => {
 
 export const searchPurchaseSellers = async (req, res) => {
     try {
-        const sellers = await PurchaseSellerModel.search(req.query.search || '');
+        const companyId = req.query.companyId ? Number(req.query.companyId) : null;
+        const sellers = await PurchaseSellerModel.search(req.query.search || '', companyId);
         res.status(200).json(sellers);
     } catch (error) {
         console.error('Error searching purchase sellers:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+};
+
+export const getPurchaseSellersByCompany = async (req, res) => {
+    try {
+        const companyId = Number(req.params.companyId);
+        if (!Number.isInteger(companyId) || companyId <= 0) {
+            return res.status(400).json({ error: 'Valid company is required' });
+        }
+        const sellers = await PurchaseSellerModel.getByCompany(companyId);
+        res.status(200).json(sellers);
+    } catch (error) {
+        console.error('Error fetching company sellers:', error);
         res.status(500).json({ error: 'Internal server error' });
     }
 };
@@ -1195,22 +1211,264 @@ export const getCompanies = async (req, res) => {
 
 export const savePurchaseSeller = async (req, res) => {
     try {
+        const companyId = Number(req.body.companyId);
+        if (!Number.isInteger(companyId) || companyId <= 0) {
+            return res.status(400).json({ error: 'Company is required' });
+        }
+
         const sellerValidation = validateRequiredText(req.body.sellerName, 'Seller name');
         if (!sellerValidation.valid) return res.status(400).json({ error: sellerValidation.error });
 
+        const hasGst = Boolean(req.body.hasGst);
+        const gstin = req.body.gstin ? String(req.body.gstin).trim().toUpperCase() : '';
+        const state = req.body.state ? String(req.body.state).trim() : '';
+        const pinCode = req.body.pinCode || req.body.inCode
+            ? String(req.body.pinCode || req.body.inCode).trim()
+            : '';
+
+        if (hasGst) {
+            if (!gstin) return res.status(400).json({ error: 'GSTIN is required when GST is enabled' });
+            if (!state) return res.status(400).json({ error: 'State is required when GST is enabled' });
+            if (!pinCode) return res.status(400).json({ error: 'Pin code is required when GST is enabled' });
+        }
+
         const seller = await PurchaseSellerModel.upsert({
+            companyId,
             sellerName: sellerValidation.value,
             address: req.body.address ? String(req.body.address).trim() : '',
             city: req.body.city ? String(req.body.city).trim() : '',
-            state: req.body.state ? String(req.body.state).trim() : '',
-            gstin: req.body.gstin ? String(req.body.gstin).trim().toUpperCase() : '',
+            district: req.body.district ? String(req.body.district).trim() : '',
+            state,
+            contact: req.body.contact ? String(req.body.contact).replace(/\D/g, '') : '',
+            hasGst,
+            gstin,
             panNo: req.body.panNo ? String(req.body.panNo).trim().toUpperCase() : '',
-            pinCode: req.body.pinCode || req.body.inCode ? String(req.body.pinCode || req.body.inCode).trim() : '',
+            pinCode,
         });
 
-        res.status(200).json({ message: 'Purchase seller saved successfully', seller });
+        res.status(200).json({ message: 'Seller saved successfully', seller });
     } catch (error) {
+        if (error.code === 'ER_DUP_ENTRY') {
+            return res.status(409).json({ error: 'A seller with this name already exists for the selected company' });
+        }
         console.error('Error saving purchase seller:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+};
+
+export const updatePurchaseSeller = async (req, res) => {
+    try {
+        const sellerId = Number(req.params.sellerId);
+        if (!Number.isInteger(sellerId) || sellerId <= 0) {
+            return res.status(400).json({ error: 'Valid seller is required' });
+        }
+
+        const existing = await PurchaseSellerModel.getById(sellerId);
+        if (!existing) return res.status(404).json({ error: 'Seller not found' });
+
+        const companyId = Number(req.body.companyId);
+        if (!Number.isInteger(companyId) || companyId <= 0) {
+            return res.status(400).json({ error: 'Company is required' });
+        }
+
+        const sellerValidation = validateRequiredText(req.body.sellerName, 'Seller name');
+        if (!sellerValidation.valid) return res.status(400).json({ error: sellerValidation.error });
+
+        const hasGst = Boolean(req.body.hasGst);
+        const gstin = req.body.gstin ? String(req.body.gstin).trim().toUpperCase() : '';
+        const state = req.body.state ? String(req.body.state).trim() : '';
+        const pinCode = req.body.pinCode || req.body.inCode
+            ? String(req.body.pinCode || req.body.inCode).trim()
+            : '';
+
+        if (hasGst) {
+            if (!gstin) return res.status(400).json({ error: 'GSTIN is required when GST is enabled' });
+            if (!state) return res.status(400).json({ error: 'State is required when GST is enabled' });
+            if (!pinCode) return res.status(400).json({ error: 'Pin code is required when GST is enabled' });
+        }
+
+        const seller = await PurchaseSellerModel.updateById(sellerId, {
+            companyId,
+            sellerName: sellerValidation.value,
+            address: req.body.address ? String(req.body.address).trim() : '',
+            city: req.body.city ? String(req.body.city).trim() : '',
+            district: req.body.district ? String(req.body.district).trim() : '',
+            state,
+            contact: req.body.contact ? String(req.body.contact).replace(/\D/g, '') : '',
+            hasGst,
+            gstin,
+            panNo: req.body.panNo ? String(req.body.panNo).trim().toUpperCase() : '',
+            pinCode,
+        });
+
+        res.status(200).json({ message: 'Seller updated successfully', seller });
+    } catch (error) {
+        if (error.code === 'ER_DUP_ENTRY') {
+            return res.status(409).json({ error: 'A seller with this name already exists for the selected company' });
+        }
+        console.error('Error updating purchase seller:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+};
+
+export const deletePurchaseSeller = async (req, res) => {
+    try {
+        const sellerId = Number(req.params.sellerId);
+        if (!Number.isInteger(sellerId) || sellerId <= 0) {
+            return res.status(400).json({ error: 'Valid seller is required' });
+        }
+
+        const existing = await PurchaseSellerModel.getById(sellerId);
+        if (!existing) return res.status(404).json({ error: 'Seller not found' });
+
+        const affected = await PurchaseSellerModel.deleteById(sellerId);
+        if (!affected) return res.status(404).json({ error: 'Seller not found' });
+
+        res.status(200).json({ message: 'Seller deleted successfully' });
+    } catch (error) {
+        if (error.code === 'ER_ROW_IS_REFERENCED_2') {
+            return res.status(409).json({ error: 'Cannot delete seller linked to purchase entries or items' });
+        }
+        console.error('Error deleting purchase seller:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+};
+
+function buildSellerItemPayload(body) {
+    const companyId = Number(body.companyId);
+    if (!Number.isInteger(companyId) || companyId <= 0) {
+        return { error: 'Company is required' };
+    }
+
+    const sellerId = Number(body.sellerId);
+    if (!Number.isInteger(sellerId) || sellerId <= 0) {
+        return { error: 'Seller is required' };
+    }
+
+    const productErpValidation = validateRequiredText(body.productErpId, 'Product ERP ID');
+    if (!productErpValidation.valid) return { error: productErpValidation.error };
+
+    const skuValidation = validateRequiredText(body.skuName, 'SKU Name');
+    if (!skuValidation.valid) return { error: skuValidation.error };
+
+    return {
+        companyId,
+        sellerId,
+        productErpId: productErpValidation.value,
+        skuName: skuValidation.value,
+        variantName: body.variantName ? String(body.variantName).trim() : '',
+        hsnCode: body.hsnCode ? String(body.hsnCode).trim().toUpperCase() : '',
+    };
+}
+
+export const getSellerItems = async (req, res) => {
+    try {
+        const companyId = Number(req.query.companyId);
+        const sellerId = Number(req.query.sellerId);
+
+        if (!Number.isInteger(companyId) || companyId <= 0) {
+            return res.status(400).json({ error: 'Company is required' });
+        }
+        if (!Number.isInteger(sellerId) || sellerId <= 0) {
+            return res.status(400).json({ error: 'Seller is required' });
+        }
+
+        const seller = await PurchaseSellerModel.getById(sellerId);
+        if (!seller || Number(seller.company_id) !== companyId) {
+            return res.status(404).json({ error: 'Seller not found for the selected company' });
+        }
+
+        const items = await SellerItemModel.getBySeller(companyId, sellerId);
+        res.status(200).json(items);
+    } catch (error) {
+        console.error('Error fetching seller items:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+};
+
+export const createSellerItem = async (req, res) => {
+    try {
+        const payload = buildSellerItemPayload(req.body);
+        if (payload.error) return res.status(400).json({ error: payload.error });
+
+        const seller = await PurchaseSellerModel.getById(payload.sellerId);
+        if (!seller || Number(seller.company_id) !== payload.companyId) {
+            return res.status(404).json({ error: 'Seller not found for the selected company' });
+        }
+
+        const duplicate = await SellerItemModel.findDuplicate(
+            payload.sellerId,
+            payload.productErpId
+        );
+        if (duplicate) {
+            return res.status(409).json({ error: 'Product ERP ID already exists for this seller' });
+        }
+
+        const item = await SellerItemModel.create(payload);
+        res.status(201).json({ message: 'Item added successfully', item });
+    } catch (error) {
+        if (error.code === 'ER_DUP_ENTRY') {
+            return res.status(409).json({ error: 'Product ERP ID already exists for this seller' });
+        }
+        console.error('Error creating seller item:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+};
+
+export const updateSellerItem = async (req, res) => {
+    try {
+        const itemId = Number(req.params.itemId);
+        if (!Number.isInteger(itemId) || itemId <= 0) {
+            return res.status(400).json({ error: 'Valid item is required' });
+        }
+
+        const existing = await SellerItemModel.getById(itemId);
+        if (!existing) return res.status(404).json({ error: 'Item not found' });
+
+        const payload = buildSellerItemPayload(req.body);
+        if (payload.error) return res.status(400).json({ error: payload.error });
+
+        const seller = await PurchaseSellerModel.getById(payload.sellerId);
+        if (!seller || Number(seller.company_id) !== payload.companyId) {
+            return res.status(404).json({ error: 'Seller not found for the selected company' });
+        }
+
+        const duplicate = await SellerItemModel.findDuplicate(
+            payload.sellerId,
+            payload.productErpId,
+            itemId
+        );
+        if (duplicate) {
+            return res.status(409).json({ error: 'Product ERP ID already exists for this seller' });
+        }
+
+        const item = await SellerItemModel.updateById(itemId, payload);
+        res.status(200).json({ message: 'Item updated successfully', item });
+    } catch (error) {
+        if (error.code === 'ER_DUP_ENTRY') {
+            return res.status(409).json({ error: 'Product ERP ID already exists for this seller' });
+        }
+        console.error('Error updating seller item:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+};
+
+export const deleteSellerItem = async (req, res) => {
+    try {
+        const itemId = Number(req.params.itemId);
+        if (!Number.isInteger(itemId) || itemId <= 0) {
+            return res.status(400).json({ error: 'Valid item is required' });
+        }
+
+        const existing = await SellerItemModel.getById(itemId);
+        if (!existing) return res.status(404).json({ error: 'Item not found' });
+
+        const affected = await SellerItemModel.deleteById(itemId);
+        if (!affected) return res.status(404).json({ error: 'Item not found' });
+
+        res.status(200).json({ message: 'Item deleted successfully' });
+    } catch (error) {
+        console.error('Error deleting seller item:', error);
         res.status(500).json({ error: 'Internal server error' });
     }
 };
