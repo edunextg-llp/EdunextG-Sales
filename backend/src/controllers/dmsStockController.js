@@ -25,6 +25,7 @@ const HEADER_ALIASES = {
     totalPieces: ['total pieces'],
     totalValue: ['value (closing + in transit)', 'total value'],
     purchasePrice: ['purchase price'],
+    expiryDate: ['expiry date', 'expiration date'],
 };
 
 const normalizeHeader = (header) =>
@@ -163,6 +164,7 @@ export function normalizeStockRow(row) {
         totalPieces,
         totalValue,
         purchasePrice,
+        expiryDate: textValue(findValue(row, 'expiryDate')) || null,
         rawData: row,
     };
 }
@@ -348,6 +350,7 @@ function manualItemToRow(item = {}) {
         MRP: item.mrp,
         'Total Value': item.totalValue,
         'Purchase Price': item.purchasePrice,
+        'Expiry Date': item.expiryDate,
     };
 }
 
@@ -366,6 +369,16 @@ export const createManualDmsStock = async (req, res) => {
         const items = Array.isArray(req.body?.items) ? req.body.items : [];
         if (!items.length) {
             return res.status(400).json({ error: 'Please add at least one stock item.' });
+        }
+        const invalidItem = items.find((item) => (
+            !Number.isFinite(Number(item?.purchasePrice))
+            || Number(item.purchasePrice) <= 0
+            || !/^\d{4}-\d{2}-\d{2}$/.test(String(item?.expiryDate || ''))
+        ));
+        if (invalidItem) {
+            return res.status(400).json({
+                error: 'Every item requires a valid purchase price and expiry date.',
+            });
         }
 
         const productDivision = String(company.name || '').trim();

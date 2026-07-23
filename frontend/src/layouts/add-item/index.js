@@ -38,26 +38,7 @@ const emptyForm = () => ({
   hsnCode: "",
   gstPercent: "5",
   pcsPerBox: "",
-  purchasePrice: "",
-  expiryDate: "",
 });
-
-const calculatePurchasePrices = (purchasePrice) => {
-  const price = Number(purchasePrice);
-  if (!Number.isFinite(price) || price <= 0) {
-    return { gstAmount: "", actualPrice: "" };
-  }
-  return {
-    gstAmount: (price * 0.05).toFixed(2),
-    actualPrice: (price * 1.05).toFixed(2),
-  };
-};
-
-const formatMoney = (value) => {
-  const price = Number(value);
-  if (!Number.isFinite(price)) return "—";
-  return `Rs. ${price.toFixed(2)}`;
-};
 
 const splitGstDisplay = (gstPercent) => {
   const gst = Number(gstPercent);
@@ -213,10 +194,6 @@ function AddItem() {
     if (!data.pcsPerBox || Number(data.pcsPerBox) <= 0) {
       return "Pieces per box must be greater than zero.";
     }
-    if (!data.purchasePrice || Number(data.purchasePrice) <= 0) {
-      return "Purchase Price must be greater than zero.";
-    }
-    if (!data.expiryDate) return "Expiry Date is required.";
     if (!String(data.gstPercent ?? "").trim()) return "GST is required.";
     if (Number.isNaN(Number(data.gstPercent)) || Number(data.gstPercent) < 0) {
       return "GST must be a valid percentage.";
@@ -233,8 +210,6 @@ function AddItem() {
     hsnCode: data.hsnCode.trim().toUpperCase(),
     gstPercent: Number(data.gstPercent),
     pcsPerBox: Number(data.pcsPerBox),
-    purchasePrice: Number(data.purchasePrice),
-    expiryDate: data.expiryDate,
   });
 
   const handleSubmit = async () => {
@@ -277,8 +252,6 @@ function AddItem() {
       hsnCode: item.hsn_code || "",
       gstPercent: item.gst_percent != null ? String(item.gst_percent) : "5",
       pcsPerBox: item.pcs_per_box != null ? String(item.pcs_per_box) : "",
-      purchasePrice: item.purchase_price != null ? String(item.purchase_price) : "",
-      expiryDate: item.expiry_date || "",
     });
     setEditError("");
     setEditModalOpen(true);
@@ -348,8 +321,6 @@ function AddItem() {
   const selectedSeller = sellers.find((s) => String(s.id) === String(selectedSellerId));
   const formGstSplit = splitGstDisplay(form.gstPercent);
   const editGstSplit = splitGstDisplay(editForm.gstPercent);
-  const formPurchasePrices = calculatePurchasePrices(form.purchasePrice);
-  const editPurchasePrices = calculatePurchasePrices(editForm.purchasePrice);
 
   return (
     <DashboardLayout>
@@ -502,48 +473,12 @@ function AddItem() {
                       </Grid>
                       <Grid item xs={12} md={3}>
                         <MDInput
-                          label="Purchase Price *"
-                          fullWidth
-                          type="number"
-                          inputProps={{ min: 0, step: "0.01" }}
-                          value={form.purchasePrice}
-                          onChange={(e) => handleChange("purchasePrice", e.target.value)}
-                        />
-                      </Grid>
-                      <Grid item xs={12} md={3}>
-                        <MDInput
                           label="1 Box = Pieces *"
                           fullWidth
                           type="number"
                           inputProps={{ min: 1, step: 1 }}
                           value={form.pcsPerBox}
                           onChange={(e) => handleChange("pcsPerBox", e.target.value)}
-                        />
-                      </Grid>
-                      <Grid item xs={12} md={3}>
-                        <MDInput
-                          label="Purchase GST (5%)"
-                          fullWidth
-                          value={formPurchasePrices.gstAmount ? `Rs. ${formPurchasePrices.gstAmount}` : ""}
-                          disabled
-                        />
-                      </Grid>
-                      <Grid item xs={12} md={3}>
-                        <MDInput
-                          label="Actual Price"
-                          fullWidth
-                          value={formPurchasePrices.actualPrice ? `Rs. ${formPurchasePrices.actualPrice}` : ""}
-                          disabled
-                        />
-                      </Grid>
-                      <Grid item xs={12} md={3}>
-                        <MDInput
-                          label="Expiry Date *"
-                          fullWidth
-                          type="date"
-                          value={form.expiryDate}
-                          onChange={(e) => handleChange("expiryDate", e.target.value)}
-                          InputLabelProps={{ shrink: true }}
                         />
                       </Grid>
                     </>
@@ -626,10 +561,6 @@ function AddItem() {
                           <TableCell sx={tableHeadSx}>CGST</TableCell>
                           <TableCell sx={tableHeadSx}>SGST</TableCell>
                           <TableCell sx={tableHeadSx}>1 Box = Pieces</TableCell>
-                          <TableCell sx={tableHeadSx}>Purchase Price</TableCell>
-                          <TableCell sx={tableHeadSx}>GST (5%)</TableCell>
-                          <TableCell sx={tableHeadSx}>Actual Price</TableCell>
-                          <TableCell sx={tableHeadSx}>Expiry Date</TableCell>
                           <TableCell sx={{ ...tableHeadSx, textAlign: "center" }}>Action</TableCell>
                         </TableRow>
                       </TableHead>
@@ -665,18 +596,6 @@ function AddItem() {
                             </TableCell>
                             <TableCell sx={{ ...tableBodySx, borderBottom: "1px solid #e5e7eb" }}>
                               {item.pcs_per_box || "—"}
-                            </TableCell>
-                            <TableCell sx={{ ...tableBodySx, borderBottom: "1px solid #e5e7eb" }}>
-                              {formatMoney(item.purchase_price)}
-                            </TableCell>
-                            <TableCell sx={{ ...tableBodySx, borderBottom: "1px solid #e5e7eb" }}>
-                              {formatMoney(item.purchase_gst_amount)}
-                            </TableCell>
-                            <TableCell sx={{ ...tableBodySx, borderBottom: "1px solid #e5e7eb", fontWeight: 600 }}>
-                              {formatMoney(item.actual_price)}
-                            </TableCell>
-                            <TableCell sx={{ ...tableBodySx, borderBottom: "1px solid #e5e7eb" }}>
-                              {item.expiry_date || "—"}
                             </TableCell>
                             <TableCell sx={{ ...tableBodySx, borderBottom: "1px solid #e5e7eb", textAlign: "center" }}>
                               <MDBox display="flex" alignItems="center" justifyContent="center" gap={0.5}>
@@ -773,48 +692,12 @@ function AddItem() {
               </Grid>
               <Grid item xs={12} md={3}>
                 <MDInput
-                  label="Purchase Price *"
-                  fullWidth
-                  type="number"
-                  inputProps={{ min: 0, step: "0.01" }}
-                  value={editForm.purchasePrice}
-                  onChange={(e) => handleEditChange("purchasePrice", e.target.value)}
-                />
-              </Grid>
-              <Grid item xs={12} md={3}>
-                <MDInput
                   label="1 Box = Pieces *"
                   fullWidth
                   type="number"
                   inputProps={{ min: 1, step: 1 }}
                   value={editForm.pcsPerBox}
                   onChange={(e) => handleEditChange("pcsPerBox", e.target.value)}
-                />
-              </Grid>
-              <Grid item xs={12} md={3}>
-                <MDInput
-                  label="Purchase GST (5%)"
-                  fullWidth
-                  value={editPurchasePrices.gstAmount ? `Rs. ${editPurchasePrices.gstAmount}` : ""}
-                  disabled
-                />
-              </Grid>
-              <Grid item xs={12} md={3}>
-                <MDInput
-                  label="Actual Price"
-                  fullWidth
-                  value={editPurchasePrices.actualPrice ? `Rs. ${editPurchasePrices.actualPrice}` : ""}
-                  disabled
-                />
-              </Grid>
-              <Grid item xs={12} md={3}>
-                <MDInput
-                  label="Expiry Date *"
-                  fullWidth
-                  type="date"
-                  value={editForm.expiryDate}
-                  onChange={(e) => handleEditChange("expiryDate", e.target.value)}
-                  InputLabelProps={{ shrink: true }}
                 />
               </Grid>
               <Grid item xs={12} md={4}>

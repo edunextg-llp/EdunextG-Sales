@@ -296,6 +296,7 @@ class DmsStockModel {
                              total_pieces = ?,
                              total_value = ?,
                              purchase_price = ?,
+                             expiry_date = ?,
                              raw_data = ?
                          WHERE id = ?`,
                         [
@@ -321,6 +322,7 @@ class DmsStockModel {
                             row.totalPieces,
                             row.totalValue,
                             row.purchasePrice,
+                            row.expiryDate,
                             JSON.stringify(row.rawData),
                             existing.id,
                         ]
@@ -334,8 +336,8 @@ class DmsStockModel {
                           total_purchases_in_stock_unit, purchases_in_stock_value, dp_per_unit_stock,
                           total_invoiced_stock_unit, invoiced_stock_value, total_closing_stock_unit,
                           closing_stock_value, total_in_transit_stock_quantity_unit, in_transit_stock_value,
-                          total_pieces, total_value, purchase_price, raw_data)
-                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                          total_pieces, total_value, purchase_price, expiry_date, raw_data)
+                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
                         [
                             importId,
                             row.productErpId,
@@ -360,6 +362,7 @@ class DmsStockModel {
                             row.totalPieces,
                             row.totalValue,
                             row.purchasePrice,
+                            row.expiryDate,
                             JSON.stringify(row.rawData),
                         ]
                     );
@@ -442,6 +445,7 @@ class DmsStockModel {
                     row.totalPieces,
                     row.totalValue,
                     row.purchasePrice,
+                    row.expiryDate,
                     JSON.stringify(row.rawData),
                 ]);
 
@@ -453,7 +457,7 @@ class DmsStockModel {
                       total_purchases_in_stock_unit, purchases_in_stock_value, dp_per_unit_stock,
                       total_invoiced_stock_unit, invoiced_stock_value, total_closing_stock_unit,
                       closing_stock_value, total_in_transit_stock_quantity_unit, in_transit_stock_value,
-                      total_pieces, total_value, purchase_price, raw_data)
+                      total_pieces, total_value, purchase_price, expiry_date, raw_data)
                      VALUES ?`,
                     [values]
                 );
@@ -573,7 +577,11 @@ class DmsStockModel {
                     dsi.total_purchases_in_stock_unit, dsi.purchases_in_stock_value, dsi.dp_per_unit_stock,
                     dsi.total_invoiced_stock_unit, dsi.invoiced_stock_value, dsi.total_closing_stock_unit,
                     dsi.closing_stock_value, dsi.total_in_transit_stock_quantity_unit, dsi.in_transit_stock_value,
-                    dsi.total_pieces, dsi.total_value, dsi.purchase_price, dsi.raw_data,
+                    dsi.total_pieces, dsi.total_value, dsi.purchase_price,
+                    ROUND(dsi.purchase_price * 0.05, 2) AS purchase_gst_amount,
+                    ROUND(dsi.purchase_price * 1.05, 2) AS actual_price,
+                    DATE_FORMAT(dsi.expiry_date, '%Y-%m-%d') AS expiry_date,
+                    dsi.raw_data,
                     DATE_FORMAT(dsi_import.upload_date, '%Y-%m-%d') AS upload_date,
                     c.name AS company_name
              FROM dms_stock_items dsi

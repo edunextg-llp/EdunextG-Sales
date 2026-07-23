@@ -600,8 +600,6 @@ export async function ensureSchema() {
                 cgst_percent DECIMAL(5, 2) NOT NULL DEFAULT 2.50,
                 sgst_percent DECIMAL(5, 2) NOT NULL DEFAULT 2.50,
                 pcs_per_box DECIMAL(14, 4) NULL,
-                purchase_price DECIMAL(14, 4) NULL,
-                expiry_date DATE NULL,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE CASCADE,
                 FOREIGN KEY (seller_id) REFERENCES purchase_sellers(id) ON DELETE CASCADE,
@@ -627,8 +625,6 @@ export async function ensureSchema() {
             'sgst_percent on seller_items'
         );
         await tryQuery(connection, `ALTER TABLE seller_items ADD COLUMN pcs_per_box DECIMAL(14, 4) NULL`, 'pcs_per_box on seller_items');
-        await tryQuery(connection, `ALTER TABLE seller_items ADD COLUMN purchase_price DECIMAL(14, 4) NULL`, 'purchase_price on seller_items');
-        await tryQuery(connection, `ALTER TABLE seller_items ADD COLUMN expiry_date DATE NULL`, 'expiry_date on seller_items');
 
         await connection.query(`
             CREATE TABLE IF NOT EXISTS company_item_sequence (
@@ -736,6 +732,7 @@ export async function ensureSchema() {
                 total_pieces DECIMAL(14, 4) NOT NULL DEFAULT 0.0000,
                 total_value DECIMAL(14, 2) NOT NULL DEFAULT 0.00,
                 purchase_price DECIMAL(14, 4) NULL,
+                expiry_date DATE NULL,
                 raw_data JSON NULL,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY (import_id) REFERENCES dms_stock_imports(id) ON DELETE CASCADE,
@@ -743,6 +740,8 @@ export async function ensureSchema() {
                 INDEX idx_dms_stock_items_product_erp_id (product_erp_id)
             );
         `);
+
+        await tryQuery(connection, `ALTER TABLE dms_stock_items ADD COLUMN expiry_date DATE NULL`, 'expiry_date on dms_stock_items');
 
         await tryQuery(
             connection,

@@ -144,6 +144,7 @@ const emptyManualItem = () => ({
   totalCurrentStockInPcs: "",
   pricePerPiece: "",
   purchasePrice: "",
+  expiryDate: "",
   mrp: "",
   totalValue: "",
   priceWithGst: "",
@@ -169,13 +170,12 @@ const mapSellerItemToManualItem = (sellerItem) => {
     currentStockInPcs: "",
     totalCurrentStockInPcs: "",
     pricePerPiece: "",
-    purchasePrice: sellerItem.purchase_price != null ? String(sellerItem.purchase_price) : "",
+    purchasePrice: "",
+    expiryDate: "",
     mrp: "",
     totalValue: "",
     priceWithGst: "",
-    purchasePriceWithGst: sellerItem.purchase_price != null
-      ? (Number(sellerItem.purchase_price) * 1.05).toFixed(2)
-      : "",
+    purchasePriceWithGst: "",
     sourceItemId: sellerItem.id || null,
   };
 };
@@ -505,6 +505,14 @@ function DmsStock() {
       setError("Please enter the number of boxes.");
       return;
     }
+    if (!manualItem.purchasePrice || Number(manualItem.purchasePrice) <= 0) {
+      setError("Please enter a valid Purchase Price.");
+      return;
+    }
+    if (!manualItem.expiryDate) {
+      setError("Please select an Expiry Date.");
+      return;
+    }
     if (!manualItem.pricePerPiece) {
       setError("Please enter Price/Pcs.");
       return;
@@ -524,7 +532,8 @@ function DmsStock() {
       currentStockInPcs: manualItem.currentStockInPcs,
       totalCurrentStockInPcs: totals.totalCurrentStockInPcs,
       pricePerPiece: totals.priceWithGst,
-      purchasePrice: totals.purchasePriceWithGst,
+      purchasePrice: manualItem.purchasePrice,
+      expiryDate: manualItem.expiryDate,
       mrp: manualItem.mrp,
       totalValue: totals.totalValue,
       sourceItemId: manualItem.sourceItemId || null,
@@ -778,7 +787,7 @@ function DmsStock() {
                   </Grid>
                 </Grid>
                 <TableContainer component={Paper} sx={stickyTableContainerSx}>
-                  <Table sx={stickyTableSx(1280)}>
+                  <Table sx={stickyTableSx(1580)}>
                     <TableHead sx={{ display: "table-header-group", backgroundColor: "#f9fafb" }}>
                       <TableRow>
                         <TableCell sx={stickyColumnSx(0, { isHead: true, baseSx: tableHeadSx })}>Sr No</TableCell>
@@ -794,12 +803,15 @@ function DmsStock() {
                         <TableCell align="right" sx={stickyHeadRowSx(tableHeadSx)}>Price/Pcs (Incl. GST)</TableCell>
                         <TableCell align="right" sx={stickyHeadRowSx(tableHeadSx)}>MRP (Incl. GST)</TableCell>
                         <TableCell align="right" sx={stickyHeadRowSx(tableHeadSx)}>Total Value (Incl. GST)</TableCell>
+                        <TableCell align="right" sx={stickyHeadRowSx(tableHeadSx)}>Purchase Price</TableCell>
+                        <TableCell align="right" sx={stickyHeadRowSx(tableHeadSx)}>Actual Price (+5% GST)</TableCell>
+                        <TableCell sx={stickyHeadRowSx(tableHeadSx)}>Expiry Date</TableCell>
                       </TableRow>
                     </TableHead>
                     <TableBody>
                       {items.length === 0 && (
                         <TableRow>
-                          <TableCell colSpan={13} align="center" sx={tableBodySx}>
+                          <TableCell colSpan={16} align="center" sx={tableBodySx}>
                             <MDTypography variant="button" color="text">
                               No DMS stock uploaded yet. Click &quot;Upload File&quot; or &quot;Manual Entry&quot; to add stock.
                             </MDTypography>
@@ -808,7 +820,7 @@ function DmsStock() {
                       )}
                       {items.length > 0 && filteredItems.length === 0 && (
                         <TableRow>
-                          <TableCell colSpan={13} align="center" sx={tableBodySx}>
+                          <TableCell colSpan={16} align="center" sx={tableBodySx}>
                             <MDTypography variant="button" color="text">
                               No stock rows match the selected filters.
                             </MDTypography>
@@ -834,6 +846,9 @@ function DmsStock() {
                           <TableCell align="right" sx={tableBodySx}>{money(item.price_per_piece)}</TableCell>
                           <TableCell align="right" sx={tableBodySx}>{money(item.mrp)}</TableCell>
                           <TableCell align="right" sx={{ ...tableBodySx, fontWeight: 700 }}>{money(item.total_value)}</TableCell>
+                          <TableCell align="right" sx={tableBodySx}>{money(item.purchase_price)}</TableCell>
+                          <TableCell align="right" sx={{ ...tableBodySx, fontWeight: 700 }}>{money(item.actual_price)}</TableCell>
+                          <TableCell sx={tableBodySx}>{formatUploadDate(item.expiry_date)}</TableCell>
                         </TableRow>
                       ))}
                     </TableBody>
@@ -1109,12 +1124,35 @@ function DmsStock() {
                 />
               </Grid>
               <Grid item xs={12} md={3}>
-                <MDTypography sx={fieldLabelSx}>Purchase Price (Incl. 5% GST)</MDTypography>
+                <MDTypography sx={fieldLabelSx}>Purchase Price{requiredMark}</MDTypography>
+                <MDInput
+                  fullWidth
+                  type="number"
+                  inputProps={{ min: 0, step: "0.01" }}
+                  placeholder="0.00"
+                  value={manualItem.purchasePrice}
+                  onChange={(event) => updateManualItem("purchasePrice", event.target.value)}
+                  sx={{ "& .MuiInputBase-root": { backgroundColor: "#fff", height: 40 } }}
+                />
+              </Grid>
+              <Grid item xs={12} md={3}>
+                <MDTypography sx={fieldLabelSx}>Actual Price (Incl. 5% GST)</MDTypography>
                 <MDInput
                   fullWidth
                   value={manualItem.purchasePriceWithGst ? `Rs. ${manualItem.purchasePriceWithGst}` : ""}
                   disabled
                   sx={{ "& .MuiInputBase-root": { backgroundColor: "#f1f5f9", height: 40 } }}
+                />
+              </Grid>
+              <Grid item xs={12} md={3}>
+                <MDTypography sx={fieldLabelSx}>Expiry Date{requiredMark}</MDTypography>
+                <MDInput
+                  fullWidth
+                  type="date"
+                  value={manualItem.expiryDate}
+                  onChange={(event) => updateManualItem("expiryDate", event.target.value)}
+                  InputLabelProps={{ shrink: true }}
+                  sx={{ "& .MuiInputBase-root": { backgroundColor: "#fff", height: 40 } }}
                 />
               </Grid>
               <Grid item xs={12} md={3}>
@@ -1216,6 +1254,9 @@ function DmsStock() {
                     <col style={{ width: 100 }} />
                     <col style={{ width: 90 }} />
                     <col style={{ width: 110 }} />
+                    <col style={{ width: 100 }} />
+                    <col style={{ width: 110 }} />
+                    <col style={{ width: 110 }} />
                     <col style={{ width: 70 }} />
                   </colgroup>
                   <TableHead>
@@ -1230,6 +1271,9 @@ function DmsStock() {
                       <TableCell sx={pendingHeadCellSx(100, "right")}>Price/Pcs + GST</TableCell>
                       <TableCell sx={pendingHeadCellSx(90, "right")}>MRP Incl. GST</TableCell>
                       <TableCell sx={pendingHeadCellSx(110, "right")}>Total Incl. GST</TableCell>
+                      <TableCell sx={pendingHeadCellSx(100, "right")}>Purchase Price</TableCell>
+                      <TableCell sx={pendingHeadCellSx(110, "right")}>Actual +5% GST</TableCell>
+                      <TableCell sx={pendingHeadCellSx(110)}>Expiry Date</TableCell>
                       <TableCell sx={pendingHeadCellSx(70, "center")}>Action</TableCell>
                     </TableRow>
                   </TableHead>
@@ -1259,6 +1303,11 @@ function DmsStock() {
                         <TableCell sx={{ ...pendingBodyCellSx(110, "right"), fontWeight: 700 }}>
                           {money(item.totalValue)}
                         </TableCell>
+                        <TableCell sx={pendingBodyCellSx(100, "right")}>{money(item.purchasePrice)}</TableCell>
+                        <TableCell sx={pendingBodyCellSx(110, "right")}>
+                          {money(Number(item.purchasePrice) * 1.05)}
+                        </TableCell>
+                        <TableCell sx={pendingBodyCellSx(110)}>{formatUploadDate(item.expiryDate)}</TableCell>
                         <TableCell sx={pendingBodyCellSx(70, "center")}>
                           <MDButton
                             color="error"
