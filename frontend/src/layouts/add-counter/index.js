@@ -1017,8 +1017,8 @@ function AddCounter() {
                                 <MDButton color="error" variant="text" size="small" onClick={() => handleDeleteSavedOutlet(saved.id)}>
                                   <Icon>delete</Icon> Delete
                                 </MDButton> */}
-                                <FaRegEdit   onClick={() => handleEditClick(saved)} style={{ cursor: "pointer" }} color="#E0E388" size={20}/>
-                                <CiTrash   onClick={() => handleDeleteSavedOutlet(saved.id)} style={{ cursor: "pointer" }} color="#FF0000" size={20}/>
+                                <FaRegEdit onClick={() => handleEditClick(saved)} style={{ cursor: "pointer" }} color="#E0E388" size={20} />
+                                <CiTrash onClick={() => handleDeleteSavedOutlet(saved.id)} style={{ cursor: "pointer" }} color="#FF0000" size={20} />
                               </MDBox>
                             </Grid>
                           </Grid>

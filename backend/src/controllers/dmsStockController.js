@@ -347,6 +347,7 @@ function manualItemToRow(item = {}) {
         'Price/Pcs': item.pricePerPiece,
         MRP: item.mrp,
         'Total Value': item.totalValue,
+        'Purchase Price': item.purchasePrice,
     };
 }
 

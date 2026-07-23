@@ -1418,44 +1418,44 @@ function AddSales() {
                       </MDTypography>
                       <MDBox display="flex" gap={1} flexWrap="wrap">
                         {(submittedSummary.sales || []).some((sale) => isDetailedBill(sale)) && (
-                        <MDButton
-                          variant="outlined"
-                          color="info"
-                          size="small"
-                          onClick={() => {
-                            const sales = attachLineItemsToSales(submittedSummary.sales || []).filter(isDetailedBill);
-                            const byOutlet = new Map();
-                            sales.forEach((sale) => {
-                              const key = outletKey(sale.outletId);
-                              if (!byOutlet.has(key)) byOutlet.set(key, []);
-                              byOutlet.get(key).push(sale);
-                            });
-                            const groups = Array.from(byOutlet.values());
-                            if (!groups.length) {
-                              alert("No invoices available to download.");
-                              return;
-                            }
-                            groups.forEach((outletSales, index) => {
-                              const first = outletSales[0];
-                              setTimeout(() => {
-                                printSalesInvoicePdf({
-                                  outletName: first.shopName,
-                                  outletErpId: first.outletErpId,
-                                  locationName: first.locationName,
-                                  saleDate: submittedSummary.date
-                                    ? new Date(`${submittedSummary.date}T12:00:00`).toLocaleDateString("en-IN")
-                                    : selectedDate,
-                                  staffName: submittedSummary.staffName || "",
-                                  companyName: submittedSummary.companyName || "",
-                                  invoices: outletSales,
-                                });
-                              }, index * 500);
-                            });
-                          }}
-                        >
-                          <Icon sx={{ mr: 1 }}>picture_as_pdf</Icon>
-                          Download PDF
-                        </MDButton>
+                          <MDButton
+                            variant="outlined"
+                            color="info"
+                            size="small"
+                            onClick={() => {
+                              const sales = attachLineItemsToSales(submittedSummary.sales || []).filter(isDetailedBill);
+                              const byOutlet = new Map();
+                              sales.forEach((sale) => {
+                                const key = outletKey(sale.outletId);
+                                if (!byOutlet.has(key)) byOutlet.set(key, []);
+                                byOutlet.get(key).push(sale);
+                              });
+                              const groups = Array.from(byOutlet.values());
+                              if (!groups.length) {
+                                alert("No invoices available to download.");
+                                return;
+                              }
+                              groups.forEach((outletSales, index) => {
+                                const first = outletSales[0];
+                                setTimeout(() => {
+                                  printSalesInvoicePdf({
+                                    outletName: first.shopName,
+                                    outletErpId: first.outletErpId,
+                                    locationName: first.locationName,
+                                    saleDate: submittedSummary.date
+                                      ? new Date(`${submittedSummary.date}T12:00:00`).toLocaleDateString("en-IN")
+                                      : selectedDate,
+                                    staffName: submittedSummary.staffName || "",
+                                    companyName: submittedSummary.companyName || "",
+                                    invoices: outletSales,
+                                  });
+                                }, index * 500);
+                              });
+                            }}
+                          >
+                            <Icon sx={{ mr: 1 }}>picture_as_pdf</Icon>
+                            Download PDF
+                          </MDButton>
                         )}
                         <MDButton
                           variant="outlined"
@@ -1612,13 +1612,13 @@ function AddSales() {
                                 {row.id ? (
                                   <MDBox display="flex" gap={0.5} justifyContent="center" alignItems="center" flexWrap="wrap">
                                     {isDetailedBill(row) && (
-                                    <Icon
-                                      onClick={() => downloadOutletInvoicePdf(row)}
-                                      sx={{ cursor: "pointer", color: "#2563eb", fontSize: 22 }}
-                                      titleAccess="Download PDF"
-                                    >
-                                      picture_as_pdf
-                                    </Icon>
+                                      <Icon
+                                        onClick={() => downloadOutletInvoicePdf(row)}
+                                        sx={{ cursor: "pointer", color: "#2563eb", fontSize: 22 }}
+                                        titleAccess="Download PDF"
+                                      >
+                                        picture_as_pdf
+                                      </Icon>
                                     )}
                                     <FaRegEdit
                                       onClick={() => (isDetailedBill(row) ? openEditSaleDialog(row) : openManualEditDialog(row))}

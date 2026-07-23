@@ -599,6 +599,9 @@ export async function ensureSchema() {
                 gst_percent DECIMAL(5, 2) NOT NULL DEFAULT 5.00,
                 cgst_percent DECIMAL(5, 2) NOT NULL DEFAULT 2.50,
                 sgst_percent DECIMAL(5, 2) NOT NULL DEFAULT 2.50,
+                pcs_per_box DECIMAL(14, 4) NULL,
+                purchase_price DECIMAL(14, 4) NULL,
+                expiry_date DATE NULL,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE CASCADE,
                 FOREIGN KEY (seller_id) REFERENCES purchase_sellers(id) ON DELETE CASCADE,
@@ -623,6 +626,9 @@ export async function ensureSchema() {
             `ALTER TABLE seller_items ADD COLUMN sgst_percent DECIMAL(5, 2) NOT NULL DEFAULT 2.50`,
             'sgst_percent on seller_items'
         );
+        await tryQuery(connection, `ALTER TABLE seller_items ADD COLUMN pcs_per_box DECIMAL(14, 4) NULL`, 'pcs_per_box on seller_items');
+        await tryQuery(connection, `ALTER TABLE seller_items ADD COLUMN purchase_price DECIMAL(14, 4) NULL`, 'purchase_price on seller_items');
+        await tryQuery(connection, `ALTER TABLE seller_items ADD COLUMN expiry_date DATE NULL`, 'expiry_date on seller_items');
 
         await connection.query(`
             CREATE TABLE IF NOT EXISTS company_item_sequence (
@@ -846,6 +852,12 @@ export async function ensureSchema() {
                 INDEX idx_physical_stock_items_product_erp_id (product_erp_id)
             );
         `);
+
+        await tryQuery(
+            connection,
+            `ALTER TABLE physical_stock_items ADD COLUMN expired_stock_date DATE NULL`,
+            'expired_stock_date on physical_stock_items'
+        );
 
         await tryQuery(
             connection,

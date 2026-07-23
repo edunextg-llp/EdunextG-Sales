@@ -641,7 +641,7 @@ function OutBillPage() {
                 <Grid container spacing={3} mb={3}>
                   {activeTab === "pending" ? (
                     <>
-                     
+
                       <Grid item xs={5} md={3}>
                         <FormControl size="small" fullWidth>
                           <InputLabel id="credit-staff-filter-label">Staff</InputLabel>
@@ -661,7 +661,7 @@ function OutBillPage() {
                           </Select>
                         </FormControl>
                       </Grid>
-                       <Grid item xs={4} md={3}>
+                      <Grid item xs={4} md={3}>
                         <MDInput
                           type="text"
                           label="Search Outlet, Contact, Invoice, Staff, or Sale ID..."

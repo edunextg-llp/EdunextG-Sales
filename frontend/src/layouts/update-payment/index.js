@@ -699,7 +699,7 @@ function UpdatePayment() {
   const handlePrintAllCancellations = () => {
     if (cancellationHistory.length === 0) return;
     const printWindow = window.open("", "_blank");
-    
+
     let rowsHtml = "";
     cancellationHistory.forEach((c) => {
       rowsHtml += `
@@ -1090,11 +1090,11 @@ function UpdatePayment() {
           prev.map((sale) =>
             sale.id === paymentDialogSale.id
               ? {
-                  ...sale,
-                  paid_amount: data.summary.paidAmount,
-                  balance_amount: data.summary.balanceAmount,
-                  payment_count: data.payments?.length || 0,
-                }
+                ...sale,
+                paid_amount: data.summary.paidAmount,
+                balance_amount: data.summary.balanceAmount,
+                payment_count: data.payments?.length || 0,
+              }
               : sale
           )
         );
@@ -1526,86 +1526,86 @@ function UpdatePayment() {
                         return (
                           <Fragment key={payment.id}>
                             <TableRow
-                          sx={{ backgroundColor: editingPaymentId === payment.id ? "#fff9c4" : "inherit" }}
-                        >
-                          <TableCell
-                            align="left"
-                            sx={{ ...tableBodySx, borderBottom: "1px solid #e5e7eb", fontSize: "0.875rem", color: "#374151" }}
-                          >
-                            {toInputDate(payment.payment_date)}
-                          </TableCell>
-                          <TableCell
-                            align="left"
-                            sx={{ ...tableBodySx, borderBottom: "1px solid #e5e7eb", fontSize: "0.875rem", color: "#374151" }}
-                          >
-                            {PAYMENT_MODE_LABELS[payment.payment_mode] || payment.payment_mode}
-                          </TableCell>
-                          <TableCell
-                            align="right"
-                            sx={{
-                              ...tableBodySx,
-                              borderBottom: "1px solid #e5e7eb",
-                              fontSize: "0.875rem",
-                              fontWeight: 500,
-                              color: "#111827",
-                            }}
-                          >
-                            ₹{Number(payment.amount).toFixed(2)}
-                          </TableCell>
-                          <TableCell
-                            align="left"
-                            sx={{ ...tableBodySx, borderBottom: "1px solid #e5e7eb", fontSize: "0.875rem", color: "#374151" }}
-                          >
-                            {getCollectorName(payment)}
-                          </TableCell>
-                          <TableCell
-                            align="left"
-                            sx={{
-                              ...tableBodySx,
-                              borderBottom: "1px solid #e5e7eb",
-                              fontSize: "0.875rem",
-                              color: "#374151",
-                              overflow: "hidden",
-                              textOverflow: "ellipsis",
-                              whiteSpace: "nowrap",
-                            }}
-                          >
-                            {payment.payment_mode === "credit"
-                              ? `${formatPaymentDetails(payment)} - Remaining: ₹${creditRemaining.toFixed(2)}`
-                              : formatPaymentDetails(payment)}
-                          </TableCell>
-                          <TableCell align="center" sx={{ ...tableBodySx, borderBottom: "1px solid #e5e7eb" }}>
-                            <MDBox display="flex" justifyContent="center" alignItems="center" gap={0.75}>
-                              {payment.payment_mode === "credit" && (
-                                <MDButton
-                                  variant="gradient"
-                                  color="success"
-                                  size="small"
-                                  disabled={creditRemaining <= 0 || dialogRemaining <= 0}
-                                  onClick={() => startAddAgainstCredit(payment)}
-                                >
-                                  Add
-                                </MDButton>
-                              )}
-                              <MDButton
-                                variant="outlined"
-                                color="info"
-                                size="small"
-                                onClick={() => startEditPayment(payment)}
+                              sx={{ backgroundColor: editingPaymentId === payment.id ? "#fff9c4" : "inherit" }}
+                            >
+                              <TableCell
+                                align="left"
+                                sx={{ ...tableBodySx, borderBottom: "1px solid #e5e7eb", fontSize: "0.875rem", color: "#374151" }}
                               >
-                                <Icon fontSize="small">edit</Icon>
-                              </MDButton>
-                              <MDButton
-                                variant="outlined"
-                                color="error"
-                                size="small"
-                                disabled={deletingPaymentId === payment.id || addingPayment}
-                                onClick={() => handleDeletePayment(payment)}
+                                {toInputDate(payment.payment_date)}
+                              </TableCell>
+                              <TableCell
+                                align="left"
+                                sx={{ ...tableBodySx, borderBottom: "1px solid #e5e7eb", fontSize: "0.875rem", color: "#374151" }}
                               >
-                                <Icon fontSize="small">delete</Icon>
-                              </MDButton>
-                            </MDBox>
-                          </TableCell>
+                                {PAYMENT_MODE_LABELS[payment.payment_mode] || payment.payment_mode}
+                              </TableCell>
+                              <TableCell
+                                align="right"
+                                sx={{
+                                  ...tableBodySx,
+                                  borderBottom: "1px solid #e5e7eb",
+                                  fontSize: "0.875rem",
+                                  fontWeight: 500,
+                                  color: "#111827",
+                                }}
+                              >
+                                ₹{Number(payment.amount).toFixed(2)}
+                              </TableCell>
+                              <TableCell
+                                align="left"
+                                sx={{ ...tableBodySx, borderBottom: "1px solid #e5e7eb", fontSize: "0.875rem", color: "#374151" }}
+                              >
+                                {getCollectorName(payment)}
+                              </TableCell>
+                              <TableCell
+                                align="left"
+                                sx={{
+                                  ...tableBodySx,
+                                  borderBottom: "1px solid #e5e7eb",
+                                  fontSize: "0.875rem",
+                                  color: "#374151",
+                                  overflow: "hidden",
+                                  textOverflow: "ellipsis",
+                                  whiteSpace: "nowrap",
+                                }}
+                              >
+                                {payment.payment_mode === "credit"
+                                  ? `${formatPaymentDetails(payment)} - Remaining: ₹${creditRemaining.toFixed(2)}`
+                                  : formatPaymentDetails(payment)}
+                              </TableCell>
+                              <TableCell align="center" sx={{ ...tableBodySx, borderBottom: "1px solid #e5e7eb" }}>
+                                <MDBox display="flex" justifyContent="center" alignItems="center" gap={0.75}>
+                                  {payment.payment_mode === "credit" && (
+                                    <MDButton
+                                      variant="gradient"
+                                      color="success"
+                                      size="small"
+                                      disabled={creditRemaining <= 0 || dialogRemaining <= 0}
+                                      onClick={() => startAddAgainstCredit(payment)}
+                                    >
+                                      Add
+                                    </MDButton>
+                                  )}
+                                  <MDButton
+                                    variant="outlined"
+                                    color="info"
+                                    size="small"
+                                    onClick={() => startEditPayment(payment)}
+                                  >
+                                    <Icon fontSize="small">edit</Icon>
+                                  </MDButton>
+                                  <MDButton
+                                    variant="outlined"
+                                    color="error"
+                                    size="small"
+                                    disabled={deletingPaymentId === payment.id || addingPayment}
+                                    onClick={() => handleDeletePayment(payment)}
+                                  >
+                                    <Icon fontSize="small">delete</Icon>
+                                  </MDButton>
+                                </MDBox>
+                              </TableCell>
                             </TableRow>
                             {creditChildren.map((childPayment) => (
                               <TableRow

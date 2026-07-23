@@ -348,9 +348,9 @@ function Purchase() {
     const response = await fetch(
       isEditing ? `${API}/staff/purchases/${editingPurchaseId}` : `${API}/staff/purchases`,
       {
-      method: isEditing ? "PUT" : "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(buildPurchasePayload()),
+        method: isEditing ? "PUT" : "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(buildPurchasePayload()),
       }
     );
 
@@ -564,328 +564,328 @@ function Purchase() {
         </DialogTitle>
         <DialogContent dividers>
           <MDBox pt={1}>
-                <Grid container spacing={2.5}>
-                  <Grid item xs={12}>
-                    <MDTypography variant="button" fontWeight="medium" color="dark">
-                      Seller Details
-                    </MDTypography>
-                  </Grid>
-                  <Grid item xs={12} md={3}>
-                    <FormControl size="small" fullWidth required>
-                      <Select
-                        displayEmpty
-                        value={form.companyId}
-                        onChange={(e) => handleChange("companyId", e.target.value)}
-                        sx={{ height: 44, backgroundColor: "#fff" }}
-                      >
-                        <MenuItem value="" disabled>Choose Company</MenuItem>
-                        {companies.map((company) => (
-                          <MenuItem key={company.id} value={String(company.id)}>
-                            {company.name}
-                          </MenuItem>
-                        ))}
-                      </Select>
-                    </FormControl>
-                  </Grid>
-                  <Grid item xs={12} md={3}>
-                    <Autocomplete
-                      freeSolo
-                      options={sellerDirectory}
-                      loading={loadingSellers}
-                      value={form.sellerName}
-                      inputValue={form.sellerName}
-                      getOptionLabel={(option) =>
-                        typeof option === "string" ? option : option.sellerName || ""
-                      }
-                      isOptionEqualToValue={(option, value) =>
-                        option.sellerName === (typeof value === "string" ? value : value?.sellerName)
-                      }
-                      onInputChange={(event, value, reason) => {
-                        handleChange("sellerName", value || "");
-                        if (reason === "input") fetchSellers(value || "");
-                      }}
-                      onChange={(event, value) => {
-                        if (typeof value === "string") {
-                          handleChange("sellerName", value);
-                        } else {
-                          fillSellerDetails(value);
-                        }
-                      }}
-                      renderOption={(props, option) => (
-                        <li {...props} key={`${option.sellerName}-${option.gstin}`}>
-                          <MDBox>
-                            <MDTypography variant="button" fontWeight="medium">
-                              {option.sellerName}
-                            </MDTypography>
-                            <MDTypography variant="caption" color="text" display="block">
-                              {option.city || "No city"} | {option.gstin || "No GSTIN"}
-                            </MDTypography>
-                          </MDBox>
-                        </li>
-                      )}
-                      renderInput={(params) => (
-                        <MDInput
-                          {...params}
-                          label="Seller Name"
-                          fullWidth
-                        />
-                      )}
-                    />
-                  </Grid>
-                  <Grid item xs={12} md={4}>
+            <Grid container spacing={2.5}>
+              <Grid item xs={12}>
+                <MDTypography variant="button" fontWeight="medium" color="dark">
+                  Seller Details
+                </MDTypography>
+              </Grid>
+              <Grid item xs={12} md={3}>
+                <FormControl size="small" fullWidth required>
+                  <Select
+                    displayEmpty
+                    value={form.companyId}
+                    onChange={(e) => handleChange("companyId", e.target.value)}
+                    sx={{ height: 44, backgroundColor: "#fff" }}
+                  >
+                    <MenuItem value="" disabled>Choose Company</MenuItem>
+                    {companies.map((company) => (
+                      <MenuItem key={company.id} value={String(company.id)}>
+                        {company.name}
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+              </Grid>
+              <Grid item xs={12} md={3}>
+                <Autocomplete
+                  freeSolo
+                  options={sellerDirectory}
+                  loading={loadingSellers}
+                  value={form.sellerName}
+                  inputValue={form.sellerName}
+                  getOptionLabel={(option) =>
+                    typeof option === "string" ? option : option.sellerName || ""
+                  }
+                  isOptionEqualToValue={(option, value) =>
+                    option.sellerName === (typeof value === "string" ? value : value?.sellerName)
+                  }
+                  onInputChange={(event, value, reason) => {
+                    handleChange("sellerName", value || "");
+                    if (reason === "input") fetchSellers(value || "");
+                  }}
+                  onChange={(event, value) => {
+                    if (typeof value === "string") {
+                      handleChange("sellerName", value);
+                    } else {
+                      fillSellerDetails(value);
+                    }
+                  }}
+                  renderOption={(props, option) => (
+                    <li {...props} key={`${option.sellerName}-${option.gstin}`}>
+                      <MDBox>
+                        <MDTypography variant="button" fontWeight="medium">
+                          {option.sellerName}
+                        </MDTypography>
+                        <MDTypography variant="caption" color="text" display="block">
+                          {option.city || "No city"} | {option.gstin || "No GSTIN"}
+                        </MDTypography>
+                      </MDBox>
+                    </li>
+                  )}
+                  renderInput={(params) => (
                     <MDInput
-                      label="Address"
+                      {...params}
+                      label="Seller Name"
                       fullWidth
-                      value={form.address}
-                      onChange={(e) => handleChange("address", e.target.value)}
                     />
-                  </Grid>
-                  <Grid item xs={12} md={2}>
-                    <MDInput
-                      label="City"
-                      fullWidth
-                      value={form.city}
-                      onChange={(e) => handleChange("city", e.target.value)}
-                    />
-                  </Grid>
-                  <Grid item xs={12} md={2}>
-                    <FormControl size="small" fullWidth>
-                      <Select
-                        displayEmpty
-                        value={form.state}
-                        onChange={(e) => handleChange("state", e.target.value)}
-                        sx={{ height: 44, backgroundColor: "#fff" }}
-                      >
-                        <MenuItem value="" disabled>Choose State</MenuItem>
-                        {INDIAN_STATES.map((state) => (
-                          <MenuItem key={state} value={state}>
-                            {state}
-                          </MenuItem>
-                        ))}
-                      </Select>
-                    </FormControl>
-                  </Grid>
-                  <Grid item xs={12} md={3}>
-                    <MDInput
-                      label="GSTIN"
-                      fullWidth
-                      value={form.gstin}
-                      onChange={(e) => handleChange("gstin", e.target.value.toUpperCase())}
-                    />
-                  </Grid>
-                  <Grid item xs={12} md={2}>
-                    <MDInput
-                      label="PAN No"
-                      fullWidth
-                      value={form.panNo}
-                      onChange={(e) => handleChange("panNo", e.target.value.toUpperCase())}
-                    />
-                  </Grid>
-                  <Grid item xs={12} md={2}>
-                    <MDInput
-                      label="Pin Code"
-                      fullWidth
-                      value={form.pinCode}
-                      onChange={(e) => handleChange("pinCode", e.target.value)}
-                    />
-                  </Grid>
-                  <Grid item xs={12} md={3}>
-                    <MDInput
-                      label="FSSAI Number"
-                      fullWidth
-                      value={form.fssaiNumber}
-                      onChange={(e) => handleChange("fssaiNumber", e.target.value)}
-                    />
-                  </Grid>
+                  )}
+                />
+              </Grid>
+              <Grid item xs={12} md={4}>
+                <MDInput
+                  label="Address"
+                  fullWidth
+                  value={form.address}
+                  onChange={(e) => handleChange("address", e.target.value)}
+                />
+              </Grid>
+              <Grid item xs={12} md={2}>
+                <MDInput
+                  label="City"
+                  fullWidth
+                  value={form.city}
+                  onChange={(e) => handleChange("city", e.target.value)}
+                />
+              </Grid>
+              <Grid item xs={12} md={2}>
+                <FormControl size="small" fullWidth>
+                  <Select
+                    displayEmpty
+                    value={form.state}
+                    onChange={(e) => handleChange("state", e.target.value)}
+                    sx={{ height: 44, backgroundColor: "#fff" }}
+                  >
+                    <MenuItem value="" disabled>Choose State</MenuItem>
+                    {INDIAN_STATES.map((state) => (
+                      <MenuItem key={state} value={state}>
+                        {state}
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+              </Grid>
+              <Grid item xs={12} md={3}>
+                <MDInput
+                  label="GSTIN"
+                  fullWidth
+                  value={form.gstin}
+                  onChange={(e) => handleChange("gstin", e.target.value.toUpperCase())}
+                />
+              </Grid>
+              <Grid item xs={12} md={2}>
+                <MDInput
+                  label="PAN No"
+                  fullWidth
+                  value={form.panNo}
+                  onChange={(e) => handleChange("panNo", e.target.value.toUpperCase())}
+                />
+              </Grid>
+              <Grid item xs={12} md={2}>
+                <MDInput
+                  label="Pin Code"
+                  fullWidth
+                  value={form.pinCode}
+                  onChange={(e) => handleChange("pinCode", e.target.value)}
+                />
+              </Grid>
+              <Grid item xs={12} md={3}>
+                <MDInput
+                  label="FSSAI Number"
+                  fullWidth
+                  value={form.fssaiNumber}
+                  onChange={(e) => handleChange("fssaiNumber", e.target.value)}
+                />
+              </Grid>
 
-                  <Grid item xs={12} mt={1}>
-                    <MDTypography variant="button" fontWeight="medium" color="dark">
-                      Invoice Details
-                    </MDTypography>
-                  </Grid>
-                  <Grid item xs={12} md={3}>
-                    <MDInput
-                      label="Invoice Number"
-                      fullWidth
-                      value={form.invoiceNumber}
-                      onChange={(e) => handleChange("invoiceNumber", e.target.value)}
-                    />
-                  </Grid>
-                  <Grid item xs={12} md={3}>
-                    <MDInput
-                      label="E-Way Bill No"
-                      fullWidth
-                      value={form.ewayBillNo}
-                      onChange={(e) => handleChange("ewayBillNo", e.target.value)}
-                    />
-                  </Grid>
-                  <Grid item xs={12} md={3}>
-                    <MDInput
-                      type="date"
-                      label="E-Way Bill Date"
-                      fullWidth
-                      value={form.ewayBillDate}
-                      onChange={(e) => handleChange("ewayBillDate", e.target.value)}
-                      InputLabelProps={{ shrink: true }}
-                    />
-                  </Grid>
-                  <Grid item xs={12} md={3}>
-                    <MDInput
-                      type="date"
-                      label="Invoice Date"
-                      fullWidth
-                      value={form.invoiceDate}
-                      onChange={(e) => handleChange("invoiceDate", e.target.value)}
-                      InputLabelProps={{ shrink: true }}
-                    />
-                  </Grid>
-                  <Grid item xs={12} md={4}>
-                    <MDInput
-                      label="Sales Order Number"
-                      fullWidth
-                      value={form.salesOrderNumber}
-                      onChange={(e) => handleChange("salesOrderNumber", e.target.value)}
-                    />
-                  </Grid>
-                  <Grid item xs={12} mt={1}>
-                    <MDTypography variant="button" fontWeight="medium" color="dark">
-                      Invoice Summary
-                    </MDTypography>
-                  </Grid>
-                  <Grid item xs={12} md={3}>
-                    <MDInput
-                      type="number"
-                      label="Gross Amount"
-                      fullWidth
-                      value={form.grossAmount}
-                      onChange={(e) => handleChange("grossAmount", e.target.value)}
-                      onBlur={() => handleAmountBlur("grossAmount")}
-                      inputProps={{ min: 0, step: "0.01" }}
-                    />
-                  </Grid>
-                  <Grid item xs={12} md={3}>
-                    <MDInput
-                      type="number"
-                      label="Trader Discount Value"
-                      fullWidth
-                      value={form.traderDiscountValue}
-                      onChange={(e) => handleChange("traderDiscountValue", e.target.value)}
-                      onBlur={() => handleAmountBlur("traderDiscountValue")}
-                      inputProps={{ min: 0, step: "0.01" }}
-                    />
-                  </Grid>
-                  <Grid item xs={12} md={3}>
-                    <MDInput
-                      type="number"
-                      label="Primary Discount Value"
-                      fullWidth
-                      value={form.primaryDiscountValue}
-                      onChange={(e) => handleChange("primaryDiscountValue", e.target.value)}
-                      onBlur={() => handleAmountBlur("primaryDiscountValue")}
-                      inputProps={{ min: 0, step: "0.01" }}
-                    />
-                  </Grid>
-                  <Grid item xs={12} md={3}>
-                    <MDInput
-                      type="number"
-                      label="Secondary Discount Value"
-                      fullWidth
-                      value={form.secondaryDiscountValue}
-                      onChange={(e) => handleChange("secondaryDiscountValue", e.target.value)}
-                      onBlur={() => handleAmountBlur("secondaryDiscountValue")}
-                      inputProps={{ min: 0, step: "0.01" }}
-                    />
-                  </Grid>
-                  <Grid item xs={12} md={3}>
-                    <MDInput
-                      type="number"
-                      label="Cash Discount Value"
-                      fullWidth
-                      value={form.cashDiscountValue}
-                      onChange={(e) => handleChange("cashDiscountValue", e.target.value)}
-                      onBlur={() => handleAmountBlur("cashDiscountValue")}
-                      inputProps={{ min: 0, step: "0.01" }}
-                    />
-                  </Grid>
-                  <Grid item xs={12} md={3}>
-                    <MDInput
-                      type="number"
-                      label="Taxable Value"
-                      fullWidth
-                      value={totals.taxableValue ? totals.taxableValue.toFixed(2) : ""}
-                      InputProps={{ readOnly: true }}
-                    />
-                  </Grid>
-                  <Grid item xs={12} md={3}>
-                    <MDInput
-                      type="number"
-                      label="CGST Amount (5%)"
-                      fullWidth
-                      value={form.cgstAmount}
-                      onChange={(e) => handleGstChange("cgstAmount", e.target.value)}
-                      onBlur={() => handleAmountBlur("cgstAmount")}
-                      inputProps={{ min: 0, step: "0.01" }}
-                    />
-                  </Grid>
-                  <Grid item xs={12} md={3}>
-                    <MDInput
-                      type="number"
-                      label="SGST Amount (5%)"
-                      fullWidth
-                      value={form.sgstAmount}
-                      onChange={(e) => handleGstChange("sgstAmount", e.target.value)}
-                      onBlur={() => handleAmountBlur("sgstAmount")}
-                      inputProps={{ min: 0, step: "0.01" }}
-                    />
-                  </Grid>
-                  <Grid item xs={12} md={3}>
-                    <MDBox
-                      height="44px"
-                      display="flex"
-                      alignItems="center"
-                      px={2}
-                      sx={{ border: "1px solid #d2d6da", borderRadius: 1, backgroundColor: "#f8fafc" }}
-                    >
-                      <MDTypography variant="button" fontWeight="medium" color="dark">
-                        GST: {money(totals.totalGstAmount)}
-                      </MDTypography>
-                    </MDBox>
-                  </Grid>
-                  <Grid item xs={12} md={3}>
-                    <MDBox
-                      height="44px"
-                      display="flex"
-                      alignItems="center"
-                      px={2}
-                      sx={{ border: "1px solid #d2d6da", borderRadius: 1, backgroundColor: "#f8fafc" }}
-                    >
-                      <MDTypography variant="button" fontWeight="medium" color="dark">
-                        Round Off: {money(totals.roundOff)}
-                      </MDTypography>
-                    </MDBox>
-                  </Grid>
-                  <Grid item xs={12} md={3}>
-                    <MDBox
-                      height="44px"
-                      display="flex"
-                      alignItems="center"
-                      px={2}
-                      sx={{ border: "1px solid #111827", borderRadius: 1, backgroundColor: "#fff" }}
-                    >
-                      <MDTypography variant="button" fontWeight="bold" color="dark">
-                        Total: {money(totals.roundedTotal)}
-                      </MDTypography>
-                    </MDBox>
-                  </Grid>
+              <Grid item xs={12} mt={1}>
+                <MDTypography variant="button" fontWeight="medium" color="dark">
+                  Invoice Details
+                </MDTypography>
+              </Grid>
+              <Grid item xs={12} md={3}>
+                <MDInput
+                  label="Invoice Number"
+                  fullWidth
+                  value={form.invoiceNumber}
+                  onChange={(e) => handleChange("invoiceNumber", e.target.value)}
+                />
+              </Grid>
+              <Grid item xs={12} md={3}>
+                <MDInput
+                  label="E-Way Bill No"
+                  fullWidth
+                  value={form.ewayBillNo}
+                  onChange={(e) => handleChange("ewayBillNo", e.target.value)}
+                />
+              </Grid>
+              <Grid item xs={12} md={3}>
+                <MDInput
+                  type="date"
+                  label="E-Way Bill Date"
+                  fullWidth
+                  value={form.ewayBillDate}
+                  onChange={(e) => handleChange("ewayBillDate", e.target.value)}
+                  InputLabelProps={{ shrink: true }}
+                />
+              </Grid>
+              <Grid item xs={12} md={3}>
+                <MDInput
+                  type="date"
+                  label="Invoice Date"
+                  fullWidth
+                  value={form.invoiceDate}
+                  onChange={(e) => handleChange("invoiceDate", e.target.value)}
+                  InputLabelProps={{ shrink: true }}
+                />
+              </Grid>
+              <Grid item xs={12} md={4}>
+                <MDInput
+                  label="Sales Order Number"
+                  fullWidth
+                  value={form.salesOrderNumber}
+                  onChange={(e) => handleChange("salesOrderNumber", e.target.value)}
+                />
+              </Grid>
+              <Grid item xs={12} mt={1}>
+                <MDTypography variant="button" fontWeight="medium" color="dark">
+                  Invoice Summary
+                </MDTypography>
+              </Grid>
+              <Grid item xs={12} md={3}>
+                <MDInput
+                  type="number"
+                  label="Gross Amount"
+                  fullWidth
+                  value={form.grossAmount}
+                  onChange={(e) => handleChange("grossAmount", e.target.value)}
+                  onBlur={() => handleAmountBlur("grossAmount")}
+                  inputProps={{ min: 0, step: "0.01" }}
+                />
+              </Grid>
+              <Grid item xs={12} md={3}>
+                <MDInput
+                  type="number"
+                  label="Trader Discount Value"
+                  fullWidth
+                  value={form.traderDiscountValue}
+                  onChange={(e) => handleChange("traderDiscountValue", e.target.value)}
+                  onBlur={() => handleAmountBlur("traderDiscountValue")}
+                  inputProps={{ min: 0, step: "0.01" }}
+                />
+              </Grid>
+              <Grid item xs={12} md={3}>
+                <MDInput
+                  type="number"
+                  label="Primary Discount Value"
+                  fullWidth
+                  value={form.primaryDiscountValue}
+                  onChange={(e) => handleChange("primaryDiscountValue", e.target.value)}
+                  onBlur={() => handleAmountBlur("primaryDiscountValue")}
+                  inputProps={{ min: 0, step: "0.01" }}
+                />
+              </Grid>
+              <Grid item xs={12} md={3}>
+                <MDInput
+                  type="number"
+                  label="Secondary Discount Value"
+                  fullWidth
+                  value={form.secondaryDiscountValue}
+                  onChange={(e) => handleChange("secondaryDiscountValue", e.target.value)}
+                  onBlur={() => handleAmountBlur("secondaryDiscountValue")}
+                  inputProps={{ min: 0, step: "0.01" }}
+                />
+              </Grid>
+              <Grid item xs={12} md={3}>
+                <MDInput
+                  type="number"
+                  label="Cash Discount Value"
+                  fullWidth
+                  value={form.cashDiscountValue}
+                  onChange={(e) => handleChange("cashDiscountValue", e.target.value)}
+                  onBlur={() => handleAmountBlur("cashDiscountValue")}
+                  inputProps={{ min: 0, step: "0.01" }}
+                />
+              </Grid>
+              <Grid item xs={12} md={3}>
+                <MDInput
+                  type="number"
+                  label="Taxable Value"
+                  fullWidth
+                  value={totals.taxableValue ? totals.taxableValue.toFixed(2) : ""}
+                  InputProps={{ readOnly: true }}
+                />
+              </Grid>
+              <Grid item xs={12} md={3}>
+                <MDInput
+                  type="number"
+                  label="CGST Amount (5%)"
+                  fullWidth
+                  value={form.cgstAmount}
+                  onChange={(e) => handleGstChange("cgstAmount", e.target.value)}
+                  onBlur={() => handleAmountBlur("cgstAmount")}
+                  inputProps={{ min: 0, step: "0.01" }}
+                />
+              </Grid>
+              <Grid item xs={12} md={3}>
+                <MDInput
+                  type="number"
+                  label="SGST Amount (5%)"
+                  fullWidth
+                  value={form.sgstAmount}
+                  onChange={(e) => handleGstChange("sgstAmount", e.target.value)}
+                  onBlur={() => handleAmountBlur("sgstAmount")}
+                  inputProps={{ min: 0, step: "0.01" }}
+                />
+              </Grid>
+              <Grid item xs={12} md={3}>
+                <MDBox
+                  height="44px"
+                  display="flex"
+                  alignItems="center"
+                  px={2}
+                  sx={{ border: "1px solid #d2d6da", borderRadius: 1, backgroundColor: "#f8fafc" }}
+                >
+                  <MDTypography variant="button" fontWeight="medium" color="dark">
+                    GST: {money(totals.totalGstAmount)}
+                  </MDTypography>
+                </MDBox>
+              </Grid>
+              <Grid item xs={12} md={3}>
+                <MDBox
+                  height="44px"
+                  display="flex"
+                  alignItems="center"
+                  px={2}
+                  sx={{ border: "1px solid #d2d6da", borderRadius: 1, backgroundColor: "#f8fafc" }}
+                >
+                  <MDTypography variant="button" fontWeight="medium" color="dark">
+                    Round Off: {money(totals.roundOff)}
+                  </MDTypography>
+                </MDBox>
+              </Grid>
+              <Grid item xs={12} md={3}>
+                <MDBox
+                  height="44px"
+                  display="flex"
+                  alignItems="center"
+                  px={2}
+                  sx={{ border: "1px solid #111827", borderRadius: 1, backgroundColor: "#fff" }}
+                >
+                  <MDTypography variant="button" fontWeight="bold" color="dark">
+                    Total: {money(totals.roundedTotal)}
+                  </MDTypography>
+                </MDBox>
+              </Grid>
 
-                  <Grid item xs={12}>
-                    <MDBox display="flex" justifyContent="flex-end" gap={1}>
-                      <MDButton color="dark" variant="outlined" onClick={handleReset}>
-                        Reset
-                      </MDButton>
-                    </MDBox>
-                  </Grid>
-                </Grid>
+              <Grid item xs={12}>
+                <MDBox display="flex" justifyContent="flex-end" gap={1}>
+                  <MDButton color="dark" variant="outlined" onClick={handleReset}>
+                    Reset
+                  </MDButton>
+                </MDBox>
+              </Grid>
+            </Grid>
           </MDBox>
         </DialogContent>
         <DialogActions sx={{ px: 3, py: 2 }}>

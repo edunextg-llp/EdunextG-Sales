@@ -321,8 +321,8 @@ function AddDeliveryBoy() {
                           ),
                           action: (
                             <MDBox display="flex" gap={1} justifyContent="center" flexWrap="wrap">
-                              <FaRegEdit onClick={() => startEditDeliveryBoy(boy)} style={{ cursor: "pointer" }} color="#E0E388" size={20}/>
-                              <CiTrash onClick={() => handleDeleteDeliveryBoy(boy)} style={{ cursor: "pointer" }} color="#FF0000" size={20}/>
+                              <FaRegEdit onClick={() => startEditDeliveryBoy(boy)} style={{ cursor: "pointer" }} color="#E0E388" size={20} />
+                              <CiTrash onClick={() => handleDeleteDeliveryBoy(boy)} style={{ cursor: "pointer" }} color="#FF0000" size={20} />
                             </MDBox>
                           ),
                         })),

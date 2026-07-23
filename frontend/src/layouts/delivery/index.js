@@ -171,9 +171,8 @@ function Delivery() {
             <div><strong>Generated:</strong> ${escapeHtml(generatedOn)}</div>
             <div><strong>Total Orders:</strong> ${filteredLogSales.length} (Rs. ${totalAmount.toFixed(2)})</div>
           </div>
-          ${
-            filteredLogSales.length > 0
-              ? `<table>
+          ${filteredLogSales.length > 0
+        ? `<table>
         <thead>
           <tr>
             <th>Sr No</th>
@@ -195,8 +194,8 @@ function Delivery() {
           ${rowsHtml}
         </tbody>
       </table>`
-              : `<div class="empty">No "Out for Delivery" records found for this selection.</div>`
-          }
+        : `<div class="empty">No "Out for Delivery" records found for this selection.</div>`
+      }
           <div class="total">Total Amount: Rs. ${totalAmount.toFixed(2)}</div>
         </body>
       </html>
@@ -630,7 +629,7 @@ function Delivery() {
                               <TableCell align="center" sx={{ borderBottom: borderCol, py: 2, color: txColor }}>
                                 {row.packet_count || "N/A"}
                               </TableCell>
-                              
+
                               {activeTab === "out_for_delivery" && (
                                 <>
                                   <TableCell align="center" sx={{ borderBottom: borderCol, py: 2, color: txColor }}>
@@ -675,7 +674,7 @@ function Delivery() {
                                   <TableCell align="center" sx={{ borderBottom: borderCol, py: 2 }}>
                                     <MDBox display="flex" gap={1} justifyContent="center" flexWrap="wrap" sx={{ backgroundColor: "#f0fdfa", padding: "8px 12px", borderRadius: "8px", border: "1px solid #99f6e4" }}>
                                       <IoSaveOutline onClick={() => handleSaveDelivery(row.id)} style={{ cursor: "pointer" }} color="#059669" size={20} />
-                                      <FaEye onClick={() => handleViewHistory(row.id)} style={{ cursor: "pointer" }} color="#E0E388" size={20}/>
+                                      <FaEye onClick={() => handleViewHistory(row.id)} style={{ cursor: "pointer" }} color="#E0E388" size={20} />
                                     </MDBox>
                                   </TableCell>
                                 </>

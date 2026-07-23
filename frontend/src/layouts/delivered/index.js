@@ -313,15 +313,13 @@ function Delivered() {
   const reportStaffLabel = selectedStaffName || "All Staff";
   const reportRangeLabel =
     cancelRangeStart || cancelRangeEnd
-      ? `${cancelRangeStart ? formatDate(cancelRangeStart) : "Start"} to ${
-          cancelRangeEnd ? formatDate(cancelRangeEnd) : "Today"
-        }`
+      ? `${cancelRangeStart ? formatDate(cancelRangeStart) : "Start"} to ${cancelRangeEnd ? formatDate(cancelRangeEnd) : "Today"
+      }`
       : "All Dates";
   const deliveryRangeLabel =
     deliveryRangeStart || deliveryRangeEnd
-      ? `${deliveryRangeStart ? formatDate(deliveryRangeStart) : "Start"} to ${
-          deliveryRangeEnd ? formatDate(deliveryRangeEnd) : "Today"
-        }`
+      ? `${deliveryRangeStart ? formatDate(deliveryRangeStart) : "Start"} to ${deliveryRangeEnd ? formatDate(deliveryRangeEnd) : "Today"
+      }`
       : "All Dates";
 
   const mapSaleForInvoicePdf = (row) => ({
@@ -363,11 +361,11 @@ function Delivered() {
       activeTab === "pending"
         ? pendingSales
         : filteredSales.filter(
-            (row) =>
-              row.packaging_status === "delivered" ||
-              row.packaging_status === "returned" ||
-              row.packaging_status === "out_for_delivery"
-          );
+          (row) =>
+            row.packaging_status === "delivered" ||
+            row.packaging_status === "returned" ||
+            row.packaging_status === "out_for_delivery"
+        );
 
     const byOutlet = new Map();
     sourceRows.forEach((row) => {
@@ -433,9 +431,8 @@ function Delivered() {
   const renderSummaryTable = (title, label, summary) => `
     <div class="summary-block">
       <h2>${escapeHtml(title)}</h2>
-      ${
-        summary.length > 0
-          ? `<table>
+      ${summary.length > 0
+      ? `<table>
               <thead>
                 <tr>
                   <th>Sr No</th>
@@ -446,8 +443,8 @@ function Delivered() {
               </thead>
               <tbody>${renderSummaryRows(summary)}</tbody>
             </table>`
-          : `<div class="empty">No cancelled invoices found.</div>`
-      }
+      : `<div class="empty">No cancelled invoices found.</div>`
+    }
     </div>
   `;
 
@@ -518,9 +515,8 @@ function Delivered() {
             ${renderSummaryTable("Range Wise Total", "Cancel Date", rangeCancelSummary)}
           </div>
           <h2>Cancelled Invoice Details</h2>
-          ${
-            cancelledSales.length > 0
-              ? `<table>
+          ${cancelledSales.length > 0
+        ? `<table>
                   <thead>
                     <tr>
                       <th>Sr No</th>
@@ -538,8 +534,8 @@ function Delivered() {
                   </thead>
                   <tbody>${rowsHtml}</tbody>
                 </table>`
-              : `<div class="empty">No cancelled invoices found.</div>`
-          }
+        : `<div class="empty">No cancelled invoices found.</div>`
+      }
         </body>
       </html>
     `);
@@ -834,163 +830,163 @@ function Delivered() {
                 </Grid>
 
                 {activeTab !== "cancelled" ? (
-                <>
-                {(deliveryRangeStart || deliveryRangeEnd) && (
-                  <MDTypography variant="body2" color="text" mb={2}>
-                    Delivery date: {deliveryRangeLabel}
-                    {activeTab === "pending" ? " · Pending only" : " · Delivered, pending, and returned"}
-                  </MDTypography>
-                )}
-                <MDBox display="flex" justifyContent="flex-end" mb={2}>
-                  <MDButton
-                    color="info"
-                    variant="outlined"
-                    size="small"
-                    onClick={downloadAllDeliveredInvoicePdfs}
-                  >
-                    <Icon sx={{ mr: 1 }}>picture_as_pdf</Icon>
-                    Download Invoice PDF
-                  </MDButton>
-                </MDBox>
-                <TableContainer component={Paper} sx={paginatedTableContainerSx}>
-                  <Table stickyHeader sx={{ minWidth: 650 }}>
-                    <TableHead sx={paginatedTableHeadSx()}>
-                      <TableRow>
-                        <TableCell align="center" sx={{ ...paginatedTableHeadCellSx, width: 56 }}>
-                          Sr No
-                        </TableCell>
-                        <TableCell sx={paginatedTableHeadCellSx}>Staff Name</TableCell>
-                        <TableCell sx={paginatedTableHeadCellSx}>Company</TableCell>
-                        <TableCell sx={paginatedTableHeadCellSx}>Outlet Name</TableCell>
-                        <TableCell sx={paginatedTableHeadCellSx}>Area</TableCell>
-                        <TableCell sx={paginatedTableHeadCellSx}>ERP ID</TableCell>
-                        <TableCell align="center" sx={paginatedTableHeadCellSx}>Sale ID</TableCell>
-                        <TableCell align="center" sx={paginatedTableHeadCellSx}>Invoice No</TableCell>
-                        <TableCell align="right" sx={paginatedTableHeadCellSx}>Price</TableCell>
-                        <TableCell align="center" sx={paginatedTableHeadCellSx}>No. of Item</TableCell>
-                        <TableCell align="center" sx={paginatedTableHeadCellSx}>Packing Item</TableCell>
-                        <TableCell align="center" sx={paginatedTableHeadCellSx}>No. of Box</TableCell>
-                        <TableCell align="center" sx={paginatedTableHeadCellSx}>No. of Packet</TableCell>
-                        <TableCell align="center" sx={paginatedTableHeadCellSx}>Delivery Boy</TableCell>
-                        <TableCell align="center" sx={paginatedTableHeadCellSx}>Vehicle</TableCell>
-                        <TableCell align="center" sx={paginatedTableHeadCellSx}>Delivery Date</TableCell>
-                        <TableCell align="center" sx={paginatedTableHeadCellSx}>Status</TableCell>
-                        <TableCell align="center" sx={paginatedTableHeadCellSx}>Action</TableCell>
-                      </TableRow>
-                    </TableHead>
-                    <TableBody>
-                      {paginatedActiveList.length > 0 ? (
-                        paginatedActiveList.map((row, index) => (
-                          <TableRow
-                            key={row.id}
-                            sx={{
-                              backgroundColor: row.packaging_status === 'returned' ? '#fff7ed' : row.packaging_status === 'delivered' ? '#f0fdf4' : '#f8fafc',
-                              "&:last-child td, &:last-child th": { border: 0 }
-                            }}
-                          >
-                            <TableCell align="center" sx={{ borderBottom: "1px solid #cbd5e1", py: 2 }}>
-                              {(page - 1) * rowsPerPage + index + 1}
+                  <>
+                    {(deliveryRangeStart || deliveryRangeEnd) && (
+                      <MDTypography variant="body2" color="text" mb={2}>
+                        Delivery date: {deliveryRangeLabel}
+                        {activeTab === "pending" ? " · Pending only" : " · Delivered, pending, and returned"}
+                      </MDTypography>
+                    )}
+                    <MDBox display="flex" justifyContent="flex-end" mb={2}>
+                      <MDButton
+                        color="info"
+                        variant="outlined"
+                        size="small"
+                        onClick={downloadAllDeliveredInvoicePdfs}
+                      >
+                        <Icon sx={{ mr: 1 }}>picture_as_pdf</Icon>
+                        Download Invoice PDF
+                      </MDButton>
+                    </MDBox>
+                    <TableContainer component={Paper} sx={paginatedTableContainerSx}>
+                      <Table stickyHeader sx={{ minWidth: 650 }}>
+                        <TableHead sx={paginatedTableHeadSx()}>
+                          <TableRow>
+                            <TableCell align="center" sx={{ ...paginatedTableHeadCellSx, width: 56 }}>
+                              Sr No
                             </TableCell>
-                            <TableCell sx={{ borderBottom: "1px solid #cbd5e1", py: 2 }}>{row.staff_name}</TableCell>
-                            <TableCell sx={{ borderBottom: "1px solid #cbd5e1", py: 2 }}>{row.company_name || "N/A"}</TableCell>
-                            <TableCell sx={{ borderBottom: "1px solid #cbd5e1", py: 2, fontWeight: "medium" }}>{row.outlet_name}</TableCell>
-                            <TableCell sx={{ borderBottom: "1px solid #cbd5e1", py: 2 }}>{row.location_name || "N/A"}</TableCell>
-                            <TableCell sx={{ borderBottom: "1px solid #cbd5e1", py: 2 }}>{row.outlet_erp_id}</TableCell>
-                            <TableCell align="center" sx={{ borderBottom: "1px solid #cbd5e1", py: 2, fontWeight: "bold" }}>{row.sticker_number}</TableCell>
-                            <TableCell align="center" sx={{ borderBottom: "1px solid #cbd5e1", py: 2 }}>{row.invoice_number}</TableCell>
-                            <TableCell align="right" sx={{ borderBottom: "1px solid #cbd5e1", py: 2, fontWeight: "bold" }}>
-                              ₹{Number(row.price).toFixed(2)}
-                            </TableCell>
-                            <TableCell align="center" sx={{ borderBottom: "1px solid #cbd5e1", py: 2, color: '#334155' }}>
-                              {row.item_count || "N/A"}
-                            </TableCell>
-                            <TableCell align="center" sx={{ borderBottom: "1px solid #cbd5e1", py: 2, color: '#334155' }}>
-                              {row.packed_item_count || row.item_count || "N/A"}
-                            </TableCell>
-                            <TableCell align="center" sx={{ borderBottom: "1px solid #cbd5e1", py: 2, color: '#334155' }}>
-                              {row.box_count || "N/A"}
-                            </TableCell>
-                            <TableCell align="center" sx={{ borderBottom: "1px solid #cbd5e1", py: 2, color: '#334155' }}>
-                              {row.packet_count || "N/A"}
-                            </TableCell>
-                            <TableCell align="center" sx={{ borderBottom: "1px solid #cbd5e1", py: 2, color: '#334155' }}>
-                              {row.delivery_boy_name || 'N/A'}
-                            </TableCell>
-                            <TableCell align="center" sx={{ borderBottom: "1px solid #cbd5e1", py: 2, color: '#334155' }}>
-                              {row.vehicle_no || 'N/A'}
-                            </TableCell>
-                            <TableCell align="center" sx={{ borderBottom: "1px solid #cbd5e1", py: 2, color: '#334155' }}>
-                              {formatDate(row.delivery_date)}
-                            </TableCell>
-                            <TableCell align="center" sx={{ borderBottom: "1px solid #cbd5e1", py: 2 }}>
-                              {row.packaging_status === 'returned' ? (
-                                <Chip label="Returned" color="warning" variant="outlined" size="small" />
-                              ) : row.packaging_status === 'delivered' ? (
-                                <Chip label="Delivered" color="success" variant="outlined" size="small" />
-                              ) : row.packaging_status === 'out_for_delivery' ? (
-                                <Chip label="Pending Delivery" color="warning" variant="outlined" size="small" />
-                              ) : (
-                                <Chip label={row.packaging_status || "Unknown"} color="default" variant="outlined" size="small" />
-                              )}
-                            </TableCell>
-                            <TableCell align="center" sx={{ borderBottom: "1px solid #cbd5e1", py: 2 }}>
-                              {row.packaging_status === 'out_for_delivery' ? (
-                                <MDBox display="flex" gap={1} justifyContent="center" alignItems="center" flexWrap="wrap">
-                                  <Icon
-                                    onClick={() => downloadOutletInvoicePdf(row)}
-                                    sx={{ cursor: "pointer", color: "#2563eb", fontSize: 22 }}
-                                    titleAccess="Download Invoice PDF"
-                                  >
-                                    picture_as_pdf
-                                  </Icon>
-                                  <MDButton color="error" variant="contained" size="small" onClick={() => handleUpdateStatus(row.id, 'cancelled', row.delivery_boy_id, row.vehicle_no, row.delivery_date)}>
-                                    Cancel
-                                  </MDButton>
-                                  <MDButton color="success" variant="contained" size="small" onClick={() => handleUpdateStatus(row.id, 'delivered', row.delivery_boy_id, row.vehicle_no, row.delivery_date)}>
-                                    Deliver
-                                  </MDButton>
-                                  <MDButton color="dark" variant="gradient" size="small" onClick={() => handleUpdateStatus(row.id, 'packing_done', row.delivery_boy_id, row.vehicle_no, row.delivery_date)}>
-                                    Return
-                                  </MDButton>
-                                </MDBox>
-                              ) : (
-                                <MDBox display="flex" gap={1} justifyContent="center" alignItems="center">
-                                  <Icon
-                                    onClick={() => downloadOutletInvoicePdf(row)}
-                                    sx={{ cursor: "pointer", color: "#2563eb", fontSize: 22 }}
-                                    titleAccess="Download Invoice PDF"
-                                  >
-                                    picture_as_pdf
-                                  </Icon>
-                                  <FaRegEdit   onClick={() => handleUpdateStatus(row.id, 'out_for_delivery', row.delivery_boy_id, row.vehicle_no, row.delivery_date)} style={{ cursor: "pointer" }} color="#E0E388" size={20}/>
-                                </MDBox>
-                              )}
-                            </TableCell>
+                            <TableCell sx={paginatedTableHeadCellSx}>Staff Name</TableCell>
+                            <TableCell sx={paginatedTableHeadCellSx}>Company</TableCell>
+                            <TableCell sx={paginatedTableHeadCellSx}>Outlet Name</TableCell>
+                            <TableCell sx={paginatedTableHeadCellSx}>Area</TableCell>
+                            <TableCell sx={paginatedTableHeadCellSx}>ERP ID</TableCell>
+                            <TableCell align="center" sx={paginatedTableHeadCellSx}>Sale ID</TableCell>
+                            <TableCell align="center" sx={paginatedTableHeadCellSx}>Invoice No</TableCell>
+                            <TableCell align="right" sx={paginatedTableHeadCellSx}>Price</TableCell>
+                            <TableCell align="center" sx={paginatedTableHeadCellSx}>No. of Item</TableCell>
+                            <TableCell align="center" sx={paginatedTableHeadCellSx}>Packing Item</TableCell>
+                            <TableCell align="center" sx={paginatedTableHeadCellSx}>No. of Box</TableCell>
+                            <TableCell align="center" sx={paginatedTableHeadCellSx}>No. of Packet</TableCell>
+                            <TableCell align="center" sx={paginatedTableHeadCellSx}>Delivery Boy</TableCell>
+                            <TableCell align="center" sx={paginatedTableHeadCellSx}>Vehicle</TableCell>
+                            <TableCell align="center" sx={paginatedTableHeadCellSx}>Delivery Date</TableCell>
+                            <TableCell align="center" sx={paginatedTableHeadCellSx}>Status</TableCell>
+                            <TableCell align="center" sx={paginatedTableHeadCellSx}>Action</TableCell>
                           </TableRow>
-                        ))
-                      ) : (
-                        <TableRow>
-                          <TableCell colSpan={17} align="center" sx={{ py: 3, borderBottom: 0 }}>
-                            <MDTypography variant="body2" color="text">
-                              {activeTab === "pending"
-                                ? "No pending delivery items found."
-                                : "No delivered items found."}
-                            </MDTypography>
-                          </TableCell>
-                        </TableRow>
-                      )}
-                    </TableBody>
-                  </Table>
-                </TableContainer>
-                <TablePaginationFooter
-                  page={page}
-                  totalPages={totalPages}
-                  total={activeList.length}
-                  onPageChange={setPage}
-                  limit={rowsPerPage}
-                  onLimitChange={setRowsPerPage}
-                />
-                </>
+                        </TableHead>
+                        <TableBody>
+                          {paginatedActiveList.length > 0 ? (
+                            paginatedActiveList.map((row, index) => (
+                              <TableRow
+                                key={row.id}
+                                sx={{
+                                  backgroundColor: row.packaging_status === 'returned' ? '#fff7ed' : row.packaging_status === 'delivered' ? '#f0fdf4' : '#f8fafc',
+                                  "&:last-child td, &:last-child th": { border: 0 }
+                                }}
+                              >
+                                <TableCell align="center" sx={{ borderBottom: "1px solid #cbd5e1", py: 2 }}>
+                                  {(page - 1) * rowsPerPage + index + 1}
+                                </TableCell>
+                                <TableCell sx={{ borderBottom: "1px solid #cbd5e1", py: 2 }}>{row.staff_name}</TableCell>
+                                <TableCell sx={{ borderBottom: "1px solid #cbd5e1", py: 2 }}>{row.company_name || "N/A"}</TableCell>
+                                <TableCell sx={{ borderBottom: "1px solid #cbd5e1", py: 2, fontWeight: "medium" }}>{row.outlet_name}</TableCell>
+                                <TableCell sx={{ borderBottom: "1px solid #cbd5e1", py: 2 }}>{row.location_name || "N/A"}</TableCell>
+                                <TableCell sx={{ borderBottom: "1px solid #cbd5e1", py: 2 }}>{row.outlet_erp_id}</TableCell>
+                                <TableCell align="center" sx={{ borderBottom: "1px solid #cbd5e1", py: 2, fontWeight: "bold" }}>{row.sticker_number}</TableCell>
+                                <TableCell align="center" sx={{ borderBottom: "1px solid #cbd5e1", py: 2 }}>{row.invoice_number}</TableCell>
+                                <TableCell align="right" sx={{ borderBottom: "1px solid #cbd5e1", py: 2, fontWeight: "bold" }}>
+                                  ₹{Number(row.price).toFixed(2)}
+                                </TableCell>
+                                <TableCell align="center" sx={{ borderBottom: "1px solid #cbd5e1", py: 2, color: '#334155' }}>
+                                  {row.item_count || "N/A"}
+                                </TableCell>
+                                <TableCell align="center" sx={{ borderBottom: "1px solid #cbd5e1", py: 2, color: '#334155' }}>
+                                  {row.packed_item_count || row.item_count || "N/A"}
+                                </TableCell>
+                                <TableCell align="center" sx={{ borderBottom: "1px solid #cbd5e1", py: 2, color: '#334155' }}>
+                                  {row.box_count || "N/A"}
+                                </TableCell>
+                                <TableCell align="center" sx={{ borderBottom: "1px solid #cbd5e1", py: 2, color: '#334155' }}>
+                                  {row.packet_count || "N/A"}
+                                </TableCell>
+                                <TableCell align="center" sx={{ borderBottom: "1px solid #cbd5e1", py: 2, color: '#334155' }}>
+                                  {row.delivery_boy_name || 'N/A'}
+                                </TableCell>
+                                <TableCell align="center" sx={{ borderBottom: "1px solid #cbd5e1", py: 2, color: '#334155' }}>
+                                  {row.vehicle_no || 'N/A'}
+                                </TableCell>
+                                <TableCell align="center" sx={{ borderBottom: "1px solid #cbd5e1", py: 2, color: '#334155' }}>
+                                  {formatDate(row.delivery_date)}
+                                </TableCell>
+                                <TableCell align="center" sx={{ borderBottom: "1px solid #cbd5e1", py: 2 }}>
+                                  {row.packaging_status === 'returned' ? (
+                                    <Chip label="Returned" color="warning" variant="outlined" size="small" />
+                                  ) : row.packaging_status === 'delivered' ? (
+                                    <Chip label="Delivered" color="success" variant="outlined" size="small" />
+                                  ) : row.packaging_status === 'out_for_delivery' ? (
+                                    <Chip label="Pending Delivery" color="warning" variant="outlined" size="small" />
+                                  ) : (
+                                    <Chip label={row.packaging_status || "Unknown"} color="default" variant="outlined" size="small" />
+                                  )}
+                                </TableCell>
+                                <TableCell align="center" sx={{ borderBottom: "1px solid #cbd5e1", py: 2 }}>
+                                  {row.packaging_status === 'out_for_delivery' ? (
+                                    <MDBox display="flex" gap={1} justifyContent="center" alignItems="center" flexWrap="wrap">
+                                      <Icon
+                                        onClick={() => downloadOutletInvoicePdf(row)}
+                                        sx={{ cursor: "pointer", color: "#2563eb", fontSize: 22 }}
+                                        titleAccess="Download Invoice PDF"
+                                      >
+                                        picture_as_pdf
+                                      </Icon>
+                                      <MDButton color="error" variant="contained" size="small" onClick={() => handleUpdateStatus(row.id, 'cancelled', row.delivery_boy_id, row.vehicle_no, row.delivery_date)}>
+                                        Cancel
+                                      </MDButton>
+                                      <MDButton color="success" variant="contained" size="small" onClick={() => handleUpdateStatus(row.id, 'delivered', row.delivery_boy_id, row.vehicle_no, row.delivery_date)}>
+                                        Deliver
+                                      </MDButton>
+                                      <MDButton color="dark" variant="gradient" size="small" onClick={() => handleUpdateStatus(row.id, 'packing_done', row.delivery_boy_id, row.vehicle_no, row.delivery_date)}>
+                                        Return
+                                      </MDButton>
+                                    </MDBox>
+                                  ) : (
+                                    <MDBox display="flex" gap={1} justifyContent="center" alignItems="center">
+                                      <Icon
+                                        onClick={() => downloadOutletInvoicePdf(row)}
+                                        sx={{ cursor: "pointer", color: "#2563eb", fontSize: 22 }}
+                                        titleAccess="Download Invoice PDF"
+                                      >
+                                        picture_as_pdf
+                                      </Icon>
+                                      <FaRegEdit onClick={() => handleUpdateStatus(row.id, 'out_for_delivery', row.delivery_boy_id, row.vehicle_no, row.delivery_date)} style={{ cursor: "pointer" }} color="#E0E388" size={20} />
+                                    </MDBox>
+                                  )}
+                                </TableCell>
+                              </TableRow>
+                            ))
+                          ) : (
+                            <TableRow>
+                              <TableCell colSpan={17} align="center" sx={{ py: 3, borderBottom: 0 }}>
+                                <MDTypography variant="body2" color="text">
+                                  {activeTab === "pending"
+                                    ? "No pending delivery items found."
+                                    : "No delivered items found."}
+                                </MDTypography>
+                              </TableCell>
+                            </TableRow>
+                          )}
+                        </TableBody>
+                      </Table>
+                    </TableContainer>
+                    <TablePaginationFooter
+                      page={page}
+                      totalPages={totalPages}
+                      total={activeList.length}
+                      onPageChange={setPage}
+                      limit={rowsPerPage}
+                      onLimitChange={setRowsPerPage}
+                    />
+                  </>
                 ) : (
                   <MDBox>
                     <MDBox

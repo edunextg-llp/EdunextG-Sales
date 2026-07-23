@@ -1186,8 +1186,8 @@ function Dashboard() {
                     </thead>
                     <tbody>
                       ${outletGroup.collectors
-                        .map(
-                          (collector) => `
+                  .map(
+                    (collector) => `
                             <tr>
                               <td>${escapeHtml(collector.collectorType)}</td>
                               <td>${escapeHtml(collector.collectorName)}</td>
@@ -1198,8 +1198,8 @@ function Dashboard() {
                               <td class="right">Rs. ${collector.total.toFixed(2)}</td>
                             </tr>
                           `
-                        )
-                        .join("")}
+                  )
+                  .join("")}
                       <tr class="outlet-total-row">
                         <td colspan="3"><strong>Outlet Total</strong></td>
                         <td class="right"><strong>Rs. ${outletGroup.cash.toFixed(2)}</strong></td>
@@ -1283,11 +1283,10 @@ function Dashboard() {
         <body>
           <h1>Collection Report</h1>
           <div class="sub">Period: ${escapeHtml(periodLabel)} | Grouped by company staff (marketing person), with bawarchee staff collector breakdown per outlet</div>
-          ${
-            details.length > 0
-              ? staffBoxesHtml
-              : `<div class="empty">No collection found for this period.</div>`
-          }
+          ${details.length > 0
+        ? staffBoxesHtml
+        : `<div class="empty">No collection found for this period.</div>`
+      }
           <div class="totals">
             <div class="${amountBoxClass(cashTotal)}"><div class="label">Total Cash</div><div class="value">Rs. ${cashTotal.toFixed(2)}</div></div>
             <div class="${amountBoxClass(chequeTotal)}"><div class="label">Total Cheque</div><div class="value">Rs. ${chequeTotal.toFixed(2)}</div></div>
@@ -1355,20 +1354,19 @@ function Dashboard() {
     printWindow.document.write("<p style=\"font-family: Arial, sans-serif; padding: 24px;\">Preparing collection report...</p>");
     printWindow.document.close();
 
-    const periodLabel = `${formatDate(totalCollectionFromDate)} to ${formatDate(totalCollectionToDate)}${
-      selectedCollectionStaffId ? ` | ${selectedCollectionStaffName}` : ""
-    }`;
+    const periodLabel = `${formatDate(totalCollectionFromDate)} to ${formatDate(totalCollectionToDate)}${selectedCollectionStaffId ? ` | ${selectedCollectionStaffName}` : ""
+      }`;
 
     try {
       const data =
         totalCollectionReportData.collectionDetails.length > 0 ||
-        totalCollectionReportData.collectionByMode.length > 0
+          totalCollectionReportData.collectionByMode.length > 0
           ? totalCollectionReportData
           : await fetchTotalCollectionReport(
-              totalCollectionFromDate,
-              totalCollectionToDate,
-              selectedCollectionStaffId
-            );
+            totalCollectionFromDate,
+            totalCollectionToDate,
+            selectedCollectionStaffId
+          );
 
       writeCollectionPrintReport(printWindow, data.collectionDetails || [], periodLabel);
     } catch (error) {
@@ -1503,8 +1501,8 @@ function Dashboard() {
       label: "purchase invoices",
     },
     {
-      color:"dark",
-      icon:"store",
+      color: "dark",
+      icon: "store",
       title: "Purchase Sellers",
       count: (purchaseReportData.summary.seller_count),
       // amount: purchaseReportData.summary.seller_count,
@@ -1552,81 +1550,81 @@ function Dashboard() {
       </MDBox>
 
       {activeDashboardTab === "purchase" && (
-      <MDBox py={3}>
-        <MDBox
-          mb={1}
-          display="flex"
-          justifyContent="space-between"
-          alignItems="flex-start"
-          flexWrap="wrap"
-          gap={2}
-        >
-          <MDBox>
-            <MDTypography variant="h4" fontWeight="medium" color="dark">
-              Purchase Dashboard
-            </MDTypography>
-            <MDTypography variant="body2" color="text">
-              Live purchase invoice, taxable value, GST, and seller overview.
-            </MDTypography>
+        <MDBox py={3}>
+          <MDBox
+            mb={1}
+            display="flex"
+            justifyContent="space-between"
+            alignItems="flex-start"
+            flexWrap="wrap"
+            gap={2}
+          >
+            <MDBox>
+              <MDTypography variant="h4" fontWeight="medium" color="dark">
+                Purchase Dashboard
+              </MDTypography>
+              <MDTypography variant="body2" color="text">
+                Live purchase invoice, taxable value, GST, and seller overview.
+              </MDTypography>
+            </MDBox>
+            <MDBox display="flex" gap={1.5} flexWrap="wrap" alignItems="center" sx={{ ml: { xs: 0, md: "auto" } }}>
+              <FormControl size="small" sx={{ minWidth: 160 }}>
+                <InputLabel id="purchase-dashboard-financial-year-label">Financial Year</InputLabel>
+                <Select
+                  labelId="purchase-dashboard-financial-year-label"
+                  value={selectedFinancialYear}
+                  label="Financial Year"
+                  onChange={(event) => handleFinancialYearChange(event.target.value)}
+                  sx={{ height: 44, backgroundColor: "#fff" }}
+                >
+                  <MenuItem value="">All Years</MenuItem>
+                  {financialYearOptions.map((option) => (
+                    <MenuItem key={option.value} value={option.value}>
+                      {option.label}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+              <FormControl size="small" sx={{ minWidth: 140 }} disabled={!selectedFinancialYear}>
+                <InputLabel id="purchase-dashboard-month-label">Month</InputLabel>
+                <Select
+                  labelId="purchase-dashboard-month-label"
+                  value={selectedMonth}
+                  label="Month"
+                  onChange={(event) => setSelectedMonth(event.target.value)}
+                  sx={{ height: 44, backgroundColor: "#fff" }}
+                >
+                  <MenuItem value="">All Months</MenuItem>
+                  {monthOptions.map((option) => (
+                    <MenuItem key={option.value} value={option.value}>
+                      {option.label}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            </MDBox>
           </MDBox>
-          <MDBox display="flex" gap={1.5} flexWrap="wrap" alignItems="center" sx={{ ml: { xs: 0, md: "auto" } }}>
-            <FormControl size="small" sx={{ minWidth: 160 }}>
-              <InputLabel id="purchase-dashboard-financial-year-label">Financial Year</InputLabel>
-              <Select
-                labelId="purchase-dashboard-financial-year-label"
-                value={selectedFinancialYear}
-                label="Financial Year"
-                onChange={(event) => handleFinancialYearChange(event.target.value)}
-                sx={{ height: 44, backgroundColor: "#fff" }}
-              >
-                <MenuItem value="">All Years</MenuItem>
-                {financialYearOptions.map((option) => (
-                  <MenuItem key={option.value} value={option.value}>
-                    {option.label}
-                  </MenuItem>
-                ))}
-              </Select>
-            </FormControl>
-            <FormControl size="small" sx={{ minWidth: 140 }} disabled={!selectedFinancialYear}>
-              <InputLabel id="purchase-dashboard-month-label">Month</InputLabel>
-              <Select
-                labelId="purchase-dashboard-month-label"
-                value={selectedMonth}
-                label="Month"
-                onChange={(event) => setSelectedMonth(event.target.value)}
-                sx={{ height: 44, backgroundColor: "#fff" }}
-              >
-                <MenuItem value="">All Months</MenuItem>
-                {monthOptions.map((option) => (
-                  <MenuItem key={option.value} value={option.value}>
-                    {option.label}
-                  </MenuItem>
-                ))}
-              </Select>
-            </FormControl>
-          </MDBox>
-        </MDBox>
 
-        <MDBox mt={4}>
-          <Grid container spacing={3}>
-            {purchaseSummaryCards.map((card) => (
-              <Grid item xs={12} md={6} lg={3} key={card.title}>
-                <MDBox mb={1.5}>
-                  <ComplexStatisticsCard
-                    color={card.color}
-                    icon={card.icon}
-                    title={card.title}
-                    count={card.count}
-                    percentage={{
-                      color: card.color,
-                      amount: card.amount ?? "",
-                      label: card.label,
-                    }}
-                  />
-                </MDBox>
-              </Grid>
-            ))}
-            {/* <Grid item xs={12} md={4}>
+          <MDBox mt={4}>
+            <Grid container spacing={3}>
+              {purchaseSummaryCards.map((card) => (
+                <Grid item xs={12} md={6} lg={3} key={card.title}>
+                  <MDBox mb={1.5}>
+                    <ComplexStatisticsCard
+                      color={card.color}
+                      icon={card.icon}
+                      title={card.title}
+                      count={card.count}
+                      percentage={{
+                        color: card.color,
+                        amount: card.amount ?? "",
+                        label: card.label,
+                      }}
+                    />
+                  </MDBox>
+                </Grid>
+              ))}
+              {/* <Grid item xs={12} md={4}>
             <Card>
               <MDBox p={3}>
                 <MDTypography variant="h6" fontWeight="medium">
@@ -1641,7 +1639,7 @@ function Dashboard() {
               </MDBox>
             </Card>
           </Grid> */}
-          {/* <Grid item xs={12} md={4}>
+              {/* <Grid item xs={12} md={4}>
             <Card>
               <MDBox p={3}>
                 <MDTypography variant="h6" fontWeight="medium">
@@ -1656,24 +1654,24 @@ function Dashboard() {
               </MDBox>
             </Card>
           </Grid> */}
-          </Grid>
-          
-        </MDBox>
-
-        <MDBox mt={4.5}>
-          <Grid container spacing={3}>
-            <Grid item xs={12} md={6} lg={4} display="flex">
-              <MDBox mb={3} width="100%" height={380} sx={{ "& > div": { height: "100%" } }}>
-                <ReportsBarChart
-                  color="info"
-                  title="monthly purchase"
-                  description="Purchase invoice value by month"
-                  date="all records"
-                  chart={monthlyPurchaseChart}
-                />
-              </MDBox>
             </Grid>
-            {/* <Grid item xs={12} md={6} lg={4}>
+
+          </MDBox>
+
+          <MDBox mt={4.5}>
+            <Grid container spacing={3}>
+              <Grid item xs={12} md={6} lg={4} display="flex">
+                <MDBox mb={3} width="100%" height={380} sx={{ "& > div": { height: "100%" } }}>
+                  <ReportsBarChart
+                    color="info"
+                    title="monthly purchase"
+                    description="Purchase invoice value by month"
+                    date="all records"
+                    chart={monthlyPurchaseChart}
+                  />
+                </MDBox>
+              </Grid>
+              {/* <Grid item xs={12} md={6} lg={4}>
               <MDBox mb={3}>
                 <ReportsLineChart
                   color="success"
@@ -1684,89 +1682,89 @@ function Dashboard() {
                 />
               </MDBox>
             </Grid> */}
-            <Grid item xs={12} md={6} lg={4} display="flex">
-              <MDBox mb={3} width="100%" height={380}>
-                <Card sx={{ height: "100%" }}>
-                  <MDBox p={3}>
-                    <MDBox display="flex" alignItems="center" mb={1.5}>
-                      <MDBox
-                        width="3.25rem"
-                        height="3.25rem"
-                        bgColor="warning"
-                        variant="gradient"
-                        coloredShadow="warning"
-                        borderRadius="xl"
-                        display="flex"
-                        justifyContent="center"
-                        alignItems="center"
-                        color="white"
-                        mr={1.5}
-                      >
-                        <Icon sx={{ fontSize: "1.25rem" }}>receipt</Icon>
+              <Grid item xs={12} md={6} lg={4} display="flex">
+                <MDBox mb={3} width="100%" height={380}>
+                  <Card sx={{ height: "100%" }}>
+                    <MDBox p={3}>
+                      <MDBox display="flex" alignItems="center" mb={1.5}>
+                        <MDBox
+                          width="3.25rem"
+                          height="3.25rem"
+                          bgColor="warning"
+                          variant="gradient"
+                          coloredShadow="warning"
+                          borderRadius="xl"
+                          display="flex"
+                          justifyContent="center"
+                          alignItems="center"
+                          color="white"
+                          mr={1.5}
+                        >
+                          <Icon sx={{ fontSize: "1.25rem" }}>receipt</Icon>
+                        </MDBox>
+                        <MDBox>
+                          <MDTypography variant="h6" sx={{ fontSize: "1rem", lineHeight: 1.3 }}>
+                            Purchase Invoices
+                          </MDTypography>
+                          <MDTypography variant="button" color="text" fontWeight="medium" sx={{ fontSize: "0.9rem" }}>
+                            {purchaseReportData.summary.total_invoices} invoices in selected period
+                          </MDTypography>
+                        </MDBox>
                       </MDBox>
-                      <MDBox>
-                        <MDTypography variant="h6" sx={{ fontSize: "1rem", lineHeight: 1.3 }}>
-                          Purchase Invoices
-                        </MDTypography>
-                        <MDTypography variant="button" color="text" fontWeight="medium" sx={{ fontSize: "0.9rem" }}>
-                          {purchaseReportData.summary.total_invoices} invoices in selected period
-                        </MDTypography>
-                      </MDBox>
+                      <MDTypography variant="h3" color="dark">
+                        {purchaseReportData.summary.total_invoices}
+                      </MDTypography>
+                      <MDTypography variant="body2" color="text">
+                        Filtered by invoice date, with created date used when invoice date is missing.
+                      </MDTypography>
                     </MDBox>
-                    <MDTypography variant="h3" color="dark">
-                      {purchaseReportData.summary.total_invoices}
-                    </MDTypography>
-                    <MDTypography variant="body2" color="text">
-                      Filtered by invoice date, with created date used when invoice date is missing.
-                    </MDTypography>
-                  </MDBox>
-                </Card>
-              </MDBox>
-            </Grid>
-             <Grid item xs={12} md={6} lg={4} display="flex">
-              <MDBox mb={3} width="100%" height={380}>
-                <Card sx={{ height: "100%" }}>
-                  <MDBox p={3}>
-                    <MDBox display="flex" alignItems="center" mb={1.5}>
-                      <MDBox
-                        width="3.25rem"
-                        height="3.25rem"
-                        bgColor="success"
-                        variant="gradient"
-                        coloredShadow="success"
-                        borderRadius="xl"
-                        display="flex"
-                        justifyContent="center"
-                        alignItems="center"
-                        color="white"
-                        mr={1.5}
-                      >
-                        <Icon sx={{ fontSize: "1.25rem" }}>store</Icon>
+                  </Card>
+                </MDBox>
+              </Grid>
+              <Grid item xs={12} md={6} lg={4} display="flex">
+                <MDBox mb={3} width="100%" height={380}>
+                  <Card sx={{ height: "100%" }}>
+                    <MDBox p={3}>
+                      <MDBox display="flex" alignItems="center" mb={1.5}>
+                        <MDBox
+                          width="3.25rem"
+                          height="3.25rem"
+                          bgColor="success"
+                          variant="gradient"
+                          coloredShadow="success"
+                          borderRadius="xl"
+                          display="flex"
+                          justifyContent="center"
+                          alignItems="center"
+                          color="white"
+                          mr={1.5}
+                        >
+                          <Icon sx={{ fontSize: "1.25rem" }}>store</Icon>
+                        </MDBox>
+                        <MDBox>
+                          <MDTypography variant="h6" sx={{ fontSize: "1rem", lineHeight: 1.3 }}>
+                            Seller Coverage
+                          </MDTypography>
+                          <MDTypography variant="button" color="text" fontWeight="medium" sx={{ fontSize: "0.9rem" }}>
+                            {purchaseReportData.summary.seller_count} sellers with purchases
+                          </MDTypography>
+                        </MDBox>
                       </MDBox>
-                      <MDBox>
-                        <MDTypography variant="h6" sx={{ fontSize: "1rem", lineHeight: 1.3 }}>
-                          Seller Coverage
-                        </MDTypography>
-                        <MDTypography variant="button" color="text" fontWeight="medium" sx={{ fontSize: "0.9rem" }}>
-                          {purchaseReportData.summary.seller_count} sellers with purchases
-                        </MDTypography>
-                      </MDBox>
+                      <MDTypography variant="h3" color="dark">
+                        {purchaseReportData.summary.seller_count}
+                      </MDTypography>
+                      <MDTypography variant="body2" color="text">
+                        Distinct sellers counted from saved purchase invoices.
+                      </MDTypography>
                     </MDBox>
-                    <MDTypography variant="h3" color="dark">
-                      {purchaseReportData.summary.seller_count}
-                    </MDTypography>
-                    <MDTypography variant="body2" color="text">
-                      Distinct sellers counted from saved purchase invoices.
-                    </MDTypography>
-                  </MDBox>
-                </Card>
-              </MDBox>
+                  </Card>
+                </MDBox>
+              </Grid>
             </Grid>
-          </Grid>
-        </MDBox>
+          </MDBox>
 
-        <MDBox mt={1}>
-          {/* <Grid container spacing={3}>
+          <MDBox mt={1}>
+            {/* <Grid container spacing={3}>
             <Grid item xs={12} lg={6} display="flex">
               <MDBox mb={3} width="100%">
                 <PurchasePeriodTable
@@ -1787,11 +1785,11 @@ function Dashboard() {
               </MDBox>
             </Grid>
           </Grid> */}
-        </MDBox>
+          </MDBox>
 
-        <Grid container spacing={3}>
-         
-          {/* <Grid item xs={12} md={4}>
+          <Grid container spacing={3}>
+
+            {/* <Grid item xs={12} md={4}>
             <Card>
               <MDBox p={3}>
                 <MDTypography variant="h6" fontWeight="medium">
@@ -1806,345 +1804,256 @@ function Dashboard() {
               </MDBox>
             </Card>
           </Grid> */}
-      
-        </Grid>
-      </MDBox>
+
+          </Grid>
+        </MDBox>
       )}
 
 
 
 
       {/* //sales dashboard */}
-      
+
       {activeDashboardTab === "sales" && (
-      <MDBox py={3}>
-        <MDBox
-          mb={1}
-          display="flex"
-          justifyContent="space-between"
-          alignItems="flex-start"
-          flexWrap="wrap"
-          gap={2}
-        >
-          <MDBox>
-            <MDTypography variant="h4" fontWeight="medium" color="dark">
-              Sales Dashboard
-            </MDTypography>
-            <MDTypography variant="body2" color="text">
-              Live sales, collection, outstanding, cheque, and dues overview.
-            </MDTypography>
-          </MDBox>
-          <MDBox display="flex" gap={1.5} flexWrap="wrap" alignItems="center" sx={{ ml: { xs: 0, md: "auto" } }}>
-            <FormControl size="small" sx={{ minWidth: 160 }}>
-              <InputLabel id="dashboard-financial-year-label">Financial Year</InputLabel>
-              <Select
-                labelId="dashboard-financial-year-label"
-                value={selectedFinancialYear}
-                label="Financial Year"
-                onChange={(event) => handleFinancialYearChange(event.target.value)}
-                sx={{ height: 44, backgroundColor: "#fff" }}
-              >
-                <MenuItem value="">All Years</MenuItem>
-                {financialYearOptions.map((option) => (
-                  <MenuItem key={option.value} value={option.value}>
-                    {option.label}
-                  </MenuItem>
-                ))}
-              </Select>
-            </FormControl>
-            <FormControl size="small" sx={{ minWidth: 140 }} disabled={!selectedFinancialYear}>
-              <InputLabel id="dashboard-month-label">Month</InputLabel>
-              <Select
-                labelId="dashboard-month-label"
-                value={selectedMonth}
-                label="Month"
-                onChange={(event) => setSelectedMonth(event.target.value)}
-                sx={{ height: 44, backgroundColor: "#fff" }}
-              >
-                <MenuItem value="">All Months</MenuItem>
-                {monthOptions.map((option) => (
-                  <MenuItem key={option.value} value={option.value}>
-                    {option.label}
-                  </MenuItem>
-                ))}
-              </Select>
-            </FormControl>
-          </MDBox>
-        </MDBox>
-
-        <MDBox mt={4}>
-          <Grid container spacing={3}>
-            <Grid item xs={12} md={6} lg={3}>
-              <MDBox mb={1.5}>
-                <ComplexStatisticsCard
-                  color="info"
-                  icon="receipt_long"
-                  title="Total Sales"
-                  count={shortMoney(reportData.summary.total_sales)}
-                  percentage={{
-                    color: "info",
-                    amount: "",
-                    label: "All sales",
-                  }}
-                />
-              </MDBox>
-            </Grid>
-            <Grid item xs={12} md={6} lg={3}>
-              <MDBox mb={1.5} position="relative">
-                <ComplexStatisticsCard
-                  color="success"
-                  icon="payments"
-                  title="Total Paid"
-                  count={shortMoney(reportData.summary.total_paid)}
-                  percentage={{
-                    color: "success",
-                    amount: "",
-                    label: "Paid invoice amount",
-                  }}
-                />
-                <MDBox
-                  position="absolute"
-                  bottom={14}
-                  right={16}
-                  display="flex"
-                  alignItems="center"
-                  onClick={() => setPaidCollectionDialogOpen(true)}
-                  sx={{ cursor: "pointer", color: "#7b809a", "&:hover": { color: "#344767" } }}
-                  title="View collection breakdown"
+        <MDBox py={3}>
+          <MDBox
+            mb={1}
+            display="flex"
+            justifyContent="space-between"
+            alignItems="flex-start"
+            flexWrap="wrap"
+            gap={2}
+          >
+            <MDBox>
+              <MDTypography variant="h4" fontWeight="medium" color="dark">
+                Sales Dashboard
+              </MDTypography>
+              <MDTypography variant="body2" color="text">
+                Live sales, collection, outstanding, cheque, and dues overview.
+              </MDTypography>
+            </MDBox>
+            <MDBox display="flex" gap={1.5} flexWrap="wrap" alignItems="center" sx={{ ml: { xs: 0, md: "auto" } }}>
+              <FormControl size="small" sx={{ minWidth: 160 }}>
+                <InputLabel id="dashboard-financial-year-label">Financial Year</InputLabel>
+                <Select
+                  labelId="dashboard-financial-year-label"
+                  value={selectedFinancialYear}
+                  label="Financial Year"
+                  onChange={(event) => handleFinancialYearChange(event.target.value)}
+                  sx={{ height: 44, backgroundColor: "#fff" }}
                 >
-                  <Icon sx={{ fontSize: "1.1rem" }}>visibility</Icon>
-                </MDBox>
-              </MDBox>
-            </Grid>
-           
-           
-            <Grid item xs={12} md={6} lg={3}>
-              <MDBox mb={1.5}>
-                <ComplexStatisticsCard
-                  color="error"
-                  icon="credit_card"
-                  title="Total Credit Dues"
-                  count={shortMoney(totalCreditDues)}
-                  percentage={{
-                    color: creditDuesCount > 0 ? "error" : "success",
-                    amount: creditDuesCount,
-                    label: "open credit entries",
-                  }}
-                />
-              </MDBox>
-            </Grid>
-            <Grid item xs={12} md={6} lg={3}>
-              <MDBox mb={1.5}>
-                <ComplexStatisticsCard
-                  color="primary"
-                  icon="savings"
-                  title="Collection"
-                  count={shortMoney(netCollection)}
-                  percentage={{
-                    color: netCollection >= 0 ? "success" : "error",
-                    amount: "",
-                    label: "Total Paid - Credit Dues",
-                  }}
-                />
-              </MDBox>
-            </Grid>
-            <Grid item xs={12} md={6} lg={3}>
-              <MDBox mb={1.5}>
-                <ComplexStatisticsCard
-                  color="warning"
-                  icon="account_balance_wallet"
-                  title="Outstanding"
-                  count={shortMoney(reportData.summary.total_outstanding)}
-                  percentage={{
-                    color: "warning",
-                    amount: "",
-                    label: "Unpaid invoice balance",
-                  }}
-                />
-              </MDBox>
-            </Grid>
-            <Grid item xs={12} md={6} lg={3}>
-              <MDBox mb={1.5}>
-                <ComplexStatisticsCard
-                  color="dark"
-                  icon="today"
-                  title="Today Collection"
-                  count={shortMoney(todayCollectionTotal)}
-                />
-              </MDBox>
-            </Grid>
-            <Grid item xs={12} md={6} lg={3}>
-              <MDBox mb={1.5} onClick={() => setChequeDialogOpen(true)} sx={{ cursor: "pointer" }}>
-                <ComplexStatisticsCard
-                  color={chequePendingCount > 0 ? "warning" : "success"}
-                  icon="account_balance"
-                  title="Pending Cheques"
-                  count={chequePendingCount}
-                  percentage={{
-                    color: chequeMissedCount > 0 ? "error" : "success",
-                    amount: "",
-                    label: chequeMissedCount > 0 ? `incl. ${chequeMissedCount} missed` : "deposit pending",
-                  }}
-                />
-              </MDBox>
-            </Grid>
-            <Grid item xs={12} md={6} lg={3}>
-              <MDBox mb={1.5}>
-                <ComplexStatisticsCard
-                  color="info"
-                  icon="receipt"
-                  title="Payment Entries"
-                  count={reportData.collectionByMode.reduce((total, row) => total + Number(row.count || 0), 0)}
-                  percentage={{
-                    color: "success",
-                    amount: "",
-                    label: "Cash, online, and cheque entries",
-                  }}
-                />
-              </MDBox>
-            </Grid>
-          </Grid>
-        </MDBox>
+                  <MenuItem value="">All Years</MenuItem>
+                  {financialYearOptions.map((option) => (
+                    <MenuItem key={option.value} value={option.value}>
+                      {option.label}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+              <FormControl size="small" sx={{ minWidth: 140 }} disabled={!selectedFinancialYear}>
+                <InputLabel id="dashboard-month-label">Month</InputLabel>
+                <Select
+                  labelId="dashboard-month-label"
+                  value={selectedMonth}
+                  label="Month"
+                  onChange={(event) => setSelectedMonth(event.target.value)}
+                  sx={{ height: 44, backgroundColor: "#fff" }}
+                >
+                  <MenuItem value="">All Months</MenuItem>
+                  {monthOptions.map((option) => (
+                    <MenuItem key={option.value} value={option.value}>
+                      {option.label}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            </MDBox>
+          </MDBox>
 
-        <MDBox mt={4.5}>
-          <Grid container spacing={3}>
-            <Grid item xs={12} md={6} lg={4} display="flex">
-              <MDBox mb={3} width="100%" height={460}>
-                <Card sx={{ height: "100%" }}>
-                  <MDBox p={3}>
-                    <MDBox display="flex" alignItems="center" mb={1.5}>
-                      <MDBox
-                        width="3.25rem"
-                        height="3.25rem"
-                        bgColor="info"
-                        variant="gradient"
-                        coloredShadow="info"
-                        borderRadius="xl"
-                        display="flex"
-                        justifyContent="center"
-                        alignItems="center"
-                        color="white"
-                        mr={1.5}
-                      >
-                        <Icon sx={{ fontSize: "1.25rem" }}>bar_chart</Icon>
-                      </MDBox>
-                      <MDBox>
-                        <MDTypography variant="h6" sx={{ fontSize: "1rem", lineHeight: 1.3 }}>
-                          {`Monthly Sales · ${formatDate(salesChartFromDate)} to ${formatDate(salesChartToDate)}${
-                            selectedSalesStaffId ? ` · ${selectedSalesStaffName}` : ""
-                          }`}
-                        </MDTypography>
-                        <MDTypography variant="button" color="text" fontWeight="medium" sx={{ fontSize: "0.9rem" }}>
-                          {money(monthlySalesTotal)} · Invoice value by month
-                        </MDTypography>
-                      </MDBox>
-                    </MDBox>
-                    {salesChartLoading && (
-                      <MDTypography variant="caption" color="text" display="block" mb={1}>
-                        Loading sales for selected period...
-                      </MDTypography>
-                    )}
-                    <MDBox display="flex" gap={0.75} alignItems="center" flexWrap="wrap" mb={2}>
-                      <FormControl size="small" sx={{ minWidth: 150 }}>
-                        <InputLabel id="sales-chart-staff-label">Staff</InputLabel>
-                        <Select
-                          labelId="sales-chart-staff-label"
-                          value={selectedSalesStaffId}
-                          label="Staff"
-                          onChange={(event) => setSelectedSalesStaffId(event.target.value)}
-                          sx={{ height: 36, fontSize: "0.8125rem", backgroundColor: "#fff" }}
-                        >
-                          <MenuItem value="">All Staff</MenuItem>
-                          {collectionStaffOptions.map((staff) => (
-                            <MenuItem key={`sales-staff-${staff.id}`} value={String(staff.id)}>
-                              {staff.name}
-                            </MenuItem>
-                          ))}
-                        </Select>
-                      </FormControl>
-                      <TextField
-                        type="date"
-                        size="small"
-                        label="From"
-                        value={salesChartFromDate}
-                        onChange={(event) => setSalesChartFromDate(event.target.value)}
-                        InputLabelProps={{ shrink: true }}
-                        sx={compactDateFieldSx}
-                      />
-                      <MDTypography variant="button" color="text" sx={{ px: 0.25 }}>
-                        to
-                      </MDTypography>
-                      <TextField
-                        type="date"
-                        size="small"
-                        label="To"
-                        value={salesChartToDate}
-                        onChange={(event) => setSalesChartToDate(event.target.value)}
-                        InputLabelProps={{ shrink: true }}
-                        sx={compactDateFieldSx}
-                      />
-                    </MDBox>
-                    <MDBox width="100%">
-                      <BarChart
-                        dataset={monthlySalesDataset}
-                        xAxis={[{ dataKey: "month", scaleType: "band", tickLabelPlacement: "middle" }]}
-                        yAxis={[{ label: "Sales (Rs.)", width: 72 }]}
-                        series={[
-                          {
-                            dataKey: "sales",
-                            label: "Monthly Sales",
-                            valueFormatter: salesChartValueFormatter,
-                            color: "#1A73E8",
-                          },
-                        ]}
-                        height={260}
-                        margin={{ left: 0, top: 10, right: 10, bottom: 30 }}
-                      />
-                    </MDBox>
+          <MDBox mt={4}>
+            <Grid container spacing={3}>
+              <Grid item xs={12} md={6} lg={3}>
+                <MDBox mb={1.5}>
+                  <ComplexStatisticsCard
+                    color="info"
+                    icon="receipt_long"
+                    title="Total Sales"
+                    count={shortMoney(reportData.summary.total_sales)}
+                    percentage={{
+                      color: "info",
+                      amount: "",
+                      label: "All sales",
+                    }}
+                  />
+                </MDBox>
+              </Grid>
+              <Grid item xs={12} md={6} lg={3}>
+                <MDBox mb={1.5} position="relative">
+                  <ComplexStatisticsCard
+                    color="success"
+                    icon="payments"
+                    title="Total Paid"
+                    count={shortMoney(reportData.summary.total_paid)}
+                    percentage={{
+                      color: "success",
+                      amount: "",
+                      label: "Paid invoice amount",
+                    }}
+                  />
+                  <MDBox
+                    position="absolute"
+                    bottom={14}
+                    right={16}
+                    display="flex"
+                    alignItems="center"
+                    onClick={() => setPaidCollectionDialogOpen(true)}
+                    sx={{ cursor: "pointer", color: "#7b809a", "&:hover": { color: "#344767" } }}
+                    title="View collection breakdown"
+                  >
+                    <Icon sx={{ fontSize: "1.1rem" }}>visibility</Icon>
                   </MDBox>
-                </Card>
-              </MDBox>
+                </MDBox>
+              </Grid>
+
+
+              <Grid item xs={12} md={6} lg={3}>
+                <MDBox mb={1.5}>
+                  <ComplexStatisticsCard
+                    color="error"
+                    icon="credit_card"
+                    title="Total Credit Dues"
+                    count={shortMoney(totalCreditDues)}
+                    percentage={{
+                      color: creditDuesCount > 0 ? "error" : "success",
+                      amount: creditDuesCount,
+                      label: "open credit entries",
+                    }}
+                  />
+                </MDBox>
+              </Grid>
+              <Grid item xs={12} md={6} lg={3}>
+                <MDBox mb={1.5}>
+                  <ComplexStatisticsCard
+                    color="primary"
+                    icon="savings"
+                    title="Collection"
+                    count={shortMoney(netCollection)}
+                    percentage={{
+                      color: netCollection >= 0 ? "success" : "error",
+                      amount: "",
+                      label: "Total Paid - Credit Dues",
+                    }}
+                  />
+                </MDBox>
+              </Grid>
+              <Grid item xs={12} md={6} lg={3}>
+                <MDBox mb={1.5}>
+                  <ComplexStatisticsCard
+                    color="warning"
+                    icon="account_balance_wallet"
+                    title="Outstanding"
+                    count={shortMoney(reportData.summary.total_outstanding)}
+                    percentage={{
+                      color: "warning",
+                      amount: "",
+                      label: "Unpaid invoice balance",
+                    }}
+                  />
+                </MDBox>
+              </Grid>
+              <Grid item xs={12} md={6} lg={3}>
+                <MDBox mb={1.5}>
+                  <ComplexStatisticsCard
+                    color="dark"
+                    icon="today"
+                    title="Today Collection"
+                    count={shortMoney(todayCollectionTotal)}
+                  />
+                </MDBox>
+              </Grid>
+              <Grid item xs={12} md={6} lg={3}>
+                <MDBox mb={1.5} onClick={() => setChequeDialogOpen(true)} sx={{ cursor: "pointer" }}>
+                  <ComplexStatisticsCard
+                    color={chequePendingCount > 0 ? "warning" : "success"}
+                    icon="account_balance"
+                    title="Pending Cheques"
+                    count={chequePendingCount}
+                    percentage={{
+                      color: chequeMissedCount > 0 ? "error" : "success",
+                      amount: "",
+                      label: chequeMissedCount > 0 ? `incl. ${chequeMissedCount} missed` : "deposit pending",
+                    }}
+                  />
+                </MDBox>
+              </Grid>
+              <Grid item xs={12} md={6} lg={3}>
+                <MDBox mb={1.5}>
+                  <ComplexStatisticsCard
+                    color="info"
+                    icon="receipt"
+                    title="Payment Entries"
+                    count={reportData.collectionByMode.reduce((total, row) => total + Number(row.count || 0), 0)}
+                    percentage={{
+                      color: "success",
+                      amount: "",
+                      label: "Cash, online, and cheque entries",
+                    }}
+                  />
+                </MDBox>
+              </Grid>
             </Grid>
-            {/* <Grid item xs={12} md={6} lg={4}>
-              <MDBox mb={3}>
-                <ReportsLineChart
-                  color="success"
-                  title="weekly sales"
-                  description="Recent week-wise sales trend"
-                  date="all records"
-                  chart={weeklySalesChart}
-                />
-              </MDBox>
-            </Grid> */}
-            <Grid item xs={12} md={6} lg={4} display="flex">
-              <MDBox mb={3} width="100%" height={460} sx={{ "& > div": { height: "100%" } }}>
-                <PaymentModePieChart
-                  data={collectionModePieData}
-                  title={`Total Collection · ${formatDate(totalCollectionFromDate)} to ${formatDate(totalCollectionToDate)}${
-                    selectedCollectionStaffId ? ` · ${selectedCollectionStaffName}` : ""
-                  }`}
-                  icon="donut_small"
-                  iconColor="warning"
-                  actions={
-                    <>
-                      {totalCollectionLoading && (
+          </MDBox>
+
+          <MDBox mt={4.5}>
+            <Grid container spacing={3}>
+              <Grid item xs={12} md={6} lg={4} display="flex">
+                <MDBox mb={3} width="100%" height={460}>
+                  <Card sx={{ height: "100%" }}>
+                    <MDBox p={3}>
+                      <MDBox display="flex" alignItems="center" mb={1.5}>
+                        <MDBox
+                          width="3.25rem"
+                          height="3.25rem"
+                          bgColor="info"
+                          variant="gradient"
+                          coloredShadow="info"
+                          borderRadius="xl"
+                          display="flex"
+                          justifyContent="center"
+                          alignItems="center"
+                          color="white"
+                          mr={1.5}
+                        >
+                          <Icon sx={{ fontSize: "1.25rem" }}>bar_chart</Icon>
+                        </MDBox>
+                        <MDBox>
+                          <MDTypography variant="h6" sx={{ fontSize: "1rem", lineHeight: 1.3 }}>
+                            {`Monthly Sales · ${formatDate(salesChartFromDate)} to ${formatDate(salesChartToDate)}${selectedSalesStaffId ? ` · ${selectedSalesStaffName}` : ""
+                              }`}
+                          </MDTypography>
+                          <MDTypography variant="button" color="text" fontWeight="medium" sx={{ fontSize: "0.9rem" }}>
+                            {money(monthlySalesTotal)} · Invoice value by month
+                          </MDTypography>
+                        </MDBox>
+                      </MDBox>
+                      {salesChartLoading && (
                         <MDTypography variant="caption" color="text" display="block" mb={1}>
-                          Loading collection for selected period...
+                          Loading sales for selected period...
                         </MDTypography>
                       )}
-                      <MDBox display="flex" gap={0.75} alignItems="center" flexWrap="wrap">
+                      <MDBox display="flex" gap={0.75} alignItems="center" flexWrap="wrap" mb={2}>
                         <FormControl size="small" sx={{ minWidth: 150 }}>
-                          <InputLabel id="total-collection-staff-label">Staff</InputLabel>
+                          <InputLabel id="sales-chart-staff-label">Staff</InputLabel>
                           <Select
-                            labelId="total-collection-staff-label"
-                            value={selectedCollectionStaffId}
+                            labelId="sales-chart-staff-label"
+                            value={selectedSalesStaffId}
                             label="Staff"
-                            onChange={(event) => setSelectedCollectionStaffId(event.target.value)}
+                            onChange={(event) => setSelectedSalesStaffId(event.target.value)}
                             sx={{ height: 36, fontSize: "0.8125rem", backgroundColor: "#fff" }}
                           >
                             <MenuItem value="">All Staff</MenuItem>
                             {collectionStaffOptions.map((staff) => (
-                              <MenuItem key={staff.id} value={String(staff.id)}>
+                              <MenuItem key={`sales-staff-${staff.id}`} value={String(staff.id)}>
                                 {staff.name}
                               </MenuItem>
                             ))}
@@ -2154,8 +2063,8 @@ function Dashboard() {
                           type="date"
                           size="small"
                           label="From"
-                          value={totalCollectionFromDate}
-                          onChange={(event) => setTotalCollectionFromDate(event.target.value)}
+                          value={salesChartFromDate}
+                          onChange={(event) => setSalesChartFromDate(event.target.value)}
                           InputLabelProps={{ shrink: true }}
                           sx={compactDateFieldSx}
                         />
@@ -2166,95 +2075,182 @@ function Dashboard() {
                           type="date"
                           size="small"
                           label="To"
-                          value={totalCollectionToDate}
-                          onChange={(event) => setTotalCollectionToDate(event.target.value)}
+                          value={salesChartToDate}
+                          onChange={(event) => setSalesChartToDate(event.target.value)}
                           InputLabelProps={{ shrink: true }}
                           sx={compactDateFieldSx}
                         />
-                        <MDButton
-                          color="dark"
-                          variant="contained"
-                          size="small"
-                          onClick={handlePrintTotalCollection}
-                          disabled={
-                            !totalCollectionFromDate ||
-                            !totalCollectionToDate ||
-                            totalCollectionFromDate > totalCollectionToDate ||
-                            totalCollectionLoading
-                          }
-                          sx={{ minWidth: 44, p: 1.2 }}
-                          title="Print detailed collection report"
-                        >
-                          <Icon>print</Icon>
-                        </MDButton>
                       </MDBox>
-                    </>
-                  }
-                />
-              </MDBox>
-            </Grid>
-            <Grid item xs={12} md={6} lg={4} display="flex">
-              <MDBox mb={3} width="100%" height={460} sx={{ "& > div": { height: "100%" } }}>
-                <PaymentModePieChart
-                  data={todayCollectionPieData}
-                  title={`collection ${formatDate(collectionPrintDate)}`}
-                  icon="today"
-                  iconColor="success"
-                  actions={
-                    <>
-                      {collectionDateLoading && (
-                        <MDTypography variant="caption" color="text" display="block" mb={1}>
-                          Loading collection for selected date...
-                        </MDTypography>
-                      )}
-                      <MDBox display="flex" gap={0.75} alignItems="center">
-                        <TextField
-                          type="date"
-                          size="small"
-                          label="Date"
-                          value={collectionPrintDate}
-                          onChange={(event) => setCollectionPrintDate(event.target.value)}
-                          InputLabelProps={{ shrink: true }}
-                          sx={compactDateFieldSx}
+                      <MDBox width="100%">
+                        <BarChart
+                          dataset={monthlySalesDataset}
+                          xAxis={[{ dataKey: "month", scaleType: "band", tickLabelPlacement: "middle" }]}
+                          yAxis={[{ label: "Sales (Rs.)", width: 72 }]}
+                          series={[
+                            {
+                              dataKey: "sales",
+                              label: "Monthly Sales",
+                              valueFormatter: salesChartValueFormatter,
+                              color: "#1A73E8",
+                            },
+                          ]}
+                          height={260}
+                          margin={{ left: 0, top: 10, right: 10, bottom: 30 }}
                         />
-                        <MDButton
-                          color="dark"
-                          variant="contained"
-                          size="small"
-                          onClick={handlePrintTodayCollection}
-                          disabled={!collectionPrintDate || collectionDateLoading}
-                          sx={{ minWidth: 44, p: 1.2, ml: "auto" }}
-                        >
-                          <Icon>print</Icon>
-                        </MDButton>
                       </MDBox>
-                    </>
-                  }
+                    </MDBox>
+                  </Card>
+                </MDBox>
+              </Grid>
+              {/* <Grid item xs={12} md={6} lg={4}>
+              <MDBox mb={3}>
+                <ReportsLineChart
+                  color="success"
+                  title="weekly sales"
+                  description="Recent week-wise sales trend"
+                  date="all records"
+                  chart={weeklySalesChart}
                 />
               </MDBox>
+            </Grid> */}
+              <Grid item xs={12} md={6} lg={4} display="flex">
+                <MDBox mb={3} width="100%" height={460} sx={{ "& > div": { height: "100%" } }}>
+                  <PaymentModePieChart
+                    data={collectionModePieData}
+                    title={`Total Collection · ${formatDate(totalCollectionFromDate)} to ${formatDate(totalCollectionToDate)}${selectedCollectionStaffId ? ` · ${selectedCollectionStaffName}` : ""
+                      }`}
+                    icon="donut_small"
+                    iconColor="warning"
+                    actions={
+                      <>
+                        {totalCollectionLoading && (
+                          <MDTypography variant="caption" color="text" display="block" mb={1}>
+                            Loading collection for selected period...
+                          </MDTypography>
+                        )}
+                        <MDBox display="flex" gap={0.75} alignItems="center" flexWrap="wrap">
+                          <FormControl size="small" sx={{ minWidth: 150 }}>
+                            <InputLabel id="total-collection-staff-label">Staff</InputLabel>
+                            <Select
+                              labelId="total-collection-staff-label"
+                              value={selectedCollectionStaffId}
+                              label="Staff"
+                              onChange={(event) => setSelectedCollectionStaffId(event.target.value)}
+                              sx={{ height: 36, fontSize: "0.8125rem", backgroundColor: "#fff" }}
+                            >
+                              <MenuItem value="">All Staff</MenuItem>
+                              {collectionStaffOptions.map((staff) => (
+                                <MenuItem key={staff.id} value={String(staff.id)}>
+                                  {staff.name}
+                                </MenuItem>
+                              ))}
+                            </Select>
+                          </FormControl>
+                          <TextField
+                            type="date"
+                            size="small"
+                            label="From"
+                            value={totalCollectionFromDate}
+                            onChange={(event) => setTotalCollectionFromDate(event.target.value)}
+                            InputLabelProps={{ shrink: true }}
+                            sx={compactDateFieldSx}
+                          />
+                          <MDTypography variant="button" color="text" sx={{ px: 0.25 }}>
+                            to
+                          </MDTypography>
+                          <TextField
+                            type="date"
+                            size="small"
+                            label="To"
+                            value={totalCollectionToDate}
+                            onChange={(event) => setTotalCollectionToDate(event.target.value)}
+                            InputLabelProps={{ shrink: true }}
+                            sx={compactDateFieldSx}
+                          />
+                          <MDButton
+                            color="dark"
+                            variant="contained"
+                            size="small"
+                            onClick={handlePrintTotalCollection}
+                            disabled={
+                              !totalCollectionFromDate ||
+                              !totalCollectionToDate ||
+                              totalCollectionFromDate > totalCollectionToDate ||
+                              totalCollectionLoading
+                            }
+                            sx={{ minWidth: 44, p: 1.2 }}
+                            title="Print detailed collection report"
+                          >
+                            <Icon>print</Icon>
+                          </MDButton>
+                        </MDBox>
+                      </>
+                    }
+                  />
+                </MDBox>
+              </Grid>
+              <Grid item xs={12} md={6} lg={4} display="flex">
+                <MDBox mb={3} width="100%" height={460} sx={{ "& > div": { height: "100%" } }}>
+                  <PaymentModePieChart
+                    data={todayCollectionPieData}
+                    title={`collection ${formatDate(collectionPrintDate)}`}
+                    icon="today"
+                    iconColor="success"
+                    actions={
+                      <>
+                        {collectionDateLoading && (
+                          <MDTypography variant="caption" color="text" display="block" mb={1}>
+                            Loading collection for selected date...
+                          </MDTypography>
+                        )}
+                        <MDBox display="flex" gap={0.75} alignItems="center">
+                          <TextField
+                            type="date"
+                            size="small"
+                            label="Date"
+                            value={collectionPrintDate}
+                            onChange={(event) => setCollectionPrintDate(event.target.value)}
+                            InputLabelProps={{ shrink: true }}
+                            sx={compactDateFieldSx}
+                          />
+                          <MDButton
+                            color="dark"
+                            variant="contained"
+                            size="small"
+                            onClick={handlePrintTodayCollection}
+                            disabled={!collectionPrintDate || collectionDateLoading}
+                            sx={{ minWidth: 44, p: 1.2, ml: "auto" }}
+                          >
+                            <Icon>print</Icon>
+                          </MDButton>
+                        </MDBox>
+                      </>
+                    }
+                  />
+                </MDBox>
+              </Grid>
             </Grid>
-          </Grid>
-        </MDBox>
+          </MDBox>
 
-        <MDBox mt={1}>
+          <MDBox mt={1}>
+            <Grid container spacing={3}>
+              <Grid item xs={12} lg={6} display="flex">
+                <MDBox mb={3} width="100%">
+                  <MonthlyCollectionChart rows={monthlyCollectionRows} />
+                </MDBox>
+              </Grid>
+
+              <Grid item xs={12} lg={6} display="flex">
+                <MDBox mb={3} width="100%">
+                  <YearlyCollectionChart rows={yearlyCollectionRows} />
+                </MDBox>
+              </Grid>
+            </Grid>
+          </MDBox>
+
           <Grid container spacing={3}>
-            <Grid item xs={12} lg={6} display="flex">
-              <MDBox mb={3} width="100%">
-                <MonthlyCollectionChart rows={monthlyCollectionRows} />
-              </MDBox>
-            </Grid>
-           
-            <Grid item xs={12} lg={6} display="flex">
-              <MDBox mb={3} width="100%">
-                <YearlyCollectionChart rows={yearlyCollectionRows} />
-              </MDBox>
-            </Grid>
-          </Grid>
-        </MDBox>
 
-        <Grid container spacing={3}>
-         
-          {/* <Grid item xs={12} md={4}>
+            {/* <Grid item xs={12} md={4}>
             <Card>
               <MDBox p={3}>
                 <MDTypography variant="h6" fontWeight="medium">
@@ -2269,9 +2265,9 @@ function Dashboard() {
               </MDBox>
             </Card>
           </Grid> */}
-      
-        </Grid>
-      </MDBox>
+
+          </Grid>
+        </MDBox>
       )}
 
       <Dialog

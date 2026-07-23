@@ -143,8 +143,11 @@ const emptyManualItem = () => ({
   currentStockInPcs: "",
   totalCurrentStockInPcs: "",
   pricePerPiece: "",
+  purchasePrice: "",
   mrp: "",
   totalValue: "",
+  priceWithGst: "",
+  purchasePriceWithGst: "",
   sourceItemId: null,
 });
 
@@ -161,13 +164,18 @@ const mapSellerItemToManualItem = (sellerItem) => {
     productErpId: sellerItem.product_erp_id || "",
     productName: sellerItem.sku_name || "",
     variantName: sellerItem.variant_name || "",
-    pcsPerBox: "",
+    pcsPerBox: sellerItem.pcs_per_box != null ? String(sellerItem.pcs_per_box) : "",
     currentStockInCase: "",
     currentStockInPcs: "",
     totalCurrentStockInPcs: "",
     pricePerPiece: "",
+    purchasePrice: sellerItem.purchase_price != null ? String(sellerItem.purchase_price) : "",
     mrp: "",
     totalValue: "",
+    priceWithGst: "",
+    purchasePriceWithGst: sellerItem.purchase_price != null
+      ? (Number(sellerItem.purchase_price) * 1.05).toFixed(2)
+      : "",
     sourceItemId: sellerItem.id || null,
   };
 };
@@ -179,13 +187,18 @@ const calcManualTotals = (item) => {
   const currentStockInCase = Number(item.currentStockInCase) || 0;
   const currentStockInPcs = Number(item.currentStockInPcs) || 0;
   const pricePerPiece = Number(item.pricePerPiece) || 0;
+  const purchasePrice = Number(item.purchasePrice) || 0;
 
   const totalCurrentStockInPcs = (pcsPerBox * currentStockInCase) + currentStockInPcs;
-  const totalValue = totalCurrentStockInPcs * pricePerPiece;
+  const priceWithGst = pricePerPiece * 1.05;
+  const purchasePriceWithGst = purchasePrice * 1.05;
+  const totalValue = totalCurrentStockInPcs * priceWithGst;
 
   return {
     totalCurrentStockInPcs: totalCurrentStockInPcs ? String(totalCurrentStockInPcs) : "",
     totalValue: totalValue ? totalValue.toFixed(2) : "",
+    priceWithGst: pricePerPiece ? priceWithGst.toFixed(2) : "",
+    purchasePriceWithGst: purchasePrice ? purchasePriceWithGst.toFixed(2) : "",
   };
 };
 
@@ -484,8 +497,12 @@ function DmsStock() {
       setError("Please select an item.");
       return;
     }
-    if (!manualItem.pcsPerBox && !manualItem.currentStockInCase) {
-      setError("Please enter Pcs/Box and stock quantity.");
+    if (!manualItem.pcsPerBox) {
+      setError("Please set '1 Box = Pieces' for this item on the Add Item page.");
+      return;
+    }
+    if (!manualItem.currentStockInCase) {
+      setError("Please enter the number of boxes.");
       return;
     }
     if (!manualItem.pricePerPiece) {
@@ -506,7 +523,8 @@ function DmsStock() {
       currentStockInCase: manualItem.currentStockInCase,
       currentStockInPcs: manualItem.currentStockInPcs,
       totalCurrentStockInPcs: totals.totalCurrentStockInPcs,
-      pricePerPiece: manualItem.pricePerPiece,
+      pricePerPiece: totals.priceWithGst,
+      purchasePrice: totals.purchasePriceWithGst,
       mrp: manualItem.mrp,
       totalValue: totals.totalValue,
       sourceItemId: manualItem.sourceItemId || null,
@@ -638,7 +656,7 @@ function DmsStock() {
             <Grid item xs={12}>
               <Grid container spacing={2}>
                 <Grid item xs={12} sm={6} md={3}>
-                  <Metric label="Upload Date" value={formatUploadDate(getImportUploadDate(stockImport))} />
+                  <Metric label="Invoice Date" value={formatUploadDate(getImportUploadDate(stockImport))} />
                 </Grid>
                 <Grid item xs={12} sm={6} md={3}>
                   <Metric label="Company" value={stockImport.company_name || "N/A"} />
@@ -674,7 +692,7 @@ function DmsStock() {
                   </MDTypography>
                   {stockImport && (
                     <MDTypography variant="caption" color="text" display="block" mt={0.5}>
-                      Upload Date: {formatUploadDate(getImportUploadDate(stockImport))}
+                      Invoice Date: {formatUploadDate(getImportUploadDate(stockImport))}
                       {stockImport.company_name ? ` | Company: ${stockImport.company_name}` : ""}
                       {stockImport.file_name ? ` | File: ${stockImport.file_name}` : ""}
                     </MDTypography>
@@ -767,15 +785,15 @@ function DmsStock() {
                         <TableCell sx={stickyColumnSx(1, { isHead: true, baseSx: tableHeadSx })}>Product ERP ID</TableCell>
                         <TableCell sx={stickyColumnSx(2, { isHead: true, baseSx: tableHeadSx })}>SKU Name</TableCell>
                         <TableCell sx={stickyColumnSx(3, { isHead: true, baseSx: tableHeadSx })}>Company</TableCell>
-                        <TableCell sx={stickyHeadRowSx(tableHeadSx)}>Upload Date</TableCell>
+                        <TableCell sx={stickyHeadRowSx(tableHeadSx)}>Invoice Date</TableCell>
                         <TableCell sx={stickyHeadRowSx(tableHeadSx)}>Variant Name</TableCell>
                         <TableCell align="right" sx={stickyHeadRowSx(tableHeadSx)}>Pcs/Box</TableCell>
-                        <TableCell align="right" sx={stickyHeadRowSx(tableHeadSx)}>Current Stock In Case</TableCell>
+                        <TableCell align="right" sx={stickyHeadRowSx(tableHeadSx)}>No. of Boxes</TableCell>
                         <TableCell align="right" sx={stickyHeadRowSx(tableHeadSx)}>Current Stock In Pcs</TableCell>
                         <TableCell align="right" sx={stickyHeadRowSx(tableHeadSx)}>Total Current Stock In Pcs</TableCell>
-                        <TableCell align="right" sx={stickyHeadRowSx(tableHeadSx)}>Price/Pcs</TableCell>
-                        <TableCell align="right" sx={stickyHeadRowSx(tableHeadSx)}>MRP</TableCell>
-                        <TableCell align="right" sx={stickyHeadRowSx(tableHeadSx)}>Total Value</TableCell>
+                        <TableCell align="right" sx={stickyHeadRowSx(tableHeadSx)}>Price/Pcs (Incl. GST)</TableCell>
+                        <TableCell align="right" sx={stickyHeadRowSx(tableHeadSx)}>MRP (Incl. GST)</TableCell>
+                        <TableCell align="right" sx={stickyHeadRowSx(tableHeadSx)}>Total Value (Incl. GST)</TableCell>
                       </TableRow>
                     </TableHead>
                     <TableBody>
@@ -896,7 +914,7 @@ function DmsStock() {
               <Grid item xs={12}>
                 <MDInput
                   type="date"
-                  label="Upload Date"
+                  label="Invoice Date"
                   fullWidth
                   value={uploadDate}
                   onChange={(event) => setUploadDate(event.target.value)}
@@ -997,7 +1015,7 @@ function DmsStock() {
               </Grid>
               <Grid item xs={12} md={4}>
                 <MDTypography sx={fieldLabelSx}>
-                  Upload Date{requiredMark}
+                  Invoice Date{requiredMark}
                 </MDTypography>
                 <MDInput
                   type="date"
@@ -1069,28 +1087,34 @@ function DmsStock() {
 
               <Grid item xs={12} md={3}>
                 <MDTypography sx={fieldLabelSx}>
-                  Pcs/Box{requiredMark}
+                  1 Box = Pieces
                 </MDTypography>
                 <MDInput
                   fullWidth
-                  type="number"
-                  placeholder="0"
                   value={manualItem.pcsPerBox}
-                  onChange={(event) => updateManualItem("pcsPerBox", event.target.value)}
-                  sx={{ "& .MuiInputBase-root": { backgroundColor: "#fff", height: 40 } }}
+                  disabled
+                  sx={{ "& .MuiInputBase-root": { backgroundColor: "#f1f5f9", height: 40 } }}
                 />
               </Grid>
               <Grid item xs={12} md={3}>
-                <MDTypography sx={fieldLabelSx}>
-                  Current Stock In Case{requiredMark}
-                </MDTypography>
+                <MDTypography sx={fieldLabelSx}>No. of Boxes{requiredMark}</MDTypography>
                 <MDInput
                   fullWidth
                   type="number"
+                  inputProps={{ min: 0, step: 1 }}
                   placeholder="0"
                   value={manualItem.currentStockInCase}
                   onChange={(event) => updateManualItem("currentStockInCase", event.target.value)}
                   sx={{ "& .MuiInputBase-root": { backgroundColor: "#fff", height: 40 } }}
+                />
+              </Grid>
+              <Grid item xs={12} md={3}>
+                <MDTypography sx={fieldLabelSx}>Purchase Price (Incl. 5% GST)</MDTypography>
+                <MDInput
+                  fullWidth
+                  value={manualItem.purchasePriceWithGst ? `Rs. ${manualItem.purchasePriceWithGst}` : ""}
+                  disabled
+                  sx={{ "& .MuiInputBase-root": { backgroundColor: "#f1f5f9", height: 40 } }}
                 />
               </Grid>
               <Grid item xs={12} md={3}>
@@ -1114,9 +1138,9 @@ function DmsStock() {
                 />
               </Grid>
 
-              <Grid item xs={12} md={4}>
+              <Grid item xs={12} md={3}>
                 <MDTypography sx={fieldLabelSx}>
-                  Price/Pcs{requiredMark}
+                  Base Price/Pcs{requiredMark}
                 </MDTypography>
                 <MDInput
                   fullWidth
@@ -1127,9 +1151,18 @@ function DmsStock() {
                   sx={{ "& .MuiInputBase-root": { backgroundColor: "#fff", height: 40 } }}
                 />
               </Grid>
-              <Grid item xs={12} md={4}>
+              <Grid item xs={12} md={3}>
+                <MDTypography sx={fieldLabelSx}>Price/Pcs (Incl. 5% GST)</MDTypography>
+                <MDInput
+                  fullWidth
+                  value={manualItem.priceWithGst ? `Rs. ${manualItem.priceWithGst}` : ""}
+                  disabled
+                  sx={{ "& .MuiInputBase-root": { backgroundColor: "#f1f5f9", height: 40 } }}
+                />
+              </Grid>
+              <Grid item xs={12} md={3}>
                 <MDTypography sx={fieldLabelSx}>
-                  MRP{requiredMark}
+                  MRP (Incl. GST){requiredMark}
                 </MDTypography>
                 <MDInput
                   fullWidth
@@ -1140,8 +1173,8 @@ function DmsStock() {
                   sx={{ "& .MuiInputBase-root": { backgroundColor: "#fff", height: 40 } }}
                 />
               </Grid>
-              <Grid item xs={12} md={4}>
-                <MDTypography sx={fieldLabelSx}>Total Value</MDTypography>
+              <Grid item xs={12} md={3}>
+                <MDTypography sx={fieldLabelSx}>Total Value (Incl. 5% GST)</MDTypography>
                 <MDInput
                   fullWidth
                   value={manualItem.totalValue ? `Rs. ${manualItem.totalValue}` : ""}
@@ -1191,12 +1224,12 @@ function DmsStock() {
                       <TableCell sx={pendingHeadCellSx(140)}>SKU Name</TableCell>
                       <TableCell sx={pendingHeadCellSx(100)}>Variant</TableCell>
                       <TableCell sx={pendingHeadCellSx(80, "right")}>Pcs/Box</TableCell>
-                      <TableCell sx={pendingHeadCellSx(70, "right")}>Cases</TableCell>
+                      <TableCell sx={pendingHeadCellSx(70, "right")}>Boxes</TableCell>
                       <TableCell sx={pendingHeadCellSx(70, "right")}>Pcs</TableCell>
                       <TableCell sx={pendingHeadCellSx(90, "right")}>Total Pcs</TableCell>
-                      <TableCell sx={pendingHeadCellSx(100, "right")}>Price/Pcs</TableCell>
-                      <TableCell sx={pendingHeadCellSx(90, "right")}>MRP</TableCell>
-                      <TableCell sx={pendingHeadCellSx(110, "right")}>Total Value</TableCell>
+                      <TableCell sx={pendingHeadCellSx(100, "right")}>Price/Pcs + GST</TableCell>
+                      <TableCell sx={pendingHeadCellSx(90, "right")}>MRP Incl. GST</TableCell>
+                      <TableCell sx={pendingHeadCellSx(110, "right")}>Total Incl. GST</TableCell>
                       <TableCell sx={pendingHeadCellSx(70, "center")}>Action</TableCell>
                     </TableRow>
                   </TableHead>

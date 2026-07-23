@@ -543,30 +543,30 @@ function BankDeposit() {
       [field]: value,
       ...(field === "bankName"
         ? {
-            accountName: "",
-            branchName: "",
-            bankAccountNo: "",
-            ifscCode: "",
-          }
+          accountName: "",
+          branchName: "",
+          bankAccountNo: "",
+          ifscCode: "",
+        }
         : {}),
       ...(field === "depositMode"
         ? {
-            amount: value === "cash" ? "" : prev.amount,
-            chequeNo: value === "cash" ? "" : prev.chequeNo,
-            chequeDate: value === "cash" ? "" : prev.chequeDate,
-            storeName: value === "cash" ? "" : prev.storeName,
-            chequeDetails: value === "cheque" ? prev.chequeDetails : [emptyChequeRow()],
-            upiDetails: value === "upi" ? prev.upiDetails : [emptyUpiRow()],
-            cashDetails: value === "cash" ? emptyCashDetails() : prev.cashDetails,
-            depositorName: value === "upi" ? "" : prev.depositorName,
-          }
+          amount: value === "cash" ? "" : prev.amount,
+          chequeNo: value === "cash" ? "" : prev.chequeNo,
+          chequeDate: value === "cash" ? "" : prev.chequeDate,
+          storeName: value === "cash" ? "" : prev.storeName,
+          chequeDetails: value === "cheque" ? prev.chequeDetails : [emptyChequeRow()],
+          upiDetails: value === "upi" ? prev.upiDetails : [emptyUpiRow()],
+          cashDetails: value === "cash" ? emptyCashDetails() : prev.cashDetails,
+          depositorName: value === "upi" ? "" : prev.depositorName,
+        }
         : {}),
       ...(field === "storeName"
         ? {
-            chequeDetails: prev.chequeDetails.map((cheque, index) =>
-              index === 0 ? { ...cheque, storeName: value } : cheque
-            ),
-          }
+          chequeDetails: prev.chequeDetails.map((cheque, index) =>
+            index === 0 ? { ...cheque, storeName: value } : cheque
+          ),
+        }
         : {}),
     }));
   };
@@ -707,22 +707,22 @@ function BankDeposit() {
         chequeDetails:
           form.depositMode === "cheque"
             ? form.chequeDetails.map((cheque) => ({
-                paymentId: cheque.paymentId || null,
-                storeName: cheque.storeName.trim(),
-                chequeNo: cheque.chequeNo.trim(),
-                chequeDate: cheque.chequeDate,
-                amount: parseFloat(cheque.amount),
-              }))
+              paymentId: cheque.paymentId || null,
+              storeName: cheque.storeName.trim(),
+              chequeNo: cheque.chequeNo.trim(),
+              chequeDate: cheque.chequeDate,
+              amount: parseFloat(cheque.amount),
+            }))
             : [],
         upiDetails:
           form.depositMode === "upi"
             ? form.upiDetails.map((upi) => ({
-                paymentId: upi.paymentId || null,
-                storeName: upi.storeName.trim(),
-                invoiceNumber: upi.invoiceNumber.trim(),
-                upiId: upi.upiId.trim(),
-                amount: parseFloat(upi.amount),
-              }))
+              paymentId: upi.paymentId || null,
+              storeName: upi.storeName.trim(),
+              invoiceNumber: upi.invoiceNumber.trim(),
+              upiId: upi.upiId.trim(),
+              amount: parseFloat(upi.amount),
+            }))
             : [],
         cashDetails: form.depositMode === "cash" ? form.cashDetails : null,
       };
@@ -732,9 +732,9 @@ function BankDeposit() {
           ? `${API}/staff/bank-deposits/${editingDepositId}`
           : `${API}/staff/bank-deposits`,
         {
-        method: editingDepositId ? "PUT" : "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
+          method: editingDepositId ? "PUT" : "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
         }
       );
 
@@ -1028,9 +1028,8 @@ function BankDeposit() {
             <div><strong>Total UPI:</strong> Rs. ${upiDepositTotal.toFixed(2)}</div>
           </div>
           <h2>Bank Wise Total</h2>
-          ${
-            bankWiseDepositSummary.length > 0
-              ? `<table>
+          ${bankWiseDepositSummary.length > 0
+        ? `<table>
                   <thead>
                     <tr>
                       <th>Sr No</th>
@@ -1045,13 +1044,12 @@ function BankDeposit() {
                   </thead>
                   <tbody>${rowsHtml}</tbody>
                 </table>`
-              : `<div class="empty">No deposits found for this range.</div>`
-          }
+        : `<div class="empty">No deposits found for this range.</div>`
+      }
           <div class="total">Grand Total Deposit: Rs. ${totalDepositAmount.toFixed(2)}</div>
           <h2>Deposit Details</h2>
-          ${
-            depositsInTotalRange.length > 0
-              ? `<table>
+          ${depositsInTotalRange.length > 0
+        ? `<table>
                   <thead>
                     <tr>
                       <th>Sr No</th>
@@ -1066,8 +1064,8 @@ function BankDeposit() {
                   </thead>
                   <tbody>${detailRowsHtml}</tbody>
                 </table>`
-              : ""
-          }
+        : ""
+      }
         </body>
       </html>
     `);
@@ -1294,25 +1292,25 @@ function BankDeposit() {
                             <TableCell align="center" sx={tableBodySx}>
                               <MDBox display="flex" gap={1} justifyContent="center">
                                 {/* <MDButton color="info" variant="outlined" size="small" onClick={() => handleViewDeposit(deposit)}> */}
-                                  <FaRegEye onClick={() => handleViewDeposit(deposit)} style={{ cursor: "pointer" }} color="" size={20}/> 
+                                <FaRegEye onClick={() => handleViewDeposit(deposit)} style={{ cursor: "pointer" }} color="" size={20} />
                                 {/* </MDButton> */}
                                 {deposit.deposit_mode === "cash" && (
                                   // <MDButton color="success" variant="outlined" size="small" onClick={() => printCashDetails(deposit)}>
-                                  
-                                    <IoPrintOutline  onClick={() => printCashDetails(deposit)} style={{ cursor: "pointer" }} color="#6C9CF0" size={20}/> 
+
+                                  <IoPrintOutline onClick={() => printCashDetails(deposit)} style={{ cursor: "pointer" }} color="#6C9CF0" size={20} />
                                   // {/* </MDButton> */}
                                 )}
                                 {deposit.deposit_mode === "cheque" && (
-                                    <IoPrintOutline  onClick={() => printChequeDetails(deposit)} style={{ cursor: "pointer" }} color="#6C9CF0" size={20}/> 
+                                  <IoPrintOutline onClick={() => printChequeDetails(deposit)} style={{ cursor: "pointer" }} color="#6C9CF0" size={20} />
                                 )}
                                 {deposit.deposit_mode === "upi" && (
-                                    <IoPrintOutline  onClick={() => printUpiDetails(deposit)} style={{ cursor: "pointer" }} color="#6C9CF0" size={20}/> 
+                                  <IoPrintOutline onClick={() => printUpiDetails(deposit)} style={{ cursor: "pointer" }} color="#6C9CF0" size={20} />
                                 )}
                                 {/* // <MDButton color="info" variant="outlined" size="small" onClick={() => startEditDeposit(deposit)}> */}
-                                <FaRegEdit  onClick={() => startEditDeposit(deposit)} style={{ cursor: "pointer" }} color="#E0E388" size={20}/>
+                                <FaRegEdit onClick={() => startEditDeposit(deposit)} style={{ cursor: "pointer" }} color="#E0E388" size={20} />
                                 {/* // </MDButton> */}
                                 {/* // <MDButton color="error" variant="outlined" size="small" onClick={() => deleteDeposit(deposit.id)}> */}
-                                  <CiTrash  onClick={() => deleteDeposit(deposit.id)} style={{ cursor: "pointer" }} color="#D2042D" size={20}/>
+                                <CiTrash onClick={() => deleteDeposit(deposit.id)} style={{ cursor: "pointer" }} color="#D2042D" size={20} />
                                 {/* // </MDButton> */}
                               </MDBox>
                             </TableCell>
@@ -1352,406 +1350,406 @@ function BankDeposit() {
         <DialogContent dividers>
           <MDBox pt={1}>
             <Grid container spacing={2.5}>
-                  <Grid item xs={12} md={3}>
-                    <MDInput
-                      type="date"
-                      label="Deposit Date"
-                      fullWidth
-                      value={form.depositDate}
-                      onChange={(e) => handleFormChange("depositDate", e.target.value)}
-                      InputLabelProps={{ shrink: true }}
-                    />
-                  </Grid>
-                  <Grid item xs={12} md={3}>
-                    <FormControl size="small" fullWidth>
-                      <Select
-                        displayEmpty
-                        value={form.bankName}
-                        onChange={(e) => handleFormChange("bankName", e.target.value)}
-                        sx={{ height: 44, backgroundColor: "#fff" }}
-                      >
-                        <MenuItem value="" disabled>Choose Bank</MenuItem>
-                        {BANK_NAMES.map((bankName) => (
-                          <MenuItem key={bankName} value={bankName}>
-                            {bankName}
-                          </MenuItem>
-                        ))}
-                      </Select>
-                    </FormControl>
-                  </Grid>
-                  <Grid item xs={12} md={3}>
-                    <FormControl size="small" fullWidth>
-                      <Select
-                        displayEmpty
-                        value={form.bankAccountNo}
-                        onChange={(e) => handleAccountChange(e.target.value)}
-                        disabled={!form.bankName}
-                        sx={{ height: 44, backgroundColor: "#fff" }}
-                      >
-                        <MenuItem value="" disabled>Choose Account No</MenuItem>
-                        {BANK_ACCOUNTS.filter((account) => account.bankName === form.bankName).map((account) => (
-                          <MenuItem key={account.accountNo} value={account.accountNo}>
-                            {account.accountNo}
-                          </MenuItem>
-                        ))}
-                      </Select>
-                    </FormControl>
-                  </Grid>
-                  <Grid item xs={12} md={3}>
-                    <MDInput
-                      label="Branch"
-                      fullWidth
-                      value={form.branchName}
-                      InputProps={{ readOnly: true }}
-                    />
-                  </Grid>
-                  <Grid item xs={12} md={4}>
-                    <MDInput
-                      label="Account Name"
-                      fullWidth
-                      value={form.accountName}
-                      InputProps={{ readOnly: true }}
-                    />
-                  </Grid>
-                  <Grid item xs={12} md={4}>
-                    <MDInput
-                      label="IFSC Code"
-                      fullWidth
-                      value={form.ifscCode}
-                      InputProps={{ readOnly: true }}
-                    />
-                  </Grid>
-                  <Grid item xs={12} md={4}>
-                    <MDInput
-                      label="Depositor Name"
-                      fullWidth
-                      value={form.depositorName}
-                      onChange={(e) => handleFormChange("depositorName", e.target.value)}
-                      disabled={form.depositMode === "upi"}
-                    />
-                  </Grid>
-                  <Grid item xs={12} md={4}>
-                    <FormControl size="small" fullWidth>
-                      <Select
-                        value={form.depositMode}
-                        onChange={(e) => handleFormChange("depositMode", e.target.value)}
-                        sx={{ height: 44, backgroundColor: "#fff" }}
-                      >
-                        <MenuItem value="cash">Cash</MenuItem>
-                        <MenuItem value="cheque">Cheque</MenuItem>
-                        <MenuItem value="upi">UPI</MenuItem>
-                      </Select>
-                    </FormControl>
-                  </Grid>
-                  <Grid item xs={12} md={4}>
-                    <MDBox
-                      height="44px"
-                      display="flex"
-                      alignItems="center"
-                      px={2}
-                      sx={{ border: "1px solid #d2d6da", borderRadius: 1, backgroundColor: "#f8fafc" }}
-                    >
-                      <MDTypography variant="button" fontWeight="medium" color="dark">
-                        Total: {formatMoney(activeDepositAmount)}
-                      </MDTypography>
-                    </MDBox>
-                  </Grid>
+              <Grid item xs={12} md={3}>
+                <MDInput
+                  type="date"
+                  label="Deposit Date"
+                  fullWidth
+                  value={form.depositDate}
+                  onChange={(e) => handleFormChange("depositDate", e.target.value)}
+                  InputLabelProps={{ shrink: true }}
+                />
+              </Grid>
+              <Grid item xs={12} md={3}>
+                <FormControl size="small" fullWidth>
+                  <Select
+                    displayEmpty
+                    value={form.bankName}
+                    onChange={(e) => handleFormChange("bankName", e.target.value)}
+                    sx={{ height: 44, backgroundColor: "#fff" }}
+                  >
+                    <MenuItem value="" disabled>Choose Bank</MenuItem>
+                    {BANK_NAMES.map((bankName) => (
+                      <MenuItem key={bankName} value={bankName}>
+                        {bankName}
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+              </Grid>
+              <Grid item xs={12} md={3}>
+                <FormControl size="small" fullWidth>
+                  <Select
+                    displayEmpty
+                    value={form.bankAccountNo}
+                    onChange={(e) => handleAccountChange(e.target.value)}
+                    disabled={!form.bankName}
+                    sx={{ height: 44, backgroundColor: "#fff" }}
+                  >
+                    <MenuItem value="" disabled>Choose Account No</MenuItem>
+                    {BANK_ACCOUNTS.filter((account) => account.bankName === form.bankName).map((account) => (
+                      <MenuItem key={account.accountNo} value={account.accountNo}>
+                        {account.accountNo}
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+              </Grid>
+              <Grid item xs={12} md={3}>
+                <MDInput
+                  label="Branch"
+                  fullWidth
+                  value={form.branchName}
+                  InputProps={{ readOnly: true }}
+                />
+              </Grid>
+              <Grid item xs={12} md={4}>
+                <MDInput
+                  label="Account Name"
+                  fullWidth
+                  value={form.accountName}
+                  InputProps={{ readOnly: true }}
+                />
+              </Grid>
+              <Grid item xs={12} md={4}>
+                <MDInput
+                  label="IFSC Code"
+                  fullWidth
+                  value={form.ifscCode}
+                  InputProps={{ readOnly: true }}
+                />
+              </Grid>
+              <Grid item xs={12} md={4}>
+                <MDInput
+                  label="Depositor Name"
+                  fullWidth
+                  value={form.depositorName}
+                  onChange={(e) => handleFormChange("depositorName", e.target.value)}
+                  disabled={form.depositMode === "upi"}
+                />
+              </Grid>
+              <Grid item xs={12} md={4}>
+                <FormControl size="small" fullWidth>
+                  <Select
+                    value={form.depositMode}
+                    onChange={(e) => handleFormChange("depositMode", e.target.value)}
+                    sx={{ height: 44, backgroundColor: "#fff" }}
+                  >
+                    <MenuItem value="cash">Cash</MenuItem>
+                    <MenuItem value="cheque">Cheque</MenuItem>
+                    <MenuItem value="upi">UPI</MenuItem>
+                  </Select>
+                </FormControl>
+              </Grid>
+              <Grid item xs={12} md={4}>
+                <MDBox
+                  height="44px"
+                  display="flex"
+                  alignItems="center"
+                  px={2}
+                  sx={{ border: "1px solid #d2d6da", borderRadius: 1, backgroundColor: "#f8fafc" }}
+                >
+                  <MDTypography variant="button" fontWeight="medium" color="dark">
+                    Total: {formatMoney(activeDepositAmount)}
+                  </MDTypography>
+                </MDBox>
+              </Grid>
 
-                  {form.depositMode === "cash" && (
-                    <Grid item xs={12}>
-                      <MDTypography variant="button" fontWeight="medium" color="dark" display="block" mb={1}>
-                        Notes
-                      </MDTypography>
-                      <MDBox
-                        display="grid"
-                        sx={{
-                          gridTemplateColumns: {
-                            xs: "repeat(2, minmax(0, 1fr))",
-                            sm: "repeat(3, minmax(0, 1fr))",
-                            md: "repeat(6, minmax(0, 1fr))",
-                          },
-                        }}
-                        gap={1.5}
-                      >
-                        {CASH_NOTE_DENOMINATIONS.map((denomination) => (
-                          <MDInput
-                            key={`note-${denomination}`}
-                            type="number"
-                            label={`Rs. ${denomination} Note`}
-                            value={form.cashDetails[`note_${denomination}`] || ""}
-                            onChange={(e) => handleCashChange(`note_${denomination}`, e.target.value)}
-                            inputProps={{ min: 0, step: 1 }}
-                            fullWidth
-                          />
-                        ))}
-                      </MDBox>
-                      <MDTypography variant="button" fontWeight="medium" color="dark" display="block" mt={2} mb={1}>
-                        Coins
-                      </MDTypography>
-                      <MDBox
-                        display="grid"
-                        sx={{
-                          gridTemplateColumns: {
-                            xs: "repeat(2, minmax(0, 1fr))",
-                            sm: "repeat(3, minmax(0, 1fr))",
-                            md: "repeat(5, minmax(0, 1fr))",
-                          },
-                        }}
-                        gap={1.5}
-                      >
-                        {CASH_COIN_DENOMINATIONS.map((denomination) => (
-                          <MDInput
-                            key={`coin-${denomination}`}
-                            type="number"
-                            label={`Rs. ${denomination} Coin`}
-                            value={form.cashDetails[`coin_${denomination}`] || ""}
-                            onChange={(e) => handleCashChange(`coin_${denomination}`, e.target.value)}
-                            inputProps={{ min: 0, step: 1 }}
-                            fullWidth
-                          />
-                        ))}
-                      </MDBox>
-                    </Grid>
-                  )}
-
-                  {form.depositMode === "cheque" && (
-                    <Grid item xs={12}>
-                      <MDBox display="flex" alignItems="center" justifyContent="space-between" mb={1}>
-                        <MDBox>
-                          <MDTypography variant="button" fontWeight="medium" color="dark">
-                            Cheque Details
-                          </MDTypography>
-                          {!editingDepositId && (
-                            <MDTypography variant="caption" color="text" display="block">
-                              Only today&apos;s deposit cheques and previously missed cheques not yet deposited.
-                            </MDTypography>
-                          )}
-                        </MDBox>
-                        <MDButton color="info" variant="outlined" size="small" onClick={addChequeRow}>
-                          <Icon sx={{ mr: 1 }}>add</Icon>
-                          Add Cheque
-                        </MDButton>
-                      </MDBox>
-                      <MDBox display="flex" flexDirection="column" gap={1.5}>
-                        {form.chequeDetails.map((cheque, index) => (
-                          <Grid container spacing={1.5} key={cheque.rowKey || `cheque-row-${index}`}>
-                            <Grid item xs={12} md={3}>
-                              {editingDepositId ? (
-                                <MDInput
-                                  label="Cheque No"
-                                  fullWidth
-                                  value={cheque.chequeNo}
-                                  onChange={(e) => handleChequeChange(index, "chequeNo", e.target.value)}
-                                />
-                              ) : (
-                                <Autocomplete
-                                  id={`cheque-autocomplete-${cheque.rowKey || index}`}
-                                  options={getAvailableChequesForRow(index)}
-                                  loading={loadingPendingCheques}
-                                  value={
-                                    pendingCheques.find((item) => samePaymentId(item.id, cheque.paymentId)) ||
-                                    (cheque.chequeNo
-                                      ? {
-                                          id: cheque.paymentId,
-                                          reference_no: cheque.chequeNo,
-                                          outlet_name: cheque.storeName,
-                                          deposit_date: cheque.chequeDate,
-                                          amount: cheque.amount,
-                                        }
-                                      : null)
-                                  }
-                                  getOptionLabel={(option) => option.reference_no || ""}
-                                  isOptionEqualToValue={(option, value) => samePaymentId(option?.id, value?.id)}
-                                  onChange={(event, value) => handleChequeSelect(index, value)}
-                                  renderOption={(props, option) => (
-                                    <li {...props} key={option.id}>
-                                      <MDBox>
-                                        <MDTypography variant="button" fontWeight="medium">
-                                          {option.reference_no}
-                                        </MDTypography>
-                                        <MDTypography variant="caption" color="text" display="block">
-                                          {option.outlet_name || "N/A"} ┬╖ {formatDate(option.deposit_date)} ┬╖{" "}
-                                          {formatMoney(option.amount)}
-                                          {option.report_status === "due_today"
-                                            ? " ┬╖ Due today"
-                                            : option.report_status === "missed" || option.report_status === "clearing_done"
-                                              ? " ┬╖ Missed / not deposited"
-                                              : ""}
-                                        </MDTypography>
-                                      </MDBox>
-                                    </li>
-                                  )}
-                                  renderInput={(params) => (
-                                    <MDInput {...params} label="Cheque No" fullWidth />
-                                  )}
-                                />
-                              )}
-                            </Grid>
-                            <Grid item xs={12} md={3}>
-                              <MDInput
-                                label="Store Name"
-                                fullWidth
-                                value={cheque.storeName}
-                                onChange={(e) => handleChequeChange(index, "storeName", e.target.value)}
-                                InputProps={{ readOnly: !editingDepositId }}
-                              />
-                            </Grid>
-                            <Grid item xs={12} md={2}>
-                              <MDInput
-                                type="date"
-                                label="Cheque Date"
-                                fullWidth
-                                value={cheque.chequeDate}
-                                onChange={(e) => handleChequeChange(index, "chequeDate", e.target.value)}
-                                InputLabelProps={{ shrink: true }}
-                                InputProps={{ readOnly: !editingDepositId }}
-                              />
-                            </Grid>
-                            <Grid item xs={12} md={2}>
-                              <MDInput
-                                type="number"
-                                label="Amount"
-                                fullWidth
-                                value={cheque.amount}
-                                onChange={(e) => handleChequeChange(index, "amount", e.target.value)}
-                                inputProps={{ min: 0, step: "0.01" }}
-                                InputProps={{ readOnly: !editingDepositId }}
-                              />
-                            </Grid>
-                            <Grid item xs={12} md={2}>
-                              <MDButton
-                                color="error"
-                                variant="outlined"
-                                fullWidth
-                                sx={{ height: 44 }}
-                                onClick={() => removeChequeRow(index)}
-                              >
-                                <Icon sx={{ mr: 1 }}>delete</Icon>
-                                Remove
-                              </MDButton>
-                            </Grid>
-                          </Grid>
-                        ))}
-                      </MDBox>
-                    </Grid>
-                  )}
-
-                  {form.depositMode === "upi" && (
-                    <Grid item xs={12}>
-                      <MDBox display="flex" alignItems="center" justifyContent="space-between" mb={1}>
-                        <MDBox>
-                          <MDTypography variant="button" fontWeight="medium" color="dark">
-                            UPI Details
-                          </MDTypography>
-                          {!editingDepositId && (
-                            <MDTypography variant="caption" color="text" display="block">
-                              Choose invoice number to auto-fill outlet name, UPI ID, and amount.
-                            </MDTypography>
-                          )}
-                        </MDBox>
-                        <MDButton color="info" variant="outlined" size="small" onClick={addUpiRow}>
-                          <Icon sx={{ mr: 1 }}>add</Icon>
-                          Add UPI
-                        </MDButton>
-                      </MDBox>
-                      <MDBox display="flex" flexDirection="column" gap={1.5}>
-                        {form.upiDetails.map((upi, index) => (
-                          <Grid container spacing={1.5} key={upi.rowKey || `upi-row-${index}`}>
-                            <Grid item xs={12} md={3}>
-                              {editingDepositId ? (
-                                <MDInput
-                                  label="Invoice No"
-                                  fullWidth
-                                  value={upi.invoiceNumber}
-                                  onChange={(e) => handleUpiChange(index, "invoiceNumber", e.target.value)}
-                                />
-                              ) : (
-                                <Autocomplete
-                                  id={`upi-autocomplete-${upi.rowKey || index}`}
-                                  options={getAvailableUpiInvoicesForRow(index)}
-                                  loading={loadingPendingUpi}
-                                  value={
-                                    pendingUpiInvoices.find((item) => samePaymentId(item.id, upi.paymentId)) ||
-                                    (upi.invoiceNumber
-                                      ? {
-                                          id: upi.paymentId,
-                                          invoice_number: upi.invoiceNumber,
-                                          outlet_name: upi.storeName,
-                                          reference_no: upi.upiId,
-                                          amount: upi.amount,
-                                        }
-                                      : null)
-                                  }
-                                  getOptionLabel={(option) => option.invoice_number || ""}
-                                  isOptionEqualToValue={(option, value) => samePaymentId(option?.id, value?.id)}
-                                  onChange={(event, value) => handleUpiSelect(index, value)}
-                                  renderOption={(props, option) => (
-                                    <li {...props} key={option.id}>
-                                      <MDBox>
-                                        <MDTypography variant="button" fontWeight="medium">
-                                          {option.invoice_number}
-                                        </MDTypography>
-                                        <MDTypography variant="caption" color="text" display="block">
-                                          {option.outlet_name || "N/A"} ┬╖ {option.reference_no || "No UPI ID"} ┬╖{" "}
-                                          {formatMoney(option.amount)}
-                                        </MDTypography>
-                                      </MDBox>
-                                    </li>
-                                  )}
-                                  renderInput={(params) => (
-                                    <MDInput {...params} label="Invoice No" fullWidth />
-                                  )}
-                                />
-                              )}
-                            </Grid>
-                            <Grid item xs={12} md={3}>
-                              <MDInput
-                                label="Outlet Name"
-                                fullWidth
-                                value={upi.storeName}
-                                onChange={(e) => handleUpiChange(index, "storeName", e.target.value)}
-                                InputProps={{ readOnly: !editingDepositId }}
-                              />
-                            </Grid>
-                            <Grid item xs={12} md={2}>
-                              <MDInput
-                                label="UPI ID"
-                                fullWidth
-                                value={upi.upiId}
-                                onChange={(e) => handleUpiChange(index, "upiId", e.target.value)}
-                                InputProps={{ readOnly: !editingDepositId }}
-                              />
-                            </Grid>
-                            <Grid item xs={12} md={2}>
-                              <MDInput
-                                type="number"
-                                label="Amount"
-                                fullWidth
-                                value={upi.amount}
-                                onChange={(e) => handleUpiChange(index, "amount", e.target.value)}
-                                inputProps={{ min: 0, step: "0.01" }}
-                                InputProps={{ readOnly: !editingDepositId }}
-                              />
-                            </Grid>
-                            <Grid item xs={12} md={2}>
-                              <MDButton
-                                color="error"
-                                variant="outlined"
-                                fullWidth
-                                sx={{ height: 44 }}
-                                onClick={() => removeUpiRow(index)}
-                              >
-                                <Icon sx={{ mr: 1 }}>delete</Icon>
-                                Remove
-                              </MDButton>
-                            </Grid>
-                          </Grid>
-                        ))}
-                      </MDBox>
-                    </Grid>
-                  )}
-
+              {form.depositMode === "cash" && (
+                <Grid item xs={12}>
+                  <MDTypography variant="button" fontWeight="medium" color="dark" display="block" mb={1}>
+                    Notes
+                  </MDTypography>
+                  <MDBox
+                    display="grid"
+                    sx={{
+                      gridTemplateColumns: {
+                        xs: "repeat(2, minmax(0, 1fr))",
+                        sm: "repeat(3, minmax(0, 1fr))",
+                        md: "repeat(6, minmax(0, 1fr))",
+                      },
+                    }}
+                    gap={1.5}
+                  >
+                    {CASH_NOTE_DENOMINATIONS.map((denomination) => (
+                      <MDInput
+                        key={`note-${denomination}`}
+                        type="number"
+                        label={`Rs. ${denomination} Note`}
+                        value={form.cashDetails[`note_${denomination}`] || ""}
+                        onChange={(e) => handleCashChange(`note_${denomination}`, e.target.value)}
+                        inputProps={{ min: 0, step: 1 }}
+                        fullWidth
+                      />
+                    ))}
+                  </MDBox>
+                  <MDTypography variant="button" fontWeight="medium" color="dark" display="block" mt={2} mb={1}>
+                    Coins
+                  </MDTypography>
+                  <MDBox
+                    display="grid"
+                    sx={{
+                      gridTemplateColumns: {
+                        xs: "repeat(2, minmax(0, 1fr))",
+                        sm: "repeat(3, minmax(0, 1fr))",
+                        md: "repeat(5, minmax(0, 1fr))",
+                      },
+                    }}
+                    gap={1.5}
+                  >
+                    {CASH_COIN_DENOMINATIONS.map((denomination) => (
+                      <MDInput
+                        key={`coin-${denomination}`}
+                        type="number"
+                        label={`Rs. ${denomination} Coin`}
+                        value={form.cashDetails[`coin_${denomination}`] || ""}
+                        onChange={(e) => handleCashChange(`coin_${denomination}`, e.target.value)}
+                        inputProps={{ min: 0, step: 1 }}
+                        fullWidth
+                      />
+                    ))}
+                  </MDBox>
                 </Grid>
+              )}
+
+              {form.depositMode === "cheque" && (
+                <Grid item xs={12}>
+                  <MDBox display="flex" alignItems="center" justifyContent="space-between" mb={1}>
+                    <MDBox>
+                      <MDTypography variant="button" fontWeight="medium" color="dark">
+                        Cheque Details
+                      </MDTypography>
+                      {!editingDepositId && (
+                        <MDTypography variant="caption" color="text" display="block">
+                          Only today&apos;s deposit cheques and previously missed cheques not yet deposited.
+                        </MDTypography>
+                      )}
+                    </MDBox>
+                    <MDButton color="info" variant="outlined" size="small" onClick={addChequeRow}>
+                      <Icon sx={{ mr: 1 }}>add</Icon>
+                      Add Cheque
+                    </MDButton>
+                  </MDBox>
+                  <MDBox display="flex" flexDirection="column" gap={1.5}>
+                    {form.chequeDetails.map((cheque, index) => (
+                      <Grid container spacing={1.5} key={cheque.rowKey || `cheque-row-${index}`}>
+                        <Grid item xs={12} md={3}>
+                          {editingDepositId ? (
+                            <MDInput
+                              label="Cheque No"
+                              fullWidth
+                              value={cheque.chequeNo}
+                              onChange={(e) => handleChequeChange(index, "chequeNo", e.target.value)}
+                            />
+                          ) : (
+                            <Autocomplete
+                              id={`cheque-autocomplete-${cheque.rowKey || index}`}
+                              options={getAvailableChequesForRow(index)}
+                              loading={loadingPendingCheques}
+                              value={
+                                pendingCheques.find((item) => samePaymentId(item.id, cheque.paymentId)) ||
+                                (cheque.chequeNo
+                                  ? {
+                                    id: cheque.paymentId,
+                                    reference_no: cheque.chequeNo,
+                                    outlet_name: cheque.storeName,
+                                    deposit_date: cheque.chequeDate,
+                                    amount: cheque.amount,
+                                  }
+                                  : null)
+                              }
+                              getOptionLabel={(option) => option.reference_no || ""}
+                              isOptionEqualToValue={(option, value) => samePaymentId(option?.id, value?.id)}
+                              onChange={(event, value) => handleChequeSelect(index, value)}
+                              renderOption={(props, option) => (
+                                <li {...props} key={option.id}>
+                                  <MDBox>
+                                    <MDTypography variant="button" fontWeight="medium">
+                                      {option.reference_no}
+                                    </MDTypography>
+                                    <MDTypography variant="caption" color="text" display="block">
+                                      {option.outlet_name || "N/A"} ┬╖ {formatDate(option.deposit_date)} ┬╖{" "}
+                                      {formatMoney(option.amount)}
+                                      {option.report_status === "due_today"
+                                        ? " ┬╖ Due today"
+                                        : option.report_status === "missed" || option.report_status === "clearing_done"
+                                          ? " ┬╖ Missed / not deposited"
+                                          : ""}
+                                    </MDTypography>
+                                  </MDBox>
+                                </li>
+                              )}
+                              renderInput={(params) => (
+                                <MDInput {...params} label="Cheque No" fullWidth />
+                              )}
+                            />
+                          )}
+                        </Grid>
+                        <Grid item xs={12} md={3}>
+                          <MDInput
+                            label="Store Name"
+                            fullWidth
+                            value={cheque.storeName}
+                            onChange={(e) => handleChequeChange(index, "storeName", e.target.value)}
+                            InputProps={{ readOnly: !editingDepositId }}
+                          />
+                        </Grid>
+                        <Grid item xs={12} md={2}>
+                          <MDInput
+                            type="date"
+                            label="Cheque Date"
+                            fullWidth
+                            value={cheque.chequeDate}
+                            onChange={(e) => handleChequeChange(index, "chequeDate", e.target.value)}
+                            InputLabelProps={{ shrink: true }}
+                            InputProps={{ readOnly: !editingDepositId }}
+                          />
+                        </Grid>
+                        <Grid item xs={12} md={2}>
+                          <MDInput
+                            type="number"
+                            label="Amount"
+                            fullWidth
+                            value={cheque.amount}
+                            onChange={(e) => handleChequeChange(index, "amount", e.target.value)}
+                            inputProps={{ min: 0, step: "0.01" }}
+                            InputProps={{ readOnly: !editingDepositId }}
+                          />
+                        </Grid>
+                        <Grid item xs={12} md={2}>
+                          <MDButton
+                            color="error"
+                            variant="outlined"
+                            fullWidth
+                            sx={{ height: 44 }}
+                            onClick={() => removeChequeRow(index)}
+                          >
+                            <Icon sx={{ mr: 1 }}>delete</Icon>
+                            Remove
+                          </MDButton>
+                        </Grid>
+                      </Grid>
+                    ))}
+                  </MDBox>
+                </Grid>
+              )}
+
+              {form.depositMode === "upi" && (
+                <Grid item xs={12}>
+                  <MDBox display="flex" alignItems="center" justifyContent="space-between" mb={1}>
+                    <MDBox>
+                      <MDTypography variant="button" fontWeight="medium" color="dark">
+                        UPI Details
+                      </MDTypography>
+                      {!editingDepositId && (
+                        <MDTypography variant="caption" color="text" display="block">
+                          Choose invoice number to auto-fill outlet name, UPI ID, and amount.
+                        </MDTypography>
+                      )}
+                    </MDBox>
+                    <MDButton color="info" variant="outlined" size="small" onClick={addUpiRow}>
+                      <Icon sx={{ mr: 1 }}>add</Icon>
+                      Add UPI
+                    </MDButton>
+                  </MDBox>
+                  <MDBox display="flex" flexDirection="column" gap={1.5}>
+                    {form.upiDetails.map((upi, index) => (
+                      <Grid container spacing={1.5} key={upi.rowKey || `upi-row-${index}`}>
+                        <Grid item xs={12} md={3}>
+                          {editingDepositId ? (
+                            <MDInput
+                              label="Invoice No"
+                              fullWidth
+                              value={upi.invoiceNumber}
+                              onChange={(e) => handleUpiChange(index, "invoiceNumber", e.target.value)}
+                            />
+                          ) : (
+                            <Autocomplete
+                              id={`upi-autocomplete-${upi.rowKey || index}`}
+                              options={getAvailableUpiInvoicesForRow(index)}
+                              loading={loadingPendingUpi}
+                              value={
+                                pendingUpiInvoices.find((item) => samePaymentId(item.id, upi.paymentId)) ||
+                                (upi.invoiceNumber
+                                  ? {
+                                    id: upi.paymentId,
+                                    invoice_number: upi.invoiceNumber,
+                                    outlet_name: upi.storeName,
+                                    reference_no: upi.upiId,
+                                    amount: upi.amount,
+                                  }
+                                  : null)
+                              }
+                              getOptionLabel={(option) => option.invoice_number || ""}
+                              isOptionEqualToValue={(option, value) => samePaymentId(option?.id, value?.id)}
+                              onChange={(event, value) => handleUpiSelect(index, value)}
+                              renderOption={(props, option) => (
+                                <li {...props} key={option.id}>
+                                  <MDBox>
+                                    <MDTypography variant="button" fontWeight="medium">
+                                      {option.invoice_number}
+                                    </MDTypography>
+                                    <MDTypography variant="caption" color="text" display="block">
+                                      {option.outlet_name || "N/A"} ┬╖ {option.reference_no || "No UPI ID"} ┬╖{" "}
+                                      {formatMoney(option.amount)}
+                                    </MDTypography>
+                                  </MDBox>
+                                </li>
+                              )}
+                              renderInput={(params) => (
+                                <MDInput {...params} label="Invoice No" fullWidth />
+                              )}
+                            />
+                          )}
+                        </Grid>
+                        <Grid item xs={12} md={3}>
+                          <MDInput
+                            label="Outlet Name"
+                            fullWidth
+                            value={upi.storeName}
+                            onChange={(e) => handleUpiChange(index, "storeName", e.target.value)}
+                            InputProps={{ readOnly: !editingDepositId }}
+                          />
+                        </Grid>
+                        <Grid item xs={12} md={2}>
+                          <MDInput
+                            label="UPI ID"
+                            fullWidth
+                            value={upi.upiId}
+                            onChange={(e) => handleUpiChange(index, "upiId", e.target.value)}
+                            InputProps={{ readOnly: !editingDepositId }}
+                          />
+                        </Grid>
+                        <Grid item xs={12} md={2}>
+                          <MDInput
+                            type="number"
+                            label="Amount"
+                            fullWidth
+                            value={upi.amount}
+                            onChange={(e) => handleUpiChange(index, "amount", e.target.value)}
+                            inputProps={{ min: 0, step: "0.01" }}
+                            InputProps={{ readOnly: !editingDepositId }}
+                          />
+                        </Grid>
+                        <Grid item xs={12} md={2}>
+                          <MDButton
+                            color="error"
+                            variant="outlined"
+                            fullWidth
+                            sx={{ height: 44 }}
+                            onClick={() => removeUpiRow(index)}
+                          >
+                            <Icon sx={{ mr: 1 }}>delete</Icon>
+                            Remove
+                          </MDButton>
+                        </Grid>
+                      </Grid>
+                    ))}
+                  </MDBox>
+                </Grid>
+              )}
+
+            </Grid>
           </MDBox>
         </DialogContent>
         <DialogActions sx={{ px: 3, py: 2, flexWrap: "wrap", gap: 1 }}>

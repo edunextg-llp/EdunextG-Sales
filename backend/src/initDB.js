@@ -742,6 +742,9 @@ async function initDB() {
             gst_percent DECIMAL(5, 2) NOT NULL DEFAULT 5.00,
             cgst_percent DECIMAL(5, 2) NOT NULL DEFAULT 2.50,
             sgst_percent DECIMAL(5, 2) NOT NULL DEFAULT 2.50,
+            pcs_per_box DECIMAL(14, 4) NULL,
+            purchase_price DECIMAL(14, 4) NULL,
+            expiry_date DATE NULL,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE CASCADE,
             FOREIGN KEY (seller_id) REFERENCES purchase_sellers(id) ON DELETE CASCADE,
@@ -937,6 +940,17 @@ async function initDB() {
         );
     `);
     console.log('Physical stock items table created');
+
+    try {
+        await connection.query(`
+            ALTER TABLE physical_stock_items ADD COLUMN expired_stock_date DATE NULL
+        `);
+        console.log('Added expired_stock_date to physical_stock_items');
+    } catch (err) {
+        if (err.code !== 'ER_DUP_FIELDNAME') {
+            console.log('expired_stock_date column may already exist on physical_stock_items');
+        }
+    }
 
     try {
         await connection.query(`

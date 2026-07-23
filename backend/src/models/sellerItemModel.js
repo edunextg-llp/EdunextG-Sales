@@ -14,6 +14,11 @@ const ITEM_COLUMNS = `
     si.gst_percent,
     si.cgst_percent,
     si.sgst_percent,
+    si.pcs_per_box,
+    si.purchase_price,
+    ROUND(si.purchase_price * 0.05, 2) AS purchase_gst_amount,
+    ROUND(si.purchase_price * 1.05, 2) AS actual_price,
+    DATE_FORMAT(si.expiry_date, '%Y-%m-%d') AS expiry_date,
     si.created_at
 `;
 
@@ -22,9 +27,9 @@ class SellerItemModel {
         const [result] = await db.execute(
             `INSERT INTO seller_items (
                 company_id, seller_id, product_erp_id, sku_name, variant_name, hsn_code,
-                gst_percent, cgst_percent, sgst_percent
+                gst_percent, cgst_percent, sgst_percent, pcs_per_box, purchase_price, expiry_date
              )
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
             [
                 data.companyId,
                 data.sellerId,
@@ -35,6 +40,9 @@ class SellerItemModel {
                 data.gstPercent,
                 data.cgstPercent,
                 data.sgstPercent,
+                data.pcsPerBox,
+                data.purchasePrice,
+                data.expiryDate,
             ]
         );
         return SellerItemModel.getById(result.insertId);
@@ -51,7 +59,10 @@ class SellerItemModel {
                  hsn_code = ?,
                  gst_percent = ?,
                  cgst_percent = ?,
-                 sgst_percent = ?
+                 sgst_percent = ?,
+                 pcs_per_box = ?,
+                 purchase_price = ?,
+                 expiry_date = ?
              WHERE id = ?`,
             [
                 data.companyId,
@@ -63,6 +74,9 @@ class SellerItemModel {
                 data.gstPercent,
                 data.cgstPercent,
                 data.sgstPercent,
+                data.pcsPerBox,
+                data.purchasePrice,
+                data.expiryDate,
                 id,
             ]
         );

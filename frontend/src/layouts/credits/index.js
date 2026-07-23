@@ -293,10 +293,10 @@ function CreditsPage() {
     return [...areas].sort((a, b) => a.localeCompare(b));
   }, [credits, selectedCompanyId, selectedStaffId]);
   const totalCreditLabel = selectedStaffName
-    // ? `${selectedStaffName} Credit Dues Amount`
-    // : selectedCompanyName
-    //   ? `${selectedCompanyName} Credit Dues Amount`
-    //   : "Total Credit Dues Amount";
+  // ? `${selectedStaffName} Credit Dues Amount`
+  // : selectedCompanyName
+  //   ? `${selectedCompanyName} Credit Dues Amount`
+  //   : "Total Credit Dues Amount";
 
   const handleCompanyChange = (value) => {
     setSelectedCompanyId(value);
@@ -374,11 +374,11 @@ function CreditsPage() {
           prev.map((credit) =>
             credit.id === remarksDialog.credit.id
               ? {
-                  ...credit,
-                  remarks: savedRemark?.remarks || remarksText.trim(),
-                  remarks_count: (Number(credit.remarks_count) || 0) + 1,
-                  latest_remark_date: savedRemark?.remark_date || remarksDate,
-                }
+                ...credit,
+                remarks: savedRemark?.remarks || remarksText.trim(),
+                remarks_count: (Number(credit.remarks_count) || 0) + 1,
+                latest_remark_date: savedRemark?.remark_date || remarksDate,
+              }
               : credit
           )
         );
@@ -459,8 +459,8 @@ function CreditsPage() {
     const staffLabel = selectedStaffName || "All Staff";
     const generatedOn = new Date().toLocaleString("en-GB");
     const rowsHtml = filteredCredits
-    .map(
-      (credit, index) => `
+      .map(
+        (credit, index) => `
         <tr>
           <td>${index + 1}</td>
           
@@ -473,8 +473,8 @@ function CreditsPage() {
           <td>${escapeHtml(calcDueDate(credit.sale_date, credit.credit_days))}</td>
         </tr>
       `
-    )
-    .join("");
+      )
+      .join("");
 
 
     const printWindow = window.open("", "_blank", "width=1100,height=800");
@@ -513,9 +513,8 @@ function CreditsPage() {
             <div><strong>Generated:</strong> ${escapeHtml(generatedOn)}</div>
             <div><strong>Total Balance:</strong> Rs. ${totalCreditDuesAmount.toFixed(2)}</div>
           </div>
-          ${
-            filteredCredits.length > 0
-              ? ` <table>
+          ${filteredCredits.length > 0
+        ? ` <table>
         <thead>
           <tr>
             <th>Sr No</th>
@@ -532,8 +531,8 @@ function CreditsPage() {
           ${rowsHtml}
         </tbody>
       </table>`
-              : `<div class="empty">No outstanding credits found for this filter.</div>`
-          }
+        : `<div class="empty">No outstanding credits found for this filter.</div>`
+      }
           <div class="total">Total Balance: Rs. ${totalCreditDuesAmount.toFixed(2)}</div>
         </body>
       </html>
@@ -795,15 +794,15 @@ function CreditsPage() {
     let csv = "Sr No,Staff Name,Sale ID,Invoice No,Outlet Name,Contact Number,ERP ID,Issue Date,Due Date,Status,Outstanding Balance\n";
     tomorrowCredits.forEach((c, idx) => {
       csv += `${idx + 1},"${(c.staff_name || "").replace(/"/g, '""')}",` +
-             `"${(c.sticker_number || "").replace(/"/g, '""')}",` +
-             `"${(c.invoice_number || "").replace(/"/g, '""')}",` +
-             `"${(c.outlet_name || "").replace(/"/g, '""')}",` +
-             `"${(c.contact_number || "").replace(/"/g, '""')}",` +
-             `"${(c.outlet_erp_id || "").replace(/"/g, '""')}",` +
-             `"${formatDate(c.sale_date)}",` +
-             `"${calcDueDate(c.sale_date, c.credit_days)}",` +
-             `"${getCollectionDueLabel(c).replace(/"/g, '""')}",` +
-             `${Number(c.balance_amount || 0).toFixed(2)}\n`;
+        `"${(c.sticker_number || "").replace(/"/g, '""')}",` +
+        `"${(c.invoice_number || "").replace(/"/g, '""')}",` +
+        `"${(c.outlet_name || "").replace(/"/g, '""')}",` +
+        `"${(c.contact_number || "").replace(/"/g, '""')}",` +
+        `"${(c.outlet_erp_id || "").replace(/"/g, '""')}",` +
+        `"${formatDate(c.sale_date)}",` +
+        `"${calcDueDate(c.sale_date, c.credit_days)}",` +
+        `"${getCollectionDueLabel(c).replace(/"/g, '""')}",` +
+        `${Number(c.balance_amount || 0).toFixed(2)}\n`;
     });
 
     const total = tomorrowCredits.reduce((sum, c) => sum + (Number(c.balance_amount) || 0), 0);
@@ -942,14 +941,14 @@ function CreditsPage() {
     let csv = "Sr No,Staff Name,Sale ID,Invoice No,Outlet Name,Contact Number,ERP ID,Issue Date,Due Date,Outstanding Balance\n";
     next2DaysCredits.forEach((c, idx) => {
       csv += `${idx + 1},"${(c.staff_name || "").replace(/"/g, '""')}",` +
-             `"${(c.sticker_number || c.bp_sale_id || "").replace(/"/g, '""')}",` +
-             `"${(c.invoice_number || "").replace(/"/g, '""')}",` +
-             `"${(c.outlet_name || "").replace(/"/g, '""')}",` +
-             `"${(c.contact_number || "").replace(/"/g, '""')}",` +
-             `"${(c.outlet_erp_id || "").replace(/"/g, '""')}",` +
-             `"${formatDate(c.sale_date)}",` +
-             `"${calcDueDate(c.sale_date, c.credit_days)}",` +
-             `${Number(c.balance_amount || 0).toFixed(2)}\n`;
+        `"${(c.sticker_number || c.bp_sale_id || "").replace(/"/g, '""')}",` +
+        `"${(c.invoice_number || "").replace(/"/g, '""')}",` +
+        `"${(c.outlet_name || "").replace(/"/g, '""')}",` +
+        `"${(c.contact_number || "").replace(/"/g, '""')}",` +
+        `"${(c.outlet_erp_id || "").replace(/"/g, '""')}",` +
+        `"${formatDate(c.sale_date)}",` +
+        `"${calcDueDate(c.sale_date, c.credit_days)}",` +
+        `${Number(c.balance_amount || 0).toFixed(2)}\n`;
     });
 
     const total = next2DaysCredits.reduce((sum, c) => sum + (Number(c.balance_amount) || 0), 0);
@@ -1092,15 +1091,15 @@ function CreditsPage() {
       const diff = getDiffDays(c.sale_date, c.credit_days);
       const overdueDays = diff ? Math.abs(diff) : 0;
       csv += `${idx + 1},"${(c.staff_name || "").replace(/"/g, '""')}",` +
-             `"${(c.sticker_number|| "").replace(/"/g, '""')}",` +
-             `"${(c.invoice_number || "").replace(/"/g, '""')}",` +
-             `"${(c.outlet_name || "").replace(/"/g, '""')}",` +
-             `"${(c.contact_number || "").replace(/"/g, '""')}",` +
-             `"${(c.outlet_erp_id || "").replace(/"/g, '""')}",` +
-             `"${formatDate(c.sale_date)}",` +
-             `"${calcDueDate(c.sale_date, c.credit_days)}",` +
-             `${overdueDays},` +
-             `${Number(c.balance_amount || 0).toFixed(2)}\n`;
+        `"${(c.sticker_number || "").replace(/"/g, '""')}",` +
+        `"${(c.invoice_number || "").replace(/"/g, '""')}",` +
+        `"${(c.outlet_name || "").replace(/"/g, '""')}",` +
+        `"${(c.contact_number || "").replace(/"/g, '""')}",` +
+        `"${(c.outlet_erp_id || "").replace(/"/g, '""')}",` +
+        `"${formatDate(c.sale_date)}",` +
+        `"${calcDueDate(c.sale_date, c.credit_days)}",` +
+        `${overdueDays},` +
+        `${Number(c.balance_amount || 0).toFixed(2)}\n`;
     });
 
     const total = overdueCredits.reduce((sum, c) => sum + (Number(c.balance_amount) || 0), 0);
@@ -1133,7 +1132,7 @@ function CreditsPage() {
 
               <MDBox px={3} pt={3} pb={1}>
                 <Grid container spacing={2} alignItems="center">
-                <Grid item xs={12} md={6} lg={3}>
+                  <Grid item xs={12} md={6} lg={3}>
                     <MDInput
                       type="text"
                       label="Search Outlet, Area, Contact, Invoice, Staff, or Sale ID..."
@@ -1225,13 +1224,13 @@ function CreditsPage() {
                         color="dark"
                         variant="outlined"
                         fullWidth */}
-                        {/* onClick={handlePrintPdf}
+                      {/* onClick={handlePrintPdf}
                         disabled={filteredCredits.length === 0}
                         sx={{ height: 44 }} */}
                       {/* > */}
-                        <IoPrintOutline  onClick={() => handlePrintPdf()}                         disabled={filteredCredits.length === 0}
- style={{ cursor: "pointer" }} color="#6C9CF0" size={20}/> 
-                        
+                      <IoPrintOutline onClick={() => handlePrintPdf()} disabled={filteredCredits.length === 0}
+                        style={{ cursor: "pointer" }} color="#6C9CF0" size={20} />
+
                       {/* </MDButton> */}
                     </Grid>
                   )}
@@ -1249,7 +1248,7 @@ function CreditsPage() {
                       </MDButton>
                     </Grid>
                   )}
-                 
+
                   <Grid item xs={6} md={3} lg={2}>
                     <MDBox display="flex" justifyContent={{ xs: "flex-start", md: "flex-end" }}>
                       <MDBox

@@ -1352,6 +1352,20 @@ function buildSellerItemPayload(body) {
     const skuValidation = validateRequiredText(body.skuName, 'SKU Name');
     if (!skuValidation.valid) return { error: skuValidation.error };
 
+    const pcsPerBoxValidation = validateNumeric(body.pcsPerBox, 'Pieces per box');
+    if (!pcsPerBoxValidation.valid || pcsPerBoxValidation.value <= 0) {
+        return { error: 'Pieces per box must be greater than zero' };
+    }
+    const purchasePriceValidation = validateNumeric(body.purchasePrice, 'Purchase price');
+    if (!purchasePriceValidation.valid || purchasePriceValidation.value <= 0) {
+        return { error: 'Purchase price must be greater than zero' };
+    }
+
+    const expiryDate = String(body.expiryDate || '').trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(expiryDate)) {
+        return { error: 'Valid expiry date is required' };
+    }
+
     const gstValidation = validateNumeric(body.gstPercent ?? 5, 'GST');
     if (!gstValidation.valid) return { error: gstValidation.error };
 
@@ -1368,6 +1382,9 @@ function buildSellerItemPayload(body) {
         gstPercent: gstSplit.gstPercent,
         cgstPercent: gstSplit.cgstPercent,
         sgstPercent: gstSplit.sgstPercent,
+        pcsPerBox: pcsPerBoxValidation.value,
+        purchasePrice: purchasePriceValidation.value,
+        expiryDate,
     };
 }
 
@@ -2626,4 +2643,3 @@ export const deleteCompany = async (req, res) => {
         res.status(500).json({ error: 'Internal server error' });
     }
 };
-

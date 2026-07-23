@@ -191,10 +191,10 @@ function Packaging() {
         prev.map((row) =>
           row.id === saleId
             ? {
-                ...row,
-                packed_by_id: selectedStaff.id,
-                packed_by_name: selectedStaff.name,
-              }
+              ...row,
+              packed_by_id: selectedStaff.id,
+              packed_by_name: selectedStaff.name,
+            }
             : row
         )
       );
@@ -219,11 +219,11 @@ function Packaging() {
         prev.map((row) =>
           row.id === saleId
             ? {
-                ...row,
-                packaging_status: previousStatus || row.original_packaging_status || "not_packing",
-                packed_by_id: row.original_packed_by_id ?? "",
-                packed_by_name: row.original_packed_by_name ?? "",
-              }
+              ...row,
+              packaging_status: previousStatus || row.original_packaging_status || "not_packing",
+              packed_by_id: row.original_packed_by_id ?? "",
+              packed_by_name: row.original_packed_by_name ?? "",
+            }
             : row
         )
       );
@@ -627,15 +627,15 @@ function Packaging() {
                               <TableCell align="center" sx={{ borderBottom: borderCol, py: 2, color: txColor }}>
                                 {row.packaging_status === "packing_done"
                                   ? row.packed_by_name || (
-                                      <MDTypography
-                                        component="span"
-                                        variant="caption"
-                                        sx={{ color: "#b45309", cursor: "pointer", textDecoration: "underline" }}
-                                        onClick={() => openPackerDialogForSave(row.id, row)}
-                                      >
-                                        Select packer
-                                      </MDTypography>
-                                    )
+                                    <MDTypography
+                                      component="span"
+                                      variant="caption"
+                                      sx={{ color: "#b45309", cursor: "pointer", textDecoration: "underline" }}
+                                      onClick={() => openPackerDialogForSave(row.id, row)}
+                                    >
+                                      Select packer
+                                    </MDTypography>
+                                  )
                                   : "—"}
                               </TableCell>
                               <TableCell align="center" sx={{ borderBottom: borderCol, py: 2, color: txColor }}>
@@ -652,9 +652,9 @@ function Packaging() {
                               </TableCell>
                               <TableCell align="center" sx={{ borderBottom: borderCol, py: 2 }}>
                                 <MDBox display="flex" gap={1} justifyContent="center" flexWrap="wrap" sx={{ backgroundColor: "#f0fdfa", padding: "8px 12px", borderRadius: "8px", border: "1px solid #99f6e4" }}>
-                                <IoSaveOutline   onClick={() => handleSavePackaging(row.id)} style={{ cursor: "pointer" }} color="#059669" size={20} />
-                                <FaRegEdit   onClick={() => handleViewHistory(row.id)} style={{ cursor: "pointer" }} color="#E0E388" size={20}/>
-                                {/* <CiTrash   onClick={() => handleDeleteSale(row.id)} style={{ cursor: "pointer" }} color="#FF0000" size={20}/> */}
+                                  <IoSaveOutline onClick={() => handleSavePackaging(row.id)} style={{ cursor: "pointer" }} color="#059669" size={20} />
+                                  <FaRegEdit onClick={() => handleViewHistory(row.id)} style={{ cursor: "pointer" }} color="#E0E388" size={20} />
+                                  {/* <CiTrash   onClick={() => handleDeleteSale(row.id)} style={{ cursor: "pointer" }} color="#FF0000" size={20}/> */}
                                 </MDBox>
                               </TableCell>
                             </TableRow>

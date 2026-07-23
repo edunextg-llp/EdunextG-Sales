@@ -417,9 +417,9 @@ function CreateStaff() {
       const companyNames = Array.isArray(data.companies)
         ? data.companies.map((company) => company.name).filter(Boolean)
         : String(data.company_name || "")
-            .split(",")
-            .map((name) => name.trim())
-            .filter(Boolean);
+          .split(",")
+          .map((name) => name.trim())
+          .filter(Boolean);
 
       setFormData({
         name: data.name || "",
@@ -505,12 +505,12 @@ function CreateStaff() {
         formData.staffType === "cnf"
           ? { [cnfRouteDay]: formData.assignments[cnfRouteDay] || [] }
           : routeDays.reduce(
-              (acc, day) => ({
-                ...acc,
-                [day]: formData.assignments[day] || [],
-              }),
-              {}
-            );
+            (acc, day) => ({
+              ...acc,
+              [day]: formData.assignments[day] || [],
+            }),
+            {}
+          );
 
       const response = await fetch(url, {
         method,
@@ -741,8 +741,8 @@ function CreateStaff() {
                             </TableCell>
                             <TableCell align="center" sx={{ ...tableBodySx, borderBottom: "1px solid #e5e7eb" }}>
                               <MDBox display="flex" gap={0.5} justifyContent="center" alignItems="center" flexWrap="wrap">
-                                <FaEye onClick={() => handleView(staff)} style={{ cursor: "pointer" }} color="#E0E388" size={20}/>
-                                <FaRegEdit onClick={() => handleEdit(staff)} style={{ cursor: "pointer" }} color="#E0E388" size={20}/>
+                                <FaEye onClick={() => handleView(staff)} style={{ cursor: "pointer" }} color="#E0E388" size={20} />
+                                <FaRegEdit onClick={() => handleEdit(staff)} style={{ cursor: "pointer" }} color="#E0E388" size={20} />
                               </MDBox>
                             </TableCell>
                           </TableRow>

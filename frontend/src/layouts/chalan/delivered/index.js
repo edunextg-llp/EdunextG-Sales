@@ -176,8 +176,8 @@ function ChalanDelivered() {
         vehicleNo: row.vehicle_no || null,
         deliveryDate:
           newStatus === "out_for_delivery" ||
-          newStatus === "delivered" ||
-          newStatus === "cancelled"
+            newStatus === "delivered" ||
+            newStatus === "cancelled"
             ? row.delivery_date || getTodayLocalDate()
             : null,
         expectedStatus: row.packaging_status,

@@ -411,10 +411,10 @@ function ChalanAddSales() {
       setItems(
         sale.items.length > 0
           ? sale.items.map((item) => ({
-              itemName: item.itemName,
-              qty: String(item.qty),
-              mrp: String(item.mrp),
-            }))
+            itemName: item.itemName,
+            qty: String(item.qty),
+            mrp: String(item.mrp),
+          }))
           : [{ ...emptyItem }]
       );
       setEditingId(sale.id);
