@@ -18,6 +18,7 @@ import {
 } from '../utils/validation.js';
 import { normalizeInvoiceNumber } from '../utils/invoiceNumber.js';
 import { validateGoogleMapsLocation } from '../utils/googleMapsLocation.js';
+import { resolveItemGst } from '../utils/itemGst.js';
 import { uploadBufferToCloudinary, isCloudinaryConfigured } from '../utils/cloudinary.js';
 
 function buildStaffProfile(body = {}) {
@@ -1351,6 +1352,12 @@ function buildSellerItemPayload(body) {
     const skuValidation = validateRequiredText(body.skuName, 'SKU Name');
     if (!skuValidation.valid) return { error: skuValidation.error };
 
+    const gstValidation = validateNumeric(body.gstPercent ?? 5, 'GST');
+    if (!gstValidation.valid) return { error: gstValidation.error };
+
+    const gstSplit = resolveItemGst(gstValidation.value);
+    if (gstSplit.error) return { error: gstSplit.error };
+
     return {
         companyId,
         sellerId,
@@ -1358,6 +1365,9 @@ function buildSellerItemPayload(body) {
         skuName: skuValidation.value,
         variantName: body.variantName ? String(body.variantName).trim() : '',
         hsnCode: body.hsnCode ? String(body.hsnCode).trim().toUpperCase() : '',
+        gstPercent: gstSplit.gstPercent,
+        cgstPercent: gstSplit.cgstPercent,
+        sgstPercent: gstSplit.sgstPercent,
     };
 }
 

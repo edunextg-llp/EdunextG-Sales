@@ -11,14 +11,20 @@ const ITEM_COLUMNS = `
     si.sku_name,
     si.variant_name,
     si.hsn_code,
+    si.gst_percent,
+    si.cgst_percent,
+    si.sgst_percent,
     si.created_at
 `;
 
 class SellerItemModel {
     static async create(data) {
         const [result] = await db.execute(
-            `INSERT INTO seller_items (company_id, seller_id, product_erp_id, sku_name, variant_name, hsn_code)
-             VALUES (?, ?, ?, ?, ?, ?)`,
+            `INSERT INTO seller_items (
+                company_id, seller_id, product_erp_id, sku_name, variant_name, hsn_code,
+                gst_percent, cgst_percent, sgst_percent
+             )
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
             [
                 data.companyId,
                 data.sellerId,
@@ -26,6 +32,9 @@ class SellerItemModel {
                 data.skuName,
                 data.variantName || null,
                 data.hsnCode || null,
+                data.gstPercent,
+                data.cgstPercent,
+                data.sgstPercent,
             ]
         );
         return SellerItemModel.getById(result.insertId);
@@ -39,7 +48,10 @@ class SellerItemModel {
                  product_erp_id = ?,
                  sku_name = ?,
                  variant_name = ?,
-                 hsn_code = ?
+                 hsn_code = ?,
+                 gst_percent = ?,
+                 cgst_percent = ?,
+                 sgst_percent = ?
              WHERE id = ?`,
             [
                 data.companyId,
@@ -48,6 +60,9 @@ class SellerItemModel {
                 data.skuName,
                 data.variantName || null,
                 data.hsnCode || null,
+                data.gstPercent,
+                data.cgstPercent,
+                data.sgstPercent,
                 id,
             ]
         );

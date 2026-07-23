@@ -596,6 +596,9 @@ export async function ensureSchema() {
                 sku_name VARCHAR(255) NOT NULL,
                 variant_name VARCHAR(255) NULL,
                 hsn_code VARCHAR(50) NULL,
+                gst_percent DECIMAL(5, 2) NOT NULL DEFAULT 5.00,
+                cgst_percent DECIMAL(5, 2) NOT NULL DEFAULT 2.50,
+                sgst_percent DECIMAL(5, 2) NOT NULL DEFAULT 2.50,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE CASCADE,
                 FOREIGN KEY (seller_id) REFERENCES purchase_sellers(id) ON DELETE CASCADE,
@@ -604,6 +607,22 @@ export async function ensureSchema() {
                 INDEX idx_seller_items_seller_id (seller_id)
             );
         `);
+
+        await tryQuery(
+            connection,
+            `ALTER TABLE seller_items ADD COLUMN gst_percent DECIMAL(5, 2) NOT NULL DEFAULT 5.00`,
+            'gst_percent on seller_items'
+        );
+        await tryQuery(
+            connection,
+            `ALTER TABLE seller_items ADD COLUMN cgst_percent DECIMAL(5, 2) NOT NULL DEFAULT 2.50`,
+            'cgst_percent on seller_items'
+        );
+        await tryQuery(
+            connection,
+            `ALTER TABLE seller_items ADD COLUMN sgst_percent DECIMAL(5, 2) NOT NULL DEFAULT 2.50`,
+            'sgst_percent on seller_items'
+        );
 
         await connection.query(`
             CREATE TABLE IF NOT EXISTS company_item_sequence (

@@ -36,7 +36,23 @@ const emptyForm = () => ({
   skuName: "",
   variantName: "",
   hsnCode: "",
+  gstPercent: "5",
 });
+
+const splitGstDisplay = (gstPercent) => {
+  const gst = Number(gstPercent);
+  if (!Number.isFinite(gst) || gst < 0) {
+    return { cgstPercent: "", sgstPercent: "" };
+  }
+  const half = (gst / 2).toFixed(2);
+  return { cgstPercent: half, sgstPercent: half };
+};
+
+const formatPercent = (value) => {
+  const num = Number(value);
+  if (!Number.isFinite(num)) return "—";
+  return `${num % 1 === 0 ? num.toFixed(0) : num}%`;
+};
 
 const tableHeadSx = {
   color: "#6b7280",
@@ -174,6 +190,10 @@ function AddItem() {
     if (!selectedSellerId) return "Please choose a seller.";
     if (!data.productErpId.trim()) return "Product ERP ID is required.";
     if (!data.skuName.trim()) return "SKU Name is required.";
+    if (!String(data.gstPercent ?? "").trim()) return "GST is required.";
+    if (Number.isNaN(Number(data.gstPercent)) || Number(data.gstPercent) < 0) {
+      return "GST must be a valid percentage.";
+    }
     return "";
   };
 
@@ -184,6 +204,7 @@ function AddItem() {
     skuName: data.skuName.trim(),
     variantName: data.variantName.trim(),
     hsnCode: data.hsnCode.trim().toUpperCase(),
+    gstPercent: Number(data.gstPercent),
   });
 
   const handleSubmit = async () => {
@@ -224,6 +245,7 @@ function AddItem() {
       skuName: item.sku_name || "",
       variantName: item.variant_name || "",
       hsnCode: item.hsn_code || "",
+      gstPercent: item.gst_percent != null ? String(item.gst_percent) : "5",
     });
     setEditError("");
     setEditModalOpen(true);
@@ -291,6 +313,8 @@ function AddItem() {
 
   const selectedCompany = companies.find((c) => String(c.id) === String(selectedCompanyId));
   const selectedSeller = sellers.find((s) => String(s.id) === String(selectedSellerId));
+  const formGstSplit = splitGstDisplay(form.gstPercent);
+  const editGstSplit = splitGstDisplay(editForm.gstPercent);
 
   return (
     <DashboardLayout>
@@ -415,6 +439,32 @@ function AddItem() {
                           onChange={(e) => handleChange("hsnCode", e.target.value.toUpperCase())}
                         />
                       </Grid>
+
+                      <Grid item xs={12} md={3}>
+                        <MDInput
+                          label="GST % *"
+                          fullWidth
+                          type="number"
+                          value={form.gstPercent}
+                          onChange={(e) => handleChange("gstPercent", e.target.value)}
+                        />
+                      </Grid>
+                      <Grid item xs={12} md={3}>
+                        <MDInput
+                          label="CGST %"
+                          fullWidth
+                          value={formGstSplit.cgstPercent ? `${formGstSplit.cgstPercent}%` : ""}
+                          disabled
+                        />
+                      </Grid>
+                      <Grid item xs={12} md={3}>
+                        <MDInput
+                          label="SGST %"
+                          fullWidth
+                          value={formGstSplit.sgstPercent ? `${formGstSplit.sgstPercent}%` : ""}
+                          disabled
+                        />
+                      </Grid>
                     </>
                   )}
 
@@ -491,6 +541,9 @@ function AddItem() {
                           <TableCell sx={tableHeadSx}>SKU Name</TableCell>
                           <TableCell sx={tableHeadSx}>Variant Name</TableCell>
                           <TableCell sx={tableHeadSx}>HSN Code</TableCell>
+                          <TableCell sx={tableHeadSx}>GST</TableCell>
+                          <TableCell sx={tableHeadSx}>CGST</TableCell>
+                          <TableCell sx={tableHeadSx}>SGST</TableCell>
                           <TableCell sx={{ ...tableHeadSx, textAlign: "center" }}>Action</TableCell>
                         </TableRow>
                       </TableHead>
@@ -514,6 +567,15 @@ function AddItem() {
                             </TableCell>
                             <TableCell sx={{ ...tableBodySx, borderBottom: "1px solid #e5e7eb" }}>
                               {item.hsn_code || "—"}
+                            </TableCell>
+                            <TableCell sx={{ ...tableBodySx, borderBottom: "1px solid #e5e7eb" }}>
+                              {formatPercent(item.gst_percent)}
+                            </TableCell>
+                            <TableCell sx={{ ...tableBodySx, borderBottom: "1px solid #e5e7eb" }}>
+                              {formatPercent(item.cgst_percent)}
+                            </TableCell>
+                            <TableCell sx={{ ...tableBodySx, borderBottom: "1px solid #e5e7eb" }}>
+                              {formatPercent(item.sgst_percent)}
                             </TableCell>
                             <TableCell sx={{ ...tableBodySx, borderBottom: "1px solid #e5e7eb", textAlign: "center" }}>
                               <MDBox display="flex" alignItems="center" justifyContent="center" gap={0.5}>
@@ -589,6 +651,31 @@ function AddItem() {
                   fullWidth
                   value={editForm.hsnCode}
                   onChange={(e) => handleEditChange("hsnCode", e.target.value.toUpperCase())}
+                />
+              </Grid>
+              <Grid item xs={12} md={4}>
+                <MDInput
+                  label="GST % *"
+                  fullWidth
+                  type="number"
+                  value={editForm.gstPercent}
+                  onChange={(e) => handleEditChange("gstPercent", e.target.value)}
+                />
+              </Grid>
+              <Grid item xs={12} md={4}>
+                <MDInput
+                  label="CGST %"
+                  fullWidth
+                  value={editGstSplit.cgstPercent ? `${editGstSplit.cgstPercent}%` : ""}
+                  disabled
+                />
+              </Grid>
+              <Grid item xs={12} md={4}>
+                <MDInput
+                  label="SGST %"
+                  fullWidth
+                  value={editGstSplit.sgstPercent ? `${editGstSplit.sgstPercent}%` : ""}
+                  disabled
                 />
               </Grid>
               {editError && (
