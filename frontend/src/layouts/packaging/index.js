@@ -64,7 +64,7 @@ function Packaging() {
   const [page, setPage] = useState(1);
   const [rowsPerPage, setRowsPerPage] = useState(ROWS_PER_PAGE);
   const recentlySavedRef = useRef(new Map());
-  const API = "https://bawarche.edunextg.co/api";
+  const API = "https://bawarchee.edunextg.co/api";
 
   const statusLabels = {
     not_packing: "Not Packing",

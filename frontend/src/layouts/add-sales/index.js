@@ -111,7 +111,7 @@ function AddSales() {
     price: "",
   });
 
-  const API = "https://bawarche.edunextg.co/api";
+  const API = "https://bawarchee.edunextg.co/api";
   const isCnfStaff = selectedStaff?.staff_type === "cnf";
   const emptySaleRow = { itemCount: "", invoiceNumber: "", price: "", deliveryBoyId: "", vehicleNo: "" };
 

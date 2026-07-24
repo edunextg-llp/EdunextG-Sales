@@ -31,7 +31,7 @@ function Basic() {
   const navigate = useNavigate();
   const { login } = useAuth();
 
-  const API = "https://bawarche.edunextg.co/api/auth";
+  const API = "https://bawarchee.edunextg.co/api/auth";
 
   const handleSetRememberMe = () => setRememberMe(!rememberMe);
 

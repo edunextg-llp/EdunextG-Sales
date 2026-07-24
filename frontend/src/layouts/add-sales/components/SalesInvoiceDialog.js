@@ -203,7 +203,7 @@ function calcLine(item) {
   return { qty, rate, total, disc: 0, taxable: total, netTotal: total };
 }
 
-const API = "https://bawarche.edunextg.co/api";
+const API = "https://bawarchee.edunextg.co/api";
 
 export default function SalesInvoiceDialog({
   open,

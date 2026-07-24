@@ -73,7 +73,7 @@ function Delivery() {
   const [logEndDate, setLogEndDate] = useState(getTodayLocalDate());
   const [logStaffId, setLogStaffId] = useState("");
 
-  const API = "https://bawarche.edunextg.co/api";
+  const API = "https://bawarchee.edunextg.co/api";
 
   const statusLabels = {
     not_packing: "Not Packing",

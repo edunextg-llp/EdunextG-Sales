@@ -70,7 +70,7 @@ function OutBillPage() {
   const [reportPage, setReportPage] = useState(1);
   const [reportRowsPerPage, setReportRowsPerPage] = useState(ROWS_PER_PAGE);
 
-  const API = "https://bawarche.edunextg.co/api";
+  const API = "https://bawarchee.edunextg.co/api";
 
   const isCreditTaken = (credit) => Number(credit?.is_taken) === 1;
 

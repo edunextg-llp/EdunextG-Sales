@@ -29,7 +29,7 @@ import DashboardNavbar from "examples/Navbars/DashboardNavbar";
 import Footer from "examples/Footer";
 import { stickyColumnSx, stickyHeadRowSx, stickyTableContainerSx, stickyTableSx } from "utils/stickyProductColumns";
 
-const API = "https://bawarche.edunextg.co/api";
+const API = "https://bawarchee.edunextg.co/api";
 const PHYSICAL_STOCK_TEMPLATE_URL =
   "https://res.cloudinary.com/ddwp5cuhl/raw/upload/v1782977511/Physiscal_Stock_-_Copy_gjxvok.xlsx";
 

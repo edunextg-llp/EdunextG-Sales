@@ -1,4 +1,4 @@
-const API = "https://bawarche.edunextg.co/api";
+const API = "https://bawarchee.edunextg.co/api";
 
 export async function uploadStaffDocument(file, documentType) {
   const formData = new FormData();

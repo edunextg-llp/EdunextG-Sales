@@ -19,7 +19,7 @@ import MDTypography from "components/MDTypography";
 import DashboardLayout from "examples/LayoutContainers/DashboardLayout";
 import DashboardNavbar from "examples/Navbars/DashboardNavbar";
 import Footer from "examples/Footer";
-const API = "https://bawarche.edunextg.co/api";
+const API = "https://bawarchee.edunextg.co/api";
 const MANUAL_DMS_DRAFT_KEY = "dms-manual-stock-draft";
 const money = (value) => `Rs. ${Number(value || 0).toLocaleString("en-IN", {
   minimumFractionDigits: 4,

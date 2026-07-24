@@ -3,13 +3,13 @@
 Base URL:
 
 ```text
-https://bawarche.edunextg.co/api
+https://bawarchee.edunextg.co/api
 ```
 
 For local development:
 
 ```text
-https://bawarche.edunextg.co/api
+https://bawarchee.edunextg.co/api
 ```
 
 ## Delivery Boy Credentials

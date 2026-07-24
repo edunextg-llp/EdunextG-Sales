@@ -31,7 +31,7 @@ import DashboardNavbar from "examples/Navbars/DashboardNavbar";
 import Footer from "examples/Footer";
 import { stickyColumnSx, stickyHeadRowSx, stickyTableContainerSx, stickyTableSx } from "utils/stickyProductColumns";
 
-const API = "https://bawarche.edunextg.co/api";
+const API = "https://bawarchee.edunextg.co/api";
 const DMS_STOCK_TEMPLATE_URL =
   "https://res.cloudinary.com/ddwp5cuhl/raw/upload/v1782977868/DMS_Stock_-_Copy_cgba8i.xlsx";
 const MANUAL_DMS_DRAFT_KEY = "dms-manual-stock-draft";
