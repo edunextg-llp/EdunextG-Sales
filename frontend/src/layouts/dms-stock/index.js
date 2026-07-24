@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import Card from "@mui/material/Card";
+import Autocomplete from "@mui/material/Autocomplete";
 import Dialog from "@mui/material/Dialog";
 import DialogActions from "@mui/material/DialogActions";
 import DialogContent from "@mui/material/DialogContent";
@@ -18,6 +19,7 @@ import TableCell from "@mui/material/TableCell";
 import TableContainer from "@mui/material/TableContainer";
 import TableHead from "@mui/material/TableHead";
 import TableRow from "@mui/material/TableRow";
+import TextField from "@mui/material/TextField";
 
 import MDBox from "components/MDBox";
 import MDButton from "components/MDButton";
@@ -32,6 +34,17 @@ import { stickyColumnSx, stickyHeadRowSx, stickyTableContainerSx, stickyTableSx 
 const API = "https://bawarchee.edunextg.co/api";
 const DMS_STOCK_TEMPLATE_URL =
   "https://res.cloudinary.com/ddwp5cuhl/raw/upload/v1782977868/DMS_Stock_-_Copy_cgba8i.xlsx";
+const MANUAL_DMS_DRAFT_KEY = "dms-manual-stock-draft";
+
+const loadManualDmsDraft = () => {
+  try {
+    const saved = localStorage.getItem(MANUAL_DMS_DRAFT_KEY);
+    return saved ? JSON.parse(saved) : null;
+  } catch (error) {
+    console.error("Unable to restore DMS manual-entry draft:", error);
+    return null;
+  }
+};
 
 const tableHeadSx = {
   color: "#6b7280",
@@ -233,7 +246,7 @@ const calcManualTotals = (item) => {
 
   return {
     totalCurrentStockInPcs: totalCurrentStockInPcs ? String(totalCurrentStockInPcs) : "",
-    totalValue: totalValue ? totalValue.toFixed(2) : "",
+    totalValue: totalValue ? totalValue.toFixed(4) : "",
     priceWithGst: pricePerPiece ? priceWithGst.toFixed(2) : "",
     purchasePriceWithGst: purchasePrice ? purchasePriceWithGst.toFixed(2) : "",
     price: price ? price.toFixed(2) : "",
@@ -289,6 +302,8 @@ function Metric({ label, value }) {
 }
 
 function DmsStock() {
+  const restoredDraftRef = useRef(loadManualDmsDraft());
+  const restoredDraft = restoredDraftRef.current;
   const fileInputRef = useRef(null);
   const pendingIdRef = useRef(0);
   const [stockImport, setStockImport] = useState(null);
@@ -304,17 +319,25 @@ function DmsStock() {
   const [importDates, setImportDates] = useState([]);
   const [uploadDate, setUploadDate] = useState(() => getTodayLocalDate());
   const [uploadModalOpen, setUploadModalOpen] = useState(false);
-  const [manualModalOpen, setManualModalOpen] = useState(false);
-  const [manualCompanyId, setManualCompanyId] = useState("");
-  const [manualSellerId, setManualSellerId] = useState("");
-  const [manualUploadDate, setManualUploadDate] = useState(() => getTodayLocalDate());
-  const [manualInvoiceNumber, setManualInvoiceNumber] = useState("");
-  const [manualItem, setManualItem] = useState(emptyManualItem);
-  const [pendingItems, setPendingItems] = useState([]);
+  const [manualModalOpen, setManualModalOpen] = useState(Boolean(restoredDraft));
+  const [manualCompanyId, setManualCompanyId] = useState(restoredDraft?.manualCompanyId || "");
+  const [manualSellerId, setManualSellerId] = useState(restoredDraft?.manualSellerId || "");
+  const [manualUploadDate, setManualUploadDate] = useState(
+    restoredDraft?.manualUploadDate || getTodayLocalDate()
+  );
+  const [manualInvoiceNumber, setManualInvoiceNumber] = useState(
+    restoredDraft?.manualInvoiceNumber || ""
+  );
+  const [manualItem, setManualItem] = useState(restoredDraft?.manualItem || emptyManualItem());
+  const [pendingItems, setPendingItems] = useState(
+    Array.isArray(restoredDraft?.pendingItems) ? restoredDraft.pendingItems : []
+  );
   const [savingManual, setSavingManual] = useState(false);
   const [sellers, setSellers] = useState([]);
   const [sellerItems, setSellerItems] = useState([]);
-  const [selectedSellerItemId, setSelectedSellerItemId] = useState("");
+  const [selectedSellerItemId, setSelectedSellerItemId] = useState(
+    restoredDraft?.selectedSellerItemId || ""
+  );
   const [loadingSellers, setLoadingSellers] = useState(false);
   const [loadingSellerItems, setLoadingSellerItems] = useState(false);
   const [companies, setCompanies] = useState([]);
@@ -415,6 +438,43 @@ function DmsStock() {
   useEffect(() => {
     fetchImportDates();
     fetchCompanies();
+  }, []);
+
+  useEffect(() => {
+    if (!manualModalOpen) {
+      localStorage.removeItem(MANUAL_DMS_DRAFT_KEY);
+      return;
+    }
+
+    localStorage.setItem(MANUAL_DMS_DRAFT_KEY, JSON.stringify({
+      manualCompanyId,
+      manualSellerId,
+      manualUploadDate,
+      manualInvoiceNumber,
+      manualItem,
+      pendingItems,
+      selectedSellerItemId,
+    }));
+  }, [
+    manualCompanyId,
+    manualInvoiceNumber,
+    manualItem,
+    manualModalOpen,
+    manualSellerId,
+    manualUploadDate,
+    pendingItems,
+    selectedSellerItemId,
+  ]);
+
+  useEffect(() => {
+    if (!manualModalOpen || !restoredDraft) return;
+    pendingIdRef.current = pendingItems.length;
+    if (manualCompanyId) fetchManualSellers(manualCompanyId);
+    if (manualCompanyId && manualSellerId) {
+      fetchManualSellerItems(manualCompanyId, manualSellerId);
+    }
+    // Restore remote dropdown choices once after a refresh.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -664,6 +724,7 @@ function DmsStock() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           companyId: manualCompanyId,
+          sellerId: manualSellerId,
           invoiceNumber: manualInvoiceNumber.trim(),
           uploadDate: manualUploadDate,
           items: pendingItems.map(({ id, ...item }) => item),
@@ -778,7 +839,7 @@ function DmsStock() {
               <MDBox p={3} pb={2} display="flex" justifyContent="space-between" alignItems="flex-start" flexWrap="wrap" gap={2}>
                 <MDBox>
                   <MDTypography variant="h5" fontWeight="medium" color="dark">
-                    DMS Stock
+                    Item List
                   </MDTypography>
                   <MDTypography variant="caption" color="text" display="block" mt={0.5}>
                     Showing up to 200 saved rows per upload. Use the date filter to view a specific upload.
@@ -1160,26 +1221,32 @@ function DmsStock() {
                 <MDTypography sx={fieldLabelSx}>
                   Select Item{requiredMark}
                 </MDTypography>
-                <FormControl fullWidth size="small" disabled={!manualSellerId || loadingSellerItems}>
-                  <Select
-                    displayEmpty
-                    value={selectedSellerItemId}
-                    onChange={(event) => handleSellerItemSelect(event.target.value)}
-                    sx={{ backgroundColor: "#fff", height: 40 }}
-                  >
-                    <MenuItem value="" disabled>
-                      {loadingSellerItems ? "Loading items..." : "Select Item"}
-                    </MenuItem>
-                    {sellerItems.map((item) => (
-                      <MenuItem key={item.id} value={String(item.id)}>
-                        {formatSellerItemLabel(item)}
-                      </MenuItem>
-                    ))}
-                    {manualSellerId && !loadingSellerItems && sellerItems.length === 0 && (
-                      <MenuItem disabled>No items found for this seller</MenuItem>
-                    )}
-                  </Select>
-                </FormControl>
+                <Autocomplete
+                  fullWidth
+                  size="small"
+                  disabled={!manualSellerId || loadingSellerItems}
+                  loading={loadingSellerItems}
+                  options={sellerItems}
+                  value={sellerItems.find(
+                    (item) => String(item.id) === String(selectedSellerItemId)
+                  ) || null}
+                  getOptionLabel={(item) => formatSellerItemLabel(item)}
+                  isOptionEqualToValue={(option, value) => String(option.id) === String(value.id)}
+                  onChange={(event, item) => handleSellerItemSelect(item?.id || "")}
+                  noOptionsText={manualSellerId ? "No matching items" : "Select seller first"}
+                  renderInput={(params) => (
+                    <TextField
+                      {...params}
+                      placeholder={loadingSellerItems
+                        ? "Loading items..."
+                        : "Search ERP ID, item name, or variant"}
+                      sx={{
+                        backgroundColor: "#fff",
+                        "& .MuiOutlinedInput-root": { height: 40 },
+                      }}
+                    />
+                  )}
+                />
               </Grid>
 
               <Grid item xs={12} md={3}>

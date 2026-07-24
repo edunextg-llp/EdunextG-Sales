@@ -359,6 +359,7 @@ function manualItemToRow(item = {}) {
 export const createManualDmsStock = async (req, res) => {
     try {
         const companyId = parseInt(req.body?.companyId, 10);
+        const sellerId = parseInt(req.body?.sellerId, 10);
         if (!Number.isFinite(companyId) || companyId <= 0) {
             return res.status(400).json({ error: 'Please select a company.' });
         }
@@ -366,6 +367,9 @@ export const createManualDmsStock = async (req, res) => {
         const company = await CompanyModel.getById(companyId);
         if (!company) {
             return res.status(400).json({ error: 'Selected company was not found.' });
+        }
+        if (!Number.isFinite(sellerId) || sellerId <= 0) {
+            return res.status(400).json({ error: 'Please select a seller.' });
         }
 
         const items = Array.isArray(req.body?.items) ? req.body.items : [];
@@ -401,12 +405,12 @@ export const createManualDmsStock = async (req, res) => {
                 const dpPrice = roundRate(toNumber(item.dpPrice));
                 const discountPercent = Math.max(0, Math.min(100, roundRate(toNumber(item.discountPercent))));
                 const gstPercent = 5;
-                const price = roundMoney(dpPrice * row.totalPieces);
-                const discountAmount = roundMoney(price * discountPercent / 100);
-                const taxableAmount = roundMoney(price - discountAmount);
-                const cgstAmount = roundMoney(taxableAmount * 0.025);
-                const sgstAmount = roundMoney(taxableAmount * 0.025);
-                const totalPrice = roundMoney(taxableAmount + cgstAmount + sgstAmount);
+                const price = roundRate(dpPrice * row.totalPieces);
+                const discountAmount = roundRate(price * discountPercent / 100);
+                const taxableAmount = roundRate(price - discountAmount);
+                const cgstAmount = roundRate(taxableAmount * 0.025);
+                const sgstAmount = roundRate(taxableAmount * 0.025);
+                const totalPrice = roundRate(taxableAmount + cgstAmount + sgstAmount);
                 const retailPrice = roundRate(toNumber(item.retailPrice));
                 const wholesalePrice = roundRate(toNumber(item.wholesalePrice));
 
@@ -446,6 +450,7 @@ export const createManualDmsStock = async (req, res) => {
         const uploadDate = normalizeUploadDate(req.body?.uploadDate);
         const existingImport = await DmsStockModel.getManualImportByCompanyAndDate(
             companyId,
+            sellerId,
             uploadDate,
             invoiceNumber
         );
@@ -458,6 +463,7 @@ export const createManualDmsStock = async (req, res) => {
             result = await DmsStockModel.createImport({
                 fileName: 'Manual Entry',
                 companyId,
+                sellerId,
                 invoiceNumber,
                 uploadDate,
                 rowCount: rows.length,

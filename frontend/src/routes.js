@@ -29,6 +29,7 @@ import ChalanDelivered from "layouts/chalan/delivered";
 import ChalanReturn from "layouts/chalan/return";
 // import Reports from "layouts/reports";
 import DmsStock from "layouts/dms-stock";
+import DmsPurchaseHistory from "layouts/dms-purchase-history";
 import AddSeller from "layouts/add-seller";
 import AddItem from "layouts/add-item";
 import CurrentStock from "layouts/current-stock";
@@ -78,11 +79,27 @@ const routes = [
       },
       {
         type: "collapse",
-        name: "DMS Stock",
+        name: "Item List",
         key: "dms-stock",
-        icon: <Icon fontSize="small">upload_file</Icon>,
+        icon: <Icon fontSize="small">inventory_2</Icon>,
         route: "/dms-stock",
         component: <DmsStock />,
+      },
+      {
+        type: "collapse",
+        name: "Purchase",
+        key: "purchase",
+        icon: <Icon fontSize="small">receipt_long</Icon>,
+        route: "/purchase",
+        component: <Purchase />,
+      },
+      {
+        type: "collapse",
+        name: "Purchase History",
+        key: "dms-purchase-history",
+        icon: <Icon fontSize="small">history</Icon>,
+        route: "/dms-purchase-history",
+        component: <DmsPurchaseHistory />,
       },
       {
         type: "collapse",
@@ -158,14 +175,6 @@ const routes = [
       },
 
     ],
-  },
-  {
-    type: "collapse",
-    name: "Purchase",
-    key: "purchase",
-    icon: <Icon fontSize="small">receipt_long</Icon>,
-    route: "/purchase",
-    component: <Purchase />,
   },
   {
     type: "collapse",

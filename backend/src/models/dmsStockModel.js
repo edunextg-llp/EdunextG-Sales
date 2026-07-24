@@ -8,20 +8,22 @@ const toNumber = (value) => {
 class DmsStockModel {
     static async getImports() {
         const [rows] = await db.execute(
-            `SELECT i.id, i.entry_code, i.invoice_number, i.file_name, i.company_id, c.name AS company_name, i.row_count,
+            `SELECT i.id, i.entry_code, i.invoice_number, i.file_name, i.company_id, c.name AS company_name,
+                    i.seller_id, ps.seller_name, i.row_count,
                     DATE_FORMAT(i.upload_date, '%Y-%m-%d') AS upload_date,
                     i.total_stock_cases, i.total_stock_pcs, i.total_pieces, i.total_value,
                     DATE_FORMAT(i.created_at, '%Y-%m-%d %H:%i:%s') AS created_at
              FROM dms_stock_imports i
              LEFT JOIN companies c ON i.company_id = c.id
+             LEFT JOIN purchase_sellers ps ON i.seller_id = ps.id
              ORDER BY i.upload_date DESC, i.id DESC`
         );
 
         return rows.map(DmsStockModel.normalizeImport);
     }
 
-    static async getManualImportByCompanyAndDate(companyId, uploadDate, invoiceNumber) {
-        if (!companyId || !uploadDate || !invoiceNumber) return null;
+    static async getManualImportByCompanyAndDate(companyId, sellerId, uploadDate, invoiceNumber) {
+        if (!companyId || !sellerId || !uploadDate || !invoiceNumber) return null;
 
         const [rows] = await db.execute(
             `SELECT i.id, i.entry_code, i.invoice_number, i.file_name, i.company_id, c.name AS company_name, i.row_count,
@@ -30,11 +32,11 @@ class DmsStockModel {
                     DATE_FORMAT(i.created_at, '%Y-%m-%d %H:%i:%s') AS created_at
              FROM dms_stock_imports i
              LEFT JOIN companies c ON i.company_id = c.id
-             WHERE i.company_id = ? AND i.upload_date = ? AND i.file_name = 'Manual Entry'
+             WHERE i.company_id = ? AND i.seller_id = ? AND i.upload_date = ? AND i.file_name = 'Manual Entry'
                AND LOWER(TRIM(i.invoice_number)) = LOWER(?)
              ORDER BY i.id DESC
              LIMIT 1`,
-            [companyId, uploadDate, invoiceNumber]
+            [companyId, sellerId, uploadDate, invoiceNumber]
         );
         return rows[0] || null;
     }
@@ -421,7 +423,9 @@ class DmsStockModel {
         return DmsStockModel.upsertItemsToImport(importId, rows);
     }
 
-    static async createImport({ fileName, companyId, invoiceNumber = null, uploadDate, rowCount, summary, rows }) {
+    static async createImport({
+        fileName, companyId, sellerId = null, invoiceNumber = null, uploadDate, rowCount, summary, rows,
+    }) {
         const connection = await db.getConnection();
 
         try {
@@ -445,16 +449,17 @@ class DmsStockModel {
 
             const [importResult] = await connection.execute(
                 `INSERT INTO dms_stock_imports
-                 (entry_code, invoice_number, file_name, company_id, upload_date, row_count, total_purchase_units, total_purchase_value,
+                 (entry_code, invoice_number, file_name, company_id, seller_id, upload_date, row_count, total_purchase_units, total_purchase_value,
                   total_invoiced_units, total_invoiced_value, total_closing_units,
                   total_closing_value, total_in_transit_units, total_in_transit_value,
                   total_stock_cases, total_stock_pcs, total_pieces, total_value)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
                 [
                     entryCode,
                     invoiceNumber,
                     fileName,
                     companyId,
+                    sellerId,
                     uploadDate,
                     rowCount,
                     summary.totalPurchaseUnits,
@@ -609,7 +614,8 @@ class DmsStockModel {
     static async getImportById(importId) {
         const [headerRows, itemRows] = await Promise.all([
             db.execute(
-                `SELECT i.id, i.entry_code, i.invoice_number, i.file_name, i.company_id, c.name AS company_name, i.row_count,
+                `SELECT i.id, i.entry_code, i.invoice_number, i.file_name, i.company_id, c.name AS company_name,
+                        i.seller_id, ps.seller_name, i.row_count,
                         DATE_FORMAT(i.upload_date, '%Y-%m-%d') AS upload_date,
                         i.total_purchase_units, i.total_purchase_value,
                         i.total_invoiced_units, i.total_invoiced_value,
@@ -619,6 +625,7 @@ class DmsStockModel {
                         DATE_FORMAT(i.created_at, '%Y-%m-%d %H:%i:%s') AS created_at
                  FROM dms_stock_imports i
                  LEFT JOIN companies c ON i.company_id = c.id
+                 LEFT JOIN purchase_sellers ps ON i.seller_id = ps.id
                  WHERE i.id = ?`,
                 [importId]
             ).then(([rows]) => rows),

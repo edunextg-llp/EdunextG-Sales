@@ -804,6 +804,8 @@ async function initDB() {
                 entry_code VARCHAR(40) NULL UNIQUE,
                 invoice_number VARCHAR(100) NULL,
                 file_name VARCHAR(255) NOT NULL,
+                company_id INT NULL,
+                seller_id INT NULL,
             upload_date DATE NULL,
             row_count INT NOT NULL DEFAULT 0,
             total_purchase_units DECIMAL(14, 4) NOT NULL DEFAULT 0.0000,
@@ -817,7 +819,7 @@ async function initDB() {
             total_stock_cases DECIMAL(14, 4) NOT NULL DEFAULT 0.0000,
             total_stock_pcs DECIMAL(14, 4) NOT NULL DEFAULT 0.0000,
             total_pieces DECIMAL(14, 4) NOT NULL DEFAULT 0.0000,
-            total_value DECIMAL(14, 2) NOT NULL DEFAULT 0.00,
+                total_value DECIMAL(14, 4) NOT NULL DEFAULT 0.0000,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
     `);
@@ -847,7 +849,7 @@ async function initDB() {
             total_in_transit_stock_quantity_unit DECIMAL(14, 4) NOT NULL DEFAULT 0.0000,
             in_transit_stock_value DECIMAL(14, 2) NOT NULL DEFAULT 0.00,
             total_pieces DECIMAL(14, 4) NOT NULL DEFAULT 0.0000,
-            total_value DECIMAL(14, 2) NOT NULL DEFAULT 0.00,
+                total_value DECIMAL(14, 4) NOT NULL DEFAULT 0.0000,
                 purchase_price DECIMAL(14, 4) NULL,
                 batch_number VARCHAR(100) NULL,
                 mfg_date DATE NULL,
