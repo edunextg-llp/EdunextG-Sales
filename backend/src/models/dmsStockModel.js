@@ -8,7 +8,7 @@ const toNumber = (value) => {
 class DmsStockModel {
     static async getImports() {
         const [rows] = await db.execute(
-            `SELECT i.id, i.file_name, i.company_id, c.name AS company_name, i.row_count,
+            `SELECT i.id, i.entry_code, i.invoice_number, i.file_name, i.company_id, c.name AS company_name, i.row_count,
                     DATE_FORMAT(i.upload_date, '%Y-%m-%d') AS upload_date,
                     i.total_stock_cases, i.total_stock_pcs, i.total_pieces, i.total_value,
                     DATE_FORMAT(i.created_at, '%Y-%m-%d %H:%i:%s') AS created_at
@@ -20,20 +20,21 @@ class DmsStockModel {
         return rows.map(DmsStockModel.normalizeImport);
     }
 
-    static async getManualImportByCompanyAndDate(companyId, uploadDate) {
-        if (!companyId || !uploadDate) return null;
+    static async getManualImportByCompanyAndDate(companyId, uploadDate, invoiceNumber) {
+        if (!companyId || !uploadDate || !invoiceNumber) return null;
 
         const [rows] = await db.execute(
-            `SELECT i.id, i.file_name, i.company_id, c.name AS company_name, i.row_count,
+            `SELECT i.id, i.entry_code, i.invoice_number, i.file_name, i.company_id, c.name AS company_name, i.row_count,
                     DATE_FORMAT(i.upload_date, '%Y-%m-%d') AS upload_date,
                     i.total_stock_cases, i.total_stock_pcs, i.total_pieces, i.total_value,
                     DATE_FORMAT(i.created_at, '%Y-%m-%d %H:%i:%s') AS created_at
              FROM dms_stock_imports i
              LEFT JOIN companies c ON i.company_id = c.id
              WHERE i.company_id = ? AND i.upload_date = ? AND i.file_name = 'Manual Entry'
+               AND LOWER(TRIM(i.invoice_number)) = LOWER(?)
              ORDER BY i.id DESC
              LIMIT 1`,
-            [companyId, uploadDate]
+            [companyId, uploadDate, invoiceNumber]
         );
         return rows[0] || null;
     }
@@ -296,7 +297,18 @@ class DmsStockModel {
                              total_pieces = ?,
                              total_value = ?,
                              purchase_price = ?,
+                             batch_number = ?,
+                             mfg_date = ?,
                              expiry_date = ?,
+                             dp_price = ?,
+                             discount_percent = ?,
+                             gst_percent = ?,
+                             cgst_amount = ?,
+                             sgst_amount = ?,
+                             retail_price = ?,
+                             wholesale_price = ?,
+                             retail_margin = ?,
+                             wholesale_margin = ?,
                              raw_data = ?
                          WHERE id = ?`,
                         [
@@ -322,7 +334,18 @@ class DmsStockModel {
                             row.totalPieces,
                             row.totalValue,
                             row.purchasePrice,
+                            row.batchNumber,
+                            row.mfgDate,
                             row.expiryDate,
+                            row.dpPrice,
+                            row.discountPercent,
+                            row.gstPercent,
+                            row.cgstAmount,
+                            row.sgstAmount,
+                            row.retailPrice,
+                            row.wholesalePrice,
+                            row.retailMargin,
+                            row.wholesaleMargin,
                             JSON.stringify(row.rawData),
                             existing.id,
                         ]
@@ -336,8 +359,10 @@ class DmsStockModel {
                           total_purchases_in_stock_unit, purchases_in_stock_value, dp_per_unit_stock,
                           total_invoiced_stock_unit, invoiced_stock_value, total_closing_stock_unit,
                           closing_stock_value, total_in_transit_stock_quantity_unit, in_transit_stock_value,
-                          total_pieces, total_value, purchase_price, expiry_date, raw_data)
-                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                          total_pieces, total_value, purchase_price, batch_number, mfg_date, expiry_date,
+                          dp_price, discount_percent, gst_percent, cgst_amount, sgst_amount,
+                          retail_price, wholesale_price, retail_margin, wholesale_margin, raw_data)
+                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
                         [
                             importId,
                             row.productErpId,
@@ -362,7 +387,18 @@ class DmsStockModel {
                             row.totalPieces,
                             row.totalValue,
                             row.purchasePrice,
+                            row.batchNumber,
+                            row.mfgDate,
                             row.expiryDate,
+                            row.dpPrice,
+                            row.discountPercent,
+                            row.gstPercent,
+                            row.cgstAmount,
+                            row.sgstAmount,
+                            row.retailPrice,
+                            row.wholesalePrice,
+                            row.retailMargin,
+                            row.wholesaleMargin,
                             JSON.stringify(row.rawData),
                         ]
                     );
@@ -385,20 +421,38 @@ class DmsStockModel {
         return DmsStockModel.upsertItemsToImport(importId, rows);
     }
 
-    static async createImport({ fileName, companyId, uploadDate, rowCount, summary, rows }) {
+    static async createImport({ fileName, companyId, invoiceNumber = null, uploadDate, rowCount, summary, rows }) {
         const connection = await db.getConnection();
 
         try {
             await connection.beginTransaction();
 
+            const [companyRows] = await connection.execute('SELECT name FROM companies WHERE id = ? FOR UPDATE', [companyId]);
+            const prefix = String(companyRows[0]?.name || 'COM')
+                .replace(/[^A-Za-z0-9]/g, '')
+                .slice(0, 3)
+                .toUpperCase()
+                .padEnd(3, 'X');
+            const codePrefix = `BFS${prefix}`;
+            const [sequenceRows] = await connection.execute(
+                `SELECT COALESCE(MAX(CAST(RIGHT(entry_code, 6) AS UNSIGNED)), 0) + 1 AS next_number
+                 FROM dms_stock_imports
+                 WHERE entry_code LIKE ?
+                 FOR UPDATE`,
+                [`${codePrefix}%`]
+            );
+            const entryCode = `${codePrefix}${String(sequenceRows[0]?.next_number || 1).padStart(6, '0')}`;
+
             const [importResult] = await connection.execute(
                 `INSERT INTO dms_stock_imports
-                 (file_name, company_id, upload_date, row_count, total_purchase_units, total_purchase_value,
+                 (entry_code, invoice_number, file_name, company_id, upload_date, row_count, total_purchase_units, total_purchase_value,
                   total_invoiced_units, total_invoiced_value, total_closing_units,
                   total_closing_value, total_in_transit_units, total_in_transit_value,
                   total_stock_cases, total_stock_pcs, total_pieces, total_value)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
                 [
+                    entryCode,
+                    invoiceNumber,
                     fileName,
                     companyId,
                     uploadDate,
@@ -445,7 +499,18 @@ class DmsStockModel {
                     row.totalPieces,
                     row.totalValue,
                     row.purchasePrice,
+                    row.batchNumber || null,
+                    row.mfgDate || null,
                     row.expiryDate,
+                    row.dpPrice || 0,
+                    row.discountPercent || 0,
+                    row.gstPercent ?? 5,
+                    row.cgstAmount || 0,
+                    row.sgstAmount || 0,
+                    row.retailPrice || 0,
+                    row.wholesalePrice || 0,
+                    row.retailMargin || 0,
+                    row.wholesaleMargin || 0,
                     JSON.stringify(row.rawData),
                 ]);
 
@@ -457,7 +522,9 @@ class DmsStockModel {
                       total_purchases_in_stock_unit, purchases_in_stock_value, dp_per_unit_stock,
                       total_invoiced_stock_unit, invoiced_stock_value, total_closing_stock_unit,
                       closing_stock_value, total_in_transit_stock_quantity_unit, in_transit_stock_value,
-                      total_pieces, total_value, purchase_price, expiry_date, raw_data)
+                      total_pieces, total_value, purchase_price, batch_number, mfg_date, expiry_date,
+                      dp_price, discount_percent, gst_percent, cgst_amount, sgst_amount,
+                      retail_price, wholesale_price, retail_margin, wholesale_margin, raw_data)
                      VALUES ?`,
                     [values]
                 );
@@ -542,7 +609,7 @@ class DmsStockModel {
     static async getImportById(importId) {
         const [headerRows, itemRows] = await Promise.all([
             db.execute(
-                `SELECT i.id, i.file_name, i.company_id, c.name AS company_name, i.row_count,
+                `SELECT i.id, i.entry_code, i.invoice_number, i.file_name, i.company_id, c.name AS company_name, i.row_count,
                         DATE_FORMAT(i.upload_date, '%Y-%m-%d') AS upload_date,
                         i.total_purchase_units, i.total_purchase_value,
                         i.total_invoiced_units, i.total_invoiced_value,
@@ -578,6 +645,10 @@ class DmsStockModel {
                     dsi.total_invoiced_stock_unit, dsi.invoiced_stock_value, dsi.total_closing_stock_unit,
                     dsi.closing_stock_value, dsi.total_in_transit_stock_quantity_unit, dsi.in_transit_stock_value,
                     dsi.total_pieces, dsi.total_value, dsi.purchase_price,
+                    dsi.batch_number, DATE_FORMAT(dsi.mfg_date, '%Y-%m-%d') AS mfg_date,
+                    dsi.dp_price, dsi.discount_percent, dsi.gst_percent,
+                    dsi.cgst_amount, dsi.sgst_amount, dsi.retail_price, dsi.wholesale_price,
+                    dsi.retail_margin, dsi.wholesale_margin,
                     ROUND(dsi.purchase_price * 0.05, 2) AS purchase_gst_amount,
                     ROUND(dsi.purchase_price * 1.05, 2) AS actual_price,
                     DATE_FORMAT(dsi.expiry_date, '%Y-%m-%d') AS expiry_date,
@@ -613,6 +684,15 @@ class DmsStockModel {
             total_pieces: toNumber(row.total_pieces),
             total_value: toNumber(row.total_value),
             purchase_price: row.purchase_price === null ? null : toNumber(row.purchase_price),
+            dp_price: toNumber(row.dp_price),
+            discount_percent: toNumber(row.discount_percent),
+            gst_percent: toNumber(row.gst_percent),
+            cgst_amount: toNumber(row.cgst_amount),
+            sgst_amount: toNumber(row.sgst_amount),
+            retail_price: toNumber(row.retail_price),
+            wholesale_price: toNumber(row.wholesale_price),
+            retail_margin: toNumber(row.retail_margin),
+            wholesale_margin: toNumber(row.wholesale_margin),
         }));
     }
 

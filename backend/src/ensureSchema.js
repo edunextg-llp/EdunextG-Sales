@@ -761,6 +761,21 @@ export async function ensureSchema() {
             `ALTER TABLE dms_stock_imports ADD COLUMN company_id INT NULL AFTER file_name`,
             'company_id on dms_stock_imports'
         );
+        await tryQuery(
+            connection,
+            `ALTER TABLE dms_stock_imports ADD COLUMN entry_code VARCHAR(40) NULL AFTER id`,
+            'entry_code on dms_stock_imports'
+        );
+        await tryQuery(
+            connection,
+            `ALTER TABLE dms_stock_imports ADD COLUMN invoice_number VARCHAR(100) NULL AFTER entry_code`,
+            'invoice_number on dms_stock_imports'
+        );
+        await tryQuery(
+            connection,
+            `CREATE UNIQUE INDEX uq_dms_stock_imports_entry_code ON dms_stock_imports(entry_code)`,
+            'unique entry_code on dms_stock_imports'
+        );
 
         for (const [column, definition] of Object.entries({
             pcs_per_box: 'DECIMAL(14, 4) NOT NULL DEFAULT 0.0000',
@@ -769,6 +784,17 @@ export async function ensureSchema() {
             total_current_stock_in_pcs: 'DECIMAL(14, 4) NOT NULL DEFAULT 0.0000',
             price_per_piece: 'DECIMAL(14, 4) NOT NULL DEFAULT 0.0000',
             mrp: 'DECIMAL(14, 4) NOT NULL DEFAULT 0.0000',
+            batch_number: 'VARCHAR(100) NULL',
+            mfg_date: 'DATE NULL',
+            dp_price: 'DECIMAL(14, 4) NOT NULL DEFAULT 0.0000',
+            discount_percent: 'DECIMAL(7, 4) NOT NULL DEFAULT 0.0000',
+            gst_percent: 'DECIMAL(7, 4) NOT NULL DEFAULT 5.0000',
+            cgst_amount: 'DECIMAL(14, 2) NOT NULL DEFAULT 0.00',
+            sgst_amount: 'DECIMAL(14, 2) NOT NULL DEFAULT 0.00',
+            retail_price: 'DECIMAL(14, 4) NOT NULL DEFAULT 0.0000',
+            wholesale_price: 'DECIMAL(14, 4) NOT NULL DEFAULT 0.0000',
+            retail_margin: 'DECIMAL(14, 4) NOT NULL DEFAULT 0.0000',
+            wholesale_margin: 'DECIMAL(14, 4) NOT NULL DEFAULT 0.0000',
         })) {
             await tryQuery(connection, `ALTER TABLE dms_stock_items ADD COLUMN ${column} ${definition}`, `${column} on dms_stock_items`);
         }

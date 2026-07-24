@@ -350,6 +350,8 @@ function manualItemToRow(item = {}) {
         MRP: item.mrp,
         'Total Value': item.totalValue,
         'Purchase Price': item.purchasePrice,
+        'Batch Number': item.batchNumber,
+        'MFG Date': item.mfgDate,
         'Expiry Date': item.expiryDate,
     };
 }
@@ -367,23 +369,70 @@ export const createManualDmsStock = async (req, res) => {
         }
 
         const items = Array.isArray(req.body?.items) ? req.body.items : [];
+        const invoiceNumber = textValue(req.body?.invoiceNumber);
+        if (!invoiceNumber) {
+            return res.status(400).json({ error: 'Invoice number is required.' });
+        }
         if (!items.length) {
             return res.status(400).json({ error: 'Please add at least one stock item.' });
         }
         const invalidItem = items.find((item) => (
-            !Number.isFinite(Number(item?.purchasePrice))
-            || Number(item.purchasePrice) <= 0
+            !String(item?.batchNumber || '').trim()
+            || !/^\d{4}-\d{2}-\d{2}$/.test(String(item?.mfgDate || ''))
             || !/^\d{4}-\d{2}-\d{2}$/.test(String(item?.expiryDate || ''))
+            || String(item.mfgDate) > String(item.expiryDate)
+            || !Number.isFinite(Number(item?.dpPrice))
+            || Number(item.dpPrice) <= 0
+            || !Number.isFinite(Number(item?.mrp))
+            || Number(item.mrp) <= 0
+            || Number(item?.retailPrice) < Number(item.dpPrice)
+            || Number(item?.wholesalePrice) < Number(item.dpPrice)
         ));
         if (invalidItem) {
             return res.status(400).json({
-                error: 'Every item requires a valid purchase price and expiry date.',
+                error: 'Every item requires batch number, valid MFG/expiry dates, MRP, DP, retail, and wholesale prices.',
             });
         }
 
         const productDivision = String(company.name || '').trim();
         const rows = items
-            .map((item) => normalizeStockRow(manualItemToRow(item)))
+            .map((item) => {
+                const row = normalizeStockRow(manualItemToRow(item));
+                const dpPrice = roundRate(toNumber(item.dpPrice));
+                const discountPercent = Math.max(0, Math.min(100, roundRate(toNumber(item.discountPercent))));
+                const gstPercent = 5;
+                const price = roundMoney(dpPrice * row.totalPieces);
+                const discountAmount = roundMoney(price * discountPercent / 100);
+                const taxableAmount = roundMoney(price - discountAmount);
+                const cgstAmount = roundMoney(taxableAmount * 0.025);
+                const sgstAmount = roundMoney(taxableAmount * 0.025);
+                const totalPrice = roundMoney(taxableAmount + cgstAmount + sgstAmount);
+                const retailPrice = roundRate(toNumber(item.retailPrice));
+                const wholesalePrice = roundRate(toNumber(item.wholesalePrice));
+
+                return {
+                    ...row,
+                    pricePerPiece: dpPrice,
+                    dpPerUnitStock: dpPrice,
+                    purchasePrice: dpPrice,
+                    totalValue: totalPrice,
+                    batchNumber: textValue(item.batchNumber),
+                    mfgDate: textValue(item.mfgDate),
+                    expiryDate: textValue(item.expiryDate),
+                    dpPrice,
+                    price,
+                    discountPercent,
+                    discountAmount,
+                    gstPercent,
+                    cgstAmount,
+                    sgstAmount,
+                    taxableAmount,
+                    retailPrice,
+                    wholesalePrice,
+                    retailMargin: roundRate(retailPrice - dpPrice),
+                    wholesaleMargin: roundRate(wholesalePrice - dpPrice),
+                };
+            })
             .filter((row) => row.productErpId || row.productName)
             .map((row) => ({
                 ...row,
@@ -395,7 +444,11 @@ export const createManualDmsStock = async (req, res) => {
         }
 
         const uploadDate = normalizeUploadDate(req.body?.uploadDate);
-        const existingImport = await DmsStockModel.getManualImportByCompanyAndDate(companyId, uploadDate);
+        const existingImport = await DmsStockModel.getManualImportByCompanyAndDate(
+            companyId,
+            uploadDate,
+            invoiceNumber
+        );
 
         let result;
         if (existingImport) {
@@ -405,6 +458,7 @@ export const createManualDmsStock = async (req, res) => {
             result = await DmsStockModel.createImport({
                 fileName: 'Manual Entry',
                 companyId,
+                invoiceNumber,
                 uploadDate,
                 rowCount: rows.length,
                 summary,

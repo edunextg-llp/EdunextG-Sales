@@ -799,9 +799,11 @@ async function initDB() {
     }
 
     await connection.query(`
-        CREATE TABLE IF NOT EXISTS dms_stock_imports (
-            id INT AUTO_INCREMENT PRIMARY KEY,
-            file_name VARCHAR(255) NOT NULL,
+            CREATE TABLE IF NOT EXISTS dms_stock_imports (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                entry_code VARCHAR(40) NULL UNIQUE,
+                invoice_number VARCHAR(100) NULL,
+                file_name VARCHAR(255) NOT NULL,
             upload_date DATE NULL,
             row_count INT NOT NULL DEFAULT 0,
             total_purchase_units DECIMAL(14, 4) NOT NULL DEFAULT 0.0000,
@@ -846,9 +848,20 @@ async function initDB() {
             in_transit_stock_value DECIMAL(14, 2) NOT NULL DEFAULT 0.00,
             total_pieces DECIMAL(14, 4) NOT NULL DEFAULT 0.0000,
             total_value DECIMAL(14, 2) NOT NULL DEFAULT 0.00,
-            purchase_price DECIMAL(14, 4) NULL,
-            expiry_date DATE NULL,
-            raw_data JSON NULL,
+                purchase_price DECIMAL(14, 4) NULL,
+                batch_number VARCHAR(100) NULL,
+                mfg_date DATE NULL,
+                expiry_date DATE NULL,
+                dp_price DECIMAL(14, 4) NOT NULL DEFAULT 0.0000,
+                discount_percent DECIMAL(7, 4) NOT NULL DEFAULT 0.0000,
+                gst_percent DECIMAL(7, 4) NOT NULL DEFAULT 5.0000,
+                cgst_amount DECIMAL(14, 2) NOT NULL DEFAULT 0.00,
+                sgst_amount DECIMAL(14, 2) NOT NULL DEFAULT 0.00,
+                retail_price DECIMAL(14, 4) NOT NULL DEFAULT 0.0000,
+                wholesale_price DECIMAL(14, 4) NOT NULL DEFAULT 0.0000,
+                retail_margin DECIMAL(14, 4) NOT NULL DEFAULT 0.0000,
+                wholesale_margin DECIMAL(14, 4) NOT NULL DEFAULT 0.0000,
+                raw_data JSON NULL,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (import_id) REFERENCES dms_stock_imports(id) ON DELETE CASCADE,
             INDEX idx_dms_stock_items_import_id (import_id),
