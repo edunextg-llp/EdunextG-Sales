@@ -20,7 +20,7 @@ import DashboardLayout from "examples/LayoutContainers/DashboardLayout";
 import DashboardNavbar from "examples/Navbars/DashboardNavbar";
 import Footer from "examples/Footer";
 
-const API = "http://localhost:5001/api";
+const API = "https://bawarchee.edunextg.co/api";
 const DRAFT_KEY = "dms-manual-stock-draft";
 const authHeaders = () => ({ Authorization: `Bearer ${localStorage.getItem("token")}` });
 const money = (value) => `Rs. ${Number(value || 0).toLocaleString("en-IN", {
