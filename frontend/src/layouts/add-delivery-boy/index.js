@@ -49,7 +49,7 @@ function AddDeliveryBoy() {
   const [role, setRole] = useState("delivery_boy");
   const [showInactive, setShowInactive] = useState(false);
 
-  const API = "https://bawarchee.edunextg.co/api";
+  const API = "https://bawarche.edunextg.co/api";
 
   const fetchCompanyOptions = async () => {
     try {

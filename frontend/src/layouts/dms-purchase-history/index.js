@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 
 import Card from "@mui/material/Card";
 import FormControl from "@mui/material/FormControl";
@@ -13,12 +14,13 @@ import TableHead from "@mui/material/TableHead";
 import TableRow from "@mui/material/TableRow";
 
 import MDBox from "components/MDBox";
+import MDButton from "components/MDButton";
 import MDTypography from "components/MDTypography";
 import DashboardLayout from "examples/LayoutContainers/DashboardLayout";
 import DashboardNavbar from "examples/Navbars/DashboardNavbar";
 import Footer from "examples/Footer";
-
-const API = "http://localhost:5001/api";
+const API = "https://bawarche.edunextg.co/api";
+const MANUAL_DMS_DRAFT_KEY = "dms-manual-stock-draft";
 const money = (value) => `Rs. ${Number(value || 0).toLocaleString("en-IN", {
   minimumFractionDigits: 4,
   maximumFractionDigits: 4,
@@ -36,6 +38,7 @@ function Metric({ label, value }) {
 }
 
 function DmsPurchaseHistory() {
+  const navigate = useNavigate();
   const [companies, setCompanies] = useState([]);
   const [sellers, setSellers] = useState([]);
   const [imports, setImports] = useState([]);
@@ -79,6 +82,60 @@ function DmsPurchaseHistory() {
     setItems(data.items || []);
   };
 
+  const editItem = (item) => {
+    const quantity = Number(item.total_pieces || 0);
+    const dpPrice = Number(item.dp_price || 0);
+    const price = quantity * dpPrice;
+    const taxable = price * (1 - Number(item.discount_percent || 0) / 100);
+    localStorage.setItem(MANUAL_DMS_DRAFT_KEY, JSON.stringify({
+      manualCompanyId: String(stockImport.company_id || companyId),
+      manualSellerId: String(stockImport.seller_id || sellerId),
+      manualUploadDate: stockImport.upload_date,
+      manualInvoiceNumber: stockImport.invoice_number,
+      selectedSellerItemId: "",
+      pendingItems: [],
+      manualItem: {
+        productErpId: item.product_erp_id || "",
+        productName: item.product_name || "",
+        variantName: item.variant_name || "",
+        pcsPerBox: String(item.pcs_per_box || ""),
+        currentStockInCase: String(item.current_stock_in_case || ""),
+        currentStockInPcs: String(item.current_stock_in_pcs || ""),
+        totalCurrentStockInPcs: String(item.total_current_stock_in_pcs || ""),
+        batchNumber: item.batch_number || "",
+        mfgDate: item.mfg_date || "",
+        expiryDate: item.expiry_date || "",
+        mrp: String(item.mrp || ""),
+        dpPrice: String(item.dp_price || ""),
+        discountPercent: String(item.discount_percent || 0),
+        gstPercent: "5",
+        price: price.toFixed(2),
+        discountAmount: (price - taxable).toFixed(2),
+        taxableAmount: taxable.toFixed(2),
+        cgstAmount: Number(item.cgst_amount || 0).toFixed(2),
+        sgstAmount: Number(item.sgst_amount || 0).toFixed(2),
+        totalValue: Number(item.total_value || 0).toFixed(4),
+        retailPrice: String(item.retail_price || ""),
+        wholesalePrice: String(item.wholesale_price || ""),
+        retailMargin: String(item.retail_margin || ""),
+        wholesaleMargin: String(item.wholesale_margin || ""),
+        pricePerPiece: String(item.dp_price || ""),
+        purchasePrice: String(item.dp_price || ""),
+        sourceItemId: null,
+      },
+    }));
+    navigate("/dms-stock");
+  };
+
+  const deleteItem = async (item) => {
+    if (!window.confirm(`Delete ${item.product_name} from this invoice?`)) return;
+    const response = await fetch(`${API}/staff/dms-stock/items/${item.id}`, { method: "DELETE" });
+    const data = await response.json();
+    if (!response.ok) return window.alert(data.error || "Unable to delete item.");
+    setStockImport(data.import);
+    setItems(data.items || []);
+  };
+
   const invoiceOptions = imports.filter((entry) => (
     String(entry.company_id) === String(companyId)
     && String(entry.seller_id) === String(sellerId)
@@ -111,8 +168,9 @@ function DmsPurchaseHistory() {
               ].map(([label, value, change, options, name]) => (
                 <Grid item xs={12} md={3} key={label}>
                   <MDTypography variant="caption" fontWeight="bold">{label}</MDTypography>
-                  <FormControl fullWidth size="small">
-                    <Select displayEmpty value={value} onChange={(event) => change(event.target.value)}>
+                  <FormControl fullWidth>
+                    <Select displayEmpty value={value} onChange={(event) => change(event.target.value)}
+                      sx={{ height: 56, backgroundColor: "#fff" }}>
                       <MenuItem value="">Select {label}</MenuItem>
                       {options.map((option) => <MenuItem key={option.id} value={String(option.id)}>{option[name]}</MenuItem>)}
                     </Select>
@@ -121,8 +179,9 @@ function DmsPurchaseHistory() {
               ))}
               <Grid item xs={12} md={3}>
                 <MDTypography variant="caption" fontWeight="bold">Invoice Number</MDTypography>
-                <FormControl fullWidth size="small" disabled={!sellerId}>
-                  <Select displayEmpty value={importId} onChange={(event) => chooseInvoice(event.target.value)}>
+                <FormControl fullWidth disabled={!sellerId}>
+                  <Select displayEmpty value={importId} onChange={(event) => chooseInvoice(event.target.value)}
+                    sx={{ height: 56, backgroundColor: "#fff" }}>
                     <MenuItem value="">Select Invoice</MenuItem>
                     {invoiceOptions.map((entry) => (
                       <MenuItem key={entry.id} value={String(entry.id)}>
@@ -148,7 +207,7 @@ function DmsPurchaseHistory() {
                   <Table size="small" sx={{ minWidth: 1700 }}>
                     <TableHead sx={{ display: "table-header-group" }}>
                       <TableRow>
-                        {["ERP ID", "Item", "Variant", "Batch", "MFG", "Expiry", "Qty", "MRP", "DP", "Discount", "Discount Price", "CGST", "SGST", "Total"].map((label) => (
+                        {["ERP ID", "Item", "Variant", "Batch", "MFG", "Expiry", "Qty", "MRP", "DP", "Discount", "Discount Price", "CGST", "SGST", "Total", "Actions"].map((label) => (
                           <TableCell key={label} sx={{ fontWeight: 700, whiteSpace: "nowrap" }}>{label}</TableCell>
                         ))}
                       </TableRow>
@@ -166,6 +225,10 @@ function DmsPurchaseHistory() {
                             <TableCell>{money(item.dp_price)}</TableCell><TableCell>{number(item.discount_percent)}%</TableCell>
                             <TableCell>{money(discounted)}</TableCell><TableCell>{money(item.cgst_amount)}</TableCell>
                             <TableCell>{money(item.sgst_amount)}</TableCell><TableCell>{money(item.total_value)}</TableCell>
+                            <TableCell sx={{ whiteSpace: "nowrap" }}>
+                              <MDButton size="small" color="info" variant="text" onClick={() => editItem(item)}>Edit</MDButton>
+                              <MDButton size="small" color="error" variant="text" onClick={() => deleteItem(item)}>Delete</MDButton>
+                            </TableCell>
                           </TableRow>
                         );
                       })}

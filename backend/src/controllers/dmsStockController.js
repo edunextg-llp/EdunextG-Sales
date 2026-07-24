@@ -483,3 +483,64 @@ export const createManualDmsStock = async (req, res) => {
         res.status(error.statusCode || 500).json({ error: error.message || 'Internal server error' });
     }
 };
+
+export const updateDmsStockItem = async (req, res) => {
+    try {
+        const itemId = parseInt(req.params.itemId, 10);
+        const existing = await DmsStockModel.getItemById(itemId);
+        if (!existing) return res.status(404).json({ error: 'Invoice item was not found.' });
+
+        const value = (key, fallback) => req.body?.[key] ?? fallback;
+        const pcsPerBox = toNumber(existing.pcs_per_box);
+        const currentStockInCase = toNumber(value('currentStockInCase', existing.current_stock_in_case));
+        const currentStockInPcs = toNumber(value('currentStockInPcs', existing.current_stock_in_pcs));
+        const totalPieces = roundRate((pcsPerBox * currentStockInCase) + currentStockInPcs);
+        const dpPrice = roundRate(toNumber(value('dpPrice', existing.dp_price)));
+        const discountPercent = Math.max(0, Math.min(100,
+            roundRate(toNumber(value('discountPercent', existing.discount_percent)))));
+        const taxableAmount = roundRate(dpPrice * totalPieces * (1 - discountPercent / 100));
+        const cgstAmount = roundRate(taxableAmount * 0.025);
+        const sgstAmount = roundRate(taxableAmount * 0.025);
+        const retailPrice = roundRate(toNumber(value('retailPrice', existing.retail_price)));
+        const wholesalePrice = roundRate(toNumber(value('wholesalePrice', existing.wholesale_price)));
+        const row = {
+            batchNumber: textValue(value('batchNumber', existing.batch_number)),
+            mfgDate: textValue(value('mfgDate', existing.mfg_date)),
+            expiryDate: textValue(value('expiryDate', existing.expiry_date)),
+            currentStockInCase,
+            currentStockInPcs,
+            totalPieces,
+            mrp: roundRate(toNumber(value('mrp', existing.mrp))),
+            dpPrice,
+            discountPercent,
+            cgstAmount,
+            sgstAmount,
+            totalValue: roundRate(taxableAmount + cgstAmount + sgstAmount),
+            retailPrice,
+            wholesalePrice,
+            retailMargin: roundRate(retailPrice - dpPrice),
+            wholesaleMargin: roundRate(wholesalePrice - dpPrice),
+        };
+        if (!row.batchNumber || !/^\d{4}-\d{2}-\d{2}$/.test(row.mfgDate)
+            || !/^\d{4}-\d{2}-\d{2}$/.test(row.expiryDate) || row.mfgDate > row.expiryDate
+            || row.dpPrice <= 0 || row.mrp <= 0) {
+            return res.status(400).json({ error: 'Enter valid batch, dates, MRP, and DP price.' });
+        }
+        const result = await DmsStockModel.updateInvoiceItem(itemId, row);
+        res.json({ message: 'Invoice item updated successfully.', ...result });
+    } catch (error) {
+        console.error('Error updating DMS invoice item:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+};
+
+export const deleteDmsStockItem = async (req, res) => {
+    try {
+        const result = await DmsStockModel.deleteInvoiceItem(parseInt(req.params.itemId, 10));
+        if (!result) return res.status(404).json({ error: 'Invoice item was not found.' });
+        res.json({ message: 'Invoice item deleted successfully.', ...result });
+    } catch (error) {
+        console.error('Error deleting DMS invoice item:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+};

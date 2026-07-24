@@ -285,7 +285,7 @@ function BankDeposit() {
   const [depositTotalEndDate, setDepositTotalEndDate] = useState(() => getTodayLocalDate());
   const [depositsPage, setDepositsPage] = useState(1);
   const [rowsPerPage, setRowsPerPage] = useState(ROWS_PER_PAGE);
-  const API = "https://bawarchee.edunextg.co/api";
+  const API = "https://bawarche.edunextg.co/api";
 
   const cashAmount = useMemo(
     () =>

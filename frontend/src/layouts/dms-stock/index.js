@@ -31,7 +31,7 @@ import DashboardNavbar from "examples/Navbars/DashboardNavbar";
 import Footer from "examples/Footer";
 import { stickyColumnSx, stickyHeadRowSx, stickyTableContainerSx, stickyTableSx } from "utils/stickyProductColumns";
 
-const API = "https://bawarchee.edunextg.co/api";
+const API = "https://bawarche.edunextg.co/api";
 const DMS_STOCK_TEMPLATE_URL =
   "https://res.cloudinary.com/ddwp5cuhl/raw/upload/v1782977868/DMS_Stock_-_Copy_cgba8i.xlsx";
 const MANUAL_DMS_DRAFT_KEY = "dms-manual-stock-draft";
@@ -603,7 +603,7 @@ function DmsStock() {
       setError("Please select a seller.");
       return;
     }
-    if (!selectedSellerItemId || !manualItem.productErpId.trim()) {
+    if (!manualItem.productErpId.trim()) {
       setError("Please select an item.");
       return;
     }
@@ -1378,7 +1378,7 @@ function DmsStock() {
                   sx={{ "& .MuiInputBase-root": { backgroundColor: "#fff", height: 40 } }} />
               </Grid>
               <Grid item xs={6} md={2}>
-                <MDTypography sx={fieldLabelSx}>Discount Price (Price − Discount)</MDTypography>
+                <MDTypography sx={fieldLabelSx}>Discount Price</MDTypography>
                 <MDInput fullWidth disabled
                   value={manualItem.taxableAmount ? `Rs. ${manualItem.taxableAmount}` : ""}
                   sx={{ "& .MuiInputBase-root": { backgroundColor: "#f1f5f9", height: 40 } }} />
@@ -1387,7 +1387,7 @@ function DmsStock() {
                 ["GST", "5%"],
                 ["CGST (2.5%)", manualItem.cgstAmount ? `Rs. ${manualItem.cgstAmount}` : ""],
                 ["SGST (2.5%)", manualItem.sgstAmount ? `Rs. ${manualItem.sgstAmount}` : ""],
-                ["Total Price (Discount Price + 5% GST)", manualItem.totalValue ? `Rs. ${manualItem.totalValue}` : ""],
+                ["Total Price", manualItem.totalValue ? `Rs. ${manualItem.totalValue}` : ""],
               ].map(([label, value]) => (
                 <Grid item xs={6} md={2} key={label}>
                   <MDTypography sx={fieldLabelSx}>{label}</MDTypography>
@@ -1408,12 +1408,12 @@ function DmsStock() {
                   sx={{ "& .MuiInputBase-root": { backgroundColor: "#fff", height: 40 } }} />
               </Grid>
               <Grid item xs={6} md={2}>
-                <MDTypography sx={fieldLabelSx}>Retail Margin (Retail − DP)</MDTypography>
+                <MDTypography sx={fieldLabelSx}>Retail Margin</MDTypography>
                 <MDInput fullWidth disabled value={manualItem.retailMargin ? `Rs. ${manualItem.retailMargin}` : ""}
                   sx={{ "& .MuiInputBase-root": { backgroundColor: "#f1f5f9", height: 40 } }} />
               </Grid>
               <Grid item xs={6} md={2}>
-                <MDTypography sx={fieldLabelSx}>Wholesale Margin (Wholesale − DP)</MDTypography>
+                <MDTypography sx={fieldLabelSx}>Wholesale Margin</MDTypography>
                 <MDInput fullWidth disabled value={manualItem.wholesaleMargin ? `Rs. ${manualItem.wholesaleMargin}` : ""}
                   sx={{ "& .MuiInputBase-root": { backgroundColor: "#f1f5f9", height: 40 } }} />
               </Grid>

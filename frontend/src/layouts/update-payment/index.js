@@ -151,7 +151,7 @@ function UpdatePayment() {
   const [page, setPage] = useState(1);
   const [rowsPerPage, setRowsPerPage] = useState(ROWS_PER_PAGE);
 
-  const API = "https://bawarchee.edunextg.co/api";
+  const API = "https://bawarche.edunextg.co/api";
 
   const getStaffCompanyIds = (staff) =>
     String(staff?.company_ids || staff?.company_id || "")

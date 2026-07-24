@@ -423,6 +423,80 @@ class DmsStockModel {
         return DmsStockModel.upsertItemsToImport(importId, rows);
     }
 
+    static async getItemById(itemId) {
+        const [rows] = await db.execute(
+            `SELECT dsi.*, DATE_FORMAT(dsi.mfg_date, '%Y-%m-%d') AS mfg_date,
+                    DATE_FORMAT(dsi.expiry_date, '%Y-%m-%d') AS expiry_date
+             FROM dms_stock_items dsi
+             WHERE dsi.id = ?
+             LIMIT 1`,
+            [itemId]
+        );
+        return rows[0] || null;
+    }
+
+    static async updateInvoiceItem(itemId, row) {
+        const connection = await db.getConnection();
+        try {
+            await connection.beginTransaction();
+            const [result] = await connection.execute(
+                `UPDATE dms_stock_items
+                 SET batch_number = ?, mfg_date = ?, expiry_date = ?,
+                     current_stock_in_case = ?, current_stock_in_pcs = ?,
+                     total_current_stock_in_pcs = ?, total_pieces = ?,
+                     mrp = ?, price_per_piece = ?, purchase_price = ?, dp_per_unit_stock = ?,
+                     dp_price = ?, discount_percent = ?, gst_percent = ?,
+                     cgst_amount = ?, sgst_amount = ?, total_value = ?,
+                     retail_price = ?, wholesale_price = ?,
+                     retail_margin = ?, wholesale_margin = ?
+                 WHERE id = ?`,
+                [
+                    row.batchNumber, row.mfgDate, row.expiryDate,
+                    row.currentStockInCase, row.currentStockInPcs,
+                    row.totalPieces, row.totalPieces,
+                    row.mrp, row.dpPrice, row.dpPrice, row.dpPrice,
+                    row.dpPrice, row.discountPercent, 5,
+                    row.cgstAmount, row.sgstAmount, row.totalValue,
+                    row.retailPrice, row.wholesalePrice,
+                    row.retailMargin, row.wholesaleMargin,
+                    itemId,
+                ]
+            );
+            if (!result.affectedRows) return null;
+            const existing = await DmsStockModel.getItemById(itemId);
+            await DmsStockModel.recalculateImportTotals(connection, existing.import_id);
+            await connection.commit();
+            return DmsStockModel.getImportById(existing.import_id);
+        } catch (error) {
+            await connection.rollback();
+            throw error;
+        } finally {
+            connection.release();
+        }
+    }
+
+    static async deleteInvoiceItem(itemId) {
+        const connection = await db.getConnection();
+        try {
+            await connection.beginTransaction();
+            const [rows] = await connection.execute(
+                'SELECT import_id FROM dms_stock_items WHERE id = ? FOR UPDATE',
+                [itemId]
+            );
+            if (!rows[0]) return null;
+            const importId = rows[0].import_id;
+            await connection.execute('DELETE FROM dms_stock_items WHERE id = ?', [itemId]);
+            await DmsStockModel.recalculateImportTotals(connection, importId);
+            await connection.commit();
+            return DmsStockModel.getImportById(importId);
+        } catch (error) {
+            await connection.rollback();
+            throw error;
+        } finally {
+            connection.release();
+        }
+    }
+
     static async createImport({
         fileName, companyId, sellerId = null, invoiceNumber = null, uploadDate, rowCount, summary, rows,
     }) {

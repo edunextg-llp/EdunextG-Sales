@@ -52,6 +52,8 @@ router.get('/dms-stock/product-search', dmsStockController.searchDmsStockProduct
 router.get('/dms-stock/product-lookup', dmsStockController.lookupDmsStockProduct);
 router.post('/dms-stock/upload', upload.single('file'), dmsStockController.uploadDmsStock);
 router.post('/dms-stock/manual', dmsStockController.createManualDmsStock);
+router.put('/dms-stock/items/:itemId', dmsStockController.updateDmsStockItem);
+router.delete('/dms-stock/items/:itemId', dmsStockController.deleteDmsStockItem);
 router.get('/current-stock', currentStockController.getCurrentStock);
 router.get('/physical-stock', physicalStockController.getPhysicalStock);
 router.get('/physical-stock/dms-products', physicalStockController.getPhysicalStockDmsProducts);

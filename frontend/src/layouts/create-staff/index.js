@@ -190,7 +190,7 @@ function CreateStaff() {
 
   const [formData, setFormData] = useState(createEmptyFormData());
 
-  const API = "https://bawarchee.edunextg.co/api";
+  const API = "https://bawarche.edunextg.co/api";
 
   // Fetch Staff List
   const fetchStaffList = async (includeInactive = false) => {
