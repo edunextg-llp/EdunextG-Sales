@@ -19,23 +19,42 @@ import MDTypography from "components/MDTypography";
 import DashboardLayout from "examples/LayoutContainers/DashboardLayout";
 import DashboardNavbar from "examples/Navbars/DashboardNavbar";
 import Footer from "examples/Footer";
-const API = "https://bawarchee.edunextg.co/api";
-const MANUAL_DMS_DRAFT_KEY = "dms-manual-stock-draft";
-const money = (value) => `Rs. ${Number(value || 0).toLocaleString("en-IN", {
-  minimumFractionDigits: 4,
-  maximumFractionDigits: 4,
-})}`;
-const number = (value) => Number(value || 0).toLocaleString("en-IN", { maximumFractionDigits: 4 });
-const headers = () => ({ Authorization: `Bearer ${localStorage.getItem("token")}` });
 
-function Metric({ label, value }) {
-  return (
-    <MDBox p={2} border="1px solid #e5e7eb" borderRadius="8px" bgcolor="#fff">
-      <MDTypography variant="caption" color="text">{label}</MDTypography>
-      <MDTypography variant="h6" fontWeight="bold">{value}</MDTypography>
-    </MDBox>
-  );
-}
+const API = "http://localhost:5001/api";
+const DRAFT_KEY = "dms-manual-stock-draft";
+const authHeaders = () => ({ Authorization: `Bearer ${localStorage.getItem("token")}` });
+const money = (value) => `Rs. ${Number(value || 0).toLocaleString("en-IN", {
+  minimumFractionDigits: 4, maximumFractionDigits: 4,
+})}`;
+
+const pendingItem = (item) => ({
+  id: `invoice-item-${item.id}`,
+  sourceDmsItemId: item.id,
+  productErpId: item.product_erp_id || "",
+  productName: item.product_name || "",
+  variantName: item.variant_name || "",
+  pcsPerBox: String(item.pcs_per_box || ""),
+  currentStockInCase: String(item.current_stock_in_case || ""),
+  currentStockInPcs: String(item.current_stock_in_pcs || ""),
+  totalCurrentStockInPcs: String(item.total_current_stock_in_pcs || ""),
+  batchNumber: item.batch_number || "",
+  mfgDate: item.mfg_date || "",
+  expiryDate: item.expiry_date || "",
+  mrp: String(item.mrp || ""),
+  dpPrice: String(item.dp_price || ""),
+  discountPercent: String(item.discount_percent || 0),
+  gstPercent: "5",
+  cgstAmount: String(item.cgst_amount || ""),
+  sgstAmount: String(item.sgst_amount || ""),
+  totalValue: Number(item.total_value || 0).toFixed(4),
+  retailPrice: String(item.retail_price || ""),
+  wholesalePrice: String(item.wholesale_price || ""),
+  retailMargin: String(item.retail_margin || ""),
+  wholesaleMargin: String(item.wholesale_margin || ""),
+  pricePerPiece: String(item.dp_price || ""),
+  purchasePrice: String(item.dp_price || ""),
+  isUpdate: true,
+});
 
 function DmsPurchaseHistory() {
   const navigate = useNavigate();
@@ -44,13 +63,10 @@ function DmsPurchaseHistory() {
   const [imports, setImports] = useState([]);
   const [companyId, setCompanyId] = useState("");
   const [sellerId, setSellerId] = useState("");
-  const [importId, setImportId] = useState("");
-  const [stockImport, setStockImport] = useState(null);
-  const [items, setItems] = useState([]);
 
   useEffect(() => {
     Promise.all([
-      fetch(`${API}/staff/companies`, { headers: headers() }).then((response) => response.json()),
+      fetch(`${API}/staff/companies`, { headers: authHeaders() }).then((response) => response.json()),
       fetch(`${API}/staff/dms-stock/imports`).then((response) => response.json()),
     ]).then(([companyRows, importData]) => {
       setCompanies(Array.isArray(companyRows) ? companyRows : []);
@@ -58,101 +74,38 @@ function DmsPurchaseHistory() {
     });
   }, []);
 
-  const chooseCompany = async (value) => {
+  const selectCompany = async (value) => {
     setCompanyId(value);
     setSellerId("");
-    setImportId("");
-    setStockImport(null);
-    setItems([]);
     if (!value) return setSellers([]);
-    const response = await fetch(`${API}/staff/purchase-sellers/company/${value}`, { headers: headers() });
+    const response = await fetch(`${API}/staff/purchase-sellers/company/${value}`, {
+      headers: authHeaders(),
+    });
     const data = await response.json();
     setSellers(Array.isArray(data) ? data : []);
   };
 
-  const chooseInvoice = async (value) => {
-    setImportId(value);
-    if (!value) {
-      setStockImport(null);
-      return setItems([]);
-    }
-    const response = await fetch(`${API}/staff/dms-stock?importId=${value}`);
-    const data = await response.json();
-    setStockImport(data.import || null);
-    setItems(data.items || []);
-  };
+  const rows = useMemo(() => imports.filter((entry) => (
+    (!companyId || String(entry.company_id) === String(companyId))
+    && (!sellerId || String(entry.seller_id) === String(sellerId))
+    && entry.invoice_number
+  )), [companyId, imports, sellerId]);
 
-  const editItem = (item) => {
-    const quantity = Number(item.total_pieces || 0);
-    const dpPrice = Number(item.dp_price || 0);
-    const price = quantity * dpPrice;
-    const taxable = price * (1 - Number(item.discount_percent || 0) / 100);
-    localStorage.setItem(MANUAL_DMS_DRAFT_KEY, JSON.stringify({
-      manualCompanyId: String(stockImport.company_id || companyId),
-      manualSellerId: String(stockImport.seller_id || sellerId),
-      manualUploadDate: stockImport.upload_date,
-      manualInvoiceNumber: stockImport.invoice_number,
+  const editInvoice = async (entry) => {
+    const response = await fetch(`${API}/staff/dms-stock?importId=${entry.id}`);
+    const data = await response.json();
+    if (!response.ok) return;
+    localStorage.setItem(DRAFT_KEY, JSON.stringify({
+      manualCompanyId: String(entry.company_id),
+      manualSellerId: String(entry.seller_id),
+      manualUploadDate: entry.upload_date,
+      manualInvoiceNumber: entry.invoice_number,
       selectedSellerItemId: "",
-      pendingItems: [],
-      manualItem: {
-        productErpId: item.product_erp_id || "",
-        productName: item.product_name || "",
-        variantName: item.variant_name || "",
-        pcsPerBox: String(item.pcs_per_box || ""),
-        currentStockInCase: String(item.current_stock_in_case || ""),
-        currentStockInPcs: String(item.current_stock_in_pcs || ""),
-        totalCurrentStockInPcs: String(item.total_current_stock_in_pcs || ""),
-        batchNumber: item.batch_number || "",
-        mfgDate: item.mfg_date || "",
-        expiryDate: item.expiry_date || "",
-        mrp: String(item.mrp || ""),
-        dpPrice: String(item.dp_price || ""),
-        discountPercent: String(item.discount_percent || 0),
-        gstPercent: "5",
-        price: price.toFixed(2),
-        discountAmount: (price - taxable).toFixed(2),
-        taxableAmount: taxable.toFixed(2),
-        cgstAmount: Number(item.cgst_amount || 0).toFixed(2),
-        sgstAmount: Number(item.sgst_amount || 0).toFixed(2),
-        totalValue: Number(item.total_value || 0).toFixed(4),
-        retailPrice: String(item.retail_price || ""),
-        wholesalePrice: String(item.wholesale_price || ""),
-        retailMargin: String(item.retail_margin || ""),
-        wholesaleMargin: String(item.wholesale_margin || ""),
-        pricePerPiece: String(item.dp_price || ""),
-        purchasePrice: String(item.dp_price || ""),
-        sourceItemId: null,
-      },
+      manualItem: null,
+      pendingItems: (data.items || []).map(pendingItem),
     }));
     navigate("/dms-stock");
   };
-
-  const deleteItem = async (item) => {
-    if (!window.confirm(`Delete ${item.product_name} from this invoice?`)) return;
-    const response = await fetch(`${API}/staff/dms-stock/items/${item.id}`, { method: "DELETE" });
-    const data = await response.json();
-    if (!response.ok) return window.alert(data.error || "Unable to delete item.");
-    setStockImport(data.import);
-    setItems(data.items || []);
-  };
-
-  const invoiceOptions = imports.filter((entry) => (
-    String(entry.company_id) === String(companyId)
-    && String(entry.seller_id) === String(sellerId)
-    && entry.invoice_number
-  ));
-
-  const totals = useMemo(() => items.reduce((sum, item) => {
-    const dpTotal = Number(item.dp_price || 0) * Number(item.total_pieces || 0);
-    const discounted = dpTotal * (1 - (Number(item.discount_percent || 0) / 100));
-    return {
-      quantity: sum.quantity + Number(item.total_pieces || 0),
-      discounted: sum.discounted + discounted,
-      cgst: sum.cgst + Number(item.cgst_amount || 0),
-      sgst: sum.sgst + Number(item.sgst_amount || 0),
-      total: sum.total + Number(item.total_value || 0),
-    };
-  }, { quantity: 0, discounted: 0, cgst: 0, sgst: 0, total: 0 }), [items]);
 
   return (
     <DashboardLayout>
@@ -161,82 +114,63 @@ function DmsPurchaseHistory() {
         <Card>
           <MDBox p={3}>
             <MDTypography variant="h5" fontWeight="bold">DMS Purchase History</MDTypography>
-            <Grid container spacing={2} mt={0.5}>
-              {[
-                ["Company", companyId, chooseCompany, companies, "name"],
-                ["Seller", sellerId, (value) => { setSellerId(value); setImportId(""); setItems([]); }, sellers, "seller_name"],
-              ].map(([label, value, change, options, name]) => (
-                <Grid item xs={12} md={3} key={label}>
-                  <MDTypography variant="caption" fontWeight="bold">{label}</MDTypography>
-                  <FormControl fullWidth>
-                    <Select displayEmpty value={value} onChange={(event) => change(event.target.value)}
-                      sx={{ height: 56, backgroundColor: "#fff" }}>
-                      <MenuItem value="">Select {label}</MenuItem>
-                      {options.map((option) => <MenuItem key={option.id} value={String(option.id)}>{option[name]}</MenuItem>)}
-                    </Select>
-                  </FormControl>
-                </Grid>
-              ))}
-              <Grid item xs={12} md={3}>
-                <MDTypography variant="caption" fontWeight="bold">Invoice Number</MDTypography>
-                <FormControl fullWidth disabled={!sellerId}>
-                  <Select displayEmpty value={importId} onChange={(event) => chooseInvoice(event.target.value)}
+            <Grid container spacing={2} mt={0.5} mb={3}>
+              <Grid item xs={12} md={4}>
+                <MDTypography variant="caption" fontWeight="bold">Company</MDTypography>
+                <FormControl fullWidth>
+                  <Select displayEmpty value={companyId} onChange={(event) => selectCompany(event.target.value)}
                     sx={{ height: 56, backgroundColor: "#fff" }}>
-                    <MenuItem value="">Select Invoice</MenuItem>
-                    {invoiceOptions.map((entry) => (
-                      <MenuItem key={entry.id} value={String(entry.id)}>
-                        {entry.invoice_number} — {entry.upload_date}
-                      </MenuItem>
-                    ))}
+                    <MenuItem value="">All Companies</MenuItem>
+                    {companies.map((company) => <MenuItem key={company.id} value={String(company.id)}>{company.name}</MenuItem>)}
+                  </Select>
+                </FormControl>
+              </Grid>
+              <Grid item xs={12} md={4}>
+                <MDTypography variant="caption" fontWeight="bold">Seller</MDTypography>
+                <FormControl fullWidth disabled={!companyId}>
+                  <Select displayEmpty value={sellerId} onChange={(event) => setSellerId(event.target.value)}
+                    sx={{ height: 56, backgroundColor: "#fff" }}>
+                    <MenuItem value="">All Sellers</MenuItem>
+                    {sellers.map((seller) => <MenuItem key={seller.id} value={String(seller.id)}>{seller.seller_name}</MenuItem>)}
                   </Select>
                 </FormControl>
               </Grid>
             </Grid>
-
-            {stockImport && (
-              <>
-                <Grid container spacing={2} mt={1}>
-                  <Grid item xs={6} md={2}><Metric label="Total Items" value={items.length} /></Grid>
-                  <Grid item xs={6} md={2}><Metric label="Total Quantity" value={number(totals.quantity)} /></Grid>
-                  <Grid item xs={6} md={2}><Metric label="Discounted Amount" value={money(totals.discounted)} /></Grid>
-                  <Grid item xs={6} md={2}><Metric label="CGST" value={money(totals.cgst)} /></Grid>
-                  <Grid item xs={6} md={2}><Metric label="SGST" value={money(totals.sgst)} /></Grid>
-                  <Grid item xs={6} md={2}><Metric label="Total Amount" value={money(totals.total)} /></Grid>
-                </Grid>
-                <TableContainer sx={{ mt: 3, overflowX: "auto" }}>
-                  <Table size="small" sx={{ minWidth: 1700 }}>
-                    <TableHead sx={{ display: "table-header-group" }}>
-                      <TableRow>
-                        {["ERP ID", "Item", "Variant", "Batch", "MFG", "Expiry", "Qty", "MRP", "DP", "Discount", "Discount Price", "CGST", "SGST", "Total", "Actions"].map((label) => (
-                          <TableCell key={label} sx={{ fontWeight: 700, whiteSpace: "nowrap" }}>{label}</TableCell>
-                        ))}
-                      </TableRow>
-                    </TableHead>
-                    <TableBody>
-                      {items.map((item) => {
-                        const price = Number(item.dp_price) * Number(item.total_pieces);
-                        const discounted = price * (1 - Number(item.discount_percent) / 100);
-                        return (
-                          <TableRow key={item.id}>
-                            <TableCell>{item.product_erp_id}</TableCell><TableCell>{item.product_name}</TableCell>
-                            <TableCell>{item.variant_name}</TableCell><TableCell>{item.batch_number}</TableCell>
-                            <TableCell>{item.mfg_date}</TableCell><TableCell>{item.expiry_date}</TableCell>
-                            <TableCell>{number(item.total_pieces)}</TableCell><TableCell>{money(item.mrp)}</TableCell>
-                            <TableCell>{money(item.dp_price)}</TableCell><TableCell>{number(item.discount_percent)}%</TableCell>
-                            <TableCell>{money(discounted)}</TableCell><TableCell>{money(item.cgst_amount)}</TableCell>
-                            <TableCell>{money(item.sgst_amount)}</TableCell><TableCell>{money(item.total_value)}</TableCell>
-                            <TableCell sx={{ whiteSpace: "nowrap" }}>
-                              <MDButton size="small" color="info" variant="text" onClick={() => editItem(item)}>Edit</MDButton>
-                              <MDButton size="small" color="error" variant="text" onClick={() => deleteItem(item)}>Delete</MDButton>
-                            </TableCell>
-                          </TableRow>
-                        );
-                      })}
-                    </TableBody>
-                  </Table>
-                </TableContainer>
-              </>
-            )}
+            <TableContainer sx={{ overflowX: "auto" }}>
+              <Table sx={{ minWidth: 1250 }}>
+                <TableHead sx={{ display: "table-header-group", backgroundColor: "#f8fafc" }}>
+                  <TableRow>
+                    {["Sr", "Company Name", "Seller Name", "Invoice Number", "Invoice Date", "Total Item", "Amount", "CGST", "SGST", "Total Amount", "Action"].map((label) => (
+                      <TableCell key={label} sx={{ fontWeight: 700, whiteSpace: "nowrap" }}>{label}</TableCell>
+                    ))}
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {rows.map((entry, index) => (
+                    <TableRow key={entry.id}>
+                      <TableCell>{index + 1}</TableCell>
+                      <TableCell>{entry.company_name}</TableCell>
+                      <TableCell>{entry.seller_name || "N/A"}</TableCell>
+                      <TableCell>{entry.invoice_number}</TableCell>
+                      <TableCell>{entry.upload_date}</TableCell>
+                      <TableCell>{entry.row_count}</TableCell>
+                      <TableCell>{money(entry.discounted_amount)}</TableCell>
+                      <TableCell>{money(entry.total_cgst)}</TableCell>
+                      <TableCell>{money(entry.total_sgst)}</TableCell>
+                      <TableCell>{money(entry.total_value)}</TableCell>
+                      <TableCell>
+                        <MDButton color="info" variant="gradient" size="small" onClick={() => editInvoice(entry)}>
+                          Edit
+                        </MDButton>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                  {!rows.length && (
+                    <TableRow><TableCell colSpan={11} align="center">No invoices found.</TableCell></TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            </TableContainer>
           </MDBox>
         </Card>
       </MDBox>

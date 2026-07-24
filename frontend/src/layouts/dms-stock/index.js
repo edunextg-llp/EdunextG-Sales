@@ -670,6 +670,7 @@ function DmsStock() {
       mrp: manualItem.mrp,
       totalValue: totals.totalValue,
       sourceItemId: manualItem.sourceItemId || null,
+      sourceDmsItemId: manualItem.sourceDmsItemId || null,
       isUpdate: replacingExisting,
     };
 
@@ -696,8 +697,30 @@ function DmsStock() {
     );
   };
 
-  const handleRemovePendingItem = (itemId) => {
-    setPendingItems((prev) => prev.filter((item) => item.id !== itemId));
+  const handleEditPendingItem = (item) => {
+    setManualItem({ ...emptyManualItem(), ...item });
+    setSelectedSellerItemId("");
+    setPendingItems((prev) => prev.filter((entry) => entry.id !== item.id));
+    setMessage(`Editing ${item.productName}. Change values and click Add.`);
+  };
+
+  const handleRemovePendingItem = async (item) => {
+    if (item.sourceDmsItemId) {
+      if (!window.confirm(`Delete ${item.productName} from this invoice?`)) return;
+      try {
+        const response = await fetch(`${API}/staff/dms-stock/items/${item.sourceDmsItemId}`, {
+          method: "DELETE",
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || "Unable to delete item.");
+        setStockImport(data.import || null);
+        setItems(data.items || []);
+      } catch (deleteError) {
+        setError(deleteError.message);
+        return;
+      }
+    }
+    setPendingItems((prev) => prev.filter((entry) => entry.id !== item.id));
   };
 
   const handleSaveManualStock = async () => {
@@ -1509,10 +1532,18 @@ function DmsStock() {
                         <TableCell sx={pendingBodyCellSx(110)}>{formatUploadDate(item.expiryDate)}</TableCell>
                         <TableCell sx={pendingBodyCellSx(70, "center")}>
                           <MDButton
+                            color="info"
+                            variant="text"
+                            size="small"
+                            onClick={() => handleEditPendingItem(item)}
+                          >
+                            <Icon fontSize="small">edit</Icon>
+                          </MDButton>
+                          <MDButton
                             color="error"
                             variant="text"
                             size="small"
-                            onClick={() => handleRemovePendingItem(item.id)}
+                            onClick={() => handleRemovePendingItem(item)}
                           >
                             <Icon fontSize="small">delete</Icon>
                           </MDButton>

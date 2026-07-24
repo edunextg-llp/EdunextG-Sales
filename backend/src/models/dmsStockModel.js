@@ -10,12 +10,21 @@ class DmsStockModel {
         const [rows] = await db.execute(
             `SELECT i.id, i.entry_code, i.invoice_number, i.file_name, i.company_id, c.name AS company_name,
                     i.seller_id, ps.seller_name, i.row_count,
+                    COALESCE(item_totals.total_cgst, 0) AS total_cgst,
+                    COALESCE(item_totals.total_sgst, 0) AS total_sgst,
+                    COALESCE(item_totals.discounted_amount, 0) AS discounted_amount,
                     DATE_FORMAT(i.upload_date, '%Y-%m-%d') AS upload_date,
                     i.total_stock_cases, i.total_stock_pcs, i.total_pieces, i.total_value,
                     DATE_FORMAT(i.created_at, '%Y-%m-%d %H:%i:%s') AS created_at
              FROM dms_stock_imports i
              LEFT JOIN companies c ON i.company_id = c.id
              LEFT JOIN purchase_sellers ps ON i.seller_id = ps.id
+             LEFT JOIN (
+                 SELECT import_id, SUM(cgst_amount) AS total_cgst, SUM(sgst_amount) AS total_sgst,
+                        SUM((dp_price * total_pieces) * (1 - discount_percent / 100)) AS discounted_amount
+                 FROM dms_stock_items
+                 GROUP BY import_id
+             ) item_totals ON item_totals.import_id = i.id
              ORDER BY i.upload_date DESC, i.id DESC`
         );
 
