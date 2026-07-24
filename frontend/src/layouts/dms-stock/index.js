@@ -1156,7 +1156,7 @@ function DmsStock() {
                 />
               </Grid>
 
-              <Grid item xs={12}>
+              <Grid item xs={12} md={4}>
                 <MDTypography sx={fieldLabelSx}>
                   Select Item{requiredMark}
                 </MDTypography>
@@ -1182,7 +1182,7 @@ function DmsStock() {
                 </FormControl>
               </Grid>
 
-              <Grid item xs={12} md={4}>
+              <Grid item xs={12} md={3}>
                 <MDTypography sx={fieldLabelSx}>
                   Product ERP ID{requiredMark}
                 </MDTypography>
@@ -1193,7 +1193,7 @@ function DmsStock() {
                   sx={{ "& .MuiInputBase-root": { backgroundColor: "#f1f5f9", height: 40 } }}
                 />
               </Grid>
-              <Grid item xs={12} md={4}>
+              <Grid item xs={12} md={2}>
                 <MDTypography sx={fieldLabelSx}>
                   SKU Name{requiredMark}
                 </MDTypography>
@@ -1201,10 +1201,14 @@ function DmsStock() {
                   fullWidth
                   value={manualItem.productName}
                   disabled
-                  sx={{ "& .MuiInputBase-root": { backgroundColor: "#f1f5f9", height: 40 } }}
+                  inputProps={{ title: manualItem.productName }}
+                  sx={{
+                    "& .MuiInputBase-root": { backgroundColor: "#f1f5f9", height: 40 },
+                    "& input": { overflow: "hidden", textOverflow: "ellipsis" },
+                  }}
                 />
               </Grid>
-              <Grid item xs={12} md={4}>
+              <Grid item xs={12} md={3}>
                 <MDTypography sx={fieldLabelSx}>Variant Name</MDTypography>
                 <MDInput
                   fullWidth
@@ -1214,7 +1218,7 @@ function DmsStock() {
                 />
               </Grid>
 
-              <Grid item xs={12} md={3}>
+              <Grid item xs={6} md={1}>
                 <MDTypography sx={fieldLabelSx}>
                   1 Box = Pieces
                 </MDTypography>
@@ -1222,10 +1226,10 @@ function DmsStock() {
                   fullWidth
                   value={manualItem.pcsPerBox ? Math.trunc(Number(manualItem.pcsPerBox)) : ""}
                   disabled
-                  sx={{ "& .MuiInputBase-root": { backgroundColor: "#f1f5f9", height: 40 } }}
+                  sx={{ "& .MuiInputBase-root": { backgroundColor: "#f1f5f9", height: 36 } }}
                 />
               </Grid>
-              <Grid item xs={12} md={3}>
+              <Grid item xs={6} md={1}>
                 <MDTypography sx={fieldLabelSx}>No. of Boxes{requiredMark}</MDTypography>
                 <MDInput
                   fullWidth
@@ -1234,7 +1238,7 @@ function DmsStock() {
                   placeholder="0"
                   value={manualItem.currentStockInCase}
                   onChange={(event) => updateManualItem("currentStockInCase", event.target.value)}
-                  sx={{ "& .MuiInputBase-root": { backgroundColor: "#fff", height: 40 } }}
+                  sx={{ "& .MuiInputBase-root": { backgroundColor: "#fff", height: 36 } }}
                 />
               </Grid>
               <Grid item xs={12} md={3}>
@@ -1282,60 +1286,66 @@ function DmsStock() {
                   sx={{ "& .MuiInputBase-root": { backgroundColor: "#fff", height: 40 } }} />
               </Grid>
 
-              <Grid item xs={12} md={3}>
+              <Grid item xs={6} md={2}>
                 <MDTypography sx={fieldLabelSx}>MRP{requiredMark}</MDTypography>
                 <MDInput fullWidth type="number" value={manualItem.mrp}
                   onChange={(event) => updateManualItem("mrp", event.target.value)}
                   sx={{ "& .MuiInputBase-root": { backgroundColor: "#fff", height: 40 } }} />
               </Grid>
-              <Grid item xs={12} md={3}>
+              <Grid item xs={6} md={2}>
                 <MDTypography sx={fieldLabelSx}>DP Price{requiredMark}</MDTypography>
                 <MDInput fullWidth type="number" value={manualItem.dpPrice}
                   onChange={(event) => updateManualItem("dpPrice", event.target.value)}
                   sx={{ "& .MuiInputBase-root": { backgroundColor: "#fff", height: 40 } }} />
               </Grid>
-              <Grid item xs={12} md={3}>
+              <Grid item xs={6} md={2}>
                 <MDTypography sx={fieldLabelSx}>Price (DP × Qty)</MDTypography>
                 <MDInput fullWidth disabled value={manualItem.price ? `Rs. ${manualItem.price}` : ""}
                   sx={{ "& .MuiInputBase-root": { backgroundColor: "#f1f5f9", height: 40 } }} />
               </Grid>
-              <Grid item xs={12} md={3}>
+              <Grid item xs={6} md={2}>
                 <MDTypography sx={fieldLabelSx}>Discount %</MDTypography>
                 <MDInput fullWidth type="number" inputProps={{ min: 0, max: 100 }}
                   value={manualItem.discountPercent}
                   onChange={(event) => updateManualItem("discountPercent", event.target.value)}
                   sx={{ "& .MuiInputBase-root": { backgroundColor: "#fff", height: 40 } }} />
               </Grid>
+              <Grid item xs={6} md={2}>
+                <MDTypography sx={fieldLabelSx}>Discount Price (Price − Discount)</MDTypography>
+                <MDInput fullWidth disabled
+                  value={manualItem.taxableAmount ? `Rs. ${manualItem.taxableAmount}` : ""}
+                  sx={{ "& .MuiInputBase-root": { backgroundColor: "#f1f5f9", height: 40 } }} />
+              </Grid>
               {[
                 ["GST", "5%"],
                 ["CGST (2.5%)", manualItem.cgstAmount ? `Rs. ${manualItem.cgstAmount}` : ""],
                 ["SGST (2.5%)", manualItem.sgstAmount ? `Rs. ${manualItem.sgstAmount}` : ""],
-                ["Total Price", manualItem.totalValue ? `Rs. ${manualItem.totalValue}` : ""],
+                ["Total Price (Discount Price + 5% GST)", manualItem.totalValue ? `Rs. ${manualItem.totalValue}` : ""],
               ].map(([label, value]) => (
-                <Grid item xs={12} md={3} key={label}>
+                <Grid item xs={6} md={2} key={label}>
                   <MDTypography sx={fieldLabelSx}>{label}</MDTypography>
                   <MDInput fullWidth disabled value={value}
                     sx={{ "& .MuiInputBase-root": { backgroundColor: "#f1f5f9", height: 40 } }} />
                 </Grid>
               ))}
-              <Grid item xs={12} md={3}>
+              <Grid item xs={6} md={2}>
                 <MDTypography sx={fieldLabelSx}>Retail Price{requiredMark}</MDTypography>
                 <MDInput fullWidth type="number" value={manualItem.retailPrice}
                   onChange={(event) => updateManualItem("retailPrice", event.target.value)}
                   sx={{ "& .MuiInputBase-root": { backgroundColor: "#fff", height: 40 } }} />
               </Grid>
-              <Grid item xs={12} md={3}>
+              <Grid item xs={6} md={2}>
                 <MDTypography sx={fieldLabelSx}>Wholesale Price{requiredMark}</MDTypography>
                 <MDInput fullWidth type="number" value={manualItem.wholesalePrice}
                   onChange={(event) => updateManualItem("wholesalePrice", event.target.value)}
                   sx={{ "& .MuiInputBase-root": { backgroundColor: "#fff", height: 40 } }} />
               </Grid>
-              <Grid item xs={12} md={3}>
+              <Grid item xs={6} md={2}>
                 <MDTypography sx={fieldLabelSx}>Retail Margin (Retail − DP)</MDTypography>
                 <MDInput fullWidth disabled value={manualItem.retailMargin ? `Rs. ${manualItem.retailMargin}` : ""}
                   sx={{ "& .MuiInputBase-root": { backgroundColor: "#f1f5f9", height: 40 } }} />
               </Grid>
-              <Grid item xs={12} md={3}>
+              <Grid item xs={6} md={2}>
                 <MDTypography sx={fieldLabelSx}>Wholesale Margin (Wholesale − DP)</MDTypography>
                 <MDInput fullWidth disabled value={manualItem.wholesaleMargin ? `Rs. ${manualItem.wholesaleMargin}` : ""}
                   sx={{ "& .MuiInputBase-root": { backgroundColor: "#f1f5f9", height: 40 } }} />
