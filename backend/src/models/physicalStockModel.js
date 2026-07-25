@@ -61,15 +61,14 @@ class PhysicalStockModel {
 
         await connection.execute(
             `INSERT INTO physical_stock_item_history
-             (dms_import_id, import_id, item_id, physical_stock_item_id, product_erp_id, product_name,
+             (dms_import_id, import_id, item_id, product_erp_id, product_name,
               product_division, variant_name, pcs_per_box, physical_stock_in_case, physical_stock_in_pcs,
               total_physical_stock_in_pcs, price_per_piece, mrp, total_value, expired_stock_date,
-              source_type, source_label, source_name, change_type)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+              source_type, source_label, change_type)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
             [
                 dmsImportId,
                 importId,
-                itemId,
                 itemId,
                 payload.productErpId,
                 payload.productName,
@@ -84,7 +83,6 @@ class PhysicalStockModel {
                 payload.totalValue,
                 payload.expiredStockDate,
                 sourceType,
-                resolvedSourceLabel,
                 resolvedSourceLabel,
                 changeType,
             ]
@@ -112,20 +110,12 @@ class PhysicalStockModel {
         }
 
         const [historyRows] = await db.execute(
-            `SELECT id, dms_import_id, import_id,
-                    COALESCE(item_id, physical_stock_item_id) AS item_id,
+            `SELECT id, dms_import_id, import_id, item_id,
                     product_erp_id, product_name, product_division, variant_name,
                     COALESCE(pcs_per_box, 0) AS pcs_per_box,
                     physical_stock_in_case, physical_stock_in_pcs, total_physical_stock_in_pcs,
                     price_per_piece, mrp, total_value, expired_stock_date,
-                    COALESCE(source_type,
-                        CASE
-                            WHEN source_name = 'Sales Deduction' THEN 'sale'
-                            WHEN source_name = 'Manual Entry' THEN 'manual'
-                            ELSE 'upload'
-                        END
-                    ) AS source_type,
-                    COALESCE(source_label, source_name) AS source_label,
+                    source_type, source_label,
                     change_type,
                     DATE_FORMAT(created_at, '%Y-%m-%d %H:%i:%s') AS created_at,
                     DATE(created_at) AS update_date

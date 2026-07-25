@@ -154,10 +154,15 @@ const calcPhysicalTotals = (product, stockForm) => {
 
   const totalPhysicalStockInPcs = (pcsPerBox * physicalStockInCase) + physicalStockInPcs;
   const totalValue = totalPhysicalStockInPcs * pricePerPiece;
+  const currentStockInPcs =
+    totalPhysicalStockInPcs - (Number(product?.total_current_stock_in_pcs) || 0);
 
   return {
     totalPhysicalStockInPcs: totalPhysicalStockInPcs ? totalPhysicalStockInPcs.toFixed(2) : "",
     totalValue: totalValue ? totalValue.toFixed(2) : "",
+    currentStockInPcs: totalPhysicalStockInPcs
+      ? currentStockInPcs.toFixed(2)
+      : "",
   };
 };
 
@@ -1154,6 +1159,15 @@ function PhysicalStock() {
                   value={stockTotals.totalValue ? `Rs. ${stockTotals.totalValue}` : ""}
                   disabled
                   sx={{ "& .MuiInputBase-root": { backgroundColor: "#eff6ff", height: 40, fontWeight: 700 } }}
+                />
+              </Grid>
+              <Grid item xs={12} md={4}>
+                <MDTypography sx={fieldLabelSx}>Current Stock In Pcs</MDTypography>
+                <MDInput
+                  fullWidth
+                  value={stockTotals.currentStockInPcs}
+                  disabled
+                  sx={{ "& .MuiInputBase-root": { backgroundColor: "#dcfce7", height: 40, fontWeight: 700 } }}
                 />
               </Grid>
             </Grid>
