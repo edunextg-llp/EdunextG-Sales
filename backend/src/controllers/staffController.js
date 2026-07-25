@@ -435,6 +435,16 @@ export const addCounter = async (req, res) => {
 
                 const googleLocation = googleLocationValidation.value;
 
+                const hasGst = Boolean(counter.hasGst);
+                const gstNumber = counter.gstNumber
+                    ? String(counter.gstNumber).trim().toUpperCase()
+                    : '';
+                if (hasGst && !gstNumber) {
+                    return res.status(400).json({
+                        error: `Counter ${i + 1} GST number is required when GST is enabled.`,
+                    });
+                }
+
                 if (erpIds.has(normalizedErpId)) {
                     return res.status(400).json({ error: 'Same ERP Id already exists in this entry.' });
                 }
@@ -454,6 +464,8 @@ export const addCounter = async (req, res) => {
                     contactNumber: contactValidation.value,
                     whatsappNumber: whatsappValidation.value,
                     googleLocation,
+                    hasGst,
+                    gstNumber: hasGst ? gstNumber : null,
                 });
             }
         }
@@ -2035,7 +2047,7 @@ export const fetchSalesByDate = async (req, res) => {
 export const editCounter = async (req, res) => {
     try {
         const { counterId } = req.params;
-        const { outletErpId, outletName, contactNumber, whatsappNumber, address, googleLocation } = req.body;
+        const { outletErpId, outletName, contactNumber, whatsappNumber, address, googleLocation, hasGst, gstNumber } = req.body;
         const existingCounter = await StaffModel.getCounterById(counterId);
         if (!existingCounter) {
             return res.status(404).json({ error: 'Counter not found' });
@@ -2061,6 +2073,14 @@ export const editCounter = async (req, res) => {
         }
 
         const normalizedGoogleLocation = googleLocationValidation.value;
+        const outletHasGst = Boolean(hasGst);
+        const normalizedGstNumber = gstNumber
+            ? String(gstNumber).trim().toUpperCase()
+            : '';
+
+        if (outletHasGst && !normalizedGstNumber) {
+            return res.status(400).json({ error: 'GST number is required when GST is enabled.' });
+        }
 
         const duplicateCounter = await StaffModel.findDuplicateCounter(
             existingCounter.staff_id,
@@ -2079,6 +2099,8 @@ export const editCounter = async (req, res) => {
             whatsappNumber: whatsappValidation.value,
             address: String(address || '').trim(),
             googleLocation: normalizedGoogleLocation,
+            hasGst: outletHasGst,
+            gstNumber: outletHasGst ? normalizedGstNumber : null,
         });
         res.status(200).json({ message: 'Counter updated successfully' });
     } catch (error) {

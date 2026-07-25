@@ -17,6 +17,9 @@ const zeroStock = () => ({
     total_stock_in_pcs: 0,
     price_per_piece: 0,
     mrp: 0,
+    retail_price: 0,
+    wholesale_price: 0,
+    hsn_code: '',
     total_value: 0,
 });
 
@@ -47,6 +50,9 @@ const pickDms = (item = {}) => ({
     price_per_piece: item.price_per_piece || 0,
     mrp: item.mrp || 0,
     total_value: roundMoney((item.total_current_stock_in_pcs || 0) * (item.price_per_piece || 0)),
+    retail_price: item.retail_price || 0,
+    wholesale_price: item.wholesale_price || 0,
+    hsn_code: item.hsn_code || '',
 });
 
 export function buildCurrentStockDiff(physicalItems = [], dmsItems = []) {
@@ -92,6 +98,9 @@ export function buildCurrentStockDiff(physicalItems = [], dmsItems = []) {
             total_current_stock_in_pcs: totalCurrentStockInPcs,
             price_per_piece: pricePerPiece,
             mrp: physical.mrp || dms.mrp || 0,
+            retail_price: dms.retail_price || 0,
+            wholesale_price: dms.wholesale_price || 0,
+            hsn_code: dms.hsn_code || '',
             total_value: roundMoney(totalCurrentStockInPcs * pricePerPiece),
         };
     });

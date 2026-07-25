@@ -5,10 +5,9 @@ import Grid from "@mui/material/Grid";
 import Card from "@mui/material/Card";
 import Icon from "@mui/material/Icon";
 import Autocomplete from "@mui/material/Autocomplete";
-import { Checkbox, Chip, Divider, FormControlLabel, IconButton } from "@mui/material";
+import { Checkbox, Chip, Divider, FormControl, FormControlLabel, FormLabel, IconButton, Radio, RadioGroup } from "@mui/material";
 import InputLabel from "@mui/material/InputLabel";
 import MenuItem from "@mui/material/MenuItem";
-import FormControl from "@mui/material/FormControl";
 import Select from "@mui/material/Select";
 
 // Material Dashboard 2 React components
@@ -44,6 +43,30 @@ const outletCardSx = {
   backgroundColor: "#fff",
 };
 
+const createEmptyOutlet = () => ({
+  outletErpId: "",
+  outletName: "",
+  contactNumber: "",
+  whatsappNumber: "",
+  whatsappSameAsContact: false,
+  hasGst: "no",
+  gstNumber: "",
+  address: "",
+  googleLocation: "",
+});
+
+const createEmptyEditForm = () => ({
+  outletErpId: "",
+  outletName: "",
+  contactNumber: "",
+  whatsappNumber: "",
+  whatsappSameAsContact: false,
+  hasGst: "no",
+  gstNumber: "",
+  address: "",
+  googleLocation: "",
+});
+
 function AddCounter() {
   const days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
   const cnfRouteDay = "CNF";
@@ -57,15 +80,7 @@ function AddCounter() {
   const [outlets, setOutlets] = useState([]);
   const [savedOutlets, setSavedOutlets] = useState([]);
   const [editingOutletId, setEditingOutletId] = useState(null);
-  const [editFormData, setEditFormData] = useState({
-    outletErpId: "",
-    outletName: "",
-    contactNumber: "",
-    whatsappNumber: "",
-    whatsappSameAsContact: false,
-    address: "",
-    googleLocation: "",
-  });
+  const [editFormData, setEditFormData] = useState(createEmptyEditForm());
 
   const API = "https://bawarchee.edunextg.co/api";
   const isCnfStaff = selectedStaff?.staff_type === "cnf";
@@ -177,18 +192,7 @@ function AddCounter() {
   }, [selectedStaff, routeDay]);
 
   const addOutletField = () => {
-    setOutlets([
-      ...outlets,
-      {
-        outletErpId: "",
-        outletName: "",
-        contactNumber: "",
-        whatsappNumber: "",
-        whatsappSameAsContact: false,
-        address: "",
-        googleLocation: "",
-      },
-    ]);
+    setOutlets([...outlets, createEmptyOutlet()]);
   };
 
   const removeOutletField = (index) => {
@@ -201,9 +205,15 @@ function AddCounter() {
     const updated = [...outlets];
     const nextValue = field === "contactNumber" || field === "whatsappNumber"
       ? String(value || "").replace(/\D/g, "")
-      : value;
+      : field === "gstNumber"
+        ? String(value || "").toUpperCase()
+        : value;
 
     updated[index][field] = nextValue;
+
+    if (field === "hasGst" && value === "no") {
+      updated[index].gstNumber = "";
+    }
 
     if (field === "contactNumber" && updated[index].whatsappSameAsContact) {
       updated[index].whatsappNumber = nextValue;
@@ -248,9 +258,14 @@ function AddCounter() {
       whatsappNumber: outlet.whatsappSameAsContact
         ? outlet.contactNumber
         : outlet.whatsappNumber,
+      hasGst: outlet.hasGst === "yes",
+      gstNumber: outlet.hasGst === "yes" ? String(outlet.gstNumber || "").trim().toUpperCase() : "",
       address: String(outlet.address || "").trim(),
       googleLocation: formatGoogleMapsLocation(outlet.googleLocation),
     }));
+    const missingGstNumber = formattedOutlets.some(
+      (outlet) => outlet.hasGst && !outlet.gstNumber
+    );
     const missingGoogleLocation = formattedOutlets.some((outlet) => !String(outlet.googleLocation || "").trim());
     const invalidGoogleLocation = formattedOutlets.find(
       (outlet) => outlet.googleLocation && !isValidGoogleMapsShortUrl(outlet.googleLocation)
@@ -262,6 +277,11 @@ function AddCounter() {
 
     if (hasDuplicateErp) {
       alert("Same ERP Id already exists. Please use a unique ERP Id.");
+      return;
+    }
+
+    if (missingGstNumber) {
+      alert("Please enter GST number for outlets with GST enabled.");
       return;
     }
 
@@ -338,6 +358,8 @@ function AddCounter() {
       contactNumber,
       whatsappNumber,
       whatsappSameAsContact: Boolean(contactNumber) && contactNumber === whatsappNumber,
+      hasGst: outlet.has_gst ? "yes" : "no",
+      gstNumber: outlet.gst_number || "",
       address: outlet.address || "",
       googleLocation: outlet.google_location || "",
     });
@@ -345,26 +367,23 @@ function AddCounter() {
 
   const handleCancelEdit = () => {
     setEditingOutletId(null);
-    setEditFormData({
-      outletErpId: "",
-      outletName: "",
-      contactNumber: "",
-      whatsappNumber: "",
-      whatsappSameAsContact: false,
-      address: "",
-      googleLocation: "",
-    });
+    setEditFormData(createEmptyEditForm());
   };
 
   const handleEditFormChange = (field, value) => {
     const nextValue = field === "contactNumber" || field === "whatsappNumber"
       ? String(value || "").replace(/\D/g, "")
-      : value;
+      : field === "gstNumber"
+        ? String(value || "").toUpperCase()
+        : value;
 
     setEditFormData((prev) => {
       const updated = { ...prev, [field]: nextValue };
       if (field === "contactNumber" && updated.whatsappSameAsContact) {
         updated.whatsappNumber = nextValue;
+      }
+      if (field === "hasGst" && value === "no") {
+        updated.gstNumber = "";
       }
       return updated;
     });
@@ -388,6 +407,11 @@ function AddCounter() {
 
     if (hasDuplicateSavedOutlet) {
       alert("Same ERP Id already exists. Please use a unique ERP Id.");
+      return;
+    }
+
+    if (editFormData.hasGst === "yes" && !String(editFormData.gstNumber || "").trim()) {
+      alert("Please enter GST number when GST is enabled.");
       return;
     }
 
@@ -415,6 +439,10 @@ function AddCounter() {
           whatsappNumber: editFormData.whatsappSameAsContact
             ? editFormData.contactNumber
             : editFormData.whatsappNumber,
+          hasGst: editFormData.hasGst === "yes",
+          gstNumber: editFormData.hasGst === "yes"
+            ? String(editFormData.gstNumber || "").trim().toUpperCase()
+            : "",
           address: String(editFormData.address || "").trim(),
           googleLocation: formattedGoogleLocation,
         }),
@@ -763,6 +791,42 @@ function AddCounter() {
 
                                 <Divider sx={{ mb: 2.5 }} />
 
+                                <MDTypography sx={sectionLabelSx}>GST</MDTypography>
+                                <Grid container spacing={2} mb={2.5}>
+                                  <Grid item xs={12}>
+                                    <FormControl>
+                                      <MDTypography variant="caption" color="text" display="block" mb={0.5}>
+                                        Outlet has GST?
+                                      </MDTypography>
+                                      <RadioGroup
+                                        row
+                                        value={outlet.hasGst}
+                                        onChange={(e) =>
+                                          handleOutletChange(index, "hasGst", e.target.value)
+                                        }
+                                      >
+                                        <FormControlLabel value="yes" control={<Radio size="small" />} label="Yes" />
+                                        <FormControlLabel value="no" control={<Radio size="small" />} label="No" />
+                                      </RadioGroup>
+                                    </FormControl>
+                                  </Grid>
+                                  {outlet.hasGst === "yes" && (
+                                    <Grid item xs={12} sm={6} md={4}>
+                                      <MDInput
+                                        label="GST No *"
+                                        fullWidth
+                                        InputProps={{ sx: { minHeight: 44 } }}
+                                        value={outlet.gstNumber}
+                                        onChange={(e) =>
+                                          handleOutletChange(index, "gstNumber", e.target.value)
+                                        }
+                                      />
+                                    </Grid>
+                                  )}
+                                </Grid>
+
+                                <Divider sx={{ mb: 2.5 }} />
+
                                 <MDTypography sx={sectionLabelSx}>Contact</MDTypography>
                                 <Grid container spacing={2} mb={1}>
                                   <Grid item xs={12} sm={6}>
@@ -930,6 +994,29 @@ function AddCounter() {
                               />
                             </Grid>
                             <Grid item xs={12} sm={6} md={2}>
+                              <FormControl fullWidth>
+                                <FormLabel sx={{ fontSize: "0.75rem", mb: 0.5 }}>GST?</FormLabel>
+                                <RadioGroup
+                                  row
+                                  value={editFormData.hasGst}
+                                  onChange={(e) => handleEditFormChange("hasGst", e.target.value)}
+                                >
+                                  <FormControlLabel value="yes" control={<Radio size="small" />} label="Yes" />
+                                  <FormControlLabel value="no" control={<Radio size="small" />} label="No" />
+                                </RadioGroup>
+                              </FormControl>
+                            </Grid>
+                            {editFormData.hasGst === "yes" && (
+                              <Grid item xs={12} sm={6} md={2}>
+                                <MDInput
+                                  label="GST No *"
+                                  fullWidth
+                                  value={editFormData.gstNumber}
+                                  onChange={(e) => handleEditFormChange("gstNumber", e.target.value)}
+                                />
+                              </Grid>
+                            )}
+                            <Grid item xs={12} sm={6} md={2}>
                               <MDInput
                                 label="Google Location"
                                 fullWidth
@@ -986,6 +1073,16 @@ function AddCounter() {
                             <Grid item xs={12} sm={6} md={2}>
                               <MDTypography variant="body2" fontWeight="medium">
                                 {saved.address || "-"}
+                              </MDTypography>
+                            </Grid>
+                            <Grid item xs={12} sm={6} md={1}>
+                              <MDTypography variant="body2" fontWeight="medium">
+                                GST: {saved.has_gst ? "Yes" : "No"}
+                              </MDTypography>
+                            </Grid>
+                            <Grid item xs={12} sm={6} md={2}>
+                              <MDTypography variant="body2" fontWeight="medium">
+                                {saved.has_gst ? saved.gst_number || "-" : "—"}
                               </MDTypography>
                             </Grid>
                             <Grid item xs={12} sm={6} md={2}>

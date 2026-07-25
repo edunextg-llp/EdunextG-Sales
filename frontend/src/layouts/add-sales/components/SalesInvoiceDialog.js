@@ -14,6 +14,8 @@ import {
   IconButton,
   Autocomplete,
   Icon,
+  Select,
+  MenuItem,
 } from "@mui/material";
 import { FaRegEdit } from "react-icons/fa";
 import { CiTrash } from "react-icons/ci";
@@ -183,6 +185,9 @@ const emptyLineItem = {
   availableStock: 0,
   qty: "",
   rate: "",
+  priceType: "retail",
+  retailPrice: 0,
+  wholesalePrice: 0,
 };
 
 function fmt(v, d = 2) {
@@ -200,7 +205,12 @@ function calcLine(item) {
   const qty = Number(item.qty) || 0;
   const rate = Number(item.rate) || 0;
   const total = qty * rate;
-  return { qty, rate, total, disc: 0, taxable: total, netTotal: total };
+  const taxable = total;
+  const cgst = taxable * 0.025;
+  const sgst = taxable * 0.025;
+  const gst = cgst + sgst;
+  const netTotal = taxable + gst;
+  return { qty, rate, total, disc: 0, taxable, cgst, sgst, gst, netTotal };
 }
 
 const API = "https://bawarchee.edunextg.co/api";
@@ -229,6 +239,7 @@ export default function SalesInvoiceDialog({
   const [flatDiscount, setFlatDiscount] = useState("");
   const [roundOff, setRoundOff] = useState("0");
   const [remarks, setRemarks] = useState("");
+  const [requisitionNumber, setRequisitionNumber] = useState("");
   const [stockItems, setStockItems] = useState([]);
   const [loadingStock, setLoadingStock] = useState(false);
   const [stockError, setStockError] = useState("");
@@ -276,6 +287,7 @@ export default function SalesInvoiceDialog({
     setFlatDiscount("");
     setRoundOff("0");
     setRemarks("");
+    setRequisitionNumber("");
     setEditPopup({ open: false, index: null, draft: { ...emptyLineItem } });
   }, [open, invoiceNumber, editMode, initialItemCount, initialPrice, initialLineItems]);
 
@@ -327,16 +339,37 @@ export default function SalesInvoiceDialog({
         acc.amount += c.total;
         acc.disc += c.disc;
         acc.taxable += c.taxable;
+        acc.cgst += c.cgst;
+        acc.sgst += c.sgst;
+        acc.gst += c.gst;
+        acc.netTotal += c.netTotal;
         acc.qty += c.qty;
         return acc;
       },
-      { amount: 0, disc: 0, taxable: 0, qty: 0 }
+      { amount: 0, disc: 0, taxable: 0, cgst: 0, sgst: 0, gst: 0, netTotal: 0, qty: 0 }
     );
-    const flatDisc = Number(flatDiscount) || 0;
-    const grandTotal = Math.max(0, base.taxable - flatDisc);
+    const flatDiscountPercent = Math.min(100, Math.max(0, Number(flatDiscount) || 0));
+    const flatDisc = base.taxable * flatDiscountPercent / 100;
+    const discountedTaxable = Math.max(0, base.taxable - flatDisc);
+    const cgst = discountedTaxable * 0.025;
+    const sgst = discountedTaxable * 0.025;
+    const gst = cgst + sgst;
+    const grandTotal = discountedTaxable + gst;
     const round = Number(roundOff) || 0;
     const netPayable = Math.max(0, grandTotal + round);
-    return { ...base, flatDisc, grandTotal, round, netPayable, items: lineItems.length };
+    return {
+      ...base,
+      flatDiscountPercent,
+      flatDisc,
+      discountedTaxable,
+      cgst,
+      sgst,
+      gst,
+      grandTotal,
+      round,
+      netPayable,
+      items: lineItems.length,
+    };
   }, [lineItems, flatDiscount, roundOff]);
 
   /* ── available stock (minus already-added qty of same ERP) ── */
@@ -381,7 +414,18 @@ export default function SalesInvoiceDialog({
       productDivision: product.product_division || "",
       variantName: product.variant_name || "",
       availableStock: Number(product.total_current_stock_in_pcs) || 0,
-      rate: product.mrp || product.price_per_piece || "",
+      priceType: "retail",
+      retailPrice: Number(product.retail_price) || 0,
+      wholesalePrice: Number(product.wholesale_price) || 0,
+      rate: product.retail_price || product.mrp || product.price_per_piece || "",
+    }));
+  };
+
+  const handlePriceTypeChange = (priceType) => {
+    setDraft((prev) => ({
+      ...prev,
+      priceType,
+      rate: priceType === "wholesale" ? prev.wholesalePrice : prev.retailPrice,
     }));
   };
 
@@ -429,7 +473,10 @@ export default function SalesInvoiceDialog({
         productDivision: product.product_division || "",
         variantName: product.variant_name || "",
         availableStock: Number(product.total_current_stock_in_pcs) || 0,
-        rate: product.mrp || product.price_per_piece || prev.draft.rate || "",
+        priceType: "retail",
+        retailPrice: Number(product.retail_price) || 0,
+        wholesalePrice: Number(product.wholesale_price) || 0,
+        rate: product.retail_price || product.mrp || product.price_per_piece || prev.draft.rate || "",
       },
     }));
   };
@@ -459,6 +506,33 @@ export default function SalesInvoiceDialog({
     setLineItems((prev) => prev.filter((_, j) => j !== i));
     if (editingIdx === i) resetDraft();
     if (editPopup.index === i) closeEditPopup();
+  };
+
+  const loadRequisition = async () => {
+    const code = requisitionNumber.trim();
+    if (!code) return alert("Enter a requisition number.");
+    try {
+      const response = await fetch(`${API}/staff/purchase-requisitions/${encodeURIComponent(code)}`);
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "Requisition not found.");
+      const rows = (data.requisition.items || []).map((item) => ({
+        productErpId: item.product_erp_id,
+        productName: item.product_name,
+        productDivision: item.product_division || "",
+        variantName: item.variant_name || "",
+        hsnCode: item.hsn_code || "",
+        availableStock: Number(item.total_current_stock_in_pcs) || 0,
+        qty: String(item.quantity),
+        priceType: item.priceType || "retail",
+        retailPrice: Number(item.retail_price) || 0,
+        wholesalePrice: Number(item.wholesale_price) || 0,
+        rate: String(item.rate || 0),
+        requisitionNumber: data.requisition.requisition_number,
+      }));
+      setLineItems(rows);
+    } catch (error) {
+      alert(error.message);
+    }
   };
 
   const validateForm = () => {
@@ -563,7 +637,17 @@ export default function SalesInvoiceDialog({
           </Grid>
 
           {/* Sale To + Address */}
-          <Grid item xs={12} md={6.5}>
+          <Grid item xs={12} md={3}>
+            <MDTypography sx={{ ...colLabelSx, color: "#e2c9ff" }}>Requisition No. (Optional)</MDTypography>
+            <MDBox display="flex" gap={0.5}>
+              <MDInput fullWidth value={requisitionNumber} onChange={(e) => setRequisitionNumber(e.target.value)}
+                placeholder="PRQ000001" sx={headerInput} />
+              <MDButton color="info" variant="gradient" size="small" onClick={loadRequisition}>Load</MDButton>
+            </MDBox>
+          </Grid>
+
+          {/* Sale To + Address */}
+          <Grid item xs={12} md={3.5}>
             <Grid container spacing={1}>
               {/* <Grid item xs={12}>
                 <MDTypography sx={{ ...colLabelSx, color: "#e2c9ff" }}>Sale To</MDTypography>
@@ -656,6 +740,21 @@ export default function SalesInvoiceDialog({
           <Grid item xs={6} md={0.7}>
             <MDTypography sx={colLabelSx}>Unit</MDTypography>
             <MDInput fullWidth value="PCS" disabled sx={goldInput} />
+          </Grid>
+
+          {/* Price type from Item List */}
+          <Grid item xs={6} md={1.2}>
+            <MDTypography sx={colLabelSx}>Price Type</MDTypography>
+            <Select
+              fullWidth
+              value={draft.priceType || "retail"}
+              onChange={(e) => handlePriceTypeChange(e.target.value)}
+              disabled={!draft.productErpId}
+              sx={{ height: 26, backgroundColor: WHITE, fontSize: "0.72rem" }}
+            >
+              <MenuItem value="retail">Retail</MenuItem>
+              <MenuItem value="wholesale">Wholesale</MenuItem>
+            </Select>
           </Grid>
 
           {/* Rate */}
@@ -861,16 +960,19 @@ export default function SalesInvoiceDialog({
           {/* Totals */}
           <SummaryRow label="Total Amount" value={fmt(totals.amount)} />
           <SummaryRow label="Total Discount" value={fmt(totals.disc)} />
-          <SummaryRow label="Total Taxable" value={fmt(totals.taxable)} />
-          <SummaryRow label="Total GST" value={fmt(0)} />
+          <SummaryRow label="Taxable After Discount" value={fmt(totals.discountedTaxable)} />
+          <SummaryRow label="CGST (2.5%)" value={fmt(totals.cgst)} />
+          <SummaryRow label="SGST (2.5%)" value={fmt(totals.sgst)} />
+          <SummaryRow label="Total GST (5%)" value={fmt(totals.gst)} />
           <SummaryRow label="Grand. Total" value={fmt(totals.grandTotal)} highlight />
 
           {/* Flat Discount input */}
           <MDBox mt={0.5}>
-            <MDTypography sx={{ ...colLabelSx, color: "#d8bfff", mb: 0.4 }}>Flat Discount</MDTypography>
+            <MDTypography sx={{ ...colLabelSx, color: "#d8bfff", mb: 0.4 }}>Flat Discount (%)</MDTypography>
             <MDInput
               fullWidth
               type="number"
+              inputProps={{ min: 0, max: 100, step: "0.01" }}
               value={flatDiscount}
               onChange={(e) => setFlatDiscount(e.target.value)}
               sx={sidebarInput}
@@ -1071,6 +1173,27 @@ export default function SalesInvoiceDialog({
                 }
                 sx={goldInput}
               />
+            </Grid>
+            <Grid item xs={6} sm={4}>
+              <MDTypography sx={colLabelSx}>Price Type</MDTypography>
+              <Select
+                fullWidth
+                value={editPopup.draft.priceType || "retail"}
+                onChange={(e) => setEditPopup((prev) => ({
+                  ...prev,
+                  draft: {
+                    ...prev.draft,
+                    priceType: e.target.value,
+                    rate: e.target.value === "wholesale"
+                      ? prev.draft.wholesalePrice
+                      : prev.draft.retailPrice,
+                  },
+                }))}
+                sx={{ height: 26, backgroundColor: WHITE, fontSize: "0.72rem" }}
+              >
+                <MenuItem value="retail">Retail</MenuItem>
+                <MenuItem value="wholesale">Wholesale</MenuItem>
+              </Select>
             </Grid>
             <Grid item xs={6} sm={4}>
               <MDTypography sx={colLabelSx}>Rate</MDTypography>

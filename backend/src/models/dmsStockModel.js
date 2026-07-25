@@ -141,6 +141,20 @@ class DmsStockModel {
             price_per_piece: toNumber(row.price_per_piece),
             mrp: toNumber(row.mrp),
             total_value: toNumber(row.total_value),
+            invoice_number: row.invoice_number || '',
+            seller_name: row.seller_name || '',
+            batch_number: row.batch_number || '',
+            mfg_date: row.mfg_date || null,
+            expiry_date: row.expiry_date || null,
+            dp_price: toNumber(row.dp_price),
+            discount_percent: toNumber(row.discount_percent),
+            gst_percent: toNumber(row.gst_percent),
+            cgst_amount: toNumber(row.cgst_amount),
+            sgst_amount: toNumber(row.sgst_amount),
+            retail_price: toNumber(row.retail_price),
+            wholesale_price: toNumber(row.wholesale_price),
+            retail_margin: toNumber(row.retail_margin),
+            wholesale_margin: toNumber(row.wholesale_margin),
         };
     }
 
@@ -222,8 +236,15 @@ class DmsStockModel {
         const [rows] = await db.execute(
             `SELECT dsi.id, dsi.product_erp_id, dsi.product_name, dsi.product_division, dsi.variant_name,
                     dsi.pcs_per_box, dsi.current_stock_in_case, dsi.current_stock_in_pcs,
-                    dsi.total_current_stock_in_pcs, dsi.price_per_piece, dsi.mrp, dsi.total_value
+                    dsi.total_current_stock_in_pcs, dsi.price_per_piece, dsi.mrp, dsi.total_value,
+                    dsi.batch_number, DATE_FORMAT(dsi.mfg_date, '%Y-%m-%d') AS mfg_date,
+                    DATE_FORMAT(dsi.expiry_date, '%Y-%m-%d') AS expiry_date,
+                    dsi.dp_price, dsi.discount_percent, dsi.gst_percent, dsi.cgst_amount, dsi.sgst_amount,
+                    dsi.retail_price, dsi.wholesale_price, dsi.retail_margin, dsi.wholesale_margin,
+                    imp.invoice_number, ps.seller_name
              FROM dms_stock_items dsi
+             INNER JOIN dms_stock_imports imp ON imp.id = dsi.import_id
+             LEFT JOIN purchase_sellers ps ON ps.id = imp.seller_id
              WHERE dsi.import_id = ?${searchClause}
              ORDER BY dsi.product_erp_id ASC
              LIMIT ${numericLimit}`,
@@ -246,8 +267,15 @@ class DmsStockModel {
         const [rows] = await db.execute(
             `SELECT dsi.id, dsi.product_erp_id, dsi.product_name, dsi.product_division, dsi.variant_name,
                     dsi.pcs_per_box, dsi.current_stock_in_case, dsi.current_stock_in_pcs,
-                    dsi.total_current_stock_in_pcs, dsi.price_per_piece, dsi.mrp, dsi.total_value
+                    dsi.total_current_stock_in_pcs, dsi.price_per_piece, dsi.mrp, dsi.total_value,
+                    dsi.batch_number, DATE_FORMAT(dsi.mfg_date, '%Y-%m-%d') AS mfg_date,
+                    DATE_FORMAT(dsi.expiry_date, '%Y-%m-%d') AS expiry_date,
+                    dsi.dp_price, dsi.discount_percent, dsi.gst_percent, dsi.cgst_amount, dsi.sgst_amount,
+                    dsi.retail_price, dsi.wholesale_price, dsi.retail_margin, dsi.wholesale_margin,
+                    imp.invoice_number, ps.seller_name
              FROM dms_stock_items dsi
+             INNER JOIN dms_stock_imports imp ON imp.id = dsi.import_id
+             LEFT JOIN purchase_sellers ps ON ps.id = imp.seller_id
              WHERE dsi.import_id = ? AND LOWER(TRIM(dsi.product_erp_id)) = LOWER(?)
              LIMIT 1`,
             [dmsImportId, erpId]
@@ -739,6 +767,7 @@ class DmsStockModel {
                     dsi.dp_price, dsi.discount_percent, dsi.gst_percent,
                     dsi.cgst_amount, dsi.sgst_amount, dsi.retail_price, dsi.wholesale_price,
                     dsi.retail_margin, dsi.wholesale_margin,
+                    si.hsn_code,
                     ROUND(dsi.purchase_price * 0.05, 2) AS purchase_gst_amount,
                     ROUND(dsi.purchase_price * 1.05, 2) AS actual_price,
                     DATE_FORMAT(dsi.expiry_date, '%Y-%m-%d') AS expiry_date,
@@ -748,6 +777,8 @@ class DmsStockModel {
              FROM dms_stock_items dsi
              INNER JOIN dms_stock_imports dsi_import ON dsi.import_id = dsi_import.id
              LEFT JOIN companies c ON dsi_import.company_id = c.id
+             LEFT JOIN seller_items si ON si.seller_id = dsi_import.seller_id
+                  AND LOWER(TRIM(si.product_erp_id)) = LOWER(TRIM(dsi.product_erp_id))
              WHERE dsi.import_id = ?
              ORDER BY dsi.id ASC
              LIMIT ${numericLimit}`,

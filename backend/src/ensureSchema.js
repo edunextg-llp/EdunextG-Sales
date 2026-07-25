@@ -190,6 +190,16 @@ export async function ensureSchema() {
         );
         await tryQuery(
             connection,
+            `ALTER TABLE staff_counters ADD COLUMN has_gst TINYINT(1) NOT NULL DEFAULT 0`,
+            'has_gst on staff_counters'
+        );
+        await tryQuery(
+            connection,
+            `ALTER TABLE staff_counters ADD COLUMN gst_number VARCHAR(50) NULL`,
+            'gst_number on staff_counters'
+        );
+        await tryQuery(
+            connection,
             `UPDATE staff_counters sc
              INNER JOIN (
                  SELECT staff_id, day, MIN(location_name) AS location_name
@@ -786,6 +796,27 @@ export async function ensureSchema() {
             `ALTER TABLE dms_stock_items MODIFY COLUMN total_value DECIMAL(14, 4) NOT NULL DEFAULT 0.0000`,
             'four-decimal total_value on dms_stock_items'
         );
+
+        await connection.query(`
+            CREATE TABLE IF NOT EXISTS purchase_requisitions (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                requisition_number VARCHAR(30) NOT NULL UNIQUE,
+                seller_type ENUM('distributor', 'cnf') NOT NULL DEFAULT 'distributor',
+                company_id INT NOT NULL,
+                staff_id INT NOT NULL,
+                outlet_id INT NOT NULL,
+                outlet_day VARCHAR(20) NULL,
+                items JSON NOT NULL,
+                item_count INT NOT NULL DEFAULT 0,
+                total_quantity DECIMAL(14, 4) NOT NULL DEFAULT 0.0000,
+                total_amount DECIMAL(14, 4) NOT NULL DEFAULT 0.0000,
+                status ENUM('open', 'invoiced', 'cancelled') NOT NULL DEFAULT 'open',
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                INDEX idx_purchase_requisitions_company (company_id),
+                INDEX idx_purchase_requisitions_staff (staff_id),
+                INDEX idx_purchase_requisitions_outlet (outlet_id)
+            )
+        `);
         await tryQuery(
             connection,
             `CREATE UNIQUE INDEX uq_dms_stock_imports_entry_code ON dms_stock_imports(entry_code)`,
@@ -897,6 +928,89 @@ export async function ensureSchema() {
             connection,
             `ALTER TABLE physical_stock_items ADD COLUMN expired_stock_date DATE NULL`,
             'expired_stock_date on physical_stock_items'
+        );
+
+        await connection.query(`
+            CREATE TABLE IF NOT EXISTS physical_stock_item_history (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                dms_import_id INT NOT NULL,
+                import_id INT NULL,
+                item_id INT NULL,
+                product_erp_id VARCHAR(50) NOT NULL,
+                product_name VARCHAR(255) NULL,
+                product_division VARCHAR(255) NULL,
+                variant_name VARCHAR(255) NULL,
+                pcs_per_box DECIMAL(14, 4) NOT NULL DEFAULT 0.0000,
+                physical_stock_in_case DECIMAL(14, 4) NOT NULL DEFAULT 0.0000,
+                physical_stock_in_pcs DECIMAL(14, 4) NOT NULL DEFAULT 0.0000,
+                total_physical_stock_in_pcs DECIMAL(14, 4) NOT NULL DEFAULT 0.0000,
+                price_per_piece DECIMAL(14, 4) NOT NULL DEFAULT 0.0000,
+                mrp DECIMAL(14, 4) NOT NULL DEFAULT 0.0000,
+                total_value DECIMAL(14, 4) NOT NULL DEFAULT 0.0000,
+                expired_stock_date DATE NULL,
+                source_type ENUM('upload', 'manual', 'sale') NOT NULL DEFAULT 'manual',
+                source_label VARCHAR(255) NULL,
+                change_type ENUM('create', 'update', 'deduct') NOT NULL DEFAULT 'update',
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                INDEX idx_physical_stock_history_dms_erp (dms_import_id, product_erp_id),
+                INDEX idx_physical_stock_history_created (created_at)
+            )
+        `);
+
+        await tryQuery(
+            connection,
+            `ALTER TABLE physical_stock_item_history ADD COLUMN import_id INT NULL`,
+            'import_id on physical_stock_item_history'
+        );
+        await tryQuery(
+            connection,
+            `ALTER TABLE physical_stock_item_history ADD COLUMN item_id INT NULL`,
+            'item_id on physical_stock_item_history'
+        );
+        await tryQuery(
+            connection,
+            `ALTER TABLE physical_stock_item_history ADD COLUMN product_division VARCHAR(255) NULL`,
+            'product_division on physical_stock_item_history'
+        );
+        await tryQuery(
+            connection,
+            `ALTER TABLE physical_stock_item_history ADD COLUMN pcs_per_box DECIMAL(14, 4) NOT NULL DEFAULT 0.0000`,
+            'pcs_per_box on physical_stock_item_history'
+        );
+        await tryQuery(
+            connection,
+            `ALTER TABLE physical_stock_item_history ADD COLUMN source_type ENUM('upload', 'manual', 'sale') NOT NULL DEFAULT 'manual'`,
+            'source_type on physical_stock_item_history'
+        );
+        await tryQuery(
+            connection,
+            `ALTER TABLE physical_stock_item_history ADD COLUMN source_label VARCHAR(255) NULL`,
+            'source_label on physical_stock_item_history'
+        );
+        await tryQuery(
+            connection,
+            `UPDATE physical_stock_item_history
+             SET item_id = physical_stock_item_id
+             WHERE item_id IS NULL AND physical_stock_item_id IS NOT NULL`,
+            'backfill item_id on physical_stock_item_history'
+        );
+        await tryQuery(
+            connection,
+            `UPDATE physical_stock_item_history
+             SET source_label = source_name
+             WHERE source_label IS NULL AND source_name IS NOT NULL`,
+            'backfill source_label on physical_stock_item_history'
+        );
+        await tryQuery(
+            connection,
+            `UPDATE physical_stock_item_history
+             SET source_type = CASE
+                 WHEN source_name = 'Sales Deduction' THEN 'sale'
+                 WHEN source_name = 'Manual Entry' THEN 'manual'
+                 ELSE 'upload'
+             END
+             WHERE source_name IS NOT NULL`,
+            'backfill source_type on physical_stock_item_history'
         );
 
         await tryQuery(

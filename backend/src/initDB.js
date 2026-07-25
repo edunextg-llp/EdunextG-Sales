@@ -190,6 +190,24 @@ async function initDB() {
         console.log('address column may already exist on staff_counters');
     }
 
+    try {
+        await connection.query(`
+            ALTER TABLE staff_counters ADD COLUMN has_gst TINYINT(1) NOT NULL DEFAULT 0
+        `);
+        console.log('Added has_gst to staff_counters table');
+    } catch (err) {
+        console.log('has_gst column may already exist on staff_counters');
+    }
+
+    try {
+        await connection.query(`
+            ALTER TABLE staff_counters ADD COLUMN gst_number VARCHAR(50) NULL
+        `);
+        console.log('Added gst_number to staff_counters table');
+    } catch (err) {
+        console.log('gst_number column may already exist on staff_counters');
+    }
+
     // Create Staff Sales table
     await connection.query(`
         CREATE TABLE IF NOT EXISTS staff_sales (
@@ -965,6 +983,34 @@ async function initDB() {
             console.log('expired_stock_date column may already exist on physical_stock_items');
         }
     }
+
+    await connection.query(`
+        CREATE TABLE IF NOT EXISTS physical_stock_item_history (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            dms_import_id INT NOT NULL,
+            import_id INT NULL,
+            item_id INT NULL,
+            product_erp_id VARCHAR(50) NOT NULL,
+            product_name VARCHAR(255) NULL,
+            product_division VARCHAR(255) NULL,
+            variant_name VARCHAR(255) NULL,
+            pcs_per_box DECIMAL(14, 4) NOT NULL DEFAULT 0.0000,
+            physical_stock_in_case DECIMAL(14, 4) NOT NULL DEFAULT 0.0000,
+            physical_stock_in_pcs DECIMAL(14, 4) NOT NULL DEFAULT 0.0000,
+            total_physical_stock_in_pcs DECIMAL(14, 4) NOT NULL DEFAULT 0.0000,
+            price_per_piece DECIMAL(14, 4) NOT NULL DEFAULT 0.0000,
+            mrp DECIMAL(14, 4) NOT NULL DEFAULT 0.0000,
+            total_value DECIMAL(14, 4) NOT NULL DEFAULT 0.0000,
+            expired_stock_date DATE NULL,
+            source_type ENUM('upload', 'manual', 'sale') NOT NULL DEFAULT 'manual',
+            source_label VARCHAR(255) NULL,
+            change_type ENUM('create', 'update', 'deduct') NOT NULL DEFAULT 'update',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            INDEX idx_physical_stock_history_dms_erp (dms_import_id, product_erp_id),
+            INDEX idx_physical_stock_history_created (created_at)
+        );
+    `);
+    console.log('Physical stock item history table created');
 
     try {
         await connection.query(`

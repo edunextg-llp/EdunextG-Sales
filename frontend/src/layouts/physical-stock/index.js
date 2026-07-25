@@ -9,6 +9,7 @@ import DialogTitle from "@mui/material/DialogTitle";
 import FormControl from "@mui/material/FormControl";
 import Grid from "@mui/material/Grid";
 import Icon from "@mui/material/Icon";
+import IconButton from "@mui/material/IconButton";
 import LinearProgress from "@mui/material/LinearProgress";
 import MenuItem from "@mui/material/MenuItem";
 import Paper from "@mui/material/Paper";
@@ -101,6 +102,32 @@ const formatExpiredStockDate = (value) => {
   return `${d}-${months[m]}-${String(y).slice(-2)}`;
 };
 
+const formatDateTime = (value) => {
+  if (!value) return "N/A";
+  const dt = new Date(value);
+  if (Number.isNaN(dt.getTime())) return String(value);
+  return dt.toLocaleString("en-IN", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+  });
+};
+
+const formatHistorySource = (entry) => {
+  if (entry.source_type === "sale") return "Sales Deduction";
+  if (entry.source_type === "upload") return entry.source_label || "File Upload";
+  return entry.source_label || "Manual Entry";
+};
+
+const formatChangeType = (value) => {
+  if (value === "create") return "Added";
+  if (value === "deduct") return "Deducted";
+  return "Updated";
+};
+
 const formatDmsImportLabel = (stock) => {
   const date = formatDate(stock.upload_date);
   const company = stock.company_name ? ` - ${stock.company_name}` : "";
@@ -117,7 +144,6 @@ const resolveSelectedImportId = (importFilter, imports) => {
 const emptyStockForm = () => ({
   physicalStockInCase: "",
   physicalStockInPcs: "",
-  expiredStockDate: "",
 });
 
 const calcPhysicalTotals = (product, stockForm) => {
@@ -195,6 +221,11 @@ function PhysicalStock() {
   const [selectedErpOption, setSelectedErpOption] = useState(null);
   const [erpInputValue, setErpInputValue] = useState("");
   const erpSearchTimerRef = useRef(null);
+  const [historyModalOpen, setHistoryModalOpen] = useState(false);
+  const [historyItem, setHistoryItem] = useState(null);
+  const [historyRows, setHistoryRows] = useState([]);
+  const [loadingHistory, setLoadingHistory] = useState(false);
+  const [historyError, setHistoryError] = useState("");
 
   const selectedDmsImportId = useMemo(
     () => resolveSelectedImportId(stockListImportFilter, dmsImports),
@@ -328,6 +359,76 @@ function PhysicalStock() {
     resetManualForm();
   };
 
+  const handleEditPhysicalItem = async (item) => {
+    if (!selectedDmsImportId) {
+      setError("Please select an invoice first.");
+      return;
+    }
+    resetManualForm();
+    setManualDmsImportFilter(String(selectedDmsImportId));
+    setManualModalOpen(true);
+    try {
+      const products = await fetchDmsProducts(String(selectedDmsImportId));
+      const product = await loadProductFromBackend(
+        String(selectedDmsImportId),
+        item.product_erp_id
+      );
+      setErpOptions(products);
+      applyProductToForm(product);
+      setStockForm({
+        physicalStockInCase: String(item.physical_stock_in_case ?? ""),
+        physicalStockInPcs: String(item.physical_stock_in_pcs ?? ""),
+      });
+      setMessage(`Editing ${item.product_name}. Update the quantity and save.`);
+    } catch (editError) {
+      setError(editError.message);
+    }
+  };
+
+  const closeHistoryModal = () => {
+    setHistoryModalOpen(false);
+    setHistoryItem(null);
+    setHistoryRows([]);
+    setHistoryError("");
+  };
+
+  const handleViewItemHistory = async (item) => {
+    if (!selectedDmsImportId || !item?.product_erp_id) return;
+
+    setHistoryItem(item);
+    setHistoryModalOpen(true);
+    setHistoryRows([]);
+    setHistoryError("");
+    setLoadingHistory(true);
+
+    try {
+      const params = new URLSearchParams({
+        dmsImportId: String(selectedDmsImportId),
+        erpId: String(item.product_erp_id),
+      });
+      const response = await fetch(`${API}/staff/physical-stock/item-history?${params.toString()}`);
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error || "Failed to fetch item history.");
+      }
+      setHistoryRows(Array.isArray(data.history) ? data.history : []);
+    } catch (fetchError) {
+      setHistoryError(fetchError.message);
+    } finally {
+      setLoadingHistory(false);
+    }
+  };
+
+  const groupedHistory = useMemo(() => {
+    const groups = new Map();
+    historyRows.forEach((entry) => {
+      const key = String(entry.update_date || entry.created_at || "").slice(0, 10) || "unknown";
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key).push(entry);
+    });
+    return [...groups.entries()].sort((a, b) => b[0].localeCompare(a[0]));
+  }, [historyRows]);
+
   const updateStockForm = (field, value) => {
     setStockForm((prev) => ({ ...prev, [field]: value }));
   };
@@ -377,7 +478,6 @@ function PhysicalStock() {
     setStockForm({
       physicalStockInCase: "",
       physicalStockInPcs: "",
-      expiredStockDate: "",
     });
     setErpInputValue(product.product_erp_id || "");
     setSelectedErpOption(product);
@@ -399,9 +499,9 @@ function PhysicalStock() {
 
     const products = await fetchDmsProducts(String(importId));
     if (!products.length) {
-      setMessage("No products found in selected DMS stock. Add DMS stock for this company first.");
+      setMessage("No items found in the selected invoice.");
     } else {
-      setMessage(`${products.length} product(s) available. Select Product ERP ID.`);
+      setMessage(`${products.length} item(s) available. Select an item.`);
     }
   };
 
@@ -415,7 +515,7 @@ function PhysicalStock() {
     }
 
     if (!manualDmsImportId) {
-      setError("Please select a DMS stock date first.");
+      setError("Please select an invoice number first.");
       return;
     }
 
@@ -472,11 +572,11 @@ function PhysicalStock() {
 
   const handleSaveManualStock = async () => {
     if (!manualDmsImportId) {
-      setError("Please select a DMS stock date.");
+      setError("Please select an invoice number.");
       return;
     }
     if (!selectedProduct?.product_erp_id) {
-      setError("Please select a Product ERP ID from DMS stock.");
+      setError("Please select an item from the invoice.");
       return;
     }
     if (!stockForm.physicalStockInCase && !stockForm.physicalStockInPcs) {
@@ -498,7 +598,7 @@ function PhysicalStock() {
             productErpId: selectedProduct.product_erp_id,
             physicalStockInCase: stockForm.physicalStockInCase,
             physicalStockInPcs: stockForm.physicalStockInPcs,
-            expiredStockDate: stockForm.expiredStockDate,
+            expiredStockDate: selectedProduct.expiry_date || "",
           }],
         }),
       });
@@ -679,7 +779,7 @@ function PhysicalStock() {
                 </Grid>
 
                 <TableContainer component={Paper} sx={stickyTableContainerSx}>
-                  <Table sx={stickyTableSx(1650)}>
+                  <Table sx={stickyTableSx(1720)}>
                     <TableHead sx={{ display: "table-header-group", backgroundColor: "#f9fafb" }}>
                       <TableRow>
                         <TableCell sx={stickyColumnSx(0, { isHead: true, baseSx: tableHeadSx })}>Sr No</TableCell>
@@ -688,21 +788,22 @@ function PhysicalStock() {
                         <TableCell sx={stickyColumnSx(3, { isHead: true, baseSx: tableHeadSx })}>Product Division</TableCell>
                         <TableCell sx={stickyHeadRowSx(tableHeadSx)}>Variant Name</TableCell>
                         <TableCell align="right" sx={stickyHeadRowSx(tableHeadSx)}>Pcs/Box</TableCell>
-                        <TableCell sx={stickyHeadRowSx(tableHeadSx)}>Expired Stock</TableCell>
+                        <TableCell sx={stickyHeadRowSx(tableHeadSx)}>Expiry Date</TableCell>
                         <TableCell align="right" sx={stickyHeadRowSx(tableHeadSx)}>Physical Stock In Case</TableCell>
                         <TableCell align="right" sx={stickyHeadRowSx(tableHeadSx)}>Physical Stock In Pcs</TableCell>
                         <TableCell align="right" sx={stickyHeadRowSx(tableHeadSx, "#dbeafe")}>Total Physical Stock In Pcs</TableCell>
                         <TableCell align="right" sx={stickyHeadRowSx(tableHeadSx)}>Price/Pcs</TableCell>
                         <TableCell align="right" sx={stickyHeadRowSx(tableHeadSx)}>MRP</TableCell>
                         <TableCell align="right" sx={stickyHeadRowSx(tableHeadSx, "#dbeafe")}>Total Value</TableCell>
+                        <TableCell align="center" sx={stickyHeadRowSx(tableHeadSx)}>Action</TableCell>
                       </TableRow>
                     </TableHead>
                     <TableBody>
                       {items.length === 0 && (
-                        <TableRow><TableCell colSpan={12} align="center" sx={tableBodySx}><MDTypography variant="button" color="text">{selectedDmsImportId ? "No Physical Stock for this DMS date. Use Upload File or Manual Entry." : "Choose a DMS stock date first."}</MDTypography></TableCell></TableRow>
+                        <TableRow><TableCell colSpan={14} align="center" sx={tableBodySx}><MDTypography variant="button" color="text">{selectedDmsImportId ? "No Physical Stock for this DMS date. Use Upload File or Manual Entry." : "Choose a DMS stock date first."}</MDTypography></TableCell></TableRow>
                       )}
                       {items.length > 0 && filteredItems.length === 0 && (
-                        <TableRow><TableCell colSpan={12} align="center" sx={tableBodySx}><MDTypography variant="button" color="text">No rows match the selected filters.</MDTypography></TableCell></TableRow>
+                        <TableRow><TableCell colSpan={14} align="center" sx={tableBodySx}><MDTypography variant="button" color="text">No rows match the selected filters.</MDTypography></TableCell></TableRow>
                       )}
                       {filteredItems.map((item, index) => (
                         <TableRow key={item.id}>
@@ -719,6 +820,24 @@ function PhysicalStock() {
                           <TableCell align="right" sx={tableBodySx}>{money(item.price_per_piece)}</TableCell>
                           <TableCell align="right" sx={tableBodySx}>{money(item.mrp)}</TableCell>
                           <TableCell align="right" sx={calculatedCellSx}>{money(item.total_value)}</TableCell>
+                          <TableCell align="center" sx={tableBodySx}>
+                            <IconButton
+                              color="info"
+                              size="small"
+                              title="View stock history"
+                              onClick={() => handleViewItemHistory(item)}
+                            >
+                              <Icon fontSize="small">visibility</Icon>
+                            </IconButton>
+                            <MDButton
+                              color="info"
+                              variant="text"
+                              size="small"
+                              onClick={() => handleEditPhysicalItem(item)}
+                            >
+                              <Icon fontSize="small">edit</Icon>
+                            </MDButton>
+                          </TableCell>
                         </TableRow>
                       ))}
                     </TableBody>
@@ -837,7 +956,7 @@ function PhysicalStock() {
             <Grid container spacing={2}>
               <Grid item xs={12} md={6}>
                 <MDTypography sx={fieldLabelSx}>
-                  DMS Stock Upload{requiredMark}
+                  Invoice Number{requiredMark}
                 </MDTypography>
                 <FormControl fullWidth size="small">
                   <Select
@@ -847,11 +966,13 @@ function PhysicalStock() {
                     sx={{ backgroundColor: "#fff", height: 40 }}
                   >
                     <MenuItem value="" disabled>
-                      Select DMS Stock Upload
+                      Select Invoice Number
                     </MenuItem>
-                    {dmsImports.map((stock) => (
+                    {dmsImports.filter((stock) => stock.invoice_number).map((stock) => (
                       <MenuItem key={stock.id} value={String(stock.id)}>
-                        {formatDmsImportLabel(stock)}
+                        {stock.invoice_number}
+                        {stock.company_name ? ` - ${stock.company_name}` : ""}
+                        {stock.seller_name ? ` - ${stock.seller_name}` : ""}
                       </MenuItem>
                     ))}
                   </Select>
@@ -860,7 +981,7 @@ function PhysicalStock() {
 
               <Grid item xs={12} md={6}>
                 <MDTypography sx={fieldLabelSx}>
-                  Product ERP ID{requiredMark}
+                  Item{requiredMark}
                 </MDTypography>
                 <Autocomplete
                   options={erpOptions}
@@ -872,8 +993,8 @@ function PhysicalStock() {
                   disabled={!manualDmsImportId || erpSearchLoading}
                   noOptionsText={
                     manualDmsImportId
-                      ? "No products found in selected DMS stock"
-                      : "Select DMS stock date first"
+                      ? "No items found in selected invoice"
+                      : "Select invoice number first"
                   }
                   getOptionLabel={(option) =>
                     `${option.product_erp_id || ""} - ${option.product_name || ""}`
@@ -901,8 +1022,8 @@ function PhysicalStock() {
                       {...params}
                       placeholder={
                         manualDmsImportId
-                          ? "Select Product ERP ID from DMS stock"
-                          : "Select DMS stock date first"
+                          ? "Search or select item"
+                          : "Select invoice number first"
                       }
                       sx={{ "& .MuiInputBase-root": { backgroundColor: "#fff", height: 40 } }}
                     />
@@ -938,6 +1059,33 @@ function PhysicalStock() {
                 />
               </Grid>
 
+              {[
+                ["Invoice Number", selectedProduct?.invoice_number],
+                ["Seller Name", selectedProduct?.seller_name],
+                ["Batch Number", selectedProduct?.batch_number],
+                ["MFG Date", selectedProduct?.mfg_date],
+                ["Expiry Date", selectedProduct?.expiry_date],
+                ["DP Price", selectedProduct?.dp_price],
+                ["Discount %", selectedProduct?.discount_percent],
+                ["GST %", selectedProduct?.gst_percent],
+                ["CGST", selectedProduct?.cgst_amount],
+                ["SGST", selectedProduct?.sgst_amount],
+                ["Retail Price", selectedProduct?.retail_price],
+                ["Wholesale Price", selectedProduct?.wholesale_price],
+                ["Retail Margin", selectedProduct?.retail_margin],
+                ["Wholesale Margin", selectedProduct?.wholesale_margin],
+              ].map(([label, value]) => (
+                <Grid item xs={6} md={2} key={label}>
+                  <MDTypography sx={fieldLabelSx}>{label}</MDTypography>
+                  <MDInput
+                    fullWidth
+                    value={value ?? ""}
+                    disabled
+                    sx={{ "& .MuiInputBase-root": { backgroundColor: "#f1f5f9", height: 38 } }}
+                  />
+                </Grid>
+              ))}
+
               <Grid item xs={12} md={3}>
                 <MDTypography sx={fieldLabelSx}>Pcs/Box{requiredMark}</MDTypography>
                 <MDInput
@@ -945,18 +1093,6 @@ function PhysicalStock() {
                   value={selectedProduct?.pcs_per_box ?? ""}
                   disabled
                   sx={{ "& .MuiInputBase-root": { backgroundColor: "#f1f5f9", height: 40 } }}
-                />
-              </Grid>
-              <Grid item xs={12} md={3}>
-                <MDTypography sx={fieldLabelSx}>Expired Stock</MDTypography>
-                <MDInput
-                  type="date"
-                  fullWidth
-                  value={stockForm.expiredStockDate}
-                  onChange={(event) => updateStockForm("expiredStockDate", event.target.value)}
-                  disabled={!isProductLoaded}
-                  InputLabelProps={{ shrink: true }}
-                  sx={{ "& .MuiInputBase-root": { backgroundColor: "#fff", height: 40 } }}
                 />
               </Grid>
               <Grid item xs={12} md={3}>
@@ -1072,6 +1208,90 @@ function PhysicalStock() {
           >
             <Icon sx={{ mr: 1 }}>save</Icon>
             {savingManual ? "Saving..." : "Save Stock"}
+          </MDButton>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={historyModalOpen} onClose={closeHistoryModal} fullWidth maxWidth="lg">
+        <DialogTitle sx={{ fontWeight: "bold", color: "#1e3a5f", backgroundColor: "#dbeafe", borderBottom: "1px solid #93c5fd" }}>
+          Physical Stock History
+        </DialogTitle>
+        <DialogContent dividers sx={{ backgroundColor: "#f8fafc" }}>
+          {historyItem && (
+            <MDBox mb={2}>
+              <MDTypography variant="button" fontWeight="bold" color="dark">
+                {historyItem.product_erp_id} — {historyItem.product_name}
+              </MDTypography>
+              <MDTypography variant="caption" color="text" display="block">
+                {historyItem.product_division}
+                {historyItem.variant_name ? ` | ${historyItem.variant_name}` : ""}
+              </MDTypography>
+              <MDTypography variant="caption" color="text" display="block" mt={0.5}>
+                Current stock: {unitFormat(historyItem.physical_stock_in_case)} cases, {unitFormat(historyItem.physical_stock_in_pcs)} pcs
+                ({unitFormat(historyItem.total_physical_stock_in_pcs)} total pcs)
+              </MDTypography>
+            </MDBox>
+          )}
+
+          {loadingHistory && (
+            <MDBox py={2}>
+              <LinearProgress color="info" />
+            </MDBox>
+          )}
+
+          {historyError && (
+            <MDTypography variant="button" color="error" fontWeight="medium">
+              {historyError}
+            </MDTypography>
+          )}
+
+          {!loadingHistory && !historyError && groupedHistory.length === 0 && (
+            <MDTypography variant="body2" color="text">
+              No update history found for this item.
+            </MDTypography>
+          )}
+
+          {!loadingHistory && !historyError && groupedHistory.map(([dateKey, rows]) => (
+            <MDBox key={dateKey} mb={3}>
+              <MDTypography variant="button" fontWeight="bold" color="dark" mb={1} display="block">
+                {dateKey === "unknown" ? "Unknown Date" : formatDate(dateKey)}
+              </MDTypography>
+              <TableContainer component={Paper}>
+                <Table size="small">
+                  <TableHead sx={{ display: "table-header-group", backgroundColor: "#f9fafb" }}>
+                    <TableRow>
+                      {["Time", "Change", "Source", "Cases", "Pcs", "Total Pcs", "Total Value"].map((heading) => (
+                        <TableCell
+                          key={heading}
+                          align={heading === "Cases" || heading === "Pcs" || heading === "Total Pcs" || heading === "Total Value" ? "right" : "left"}
+                          sx={{ ...tableHeadSx, py: 1 }}
+                        >
+                          {heading}
+                        </TableCell>
+                      ))}
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {rows.map((entry) => (
+                      <TableRow key={entry.id || `${entry.created_at}-${entry.change_type}`}>
+                        <TableCell sx={tableBodySx}>{formatDateTime(entry.created_at)}</TableCell>
+                        <TableCell sx={tableBodySx}>{formatChangeType(entry.change_type)}</TableCell>
+                        <TableCell sx={tableBodySx}>{formatHistorySource(entry)}</TableCell>
+                        <TableCell align="right" sx={tableBodySx}>{unitFormat(entry.physical_stock_in_case)}</TableCell>
+                        <TableCell align="right" sx={tableBodySx}>{unitFormat(entry.physical_stock_in_pcs)}</TableCell>
+                        <TableCell align="right" sx={calculatedCellSx}>{unitFormat(entry.total_physical_stock_in_pcs)}</TableCell>
+                        <TableCell align="right" sx={tableBodySx}>{money(entry.total_value)}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </TableContainer>
+            </MDBox>
+          ))}
+        </DialogContent>
+        <DialogActions sx={{ px: 3, py: 2, backgroundColor: "#f8fafc" }}>
+          <MDButton color="dark" variant="outlined" onClick={closeHistoryModal}>
+            Close
           </MDButton>
         </DialogActions>
       </Dialog>

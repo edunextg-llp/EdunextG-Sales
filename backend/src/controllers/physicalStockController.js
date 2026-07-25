@@ -263,9 +263,29 @@ async function buildPhysicalRowFromDmsProduct(dmsImportId, item) {
         'Physical Stock In Pcs': item.physicalStockInPcs ?? 0,
         'Price/Pcs': product.price_per_piece,
         MRP: product.mrp,
-        'Expired Stock': item.expiredStockDate || '',
+        'Expired Stock': product.expiry_date || item.expiredStockDate || '',
     });
 }
+
+export const getPhysicalStockItemHistory = async (req, res) => {
+    try {
+        const dmsImportId = parseDmsImportId(req.query.dmsImportId);
+        const erpId = String(req.query.erpId || '').trim();
+
+        if (!dmsImportId) {
+            return res.status(400).json({ error: 'Please choose a DMS stock upload date.' });
+        }
+        if (!erpId) {
+            return res.status(400).json({ error: 'Product ERP ID is required.' });
+        }
+
+        const history = await PhysicalStockModel.getItemHistory(dmsImportId, erpId);
+        return res.status(200).json({ history });
+    } catch (error) {
+        console.error('Error fetching physical stock item history:', error);
+        return res.status(500).json({ error: 'Internal server error' });
+    }
+};
 
 export const createManualPhysicalStock = async (req, res) => {
     try {

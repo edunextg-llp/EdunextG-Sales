@@ -5,6 +5,7 @@ import * as staffController from '../controllers/staffController.js';
 import * as dmsStockController from '../controllers/dmsStockController.js';
 import * as currentStockController from '../controllers/currentStockController.js';
 import * as physicalStockController from '../controllers/physicalStockController.js';
+import * as purchaseRequisitionController from '../controllers/purchaseRequisitionController.js';
 
 const upload = multer({
     storage: multer.memoryStorage(),
@@ -46,6 +47,9 @@ router.post('/purchases', staffController.createPurchase);
 router.put('/purchases/:purchaseId', staffController.updatePurchase);
 router.delete('/purchases/:purchaseId', staffController.deletePurchase);
 router.get('/purchase-reports', staffController.getPurchaseReports);
+router.post('/purchase-requisitions', purchaseRequisitionController.create);
+router.get('/purchase-requisitions', purchaseRequisitionController.list);
+router.get('/purchase-requisitions/:number', purchaseRequisitionController.getByNumber);
 router.get('/dms-stock', dmsStockController.getLatestDmsStock);
 router.get('/dms-stock/imports', dmsStockController.getDmsStockImports);
 router.get('/dms-stock/product-search', dmsStockController.searchDmsStockProducts);
@@ -58,6 +62,7 @@ router.get('/current-stock', currentStockController.getCurrentStock);
 router.get('/physical-stock', physicalStockController.getPhysicalStock);
 router.get('/physical-stock/dms-products', physicalStockController.getPhysicalStockDmsProducts);
 router.get('/physical-stock/product-lookup', physicalStockController.lookupPhysicalStockProduct);
+router.get('/physical-stock/item-history', physicalStockController.getPhysicalStockItemHistory);
 router.post('/physical-stock/upload', upload.single('file'), physicalStockController.uploadPhysicalStock);
 router.post('/physical-stock/manual', physicalStockController.createManualPhysicalStock);
 router.get('/sales/by-date', staffController.getAllSalesByDate);

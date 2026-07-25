@@ -81,6 +81,9 @@ test('includes products that exist only in physical or only in DMS stock', () =>
             total_current_stock_in_pcs: 21,
             price_per_piece: 5,
             mrp: 0,
+            retail_price: 0,
+            wholesale_price: 0,
+            hsn_code: '',
             total_value: 105,
         }
     );

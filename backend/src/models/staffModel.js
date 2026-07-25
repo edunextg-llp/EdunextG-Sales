@@ -115,11 +115,35 @@ class StaffModel {
     }
 
     static async addCounter(staffId, day, location, counterData) {
-        const { outletErpId, outletName, contactNumber, whatsappNumber, address, googleLocation } = counterData;
+        const {
+            outletErpId,
+            outletName,
+            contactNumber,
+            whatsappNumber,
+            address,
+            googleLocation,
+            hasGst = false,
+            gstNumber = null,
+        } = counterData;
         const locationName = String(location || '').trim() || null;
         await db.execute(
-            'INSERT INTO staff_counters (staff_id, day, location_name, outlet_erp_id, outlet_name, contact_number, whatsapp_number, address, google_location) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
-            [staffId, day, locationName, outletErpId, outletName, contactNumber, whatsappNumber || null, address || null, googleLocation || null]
+            `INSERT INTO staff_counters (
+                staff_id, day, location_name, outlet_erp_id, outlet_name,
+                contact_number, whatsapp_number, address, google_location, has_gst, gst_number
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            [
+                staffId,
+                day,
+                locationName,
+                outletErpId,
+                outletName,
+                contactNumber,
+                whatsappNumber || null,
+                address || null,
+                googleLocation || null,
+                hasGst ? 1 : 0,
+                gstNumber || null,
+            ]
         );
     }
 
@@ -146,17 +170,39 @@ class StaffModel {
 
     static async getCounterById(counterId) {
         const [rows] = await db.execute(
-            'SELECT id, staff_id, outlet_erp_id, outlet_name, contact_number, whatsapp_number, location_name, address, google_location FROM staff_counters WHERE id = ?',
+            'SELECT id, staff_id, outlet_erp_id, outlet_name, contact_number, whatsapp_number, location_name, address, google_location, has_gst, gst_number FROM staff_counters WHERE id = ?',
             [counterId]
         );
         return rows[0] || null;
     }
 
     static async editCounter(counterId, counterData) {
-        const { outletErpId, outletName, contactNumber, whatsappNumber, address, googleLocation } = counterData;
+        const {
+            outletErpId,
+            outletName,
+            contactNumber,
+            whatsappNumber,
+            address,
+            googleLocation,
+            hasGst = false,
+            gstNumber = null,
+        } = counterData;
         await db.execute(
-            'UPDATE staff_counters SET outlet_erp_id = ?, outlet_name = ?, contact_number = ?, whatsapp_number = ?, address = ?, google_location = ? WHERE id = ?',
-            [outletErpId, outletName, contactNumber, whatsappNumber || null, address || null, googleLocation || null, counterId]
+            `UPDATE staff_counters
+             SET outlet_erp_id = ?, outlet_name = ?, contact_number = ?, whatsapp_number = ?,
+                 address = ?, google_location = ?, has_gst = ?, gst_number = ?
+             WHERE id = ?`,
+            [
+                outletErpId,
+                outletName,
+                contactNumber,
+                whatsappNumber || null,
+                address || null,
+                googleLocation || null,
+                hasGst ? 1 : 0,
+                gstNumber || null,
+                counterId,
+            ]
         );
     }
 
@@ -237,7 +283,7 @@ class StaffModel {
 
     static async getOutletsForStaffAndDay(staffId, dayName) {
         const [rows] = await db.execute(
-            'SELECT id, outlet_erp_id, outlet_name, contact_number, whatsapp_number, location_name, address, google_location FROM staff_counters WHERE staff_id = ? AND day = ?',
+            'SELECT id, outlet_erp_id, outlet_name, contact_number, whatsapp_number, location_name, address, google_location, has_gst, gst_number FROM staff_counters WHERE staff_id = ? AND day = ?',
             [staffId, dayName]
         );
         return rows;
@@ -245,7 +291,7 @@ class StaffModel {
 
     static async getAllCountersForStaff(staffId) {
         const [rows] = await db.execute(
-            'SELECT id, outlet_erp_id, outlet_name, contact_number, whatsapp_number, location_name, address, google_location, day FROM staff_counters WHERE staff_id = ?',
+            'SELECT id, outlet_erp_id, outlet_name, contact_number, whatsapp_number, location_name, address, google_location, has_gst, gst_number, day FROM staff_counters WHERE staff_id = ?',
             [staffId]
         );
         return rows;

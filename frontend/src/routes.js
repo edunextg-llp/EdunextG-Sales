@@ -11,6 +11,7 @@ import CreateStaff from "layouts/create-staff";
 import AddCompany from "layouts/add-company";
 import AddCounter from "layouts/add-counter";
 import AddSales from "layouts/add-sales";
+import PurchaseRequisition from "layouts/purchase-requisition";
 import Purchase from "layouts/purchase";
 import AddDeliveryBoy from "layouts/add-delivery-boy";
 import UpdatePayment from "layouts/update-payment";
@@ -85,14 +86,7 @@ const routes = [
         route: "/dms-stock",
         component: <DmsStock />,
       },
-      {
-        type: "collapse",
-        name: "Purchase",
-        key: "purchase",
-        icon: <Icon fontSize="small">receipt_long</Icon>,
-        route: "/purchase",
-        component: <Purchase />,
-      },
+
       {
         type: "collapse",
         name: "Purchase History",
@@ -100,6 +94,15 @@ const routes = [
         icon: <Icon fontSize="small">history</Icon>,
         route: "/dms-purchase-history",
         component: <DmsPurchaseHistory />,
+      },
+      
+       {
+        type: "collapse",
+        name: "Physical Stock",
+        key: "physical-stock",
+        icon: <Icon fontSize="small">warehouse</Icon>,
+        route: "/physical-stock",
+        component: <PhysicalStock />,
       },
       {
         type: "collapse",
@@ -111,12 +114,13 @@ const routes = [
       },
       {
         type: "collapse",
-        name: "Physical Stock",
-        key: "physical-stock",
-        icon: <Icon fontSize="small">warehouse</Icon>,
-        route: "/physical-stock",
-        component: <PhysicalStock />,
+        name: "Purchase",
+        key: "purchase",
+        icon: <Icon fontSize="small">receipt_long</Icon>,
+        route: "/purchase",
+        component: <Purchase />,
       },
+     
       // {
       //   type: "collapse",
       //   name: "Expired Stock",
@@ -183,6 +187,14 @@ const routes = [
     icon: <Icon fontSize="small">store</Icon>,
     route: "/add-outlet",
     component: <AddCounter />,
+  },
+  {
+    type: "collapse",
+    name: "Purchase Requisition",
+    key: "purchase-requisition",
+    icon: <Icon fontSize="small">request_quote</Icon>,
+    route: "/purchase-requisition",
+    component: <PurchaseRequisition />,
   },
   {
     type: "collapse",
