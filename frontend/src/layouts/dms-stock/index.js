@@ -64,35 +64,87 @@ const tableBodySx = {
   whiteSpace: "nowrap",
 };
 
+const PENDING_TABLE_COLUMNS = [
+  { width: 120, align: "left", head: "ERP ID" },
+  { width: 160, align: "left", head: "SKU Name" },
+  { width: 120, align: "left", head: "Variant" },
+  { width: 100, align: "left", head: "Batch" },
+  { width: 80, align: "right", head: "Pcs/Box" },
+  { width: 70, align: "right", head: "Boxes" },
+  { width: 70, align: "right", head: "Pcs" },
+  { width: 90, align: "right", head: "Total Pcs" },
+  { width: 100, align: "right", head: "Price/Pcs + GST" },
+  { width: 90, align: "right", head: "MRP Incl. GST" },
+  { width: 110, align: "right", head: "Total Incl. GST" },
+  { width: 100, align: "right", head: "Purchase Price" },
+  { width: 110, align: "right", head: "Actual +5% GST" },
+  { width: 110, align: "left", head: "MFG Date" },
+  { width: 120, align: "left", head: "Expiry Date" },
+  { width: 100, align: "center", head: "Action" },
+];
+
+const PENDING_TABLE_WIDTH = PENDING_TABLE_COLUMNS.reduce((sum, column) => sum + column.width, 0);
+
 const pendingTableContainerSx = {
   width: "100%",
   overflowX: "auto",
+  overflowY: "hidden",
   border: "1px solid #e5e7eb",
 };
 
 const pendingTableSx = {
   tableLayout: "fixed",
-  width: "100%",
-  minWidth: 980,
+  width: PENDING_TABLE_WIDTH,
+  minWidth: "100%",
 };
 
-const pendingHeadCellSx = (width, align = "left") => ({
-  ...tableHeadSx,
-  width,
-  minWidth: width,
-  maxWidth: width,
-  textAlign: align,
-});
-
-const pendingBodyCellSx = (width, align = "left") => ({
-  ...tableBodySx,
+const pendingCellSx = (width, align = "left", extra = {}) => ({
+  px: 2,
+  py: 1,
   width,
   minWidth: width,
   maxWidth: width,
   textAlign: align,
   overflow: "hidden",
   textOverflow: "ellipsis",
+  whiteSpace: "nowrap",
+  verticalAlign: "middle",
+  boxSizing: "border-box",
+  ...extra,
 });
+
+const pendingHeadCellSx = (width, align = "left") => ({
+  ...pendingCellSx(width, align),
+  color: "#6b7280",
+  fontSize: "0.72rem",
+  fontWeight: 700,
+  textTransform: "none",
+  borderBottom: "2px solid #e5e7eb",
+  backgroundColor: "#f1f5f9",
+});
+
+const pendingBodyCellSx = (width, align = "left") => ({
+  ...pendingCellSx(width, align),
+  fontSize: "0.78rem",
+  color: "#374151",
+  borderBottom: "1px solid #f3f4f6",
+});
+
+// alias – some cells previously used a different helper
+const pendingBodyCellFullSx = pendingBodyCellSx;
+
+const buildSellerItemOption = (item) => ({
+  id: item.id,
+  product_erp_id: item.product_erp_id || item.productErpId || "",
+  sku_name: item.sku_name || item.productName || "",
+  variant_name: item.variant_name || item.variantName || "",
+  pcs_per_box: item.pcs_per_box ?? item.pcsPerBox ?? "",
+});
+
+const findSellerItemByErp = (items, productErpId) =>
+  items.find(
+    (entry) => normalizeErpKey(entry.product_erp_id) === normalizeErpKey(productErpId)
+  ) || null;
 
 const metricBoxSx = {
   border: "1px solid #e5e7eb",
@@ -333,6 +385,8 @@ function DmsStock() {
     Array.isArray(restoredDraft?.pendingItems) ? restoredDraft.pendingItems : []
   );
   const [savingManual, setSavingManual] = useState(false);
+  const [isEditingPending, setIsEditingPending] = useState(false);
+  const [editingPendingId, setEditingPendingId] = useState(null);
   const [sellers, setSellers] = useState([]);
   const [sellerItems, setSellerItems] = useState([]);
   const [selectedSellerItemId, setSelectedSellerItemId] = useState(
@@ -487,6 +541,46 @@ function DmsStock() {
     [selectedFile, uploadDate, selectedCompanyId, uploading]
   );
 
+  const sellerItemOptions = useMemo(() => {
+    const options = [...sellerItems];
+    if (!manualItem.productErpId) return options;
+
+    const hasSelectedMatch = selectedSellerItemId
+      && options.some((entry) => String(entry.id) === String(selectedSellerItemId));
+    const hasErpMatch = options.some(
+      (entry) => normalizeErpKey(entry.product_erp_id) === normalizeErpKey(manualItem.productErpId)
+    );
+
+    if (!hasSelectedMatch && !hasErpMatch && manualItem.productName) {
+      options.unshift(buildSellerItemOption({
+        id: selectedSellerItemId || `edit-${normalizeErpKey(manualItem.productErpId)}`,
+        productErpId: manualItem.productErpId,
+        productName: manualItem.productName,
+        variantName: manualItem.variantName,
+        pcsPerBox: manualItem.pcsPerBox,
+      }));
+    }
+
+    return options;
+  }, [manualItem, selectedSellerItemId, sellerItems]);
+
+  const selectedSellerItem = useMemo(() => {
+    if (!manualItem.productErpId) return null;
+
+    if (selectedSellerItemId) {
+      const selectedMatch = sellerItemOptions.find(
+        (entry) => String(entry.id) === String(selectedSellerItemId)
+      );
+      if (selectedMatch) return selectedMatch;
+    }
+
+    return findSellerItemByErp(sellerItemOptions, manualItem.productErpId)
+      || sellerItemOptions.find(
+        (entry) => String(entry.id) === `edit-${normalizeErpKey(manualItem.productErpId)}`
+      )
+      || null;
+  }, [manualItem.productErpId, selectedSellerItemId, sellerItemOptions]);
+
   const filteredItems = useMemo(() => {
     const normalizedErpSearch = erpSearch.trim().toLowerCase();
     const normalizedProductSearch = productSearch.trim().toLowerCase();
@@ -540,6 +634,17 @@ function DmsStock() {
     setSellers([]);
     setSellerItems([]);
     setSelectedSellerItemId("");
+    setIsEditingPending(false);
+    setEditingPendingId(null);
+    setMessage("");
+    setError("");
+  };
+
+  const cancelPendingEdit = () => {
+    setManualItem(emptyManualItem());
+    setSelectedSellerItemId("");
+    setIsEditingPending(false);
+    setEditingPendingId(null);
     setMessage("");
     setError("");
   };
@@ -560,6 +665,8 @@ function DmsStock() {
     setSelectedSellerItemId("");
     setSellerItems([]);
     setManualItem(emptyManualItem());
+    setIsEditingPending(false);
+    setEditingPendingId(null);
     setMessage("");
     setError("");
     fetchManualSellers(companyId);
@@ -569,6 +676,8 @@ function DmsStock() {
     setManualSellerId(sellerId);
     setSelectedSellerItemId("");
     setManualItem(emptyManualItem());
+    setIsEditingPending(false);
+    setEditingPendingId(null);
     setMessage("");
     setError("");
     fetchManualSellerItems(manualCompanyId, sellerId);
@@ -640,7 +749,7 @@ function DmsStock() {
     const totals = calcManualTotals(manualItem);
     const erpKey = normalizeErpKey(manualItem.productErpId);
     const replacingExisting = erpKey && pendingItems.some(
-      (item) => normalizeErpKey(item.productErpId) === erpKey
+      (item) => normalizeErpKey(item.productErpId) === erpKey && item.id !== editingPendingId
     );
     const snapshot = {
       productErpId: String(manualItem.productErpId || "").trim(),
@@ -675,6 +784,12 @@ function DmsStock() {
     };
 
     setPendingItems((prev) => {
+      if (editingPendingId) {
+        return prev.map((item) => (
+          item.id === editingPendingId ? { ...snapshot, id: editingPendingId } : item
+        ));
+      }
+
       const withoutSameErp = erpKey
         ? prev.filter((item) => normalizeErpKey(item.productErpId) !== erpKey)
         : prev;
@@ -690,6 +805,8 @@ function DmsStock() {
     });
     setManualItem(emptyManualItem());
     setSelectedSellerItemId("");
+    setIsEditingPending(false);
+    setEditingPendingId(null);
     setMessage(
       snapshot.isUpdate
         ? `ERP ID ${snapshot.productErpId} updated in list. Save to apply changes.`
@@ -698,10 +815,30 @@ function DmsStock() {
   };
 
   const handleEditPendingItem = (item) => {
-    setManualItem({ ...emptyManualItem(), ...item });
-    setSelectedSellerItemId("");
-    setPendingItems((prev) => prev.filter((entry) => entry.id !== item.id));
-    setMessage(`Editing ${item.productName}. Change values and click Add.`);
+    const restored = { ...emptyManualItem(), ...item };
+    const totals = calcManualTotals(restored);
+    setManualItem({ ...restored, ...totals });
+
+    const itemId = item.sourceItemId != null ? String(item.sourceItemId) : "";
+    setSelectedSellerItemId(itemId);
+
+    // Ensure the option exists in the dropdown even if sellerItems wasn't cached
+    if (itemId) {
+      setSellerItems((prev) => {
+        if (prev.some((si) => String(si.id) === itemId)) return prev;
+        return [...prev, {
+          id: item.sourceItemId,
+          product_erp_id: item.productErpId,
+          sku_name: item.productName,
+          variant_name: item.variantName,
+          pcs_per_box: item.pcsPerBox,
+        }];
+      });
+    }
+
+    setIsEditingPending(true);
+    setEditingPendingId(item.id);
+    setMessage(`Editing "${item.productName || item.productErpId}" — update fields and click Save.`);
   };
 
   const handleRemovePendingItem = async (item) => {
@@ -1155,7 +1292,13 @@ function DmsStock() {
         </DialogActions>
       </Dialog>
 
-      <Dialog open={manualModalOpen} onClose={closeManualModal} fullWidth maxWidth="lg">
+      <Dialog
+        open={manualModalOpen}
+        onClose={closeManualModal}
+        fullWidth
+        maxWidth="xl"
+        PaperProps={{ sx: { width: "95vw", maxWidth: "95vw", mx: 2 } }}
+      >
         <DialogTitle sx={{ fontWeight: "bold", color: "#1e3a5f", backgroundColor: "#dbeafe", borderBottom: "1px solid #93c5fd" }}>
           DMS Stock Entry
         </DialogTitle>
@@ -1249,12 +1392,16 @@ function DmsStock() {
                   size="small"
                   disabled={!manualSellerId || loadingSellerItems}
                   loading={loadingSellerItems}
-                  options={sellerItems}
-                  value={sellerItems.find(
-                    (item) => String(item.id) === String(selectedSellerItemId)
-                  ) || null}
+                  options={sellerItemOptions}
+                  value={selectedSellerItem}
                   getOptionLabel={(item) => formatSellerItemLabel(item)}
-                  isOptionEqualToValue={(option, value) => String(option.id) === String(value.id)}
+                  isOptionEqualToValue={(option, value) => (
+                    String(option.id) === String(value.id)
+                    || (
+                      normalizeErpKey(option.product_erp_id) === normalizeErpKey(value.product_erp_id)
+                      && (option.sku_name || "") === (value.sku_name || "")
+                    )
+                  )}
                   onChange={(event, item) => handleSellerItemSelect(item?.id || "")}
                   noOptionsText={manualSellerId ? "No matching items" : "Select seller first"}
                   renderInput={(params) => (
@@ -1390,8 +1537,12 @@ function DmsStock() {
               </Grid>
               <Grid item xs={6} md={2}>
                 <MDTypography sx={fieldLabelSx}>Price (DP × Qty)</MDTypography>
-                <MDInput fullWidth disabled value={manualItem.price ? `Rs. ${manualItem.price}` : ""}
-                  sx={{ "& .MuiInputBase-root": { backgroundColor: "#f1f5f9", height: 40 } }} />
+                <MDInput
+                  fullWidth
+                  disabled
+                  value={manualItem.price !== "" && manualItem.price != null ? `Rs. ${manualItem.price}` : ""}
+                  sx={{ "& .MuiInputBase-root": { backgroundColor: "#f1f5f9", height: 40 } }}
+                />
               </Grid>
               <Grid item xs={6} md={2}>
                 <MDTypography sx={fieldLabelSx}>Discount %</MDTypography>
@@ -1402,9 +1553,16 @@ function DmsStock() {
               </Grid>
               <Grid item xs={6} md={2}>
                 <MDTypography sx={fieldLabelSx}>Discount Price</MDTypography>
-                <MDInput fullWidth disabled
-                  value={manualItem.taxableAmount ? `Rs. ${manualItem.taxableAmount}` : ""}
-                  sx={{ "& .MuiInputBase-root": { backgroundColor: "#f1f5f9", height: 40 } }} />
+                <MDInput
+                  fullWidth
+                  disabled
+                  value={
+                    manualItem.taxableAmount !== "" && manualItem.taxableAmount != null
+                      ? `Rs. ${manualItem.taxableAmount}`
+                      : ""
+                  }
+                  sx={{ "& .MuiInputBase-root": { backgroundColor: "#f1f5f9", height: 40 } }}
+                />
               </Grid>
               {[
                 ["GST", "5%"],
@@ -1444,14 +1602,23 @@ function DmsStock() {
 
             <MDBox display="flex" justifyContent="flex-end" gap={1} mt={3}>
               <MDButton type="button" color="dark" variant="outlined" onClick={() => {
+                if (isEditingPending) {
+                  cancelPendingEdit();
+                  return;
+                }
                 setManualItem(emptyManualItem());
                 setSelectedSellerItemId("");
               }}>
-                Clear Row
+                {isEditingPending ? "Cancel Edit" : "Clear Row"}
               </MDButton>
-              <MDButton type="button" color="info" variant="gradient" onClick={handleAddManualItem}>
-                <Icon sx={{ mr: 0.5 }}>add</Icon>
-                Add
+              <MDButton
+                type="button"
+                color={isEditingPending ? "success" : "info"}
+                variant="gradient"
+                onClick={handleAddManualItem}
+              >
+                <Icon sx={{ mr: 0.5 }}>{isEditingPending ? "save" : "add"}</Icon>
+                {isEditingPending ? "Save" : "Add"}
               </MDButton>
             </MDBox>
           </MDBox>
@@ -1464,55 +1631,46 @@ function DmsStock() {
               <TableContainer component={Paper} variant="outlined" sx={pendingTableContainerSx}>
                 <Table size="small" sx={pendingTableSx}>
                   <colgroup>
-                    <col style={{ width: 100 }} />
-                    <col style={{ width: 140 }} />
-                    <col style={{ width: 100 }} />
-                    <col style={{ width: 80 }} />
-                    <col style={{ width: 70 }} />
-                    <col style={{ width: 70 }} />
-                    <col style={{ width: 90 }} />
-                    <col style={{ width: 100 }} />
-                    <col style={{ width: 90 }} />
-                    <col style={{ width: 110 }} />
-                    <col style={{ width: 100 }} />
-                    <col style={{ width: 110 }} />
-                    <col style={{ width: 110 }} />
-                    <col style={{ width: 70 }} />
+                    {PENDING_TABLE_COLUMNS.map((column) => (
+                      <col key={column.head} style={{ width: column.width }} />
+                    ))}
                   </colgroup>
                   <TableHead>
                     <TableRow sx={{ backgroundColor: "#f1f5f9" }}>
-                      <TableCell sx={pendingHeadCellSx(100)}>ERP ID</TableCell>
-                      <TableCell sx={pendingHeadCellSx(140)}>SKU Name</TableCell>
-                      <TableCell sx={pendingHeadCellSx(100)}>Variant</TableCell>
-                      <TableCell sx={pendingHeadCellSx(80, "right")}>Pcs/Box</TableCell>
-                      <TableCell sx={pendingHeadCellSx(70, "right")}>Boxes</TableCell>
-                      <TableCell sx={pendingHeadCellSx(70, "right")}>Pcs</TableCell>
-                      <TableCell sx={pendingHeadCellSx(90, "right")}>Total Pcs</TableCell>
-                      <TableCell sx={pendingHeadCellSx(100, "right")}>Price/Pcs + GST</TableCell>
-                      <TableCell sx={pendingHeadCellSx(90, "right")}>MRP Incl. GST</TableCell>
-                      <TableCell sx={pendingHeadCellSx(110, "right")}>Total Incl. GST</TableCell>
-                      <TableCell sx={pendingHeadCellSx(100, "right")}>Purchase Price</TableCell>
-                      <TableCell sx={pendingHeadCellSx(110, "right")}>Actual +5% GST</TableCell>
-                      <TableCell sx={pendingHeadCellSx(110)}>Expiry Date</TableCell>
-                      <TableCell sx={pendingHeadCellSx(70, "center")}>Action</TableCell>
+                      {PENDING_TABLE_COLUMNS.map((column) => (
+                        <TableCell key={column.head} sx={pendingHeadCellSx(column.width, column.align)}>
+                          {column.head}
+                        </TableCell>
+                      ))}
                     </TableRow>
                   </TableHead>
                   <TableBody>
                     {pendingItems.map((item) => (
-                      <TableRow key={item.id}>
-                        <TableCell sx={pendingBodyCellSx(100)} title={item.productErpId}>
+                      <TableRow
+                        key={item.id}
+                        sx={editingPendingId === item.id ? { backgroundColor: "#eff6ff" } : undefined}
+                      >
+                        <TableCell sx={pendingBodyCellFullSx(120)} title={item.productErpId}>
                           {item.productErpId}
-                          {item.isUpdate && (
+                          {editingPendingId === item.id && (
+                            <MDTypography variant="caption" color="success" display="block">
+                              Editing
+                            </MDTypography>
+                          )}
+                          {item.isUpdate && editingPendingId !== item.id && (
                             <MDTypography variant="caption" color="info" display="block">
                               Update
                             </MDTypography>
                           )}
                         </TableCell>
-                        <TableCell sx={pendingBodyCellSx(140)} title={item.productName}>
+                        <TableCell sx={pendingBodyCellFullSx(160)} title={item.productName}>
                           {item.productName}
                         </TableCell>
-                        <TableCell sx={pendingBodyCellSx(100)} title={item.variantName || ""}>
+                        <TableCell sx={pendingBodyCellFullSx(120)} title={item.variantName || ""}>
                           {item.variantName || "—"}
+                        </TableCell>
+                        <TableCell sx={pendingBodyCellFullSx(100)} title={item.batchNumber || ""}>
+                          {item.batchNumber || "—"}
                         </TableCell>
                         <TableCell sx={pendingBodyCellSx(80, "right")}>
                           {item.pcsPerBox ? Math.trunc(Number(item.pcsPerBox)) : 0}
@@ -1529,24 +1687,52 @@ function DmsStock() {
                         <TableCell sx={pendingBodyCellSx(110, "right")}>
                           {money(Number(item.purchasePrice) * 1.05)}
                         </TableCell>
-                        <TableCell sx={pendingBodyCellSx(110)}>{formatUploadDate(item.expiryDate)}</TableCell>
-                        <TableCell sx={pendingBodyCellSx(70, "center")}>
-                          <MDButton
-                            color="info"
-                            variant="text"
-                            size="small"
-                            onClick={() => handleEditPendingItem(item)}
-                          >
-                            <Icon fontSize="small">edit</Icon>
-                          </MDButton>
-                          <MDButton
-                            color="error"
-                            variant="text"
-                            size="small"
-                            onClick={() => handleRemovePendingItem(item)}
-                          >
-                            <Icon fontSize="small">delete</Icon>
-                          </MDButton>
+                        <TableCell sx={pendingBodyCellFullSx(110)}>{formatUploadDate(item.mfgDate)}</TableCell>
+                        <TableCell sx={pendingBodyCellFullSx(120)}>{formatUploadDate(item.expiryDate)}</TableCell>
+                        <TableCell sx={pendingBodyCellSx(100, "center")}>
+                          {editingPendingId === item.id ? (
+                            <>
+                              <MDButton
+                                color="success"
+                                variant="text"
+                                size="small"
+                                onClick={handleAddManualItem}
+                                title="Save changes"
+                              >
+                                <Icon fontSize="small">save</Icon>
+                              </MDButton>
+                              <MDButton
+                                color="dark"
+                                variant="text"
+                                size="small"
+                                onClick={cancelPendingEdit}
+                                title="Cancel edit"
+                              >
+                                <Icon fontSize="small">close</Icon>
+                              </MDButton>
+                            </>
+                          ) : (
+                            <>
+                              <MDButton
+                                color="info"
+                                variant="text"
+                                size="small"
+                                onClick={() => handleEditPendingItem(item)}
+                                disabled={Boolean(editingPendingId)}
+                              >
+                                <Icon fontSize="small">edit</Icon>
+                              </MDButton>
+                              <MDButton
+                                color="error"
+                                variant="text"
+                                size="small"
+                                onClick={() => handleRemovePendingItem(item)}
+                                disabled={Boolean(editingPendingId)}
+                              >
+                                <Icon fontSize="small">delete</Icon>
+                              </MDButton>
+                            </>
+                          )}
                         </TableCell>
                       </TableRow>
                     ))}
