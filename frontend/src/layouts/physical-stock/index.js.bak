@@ -135,6 +135,12 @@ const formatDmsImportLabel = (stock) => {
   return `${date}${company}${source}`;
 };
 
+const resolveSelectedImportId = (importFilter, imports) => {
+  if (!imports.length) return "";
+  if (!importFilter) return String(imports[0].id);
+  return String(importFilter);
+};
+
 const emptyStockForm = () => ({
   physicalStockInCase: "",
   physicalStockInPcs: "",
@@ -196,11 +202,7 @@ function Metric({ label, value }) {
 
 function PhysicalStock() {
   const fileInputRef = useRef(null);
-  const [companies, setCompanies] = useState([]);
-  const [dmsImportId, setDmsImportId] = useState(null);
-  const [approveModalOpen, setApproveModalOpen] = useState(false);
-  const [selectedApproveItem, setSelectedApproveItem] = useState(null);
-  const [approving, setApproving] = useState(false);
+  const [dmsImports, setDmsImports] = useState([]);
   const [selectedFile, setSelectedFile] = useState(null);
   const [stockImport, setStockImport] = useState(null);
   const [items, setItems] = useState([]);
@@ -211,7 +213,7 @@ function PhysicalStock() {
   const [divisionFilter, setDivisionFilter] = useState("");
   const [erpSearch, setErpSearch] = useState("");
   const [productSearch, setProductSearch] = useState("");
-  const [companyFilter, setCompanyFilter] = useState("");
+  const [stockListImportFilter, setStockListImportFilter] = useState("");
   const [uploadModalOpen, setUploadModalOpen] = useState(false);
   const [uploadDmsImportFilter, setUploadDmsImportFilter] = useState("");
   const [manualModalOpen, setManualModalOpen] = useState(false);
@@ -230,68 +232,47 @@ function PhysicalStock() {
   const [loadingHistory, setLoadingHistory] = useState(false);
   const [historyError, setHistoryError] = useState("");
 
-  const authHeaders = {
-    Authorization: `Bearer ${localStorage.getItem("token")}`,
-  };
+  const selectedDmsImportId = useMemo(
+    () => resolveSelectedImportId(stockListImportFilter, dmsImports),
+    [stockListImportFilter, dmsImports]
+  );
 
-  const handleApprove = async () => {
-    if (!dmsImportId || !selectedApproveItem) return;
-    setApproving(true);
-    try {
-      const response = await fetch(`${API}/staff/physical-stock/approve`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", ...authHeaders },
-        body: JSON.stringify({
-          dmsImportId,
-          productErpId: selectedApproveItem.product_erp_id,
-        }),
-      });
-      if (!response.ok) {
-        const data = await response.json();
-        throw new Error(data.error || "Failed to approve stock.");
-      }
-      setMessage(`${selectedApproveItem.product_name} approved successfully.`);
-      setApproveModalOpen(false);
-      fetchPhysicalStock(companyFilter);
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setApproving(false);
-    }
-  };
+  const selectedDmsImport = useMemo(
+    () => dmsImports.find((item) => String(item.id) === String(selectedDmsImportId)) || null,
+    [dmsImports, selectedDmsImportId]
+  );
 
-  const fetchCompanies = async () => {
+  const fetchDmsImports = async () => {
     try {
-      const response = await fetch(`${API}/staff/companies`, { headers: authHeaders });
+      const response = await fetch(`${API}/staff/dms-stock/imports`);
       const data = await response.json();
-      setCompanies(data);
-      return data;
+      if (!response.ok) throw new Error(data.error || "Failed to fetch DMS stock dates.");
+      const imports = data.imports || [];
+      setDmsImports(imports);
+      return imports;
     } catch (fetchError) {
       setError(fetchError.message);
       return [];
     }
   };
 
-  const fetchPhysicalStock = async (companyId = companyFilter) => {
-    if (!companyId) {
+  const fetchPhysicalStock = async (dmsImportId = selectedDmsImportId) => {
+    if (!dmsImportId) {
       setStockImport(null);
-      setDmsImportId(null);
       setItems([]);
       return;
     }
     setLoading(true);
     setError("");
     try {
-      const response = await fetch(`${API}/staff/physical-stock/company?companyId=${companyId}`, { headers: authHeaders });
+      const response = await fetch(`${API}/staff/physical-stock?dmsImportId=${dmsImportId}`);
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "Failed to fetch physical stock.");
-      setStockImport(data.dmsImport || null);
-      setDmsImportId(data.dmsImportId || null);
+      setStockImport(data.import || null);
       setItems(data.items || []);
     } catch (fetchError) {
       setError(fetchError.message);
       setStockImport(null);
-      setDmsImportId(null);
       setItems([]);
     } finally {
       setLoading(false);
@@ -299,28 +280,32 @@ function PhysicalStock() {
   };
 
   useEffect(() => {
-    fetchCompanies();
+    fetchDmsImports();
   }, []);
 
   useEffect(() => {
-    if (companyFilter) {
-      fetchPhysicalStock(companyFilter);
-    }
-  }, [companyFilter]);
+    if (!dmsImports.length) return;
+    fetchPhysicalStock(selectedDmsImportId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [stockListImportFilter, dmsImports]);
 
-  const handleCompanyFilterChange = (event) => {
-    const val = event.target.value;
-    setCompanyFilter(val);
+  const handleImportFilterChange = (event) => {
+    setStockListImportFilter(event.target.value);
     setSelectedFile(null);
     setMessage("");
     setError("");
     if (fileInputRef.current) fileInputRef.current.value = "";
-    fetchPhysicalStock(val);
   };
 
-  const uploadDmsImportId = dmsImportId;
+  const uploadDmsImportId = useMemo(
+    () => resolveSelectedImportId(uploadDmsImportFilter, dmsImports),
+    [uploadDmsImportFilter, dmsImports]
+  );
 
-  const manualDmsImportId = dmsImportId;
+  const manualDmsImportId = useMemo(
+    () => resolveSelectedImportId(manualDmsImportFilter, dmsImports),
+    [manualDmsImportFilter, dmsImports]
+  );
 
   const stockTotals = useMemo(
     () => calcPhysicalTotals(selectedProduct, stockForm),
@@ -338,6 +323,7 @@ function PhysicalStock() {
 
   const openUploadModal = () => {
     resetUploadForm();
+    setUploadDmsImportFilter(stockListImportFilter);
     setUploadModalOpen(true);
   };
 
@@ -359,6 +345,17 @@ function PhysicalStock() {
 
   const openManualModal = async () => {
     resetManualForm();
+    const imports = await fetchDmsImports();
+    const defaultImportId = stockListImportFilter || (imports[0]?.id ? String(imports[0].id) : "");
+    setManualDmsImportFilter(defaultImportId);
+    if (defaultImportId) {
+      const products = await fetchDmsProducts(defaultImportId);
+      if (!products.length) {
+        setMessage("No products found in selected DMS stock. Add DMS stock for this company first.");
+      } else {
+        setMessage(`${products.length} product(s) available. Select Product ERP ID.`);
+      }
+    }
     setManualModalOpen(true);
   };
 
@@ -368,22 +365,24 @@ function PhysicalStock() {
   };
 
   const handleEditPhysicalItem = async (item) => {
-    if (!dmsImportId) {
-      setError("Please select a company first.");
+    if (!selectedDmsImportId) {
+      setError("Please select an invoice first.");
       return;
     }
     resetManualForm();
+    setManualDmsImportFilter(String(selectedDmsImportId));
     setManualModalOpen(true);
     try {
+      const products = await fetchDmsProducts(String(selectedDmsImportId));
       const product = await loadProductFromBackend(
-        String(dmsImportId),
+        String(selectedDmsImportId),
         item.product_erp_id
       );
-      setErpOptions([product]);
+      setErpOptions(products);
       applyProductToForm(product);
       setStockForm({
-        physicalStockInCase: String(item.physical_stock?.physical_stock_in_case ?? item.current_stock_in_case ?? ""),
-        physicalStockInPcs: String(item.physical_stock?.physical_stock_in_pcs ?? item.current_stock_in_pcs ?? ""),
+        physicalStockInCase: String(item.physical_stock_in_case ?? ""),
+        physicalStockInPcs: String(item.physical_stock_in_pcs ?? ""),
       });
       setMessage(`Editing ${item.product_name}. Update the quantity and save.`);
     } catch (editError) {
@@ -399,17 +398,20 @@ function PhysicalStock() {
   };
 
   const handleViewItemHistory = async (item) => {
-    if (!dmsImportId) return;
+    if (!selectedDmsImportId || !item?.product_erp_id) return;
+
     setHistoryItem(item);
     setHistoryModalOpen(true);
-    fetchItemHistory(item, dmsImportId);
-  };
-
-  const fetchItemHistory = async (item, importId) => {
-    setLoadingHistory(true);
+    setHistoryRows([]);
     setHistoryError("");
+    setLoadingHistory(true);
+
     try {
-      const response = await fetch(`${API}/staff/physical-stock/item-history?dmsImportId=${importId}&productErpId=${encodeURIComponent(item.product_erp_id)}`, { headers: authHeaders });
+      const params = new URLSearchParams({
+        dmsImportId: String(selectedDmsImportId),
+        erpId: String(item.product_erp_id),
+      });
+      const response = await fetch(`${API}/staff/physical-stock/item-history?${params.toString()}`);
       const data = await response.json();
       if (!response.ok) {
         throw new Error(data.error || "Failed to fetch item history.");
@@ -426,7 +428,7 @@ function PhysicalStock() {
     const groups = new Map();
     historyRows.forEach((entry) => {
       const key = String(entry.update_date || entry.created_at || "").slice(0, 10) || "unknown";
-      if (!groups.has(key)) groups.get(key, []);
+      if (!groups.has(key)) groups.set(key, []);
       groups.get(key).push(entry);
     });
     return [...groups.entries()].sort((a, b) => b[0].localeCompare(a[0]));
@@ -448,7 +450,7 @@ function PhysicalStock() {
         dmsImportId: String(dmsImportId),
         search: String(search || "").trim(),
       });
-      const response = await fetch(`${API}/staff/physical-stock/dms-products?${params}`, { headers: authHeaders });
+      const response = await fetch(`${API}/staff/physical-stock/dms-products?${params}`);
       const data = await response.json();
       if (response.ok) {
         const products = data.products || [];
@@ -468,7 +470,7 @@ function PhysicalStock() {
       dmsImportId: String(dmsImportId),
       erpId: String(erpId || "").trim(),
     });
-    const response = await fetch(`${API}/staff/physical-stock/product-lookup?${params}`, { headers: authHeaders });
+    const response = await fetch(`${API}/staff/physical-stock/product-lookup?${params}`);
     const data = await response.json();
     if (!response.ok) {
       throw new Error(data.error || "Product not found in selected DMS stock.");
@@ -517,14 +519,14 @@ function PhysicalStock() {
       return;
     }
 
-    if (!dmsImportId) {
+    if (!manualDmsImportId) {
       setError("Please select an invoice number first.");
       return;
     }
 
     try {
       setError("");
-      const product = await loadProductFromBackend(dmsImportId, option.product_erp_id);
+      const product = await loadProductFromBackend(manualDmsImportId, option.product_erp_id);
       applyProductToForm(product);
     } catch (lookupError) {
       setError(lookupError.message);
@@ -547,23 +549,23 @@ function PhysicalStock() {
         clearTimeout(erpSearchTimerRef.current);
       }
 
-      if (!dmsImportId) {
+      if (!manualDmsImportId) {
         setErpOptions([]);
         return;
       }
 
       erpSearchTimerRef.current = setTimeout(() => {
-        fetchDmsProducts(dmsImportId, value);
+        fetchDmsProducts(manualDmsImportId, value);
       }, 300);
     }
   };
 
   useEffect(() => {
-    if (!manualModalOpen || !dmsImportId) {
+    if (!manualModalOpen || !manualDmsImportId) {
       return undefined;
     }
 
-    fetchDmsProducts(dmsImportId);
+    fetchDmsProducts(manualDmsImportId);
 
     return () => {
       if (erpSearchTimerRef.current) {
@@ -571,10 +573,10 @@ function PhysicalStock() {
       }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dmsImportId, manualModalOpen]);
+  }, [manualDmsImportId, manualModalOpen]);
 
   const handleSaveManualStock = async () => {
-    if (!dmsImportId) {
+    if (!manualDmsImportId) {
       setError("Please select an invoice number.");
       return;
     }
@@ -594,9 +596,9 @@ function PhysicalStock() {
     try {
       const response = await fetch(`${API}/staff/physical-stock/manual`, {
         method: "POST",
-        headers: { "Content-Type": "application/json", ...authHeaders },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          dmsImportId: dmsImportId,
+          dmsImportId: manualDmsImportId,
           items: [{
             productErpId: selectedProduct.product_erp_id,
             physicalStockInCase: stockForm.physicalStockInCase,
@@ -610,8 +612,12 @@ function PhysicalStock() {
         throw new Error(data.error || "Failed to save physical stock.");
       }
 
-      await fetchPhysicalStock(companyFilter);
+      setStockImport(data.import || null);
+      setItems(data.items || []);
       setMessage(data.message || "Physical stock saved successfully.");
+      if (data.import?.dms_import_id) {
+        setStockListImportFilter(String(data.import.dms_import_id));
+      }
       closeManualModal();
     } catch (saveError) {
       setError(saveError.message);
@@ -621,7 +627,7 @@ function PhysicalStock() {
   };
 
   const handleUpload = async () => {
-    if (!dmsImportId) {
+    if (!uploadDmsImportId) {
       setError("Please choose a DMS stock date first.");
       return;
     }
@@ -631,7 +637,7 @@ function PhysicalStock() {
     }
 
     const formData = new FormData();
-    formData.append("dmsImportId", dmsImportId);
+    formData.append("dmsImportId", uploadDmsImportId);
     formData.append("file", selectedFile);
     setUploading(true);
     setMessage("");
@@ -639,15 +645,18 @@ function PhysicalStock() {
     try {
       const response = await fetch(`${API}/staff/physical-stock/upload`, {
         method: "POST",
-        headers: { ...authHeaders },
         body: formData,
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "Physical stock upload failed.");
-      await fetchPhysicalStock(companyFilter);
+      setStockImport(data.import || null);
+      setItems(data.items || []);
       setSelectedFile(null);
       if (fileInputRef.current) fileInputRef.current.value = "";
       setMessage(data.message || "Physical stock uploaded and calculated successfully.");
+      if (data.import?.dms_import_id) {
+        setStockListImportFilter(String(data.import.dms_import_id));
+      }
       setUploadModalOpen(false);
       resetUploadForm();
     } catch (uploadError) {
@@ -700,9 +709,9 @@ function PhysicalStock() {
                   <MDTypography variant="caption" color="text" display="block">
                     Use the date filter to view a specific upload. Blue columns are automatically calculated from Case, Pcs/Box, loose Pcs, and Price/Pcs.
                   </MDTypography>
-                  {stockImport && (
+                  {selectedDmsImport && (
                     <MDTypography variant="caption" color="text" display="block" mt={0.5}>
-                      DMS: {formatDmsImportLabel(stockImport)}
+                      DMS: {formatDmsImportLabel(selectedDmsImport)}
                     </MDTypography>
                   )}
                 </MDBox>
@@ -723,7 +732,7 @@ function PhysicalStock() {
                     color="dark"
                     variant="outlined"
                     onClick={() => fetchPhysicalStock()}
-                    disabled={!dmsImportId || loading}
+                    disabled={!selectedDmsImportId || loading}
                   >
                     <Icon sx={{ mr: 1 }}>refresh</Icon>
                     Fetch Data
@@ -731,6 +740,10 @@ function PhysicalStock() {
                   <MDButton color="info" variant="gradient" onClick={openUploadModal}>
                     <Icon sx={{ mr: 1 }}>cloud_upload</Icon>
                     Upload File
+                  </MDButton>
+                  <MDButton color="info" variant="gradient" onClick={openManualModal}>
+                    <Icon sx={{ mr: 1 }}>add</Icon>
+                    Manual Entry
                   </MDButton>
                 </MDBox>
               </MDBox>
@@ -740,14 +753,14 @@ function PhysicalStock() {
                     <FormControl size="small" fullWidth>
                       <Select
                         displayEmpty
-                        value={companyFilter}
-                        onChange={handleCompanyFilterChange}
+                        value={stockListImportFilter}
+                        onChange={handleImportFilterChange}
                         sx={{ height: 44, backgroundColor: "#fff" }}
                       >
-                        <MenuItem value="">Select Company</MenuItem>
-                        {companies.map((comp) => (
-                          <MenuItem key={comp.id} value={String(comp.id)}>
-                            {comp.name}
+                        <MenuItem value="">Latest DMS Upload</MenuItem>
+                        {dmsImports.map((stock) => (
+                          <MenuItem key={stock.id} value={String(stock.id)}>
+                            {formatDmsImportLabel(stock)}
                           </MenuItem>
                         ))}
                       </Select>
@@ -764,7 +777,7 @@ function PhysicalStock() {
                   <Grid item xs={12} md={2}><MDInput label="Search ERP ID" fullWidth value={erpSearch} onChange={(event) => setErpSearch(event.target.value)} /></Grid>
                   <Grid item xs={12} md={3}><MDInput label="Search Product" fullWidth value={productSearch} onChange={(event) => setProductSearch(event.target.value)} /></Grid>
                   <Grid item xs={12} md={2}>
-                    <MDButton color="dark" variant="outlined" fullWidth onClick={() => { setCompanyFilter(""); setDivisionFilter(""); setErpSearch(""); setProductSearch(""); }}>
+                    <MDButton color="dark" variant="outlined" fullWidth onClick={() => { setStockListImportFilter(""); setDivisionFilter(""); setErpSearch(""); setProductSearch(""); }}>
                       <Icon sx={{ mr: 1 }}>filter_alt_off</Icon>Clear
                     </MDButton>
                   </Grid>
@@ -792,35 +805,32 @@ function PhysicalStock() {
                     </TableHead>
                     <TableBody>
                       {items.length === 0 && (
-                        <TableRow><TableCell colSpan={14} align="center" sx={tableBodySx}><MDTypography variant="button" color="text">{dmsImportId ? "No Physical Stock for this DMS date. Use Upload File or Manual Entry." : "Choose a Company first."}</MDTypography></TableCell></TableRow>
+                        <TableRow><TableCell colSpan={14} align="center" sx={tableBodySx}><MDTypography variant="button" color="text">{selectedDmsImportId ? "No Physical Stock for this DMS date. Use Upload File or Manual Entry." : "Choose a DMS stock date first."}</MDTypography></TableCell></TableRow>
                       )}
                       {items.length > 0 && filteredItems.length === 0 && (
                         <TableRow><TableCell colSpan={14} align="center" sx={tableBodySx}><MDTypography variant="button" color="text">No rows match the selected filters.</MDTypography></TableCell></TableRow>
                       )}
                       {filteredItems.map((item, index) => (
-                        <TableRow key={item.id} sx={item.is_approved ? { backgroundColor: "#dcfce7" } : {}}>
+                        <TableRow key={item.id}>
                           <TableCell sx={stickyColumnSx(0, { baseSx: tableBodySx })}>{index + 1}</TableCell>
                           <TableCell sx={stickyColumnSx(1, { baseSx: tableBodySx })}>{item.product_erp_id}</TableCell>
                           <TableCell sx={stickyColumnSx(2, { baseSx: { ...tableBodySx, overflow: "hidden", textOverflow: "ellipsis" } })}>{item.product_name}</TableCell>
                           <TableCell sx={stickyColumnSx(3, { baseSx: tableBodySx })}>{item.product_division}</TableCell>
                           <TableCell sx={tableBodySx}>{item.variant_name}</TableCell>
                           <TableCell align="right" sx={tableBodySx}>{unitFormat(item.pcs_per_box)}</TableCell>
-                          <TableCell sx={tableBodySx}>{formatExpiredStockDate(item.expiry_date || item.expired_stock_date)}</TableCell>
-                          <TableCell align="right" sx={tableBodySx}>{unitFormat(item.physical_stock ? item.physical_stock.physical_stock_in_case : item.current_stock_in_case)}</TableCell>
-                          <TableCell align="right" sx={tableBodySx}>{unitFormat(item.physical_stock ? item.physical_stock.physical_stock_in_pcs : item.current_stock_in_pcs)}</TableCell>
-                          <TableCell align="right" sx={calculatedCellSx}>{unitFormat(item.physical_stock ? item.physical_stock.total_physical_stock_in_pcs : item.total_current_stock_in_pcs)}</TableCell>
+                          <TableCell sx={tableBodySx}>{formatExpiredStockDate(item.expired_stock_date)}</TableCell>
+                          <TableCell align="right" sx={tableBodySx}>{unitFormat(item.physical_stock_in_case)}</TableCell>
+                          <TableCell align="right" sx={tableBodySx}>{unitFormat(item.physical_stock_in_pcs)}</TableCell>
+                          <TableCell align="right" sx={calculatedCellSx}>{unitFormat(item.total_physical_stock_in_pcs)}</TableCell>
                           <TableCell align="right" sx={tableBodySx}>{money(item.price_per_piece)}</TableCell>
                           <TableCell align="right" sx={tableBodySx}>{money(item.mrp)}</TableCell>
-                          <TableCell align="right" sx={calculatedCellSx}>{money(item.physical_stock ? item.physical_stock.total_value : item.total_value)}</TableCell>
+                          <TableCell align="right" sx={calculatedCellSx}>{money(item.total_value)}</TableCell>
                           <TableCell align="center" sx={tableBodySx}>
                             <IconButton
                               color="info"
                               size="small"
-                              title="Approve Stock"
-                              onClick={() => {
-                                setSelectedApproveItem(item);
-                                setApproveModalOpen(true);
-                              }}
+                              title="View stock history"
+                              onClick={() => handleViewItemHistory(item)}
                             >
                               <Icon fontSize="small">visibility</Icon>
                             </IconButton>
@@ -874,9 +884,9 @@ function PhysicalStock() {
                     sx={{ height: 44, backgroundColor: "#fff" }}
                   >
                     <MenuItem value="">Latest DMS Upload</MenuItem>
-                    {companies.map((stock) => (
+                    {dmsImports.map((stock) => (
                       <MenuItem key={stock.id} value={String(stock.id)}>
-                        {stock.name}
+                        {formatDmsImportLabel(stock)}
                       </MenuItem>
                     ))}
                   </Select>
@@ -963,9 +973,11 @@ function PhysicalStock() {
                     <MenuItem value="" disabled>
                       Select Invoice Number
                     </MenuItem>
-                    {companies.map((stock) => (
+                    {dmsImports.filter((stock) => stock.invoice_number).map((stock) => (
                       <MenuItem key={stock.id} value={String(stock.id)}>
-                        {stock.name}
+                        {stock.invoice_number}
+                        {stock.company_name ? ` - ${stock.company_name}` : ""}
+                        {stock.seller_name ? ` - ${stock.seller_name}` : ""}
                       </MenuItem>
                     ))}
                   </Select>
@@ -1294,30 +1306,6 @@ function PhysicalStock() {
         <DialogActions sx={{ px: 3, py: 2, backgroundColor: "#f8fafc" }}>
           <MDButton color="dark" variant="outlined" onClick={closeHistoryModal}>
             Close
-          </MDButton>
-        </DialogActions>
-      </Dialog>
-
-      <Dialog open={approveModalOpen} onClose={() => setApproveModalOpen(false)} fullWidth maxWidth="sm">
-        <DialogTitle sx={{ fontWeight: "bold", color: "#344767" }}>Approve Current Stock</DialogTitle>
-        <DialogContent dividers>
-          {selectedApproveItem && (
-            <MDBox>
-              <MDTypography variant="h6">{selectedApproveItem.product_name}</MDTypography>
-              <MDTypography variant="body2" color="text">ERP ID: {selectedApproveItem.product_erp_id}</MDTypography>
-              <MDTypography variant="body2" color="text">DMS Total Pcs: {unitFormat(selectedApproveItem.total_current_stock_in_pcs)}</MDTypography>
-              <MDBox mt={2} p={2} sx={{ backgroundColor: "#eff6ff", borderRadius: 1 }}>
-                <MDTypography variant="body2" fontWeight="medium">
-                  Clicking OK will save {unitFormat(selectedApproveItem.total_current_stock_in_pcs)} as the Physical Stock for this item.
-                </MDTypography>
-              </MDBox>
-            </MDBox>
-          )}
-        </DialogContent>
-        <DialogActions>
-          <MDButton color="dark" variant="outlined" onClick={() => setApproveModalOpen(false)} disabled={approving}>Cancel</MDButton>
-          <MDButton color="info" variant="gradient" onClick={handleApprove} disabled={approving}>
-            {approving ? "Approving..." : "OK"}
           </MDButton>
         </DialogActions>
       </Dialog>

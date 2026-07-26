@@ -1,7 +1,9 @@
 import { parse } from 'csv-parse/sync';
 import xlsx from 'xlsx';
+import db from '../config/db.js';
 import PhysicalStockModel from '../models/physicalStockModel.js';
 import DmsStockModel from '../models/dmsStockModel.js';
+
 
 const HEADER_ALIASES = {
     productErpId: ['product erp id'],
@@ -284,6 +286,218 @@ export const getPhysicalStockItemHistory = async (req, res) => {
     } catch (error) {
         console.error('Error fetching physical stock item history:', error);
         return res.status(500).json({ error: 'Internal server error' });
+    }
+};
+
+export const getPhysicalStockForCompany = async (req, res) => {
+    try {
+        const companyId = parseInt(req.query.companyId, 10);
+        if (!Number.isFinite(companyId) || companyId <= 0) {
+            return res.status(400).json({ error: 'Please select a company.' });
+        }
+
+        // 1. Get ALL products from master item list (seller_items) for this company
+        const [sellerItemsRows] = await db.execute(
+            `SELECT si.product_erp_id, si.sku_name AS product_name, si.variant_name, si.pcs_per_box, c.name AS company_name
+             FROM seller_items si
+             LEFT JOIN companies c ON c.id = si.company_id
+             WHERE si.company_id = ?`,
+            [companyId]
+        );
+
+        // 2. Get latest DMS stock item for EACH product_erp_id for this company
+        const [dmsItemsRows] = await db.execute(
+            `SELECT dsi.id, dsi.product_erp_id, dsi.product_name, dsi.product_division, dsi.variant_name,
+                    dsi.pcs_per_box, dsi.current_stock_in_case, dsi.current_stock_in_pcs,
+                    dsi.total_current_stock_in_pcs, dsi.price_per_piece, dsi.mrp, dsi.total_value,
+                    dsi.batch_number, DATE_FORMAT(dsi.mfg_date, '%Y-%m-%d') AS mfg_date,
+                    DATE_FORMAT(dsi.expiry_date, '%Y-%m-%d') AS expiry_date,
+                    dsi.dp_price, dsi.discount_percent, dsi.gst_percent, dsi.cgst_amount, dsi.sgst_amount,
+                    dsi.retail_price, dsi.wholesale_price, dsi.retail_margin, dsi.wholesale_margin,
+                    imp.id AS import_id, imp.invoice_number, ps.seller_name
+             FROM dms_stock_items dsi
+             INNER JOIN dms_stock_imports imp ON imp.id = dsi.import_id
+             LEFT JOIN purchase_sellers ps ON ps.id = imp.seller_id
+             INNER JOIN (
+                 SELECT dsi2.product_erp_id, MAX(dsi2.id) AS latest_item_id
+                 FROM dms_stock_items dsi2
+                 INNER JOIN dms_stock_imports i2 ON i2.id = dsi2.import_id
+                 WHERE i2.company_id = ?
+                   AND dsi2.product_erp_id IS NOT NULL
+                   AND TRIM(dsi2.product_erp_id) <> ''
+                 GROUP BY dsi2.product_erp_id
+             ) latest ON latest.latest_item_id = dsi.id
+             WHERE imp.company_id = ?
+             ORDER BY dsi.product_erp_id ASC`,
+            [companyId, companyId]
+        );
+
+        // 3. Get the latest DMS import ID for this company to tie physical stock to
+        const [dmsImportRows] = await db.execute(
+            `SELECT i.id, i.company_id, c.name AS company_name,
+                    DATE_FORMAT(i.upload_date, '%Y-%m-%d') AS upload_date
+             FROM dms_stock_imports i
+             LEFT JOIN companies c ON c.id = i.company_id
+             WHERE i.company_id = ?
+             ORDER BY i.id DESC
+             LIMIT 1`,
+            [companyId]
+        );
+
+        let dmsImportId = null;
+        let dmsImport = null;
+        if (dmsImportRows.length > 0) {
+            dmsImport = dmsImportRows[0];
+            dmsImportId = dmsImport.id;
+        } else {
+            // Create a dummy import if they have NO imports so they can still approve/edit physical stock
+            const [insertRes] = await db.execute(
+                `INSERT INTO dms_stock_imports (company_id, file_name, upload_date) VALUES (?, ?, NOW())`,
+                [companyId, "Auto-generated for Physical Stock"]
+            );
+            dmsImportId = insertRes.insertId;
+            dmsImport = { id: dmsImportId, company_id: companyId, company_name: sellerItemsRows[0]?.company_name || "" };
+        }
+
+        // 4. Merge seller items and dms items
+        const productMap = new Map();
+
+        // Add seller items first
+        for (const s of sellerItemsRows) {
+            const key = String(s.product_erp_id || '').trim().toLowerCase();
+            if (!key) continue;
+            productMap.set(key, {
+                product_erp_id: s.product_erp_id,
+                product_name: s.product_name,
+                variant_name: s.variant_name || '',
+                pcs_per_box: Number(s.pcs_per_box) || 0,
+                current_stock_in_case: 0,
+                current_stock_in_pcs: 0,
+                total_current_stock_in_pcs: 0,
+                price_per_piece: 0,
+                mrp: 0,
+                total_value: 0,
+            });
+        }
+
+        // Add/Overwrite with DMS items
+        for (const d of dmsItemsRows) {
+            const key = String(d.product_erp_id || '').trim().toLowerCase();
+            if (!key) continue;
+            const existing = productMap.get(key) || {};
+            productMap.set(key, {
+                ...existing,
+                ...DmsStockModel.normalizeProductItem(d),
+            });
+        }
+
+        const dmsProducts = Array.from(productMap.values()).sort((a, b) => 
+            a.product_erp_id.localeCompare(b.product_erp_id)
+        );
+
+        // 5. Get physical stock items tied to the latest dmsImportId
+        const physicalItems = await PhysicalStockModel.getMergedItemsByDmsImportId(dmsImportId, 2000);
+
+        const physicalByErp = new Map(
+            physicalItems.map((item) => [
+                String(item.product_erp_id || '').trim().toLowerCase(),
+                item,
+            ])
+        );
+
+        // 6. Merge: each product + its physical stock status
+        const items = dmsProducts.map((dmsItem) => {
+            const key = String(dmsItem.product_erp_id || '').trim().toLowerCase();
+            const physItem = physicalByErp.get(key) || null;
+            return {
+                ...dmsItem,
+                physical_stock: physItem,
+                is_approved: physItem !== null,
+            };
+        });
+
+        return res.status(200).json({
+            dmsImportId,
+            dmsImport,
+            items,
+        });
+    } catch (error) {
+        console.error('Error fetching physical stock for company:', error);
+        return res.status(500).json({ error: 'Internal server error' });
+    }
+};
+
+export const approvePhysicalStockFromDms = async (req, res) => {
+    try {
+        const dmsImportId = parseDmsImportId(req.body?.dmsImportId);
+        if (!dmsImportId) {
+            return res.status(400).json({ error: 'Please choose a DMS stock upload date.' });
+        }
+
+        const productErpId = String(req.body?.productErpId || '').trim();
+        if (!productErpId) {
+            return res.status(400).json({ error: 'Product ERP ID is required.' });
+        }
+
+        const dmsResult = await DmsStockModel.getImportById(dmsImportId);
+        if (!dmsResult) {
+            return res.status(404).json({ error: 'Selected DMS stock upload was not found.' });
+        }
+
+        const product = await DmsStockModel.getProductByErpIdInImport(dmsImportId, productErpId);
+        if (!product) {
+            return res.status(404).json({ error: 'Product not found in selected DMS stock.' });
+        }
+
+        // Build physical stock row using DMS total_current_stock_in_pcs as the total
+        const pcsPerBox = Number(product.pcs_per_box) || 0;
+        const totalPcs = Number(product.total_current_stock_in_pcs) || 0;
+
+        let physicalStockInCase = 0;
+        let physicalStockInPcs = 0;
+        if (pcsPerBox > 0) {
+            physicalStockInCase = Math.floor(totalPcs / pcsPerBox);
+            physicalStockInPcs = Math.round((totalPcs - physicalStockInCase * pcsPerBox) * 10000) / 10000;
+        } else {
+            physicalStockInPcs = totalPcs;
+        }
+
+        const row = normalizePhysicalStockRow({
+            'Product ERP ID': product.product_erp_id,
+            'SKU Name': product.product_name,
+            'Product Division': product.product_division || '',
+            'Variant Name': product.variant_name,
+            'Pcs/Box': pcsPerBox,
+            'Physical Stock In Case': physicalStockInCase,
+            'Physical Stock In Pcs': physicalStockInPcs,
+            'Price/Pcs': product.price_per_piece,
+            MRP: product.mrp,
+            'Expired Stock': product.expiry_date || '',
+        });
+
+        const existingImport = await PhysicalStockModel.getManualImportByDmsImportId(dmsImportId);
+        let result;
+
+        if (existingImport) {
+            result = await PhysicalStockModel.upsertItemsToImport(existingImport.id, [row]);
+        } else {
+            const summary = buildPhysicalStockSummary([row]);
+            result = await PhysicalStockModel.createImport({
+                dmsImportId,
+                fileName: 'Manual Entry',
+                rowCount: 1,
+                summary,
+                rows: [row],
+            });
+        }
+
+        return res.status(201).json({
+            message: 'Physical stock approved from DMS successfully',
+            ...result,
+        });
+    } catch (error) {
+        console.error('Error approving physical stock from DMS:', error);
+        return res.status(error.statusCode || 500).json({ error: error.message || 'Internal server error' });
     }
 };
 
