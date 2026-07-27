@@ -204,7 +204,7 @@ function PhysicalStock() {
   const [approveModalOpen, setApproveModalOpen] = useState(false);
   const [selectedApproveItem, setSelectedApproveItem] = useState(null);
   const [approving, setApproving] = useState(false);
-  const [approvingAll, setApprovingAll] = useState(false);
+  const [approvingItemId, setApprovingItemId] = useState(null);
   const [selectedFile, setSelectedFile] = useState(null);
   const [stockImport, setStockImport] = useState(null);
   const [items, setItems] = useState([]);
@@ -270,17 +270,18 @@ function PhysicalStock() {
     }
   };
 
-  const handleApproveAll = async () => {
-    if (!dmsImportId || !items.length) return;
-    if (!window.confirm("Set all saved Physical Stock items as Current Stock for this company?")) return;
+  const handleSetCurrentStock = async (item) => {
+    const productErpId = getProductErpId(item);
+    if (!dmsImportId || !item.physical_stock || !productErpId) return;
+    if (!window.confirm(`Set the Physical Stock for ${item.product_name} as Current Stock?`)) return;
 
-    setApprovingAll(true);
+    setApprovingItemId(item.physical_stock.id);
     setError("");
     try {
-      const response = await fetch(`${API}/staff/physical-stock/approve-all`, {
+      const response = await fetch(`${API}/staff/physical-stock/set-current`, {
         method: "POST",
         headers: { "Content-Type": "application/json", ...authHeaders },
-        body: JSON.stringify({ dmsImportId }),
+        body: JSON.stringify({ dmsImportId, productErpId }),
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "Failed to set Physical Stock as Current Stock.");
@@ -289,7 +290,7 @@ function PhysicalStock() {
     } catch (err) {
       setError(err.message);
     } finally {
-      setApprovingAll(false);
+      setApprovingItemId(null);
     }
   };
 
@@ -786,15 +787,6 @@ function PhysicalStock() {
                     <Icon sx={{ mr: 1 }}>refresh</Icon>
                     Fetch Data
                   </MDButton>
-                  <MDButton
-                    color="success"
-                    variant="gradient"
-                    onClick={handleApproveAll}
-                    disabled={!dmsImportId || !items.length || approvingAll}
-                  >
-                    <Icon sx={{ mr: 1 }}>published_with_changes</Icon>
-                    {approvingAll ? "Updating Current Stock..." : "Set Physical Stock as Current Stock"}
-                  </MDButton>
                   <MDButton color="info" variant="gradient" onClick={openUploadModal}>
                     <Icon sx={{ mr: 1 }}>cloud_upload</Icon>
                     Upload File
@@ -895,6 +887,17 @@ function PhysicalStock() {
                             >
                               <Icon fontSize="small">visibility</Icon>
                             </IconButton>
+                            {item.physical_stock && (
+                              <IconButton
+                                color="success"
+                                size="small"
+                                title={item.physical_stock.approved_as_current_stock ? "Already set as Current Stock" : "Set Physical Stock as Current Stock"}
+                                onClick={() => handleSetCurrentStock(item)}
+                                disabled={item.physical_stock.approved_as_current_stock || approvingItemId === item.physical_stock.id}
+                              >
+                                <Icon fontSize="small">published_with_changes</Icon>
+                              </IconButton>
+                            )}
                             <MDButton
                               color="info"
                               variant="text"

@@ -515,25 +515,31 @@ export const approvePhysicalStockFromDms = async (req, res) => {
     }
 };
 
-export const approveAllPhysicalStockAsCurrentStock = async (req, res) => {
+export const approvePhysicalStockAsCurrentStock = async (req, res) => {
     try {
         const dmsImportId = parseDmsImportId(req.body?.dmsImportId);
+        const productErpId = String(req.body?.productErpId || '').trim();
         if (!dmsImportId) {
             return res.status(400).json({ error: 'Please choose a DMS stock upload date.' });
         }
-
-        const physicalItems = await PhysicalStockModel.getMergedItemsByDmsImportId(dmsImportId);
-        if (!physicalItems.length) {
-            return res.status(400).json({ error: 'Add Physical Stock before setting it as Current Stock.' });
+        if (!productErpId) {
+            return res.status(400).json({ error: 'Product ERP ID is required.' });
         }
 
-        const updatedCount = await PhysicalStockModel.approveAllAsCurrentStock(dmsImportId);
+        const physicalItems = await PhysicalStockModel.getMergedItemsByDmsImportId(dmsImportId);
+        const physicalItem = physicalItems.find((item) =>
+            String(item.product_erp_id || '').trim().toLowerCase() === productErpId.toLowerCase()
+        );
+        if (!physicalItem) {
+            return res.status(400).json({ error: 'Add Physical Stock for this product before setting it as Current Stock.' });
+        }
+
+        await PhysicalStockModel.approveAsCurrentStock(physicalItem.id);
         return res.json({
-            message: 'All Physical Stock items are now set as Current Stock.',
-            updatedCount,
+            message: 'Physical Stock is now set as Current Stock.',
         });
     } catch (error) {
-        console.error('Error approving all physical stock:', error);
+        console.error('Error approving physical stock as current stock:', error);
         return res.status(500).json({ error: 'Unable to set Physical Stock as Current Stock.' });
     }
 };
