@@ -79,6 +79,7 @@ function AddCounter() {
   const [selectedLocation, setSelectedLocation] = useState("");
   const [outlets, setOutlets] = useState([]);
   const [savedOutlets, setSavedOutlets] = useState([]);
+  const [exportingOutlets, setExportingOutlets] = useState(false);
   const [editingOutletId, setEditingOutletId] = useState(null);
   const [editFormData, setEditFormData] = useState(createEmptyEditForm());
 
@@ -143,6 +144,32 @@ function AddCounter() {
       setSavedOutlets(data);
     } catch (error) {
       console.error("Error fetching saved outlets:", error);
+    }
+  };
+
+  const downloadOutletsExcel = async () => {
+    setExportingOutlets(true);
+    try {
+      const response = await fetch(`${API}/staff/outlets-export`, {
+        headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
+      });
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({}));
+        throw new Error(error.error || "Failed to download outlets.");
+      }
+      const file = await response.blob();
+      const url = window.URL.createObjectURL(file);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = "all_outlets.xlsx";
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (error) {
+      alert(error.message || "Failed to download outlets.");
+    } finally {
+      setExportingOutlets(false);
     }
   };
 
@@ -580,6 +607,19 @@ function AddCounter() {
                     </Grid>
                   )} */}
                 </Grid>
+
+                <MDBox mt={2} display="flex" justifyContent="flex-end">
+                  <MDButton
+                    variant="gradient"
+                    color="success"
+                    size="small"
+                    onClick={downloadOutletsExcel}
+                    disabled={exportingOutlets}
+                    startIcon={<Icon>download</Icon>}
+                  >
+                    {exportingOutlets ? "Preparing Excel..." : "Download All Outlets Excel"}
+                  </MDButton>
+                </MDBox>
 
                 {selectedStaff && (
                   <MDBox mt={4}>

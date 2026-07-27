@@ -219,7 +219,12 @@ export const getPhysicalStockDmsProducts = async (req, res) => {
 export const lookupPhysicalStockProduct = async (req, res) => {
     try {
         const dmsImportId = parseDmsImportId(req.query.dmsImportId);
-        const erpId = String(req.query.erpId || '').trim();
+        const erpId = String(
+            req.query.erpId
+            || req.query.productErpId
+            || req.query.product_erp_id
+            || ''
+        ).trim();
 
         if (!dmsImportId) {
             return res.status(400).json({ error: 'Please choose a DMS stock upload date.' });
@@ -434,7 +439,12 @@ export const approvePhysicalStockFromDms = async (req, res) => {
             return res.status(400).json({ error: 'Please choose a DMS stock upload date.' });
         }
 
-        const productErpId = String(req.body?.productErpId || '').trim();
+        const productErpId = String(
+            req.body?.productErpId
+            || req.body?.product_erp_id
+            || req.body?.erpId
+            || ''
+        ).trim();
         if (!productErpId) {
             return res.status(400).json({ error: 'Product ERP ID is required.' });
         }
@@ -474,6 +484,10 @@ export const approvePhysicalStockFromDms = async (req, res) => {
             MRP: product.mrp,
             'Expired Stock': product.expiry_date || '',
         });
+        row.rawData = {
+            ...row.rawData,
+            approvedAsCurrentStock: true,
+        };
 
         const existingImport = await PhysicalStockModel.getManualImportByDmsImportId(dmsImportId);
         let result;
@@ -492,7 +506,7 @@ export const approvePhysicalStockFromDms = async (req, res) => {
         }
 
         return res.status(201).json({
-            message: 'Physical stock approved from DMS successfully',
+            message: 'Physical stock approved and set as current stock successfully',
             ...result,
         });
     } catch (error) {

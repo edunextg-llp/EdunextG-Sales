@@ -31,6 +31,7 @@ import SignIn from "layouts/authentication/sign-in";
 
 // Material Dashboard 2 React contexts
 import { useMaterialUIController, setMiniSidenav } from "context";
+import { useAuth } from "context/AuthContext";
 
 // Images
 import brandWhite from "assets/images/logo-ct.png";
@@ -50,6 +51,22 @@ export default function App() {
   const [onMouseEnter, setOnMouseEnter] = useState(false);
   const [rtlCache, setRtlCache] = useState(null);
   const { pathname } = useLocation();
+  const { user } = useAuth();
+  const role = user?.role || "admin";
+
+  const filterRoutesByRole = (allRoutes) =>
+    allRoutes.reduce((visible, route) => {
+      if (route.collapse) {
+        const collapse = filterRoutesByRole(route.collapse);
+        if (collapse.length) visible.push({ ...route, collapse });
+      } else {
+        const allowedRoles = route.allowedRoles || ["admin"];
+        if (allowedRoles.includes(role)) visible.push(route);
+      }
+      return visible;
+    }, []);
+
+  const visibleRoutes = filterRoutesByRole(routes);
 
   // Cache for the rtl
   useMemo(() => {
@@ -99,7 +116,7 @@ export default function App() {
         const element = isAuthRoute ? (
           route.component
         ) : (
-          <ProtectedRoute>{route.component}</ProtectedRoute>
+          <ProtectedRoute allowedRoles={route.allowedRoles || ["admin"]}>{route.component}</ProtectedRoute>
         );
         return <Route exact path={route.route} element={element} key={route.key} />;
       }
@@ -141,7 +158,7 @@ export default function App() {
               color={sidenavColor}
               brand={(transparentSidenav && !darkMode) || whiteSidenav ? brandDark : brandWhite}
               brandName="Material Dashboard 2"
-              routes={routes}
+              routes={visibleRoutes}
               onMouseEnter={handleOnMouseEnter}
               onMouseLeave={handleOnMouseLeave}
             />
@@ -151,9 +168,9 @@ export default function App() {
         )}
         {layout === "vr" && <Configurator />}
         <Routes>
-          {getRoutes(routes)}
+          {getRoutes(visibleRoutes)}
           <Route exact path="/authentication/sign-in" element={<SignIn />} />
-          <Route path="*" element={<Navigate to="/dashboard" />} />
+          <Route path="*" element={<Navigate to={role === "staff" ? "/purchase-requisition" : "/dashboard"} />} />
         </Routes>
       </ThemeProvider>
     </CacheProvider>
@@ -166,7 +183,7 @@ export default function App() {
             color={sidenavColor}
             brand={(transparentSidenav && !darkMode) || whiteSidenav ? brandDark : brandWhite}
             brandName="Material Dashboard 2"
-            routes={routes}
+            routes={visibleRoutes}
             onMouseEnter={handleOnMouseEnter}
             onMouseLeave={handleOnMouseLeave}
           />
@@ -176,9 +193,9 @@ export default function App() {
       )}
       {layout === "vr" && <Configurator />}
       <Routes>
-        {getRoutes(routes)}
+        {getRoutes(visibleRoutes)}
         <Route exact path="/authentication/sign-in" element={<SignIn />} />
-        <Route path="*" element={<Navigate to="/dashboard" />} />
+        <Route path="*" element={<Navigate to={role === "staff" ? "/purchase-requisition" : "/dashboard"} />} />
       </Routes>
     </ThemeProvider>
   );

@@ -195,6 +195,16 @@ const routes = [
     icon: <Icon fontSize="small">request_quote</Icon>,
     route: "/purchase-requisition",
     component: <PurchaseRequisition />,
+    allowedRoles: ["staff"],
+  },
+  {
+    type: "collapse",
+    name: "Requisition Approvals",
+    key: "requisition-approvals",
+    icon: <Icon fontSize="small">approval</Icon>,
+    route: "/requisition-approvals",
+    component: <PurchaseRequisition />,
+    allowedRoles: ["admin"],
   },
   {
     type: "collapse",

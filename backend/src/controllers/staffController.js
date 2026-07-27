@@ -20,6 +20,9 @@ import { normalizeInvoiceNumber } from '../utils/invoiceNumber.js';
 import { validateGoogleMapsLocation } from '../utils/googleMapsLocation.js';
 import { resolveItemGst } from '../utils/itemGst.js';
 import { uploadBufferToCloudinary, isCloudinaryConfigured } from '../utils/cloudinary.js';
+import bcrypt from 'bcryptjs';
+import crypto from 'crypto';
+import xlsx from 'xlsx';
 
 function buildStaffProfile(body = {}) {
     const whatsappSource = String(body.whatsappNumber || '').trim() || String(body.contactNo || '').trim();
@@ -316,6 +319,19 @@ export const createStaff = async (req, res) => {
         );
         await StaffModel.setCompanies(staffId, resolvedCompanyIds);
 
+        const primaryCompany = companyId ? await CompanyModel.getById(companyId) : null;
+        const companyPrefix = String(primaryCompany?.name || 'STAFF')
+            .replace(/[^a-z0-9]/gi, '')
+            .slice(0, 8)
+            .toUpperCase() || 'STAFF';
+        const loginId = `${companyPrefix}${String(staffId).padStart(4, '0')}`;
+        const generatedPassword = `${companyPrefix.slice(0, 4)}@${crypto.randomInt(100000, 999999)}`;
+        await StaffModel.setLoginCredentials(
+            staffId,
+            loginId,
+            await bcrypt.hash(generatedPassword, 10)
+        );
+
         // Add location assignments
         // assignments: { Monday: [{ locationName: "..." }], Tuesday: [...] }
         for (const day in assignments) {
@@ -329,12 +345,47 @@ export const createStaff = async (req, res) => {
         }
 
         res.status(201).json({
-            message: 'Staff and locations created successfully',
-            staffId
+            message: 'Staff, locations, and login credentials created successfully',
+            staffId,
+            credentials: {
+                loginId,
+                password: generatedPassword,
+            },
         });
     } catch (error) {
         console.error('Error creating staff:', error);
         res.status(500).json({ error: 'Internal server error' });
+    }
+};
+
+export const generateStaffCredentials = async (req, res) => {
+    try {
+        const staffId = Number(req.params.id);
+        const staff = await StaffModel.getDetails(staffId);
+        if (!staff) {
+            return res.status(404).json({ error: 'Staff was not found.' });
+        }
+        const companyName = String(staff.company_name || 'STAFF').split(',')[0].trim();
+        const companyPrefix = companyName
+            .replace(/[^a-z0-9]/gi, '')
+            .slice(0, 8)
+            .toUpperCase() || 'STAFF';
+        const loginId = `${companyPrefix}${String(staffId).padStart(4, '0')}`;
+        const generatedPassword = `${companyPrefix.slice(0, 4)}@${crypto.randomInt(100000, 999999)}`;
+        await StaffModel.setLoginCredentials(
+            staffId,
+            loginId,
+            await bcrypt.hash(generatedPassword, 10)
+        );
+        return res.json({
+            message: 'Staff login credentials generated.',
+            credentials: { loginId, password: generatedPassword },
+        });
+    } catch (error) {
+        if (error.code === 'ER_DUP_ENTRY') {
+            return res.status(409).json({ error: 'The generated login ID is already in use.' });
+        }
+        return res.status(500).json({ error: error.message || 'Internal server error' });
     }
 };
 
@@ -643,6 +694,42 @@ export const getAllOutletsForStaff = async (req, res) => {
     } catch (error) {
         console.error('Error fetching all outlets for staff:', error);
         res.status(500).json({ error: 'Internal server error' });
+    }
+};
+
+export const downloadOutletsExcel = async (req, res) => {
+    try {
+        const outlets = await StaffModel.getAllCounters();
+        const rows = outlets.map((outlet) => ({
+            Staff: outlet.staff_name || '',
+            Day: outlet.day || '',
+            'ERP ID': outlet.outlet_erp_id || '',
+            'Outlet Name': outlet.outlet_name || '',
+            'Contact No': outlet.contact_number || '',
+            'WhatsApp No': outlet.whatsapp_number || '',
+            Location: outlet.location_name || '',
+            Address: outlet.address || '',
+            'Google Location': outlet.google_location || '',
+            'GST Applicable': outlet.has_gst ? 'Yes' : 'No',
+            'GST Number': outlet.gst_number || '',
+        }));
+        const worksheet = xlsx.utils.json_to_sheet(rows, {
+            header: ['Staff', 'Day', 'ERP ID', 'Outlet Name', 'Contact No', 'WhatsApp No', 'Location', 'Address', 'Google Location', 'GST Applicable', 'GST Number'],
+        });
+        worksheet['!cols'] = [
+            { wch: 28 }, { wch: 14 }, { wch: 18 }, { wch: 32 }, { wch: 18 }, { wch: 18 },
+            { wch: 24 }, { wch: 45 }, { wch: 55 }, { wch: 18 }, { wch: 20 },
+        ];
+
+        const workbook = xlsx.utils.book_new();
+        xlsx.utils.book_append_sheet(workbook, worksheet, 'Outlets');
+        const file = xlsx.write(workbook, { type: 'buffer', bookType: 'xlsx' });
+        res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        res.setHeader('Content-Disposition', 'attachment; filename="all_outlets.xlsx"');
+        return res.send(file);
+    } catch (error) {
+        console.error('Error exporting outlets:', error);
+        return res.status(500).json({ error: 'Unable to export outlets.' });
     }
 };
 

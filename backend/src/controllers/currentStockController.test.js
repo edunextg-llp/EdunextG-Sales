@@ -90,6 +90,35 @@ test('includes products that exist only in physical or only in DMS stock', () =>
     assert.equal(items.find((item) => item.product_erp_id === 'B').total_current_stock_in_pcs, -14);
 });
 
+test('uses approved DMS quantity directly as current stock', () => {
+    const items = buildCurrentStockDiff(
+        [{
+            product_erp_id: 'APPROVED-1',
+            product_name: 'Approved Product',
+            pcs_per_box: 10,
+            physical_stock_in_case: 2,
+            physical_stock_in_pcs: 5,
+            total_physical_stock_in_pcs: 25,
+            price_per_piece: 4,
+            approved_as_current_stock: true,
+        }],
+        [{
+            product_erp_id: 'APPROVED-1',
+            product_name: 'Approved Product',
+            pcs_per_box: 10,
+            current_stock_in_case: 2,
+            current_stock_in_pcs: 5,
+            total_current_stock_in_pcs: 25,
+            price_per_piece: 4,
+        }]
+    );
+
+    assert.equal(items[0].current_stock_in_case, 2);
+    assert.equal(items[0].current_stock_in_pcs, 5);
+    assert.equal(items[0].total_current_stock_in_pcs, 25);
+    assert.equal(items[0].total_value, 100);
+});
+
 test('summarizes calculated current stock rows', () => {
     const items = buildCurrentStockDiff(
         [{

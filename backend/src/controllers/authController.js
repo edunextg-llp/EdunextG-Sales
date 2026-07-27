@@ -2,6 +2,7 @@ import jwt from 'jsonwebtoken';
 import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
 import UserModel from '../models/userModel.js';
+import StaffModel from '../models/staffModel.js';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'super_secret_key_12345';
 const JWT_REFRESH_SECRET = process.env.JWT_REFRESH_SECRET || `${JWT_SECRET}_refresh`;
@@ -68,27 +69,69 @@ export const getCaptcha = (req, res) => {
 
 export const login = async (req, res) => {
     try {
-        const { email, password, captchaId, captchaAnswer, rememberMe = false } = req.body;
+        const { email, loginId, password, captchaId, captchaAnswer, rememberMe = false } = req.body;
+        const identifier = String(loginId || email || '').trim();
 
-        if (!email || !password) {
-            return res.status(400).json({ error: 'Email and password are required' });
+        if (!identifier || !password) {
+            return res.status(400).json({ error: 'Login ID/email and password are required' });
         }
 
         if (!verifyCaptcha(captchaId, captchaAnswer)) {
             return res.status(400).json({ error: 'Invalid or expired CAPTCHA. Please try again.' });
         }
 
-        const admin = await UserModel.findByEmail(email);
-        if (!admin) {
-            return res.status(401).json({ error: 'Invalid email or password' });
-        }
+        const admin = await UserModel.findByEmail(identifier);
+        let tokenPayload;
+        let user;
 
-        const isMatch = await bcrypt.compare(password, admin.password);
-        if (!isMatch) {
-            return res.status(401).json({ error: 'Invalid email or password' });
-        }
+        if (admin && await bcrypt.compare(password, admin.password)) {
+            tokenPayload = { id: admin.id, email: admin.email, role: 'admin' };
+            user = {
+                id: admin.id,
+                username: admin.username,
+                email: admin.email,
+                role: 'admin',
+            };
+        } else {
+            const staff = await StaffModel.findByLoginId(identifier);
+            const validStaff = staff
+                && Number(staff.is_active) === 1
+                && staff.password_hash
+                && await bcrypt.compare(password, staff.password_hash);
+            if (!validStaff) {
+                return res.status(401).json({ error: 'Invalid login ID/email or password' });
+            }
 
-        const tokenPayload = { id: admin.id, email: admin.email, role: 'admin' };
+            const companyIds = String(staff.company_ids || '')
+                .split(',')
+                .map(Number)
+                .filter((id) => Number.isInteger(id) && id > 0);
+            const companyNames = String(staff.company_names || '')
+                .split(',')
+                .map((name) => name.trim())
+                .filter(Boolean);
+            tokenPayload = {
+                id: staff.id,
+                staffId: staff.id,
+                loginId: staff.login_id,
+                role: 'staff',
+                staffType: staff.staff_type,
+                companyIds,
+            };
+            user = {
+                id: staff.id,
+                staffId: staff.id,
+                username: staff.name,
+                loginId: staff.login_id,
+                role: 'staff',
+                staffType: staff.staff_type,
+                companies: companyIds.map((id, index) => ({
+                    id,
+                    name: companyNames[index] || `Company ${id}`,
+                    type: staff.staff_type,
+                })),
+            };
+        }
         const token = jwt.sign(
             tokenPayload,
             JWT_SECRET,
@@ -106,7 +149,7 @@ export const login = async (req, res) => {
             refreshToken,
             expiresIn: ACCESS_TOKEN_EXPIRES_IN,
             refreshExpiresIn: rememberMe ? REMEMBER_REFRESH_TOKEN_EXPIRES_IN : SESSION_REFRESH_TOKEN_EXPIRES_IN,
-            user: { id: admin.id, username: admin.username, email: admin.email }
+            user,
         });
     } catch (error) {
         console.error('Login error:', error);
@@ -124,7 +167,15 @@ export const refreshToken = async (req, res) => {
 
         const decoded = jwt.verify(providedRefreshToken, JWT_REFRESH_SECRET);
         const token = jwt.sign(
-            { id: decoded.id, email: decoded.email, role: decoded.role },
+            {
+                id: decoded.id,
+                email: decoded.email,
+                role: decoded.role,
+                staffId: decoded.staffId,
+                loginId: decoded.loginId,
+                staffType: decoded.staffType,
+                companyIds: decoded.companyIds,
+            },
             JWT_SECRET,
             { expiresIn: ACCESS_TOKEN_EXPIRES_IN }
         );
@@ -133,7 +184,15 @@ export const refreshToken = async (req, res) => {
             message: 'Token refreshed successfully',
             token,
             expiresIn: ACCESS_TOKEN_EXPIRES_IN,
-            user: { id: decoded.id, email: decoded.email, role: decoded.role }
+            user: {
+                id: decoded.id,
+                email: decoded.email,
+                role: decoded.role,
+                staffId: decoded.staffId,
+                loginId: decoded.loginId,
+                staffType: decoded.staffType,
+                companyIds: decoded.companyIds,
+            }
         });
     } catch (error) {
         return res.status(401).json({ error: 'Invalid or expired refresh token.' });

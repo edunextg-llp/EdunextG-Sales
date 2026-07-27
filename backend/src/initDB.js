@@ -53,6 +53,8 @@ async function initDB() {
             aadhar_document_url TEXT NULL,
             pcc_certificate_url TEXT NULL,
             staff_category ENUM('company_staff', 'bawarchee_staff') NOT NULL DEFAULT 'company_staff',
+            login_id VARCHAR(100) NULL UNIQUE,
+            password_hash VARCHAR(255) NULL,
             is_active TINYINT(1) NOT NULL DEFAULT 1,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE SET NULL

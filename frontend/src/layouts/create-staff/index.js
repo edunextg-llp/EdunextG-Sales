@@ -387,6 +387,18 @@ function CreateStaff() {
     }
   };
 
+  const handleGenerateCredentials = async (staff) => {
+    if (!window.confirm(`Generate a new login ID and password for ${staff.name}? Any old password will stop working.`)) {
+      return;
+    }
+    const response = await fetch(`${API}/staff/${staff.id}/generate-credentials`, { method: "POST" });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) return alert(data.error || "Unable to generate staff credentials.");
+    alert(
+      `Login credentials for ${staff.name}\n\nLogin ID: ${data.credentials.loginId}\nPassword: ${data.credentials.password}\n\nSave these credentials now; the password is shown only once.`
+    );
+  };
+
   // View Staff Location Details
   const handleView = async (staff) => {
     try {
@@ -536,13 +548,19 @@ function CreateStaff() {
         }),
       });
 
+      const responseData = await response.json().catch(() => ({}));
       if (response.ok) {
-        alert(editingStaffId ? "Staff updated successfully!" : "Staff created successfully!");
+        if (!editingStaffId && responseData.credentials) {
+          alert(
+            `Staff created successfully!\n\nLogin ID: ${responseData.credentials.loginId}\nPassword: ${responseData.credentials.password}\n\nSave these credentials now; the password is shown only once.`
+          );
+        } else {
+          alert("Staff updated successfully!");
+        }
         closeStaffModal();
         fetchStaffList(showInactive);
       } else {
-        const err = await response.json().catch(() => ({}));
-        alert(err.error || "Operation failed.");
+        alert(responseData.error || "Operation failed.");
       }
     } catch (error) {
       console.error("Error submitting form:", error);
@@ -743,6 +761,15 @@ function CreateStaff() {
                               <MDBox display="flex" gap={0.5} justifyContent="center" alignItems="center" flexWrap="wrap">
                                 <FaEye onClick={() => handleView(staff)} style={{ cursor: "pointer" }} color="#E0E388" size={20} />
                                 <FaRegEdit onClick={() => handleEdit(staff)} style={{ cursor: "pointer" }} color="#E0E388" size={20} />
+                                <MDButton
+                                  color="info"
+                                  variant="text"
+                                  size="small"
+                                  title="Generate Staff Login"
+                                  onClick={() => handleGenerateCredentials(staff)}
+                                >
+                                  <Icon fontSize="small">key</Icon>
+                                </MDButton>
                               </MDBox>
                             </TableCell>
                           </TableRow>

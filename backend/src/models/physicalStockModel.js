@@ -9,6 +9,16 @@ const toNumber = (value) => {
 const roundQuantity = (value) => Math.round((Number(value) + Number.EPSILON) * 10000) / 10000;
 const roundMoney = (value) => Math.round((Number(value) + Number.EPSILON) * 100) / 100;
 
+const parseRawData = (value) => {
+    if (!value) return {};
+    if (typeof value === 'object') return value;
+    try {
+        return JSON.parse(value);
+    } catch {
+        return {};
+    }
+};
+
 const splitTotalPieces = (totalPcs, pcsPerBox) => {
     const total = Math.max(0, roundQuantity(totalPcs));
     const perBox = toNumber(pcsPerBox);
@@ -426,7 +436,7 @@ class PhysicalStockModel {
             `SELECT psi.id, psi.import_id, psi.product_erp_id, psi.product_name, psi.product_division,
                     psi.variant_name, psi.pcs_per_box, psi.physical_stock_in_case, psi.physical_stock_in_pcs,
                     psi.total_physical_stock_in_pcs, psi.price_per_piece, psi.mrp, psi.total_value,
-                    psi.expired_stock_date
+                    psi.expired_stock_date, psi.raw_data
              FROM physical_stock_items psi
              INNER JOIN physical_stock_imports p ON p.id = psi.import_id
              INNER JOIN (
@@ -442,16 +452,20 @@ class PhysicalStockModel {
             [dmsImportId, dmsImportId]
         );
 
-        return rows.map((row) => ({
-            ...row,
-            pcs_per_box: toNumber(row.pcs_per_box),
-            physical_stock_in_case: toNumber(row.physical_stock_in_case),
-            physical_stock_in_pcs: toNumber(row.physical_stock_in_pcs),
-            total_physical_stock_in_pcs: toNumber(row.total_physical_stock_in_pcs),
-            price_per_piece: toNumber(row.price_per_piece),
-            mrp: toNumber(row.mrp),
-            total_value: toNumber(row.total_value),
-        }));
+        return rows.map((row) => {
+            const rawData = parseRawData(row.raw_data);
+            return {
+                ...row,
+                approved_as_current_stock: rawData.approvedAsCurrentStock === true,
+                pcs_per_box: toNumber(row.pcs_per_box),
+                physical_stock_in_case: toNumber(row.physical_stock_in_case),
+                physical_stock_in_pcs: toNumber(row.physical_stock_in_pcs),
+                total_physical_stock_in_pcs: toNumber(row.total_physical_stock_in_pcs),
+                price_per_piece: toNumber(row.price_per_piece),
+                mrp: toNumber(row.mrp),
+                total_value: toNumber(row.total_value),
+            };
+        });
     }
 
     static async getImportById(importId) {

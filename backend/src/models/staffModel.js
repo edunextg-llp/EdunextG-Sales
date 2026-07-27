@@ -35,6 +35,30 @@ class StaffModel {
         return result.insertId;
     }
 
+    static async setLoginCredentials(staffId, loginId, passwordHash) {
+        await db.execute(
+            'UPDATE staff SET login_id = ?, password_hash = ? WHERE id = ?',
+            [loginId, passwordHash, staffId]
+        );
+    }
+
+    static async findByLoginId(loginId) {
+        const [rows] = await db.execute(
+            `SELECT s.id, s.name, s.contact_no, s.staff_type, s.staff_category,
+                    s.login_id, s.password_hash, s.is_active,
+                    GROUP_CONCAT(DISTINCT sc.company_id ORDER BY sc.company_id) AS company_ids,
+                    GROUP_CONCAT(DISTINCT c.name ORDER BY sc.company_id SEPARATOR ', ') AS company_names
+             FROM staff s
+             LEFT JOIN staff_companies sc ON sc.staff_id = s.id
+             LEFT JOIN companies c ON c.id = sc.company_id
+             WHERE LOWER(s.login_id) = LOWER(?)
+             GROUP BY s.id
+             LIMIT 1`,
+            [loginId]
+        );
+        return rows[0] || null;
+    }
+
     static async setCompanies(staffId, companyIds = []) {
         await db.execute('DELETE FROM staff_companies WHERE staff_id = ?', [staffId]);
 
@@ -293,6 +317,18 @@ class StaffModel {
         const [rows] = await db.execute(
             'SELECT id, outlet_erp_id, outlet_name, contact_number, whatsapp_number, location_name, address, google_location, has_gst, gst_number, day FROM staff_counters WHERE staff_id = ?',
             [staffId]
+        );
+        return rows;
+    }
+
+    static async getAllCounters() {
+        const [rows] = await db.execute(
+            `SELECT sc.id, sc.outlet_erp_id, sc.outlet_name, sc.contact_number, sc.whatsapp_number,
+                    sc.location_name, sc.address, sc.google_location, sc.has_gst, sc.gst_number, sc.day,
+                    s.name AS staff_name
+             FROM staff_counters sc
+             INNER JOIN staff s ON s.id = sc.staff_id
+             ORDER BY s.name, sc.day, sc.outlet_name`
         );
         return rows;
     }

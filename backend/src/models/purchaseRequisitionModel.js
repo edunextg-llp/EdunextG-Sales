@@ -61,13 +61,17 @@ class PurchaseRequisitionModel {
         return PurchaseRequisitionModel.normalize(rows[0]);
     }
 
-    static async listByStaff(staffId, { date = null } = {}) {
+    static async listByStaff(staffId, { date = null, companyId = null } = {}) {
         const params = [staffId];
-        let dateClause = '';
+        let filters = '';
 
         if (date) {
-            dateClause = ' AND DATE(pr.created_at) = ?';
+            filters += ' AND DATE(pr.created_at) = ?';
             params.push(date);
+        }
+        if (companyId) {
+            filters += ' AND pr.company_id = ?';
+            params.push(companyId);
         }
 
         const [rows] = await db.execute(
@@ -78,11 +82,52 @@ class PurchaseRequisitionModel {
              JOIN companies c ON c.id = pr.company_id
              JOIN staff s ON s.id = pr.staff_id
              JOIN staff_counters sc ON sc.id = pr.outlet_id
-             WHERE pr.staff_id = ?${dateClause}
+             WHERE pr.staff_id = ?${filters}
              ORDER BY pr.created_at DESC`,
             params
         );
         return rows.map((row) => PurchaseRequisitionModel.normalize(row));
+    }
+
+    static async listAll({ date = null, companyId = null, status = null } = {}) {
+        const params = [];
+        const clauses = [];
+        if (date) {
+            clauses.push('DATE(pr.created_at) = ?');
+            params.push(date);
+        }
+        if (companyId) {
+            clauses.push('pr.company_id = ?');
+            params.push(companyId);
+        }
+        if (status) {
+            clauses.push('pr.status = ?');
+            params.push(status);
+        }
+        const where = clauses.length ? `WHERE ${clauses.join(' AND ')}` : '';
+        const [rows] = await db.execute(
+            `SELECT pr.*, c.name AS company_name, s.name AS staff_name, s.contact_no AS staff_contact,
+                    sc.outlet_name, sc.outlet_erp_id, sc.address AS outlet_address,
+                    sc.contact_number AS outlet_contact, sc.location_name, sc.has_gst, sc.gst_number
+             FROM purchase_requisitions pr
+             JOIN companies c ON c.id = pr.company_id
+             JOIN staff s ON s.id = pr.staff_id
+             JOIN staff_counters sc ON sc.id = pr.outlet_id
+             ${where}
+             ORDER BY pr.created_at DESC`,
+            params
+        );
+        return rows.map((row) => PurchaseRequisitionModel.normalize(row));
+    }
+
+    static async updateStatus(id, status, adminId, note = null) {
+        const [result] = await db.execute(
+            `UPDATE purchase_requisitions
+             SET status = ?, reviewed_by = ?, reviewed_at = NOW(), review_note = ?
+             WHERE id = ? AND status IN ('open', 'pending')`,
+            [status, adminId, note || null, id]
+        );
+        return result.affectedRows ? PurchaseRequisitionModel.getById(id) : null;
     }
 
     static normalize(row) {

@@ -82,7 +82,7 @@ function Basic() {
       if (response.ok) {
         const data = await response.json();
         login(data.user, data.token, data.refreshToken, rememberMe);
-        navigate("/dashboard", { replace: true });
+        navigate(data.user?.role === "staff" ? "/purchase-requisition" : "/dashboard", { replace: true });
       } else {
         const err = await response.json().catch(() => ({}));
         setError(err.error || "Invalid login credentials");
@@ -153,15 +153,15 @@ function Basic() {
                 Sign In
               </MDTypography>
               <MDTypography variant="button" color="text" fontWeight="regular">
-                Enter your email and password to log in.
+                Enter your admin email or staff login ID and password.
               </MDTypography>
             </MDBox>
 
             <MDBox component="form" role="form" onSubmit={handleSubmit}>
               <MDBox mb={2.5}>
                 <MDInput
-                  type="email"
-                  label="Email address"
+                  type="text"
+                  label="Email or Staff Login ID"
                   fullWidth
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}

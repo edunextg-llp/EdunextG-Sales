@@ -12,6 +12,7 @@ import DashboardLayout from "examples/LayoutContainers/DashboardLayout";
 import DashboardNavbar from "examples/Navbars/DashboardNavbar";
 import Footer from "examples/Footer";
 import { printPurchaseRequisitionPdf } from "utils/printPurchaseRequisitionPdf";
+import { useAuth } from "context/AuthContext";
 
 const API = "https://bawarchee.edunextg.co/api";
 const auth = () => ({ Authorization: `Bearer ${localStorage.getItem("token")}` });
@@ -46,6 +47,8 @@ const toDateInputValue = (value) => {
 };
 
 function PurchaseRequisition() {
+  const { user } = useAuth();
+  const isStaff = user?.role === "staff";
   const [sellerType, setSellerType] = useState("");
   const [companies, setCompanies] = useState([]);
   const [staff, setStaff] = useState([]);
@@ -61,11 +64,33 @@ function PurchaseRequisition() {
   const [items, setItems] = useState([]);
   const [result, setResult] = useState("");
   const [savedRequisitions, setSavedRequisitions] = useState([]);
+  const [historyCompanyId, setHistoryCompanyId] = useState("");
+  const [historyStaffId, setHistoryStaffId] = useState("");
   const [historyDateFilter, setHistoryDateFilter] = useState("");
   const [loadingHistory, setLoadingHistory] = useState(false);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
+    if (isStaff) {
+      const assignedCompanies = Array.isArray(user?.companies) ? user.companies : [];
+      setCompanies(assignedCompanies);
+      setStaff([{
+        id: user.staffId,
+        name: user.username,
+        staff_type: user.staffType,
+        company_ids: assignedCompanies.map((company) => company.id).join(","),
+      }]);
+      setSellerType(user.staffType || "distributor");
+      setStaffId(String(user.staffId || ""));
+      if (assignedCompanies[0]) {
+        setCompanyId(String(assignedCompanies[0].id));
+        fetch(`${API}/staff/current-stock?companyName=${encodeURIComponent(assignedCompanies[0].name)}`)
+          .then((response) => response.json())
+          .then((data) => setStock((data.items || []).filter((item) => Number(item.total_current_stock_in_pcs) > 0)))
+          .catch(() => setStock([]));
+      }
+      return;
+    }
     Promise.all([
       fetch(`${API}/staff/companies`, { headers: auth() }).then((r) => r.json()),
       fetch(`${API}/staff`, { headers: auth() }).then((r) => r.json()),
@@ -73,11 +98,17 @@ function PurchaseRequisition() {
       setCompanies(Array.isArray(companyRows) ? companyRows : []);
       setStaff(Array.isArray(staffRows) ? staffRows : []);
     });
-  }, []);
+  }, [isStaff, user]);
 
   const filteredStaff = staff.filter((row) => {
     const ids = String(row.company_ids || row.company_id || "").split(",").map((id) => id.trim());
     return (row.staff_type || "distributor") === sellerType && ids.includes(String(companyId));
+  });
+
+  const historyStaff = staff.filter((row) => {
+    if (!historyCompanyId) return true;
+    const companyIds = String(row.company_ids || row.company_id || "").split(",").map((id) => id.trim());
+    return companyIds.includes(String(historyCompanyId));
   });
 
   const availableStock = useMemo(
@@ -85,15 +116,17 @@ function PurchaseRequisition() {
     [stock]
   );
 
-  const fetchHistory = useCallback(async (selectedStaffId, dateFilter = "") => {
-    if (!selectedStaffId) {
+  const fetchHistory = useCallback(async (selectedStaffId, selectedCompanyId, dateFilter = "") => {
+    if (!selectedStaffId && isStaff) {
       setSavedRequisitions([]);
       return;
     }
 
     setLoadingHistory(true);
     try {
-      const params = new URLSearchParams({ staffId: String(selectedStaffId) });
+      const params = new URLSearchParams();
+      if (selectedStaffId) params.set("staffId", String(selectedStaffId));
+      if (selectedCompanyId) params.set("companyId", String(selectedCompanyId));
       if (dateFilter) params.set("date", dateFilter);
       const response = await fetch(`${API}/staff/purchase-requisitions?${params.toString()}`, {
         headers: auth(),
@@ -105,11 +138,11 @@ function PurchaseRequisition() {
     } finally {
       setLoadingHistory(false);
     }
-  }, []);
+  }, [isStaff]);
 
   useEffect(() => {
-    fetchHistory(staffId, historyDateFilter);
-  }, [staffId, historyDateFilter, fetchHistory]);
+    fetchHistory(isStaff ? staffId : historyStaffId, historyCompanyId, historyDateFilter);
+  }, [staffId, historyCompanyId, historyStaffId, historyDateFilter, fetchHistory, isStaff]);
 
   const groupedHistory = useMemo(() => {
     const groups = new Map();
@@ -123,7 +156,7 @@ function PurchaseRequisition() {
 
   const chooseCompany = async (value) => {
     setCompanyId(value);
-    setStaffId("");
+    if (!isStaff) setStaffId("");
     setOutletId("");
     setItems([]);
     setSavedRequisitions([]);
@@ -197,18 +230,31 @@ function PurchaseRequisition() {
       setItems([]);
       setSelectedItem(null);
       setQuantity("");
-      await fetchHistory(staffId, historyDateFilter);
+      await fetchHistory(isStaff ? staffId : historyStaffId, historyCompanyId, historyDateFilter);
       printPurchaseRequisitionPdf(requisition);
     } finally {
       setSaving(false);
     }
   };
 
+  const reviewRequisition = async (requisitionId, status) => {
+    const action = status === "approved" ? "approve" : "cancel";
+    if (!window.confirm(`Are you sure you want to ${action} this requisition?`)) return;
+    const response = await fetch(`${API}/staff/purchase-requisitions/${requisitionId}/status`, {
+      method: "PUT",
+      headers: { ...auth(), "Content-Type": "application/json" },
+      body: JSON.stringify({ status }),
+    });
+    const data = await response.json();
+    if (!response.ok) return alert(data.error || `Unable to ${action} requisition.`);
+    await fetchHistory(isStaff ? staffId : historyStaffId, historyCompanyId, historyDateFilter);
+  };
+
   return (
     <DashboardLayout>
       <DashboardNavbar />
       <MDBox py={3}>
-        <Card>
+        {isStaff && <Card>
           <MDBox p={3}>
             <MDTypography variant="h5" fontWeight="bold">Purchase Requisition</MDTypography>
             <Grid container spacing={2} mt={0.5}>
@@ -224,7 +270,13 @@ function PurchaseRequisition() {
                 <Grid item xs={12} md={2.4} key={label}>
                   <MDTypography variant="caption" fontWeight="bold">{label}</MDTypography>
                   <FormControl fullWidth>
-                    <Select value={value} displayEmpty onChange={(e) => change(e.target.value)} sx={{ height: 48 }}>
+                    <Select
+                      value={value}
+                      displayEmpty
+                      disabled={isStaff && ["Seller Type", "Staff"].includes(label)}
+                      onChange={(e) => change(e.target.value)}
+                      sx={{ height: 48 }}
+                    >
                       <MenuItem value="">Select {label}</MenuItem>
                       {options.map((o) => <MenuItem key={o.id} value={String(o.id)}>{o.name}</MenuItem>)}
                     </Select>
@@ -302,18 +354,52 @@ function PurchaseRequisition() {
               </MDButton>
             </MDBox>
           </MDBox>
-        </Card>
+        </Card>}
 
-        {staffId && (
+        {(staffId || !isStaff) && (
           <Card sx={{ mt: 3 }}>
             <MDBox p={3}>
               <MDBox display="flex" justifyContent="space-between" alignItems="center" flexWrap="wrap" gap={2} mb={2}>
                 <MDBox>
                   <MDTypography variant="h6" fontWeight="bold">Submitted Requisitions</MDTypography>
                   <MDTypography variant="caption" color="text">
-                    Showing requisitions for selected staff, grouped by date.
+                    {isStaff
+                      ? "Your submitted requisitions, grouped by date."
+                      : staffId
+                        ? "Showing requisitions for selected staff, grouped by date."
+                        : "Admin review queue for all staff requisitions."}
                   </MDTypography>
                 </MDBox>
+                {!isStaff && <MDBox minWidth={200}>
+                  <MDTypography variant="caption" fontWeight="bold">Company</MDTypography>
+                  <FormControl fullWidth>
+                    <Select
+                      value={historyCompanyId}
+                      displayEmpty
+                      onChange={(e) => {
+                        setHistoryCompanyId(e.target.value);
+                        setHistoryStaffId("");
+                      }}
+                      sx={{ height: 44 }}
+                    >
+                      <MenuItem value="">All Companies</MenuItem>
+                      {companies.map((company) => (
+                        <MenuItem key={company.id} value={String(company.id)}>{company.name}</MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
+                </MDBox>}
+                {!isStaff && <MDBox minWidth={200}>
+                  <MDTypography variant="caption" fontWeight="bold">Staff</MDTypography>
+                  <FormControl fullWidth>
+                    <Select value={historyStaffId} displayEmpty onChange={(e) => setHistoryStaffId(e.target.value)} sx={{ height: 44 }}>
+                      <MenuItem value="">All Staff</MenuItem>
+                      {historyStaff.map((member) => (
+                        <MenuItem key={member.id} value={String(member.id)}>{member.name}</MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
+                </MDBox>}
                 <MDBox minWidth={220}>
                   <MDInput
                     type="date"
@@ -330,7 +416,7 @@ function PurchaseRequisition() {
                 <MDTypography variant="body2" color="text">Loading requisitions...</MDTypography>
               ) : groupedHistory.length === 0 ? (
                 <MDTypography variant="body2" color="text">
-                  No requisitions found for this staff{historyDateFilter ? " on the selected date" : ""}.
+                  No requisitions found{historyDateFilter ? " on the selected date" : ""}.
                 </MDTypography>
               ) : (
                 groupedHistory.map(([dateKey, rows]) => (
@@ -342,7 +428,11 @@ function PurchaseRequisition() {
                       <Table size="small">
                         <TableHead sx={{ display: "table-header-group" }}>
                           <TableRow>
-                            {["Requisition No", "Time", "Outlet", "Items", "Total Qty", "Amount", "Status", "PDF"].map((h) => (
+                            {[
+                              "Requisition No", "Time", ...(!isStaff ? ["Staff", "Company"] : []),
+                              "Outlet", "Items", "Total Qty", "Amount", "Status", "PDF",
+                              ...(!isStaff ? ["Admin Action"] : []),
+                            ].map((h) => (
                               <TableCell key={h} sx={{ fontWeight: 700 }}>{h}</TableCell>
                             ))}
                           </TableRow>
@@ -352,6 +442,8 @@ function PurchaseRequisition() {
                             <TableRow key={row.id || row.requisition_number}>
                               <TableCell>{row.requisition_number}</TableCell>
                               <TableCell>{formatDateTime(row.created_at)}</TableCell>
+                              {!isStaff && <TableCell>{row.staff_name}</TableCell>}
+                              {!isStaff && <TableCell>{row.company_name}</TableCell>}
                               <TableCell>{row.outlet_name}</TableCell>
                               <TableCell>{row.item_count}</TableCell>
                               <TableCell>{Number(row.total_quantity || 0).toFixed(2)}</TableCell>
@@ -367,6 +459,32 @@ function PurchaseRequisition() {
                                   <Icon fontSize="small">picture_as_pdf</Icon>
                                 </MDButton>
                               </TableCell>
+                              {!isStaff && (
+                                <TableCell>
+                                  {["open", "pending"].includes(row.status || "pending") ? (
+                                    <MDBox display="flex" gap={1}>
+                                      <MDButton
+                                        color="success"
+                                        variant="gradient"
+                                        size="small"
+                                        onClick={() => reviewRequisition(row.id, "approved")}
+                                      >
+                                        Approve
+                                      </MDButton>
+                                      <MDButton
+                                        color="error"
+                                        variant="outlined"
+                                        size="small"
+                                        onClick={() => reviewRequisition(row.id, "cancelled")}
+                                      >
+                                        Cancel
+                                      </MDButton>
+                                    </MDBox>
+                                  ) : (
+                                    <MDTypography variant="caption" color="text">Reviewed</MDTypography>
+                                  )}
+                                </TableCell>
+                              )}
                             </TableRow>
                           ))}
                         </TableBody>

@@ -140,6 +140,9 @@ const emptyStockForm = () => ({
   physicalStockInPcs: "",
 });
 
+const getProductErpId = (item) =>
+  String(item?.product_erp_id ?? item?.productErpId ?? item?.erp_id ?? "").trim();
+
 const calcPhysicalTotals = (product, stockForm) => {
   const pcsPerBox = Number(product?.pcs_per_box) || 0;
   const physicalStockInCase = Number(stockForm.physicalStockInCase) || 0;
@@ -236,6 +239,12 @@ function PhysicalStock() {
 
   const handleApprove = async () => {
     if (!dmsImportId || !selectedApproveItem) return;
+    const productErpId = getProductErpId(selectedApproveItem);
+    if (!productErpId) {
+      setError("This product does not have an ERP ID. Please update the product before approving stock.");
+      setApproveModalOpen(false);
+      return;
+    }
     setApproving(true);
     try {
       const response = await fetch(`${API}/staff/physical-stock/approve`, {
@@ -243,14 +252,14 @@ function PhysicalStock() {
         headers: { "Content-Type": "application/json", ...authHeaders },
         body: JSON.stringify({
           dmsImportId,
-          productErpId: selectedApproveItem.product_erp_id,
+          productErpId,
         }),
       });
       if (!response.ok) {
         const data = await response.json();
         throw new Error(data.error || "Failed to approve stock.");
       }
-      setMessage(`${selectedApproveItem.product_name} approved successfully.`);
+      setMessage(`${selectedApproveItem.product_name} is now saved as Physical Stock and Current Stock.`);
       setApproveModalOpen(false);
       fetchPhysicalStock(companyFilter);
     } catch (err) {
@@ -400,16 +409,26 @@ function PhysicalStock() {
 
   const handleViewItemHistory = async (item) => {
     if (!dmsImportId) return;
+    const productErpId = getProductErpId(item);
+    if (!productErpId) {
+      setError("This product does not have an ERP ID, so its stock history cannot be loaded.");
+      return;
+    }
     setHistoryItem(item);
     setHistoryModalOpen(true);
-    fetchItemHistory(item, dmsImportId);
+    fetchItemHistory(item, dmsImportId, productErpId);
   };
 
-  const fetchItemHistory = async (item, importId) => {
+  const fetchItemHistory = async (item, importId, productErpId = getProductErpId(item)) => {
     setLoadingHistory(true);
     setHistoryError("");
     try {
-      const response = await fetch(`${API}/staff/physical-stock/item-history?dmsImportId=${importId}&productErpId=${encodeURIComponent(item.product_erp_id)}`, { headers: authHeaders });
+      const params = new URLSearchParams({
+        dmsImportId: String(importId),
+        erpId: productErpId,
+        productErpId,
+      });
+      const response = await fetch(`${API}/staff/physical-stock/item-history?${params}`, { headers: authHeaders });
       const data = await response.json();
       if (!response.ok) {
         throw new Error(data.error || "Failed to fetch item history.");
@@ -423,13 +442,28 @@ function PhysicalStock() {
   };
 
   const groupedHistory = useMemo(() => {
+    let previousStock = 0;
     const groups = new Map();
-    historyRows.forEach((entry) => {
-      const key = String(entry.update_date || entry.created_at || "").slice(0, 10) || "unknown";
-      if (!groups.has(key)) groups.get(key, []);
-      groups.get(key).push(entry);
-    });
-    return [...groups.entries()].sort((a, b) => b[0].localeCompare(a[0]));
+    [...historyRows]
+      .sort((left, right) => {
+        const timeOrder = String(left.created_at || "").localeCompare(String(right.created_at || ""));
+        return timeOrder || Number(left.id || 0) - Number(right.id || 0);
+      })
+      .forEach((entry) => {
+        const currentStock = Number(entry.total_physical_stock_in_pcs) || 0;
+        const historyEntry = {
+          ...entry,
+          previous_stock_in_pcs: previousStock,
+          current_stock_in_pcs: currentStock,
+        };
+        const key = String(entry.update_date || entry.created_at || "").slice(0, 10) || "unknown";
+        if (!groups.has(key)) groups.set(key, []);
+        groups.get(key).push(historyEntry);
+        previousStock = currentStock;
+      });
+    return [...groups.entries()]
+      .sort((a, b) => b[0].localeCompare(a[0]))
+      .map(([date, rows]) => [date, [...rows].reverse()]);
   }, [historyRows]);
 
   const updateStockForm = (field, value) => {
@@ -816,10 +850,14 @@ function PhysicalStock() {
                             <IconButton
                               color="info"
                               size="small"
-                              title="Approve Stock"
+                              title={item.is_approved ? "View Stock History" : "Approve Stock"}
                               onClick={() => {
-                                setSelectedApproveItem(item);
-                                setApproveModalOpen(true);
+                                if (item.is_approved) {
+                                  handleViewItemHistory(item);
+                                } else {
+                                  setSelectedApproveItem(item);
+                                  setApproveModalOpen(true);
+                                }
                               }}
                             >
                               <Icon fontSize="small">visibility</Icon>
@@ -1229,8 +1267,9 @@ function PhysicalStock() {
                 {historyItem.variant_name ? ` | ${historyItem.variant_name}` : ""}
               </MDTypography>
               <MDTypography variant="caption" color="text" display="block" mt={0.5}>
-                Current stock: {unitFormat(historyItem.physical_stock_in_case)} cases, {unitFormat(historyItem.physical_stock_in_pcs)} pcs
-                ({unitFormat(historyItem.total_physical_stock_in_pcs)} total pcs)
+                Current stock: {unitFormat(historyItem.physical_stock?.physical_stock_in_case ?? historyItem.physical_stock_in_case ?? historyItem.current_stock_in_case)} cases,{" "}
+                {unitFormat(historyItem.physical_stock?.physical_stock_in_pcs ?? historyItem.physical_stock_in_pcs ?? historyItem.current_stock_in_pcs)} pcs
+                {" "}({unitFormat(historyItem.physical_stock?.total_physical_stock_in_pcs ?? historyItem.total_physical_stock_in_pcs ?? historyItem.total_current_stock_in_pcs)} total pcs)
               </MDTypography>
             </MDBox>
           )}
@@ -1262,10 +1301,10 @@ function PhysicalStock() {
                 <Table size="small">
                   <TableHead sx={{ display: "table-header-group", backgroundColor: "#f9fafb" }}>
                     <TableRow>
-                      {["Time", "Change", "Source", "Cases", "Pcs", "Total Pcs", "Total Value"].map((heading) => (
+                      {["Time", "Change", "Source", "Previous Stock", "Current Stock", "Total Value"].map((heading) => (
                         <TableCell
                           key={heading}
-                          align={heading === "Cases" || heading === "Pcs" || heading === "Total Pcs" || heading === "Total Value" ? "right" : "left"}
+                          align={["Previous Stock", "Current Stock", "Total Value"].includes(heading) ? "right" : "left"}
                           sx={{ ...tableHeadSx, py: 1 }}
                         >
                           {heading}
@@ -1279,9 +1318,8 @@ function PhysicalStock() {
                         <TableCell sx={tableBodySx}>{formatDateTime(entry.created_at)}</TableCell>
                         <TableCell sx={tableBodySx}>{formatChangeType(entry.change_type)}</TableCell>
                         <TableCell sx={tableBodySx}>{formatHistorySource(entry)}</TableCell>
-                        <TableCell align="right" sx={tableBodySx}>{unitFormat(entry.physical_stock_in_case)}</TableCell>
-                        <TableCell align="right" sx={tableBodySx}>{unitFormat(entry.physical_stock_in_pcs)}</TableCell>
-                        <TableCell align="right" sx={calculatedCellSx}>{unitFormat(entry.total_physical_stock_in_pcs)}</TableCell>
+                        <TableCell align="right" sx={tableBodySx}>{unitFormat(entry.previous_stock_in_pcs)}</TableCell>
+                        <TableCell align="right" sx={calculatedCellSx}>{unitFormat(entry.current_stock_in_pcs)}</TableCell>
                         <TableCell align="right" sx={tableBodySx}>{money(entry.total_value)}</TableCell>
                       </TableRow>
                     ))}
@@ -1304,11 +1342,11 @@ function PhysicalStock() {
           {selectedApproveItem && (
             <MDBox>
               <MDTypography variant="h6">{selectedApproveItem.product_name}</MDTypography>
-              <MDTypography variant="body2" color="text">ERP ID: {selectedApproveItem.product_erp_id}</MDTypography>
+              <MDTypography variant="body2" color="text">ERP ID: {getProductErpId(selectedApproveItem) || "Not available"}</MDTypography>
               <MDTypography variant="body2" color="text">DMS Total Pcs: {unitFormat(selectedApproveItem.total_current_stock_in_pcs)}</MDTypography>
               <MDBox mt={2} p={2} sx={{ backgroundColor: "#eff6ff", borderRadius: 1 }}>
                 <MDTypography variant="body2" fontWeight="medium">
-                  Clicking OK will save {unitFormat(selectedApproveItem.total_current_stock_in_pcs)} as the Physical Stock for this item.
+                  Clicking OK will save {unitFormat(selectedApproveItem.total_current_stock_in_pcs)} as both the Physical Stock and Current Stock for this item.
                 </MDTypography>
               </MDBox>
             </MDBox>

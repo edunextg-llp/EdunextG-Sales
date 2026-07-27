@@ -810,13 +810,32 @@ export async function ensureSchema() {
                 item_count INT NOT NULL DEFAULT 0,
                 total_quantity DECIMAL(14, 4) NOT NULL DEFAULT 0.0000,
                 total_amount DECIMAL(14, 4) NOT NULL DEFAULT 0.0000,
-                status ENUM('open', 'invoiced', 'cancelled') NOT NULL DEFAULT 'open',
+                status ENUM('pending', 'approved', 'invoiced', 'cancelled') NOT NULL DEFAULT 'pending',
+                reviewed_by INT NULL,
+                reviewed_at DATETIME NULL,
+                review_note VARCHAR(500) NULL,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 INDEX idx_purchase_requisitions_company (company_id),
                 INDEX idx_purchase_requisitions_staff (staff_id),
                 INDEX idx_purchase_requisitions_outlet (outlet_id)
             )
         `);
+        await tryQuery(connection, `ALTER TABLE staff ADD COLUMN login_id VARCHAR(100) NULL`, 'login_id on staff');
+        await tryQuery(connection, `ALTER TABLE staff ADD COLUMN password_hash VARCHAR(255) NULL`, 'password_hash on staff');
+        await tryQuery(connection, `CREATE UNIQUE INDEX uq_staff_login_id ON staff(login_id)`, 'unique staff login_id');
+        await tryQuery(
+            connection,
+            `ALTER TABLE purchase_requisitions MODIFY COLUMN status ENUM('open', 'pending', 'approved', 'invoiced', 'cancelled') NOT NULL DEFAULT 'pending'`,
+            'purchase requisition approval statuses'
+        );
+        await tryQuery(connection, `ALTER TABLE purchase_requisitions ADD COLUMN reviewed_by INT NULL`, 'reviewed_by on purchase requisitions');
+        await tryQuery(connection, `ALTER TABLE purchase_requisitions ADD COLUMN reviewed_at DATETIME NULL`, 'reviewed_at on purchase requisitions');
+        await tryQuery(connection, `ALTER TABLE purchase_requisitions ADD COLUMN review_note VARCHAR(500) NULL`, 'review_note on purchase requisitions');
+        await tryQuery(
+            connection,
+            `UPDATE purchase_requisitions SET status = 'pending' WHERE status = 'open'`,
+            'migrate open requisitions to pending'
+        );
         await tryQuery(
             connection,
             `CREATE UNIQUE INDEX uq_dms_stock_imports_entry_code ON dms_stock_imports(entry_code)`,

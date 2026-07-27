@@ -36,6 +36,7 @@ const pickPhysical = (item = {}) => ({
     mrp: item.mrp || 0,
     total_value: item.total_value || 0,
     expired_stock_date: item.expired_stock_date || null,
+    approved_as_current_stock: item.approved_as_current_stock === true,
 });
 
 const pickDms = (item = {}) => ({
@@ -75,9 +76,16 @@ export function buildCurrentStockDiff(physicalItems = [], dmsItems = []) {
     }
 
     return [...pairs.values()].map(({ physical, dms }) => {
-        const currentStockInCase = roundQuantity(physical.stock_in_case - dms.stock_in_case);
-        const currentStockInPcs = roundQuantity(physical.stock_in_pcs - dms.stock_in_pcs);
-        const totalCurrentStockInPcs = roundQuantity(physical.total_stock_in_pcs - dms.total_stock_in_pcs);
+        const approvedAsCurrentStock = physical.approved_as_current_stock === true;
+        const currentStockInCase = roundQuantity(
+            approvedAsCurrentStock ? physical.stock_in_case : physical.stock_in_case - dms.stock_in_case
+        );
+        const currentStockInPcs = roundQuantity(
+            approvedAsCurrentStock ? physical.stock_in_pcs : physical.stock_in_pcs - dms.stock_in_pcs
+        );
+        const totalCurrentStockInPcs = roundQuantity(
+            approvedAsCurrentStock ? physical.total_stock_in_pcs : physical.total_stock_in_pcs - dms.total_stock_in_pcs
+        );
         const pricePerPiece = physical.price_per_piece || dms.price_per_piece || 0;
 
         return {
@@ -167,6 +175,12 @@ export const getCurrentStock = async (req, res) => {
         const dmsResult = await DmsStockModel.getImportById(dmsImportId);
         if (!dmsResult) {
             return res.status(404).json({ error: 'Selected DMS stock upload was not found.' });
+        }
+        if (
+            req.user?.role === 'staff'
+            && !req.user.companyIds?.map(Number).includes(Number(dmsResult.import.company_id))
+        ) {
+            return res.status(403).json({ error: 'This company is not assigned to your staff account.' });
         }
 
         const [physicalItems, physicalImports, dmsItems] = await Promise.all([
