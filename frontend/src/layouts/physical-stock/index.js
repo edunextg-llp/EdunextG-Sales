@@ -204,6 +204,7 @@ function PhysicalStock() {
   const [approveModalOpen, setApproveModalOpen] = useState(false);
   const [selectedApproveItem, setSelectedApproveItem] = useState(null);
   const [approving, setApproving] = useState(false);
+  const [approvingAll, setApprovingAll] = useState(false);
   const [selectedFile, setSelectedFile] = useState(null);
   const [stockImport, setStockImport] = useState(null);
   const [items, setItems] = useState([]);
@@ -266,6 +267,29 @@ function PhysicalStock() {
       setError(err.message);
     } finally {
       setApproving(false);
+    }
+  };
+
+  const handleApproveAll = async () => {
+    if (!dmsImportId || !items.length) return;
+    if (!window.confirm("Set all saved Physical Stock items as Current Stock for this company?")) return;
+
+    setApprovingAll(true);
+    setError("");
+    try {
+      const response = await fetch(`${API}/staff/physical-stock/approve-all`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...authHeaders },
+        body: JSON.stringify({ dmsImportId }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "Failed to set Physical Stock as Current Stock.");
+      setMessage(data.message);
+      fetchPhysicalStock(companyFilter);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setApprovingAll(false);
     }
   };
 
@@ -761,6 +785,15 @@ function PhysicalStock() {
                   >
                     <Icon sx={{ mr: 1 }}>refresh</Icon>
                     Fetch Data
+                  </MDButton>
+                  <MDButton
+                    color="success"
+                    variant="gradient"
+                    onClick={handleApproveAll}
+                    disabled={!dmsImportId || !items.length || approvingAll}
+                  >
+                    <Icon sx={{ mr: 1 }}>published_with_changes</Icon>
+                    {approvingAll ? "Updating Current Stock..." : "Set Physical Stock as Current Stock"}
                   </MDButton>
                   <MDButton color="info" variant="gradient" onClick={openUploadModal}>
                     <Icon sx={{ mr: 1 }}>cloud_upload</Icon>

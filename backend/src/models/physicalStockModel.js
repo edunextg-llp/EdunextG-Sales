@@ -468,6 +468,22 @@ class PhysicalStockModel {
         });
     }
 
+    static async approveAllAsCurrentStock(dmsImportId) {
+        const [result] = await db.execute(
+            `UPDATE physical_stock_items psi
+             INNER JOIN (
+                 SELECT MAX(psi2.id) AS item_id
+                 FROM physical_stock_items psi2
+                 INNER JOIN physical_stock_imports p2 ON p2.id = psi2.import_id
+                 WHERE p2.dms_import_id = ?
+                 GROUP BY LOWER(TRIM(psi2.product_erp_id))
+             ) latest ON latest.item_id = psi.id
+             SET psi.raw_data = JSON_SET(COALESCE(psi.raw_data, JSON_OBJECT()), '$.approvedAsCurrentStock', TRUE)`,
+            [dmsImportId]
+        );
+        return result.affectedRows;
+    }
+
     static async getImportById(importId) {
         const [headerRows, items] = await Promise.all([
             db.execute(

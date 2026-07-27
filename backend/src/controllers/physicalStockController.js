@@ -515,6 +515,29 @@ export const approvePhysicalStockFromDms = async (req, res) => {
     }
 };
 
+export const approveAllPhysicalStockAsCurrentStock = async (req, res) => {
+    try {
+        const dmsImportId = parseDmsImportId(req.body?.dmsImportId);
+        if (!dmsImportId) {
+            return res.status(400).json({ error: 'Please choose a DMS stock upload date.' });
+        }
+
+        const physicalItems = await PhysicalStockModel.getMergedItemsByDmsImportId(dmsImportId);
+        if (!physicalItems.length) {
+            return res.status(400).json({ error: 'Add Physical Stock before setting it as Current Stock.' });
+        }
+
+        const updatedCount = await PhysicalStockModel.approveAllAsCurrentStock(dmsImportId);
+        return res.json({
+            message: 'All Physical Stock items are now set as Current Stock.',
+            updatedCount,
+        });
+    } catch (error) {
+        console.error('Error approving all physical stock:', error);
+        return res.status(500).json({ error: 'Unable to set Physical Stock as Current Stock.' });
+    }
+};
+
 export const createManualPhysicalStock = async (req, res) => {
     try {
         const dmsImportId = parseDmsImportId(req.body?.dmsImportId);

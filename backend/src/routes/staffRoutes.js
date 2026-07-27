@@ -68,6 +68,7 @@ router.get('/physical-stock/item-history', physicalStockController.getPhysicalSt
 router.post('/physical-stock/upload', upload.single('file'), physicalStockController.uploadPhysicalStock);
 router.post('/physical-stock/manual', physicalStockController.createManualPhysicalStock);
 router.post('/physical-stock/approve', physicalStockController.approvePhysicalStockFromDms);
+router.post('/physical-stock/approve-all', physicalStockController.approveAllPhysicalStockAsCurrentStock);
 router.get('/sales/by-date', staffController.getAllSalesByDate);
 router.get('/sales/lookup', staffController.lookupSaleByInvoice);
 router.get('/sales/cancelled', staffController.getCancelledDeliverySales);
