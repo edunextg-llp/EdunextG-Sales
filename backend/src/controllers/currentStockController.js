@@ -1,5 +1,6 @@
 import DmsStockModel from '../models/dmsStockModel.js';
 import PhysicalStockModel from '../models/physicalStockModel.js';
+import { calculateAvailableStockPieces } from '../utils/stockCalculations.js';
 
 const roundMoney = (value) => Math.round((Number(value) + Number.EPSILON) * 100) / 100;
 const roundQuantity = (value) => Math.round((Number(value) + Number.EPSILON) * 10000) / 10000;
@@ -83,8 +84,10 @@ export function buildCurrentStockDiff(physicalItems = [], dmsItems = []) {
         const currentStockInPcs = roundQuantity(
             approvedAsCurrentStock ? physical.stock_in_pcs : physical.stock_in_pcs - dms.stock_in_pcs
         );
-        const totalCurrentStockInPcs = roundQuantity(
-            approvedAsCurrentStock ? physical.total_stock_in_pcs : physical.total_stock_in_pcs - dms.total_stock_in_pcs
+        const totalCurrentStockInPcs = calculateAvailableStockPieces(
+            physical.total_stock_in_pcs,
+            dms.total_stock_in_pcs,
+            approvedAsCurrentStock
         );
         const pricePerPiece = physical.price_per_piece || dms.price_per_piece || 0;
 

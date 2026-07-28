@@ -1,4 +1,5 @@
 import db from '../config/db.js';
+import { calculateAvailableStockPieces } from '../utils/stockCalculations.js';
 import DmsStockModel from './dmsStockModel.js';
 
 const toNumber = (value) => {
@@ -595,8 +596,10 @@ class PhysicalStockModel {
             }
 
             const dmsPieces = dmsByErp.get(erpKey) || 0;
-            const currentPieces = roundQuantity(
-                toNumber(physicalItem.total_physical_stock_in_pcs) - dmsPieces
+            const currentPieces = calculateAvailableStockPieces(
+                physicalItem.total_physical_stock_in_pcs,
+                dmsPieces,
+                physicalItem.approved_as_current_stock === true
             );
             if (currentPieces < qty) {
                 throw new Error(

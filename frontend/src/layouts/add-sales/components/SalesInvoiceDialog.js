@@ -310,11 +310,14 @@ export default function SalesInvoiceDialog({
       const response = await fetch(`${API}/staff/current-stock?${params.toString()}`);
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "Failed to load current stock");
-      setStockItems(data.items || []);
+      const items = data.items || [];
+      setStockItems(items);
       setStockError("");
+      return items;
     } catch (fetchError) {
       setStockItems([]);
       setStockError(fetchError.message || "Failed to load current stock");
+      return [];
     } finally {
       setLoadingStock(false);
     }
@@ -522,13 +525,20 @@ export default function SalesInvoiceDialog({
       if (Number(data.requisition.outlet_id) !== Number(outlet.id)) {
         throw new Error(`This requisition belongs to ${data.requisition.outlet_name || "a different outlet"}.`);
       }
+      const liveStockItems = await fetchCurrentStock();
+      const liveStockByErp = new Map(
+        liveStockItems.map((item) => [String(item.product_erp_id || "").trim().toLowerCase(), item])
+      );
       const rows = (data.requisition.items || []).map((item) => ({
         productErpId: item.product_erp_id,
         productName: item.product_name,
         productDivision: item.product_division || "",
         variantName: item.variant_name || "",
         hsnCode: item.hsn_code || "",
-        availableStock: Number(item.total_current_stock_in_pcs) || 0,
+        availableStock: Number(
+          liveStockByErp.get(String(item.product_erp_id || "").trim().toLowerCase())
+            ?.total_current_stock_in_pcs
+        ) || 0,
         qty: String(item.quantity),
         priceType: item.priceType || "retail",
         retailPrice: Number(item.retail_price) || 0,
@@ -536,6 +546,12 @@ export default function SalesInvoiceDialog({
         rate: String(item.rate || 0),
         requisitionNumber: data.requisition.requisition_number,
       }));
+      const unavailableItem = rows.find((item) => Number(item.qty) > Number(item.availableStock));
+      if (unavailableItem) {
+        throw new Error(
+          `Insufficient current stock for ${unavailableItem.productErpId}. Available: ${unavailableItem.availableStock}, requested: ${unavailableItem.qty}.`
+        );
+      }
       setLineItems(rows);
     } catch (error) {
       alert(error.message);

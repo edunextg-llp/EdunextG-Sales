@@ -15,7 +15,10 @@ import { printPurchaseRequisitionPdf } from "utils/printPurchaseRequisitionPdf";
 import { useAuth } from "context/AuthContext";
 
 const API = "https://bawarchee.edunextg.co/api";
-const auth = () => ({ Authorization: `Bearer ${localStorage.getItem("token")}` });
+const auth = () => {
+  const token = localStorage.getItem("auth_token") || sessionStorage.getItem("auth_token");
+  return token ? { Authorization: `Bearer ${token}` } : {};
+};
 const days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday", "CNF"];
 
 const formatDateLabel = (value) => {
@@ -300,7 +303,7 @@ function PurchaseRequisition() {
                   getOptionLabel={(o) => o.product_name || ""}
                   renderOption={(props, option) => (
                     <li {...props}>
-                      {option.product_name}{option.variant_name ? ` | Variant: ${option.variant_name}` : ""}
+                      {option.product_name}{option.variant_name ? ` | Variant: ${option.variant_name}` : ""}{option.product_erp_id ? ` | ERP: ${option.product_erp_id}` : ""}
                     </li>
                   )}
                   renderInput={(params) => <MDInput {...params} placeholder="Search product" />}
@@ -310,6 +313,13 @@ function PurchaseRequisition() {
                 <MDInput
                   label="Variant"
                   value={selectedItem?.variant_name || ""}
+                  InputProps={{ readOnly: true }}
+                />
+              </Grid>
+              <Grid item xs={12} md={2}>
+                <MDInput
+                  label="Product ERP ID"
+                  value={selectedItem?.product_erp_id || ""}
                   InputProps={{ readOnly: true }}
                 />
               </Grid>
@@ -330,7 +340,7 @@ function PurchaseRequisition() {
               <Grid item xs={6} md={1}>
                 <MDInput label="Quantity" type="number" value={quantity} onChange={(e) => setQuantity(e.target.value)} />
               </Grid>
-              <Grid item xs={6} md={2}>
+              <Grid item xs={6} md={1}>
                 <FormControl fullWidth>
                   <Select value={priceType} onChange={(e) => setPriceType(e.target.value)} sx={{ height: 44 }}>
                     <MenuItem value="retail">Retail Price</MenuItem>
@@ -338,7 +348,7 @@ function PurchaseRequisition() {
                   </Select>
                 </FormControl>
               </Grid>
-              <Grid item xs={12} md={2}>
+              <Grid item xs={12} md={1}>
                 <MDButton
                   color="info"
                   variant="gradient"
@@ -355,7 +365,7 @@ function PurchaseRequisition() {
               <Table>
                 <TableHead sx={{ display: "table-header-group" }}>
                   <TableRow>
-                    {["Sr", "Item Name", "Variant", "HSN", "MRP", "Available", "Qty", "Price Type", "Rate", "Amount", "Action"].map((h) => (
+                    {["Sr", "ERP ID", "Item Name", "Variant", "HSN", "MRP", "Available", "Qty", "Price Type", "Rate", "Amount", "Action"].map((h) => (
                       <TableCell key={h} sx={{ fontWeight: 700 }}>{h}</TableCell>
                     ))}
                   </TableRow>
@@ -364,6 +374,7 @@ function PurchaseRequisition() {
                   {items.map((item, i) => (
                     <TableRow key={item.productErpId}>
                       <TableCell>{i + 1}</TableCell>
+                      <TableCell>{item.productErpId}</TableCell>
                       <TableCell>{item.productName}</TableCell>
                       <TableCell>{item.variantName}</TableCell>
                       <TableCell>{item.hsnCode}</TableCell>
