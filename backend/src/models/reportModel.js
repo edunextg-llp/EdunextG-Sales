@@ -81,9 +81,26 @@ class ReportModel {
         };
     }
 
+    static buildSalesCompanyFilter(companyId, saleAlias = 'ss') {
+        if (!companyId) {
+            return { sql: '', params: [] };
+        }
+        return {
+            sql: ` AND EXISTS (
+                SELECT 1
+                FROM staff s_filter
+                LEFT JOIN staff_companies sc_filter ON sc_filter.staff_id = s_filter.id
+                WHERE s_filter.id = ${saleAlias}.staff_id
+                  AND (s_filter.company_id = ? OR sc_filter.company_id = ?)
+            )`,
+            params: [companyId, companyId],
+        };
+    }
+
     static async getSummary(startDate, endDate, companyId = null, staffId = null) {
         const salesWhere = ReportModel.buildSalesWhere('ss', startDate, endDate, companyId, staffId);
         const paymentWhere = ReportModel.buildDateWhere('payment_date', startDate, endDate);
+        const paymentCompanyFilter = ReportModel.buildSalesCompanyFilter(companyId);
 
         const [[salesSummary], [collectionSummary]] = await Promise.all([
             db.execute(
@@ -95,10 +112,11 @@ class ReportModel {
                 salesWhere.params
             ).then(([rows]) => rows),
             db.execute(
-                `SELECT COALESCE(SUM(amount), 0) AS total_collection
-                 FROM sale_payments
-                 ${paymentWhere.sql ? `${paymentWhere.sql} AND` : 'WHERE'} payment_mode IN ('cash', 'upi', 'cheque')`,
-                paymentWhere.params
+                `SELECT COALESCE(SUM(sp.amount), 0) AS total_collection
+                 FROM sale_payments sp
+                 JOIN staff_sales ss ON ss.id = sp.sale_id
+                 ${paymentWhere.sql ? `${paymentWhere.sql.replace('payment_date', 'sp.payment_date')} AND` : 'WHERE'} sp.payment_mode IN ('cash', 'upi', 'cheque')${paymentCompanyFilter.sql}`,
+                [...paymentWhere.params, ...paymentCompanyFilter.params]
             ).then(([rows]) => rows),
         ]);
 
@@ -135,32 +153,35 @@ class ReportModel {
         };
     }
 
-    static async getCollectionByMode(startDate, endDate, staffId = null) {
+    static async getCollectionByMode(startDate, endDate, staffId = null, companyId = null) {
         const dateWhere = ReportModel.buildDateWhere('sp.payment_date', startDate, endDate);
         const staffFilter = ReportModel.buildOutletStaffFilter(staffId);
+        const companyFilter = ReportModel.buildSalesCompanyFilter(companyId);
         const [rows] = await db.execute(
             `SELECT sp.payment_mode, COALESCE(SUM(sp.amount), 0) AS total_amount, COUNT(*) AS count
              FROM sale_payments sp
              JOIN staff_sales ss ON ss.id = sp.sale_id
              LEFT JOIN staff_counters sc ON sc.id = ss.outlet_id
              LEFT JOIN staff outlet_staff ON outlet_staff.id = sc.staff_id
-             ${dateWhere.sql ? `${dateWhere.sql} AND` : 'WHERE'} sp.payment_mode IN ('cash', 'upi', 'cheque')${staffFilter.sql}
+             ${dateWhere.sql ? `${dateWhere.sql} AND` : 'WHERE'} sp.payment_mode IN ('cash', 'upi', 'cheque')${staffFilter.sql}${companyFilter.sql}
              GROUP BY sp.payment_mode
              ORDER BY FIELD(sp.payment_mode, 'cash', 'upi', 'cheque')`,
-            [...dateWhere.params, ...staffFilter.params]
+            [...dateWhere.params, ...staffFilter.params, ...companyFilter.params]
         );
         return toNumberRows(rows);
     }
 
-    static async getTodayCollection(startDate, endDate) {
+    static async getTodayCollection(startDate, endDate, companyId = null) {
         const dateWhere = ReportModel.buildDateWhere('payment_date', startDate, endDate);
+        const companyFilter = ReportModel.buildSalesCompanyFilter(companyId);
         const [rows] = await db.execute(
-            `SELECT payment_mode, COALESCE(SUM(amount), 0) AS total_amount, COUNT(*) AS count
-             FROM sale_payments
-             ${dateWhere.sql ? `${dateWhere.sql} AND` : 'WHERE payment_date = CURDATE() AND'} payment_mode IN ('cash', 'upi', 'cheque')
-             GROUP BY payment_mode
-             ORDER BY FIELD(payment_mode, 'cash', 'upi', 'cheque')`,
-            dateWhere.params
+            `SELECT sp.payment_mode, COALESCE(SUM(sp.amount), 0) AS total_amount, COUNT(*) AS count
+             FROM sale_payments sp
+             JOIN staff_sales ss ON ss.id = sp.sale_id
+             ${dateWhere.sql ? `${dateWhere.sql.replace('payment_date', 'sp.payment_date')} AND` : 'WHERE sp.payment_date = CURDATE() AND'} sp.payment_mode IN ('cash', 'upi', 'cheque')${companyFilter.sql}
+             GROUP BY sp.payment_mode
+             ORDER BY FIELD(sp.payment_mode, 'cash', 'upi', 'cheque')`,
+            [...dateWhere.params, ...companyFilter.params]
         );
         return toNumberRows(rows);
     }
@@ -568,9 +589,10 @@ class ReportModel {
         return toNumberRows(rows);
     }
 
-    static async getPendingCheques({ search = '', storeName = '', alarmOnly = true, dueByToday = false } = {}) {
+    static async getPendingCheques({ search = '', storeName = '', alarmOnly = true, dueByToday = false, companyId = null } = {}) {
         const conditions = ["sp.payment_mode = 'cheque'", ReportModel.getUndepositedChequeNotExistsSql()];
         const params = [];
+        const companyFilter = ReportModel.buildSalesCompanyFilter(companyId);
 
         if (dueByToday) {
             conditions.push('sp.reference_date <= CURDATE()');
@@ -584,6 +606,10 @@ class ReportModel {
         if (storeName && String(storeName).trim()) {
             conditions.push('sc.outlet_name LIKE ?');
             params.push(`%${String(storeName).trim()}%`);
+        }
+        if (companyFilter.sql) {
+            conditions.push(companyFilter.sql.replace(/^ AND /, ''));
+            params.push(...companyFilter.params);
         }
 
         const [rows] = await db.execute(
@@ -661,14 +687,16 @@ class ReportModel {
         return toNumberRows(rows);
     }
 
-    static async getCreditDuesSummary() {
+    static async getCreditDuesSummary(companyId = null) {
+        const companyFilter = ReportModel.buildSalesCompanyFilter(companyId);
         const [[row]] = await db.execute(
             `SELECT COALESCE(SUM(sp.amount), 0) AS total_credit_dues,
                     COUNT(*) AS credit_dues_count
              FROM sale_payments sp
              JOIN staff_sales ss ON sp.sale_id = ss.id
              WHERE sp.payment_mode = 'credit'
-               AND ss.balance_amount > 0`
+               AND ss.balance_amount > 0${companyFilter.sql}`,
+            companyFilter.params
         );
 
         return {
@@ -723,17 +751,17 @@ class ReportModel {
             staffCollectionByDate,
         ] = await Promise.all([
             ReportModel.getSummary(startDate, endDate, companyId, staffId),
-            ReportModel.getCollectionByMode(startDate, endDate, staffId),
+            ReportModel.getCollectionByMode(startDate, endDate, staffId, companyId),
             ReportModel.getCollectionDetails(startDate, endDate, staffId, companyId),
-            ReportModel.getTodayCollection(startDate, endDate),
+            ReportModel.getTodayCollection(startDate, endDate, companyId),
             ReportModel.getTodayCollectionDetails(startDate, endDate, companyId),
             ReportModel.getMonthlyCollection(startDate, endDate),
             ReportModel.getYearlyCollection(startDate, endDate),
             ReportModel.getSalesByPeriod(startDate, endDate, companyId, staffId),
             ReportModel.getChequeReports(startDate, endDate),
-            ReportModel.getPendingCheques({ alarmOnly: false }),
+            ReportModel.getPendingCheques({ alarmOnly: false, companyId }),
             ReportModel.getDuesReport(),
-            ReportModel.getCreditDuesSummary(),
+            ReportModel.getCreditDuesSummary(companyId),
             ReportModel.getStaffSalesSummary(startDate, endDate, companyId, staffId),
             ReportModel.getStaffMonthlySales(startDate, endDate, companyId, staffId),
             ReportModel.getCompanySalesSummary(startDate, endDate, companyId, staffId),
