@@ -159,6 +159,8 @@ function PurchaseRequisition() {
     if (!isStaff) setStaffId("");
     setOutletId("");
     setItems([]);
+    setSelectedItem(null);
+    setQuantity("");
     setSavedRequisitions([]);
     const selected = companies.find((row) => String(row.id) === String(value));
     if (!selected) return setStock([]);
@@ -286,17 +288,46 @@ function PurchaseRequisition() {
             </Grid>
 
             <Grid container spacing={2} mt={1} alignItems="flex-end">
-              <Grid item xs={12} md={5}>
-                <MDTypography variant="caption" fontWeight="bold">Available Item</MDTypography>
+              <Grid item xs={12} md={2}>
+                <MDTypography variant="caption" fontWeight="bold">Product</MDTypography>
                 <Autocomplete
                   options={availableStock}
                   value={selectedItem}
-                  onChange={(_, value) => setSelectedItem(value)}
-                  getOptionLabel={(o) => `${o.product_name} | ${o.variant_name || ""} | Stock ${o.total_current_stock_in_pcs}`}
-                  renderInput={(params) => <MDInput {...params} placeholder="Search available stock item" />}
+                  onChange={(_, value) => {
+                    setSelectedItem(value);
+                    setQuantity("");
+                  }}
+                  getOptionLabel={(o) => o.product_name || ""}
+                  renderOption={(props, option) => (
+                    <li {...props}>
+                      {option.product_name}{option.variant_name ? ` | Variant: ${option.variant_name}` : ""}
+                    </li>
+                  )}
+                  renderInput={(params) => <MDInput {...params} placeholder="Search product" />}
+                />
+              </Grid>
+              <Grid item xs={12} md={2}>
+                <MDInput
+                  label="Variant"
+                  value={selectedItem?.variant_name || ""}
+                  InputProps={{ readOnly: true }}
                 />
               </Grid>
               <Grid item xs={6} md={2}>
+                <MDInput
+                  label="Available Stock"
+                  value={selectedItem ? selectedItem.total_current_stock_in_pcs : ""}
+                  InputProps={{ readOnly: true }}
+                />
+              </Grid>
+              <Grid item xs={6} md={1}>
+                <MDInput
+                  label="MRP"
+                  value={selectedItem ? selectedItem.mrp : ""}
+                  InputProps={{ readOnly: true }}
+                />
+              </Grid>
+              <Grid item xs={6} md={1}>
                 <MDInput label="Quantity" type="number" value={quantity} onChange={(e) => setQuantity(e.target.value)} />
               </Grid>
               <Grid item xs={6} md={2}>
@@ -308,7 +339,15 @@ function PurchaseRequisition() {
                 </FormControl>
               </Grid>
               <Grid item xs={12} md={2}>
-                <MDButton color="info" variant="gradient" onClick={addItem}>Add Item</MDButton>
+                <MDButton
+                  color="info"
+                  variant="gradient"
+                  title="Add item"
+                  aria-label="Add item"
+                  onClick={addItem}
+                >
+                  <Icon fontSize="small">add</Icon>
+                </MDButton>
               </Grid>
             </Grid>
 
@@ -335,8 +374,14 @@ function PurchaseRequisition() {
                       <TableCell>{item.rate}</TableCell>
                       <TableCell>{(item.quantity * item.rate).toFixed(2)}</TableCell>
                       <TableCell>
-                        <MDButton color="error" variant="text" onClick={() => setItems((p) => p.filter((_, x) => x !== i))}>
-                          Delete
+                        <MDButton
+                          color="error"
+                          variant="text"
+                          title="Delete item"
+                          aria-label={`Delete ${item.productName}`}
+                          onClick={() => setItems((p) => p.filter((_, x) => x !== i))}
+                        >
+                          <Icon fontSize="small">delete</Icon>
                         </MDButton>
                       </TableCell>
                     </TableRow>
@@ -349,8 +394,15 @@ function PurchaseRequisition() {
               <MDTypography color="success" fontWeight="bold">
                 {result ? `Requisition Number: ${result}` : ""}
               </MDTypography>
-              <MDButton color="info" variant="gradient" onClick={save} disabled={saving}>
-                {saving ? "Submitting..." : "Create Requisition"}
+              <MDButton
+                color="info"
+                variant="gradient"
+                title={saving ? "Submitting requisition" : "Create requisition"}
+                aria-label={saving ? "Submitting requisition" : "Create requisition"}
+                onClick={save}
+                disabled={saving}
+              >
+                <Icon fontSize="small">{saving ? "hourglass_top" : "send"}</Icon>
               </MDButton>
             </MDBox>
           </MDBox>
@@ -429,8 +481,8 @@ function PurchaseRequisition() {
                         <TableHead sx={{ display: "table-header-group" }}>
                           <TableRow>
                             {[
-                              "Requisition No", "Time", ...(!isStaff ? ["Staff", "Company"] : []),
-                              "Outlet", "Items", "Total Qty", "Amount", "Status", "PDF",
+                              "Sr. No.", "Requisition No", ...(!isStaff ? ["Staff", "Company"] : []),
+                              "Outlet", "Items", "Total Qty", "Amount", "Status", "View",
                               ...(!isStaff ? ["Admin Action"] : []),
                             ].map((h) => (
                               <TableCell key={h} sx={{ fontWeight: 700 }}>{h}</TableCell>
@@ -438,10 +490,19 @@ function PurchaseRequisition() {
                           </TableRow>
                         </TableHead>
                         <TableBody>
-                          {rows.map((row) => (
-                            <TableRow key={row.id || row.requisition_number}>
+                          {rows.map((row, index) => (
+                            <TableRow
+                              key={row.id || row.requisition_number}
+                              sx={
+                                row.status === "approved"
+                                  ? { backgroundColor: "#dcfce7" }
+                                  : row.status === "cancelled"
+                                    ? { backgroundColor: "#fee2e2" }
+                                    : {}
+                              }
+                            >
+                              <TableCell>{index + 1}</TableCell>
                               <TableCell>{row.requisition_number}</TableCell>
-                              <TableCell>{formatDateTime(row.created_at)}</TableCell>
                               {!isStaff && <TableCell>{row.staff_name}</TableCell>}
                               {!isStaff && <TableCell>{row.company_name}</TableCell>}
                               <TableCell>{row.outlet_name}</TableCell>
@@ -454,9 +515,11 @@ function PurchaseRequisition() {
                                   color="info"
                                   variant="text"
                                   size="small"
+                                  title={`View requisition\nSubmitted: ${formatDateTime(row.created_at)}`}
+                                  aria-label={`View requisition ${row.requisition_number}`}
                                   onClick={() => printPurchaseRequisitionPdf(row)}
                                 >
-                                  <Icon fontSize="small">picture_as_pdf</Icon>
+                                  <Icon fontSize="small">visibility</Icon>
                                 </MDButton>
                               </TableCell>
                               {!isStaff && (
@@ -467,21 +530,25 @@ function PurchaseRequisition() {
                                         color="success"
                                         variant="gradient"
                                         size="small"
+                                        title="Approve requisition"
+                                        aria-label="Approve requisition"
                                         onClick={() => reviewRequisition(row.id, "approved")}
                                       >
-                                        Approve
+                                        <Icon fontSize="small">check</Icon>
                                       </MDButton>
                                       <MDButton
                                         color="error"
                                         variant="outlined"
                                         size="small"
+                                        title="Cancel requisition"
+                                        aria-label="Cancel requisition"
                                         onClick={() => reviewRequisition(row.id, "cancelled")}
                                       >
-                                        Cancel
+                                        <Icon fontSize="small">close</Icon>
                                       </MDButton>
                                     </MDBox>
                                   ) : (
-                                    <MDTypography variant="caption" color="text">Reviewed</MDTypography>
+                                    <Icon fontSize="small" title="Reviewed" color="success">task_alt</Icon>
                                   )}
                                 </TableCell>
                               )}

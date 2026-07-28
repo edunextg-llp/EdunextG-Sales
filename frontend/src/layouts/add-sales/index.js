@@ -101,7 +101,10 @@ function AddSales() {
     open: false,
     outlet: null,
     rowIndex: 0,
+    requisitionNumber: "",
   });
+  const [requisitionLookupNumber, setRequisitionLookupNumber] = useState("");
+  const [loadingRequisition, setLoadingRequisition] = useState(false);
   const [manualOutletIds, setManualOutletIds] = useState([]);
   const [manualEditDialog, setManualEditDialog] = useState({
     open: false,
@@ -570,7 +573,7 @@ function AddSales() {
     return outletSales[outletSales.length - 1]?.invoiceNumber || "";
   };
 
-  const openInvoiceDialog = async (outlet, index) => {
+  const openInvoiceDialog = async (outlet, index, requisitionNumber = "") => {
     const row = (salesData[outletKey(outlet.id)] || [])[index];
     let invoiceNumber = row?.invoiceNumber?.trim() || "";
     if (!invoiceNumber) {
@@ -586,6 +589,7 @@ function AddSales() {
       initialItemCount: "",
       initialPrice: "",
       initialLineItems: [],
+      requisitionNumber,
     });
   };
 
@@ -599,21 +603,22 @@ function AddSales() {
       initialItemCount: "",
       initialPrice: "",
       initialLineItems: [],
+      requisitionNumber: "",
     });
   };
 
-  const openBillChoiceDialog = (outlet, index) => {
-    setBillChoiceDialog({ open: true, outlet, rowIndex: index });
+  const openBillChoiceDialog = (outlet, index, requisitionNumber = "") => {
+    setBillChoiceDialog({ open: true, outlet, rowIndex: index, requisitionNumber });
   };
 
   const closeBillChoiceDialog = () => {
-    setBillChoiceDialog({ open: false, outlet: null, rowIndex: 0 });
+    setBillChoiceDialog({ open: false, outlet: null, rowIndex: 0, requisitionNumber: "" });
   };
 
   const chooseCreateBill = () => {
-    const { outlet, rowIndex } = billChoiceDialog;
+    const { outlet, rowIndex, requisitionNumber } = billChoiceDialog;
     closeBillChoiceDialog();
-    if (outlet) openInvoiceDialog(outlet, rowIndex);
+    if (outlet) openInvoiceDialog(outlet, rowIndex, requisitionNumber);
   };
 
   const chooseManualEntry = () => {
@@ -626,6 +631,47 @@ function AddSales() {
       ...prev,
       [id]: prev[id]?.length ? prev[id] : [{ ...emptySaleRow }],
     }));
+  };
+
+  const openRequisitionBillChoice = async () => {
+    const code = requisitionLookupNumber.trim();
+    if (!code) return alert("Enter a requisition number.");
+    if (!selectedStaff) return alert("Select staff before loading a requisition.");
+
+    setLoadingRequisition(true);
+    try {
+      const response = await fetch(`${API}/staff/purchase-requisitions/${encodeURIComponent(code)}`);
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "Requisition not found.");
+      if (Number(data.requisition.staff_id) !== Number(selectedStaff.id)) {
+        throw new Error("This requisition belongs to a different staff member.");
+      }
+
+      const requisitionOutlet = [...outlets, ...allOutlets].find(
+        (outlet) => Number(outlet.id) === Number(data.requisition.outlet_id)
+      );
+      if (!requisitionOutlet) {
+        throw new Error("The requisition outlet is not available for the selected staff.");
+      }
+
+      setOutlets((prev) => (
+        prev.some((outlet) => Number(outlet.id) === Number(requisitionOutlet.id))
+          ? prev
+          : [...prev, requisitionOutlet]
+      ));
+      setSalesData((prev) => ({
+        ...prev,
+        [outletKey(requisitionOutlet.id)]: prev[outletKey(requisitionOutlet.id)]?.length
+          ? prev[outletKey(requisitionOutlet.id)]
+          : [{ ...emptySaleRow }],
+      }));
+      setRequisitionLookupNumber("");
+      openBillChoiceDialog(requisitionOutlet, 0, data.requisition.requisition_number);
+    } catch (error) {
+      alert(error.message || "Could not load requisition.");
+    } finally {
+      setLoadingRequisition(false);
+    }
   };
 
   const handleManualSalesChange = (outletId, index, field, value) => {
@@ -1080,6 +1126,29 @@ function AddSales() {
                         <MDTypography variant="button" fontWeight="bold" color="info">
                           {isCnfStaff ? "CNF" : dayName}
                         </MDTypography>
+                      </MDBox>
+                      <MDBox display="flex" alignItems="center" gap={1} ml={{ xs: 0, md: "auto" }} width={{ xs: "100%", md: 300 }}>
+                        <MDInput
+                          label="Requisition No."
+                          fullWidth
+                          value={requisitionLookupNumber}
+                          onChange={(e) => setRequisitionLookupNumber(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") openRequisitionBillChoice();
+                          }}
+                          disabled={loadingRequisition}
+                        />
+                        <MDButton
+                          color="info"
+                          variant="gradient"
+                          title="Load requisition"
+                          aria-label="Load requisition"
+                          onClick={openRequisitionBillChoice}
+                          disabled={loadingRequisition}
+                          sx={{ minWidth: 42, px: 1 }}
+                        >
+                          <Icon fontSize="small">{loadingRequisition ? "hourglass_top" : "search"}</Icon>
+                        </MDButton>
                       </MDBox>
                     </MDBox>
 
@@ -1663,6 +1732,7 @@ function AddSales() {
         initialItemCount={invoiceDialog.initialItemCount}
         initialPrice={invoiceDialog.initialPrice}
         initialLineItems={invoiceDialog.initialLineItems}
+        initialRequisitionNumber={invoiceDialog.requisitionNumber}
         prevBillNo={
           invoiceDialog.outlet ? getPrevBillNoForOutlet(invoiceDialog.outlet.id) : ""
         }

@@ -228,6 +228,7 @@ export default function SalesInvoiceDialog({
   initialItemCount = "",
   initialPrice = "",
   initialLineItems = [],
+  initialRequisitionNumber = "",
   submitting = false,
   onSubmit,
 }) {
@@ -287,9 +288,9 @@ export default function SalesInvoiceDialog({
     setFlatDiscount("");
     setRoundOff("0");
     setRemarks("");
-    setRequisitionNumber("");
+    setRequisitionNumber(initialRequisitionNumber || "");
     setEditPopup({ open: false, index: null, draft: { ...emptyLineItem } });
-  }, [open, invoiceNumber, editMode, initialItemCount, initialPrice, initialLineItems]);
+  }, [open, invoiceNumber, editMode, initialItemCount, initialPrice, initialLineItems, initialRequisitionNumber]);
 
   /* load Current Stock (Physical − DMS) for the selected company */
   const fetchCurrentStock = useCallback(async () => {
@@ -508,13 +509,19 @@ export default function SalesInvoiceDialog({
     if (editPopup.index === i) closeEditPopup();
   };
 
-  const loadRequisition = async () => {
-    const code = requisitionNumber.trim();
+  const loadRequisition = async (requestedNumber = requisitionNumber) => {
+    const code = requestedNumber.trim();
     if (!code) return alert("Enter a requisition number.");
+    if (!outlet?.id) return alert("Select an outlet before loading a requisition.");
     try {
-      const response = await fetch(`${API}/staff/purchase-requisitions/${encodeURIComponent(code)}`);
+      const response = await fetch(
+        `${API}/staff/purchase-requisitions/${encodeURIComponent(code)}?outletId=${encodeURIComponent(outlet.id)}`
+      );
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "Requisition not found.");
+      if (Number(data.requisition.outlet_id) !== Number(outlet.id)) {
+        throw new Error(`This requisition belongs to ${data.requisition.outlet_name || "a different outlet"}.`);
+      }
       const rows = (data.requisition.items || []).map((item) => ({
         productErpId: item.product_erp_id,
         productName: item.product_name,
@@ -534,6 +541,14 @@ export default function SalesInvoiceDialog({
       alert(error.message);
     }
   };
+
+  useEffect(() => {
+    if (open && !editMode && initialRequisitionNumber) {
+      loadRequisition(initialRequisitionNumber);
+    }
+    // The request is intentionally triggered only when this dialog opens with a new requisition.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, editMode, initialRequisitionNumber]);
 
   const validateForm = () => {
     if (!billNo.trim()) { alert("Bill No. is required."); return false; }
