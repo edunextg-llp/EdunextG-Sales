@@ -829,6 +829,8 @@ function Dashboard() {
   const financialYearOptions = useMemo(() => getFinancialYearOptions(), []);
   const [selectedFinancialYear, setSelectedFinancialYear] = useState("");
   const [selectedMonth, setSelectedMonth] = useState("");
+  const [salesCompanies, setSalesCompanies] = useState([]);
+  const [selectedSalesCompanyId, setSelectedSalesCompanyId] = useState("");
   const [reportData, setReportData] = useState(emptyReportData);
   const [purchaseReportData, setPurchaseReportData] = useState(emptyPurchaseReportData);
   const [activeDashboardTab, setActiveDashboardTab] = useState("purchase");
@@ -899,6 +901,7 @@ function Dashboard() {
       const params = new URLSearchParams();
       if (reportStartDate) params.set("startDate", reportStartDate);
       if (reportEndDate) params.set("endDate", reportEndDate);
+      if (selectedSalesCompanyId) params.set("companyId", selectedSalesCompanyId);
 
       const query = params.toString();
       const response = await fetch(`${API}/staff/reports${query ? `?${query}` : ""}`);
@@ -943,6 +946,7 @@ function Dashboard() {
       startDate: date,
       endDate: date,
     });
+    if (selectedSalesCompanyId) params.set("companyId", selectedSalesCompanyId);
     const response = await fetch(`${API}/staff/reports?${params.toString()}`);
     if (!response.ok) {
       throw new Error("Failed to fetch collection report.");
@@ -964,6 +968,7 @@ function Dashboard() {
     if (staffId) {
       params.set("staffId", staffId);
     }
+    if (selectedSalesCompanyId) params.set("companyId", selectedSalesCompanyId);
     const response = await fetch(`${API}/staff/reports?${params.toString()}`);
     if (!response.ok) {
       throw new Error("Failed to fetch total collection report.");
@@ -986,6 +991,7 @@ function Dashboard() {
     if (staffId) {
       params.set("staffId", staffId);
     }
+    if (selectedSalesCompanyId) params.set("companyId", selectedSalesCompanyId);
     const response = await fetch(`${API}/staff/reports?${params.toString()}`);
     if (!response.ok) {
       throw new Error("Failed to fetch sales chart report.");
@@ -996,12 +1002,33 @@ function Dashboard() {
   };
 
   useEffect(() => {
+    const fetchSalesCompanies = async () => {
+      try {
+        const response = await fetch(`${API}/staff/companies`);
+        if (response.ok) {
+          const data = await response.json();
+          setSalesCompanies(Array.isArray(data) ? data : []);
+        }
+      } catch (error) {
+        console.error("Error fetching dashboard companies:", error);
+      }
+    };
+
+    fetchSalesCompanies();
+  }, []);
+
+  useEffect(() => {
     const fetchCollectionStaffOptions = async () => {
       try {
-        const response = await fetch(`${API}/staff`);
+        const params = new URLSearchParams();
+        if (selectedSalesCompanyId) params.set("companyId", selectedSalesCompanyId);
+        const query = params.toString();
+        const response = await fetch(`${API}/staff${query ? `?${query}` : ""}`);
         if (response.ok) {
           const data = await response.json();
           setCollectionStaffOptions(data);
+          setSelectedCollectionStaffId("");
+          setSelectedSalesStaffId("");
         }
       } catch (error) {
         console.error("Error fetching staff options:", error);
@@ -1009,13 +1036,13 @@ function Dashboard() {
     };
 
     fetchCollectionStaffOptions();
-  }, []);
+  }, [selectedSalesCompanyId]);
 
   useEffect(() => {
     fetchReports();
     fetchPurchaseReports();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [reportStartDate, reportEndDate]);
+  }, [reportStartDate, reportEndDate, selectedSalesCompanyId]);
 
   useEffect(() => {
     let ignore = false;
@@ -1045,7 +1072,7 @@ function Dashboard() {
       ignore = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [collectionPrintDate]);
+  }, [collectionPrintDate, selectedSalesCompanyId]);
 
   useEffect(() => {
     let ignore = false;
@@ -1089,7 +1116,7 @@ function Dashboard() {
       ignore = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [totalCollectionFromDate, totalCollectionToDate, selectedCollectionStaffId]);
+  }, [totalCollectionFromDate, totalCollectionToDate, selectedCollectionStaffId, selectedSalesCompanyId]);
 
   useEffect(() => {
     let ignore = false;
@@ -1133,7 +1160,7 @@ function Dashboard() {
       ignore = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [salesChartFromDate, salesChartToDate, selectedSalesStaffId]);
+  }, [salesChartFromDate, salesChartToDate, selectedSalesStaffId, selectedSalesCompanyId]);
 
   const handleFinancialYearChange = (value) => {
     setSelectedFinancialYear(value);
@@ -1833,6 +1860,23 @@ function Dashboard() {
               </MDTypography>
             </MDBox>
             <MDBox display="flex" gap={1.5} flexWrap="wrap" alignItems="center" sx={{ ml: { xs: 0, md: "auto" } }}>
+              <FormControl size="small" sx={{ minWidth: 180 }}>
+                <InputLabel id="dashboard-sales-company-label">Company</InputLabel>
+                <Select
+                  labelId="dashboard-sales-company-label"
+                  value={selectedSalesCompanyId}
+                  label="Company"
+                  onChange={(event) => setSelectedSalesCompanyId(event.target.value)}
+                  sx={{ height: 44, backgroundColor: "#fff" }}
+                >
+                  <MenuItem value="">All Companies</MenuItem>
+                  {salesCompanies.map((company) => (
+                    <MenuItem key={company.id} value={String(company.id)}>
+                      {company.name}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
               <FormControl size="small" sx={{ minWidth: 160 }}>
                 <InputLabel id="dashboard-financial-year-label">Financial Year</InputLabel>
                 <Select

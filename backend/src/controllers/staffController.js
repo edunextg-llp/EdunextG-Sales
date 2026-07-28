@@ -549,7 +549,11 @@ export const toggleStaffActive = async (req, res) => {
 export const getStaff = async (req, res) => {
     try {
         const includeInactive = req.query.includeInactive === 'true';
-        const staff = await StaffModel.getAll(includeInactive);
+        const companyId = req.query.companyId ? Number(req.query.companyId) : null;
+        if (req.query.companyId && (!Number.isInteger(companyId) || companyId <= 0)) {
+            return res.status(400).json({ error: 'companyId must be a positive integer' });
+        }
+        const staff = await StaffModel.getAll(includeInactive, companyId);
         res.status(200).json(staff);
     } catch (error) {
         res.status(500).json({ error: 'Internal server error' });

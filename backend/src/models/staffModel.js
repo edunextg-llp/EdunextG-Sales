@@ -284,8 +284,23 @@ class StaffModel {
         return rows;
     }
 
-    static async getAll(includeInactive = false) {
-        const activeClause = includeInactive ? '' : 'WHERE s.is_active = 1';
+    static async getAll(includeInactive = false, companyId = null) {
+        const filters = [];
+        const params = [];
+        if (!includeInactive) {
+            filters.push('s.is_active = 1');
+        }
+        if (companyId) {
+            filters.push(`(
+                s.company_id = ?
+                OR EXISTS (
+                    SELECT 1 FROM staff_companies sc_filter
+                    WHERE sc_filter.staff_id = s.id AND sc_filter.company_id = ?
+                )
+            )`);
+            params.push(companyId, companyId);
+        }
+        const whereClause = filters.length ? `WHERE ${filters.join(' AND ')}` : '';
         const [rows] = await db.execute(
             `SELECT s.id, s.name, s.contact_no, s.company_id, s.staff_type, s.staff_category, s.is_active,
                     COALESCE(sc.company_names, c.name) AS company_name,
@@ -300,8 +315,9 @@ class StaffModel {
                  INNER JOIN companies c2 ON c2.id = sc.company_id
                  GROUP BY sc.staff_id
              ) sc ON sc.staff_id = s.id
-             ${activeClause}
-             ORDER BY s.name`
+             ${whereClause}
+             ORDER BY s.name`,
+            params
         );
         return rows;
     }
