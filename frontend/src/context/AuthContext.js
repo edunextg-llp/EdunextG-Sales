@@ -85,7 +85,10 @@ export const AuthProvider = ({ children }) => {
         }
       }
 
-      if (response.status === 401 || response.status === 403) {
+      // A 403 means the signed-in user is not allowed to use a particular
+      // endpoint. It is not evidence that their session is invalid, so keep
+      // them signed in and let the page handle the permission error.
+      if (response.status === 401) {
         if (currentToken) {
           setUser(null);
           setToken(null);

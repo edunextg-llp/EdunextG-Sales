@@ -38,16 +38,25 @@ import {
   useMaterialUIController,
   setTransparentNavbar,
 } from "context";
+import { useAuth } from "context/AuthContext";
 
 function DashboardNavbar({ absolute, light, isMini }) {
   const [navbarType, setNavbarType] = useState();
   const [controller, dispatch] = useMaterialUIController();
   const { transparentNavbar, fixedNavbar, darkMode } = controller;
+  const { user } = useAuth();
   const [openMenu, setOpenMenu] = useState(false);
   const route = useLocation().pathname.split("/").slice(1);
   const [notifications, setNotifications] = useState([]);
 
   useEffect(() => {
+    // Credit notifications are an admin-only feature. Avoid making this
+    // request for staff users, whose API access is limited to requisitions.
+    if (user?.role !== "admin") {
+      setNotifications([]);
+      return undefined;
+    }
+
     const fetchPendingCredits = async () => {
       try {
         const response = await fetch("https://bawarchee.edunextg.co/api/staff/credits/pending");
@@ -70,7 +79,7 @@ function DashboardNavbar({ absolute, light, isMini }) {
       }
     };
     fetchPendingCredits();
-  }, []);
+  }, [user?.role]);
 
   useEffect(() => {
     // Setting the navbar type

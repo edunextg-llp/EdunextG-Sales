@@ -39,8 +39,10 @@ import {
   paginatedTableHeadSx,
 } from "utils/tablePagination";
 import { IoPrintOutline } from "react-icons/io5";
+import { useAuth } from "context/AuthContext";
 
 function CreditsPage() {
+  const { token } = useAuth();
   const [credits, setCredits] = useState([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCompanyId, setSelectedCompanyId] = useState("");
@@ -57,6 +59,7 @@ function CreditsPage() {
   const [page, setPage] = useState(1);
   const [rowsPerPage, setRowsPerPage] = useState(ROWS_PER_PAGE);
   const API = "https://bawarchee.edunextg.co/api";
+  const authHeaders = token ? { Authorization: `Bearer ${token}` } : {};
 
   const getTodayLocalDate = () => {
     const now = new Date();
@@ -68,7 +71,7 @@ function CreditsPage() {
 
   const fetchCredits = async () => {
     try {
-      const response = await fetch(`${API}/staff/credits/pending`);
+      const response = await fetch(`${API}/staff/credits/pending`, { headers: authHeaders });
       if (response.ok) {
         const data = await response.json();
         setCredits(data);
@@ -82,7 +85,7 @@ function CreditsPage() {
 
   useEffect(() => {
     fetchCredits();
-  }, []);
+  }, [token]);
 
   useEffect(() => {
     setPage(1);
@@ -321,7 +324,7 @@ function CreditsPage() {
     setRemarksHistory([]);
     setLoadingRemarks(true);
     try {
-      const response = await fetch(`${API}/staff/credits/${credit.id}/remarks`);
+      const response = await fetch(`${API}/staff/credits/${credit.id}/remarks`, { headers: authHeaders });
       if (response.ok) {
         const data = await response.json();
         setRemarksHistory(data);
@@ -362,7 +365,7 @@ function CreditsPage() {
         `${API}/staff/credits/${remarksDialog.credit.id}/remarks`,
         {
           method: "PUT",
-          headers: { "Content-Type": "application/json" },
+          headers: { "Content-Type": "application/json", ...authHeaders },
           body: JSON.stringify({ remarks: remarksText, remarkDate: remarksDate }),
         }
       );

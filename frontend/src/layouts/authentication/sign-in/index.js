@@ -153,7 +153,7 @@ function Basic() {
                 Sign In
               </MDTypography>
               <MDTypography variant="button" color="text" fontWeight="regular">
-                Enter your admin email or staff login ID and password.
+                Enter your admin email, staff ID, or staff login ID and password.
               </MDTypography>
             </MDBox>
 
@@ -161,7 +161,7 @@ function Basic() {
               <MDBox mb={2.5}>
                 <MDInput
                   type="text"
-                  label="Email or Staff Login ID"
+                  label="Email, Staff ID, or Login ID"
                   fullWidth
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}

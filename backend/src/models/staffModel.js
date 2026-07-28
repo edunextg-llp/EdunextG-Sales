@@ -52,9 +52,10 @@ class StaffModel {
              LEFT JOIN staff_companies sc ON sc.staff_id = s.id
              LEFT JOIN companies c ON c.id = sc.company_id
              WHERE LOWER(s.login_id) = LOWER(?)
+                OR CAST(s.id AS CHAR) = ?
              GROUP BY s.id
              LIMIT 1`,
-            [loginId]
+            [loginId, String(loginId).trim()]
         );
         return rows[0] || null;
     }
