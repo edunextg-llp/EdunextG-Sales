@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 
 // @mui material components
 import Grid from "@mui/material/Grid";
@@ -80,6 +80,9 @@ function AddCounter() {
   const [outlets, setOutlets] = useState([]);
   const [savedOutlets, setSavedOutlets] = useState([]);
   const [exportingOutlets, setExportingOutlets] = useState(false);
+  const [downloadingTemplate, setDownloadingTemplate] = useState(false);
+  const [uploadingOutlets, setUploadingOutlets] = useState(false);
+  const outletUploadInputRef = useRef(null);
   const [editingOutletId, setEditingOutletId] = useState(null);
   const [editFormData, setEditFormData] = useState(createEmptyEditForm());
 
@@ -170,6 +173,62 @@ function AddCounter() {
       alert(error.message || "Failed to download outlets.");
     } finally {
       setExportingOutlets(false);
+    }
+  };
+
+  const downloadOutletTemplate = async () => {
+    setDownloadingTemplate(true);
+    try {
+      const response = await fetch(`${API}/staff/outlets-template`, {
+        headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
+      });
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({}));
+        throw new Error(error.error || "Failed to download outlet template.");
+      }
+      const file = await response.blob();
+      const url = window.URL.createObjectURL(file);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = "Add_Outlet_Upload_Template.xlsx";
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (error) {
+      alert(error.message || "Failed to download outlet template.");
+    } finally {
+      setDownloadingTemplate(false);
+    }
+  };
+
+  const uploadOutletsExcel = async (event) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file || !selectedStaff || !selectedCompanyName || !routeDay || !selectedLocation) return;
+
+    const formData = new FormData();
+    formData.append("file", file);
+    formData.append("companyName", selectedCompanyName);
+    formData.append("day", routeDay);
+    formData.append("location", selectedLocation);
+
+    setUploadingOutlets(true);
+    try {
+      const response = await fetch(`${API}/staff/${selectedStaff.id}/outlets-upload`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
+        body: formData,
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || "Failed to upload outlets.");
+      alert(data.message || "Outlets uploaded successfully.");
+      setOutlets([]);
+      fetchSavedOutlets(selectedStaff.id, routeDay);
+    } catch (error) {
+      alert(error.message || "Failed to upload outlets.");
+    } finally {
+      setUploadingOutlets(false);
     }
   };
 
@@ -301,6 +360,11 @@ function AddCounter() {
     const hasDuplicateErp =
       erpIds.some((erpId, index) => erpIds.indexOf(erpId) !== index) ||
       erpIds.some((erpId) => savedErpIds.has(erpId));
+
+    if (erpIds.length !== outlets.length) {
+      alert("ERP ID is mandatory for every outlet.");
+      return;
+    }
 
     if (hasDuplicateErp) {
       alert("Same ERP Id already exists. Please use a unique ERP Id.");
@@ -608,7 +672,17 @@ function AddCounter() {
                   )} */}
                 </Grid>
 
-                <MDBox mt={2} display="flex" justifyContent="flex-end">
+                <MDBox mt={2} display="flex" justifyContent="flex-end" gap={1} flexWrap="wrap">
+                  <MDButton
+                    variant="outlined"
+                    color="info"
+                    size="small"
+                    onClick={downloadOutletTemplate}
+                    disabled={downloadingTemplate}
+                    startIcon={<Icon>download</Icon>}
+                  >
+                    {downloadingTemplate ? "Preparing Template..." : "Download Add Outlet Template"}
+                  </MDButton>
                   <MDButton
                     variant="gradient"
                     color="success"
@@ -729,6 +803,24 @@ function AddCounter() {
                         >
                           Add Outlet
                         </MDButton>
+                        <MDButton
+                          variant="outlined"
+                          color="info"
+                          size="small"
+                          onClick={() => outletUploadInputRef.current?.click()}
+                          disabled={uploadingOutlets}
+                          startIcon={<Icon>upload_file</Icon>}
+                          sx={{ flexShrink: 0 }}
+                        >
+                          {uploadingOutlets ? "Uploading..." : "Upload Excel"}
+                        </MDButton>
+                        <input
+                          ref={outletUploadInputRef}
+                          type="file"
+                          accept=".xls,.xlsx"
+                          hidden
+                          onChange={uploadOutletsExcel}
+                        />
                       </MDBox>
 
                       <MDBox p={3}>

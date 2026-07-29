@@ -193,6 +193,52 @@ class StaffModel {
         return rows[0] || null;
     }
 
+    static async findCounterByErpId(outletErpId) {
+        const [rows] = await db.execute(
+            `SELECT sc.id, sc.staff_id, sc.outlet_erp_id, sc.outlet_name, s.name AS staff_name
+             FROM staff_counters sc
+             INNER JOIN staff s ON s.id = sc.staff_id
+             WHERE LOWER(TRIM(sc.outlet_erp_id)) = LOWER(TRIM(?))
+             LIMIT 1`,
+            [outletErpId]
+        );
+        return rows[0] || null;
+    }
+
+    static async addCounters(staffId, day, location, counters) {
+        const connection = await db.getConnection();
+        try {
+            await connection.beginTransaction();
+            for (const counter of counters) {
+                await connection.execute(
+                    `INSERT INTO staff_counters (
+                        staff_id, day, location_name, outlet_erp_id, outlet_name,
+                        contact_number, whatsapp_number, address, google_location, has_gst, gst_number
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                    [
+                        staffId,
+                        day,
+                        location,
+                        counter.outletErpId,
+                        counter.outletName,
+                        counter.contactNumber,
+                        counter.whatsappNumber || null,
+                        counter.address || null,
+                        counter.googleLocation || null,
+                        counter.hasGst ? 1 : 0,
+                        counter.gstNumber || null,
+                    ]
+                );
+            }
+            await connection.commit();
+        } catch (error) {
+            await connection.rollback();
+            throw error;
+        } finally {
+            connection.release();
+        }
+    }
+
     static async getCounterById(counterId) {
         const [rows] = await db.execute(
             'SELECT id, staff_id, outlet_erp_id, outlet_name, contact_number, whatsapp_number, location_name, address, google_location, has_gst, gst_number FROM staff_counters WHERE id = ?',
@@ -282,6 +328,16 @@ class StaffModel {
             [staffId]
         );
         return rows;
+    }
+
+    static async getAllAssignedLocationNames() {
+        const [rows] = await db.execute(
+            `SELECT DISTINCT location_name
+             FROM staff_locations
+             WHERE location_name IS NOT NULL AND TRIM(location_name) <> ''
+             ORDER BY location_name`
+        );
+        return rows.map((row) => row.location_name);
     }
 
     static async getAll(includeInactive = false, companyId = null) {

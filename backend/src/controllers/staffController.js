@@ -23,6 +23,7 @@ import { uploadBufferToCloudinary, isCloudinaryConfigured } from '../utils/cloud
 import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
 import xlsx from 'xlsx';
+import ExcelJS from 'exceljs';
 
 function buildStaffProfile(body = {}) {
     const whatsappSource = String(body.whatsappNumber || '').trim() || String(body.contactNo || '').trim();
@@ -480,6 +481,13 @@ export const addCounter = async (req, res) => {
                 );
                 const normalizedErpId = outletErpId.toLowerCase();
 
+                if (!outletErpId) {
+                    return res.status(400).json({ error: `Counter ${i + 1} ERP ID is mandatory.` });
+                }
+                if (!outletName) {
+                    return res.status(400).json({ error: `Counter ${i + 1} outlet name is required.` });
+                }
+
                 if (!googleLocationValidation.valid) {
                     return res.status(400).json({ error: googleLocationValidation.error });
                 }
@@ -500,7 +508,7 @@ export const addCounter = async (req, res) => {
                     return res.status(400).json({ error: 'Same ERP Id already exists in this entry.' });
                 }
 
-                const duplicateCounter = await StaffModel.findDuplicateCounter(id, outletErpId);
+                const duplicateCounter = await StaffModel.findCounterByErpId(outletErpId);
                 if (duplicateCounter) {
                     return res.status(400).json({ error: 'Same ERP Id already exists.' });
                 }
@@ -701,6 +709,163 @@ export const getAllOutletsForStaff = async (req, res) => {
     }
 };
 
+const normalizeOutletUploadText = (value) => String(value ?? '').trim();
+const normalizeOutletUploadKey = (value) => normalizeOutletUploadText(value).toLowerCase();
+const normalizeOutletUploadDay = (value) => {
+    const normalized = normalizeOutletUploadKey(value);
+    const days = {
+        monday: 'Monday', tuesday: 'Tuesday', wednesday: 'Wednesday',
+        thursday: 'Thursday', friday: 'Friday', saturday: 'Saturday', cnf: 'CNF',
+    };
+    return days[normalized] || normalizeOutletUploadText(value);
+};
+const parseOutletUploadBoolean = (value) => ['yes', 'y', 'true', '1'].includes(normalizeOutletUploadKey(value));
+
+export const uploadOutletsExcel = async (req, res) => {
+    try {
+        if (!req.file) {
+            return res.status(400).json({ error: 'Please select an outlet Excel file.' });
+        }
+
+        const extension = String(req.file.originalname || '').split('.').pop().toLowerCase();
+        if (!['xlsx', 'xls'].includes(extension)) {
+            return res.status(400).json({ error: 'Only XLS and XLSX files are supported.' });
+        }
+
+        const staffId = Number(req.params.id);
+        const selectedCompany = normalizeOutletUploadText(req.body?.companyName);
+        const selectedDay = normalizeOutletUploadDay(req.body?.day);
+        const selectedLocation = normalizeOutletUploadText(req.body?.location);
+        if (!Number.isInteger(staffId) || staffId <= 0 || !selectedCompany || !selectedDay || !selectedLocation) {
+            return res.status(400).json({ error: 'Company, staff, day, and location must be selected before upload.' });
+        }
+
+        const staff = await StaffModel.getDetails(staffId);
+        if (!staff) {
+            return res.status(404).json({ error: 'Selected staff was not found.' });
+        }
+        const staffCompanies = String(staff.company_name || '').split(',').map(normalizeOutletUploadKey);
+        if (!staffCompanies.includes(normalizeOutletUploadKey(selectedCompany))) {
+            return res.status(400).json({ error: 'Selected company does not belong to the selected staff.' });
+        }
+
+        const workbook = xlsx.read(req.file.buffer, { type: 'buffer', cellDates: false });
+        const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+        const rows = xlsx.utils.sheet_to_json(firstSheet, { header: 1, defval: '', raw: false });
+        const headers = (rows[0] || []).map(normalizeOutletUploadKey);
+        const expectedHeaders = [
+            ['staff type'], ['company name'], ['staff name'], ['day'], ['location'],
+            ['outlate detials', 'outlet details', 'erp id', 'outlet erp id'],
+            ['outlate name', 'outlet name'], ['gst yes/no', 'gst applicable'],
+            ['gst no', 'gst number'], ['contact', 'contact no'],
+            ['whatsapp', 'whatsapp no'], ['location', 'google location'],
+        ];
+        const invalidHeaderIndex = expectedHeaders.findIndex(
+            (aliases, index) => !aliases.includes(headers[index])
+        );
+        if (invalidHeaderIndex >= 0) {
+            return res.status(400).json({
+                error: `Invalid outlet template: column ${invalidHeaderIndex + 1} header is not recognized.`,
+            });
+        }
+        const dataRows = rows.slice(1).filter((row) => row.some((cell) => normalizeOutletUploadText(cell)));
+        if (dataRows.length === 0) {
+            return res.status(400).json({ error: 'No outlet rows were found in the uploaded file.' });
+        }
+
+        const parsedCounters = [];
+        const fileErpIds = new Set();
+        for (let index = 0; index < dataRows.length; index++) {
+            const row = dataRows[index];
+            const rowNumber = index + 2;
+            const [
+                staffType, companyName, staffName, day, location, outletErpId,
+                outletName, gstApplicable, gstNumber, contactNumber, whatsappNumber,
+                googleLocation,
+            ] = Array.from({ length: 12 }, (_, column) => normalizeOutletUploadText(row[column]));
+
+            const expectedStaffType = staff.staff_type === 'cnf' ? 'cnf' : 'distributor';
+            if (normalizeOutletUploadKey(staffType).replace(/er$/, 'or') !== expectedStaffType) {
+                return res.status(400).json({ error: `Row ${rowNumber}: staff type does not match the selected staff.` });
+            }
+            if (normalizeOutletUploadKey(companyName) !== normalizeOutletUploadKey(selectedCompany)) {
+                return res.status(400).json({ error: `Row ${rowNumber}: company name does not match the selected company.` });
+            }
+            if (normalizeOutletUploadKey(staffName) !== normalizeOutletUploadKey(staff.name)) {
+                return res.status(400).json({ error: `Row ${rowNumber}: staff name does not match the selected staff.` });
+            }
+            if (normalizeOutletUploadKey(normalizeOutletUploadDay(day)) !== normalizeOutletUploadKey(selectedDay)) {
+                return res.status(400).json({ error: `Row ${rowNumber}: day does not match the selected day.` });
+            }
+            if (normalizeOutletUploadKey(location) !== normalizeOutletUploadKey(selectedLocation)) {
+                return res.status(400).json({ error: `Row ${rowNumber}: location does not match the selected location.` });
+            }
+            if (!outletErpId) {
+                return res.status(400).json({ error: `Row ${rowNumber}: ERP ID is mandatory (use the "outlate details" column).` });
+            }
+            if (!outletName) {
+                return res.status(400).json({ error: `Row ${rowNumber}: outlet name is required.` });
+            }
+            const normalizedErpId = normalizeOutletUploadKey(outletErpId);
+            if (fileErpIds.has(normalizedErpId)) {
+                return res.status(400).json({ error: `Row ${rowNumber}: ERP ID ${outletErpId} is duplicated in this file.` });
+            }
+            fileErpIds.add(normalizedErpId);
+
+            const existingCounter = await StaffModel.findCounterByErpId(outletErpId);
+            if (existingCounter) {
+                return res.status(400).json({
+                    error: `Row ${rowNumber}: ERP ID ${outletErpId} was already uploaded for ${existingCounter.staff_name}.`,
+                });
+            }
+
+            const contactValidation = validateDigitsOnly(contactNumber, `Row ${rowNumber} contact number`);
+            if (!contactValidation.valid) {
+                return res.status(400).json({ error: contactValidation.error });
+            }
+            const whatsappValidation = validateDigitsOnly(
+                whatsappNumber || contactValidation.value,
+                `Row ${rowNumber} WhatsApp number`
+            );
+            if (!whatsappValidation.valid) {
+                return res.status(400).json({ error: whatsappValidation.error });
+            }
+            const googleLocationValidation = validateGoogleMapsLocation(
+                googleLocation,
+                `Row ${rowNumber} Google Location`
+            );
+            if (!googleLocationValidation.valid) {
+                return res.status(400).json({ error: googleLocationValidation.error });
+            }
+
+            const hasGst = parseOutletUploadBoolean(gstApplicable);
+            if (hasGst && !gstNumber) {
+                return res.status(400).json({ error: `Row ${rowNumber}: GST number is required when GST is YES.` });
+            }
+
+            parsedCounters.push({
+                outletErpId,
+                outletName,
+                contactNumber: contactValidation.value,
+                whatsappNumber: whatsappValidation.value,
+                address: '',
+                googleLocation: googleLocationValidation.value,
+                hasGst,
+                gstNumber: hasGst ? gstNumber.toUpperCase() : null,
+            });
+        }
+
+        await StaffModel.addCounters(staffId, selectedDay, selectedLocation, parsedCounters);
+        return res.status(201).json({
+            message: `${parsedCounters.length} outlet${parsedCounters.length === 1 ? '' : 's'} uploaded successfully.`,
+            count: parsedCounters.length,
+        });
+    } catch (error) {
+        console.error('Error uploading outlets:', error);
+        return res.status(500).json({ error: 'Unable to upload outlets.' });
+    }
+};
+
 export const downloadOutletsExcel = async (req, res) => {
     try {
         const outlets = await StaffModel.getAllCounters();
@@ -734,6 +899,135 @@ export const downloadOutletsExcel = async (req, res) => {
     } catch (error) {
         console.error('Error exporting outlets:', error);
         return res.status(500).json({ error: 'Unable to export outlets.' });
+    }
+};
+
+export const downloadOutletUploadTemplate = async (req, res) => {
+    try {
+        const companies = await CompanyModel.getAll();
+        const staffMembers = await StaffModel.getAll();
+        const locationNames = await StaffModel.getAllAssignedLocationNames();
+        const uniqueDropdownValues = (values) => [
+            ...new Map(
+                values
+                    .map(normalizeOutletUploadText)
+                    .filter(Boolean)
+                    .map((value) => [normalizeOutletUploadKey(value), value])
+            ).values(),
+        ];
+        const staffDropdownNames = uniqueDropdownValues(staffMembers.map((staff) => staff.name));
+        const locationDropdownNames = uniqueDropdownValues(locationNames);
+        const headers = [
+            'staff Type',
+            'Company Name',
+            'staff Name',
+            'Day',
+            'location',
+            'ERP ID',
+            'Outlet Name',
+            'GST YES/NO',
+            'GST NO',
+            'CONTACT',
+            'WHATSAPP',
+            'Google Location',
+        ];
+        const workbook = new ExcelJS.Workbook();
+        workbook.creator = 'EduNextG Sales';
+        const worksheet = workbook.addWorksheet('Upload Format', {
+            views: [{ state: 'frozen', ySplit: 1, showGridLines: false }],
+        });
+        const instructions = workbook.addWorksheet('Instructions', {
+            views: [{ showGridLines: false }],
+        });
+        const lists = workbook.addWorksheet('Lists', { state: 'veryHidden' });
+
+        worksheet.addRow(headers);
+        worksheet.columns = [
+            { width: 16 }, { width: 24 }, { width: 26 }, { width: 14 },
+            { width: 22 }, { width: 18 }, { width: 30 }, { width: 16 },
+            { width: 20 }, { width: 18 }, { width: 18 }, { width: 52 },
+        ];
+        worksheet.getRow(1).height = 30;
+        worksheet.getRow(1).eachCell((cell) => {
+            cell.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF0F766E' } };
+            cell.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
+        });
+
+        lists.getCell('A1').value = 'Staff Types';
+        ['Distributor', 'CNF'].forEach((value, index) => { lists.getCell(index + 2, 1).value = value; });
+        lists.getCell('B1').value = 'Companies';
+        companies.forEach((company, index) => { lists.getCell(index + 2, 2).value = company.name; });
+        lists.getCell('C1').value = 'Days';
+        ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'CNF']
+            .forEach((value, index) => { lists.getCell(index + 2, 3).value = value; });
+        lists.getCell('D1').value = 'GST';
+        ['YES', 'NO'].forEach((value, index) => { lists.getCell(index + 2, 4).value = value; });
+        lists.getCell('E1').value = 'Staff Names';
+        staffDropdownNames.forEach((value, index) => { lists.getCell(index + 2, 5).value = value; });
+        lists.getCell('F1').value = 'Locations';
+        locationDropdownNames.forEach((value, index) => { lists.getCell(index + 2, 6).value = value; });
+
+        const companyLastRow = Math.max(companies.length + 1, 2);
+        const staffLastRow = Math.max(staffDropdownNames.length + 1, 2);
+        const locationLastRow = Math.max(locationDropdownNames.length + 1, 2);
+        for (let row = 2; row <= 501; row++) {
+            worksheet.getCell(row, 1).dataValidation = {
+                type: 'list', allowBlank: false, formulae: ["'Lists'!$A$2:$A$3"],
+                showErrorMessage: true, errorTitle: 'Select Staff Type', error: 'Choose a value from the dropdown.',
+            };
+            worksheet.getCell(row, 2).dataValidation = {
+                type: 'list', allowBlank: false, formulae: [`'Lists'!$B$2:$B$${companyLastRow}`],
+                showErrorMessage: true, errorTitle: 'Select Company', error: 'Choose a company from the dropdown.',
+            };
+            worksheet.getCell(row, 3).dataValidation = {
+                type: 'list', allowBlank: false, formulae: [`'Lists'!$E$2:$E$${staffLastRow}`],
+                showErrorMessage: true, errorTitle: 'Select Staff', error: 'Choose a staff name from the dropdown.',
+            };
+            worksheet.getCell(row, 4).dataValidation = {
+                type: 'list', allowBlank: false, formulae: ["'Lists'!$C$2:$C$8"],
+                showErrorMessage: true, errorTitle: 'Select Day', error: 'Choose a day from the dropdown.',
+            };
+            worksheet.getCell(row, 5).dataValidation = {
+                type: 'list', allowBlank: false, formulae: [`'Lists'!$F$2:$F$${locationLastRow}`],
+                showErrorMessage: true, errorTitle: 'Select Location', error: 'Choose a location from the dropdown.',
+            };
+            worksheet.getCell(row, 8).dataValidation = {
+                type: 'list', allowBlank: false, formulae: ["'Lists'!$D$2:$D$3"],
+                showErrorMessage: true, errorTitle: 'Select GST', error: 'Choose YES or NO.',
+            };
+            worksheet.getRow(row).height = 22;
+            worksheet.getRow(row).eachCell({ includeEmpty: true }, (cell) => {
+                cell.numFmt = '@';
+                cell.border = { bottom: { style: 'hair', color: { argb: 'FFE2E8F0' } } };
+            });
+        }
+
+        instructions.columns = [{ width: 8 }, { width: 90 }];
+        instructions.addRow(['ADD OUTLET UPLOAD INSTRUCTIONS']);
+        instructions.mergeCells('A1:B1');
+        instructions.getCell('A1').font = { bold: true, size: 16, color: { argb: 'FFFFFFFF' } };
+        instructions.getCell('A1').fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF0F766E' } };
+        instructions.getRow(1).height = 30;
+        [
+            'Select Company, Staff, Day, and Location before uploading.',
+            'Every Excel row must match the selected Company, Staff, Day, and Location.',
+            'ERP ID is mandatory and cannot be uploaded more than once.',
+            'Use only one Day and one Location in each upload file.',
+            'If GST YES/NO is NO, leave GST NO blank.',
+            'If GST YES/NO is YES, GST NO is mandatory.',
+            'CONTACT and WHATSAPP must contain numbers only.',
+            'Google Location must be a Google Maps short share link.',
+        ].forEach((rule, index) => instructions.addRow([index + 1, rule]));
+
+        const file = await workbook.xlsx.writeBuffer();
+
+        res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        res.setHeader('Content-Disposition', 'attachment; filename="Add_Outlet_Upload_Template.xlsx"');
+        return res.send(file);
+    } catch (error) {
+        console.error('Error creating outlet upload template:', error);
+        return res.status(500).json({ error: 'Unable to create outlet upload template.' });
     }
 };
 
@@ -2173,13 +2467,9 @@ export const editCounter = async (req, res) => {
             return res.status(400).json({ error: 'GST number is required when GST is enabled.' });
         }
 
-        const duplicateCounter = await StaffModel.findDuplicateCounter(
-            existingCounter.staff_id,
-            normalizedOutletErpId,
-            counterId
-        );
+        const duplicateCounter = await StaffModel.findCounterByErpId(normalizedOutletErpId);
 
-        if (duplicateCounter) {
+        if (duplicateCounter && Number(duplicateCounter.id) !== Number(counterId)) {
             return res.status(400).json({ error: 'Same ERP Id already exists.' });
         }
 
