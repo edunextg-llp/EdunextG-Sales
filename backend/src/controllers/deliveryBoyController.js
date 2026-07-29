@@ -196,6 +196,12 @@ export const generateDeliveryBoyCredentials = async (req, res) => {
         if (!credentials) {
             return res.status(404).json({ error: 'Delivery Boy not found' });
         }
+        if (credentials.alreadyGenerated) {
+            return res.status(409).json({
+                error: 'Login ID and password were already generated. Credentials can only be generated once.',
+                deliveryLoginId: credentials.deliveryLoginId,
+            });
+        }
 
         res.status(200).json({
             message: 'Delivery Boy credentials generated successfully',
@@ -231,6 +237,57 @@ export const getDeliveryBoys = async (req, res) => {
     } catch (error) {
         console.error('Error fetching delivery boys:', error);
         res.status(500).json({ error: 'Internal server error' });
+    }
+};
+
+const DELIVERY_PERMISSION_KEYS = ['dashboard', 'dms', 'add_seller', 'add_item', 'item_list'];
+
+export const getPermissionUsers = async (req, res) => {
+    try {
+        const users = await DeliveryBoyModel.getPermissionUsers();
+        res.status(200).json(users.map((user) => ({
+            id: user.id,
+            name: user.name,
+            role: user.role,
+            isActive: Boolean(user.is_active),
+            loginId: user.delivery_login_id,
+            hasCredentials: Boolean(user.has_credentials),
+            permissions: DELIVERY_PERMISSION_KEYS.filter((key) => Boolean(user[`can_${key}`])),
+        })));
+    } catch (error) {
+        console.error('Error fetching permission users:', error);
+        res.status(500).json({ error: 'Unable to fetch permission users.' });
+    }
+};
+
+export const updatePermissionUser = async (req, res) => {
+    try {
+        const deliveryBoyId = Number(req.params.id);
+        const permissions = Array.isArray(req.body?.permissions) ? req.body.permissions : [];
+        if (!Number.isInteger(deliveryBoyId) || deliveryBoyId <= 0) {
+            return res.status(400).json({ error: 'User ID must be a positive integer.' });
+        }
+        if (permissions.some((permission) => !DELIVERY_PERMISSION_KEYS.includes(permission))) {
+            return res.status(400).json({ error: 'One or more permissions are invalid.' });
+        }
+        const user = await DeliveryBoyModel.getById(deliveryBoyId);
+        if (!user) {
+            return res.status(404).json({ error: 'Packaging Staff or Delivery Boy not found.' });
+        }
+        const normalizedPermissions = [...new Set(permissions)];
+        if (
+            normalizedPermissions.some((permission) =>
+                ['add_seller', 'add_item', 'item_list'].includes(permission)
+            )
+            && !normalizedPermissions.includes('dms')
+        ) {
+            normalizedPermissions.push('dms');
+        }
+        await DeliveryBoyModel.setPermissions(deliveryBoyId, normalizedPermissions);
+        return res.status(200).json({ message: 'Permissions updated successfully.' });
+    } catch (error) {
+        console.error('Error updating permissions:', error);
+        return res.status(500).json({ error: 'Unable to update permissions.' });
     }
 };
 

@@ -1,5 +1,7 @@
 // Material Dashboard 2 React layouts
 import Dashboard from "layouts/dashboard";
+import PermissionManagement from "layouts/permission-management";
+import Welcome from "layouts/welcome";
 // import Tables from "layouts/tables";
 // import Billing from "layouts/billing";
 // import RTL from "layouts/rtl";
@@ -47,6 +49,27 @@ const routes = [
     icon: <Icon fontSize="small">dashboard</Icon>,
     route: "/dashboard",
     component: <Dashboard />,
+    allowedRoles: ["admin", "packaging_staff", "delivery_boy"],
+    requiredPermission: "dashboard",
+  },
+  {
+    type: "collapse",
+    name: "Permissions",
+    key: "permission-management",
+    icon: <Icon fontSize="small">admin_panel_settings</Icon>,
+    route: "/permission-management",
+    component: <PermissionManagement />,
+    allowedRoles: ["admin"],
+  },
+  {
+    type: "collapse",
+    name: "Welcome",
+    key: "welcome",
+    icon: <Icon fontSize="small">waving_hand</Icon>,
+    route: "/welcome",
+    component: <Welcome />,
+    allowedRoles: ["packaging_staff", "delivery_boy"],
+    hideWhenPermissionsAssigned: true,
   },
   // {
   //   type: "collapse",
@@ -61,6 +84,8 @@ const routes = [
     name: "DMS",
     key: "dms",
     icon: <Icon fontSize="small">inventory</Icon>,
+    allowedRoles: ["admin", "packaging_staff", "delivery_boy"],
+    requiredPermission: "dms",
     collapse: [
       {
         type: "collapse",
@@ -69,6 +94,8 @@ const routes = [
         icon: <Icon fontSize="small">storefront</Icon>,
         route: "/add-seller",
         component: <AddSeller />,
+        allowedRoles: ["admin", "packaging_staff", "delivery_boy"],
+        requiredPermission: "add_seller",
       },
       {
         type: "collapse",
@@ -77,6 +104,8 @@ const routes = [
         icon: <Icon fontSize="small">category</Icon>,
         route: "/add-item",
         component: <AddItem />,
+        allowedRoles: ["admin", "packaging_staff", "delivery_boy"],
+        requiredPermission: "add_item",
       },
       {
         type: "collapse",
@@ -85,6 +114,8 @@ const routes = [
         icon: <Icon fontSize="small">inventory_2</Icon>,
         route: "/dms-stock",
         component: <DmsStock />,
+        allowedRoles: ["admin", "packaging_staff", "delivery_boy"],
+        requiredPermission: "item_list",
       },
 
       {

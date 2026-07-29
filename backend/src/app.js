@@ -5,7 +5,12 @@ import staffRoutes from './routes/staffRoutes.js';
 import deliveryBoyRoutes from './routes/deliveryBoyRoutes.js';
 import chalanRoutes from './routes/chalanRoutes.js';
 import authRoutes from './routes/authRoutes.js';
-import { enforceStaffApiScope, requireRole, verifyTokenMiddleware } from './middlewares/authMiddleware.js';
+import {
+    enforceManagedUserApiScope,
+    enforceStaffApiScope,
+    requireRole,
+    verifyTokenMiddleware,
+} from './middlewares/authMiddleware.js';
 import rateLimit from 'express-rate-limit';
 
 const app = express();
@@ -29,7 +34,13 @@ app.use('/api/', globalLimiter);
 app.use('/api/auth', authRoutes);
 
 // Protected Routes
-app.use('/api/staff', verifyTokenMiddleware, enforceStaffApiScope, staffRoutes);
+app.use(
+    '/api/staff',
+    verifyTokenMiddleware,
+    enforceStaffApiScope,
+    enforceManagedUserApiScope,
+    staffRoutes
+);
 app.use('/api/delivery-boy', deliveryBoyRoutes);
 app.use('/api/chalan', verifyTokenMiddleware, requireRole('admin'), chalanRoutes);
 

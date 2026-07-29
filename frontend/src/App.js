@@ -53,15 +53,23 @@ export default function App() {
   const { pathname } = useLocation();
   const { user } = useAuth();
   const role = user?.role || "admin";
+  const permissions = Array.isArray(user?.permissions) ? user.permissions : [];
 
   const filterRoutesByRole = (allRoutes) =>
     allRoutes.reduce((visible, route) => {
+      const allowedRoles = route.allowedRoles || ["admin"];
+      const roleAllowed = allowedRoles.includes(role);
+      const permissionAllowed =
+        role === "admin" || !route.requiredPermission || permissions.includes(route.requiredPermission);
+      const assignmentStateAllowed =
+        !route.hideWhenPermissionsAssigned || permissions.length === 0;
+      if (!roleAllowed || !permissionAllowed || !assignmentStateAllowed) return visible;
+
       if (route.collapse) {
         const collapse = filterRoutesByRole(route.collapse);
         if (collapse.length) visible.push({ ...route, collapse });
       } else {
-        const allowedRoles = route.allowedRoles || ["admin"];
-        if (allowedRoles.includes(role)) visible.push(route);
+        visible.push(route);
       }
       return visible;
     }, []);
@@ -116,7 +124,12 @@ export default function App() {
         const element = isAuthRoute ? (
           route.component
         ) : (
-          <ProtectedRoute allowedRoles={route.allowedRoles || ["admin"]}>{route.component}</ProtectedRoute>
+          <ProtectedRoute
+            allowedRoles={route.allowedRoles || ["admin"]}
+            requiredPermission={route.requiredPermission}
+          >
+            {route.component}
+          </ProtectedRoute>
         );
         return <Route exact path={route.route} element={element} key={route.key} />;
       }
@@ -170,7 +183,19 @@ export default function App() {
         <Routes>
           {getRoutes(visibleRoutes)}
           <Route exact path="/authentication/sign-in" element={<SignIn />} />
-          <Route path="*" element={<Navigate to={role === "staff" ? "/purchase-requisition" : "/dashboard"} />} />
+          <Route path="*" element={<Navigate to={
+            role === "staff"
+              ? "/purchase-requisition"
+              : role === "admin" || permissions.includes("dashboard")
+                ? "/dashboard"
+                : permissions.includes("dms") && permissions.includes("add_seller")
+                  ? "/add-seller"
+                  : permissions.includes("dms") && permissions.includes("add_item")
+                    ? "/add-item"
+                    : permissions.includes("dms") && permissions.includes("item_list")
+                      ? "/dms-stock"
+                      : "/welcome"
+          } />} />
         </Routes>
       </ThemeProvider>
     </CacheProvider>
@@ -195,7 +220,19 @@ export default function App() {
       <Routes>
         {getRoutes(visibleRoutes)}
         <Route exact path="/authentication/sign-in" element={<SignIn />} />
-        <Route path="*" element={<Navigate to={role === "staff" ? "/purchase-requisition" : "/dashboard"} />} />
+        <Route path="*" element={<Navigate to={
+          role === "staff"
+            ? "/purchase-requisition"
+            : role === "admin" || permissions.includes("dashboard")
+              ? "/dashboard"
+              : permissions.includes("dms") && permissions.includes("add_seller")
+                ? "/add-seller"
+                : permissions.includes("dms") && permissions.includes("add_item")
+                  ? "/add-item"
+                  : permissions.includes("dms") && permissions.includes("item_list")
+                    ? "/dms-stock"
+                    : "/welcome"
+        } />} />
       </Routes>
     </ThemeProvider>
   );

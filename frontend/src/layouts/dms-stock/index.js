@@ -35,6 +35,7 @@ const API = "https://bawarchee.edunextg.co/api";
 const DMS_STOCK_TEMPLATE_URL =
   "https://res.cloudinary.com/ddwp5cuhl/raw/upload/v1782977868/DMS_Stock_-_Copy_cgba8i.xlsx";
 const MANUAL_DMS_DRAFT_KEY = "dms-manual-stock-draft";
+const INCLUDED_GST_FACTOR = 1.05;
 
 const loadManualDmsDraft = () => {
   try {
@@ -218,6 +219,7 @@ const emptyManualItem = () => ({
   price: "",
   discountAmount: "",
   taxableAmount: "",
+  dpPriceAfterDiscount: "",
   cgstAmount: "",
   sgstAmount: "",
   retailPrice: "",
@@ -259,6 +261,7 @@ const mapSellerItemToManualItem = (sellerItem) => {
     price: "",
     discountAmount: "",
     taxableAmount: "",
+    dpPriceAfterDiscount: "",
     cgstAmount: "",
     sgstAmount: "",
     retailPrice: "",
@@ -285,6 +288,8 @@ const calcManualTotals = (item) => {
   const discountPercent = Math.min(100, Math.max(0, Number(item.discountPercent) || 0));
   const retailPrice = Number(item.retailPrice) || 0;
   const wholesalePrice = Number(item.wholesalePrice) || 0;
+  const retailPriceExcludingGst = retailPrice / INCLUDED_GST_FACTOR;
+  const wholesalePriceExcludingGst = wholesalePrice / INCLUDED_GST_FACTOR;
 
   const totalCurrentStockInPcs = (pcsPerBox * currentStockInCase) + currentStockInPcs;
   const priceWithGst = pricePerPiece * 1.05;
@@ -292,6 +297,7 @@ const calcManualTotals = (item) => {
   const price = dpPrice * totalCurrentStockInPcs;
   const discountAmount = price * discountPercent / 100;
   const taxableAmount = price - discountAmount;
+  const dpPriceAfterDiscount = dpPrice * (1 - discountPercent / 100);
   const cgstAmount = taxableAmount * 0.025;
   const sgstAmount = taxableAmount * 0.025;
   const totalValue = taxableAmount + cgstAmount + sgstAmount;
@@ -304,10 +310,13 @@ const calcManualTotals = (item) => {
     price: price ? price.toFixed(2) : "",
     discountAmount: discountAmount ? discountAmount.toFixed(2) : "0.00",
     taxableAmount: taxableAmount ? taxableAmount.toFixed(2) : "",
+    dpPriceAfterDiscount: dpPrice ? dpPriceAfterDiscount.toFixed(4) : "",
     cgstAmount: cgstAmount ? cgstAmount.toFixed(2) : "",
     sgstAmount: sgstAmount ? sgstAmount.toFixed(2) : "",
-    retailMargin: retailPrice && dpPrice ? (retailPrice - dpPrice).toFixed(2) : "",
-    wholesaleMargin: wholesalePrice && dpPrice ? (wholesalePrice - dpPrice).toFixed(2) : "",
+    retailMargin: retailPrice && dpPrice ? (retailPriceExcludingGst - dpPrice).toFixed(2) : "",
+    wholesaleMargin: wholesalePrice && dpPrice
+      ? (wholesalePriceExcludingGst - dpPrice).toFixed(2)
+      : "",
   };
 };
 
@@ -740,9 +749,9 @@ function DmsStock() {
       setError("Please enter a valid MRP.");
       return;
     }
-    if (Number(manualItem.retailPrice) < Number(manualItem.dpPrice)
-      || Number(manualItem.wholesalePrice) < Number(manualItem.dpPrice)) {
-      setError("Retail and Wholesale Price must be equal to or greater than DP Price.");
+    if ((Number(manualItem.retailPrice) / INCLUDED_GST_FACTOR) < Number(manualItem.dpPrice)
+      || (Number(manualItem.wholesalePrice) / INCLUDED_GST_FACTOR) < Number(manualItem.dpPrice)) {
+      setError("Retail and Wholesale Price excluding included 5% GST must be at least DP Price.");
       return;
     }
 
@@ -1094,7 +1103,7 @@ function DmsStock() {
                   </Grid>
                 </Grid>
                 <TableContainer component={Paper} sx={stickyTableContainerSx}>
-                  <Table sx={stickyTableSx(2600)}>
+                  <Table sx={stickyTableSx(2900)}>
                     <TableHead sx={{ display: "table-header-group", backgroundColor: "#f9fafb" }}>
                       <TableRow>
                         <TableCell sx={stickyColumnSx(0, { isHead: true, baseSx: tableHeadSx })}>Sr No</TableCell>
@@ -1111,22 +1120,24 @@ function DmsStock() {
                         <TableCell align="right" sx={stickyHeadRowSx(tableHeadSx)}>Current Stock In Pcs</TableCell>
                         <TableCell align="right" sx={stickyHeadRowSx(tableHeadSx)}>Total Current Stock In Pcs</TableCell>
                         <TableCell align="right" sx={stickyHeadRowSx(tableHeadSx)}>MRP</TableCell>
+                        <TableCell align="right" sx={stickyHeadRowSx(tableHeadSx)}>Discount Price</TableCell>
+                        <TableCell align="right" sx={stickyHeadRowSx(tableHeadSx)}>DP Price - Discount %</TableCell>
                         <TableCell align="right" sx={stickyHeadRowSx(tableHeadSx)}>DP Price</TableCell>
                         <TableCell align="right" sx={stickyHeadRowSx(tableHeadSx)}>Discount %</TableCell>
                         <TableCell align="right" sx={stickyHeadRowSx(tableHeadSx)}>GST %</TableCell>
                         <TableCell align="right" sx={stickyHeadRowSx(tableHeadSx)}>CGST</TableCell>
                         <TableCell align="right" sx={stickyHeadRowSx(tableHeadSx)}>SGST</TableCell>
                         <TableCell align="right" sx={stickyHeadRowSx(tableHeadSx)}>Total Price</TableCell>
-                        <TableCell align="right" sx={stickyHeadRowSx(tableHeadSx)}>Retail Price</TableCell>
-                        <TableCell align="right" sx={stickyHeadRowSx(tableHeadSx)}>Wholesale Price</TableCell>
-                        <TableCell align="right" sx={stickyHeadRowSx(tableHeadSx)}>Retail Margin</TableCell>
-                        <TableCell align="right" sx={stickyHeadRowSx(tableHeadSx)}>Wholesale Margin</TableCell>
+                        <TableCell align="right" sx={stickyHeadRowSx(tableHeadSx)}>Retail Price (Incl. GST)</TableCell>
+                        <TableCell align="right" sx={stickyHeadRowSx(tableHeadSx)}>Wholesale Price (Incl. GST)</TableCell>
+                        <TableCell align="right" sx={stickyHeadRowSx(tableHeadSx)}>Retail Margin (Excl. GST)</TableCell>
+                        <TableCell align="right" sx={stickyHeadRowSx(tableHeadSx)}>Wholesale Margin (Excl. GST)</TableCell>
                       </TableRow>
                     </TableHead>
                     <TableBody>
                       {items.length === 0 && (
                         <TableRow>
-                          <TableCell colSpan={24} align="center" sx={tableBodySx}>
+                          <TableCell colSpan={26} align="center" sx={tableBodySx}>
                             <MDTypography variant="button" color="text">
                               No DMS stock uploaded yet. Click &quot;Upload File&quot; or &quot;Manual Entry&quot; to add stock.
                             </MDTypography>
@@ -1135,7 +1146,7 @@ function DmsStock() {
                       )}
                       {items.length > 0 && filteredItems.length === 0 && (
                         <TableRow>
-                          <TableCell colSpan={24} align="center" sx={tableBodySx}>
+                          <TableCell colSpan={26} align="center" sx={tableBodySx}>
                             <MDTypography variant="button" color="text">
                               No stock rows match the selected filters.
                             </MDTypography>
@@ -1162,6 +1173,19 @@ function DmsStock() {
                           <TableCell align="right" sx={tableBodySx}>{unitFormat(item.current_stock_in_pcs)}</TableCell>
                           <TableCell align="right" sx={tableBodySx}>{unitFormat(item.total_current_stock_in_pcs)}</TableCell>
                           <TableCell align="right" sx={tableBodySx}>{money(item.mrp)}</TableCell>
+                          <TableCell align="right" sx={tableBodySx}>
+                            {money(
+                              Number(item.dp_price)
+                              * Number(item.total_current_stock_in_pcs || 0)
+                              * (1 - Number(item.discount_percent || 0) / 100)
+                            )}
+                          </TableCell>
+                          <TableCell align="right" sx={tableBodySx}>
+                            {(
+                              Number(item.dp_price)
+                              * (1 - Number(item.discount_percent || 0) / 100)
+                            ).toFixed(4)}
+                          </TableCell>
                           <TableCell align="right" sx={tableBodySx}>{money(item.dp_price)}</TableCell>
                           <TableCell align="right" sx={tableBodySx}>{numberFormat(item.discount_percent)}%</TableCell>
                           <TableCell align="right" sx={tableBodySx}>{numberFormat(item.gst_percent)}%</TableCell>
@@ -1536,6 +1560,27 @@ function DmsStock() {
                   sx={{ "& .MuiInputBase-root": { backgroundColor: "#fff", height: 40 } }} />
               </Grid>
               <Grid item xs={6} md={2}>
+                <MDTypography sx={fieldLabelSx}>Discount %</MDTypography>
+                <MDInput fullWidth type="number" inputProps={{ min: 0, max: 100 }}
+                  value={manualItem.discountPercent}
+                  onChange={(event) => updateManualItem("discountPercent", event.target.value)}
+                  sx={{ "& .MuiInputBase-root": { backgroundColor: "#fff", height: 40 } }} />
+              </Grid>
+              <Grid item xs={6} md={2}>
+                <MDTypography sx={fieldLabelSx}>DP Price - Discount %</MDTypography>
+                <MDInput
+                  fullWidth
+                  disabled
+                  value={
+                    manualItem.dpPriceAfterDiscount !== ""
+                      && manualItem.dpPriceAfterDiscount != null
+                      ? manualItem.dpPriceAfterDiscount
+                      : ""
+                  }
+                  sx={{ "& .MuiInputBase-root": { backgroundColor: "#f1f5f9", height: 40 } }}
+                />
+              </Grid>
+              <Grid item xs={6} md={2}>
                 <MDTypography sx={fieldLabelSx}>Price (DP × Qty)</MDTypography>
                 <MDInput
                   fullWidth
@@ -1544,13 +1589,7 @@ function DmsStock() {
                   sx={{ "& .MuiInputBase-root": { backgroundColor: "#f1f5f9", height: 40 } }}
                 />
               </Grid>
-              <Grid item xs={6} md={2}>
-                <MDTypography sx={fieldLabelSx}>Discount %</MDTypography>
-                <MDInput fullWidth type="number" inputProps={{ min: 0, max: 100 }}
-                  value={manualItem.discountPercent}
-                  onChange={(event) => updateManualItem("discountPercent", event.target.value)}
-                  sx={{ "& .MuiInputBase-root": { backgroundColor: "#fff", height: 40 } }} />
-              </Grid>
+
               <Grid item xs={6} md={2}>
                 <MDTypography sx={fieldLabelSx}>Discount Price</MDTypography>
                 <MDInput
@@ -1564,6 +1603,7 @@ function DmsStock() {
                   sx={{ "& .MuiInputBase-root": { backgroundColor: "#f1f5f9", height: 40 } }}
                 />
               </Grid>
+
               {[
                 ["GST", "5%"],
                 ["CGST (2.5%)", manualItem.cgstAmount ? `Rs. ${manualItem.cgstAmount}` : ""],
@@ -1577,24 +1617,24 @@ function DmsStock() {
                 </Grid>
               ))}
               <Grid item xs={6} md={2}>
-                <MDTypography sx={fieldLabelSx}>Retail Price{requiredMark}</MDTypography>
+                <MDTypography sx={fieldLabelSx}>Retail Price (Incl. 5% GST){requiredMark}</MDTypography>
                 <MDInput fullWidth type="number" value={manualItem.retailPrice}
                   onChange={(event) => updateManualItem("retailPrice", event.target.value)}
                   sx={{ "& .MuiInputBase-root": { backgroundColor: "#fff", height: 40 } }} />
               </Grid>
               <Grid item xs={6} md={2}>
-                <MDTypography sx={fieldLabelSx}>Wholesale Price{requiredMark}</MDTypography>
+                <MDTypography sx={fieldLabelSx}>Wholesale Price (Incl. 5% GST){requiredMark}</MDTypography>
                 <MDInput fullWidth type="number" value={manualItem.wholesalePrice}
                   onChange={(event) => updateManualItem("wholesalePrice", event.target.value)}
                   sx={{ "& .MuiInputBase-root": { backgroundColor: "#fff", height: 40 } }} />
               </Grid>
               <Grid item xs={6} md={2}>
-                <MDTypography sx={fieldLabelSx}>Retail Margin</MDTypography>
+                <MDTypography sx={fieldLabelSx}>Retail Margin (Excl. GST)</MDTypography>
                 <MDInput fullWidth disabled value={manualItem.retailMargin ? `Rs. ${manualItem.retailMargin}` : ""}
                   sx={{ "& .MuiInputBase-root": { backgroundColor: "#f1f5f9", height: 40 } }} />
               </Grid>
               <Grid item xs={6} md={2}>
-                <MDTypography sx={fieldLabelSx}>Wholesale Margin</MDTypography>
+                <MDTypography sx={fieldLabelSx}>Wholesale Margin (Excl. GST)</MDTypography>
                 <MDInput fullWidth disabled value={manualItem.wholesaleMargin ? `Rs. ${manualItem.wholesaleMargin}` : ""}
                   sx={{ "& .MuiInputBase-root": { backgroundColor: "#f1f5f9", height: 40 } }} />
               </Grid>

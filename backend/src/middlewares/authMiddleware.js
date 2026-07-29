@@ -45,3 +45,36 @@ export const enforceStaffApiScope = (req, res, next) => {
     }
     return next();
 };
+
+export const enforceManagedUserApiScope = (req, res, next) => {
+    if (!['packaging_staff', 'delivery_boy'].includes(req.user?.role)) return next();
+
+    const permissions = new Set(Array.isArray(req.user.permissions) ? req.user.permissions : []);
+    const path = req.path;
+    const method = req.method.toUpperCase();
+    const hasDms = permissions.has('dms');
+
+    let allowed = false;
+    if (path === '/reports' || path === '/purchase-reports' || path === '/' || path === '/search') {
+        allowed = method === 'GET' && permissions.has('dashboard');
+    } else if (path === '/companies') {
+        allowed = method === 'GET' && hasDms;
+    } else if (path.startsWith('/dms-stock')) {
+        allowed = hasDms && permissions.has('item_list');
+    } else if (path.startsWith('/purchase-sellers')) {
+        allowed = hasDms && (
+            permissions.has('add_seller')
+            || (method === 'GET' && (permissions.has('add_item') || permissions.has('item_list')))
+        );
+    } else if (path.startsWith('/seller-items')) {
+        allowed = hasDms && (
+            permissions.has('add_item')
+            || (method === 'GET' && permissions.has('item_list'))
+        );
+    }
+
+    if (!allowed) {
+        return res.status(403).json({ error: 'You do not have permission to use this feature.' });
+    }
+    return next();
+};

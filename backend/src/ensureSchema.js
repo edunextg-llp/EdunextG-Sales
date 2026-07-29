@@ -233,6 +233,11 @@ export async function ensureSchema() {
             `ALTER TABLE delivery_boys ADD COLUMN delivery_passcode VARCHAR(20) NULL`,
             'legacy delivery_passcode on delivery_boys'
         );
+        await tryQuery(
+            connection,
+            `ALTER TABLE delivery_boys MODIFY COLUMN delivery_passcode TEXT NULL`,
+            'encrypted delivery_passcode storage'
+        );
 
         await tryQuery(
             connection,
@@ -254,6 +259,19 @@ export async function ensureSchema() {
             `ALTER TABLE delivery_boys ADD COLUMN aadhar_no VARCHAR(20) NULL`,
             'aadhar_no on delivery_boys'
         );
+
+        await connection.query(`
+            CREATE TABLE IF NOT EXISTS delivery_user_permissions (
+                delivery_boy_id INT PRIMARY KEY,
+                can_dashboard TINYINT(1) NOT NULL DEFAULT 0,
+                can_dms TINYINT(1) NOT NULL DEFAULT 0,
+                can_add_seller TINYINT(1) NOT NULL DEFAULT 0,
+                can_add_item TINYINT(1) NOT NULL DEFAULT 0,
+                can_item_list TINYINT(1) NOT NULL DEFAULT 0,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                FOREIGN KEY (delivery_boy_id) REFERENCES delivery_boys(id) ON DELETE CASCADE
+            );
+        `);
 
         await connection.query(`
             UPDATE delivery_boys

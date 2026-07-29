@@ -3,6 +3,7 @@ import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
 import UserModel from '../models/userModel.js';
 import StaffModel from '../models/staffModel.js';
+import DeliveryBoyModel from '../models/deliveryBoyModel.js';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'super_secret_key_12345';
 const JWT_REFRESH_SECRET = process.env.JWT_REFRESH_SECRET || `${JWT_SECRET}_refresh`;
@@ -98,39 +99,60 @@ export const login = async (req, res) => {
                 && Number(staff.is_active) === 1
                 && staff.password_hash
                 && await bcrypt.compare(password, staff.password_hash);
-            if (!validStaff) {
-                return res.status(401).json({ error: 'Invalid login ID/email or password' });
+            if (validStaff) {
+                const companyIds = String(staff.company_ids || '')
+                    .split(',')
+                    .map(Number)
+                    .filter((id) => Number.isInteger(id) && id > 0);
+                const companyNames = String(staff.company_names || '')
+                    .split(',')
+                    .map((name) => name.trim())
+                    .filter(Boolean);
+                tokenPayload = {
+                    id: staff.id,
+                    staffId: staff.id,
+                    loginId: staff.login_id,
+                    role: 'staff',
+                    staffType: staff.staff_type,
+                    companyIds,
+                };
+                user = {
+                    id: staff.id,
+                    staffId: staff.id,
+                    username: staff.name,
+                    loginId: staff.login_id,
+                    role: 'staff',
+                    staffType: staff.staff_type,
+                    companies: companyIds.map((id, index) => ({
+                        id,
+                        name: companyNames[index] || `Company ${id}`,
+                        type: staff.staff_type,
+                    })),
+                };
+            } else {
+                const deliveryUser = await DeliveryBoyModel.getByLogin(identifier, password);
+                if (!deliveryUser) {
+                    return res.status(401).json({ error: 'Invalid login ID/email or password' });
+                }
+                const permissionKeys = ['dashboard', 'dms', 'add_seller', 'add_item', 'item_list'];
+                const permissions = permissionKeys.filter((key) => Boolean(deliveryUser[`can_${key}`]));
+                const role = deliveryUser.role === 'packaging_staff' ? 'packaging_staff' : 'delivery_boy';
+                tokenPayload = {
+                    id: deliveryUser.id,
+                    deliveryBoyId: deliveryUser.id,
+                    loginId: deliveryUser.delivery_login_id,
+                    role,
+                    permissions,
+                };
+                user = {
+                    id: deliveryUser.id,
+                    deliveryBoyId: deliveryUser.id,
+                    username: deliveryUser.name,
+                    loginId: deliveryUser.delivery_login_id,
+                    role,
+                    permissions,
+                };
             }
-
-            const companyIds = String(staff.company_ids || '')
-                .split(',')
-                .map(Number)
-                .filter((id) => Number.isInteger(id) && id > 0);
-            const companyNames = String(staff.company_names || '')
-                .split(',')
-                .map((name) => name.trim())
-                .filter(Boolean);
-            tokenPayload = {
-                id: staff.id,
-                staffId: staff.id,
-                loginId: staff.login_id,
-                role: 'staff',
-                staffType: staff.staff_type,
-                companyIds,
-            };
-            user = {
-                id: staff.id,
-                staffId: staff.id,
-                username: staff.name,
-                loginId: staff.login_id,
-                role: 'staff',
-                staffType: staff.staff_type,
-                companies: companyIds.map((id, index) => ({
-                    id,
-                    name: companyNames[index] || `Company ${id}`,
-                    type: staff.staff_type,
-                })),
-            };
         }
         const token = jwt.sign(
             tokenPayload,
@@ -175,6 +197,8 @@ export const refreshToken = async (req, res) => {
                 loginId: decoded.loginId,
                 staffType: decoded.staffType,
                 companyIds: decoded.companyIds,
+                deliveryBoyId: decoded.deliveryBoyId,
+                permissions: decoded.permissions,
             },
             JWT_SECRET,
             { expiresIn: ACCESS_TOKEN_EXPIRES_IN }
@@ -192,6 +216,8 @@ export const refreshToken = async (req, res) => {
                 loginId: decoded.loginId,
                 staffType: decoded.staffType,
                 companyIds: decoded.companyIds,
+                deliveryBoyId: decoded.deliveryBoyId,
+                permissions: decoded.permissions || [],
             }
         });
     } catch (error) {

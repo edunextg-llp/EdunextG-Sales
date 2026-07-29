@@ -2,7 +2,7 @@ import express from 'express';
 const router = express.Router();
 import * as deliveryBoyController from '../controllers/deliveryBoyController.js';
 import jwt from 'jsonwebtoken';
-import { verifyTokenMiddleware } from '../middlewares/authMiddleware.js';
+import { requireRole, verifyTokenMiddleware } from '../middlewares/authMiddleware.js';
 
 function verifyDeliveryBoyToken(req, res, next) {
     const authHeader = req.headers.authorization || '';
@@ -34,13 +34,15 @@ router.get('/mobile/items', verifyDeliveryBoyToken, deliveryBoyController.getMob
 router.put('/mobile/items/:saleId/status', verifyDeliveryBoyToken, deliveryBoyController.updateMobileAssignedItemStatus);
 router.get('/mobile/collections', verifyDeliveryBoyToken, deliveryBoyController.getMobileCollections);
 router.put('/mobile/items/:saleId/collection', verifyDeliveryBoyToken, deliveryBoyController.updateMobileCollection);
-router.post('/', verifyTokenMiddleware, deliveryBoyController.createDeliveryBoy);
-router.get('/companies', verifyTokenMiddleware, deliveryBoyController.getStaffAssignedCompanies);
-router.get('/collections', verifyTokenMiddleware, deliveryBoyController.getDeliveryBoyCollections);
-router.get('/', verifyTokenMiddleware, deliveryBoyController.getDeliveryBoys);
-router.post('/:id/credentials', verifyTokenMiddleware, deliveryBoyController.generateDeliveryBoyCredentials);
-router.put('/:id/toggle-active', verifyTokenMiddleware, deliveryBoyController.toggleDeliveryBoyActive);
-router.put('/:id', verifyTokenMiddleware, deliveryBoyController.updateDeliveryBoy);
-router.delete('/:id', verifyTokenMiddleware, deliveryBoyController.deleteDeliveryBoy);
+router.get('/permissions', verifyTokenMiddleware, requireRole('admin'), deliveryBoyController.getPermissionUsers);
+router.put('/:id/permissions', verifyTokenMiddleware, requireRole('admin'), deliveryBoyController.updatePermissionUser);
+router.post('/', verifyTokenMiddleware, requireRole('admin'), deliveryBoyController.createDeliveryBoy);
+router.get('/companies', verifyTokenMiddleware, requireRole('admin'), deliveryBoyController.getStaffAssignedCompanies);
+router.get('/collections', verifyTokenMiddleware, requireRole('admin'), deliveryBoyController.getDeliveryBoyCollections);
+router.get('/', verifyTokenMiddleware, requireRole('admin'), deliveryBoyController.getDeliveryBoys);
+router.post('/:id/credentials', verifyTokenMiddleware, requireRole('admin'), deliveryBoyController.generateDeliveryBoyCredentials);
+router.put('/:id/toggle-active', verifyTokenMiddleware, requireRole('admin'), deliveryBoyController.toggleDeliveryBoyActive);
+router.put('/:id', verifyTokenMiddleware, requireRole('admin'), deliveryBoyController.updateDeliveryBoy);
+router.delete('/:id', verifyTokenMiddleware, requireRole('admin'), deliveryBoyController.deleteDeliveryBoy);
 
 export default router;

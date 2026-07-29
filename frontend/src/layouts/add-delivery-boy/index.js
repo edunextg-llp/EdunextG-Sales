@@ -152,13 +152,19 @@ function AddDeliveryBoy() {
         }
       );
 
+      const data = await response.json().catch(() => ({}));
       if (response.ok) {
-        alert(`Delivery Boy ${editingId ? "updated" : "created"} successfully!`);
+        if (editingId) {
+          alert("Staff updated successfully!");
+        } else {
+          alert(
+            `Staff created successfully!\n\nLogin ID: ${data.deliveryLoginId}\nPassword: ${data.passcode}\n\nSave this password now. It is generated only once.`
+          );
+        }
         closeDeliveryModal();
         await fetchDeliveryBoys();
       } else {
-        const err = await response.json().catch(() => ({}));
-        alert(err.error || `Failed to ${editingId ? "update" : "create"} Delivery Boy.`);
+        alert(data.error || `Failed to ${editingId ? "update" : "create"} staff.`);
       }
     } catch (error) {
       console.error(`Error ${editingId ? "updating" : "creating"} Delivery Boy:`, error);
@@ -185,6 +191,23 @@ function AddDeliveryBoy() {
       }
     } catch (error) {
       console.error("Error toggling active status:", error);
+    }
+  };
+
+  const handleGeneratePreviousCredentials = async (boy) => {
+    if (!window.confirm(`Generate ID and password one time for "${boy.name}"?`)) return;
+    try {
+      const response = await fetch(`${API}/delivery-boy/${boy.id}/credentials`, {
+        method: "POST",
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || "Unable to generate credentials.");
+      alert(
+        `Credentials generated successfully!\n\nLogin ID: ${data.deliveryLoginId}\nPassword: ${data.passcode}\n\nThese credentials are stored and cannot be regenerated again.`
+      );
+      await fetchDeliveryBoys();
+    } catch (error) {
+      alert(error.message || "Unable to generate credentials.");
     }
   };
 
@@ -321,6 +344,15 @@ function AddDeliveryBoy() {
                           ),
                           action: (
                             <MDBox display="flex" gap={1} justifyContent="center" flexWrap="wrap">
+                              {!boy.delivery_passcode && (
+                                <Icon
+                                  title="Generate ID and password one time"
+                                  onClick={() => handleGeneratePreviousCredentials(boy)}
+                                  sx={{ cursor: "pointer", color: "#0288d1", fontSize: 21 }}
+                                >
+                                  key
+                                </Icon>
+                              )}
                               <FaRegEdit onClick={() => startEditDeliveryBoy(boy)} style={{ cursor: "pointer" }} color="#E0E388" size={20} />
                               <CiTrash onClick={() => handleDeleteDeliveryBoy(boy)} style={{ cursor: "pointer" }} color="#FF0000" size={20} />
                             </MDBox>

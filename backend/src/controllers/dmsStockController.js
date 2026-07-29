@@ -389,8 +389,8 @@ export const createManualDmsStock = async (req, res) => {
             || Number(item.dpPrice) <= 0
             || !Number.isFinite(Number(item?.mrp))
             || Number(item.mrp) <= 0
-            || Number(item?.retailPrice) < Number(item.dpPrice)
-            || Number(item?.wholesalePrice) < Number(item.dpPrice)
+            || (Number(item?.retailPrice) / 1.05) < Number(item.dpPrice)
+            || (Number(item?.wholesalePrice) / 1.05) < Number(item.dpPrice)
         ));
         if (invalidItem) {
             return res.status(400).json({
@@ -433,8 +433,8 @@ export const createManualDmsStock = async (req, res) => {
                     taxableAmount,
                     retailPrice,
                     wholesalePrice,
-                    retailMargin: roundRate(retailPrice - dpPrice),
-                    wholesaleMargin: roundRate(wholesalePrice - dpPrice),
+                    retailMargin: roundRate((retailPrice / 1.05) - dpPrice),
+                    wholesaleMargin: roundRate((wholesalePrice / 1.05) - dpPrice),
                 };
             })
             .filter((row) => row.productErpId || row.productName)
@@ -518,13 +518,17 @@ export const updateDmsStockItem = async (req, res) => {
             totalValue: roundRate(taxableAmount + cgstAmount + sgstAmount),
             retailPrice,
             wholesalePrice,
-            retailMargin: roundRate(retailPrice - dpPrice),
-            wholesaleMargin: roundRate(wholesalePrice - dpPrice),
+            retailMargin: roundRate((retailPrice / 1.05) - dpPrice),
+            wholesaleMargin: roundRate((wholesalePrice / 1.05) - dpPrice),
         };
         if (!row.batchNumber || !/^\d{4}-\d{2}-\d{2}$/.test(row.mfgDate)
             || !/^\d{4}-\d{2}-\d{2}$/.test(row.expiryDate) || row.mfgDate > row.expiryDate
-            || row.dpPrice <= 0 || row.mrp <= 0) {
-            return res.status(400).json({ error: 'Enter valid batch, dates, MRP, and DP price.' });
+            || row.dpPrice <= 0 || row.mrp <= 0
+            || (row.retailPrice / 1.05) < row.dpPrice
+            || (row.wholesalePrice / 1.05) < row.dpPrice) {
+            return res.status(400).json({
+                error: 'Enter valid batch, dates, MRP, DP, and GST-inclusive retail/wholesale prices.',
+            });
         }
         const result = await DmsStockModel.updateInvoiceItem(itemId, row);
         res.json({ message: 'Invoice item updated successfully.', ...result });

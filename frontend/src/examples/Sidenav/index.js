@@ -16,7 +16,7 @@ Coded by www.creative-tim.com
 import { useEffect } from "react";
 
 // react-router-dom components
-import { useLocation, NavLink } from "react-router-dom";
+import { useLocation, NavLink, useNavigate } from "react-router-dom";
 
 // prop-types is a library for typechecking of props.
 import PropTypes from "prop-types";
@@ -46,11 +46,14 @@ import {
   setTransparentSidenav,
   setWhiteSidenav,
 } from "context";
+import { useAuth } from "context/AuthContext";
 
 function Sidenav({ color, brand, brandName, routes, ...rest }) {
   const [controller, dispatch] = useMaterialUIController();
   const { miniSidenav, transparentSidenav, whiteSidenav, darkMode } = controller;
   const location = useLocation();
+  const navigate = useNavigate();
+  const { logout } = useAuth();
   const collapseName = location.pathname.replace("/", "");
 
   let textColor = "white";
@@ -62,6 +65,11 @@ function Sidenav({ color, brand, brandName, routes, ...rest }) {
   }
 
   const closeSidenav = () => setMiniSidenav(dispatch, true);
+  const handleLogout = () => {
+    logout();
+    closeSidenav();
+    navigate("/authentication/sign-in", { replace: true });
+  };
 
   useEffect(() => {
     // A function that sets the mini state of the sidenav.
@@ -189,6 +197,13 @@ function Sidenav({ color, brand, brandName, routes, ...rest }) {
         }
       />
       <List>{renderRoutes}</List>
+      <MDBox mt="auto" px={2} pb={2} onClick={handleLogout} sx={{ cursor: "pointer" }}>
+        <SidenavCollapse
+          name="Logout"
+          icon={<Icon fontSize="small">logout</Icon>}
+          noCollapse
+        />
+      </MDBox>
       {/* <MDBox p={2} mt="auto">
         <MDButton
           component="a"

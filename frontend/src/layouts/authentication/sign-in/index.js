@@ -82,7 +82,20 @@ function Basic() {
       if (response.ok) {
         const data = await response.json();
         login(data.user, data.token, data.refreshToken, rememberMe);
-        navigate(data.user?.role === "staff" ? "/purchase-requisition" : "/dashboard", { replace: true });
+        const permissions = Array.isArray(data.user?.permissions) ? data.user.permissions : [];
+        const destination =
+          data.user?.role === "staff"
+            ? "/purchase-requisition"
+            : data.user?.role === "admin" || permissions.includes("dashboard")
+              ? "/dashboard"
+              : permissions.includes("dms") && permissions.includes("add_seller")
+                ? "/add-seller"
+                : permissions.includes("dms") && permissions.includes("add_item")
+                  ? "/add-item"
+                  : permissions.includes("dms") && permissions.includes("item_list")
+                    ? "/dms-stock"
+                    : "/welcome";
+        navigate(destination, { replace: true });
       } else {
         const err = await response.json().catch(() => ({}));
         setError(err.error || "Invalid login credentials");
@@ -153,7 +166,7 @@ function Basic() {
                 Sign In
               </MDTypography>
               <MDTypography variant="button" color="text" fontWeight="regular">
-                Enter your admin email, staff ID, or staff login ID and password.
+                Enter your admin email, staff ID, delivery ID, or login ID and password.
               </MDTypography>
             </MDBox>
 
@@ -161,7 +174,7 @@ function Basic() {
               <MDBox mb={2.5}>
                 <MDInput
                   type="text"
-                  label="Email, Staff ID, or Login ID"
+                  label="Email, Staff ID, Delivery ID, or Login ID"
                   fullWidth
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}

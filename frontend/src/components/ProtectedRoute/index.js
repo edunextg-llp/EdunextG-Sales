@@ -2,7 +2,7 @@ import React from "react";
 import { Navigate, useLocation } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 
-const ProtectedRoute = ({ children, allowedRoles }) => {
+const ProtectedRoute = ({ children, allowedRoles, requiredPermission }) => {
   const { token, user, isReady } = useAuth();
   const location = useLocation();
 
@@ -16,6 +16,31 @@ const ProtectedRoute = ({ children, allowedRoles }) => {
 
   if (allowedRoles?.length && !allowedRoles.includes(user?.role || "admin")) {
     return <Navigate to={user?.role === "staff" ? "/purchase-requisition" : "/dashboard"} replace />;
+  }
+
+  if (
+    requiredPermission
+    && user?.role !== "admin"
+    && !Array.isArray(user?.permissions)
+  ) {
+    return <Navigate to="/authentication/sign-in" replace />;
+  }
+
+  if (
+    requiredPermission
+    && user?.role !== "admin"
+    && !user.permissions.includes(requiredPermission)
+  ) {
+    const firstAllowedRoute = user.permissions.includes("dashboard")
+      ? "/dashboard"
+      : user.permissions.includes("dms") && user.permissions.includes("add_seller")
+        ? "/add-seller"
+        : user.permissions.includes("dms") && user.permissions.includes("add_item")
+          ? "/add-item"
+          : user.permissions.includes("dms") && user.permissions.includes("item_list")
+            ? "/dms-stock"
+            : "/welcome";
+    return <Navigate to={firstAllowedRoute} replace />;
   }
 
   return children;
