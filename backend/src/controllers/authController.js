@@ -134,7 +134,10 @@ export const login = async (req, res) => {
                 if (!deliveryUser) {
                     return res.status(401).json({ error: 'Invalid login ID/email or password' });
                 }
-                const permissionKeys = ['dashboard', 'dms', 'add_seller', 'add_item', 'item_list'];
+                const permissionKeys = [
+                    'dashboard', 'dms', 'add_seller', 'add_item', 'item_list',
+                    'update_payment', 'bank_deposit', 'add_outlet', 'add_sales',
+                ];
                 const permissions = permissionKeys.filter((key) => Boolean(deliveryUser[`can_${key}`]));
                 const role = deliveryUser.role === 'packaging_staff' ? 'packaging_staff' : 'delivery_boy';
                 tokenPayload = {

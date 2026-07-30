@@ -39,7 +39,15 @@ const ProtectedRoute = ({ children, allowedRoles, requiredPermission }) => {
           ? "/add-item"
           : user.permissions.includes("dms") && user.permissions.includes("item_list")
             ? "/dms-stock"
-            : "/welcome";
+            : user.permissions.includes("update_payment")
+              ? "/update-payment"
+              : user.permissions.includes("bank_deposit")
+                ? "/bank-deposit"
+                : user.permissions.includes("add_outlet")
+                  ? "/add-outlet"
+                  : user.permissions.includes("add_sales")
+                    ? "/add-sales"
+                    : "/welcome";
     return <Navigate to={firstAllowedRoute} replace />;
   }
 

@@ -28,6 +28,7 @@ import createCache from "@emotion/cache";
 import routes from "routes";
 import ProtectedRoute from "components/ProtectedRoute";
 import SignIn from "layouts/authentication/sign-in";
+import LandingPage from "layouts/landing";
 
 // Material Dashboard 2 React contexts
 import { useMaterialUIController, setMiniSidenav } from "context";
@@ -181,6 +182,7 @@ export default function App() {
         )}
         {layout === "vr" && <Configurator />}
         <Routes>
+          <Route exact path="/" element={<LandingPage />} />
           {getRoutes(visibleRoutes)}
           <Route exact path="/authentication/sign-in" element={<SignIn />} />
           <Route path="*" element={<Navigate to={
@@ -193,8 +195,16 @@ export default function App() {
                   : permissions.includes("dms") && permissions.includes("add_item")
                     ? "/add-item"
                     : permissions.includes("dms") && permissions.includes("item_list")
-                      ? "/dms-stock"
-                      : "/welcome"
+                    ? "/dms-stock"
+                      : permissions.includes("update_payment")
+                        ? "/update-payment"
+                        : permissions.includes("bank_deposit")
+                          ? "/bank-deposit"
+                          : permissions.includes("add_outlet")
+                            ? "/add-outlet"
+                            : permissions.includes("add_sales")
+                              ? "/add-sales"
+                              : "/welcome"
           } />} />
         </Routes>
       </ThemeProvider>
@@ -218,6 +228,7 @@ export default function App() {
       )}
       {layout === "vr" && <Configurator />}
       <Routes>
+        <Route exact path="/" element={<LandingPage />} />
         {getRoutes(visibleRoutes)}
         <Route exact path="/authentication/sign-in" element={<SignIn />} />
         <Route path="*" element={<Navigate to={
@@ -230,8 +241,16 @@ export default function App() {
                 : permissions.includes("dms") && permissions.includes("add_item")
                   ? "/add-item"
                   : permissions.includes("dms") && permissions.includes("item_list")
-                    ? "/dms-stock"
-                    : "/welcome"
+                  ? "/dms-stock"
+                    : permissions.includes("update_payment")
+                      ? "/update-payment"
+                      : permissions.includes("bank_deposit")
+                        ? "/bank-deposit"
+                        : permissions.includes("add_outlet")
+                          ? "/add-outlet"
+                          : permissions.includes("add_sales")
+                            ? "/add-sales"
+                            : "/welcome"
         } />} />
       </Routes>
     </ThemeProvider>

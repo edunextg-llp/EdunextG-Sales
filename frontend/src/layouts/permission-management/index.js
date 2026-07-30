@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import {
-  Alert, Card, Checkbox, Chip, CircularProgress, FormControlLabel, Grid, MenuItem,
-  Table, TableBody, TableCell, TableContainer, TableHead, TableRow,
+  Alert, Card, Checkbox, Chip, CircularProgress, FormControlLabel, Grid, IconButton,
+  MenuItem, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Tooltip,
 } from "@mui/material";
 import Icon from "@mui/material/Icon";
 import DashboardLayout from "examples/LayoutContainers/DashboardLayout";
@@ -14,11 +14,15 @@ import MDTypography from "components/MDTypography";
 
 const API = "https://bawarchee.edunextg.co/api";
 const PERMISSIONS = [
-  ["dashboard", "Dashboard"],
-  ["dms", "DMS"],
-  ["add_seller", "Add Seller"],
-  ["add_item", "Add Item"],
-  ["item_list", "Item List"],
+  ["dashboard", "Dashboard", "View the dashboard, reports, and business summary."],
+  ["dms", "DMS", "Open the DMS section. This is required for DMS-related permissions."],
+  ["add_seller", "Add Seller", "Create and manage suppliers from whom products are purchased."],
+  ["add_item", "Add Item", "Create and manage products supplied by sellers."],
+  ["item_list", "Item List", "View and manage the DMS product and stock item list."],
+  ["update_payment", "Update Payment", "View sales and add, edit, or delete their payment entries."],
+  ["bank_deposit", "Bank Deposit", "View and manage cash, cheque, and UPI bank deposits."],
+  ["add_outlet", "Add Outlet", "Create, edit, import, export, or delete customer outlets."],
+  ["add_sales", "Add Sales", "Create and manage sales invoices for outlets or customers."],
 ];
 
 function PermissionManagement() {
@@ -29,7 +33,6 @@ function PermissionManagement() {
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
-  const [credentials, setCredentials] = useState(null);
 
   const loadUsers = useCallback(async () => {
     setLoading(true);
@@ -51,7 +54,6 @@ function PermissionManagement() {
   useEffect(() => {
     const selected = users.find((user) => String(user.id) === String(selectedId));
     setPermissions(selected?.permissions || []);
-    setCredentials(null);
     setMessage("");
   }, [selectedId, users]);
 
@@ -103,28 +105,6 @@ function PermissionManagement() {
     }
   };
 
-  const generateCredentials = async () => {
-    if (!selectedUser) return;
-    setSaving(true);
-    setError("");
-    try {
-      const response = await fetch(`${API}/delivery-boy/${selectedUser.id}/credentials`, { method: "POST" });
-      const data = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(data.error || "Unable to generate credentials.");
-      setCredentials({ loginId: data.deliveryLoginId, password: data.passcode });
-      setUsers((current) => current.map((user) => (
-        user.id === selectedUser.id
-          ? { ...user, loginId: data.deliveryLoginId, hasCredentials: true }
-          : user
-      )));
-      setMessage("New login ID and password created. Save the password now; it is shown once.");
-    } catch (credentialError) {
-      setError(credentialError.message);
-    } finally {
-      setSaving(false);
-    }
-  };
-
   return (
     <DashboardLayout>
       <DashboardNavbar />
@@ -133,7 +113,7 @@ function PermissionManagement() {
           <MDBox variant="gradient" bgColor="info" borderRadius="lg" coloredShadow="info" mx={2} mt={-3} p={3}>
             <MDTypography variant="h4" color="white">Permission Management</MDTypography>
             <MDTypography variant="body2" color="white">
-              Assign access and create login credentials for Packaging Staff or Delivery Boys.
+              Assign page access for Packaging Staff or Delivery Boys.
             </MDTypography>
           </MDBox>
           <MDBox p={3}>
@@ -186,38 +166,27 @@ function PermissionManagement() {
                 <Grid item xs={12} md={7}>
                   <MDTypography variant="h6" mb={1}>Page Permissions</MDTypography>
                   <MDBox display="grid" sx={{ gridTemplateColumns: { xs: "1fr", sm: "1fr 1fr" }, gap: 1 }}>
-                    {PERMISSIONS.map(([key, label]) => (
-                      <FormControlLabel key={key}
-                        control={<Checkbox checked={permissions.includes(key)} onChange={() => togglePermission(key)} />}
-                        label={label} />
+                    {PERMISSIONS.map(([key, label, description]) => (
+                      <MDBox key={key} display="flex" alignItems="center">
+                        <FormControlLabel
+                          sx={{ mr: 0 }}
+                          control={<Checkbox checked={permissions.includes(key)} onChange={() => togglePermission(key)} />}
+                          label={label}
+                        />
+                        <Tooltip title={description} arrow>
+                          <IconButton size="small" aria-label={`About ${label} permission`}>
+                            <Icon fontSize="small">info_outline</Icon>
+                          </IconButton>
+                        </Tooltip>
+                      </MDBox>
                     ))}
                   </MDBox>
                   <Alert severity="info" sx={{ mt: 2 }}>
                     Check DMS together with Add Seller, Add Item, or Item List.
                   </Alert>
                 </Grid>
-                {credentials && (
-                  <Grid item xs={12}>
-                    <Alert severity="warning">
-                      <strong>Login ID:</strong> {credentials.loginId}
-                      {" | "}
-                      <strong>Password:</strong> {credentials.password}
-                    </Alert>
-                  </Grid>
-                )}
                 <Grid item xs={12}>
                   <MDBox display="flex" gap={1.5} flexWrap="wrap" justifyContent="flex-end">
-                    {!selectedUser?.hasCredentials && (
-                      <MDButton
-                        color="dark"
-                        variant="outlined"
-                        onClick={generateCredentials}
-                        disabled={!selectedUser || saving}
-                        startIcon={<Icon>key</Icon>}
-                      >
-                        Generate Previous Staff ID & Password
-                      </MDButton>
-                    )}
                     <MDButton color="info" variant="gradient" onClick={savePermissions}
                       disabled={!selectedUser || saving} startIcon={<Icon>save</Icon>}>
                       {saving ? "Saving..." : "Save Permissions"}

@@ -56,9 +56,14 @@ export const enforceManagedUserApiScope = (req, res, next) => {
 
     let allowed = false;
     if (path === '/reports' || path === '/purchase-reports' || path === '/' || path === '/search') {
-        allowed = method === 'GET' && permissions.has('dashboard');
+        allowed = method === 'GET' && (
+            permissions.has('dashboard')
+            || permissions.has('add_outlet')
+            || permissions.has('add_sales')
+            || permissions.has('update_payment')
+        );
     } else if (path === '/companies') {
-        allowed = method === 'GET' && hasDms;
+        allowed = method === 'GET' && (hasDms || permissions.has('update_payment'));
     } else if (path.startsWith('/dms-stock')) {
         allowed = hasDms && permissions.has('item_list');
     } else if (path.startsWith('/purchase-sellers')) {
@@ -71,6 +76,26 @@ export const enforceManagedUserApiScope = (req, res, next) => {
             permissions.has('add_item')
             || (method === 'GET' && permissions.has('item_list'))
         );
+    } else if (path === '/bank-deposits' || path.startsWith('/bank-deposits/')) {
+        allowed = permissions.has('bank_deposit');
+    } else if (/^\/\d+\/counters$/.test(path) || /^\/counter\/\d+$/.test(path)) {
+        allowed = permissions.has('add_outlet');
+    } else if (path === '/outlets-export' || path === '/outlets-template' || /^\/\d+\/outlets-upload$/.test(path)) {
+        allowed = permissions.has('add_outlet');
+    } else if (/^\/\d+\/(locations|outlets-by-date|all-counters|outlets-by-day|next-bill-number)$/.test(path)) {
+        allowed = permissions.has('add_outlet') || permissions.has('add_sales');
+    } else if (/^\/\d+\/sales$/.test(path)) {
+        allowed = permissions.has('add_sales');
+    } else if (path === '/sales/by-date' || path === '/sales/lookup' || /^\/\d+\/sales-by-date$/.test(path)) {
+        allowed = permissions.has('add_sales') || permissions.has('update_payment');
+    } else if (/^\/sales\/\d+\/payment$/.test(path) || /^\/sales\/\d+\/payments(?:\/\d+)?$/.test(path)) {
+        allowed = permissions.has('update_payment');
+    } else if (/^\/sales\/\d+\/cancel-log$/.test(path)) {
+        allowed = permissions.has('update_payment');
+    } else if (/^\/purchase-requisitions\/[^/]+$/.test(path)) {
+        allowed = method === 'GET' && permissions.has('add_sales');
+    } else if (/^\/sales\/\d+$/.test(path)) {
+        allowed = permissions.has('add_sales');
     }
 
     if (!allowed) {

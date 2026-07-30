@@ -15,7 +15,7 @@ import AddCounter from "layouts/add-counter";
 import AddSales from "layouts/add-sales";
 import PurchaseRequisition from "layouts/purchase-requisition";
 import Purchase from "layouts/purchase";
-import AddDeliveryBoy from "layouts/add-delivery-boy";
+import CreateBawarcheeStaff from "layouts/create-bawarchee-staff";
 import UpdatePayment from "layouts/update-payment";
 import InvoiceLookup from "layouts/invoice-lookup";
 import Credits from "layouts/credits";
@@ -126,8 +126,8 @@ const routes = [
         route: "/dms-purchase-history",
         component: <DmsPurchaseHistory />,
       },
-      
-       {
+
+      {
         type: "collapse",
         name: "Physical Stock",
         key: "physical-stock",
@@ -151,7 +151,7 @@ const routes = [
         route: "/purchase",
         component: <Purchase />,
       },
-     
+
       // {
       //   type: "collapse",
       //   name: "Expired Stock",
@@ -202,11 +202,11 @@ const routes = [
       },
       {
         type: "collapse",
-        name: "Add Delivery Boy",
-        key: "add-delivery-boy",
+        name: "Bawarchee Staff",
+        key: "create-bawarchee-staff",
         icon: <Icon fontSize="small">local_shipping</Icon>,
-        route: "/add-delivery-boy",
-        component: <AddDeliveryBoy />,
+        route: "/create-bawarchee-staff",
+        component: <CreateBawarcheeStaff />,
       },
 
     ],
@@ -218,6 +218,8 @@ const routes = [
     icon: <Icon fontSize="small">store</Icon>,
     route: "/add-outlet",
     component: <AddCounter />,
+    allowedRoles: ["admin", "packaging_staff", "delivery_boy"],
+    requiredPermission: "add_outlet",
   },
   {
     type: "collapse",
@@ -244,6 +246,8 @@ const routes = [
     icon: <Icon fontSize="small">payments</Icon>,
     route: "/add-sales",
     component: <AddSales />,
+    allowedRoles: ["admin", "packaging_staff", "delivery_boy"],
+    requiredPermission: "add_sales",
   },
   {
     type: "collapse",
@@ -340,6 +344,8 @@ const routes = [
     icon: <Icon fontSize="small">edit_note</Icon>,
     route: "/update-payment",
     component: <UpdatePayment />,
+    allowedRoles: ["admin", "packaging_staff", "delivery_boy"],
+    requiredPermission: "update_payment",
   },
   {
     type: "collapse",
@@ -373,6 +379,8 @@ const routes = [
     icon: <Icon fontSize="small">account_balance</Icon>,
     route: "/bank-deposit",
     component: <BankDeposit />,
+    allowedRoles: ["admin", "packaging_staff", "delivery_boy"],
+    requiredPermission: "bank_deposit",
   },
   // {
   //   type: "collapse",

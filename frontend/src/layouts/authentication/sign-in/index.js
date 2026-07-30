@@ -94,7 +94,15 @@ function Basic() {
                   ? "/add-item"
                   : permissions.includes("dms") && permissions.includes("item_list")
                     ? "/dms-stock"
-                    : "/welcome";
+                    : permissions.includes("update_payment")
+                      ? "/update-payment"
+                      : permissions.includes("bank_deposit")
+                        ? "/bank-deposit"
+                        : permissions.includes("add_outlet")
+                          ? "/add-outlet"
+                          : permissions.includes("add_sales")
+                            ? "/add-sales"
+                            : "/welcome";
         navigate(destination, { replace: true });
       } else {
         const err = await response.json().catch(() => ({}));

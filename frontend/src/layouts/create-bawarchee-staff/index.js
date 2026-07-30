@@ -35,7 +35,7 @@ import { FaRegEdit } from "react-icons/fa";
 import { CiTrash } from "react-icons/ci";
 
 
-function AddDeliveryBoy() {
+function CreateBawarcheeStaff() {
   const [name, setName] = useState("");
   const [contactNo, setContactNo] = useState("");
   const [aadharNo, setAadharNo] = useState("");
@@ -271,7 +271,7 @@ function AddDeliveryBoy() {
                     />
                     <MDButton color="info" variant="gradient" onClick={openDeliveryModal}>
                       <Icon sx={{ mr: 1 }}>add</Icon>
-                      Create Delivery Boy
+                      Create Bawarchee Staff
                     </MDButton>
                   </MDBox>
                 </MDBox>
@@ -374,7 +374,7 @@ function AddDeliveryBoy() {
 
       <Dialog open={deliveryModalOpen} onClose={closeDeliveryModal} fullWidth maxWidth="sm">
         <DialogTitle sx={{ fontWeight: "bold", color: "#344767" }}>
-          {editingId ? "Edit Delivery Boy" : "Create Delivery Boy"}
+          {editingId ? "Edit Bawarchee Staff" : "Create Bawarchee Staff"}
         </DialogTitle>
         <DialogContent dividers>
           <MDBox pt={1} component="form" role="form">
@@ -466,8 +466,8 @@ function AddDeliveryBoy() {
                 ? "Updating..."
                 : "Creating..."
               : editingId
-                ? "Update Delivery Boy"
-                : "Create Delivery Boy"}
+                ? "Update Bawarchee Staff"
+                : "Create Bawarchee Staff"}
           </MDButton>
         </DialogActions>
       </Dialog>
@@ -477,4 +477,4 @@ function AddDeliveryBoy() {
   );
 }
 
-export default AddDeliveryBoy;
+export default CreateBawarcheeStaff;  

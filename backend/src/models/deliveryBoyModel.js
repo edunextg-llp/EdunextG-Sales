@@ -132,7 +132,11 @@ class DeliveryBoyModel {
                     COALESCE(p.can_dms, 0) AS can_dms,
                     COALESCE(p.can_add_seller, 0) AS can_add_seller,
                     COALESCE(p.can_add_item, 0) AS can_add_item,
-                    COALESCE(p.can_item_list, 0) AS can_item_list
+                    COALESCE(p.can_item_list, 0) AS can_item_list,
+                    COALESCE(p.can_update_payment, 0) AS can_update_payment,
+                    COALESCE(p.can_bank_deposit, 0) AS can_bank_deposit,
+                    COALESCE(p.can_add_outlet, 0) AS can_add_outlet,
+                    COALESCE(p.can_add_sales, 0) AS can_add_sales
              FROM delivery_boys db
              LEFT JOIN delivery_user_permissions p ON p.delivery_boy_id = db.id
              WHERE db.delivery_login_id = ?
@@ -161,7 +165,11 @@ class DeliveryBoyModel {
                     COALESCE(p.can_dms, 0) AS can_dms,
                     COALESCE(p.can_add_seller, 0) AS can_add_seller,
                     COALESCE(p.can_add_item, 0) AS can_add_item,
-                    COALESCE(p.can_item_list, 0) AS can_item_list
+                    COALESCE(p.can_item_list, 0) AS can_item_list,
+                    COALESCE(p.can_update_payment, 0) AS can_update_payment,
+                    COALESCE(p.can_bank_deposit, 0) AS can_bank_deposit,
+                    COALESCE(p.can_add_outlet, 0) AS can_add_outlet,
+                    COALESCE(p.can_add_sales, 0) AS can_add_sales
              FROM delivery_boys db
              LEFT JOIN delivery_user_permissions p ON p.delivery_boy_id = db.id
              ORDER BY db.role, db.name`
@@ -185,14 +193,19 @@ class DeliveryBoyModel {
     static async setPermissions(deliveryBoyId, permissions) {
         await db.execute(
             `INSERT INTO delivery_user_permissions (
-                delivery_boy_id, can_dashboard, can_dms, can_add_seller, can_add_item, can_item_list
-             ) VALUES (?, ?, ?, ?, ?, ?)
+                delivery_boy_id, can_dashboard, can_dms, can_add_seller, can_add_item, can_item_list,
+                can_update_payment, can_bank_deposit, can_add_outlet, can_add_sales
+             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
              ON DUPLICATE KEY UPDATE
                 can_dashboard = VALUES(can_dashboard),
                 can_dms = VALUES(can_dms),
                 can_add_seller = VALUES(can_add_seller),
                 can_add_item = VALUES(can_add_item),
-                can_item_list = VALUES(can_item_list)`,
+                can_item_list = VALUES(can_item_list),
+                can_update_payment = VALUES(can_update_payment),
+                can_bank_deposit = VALUES(can_bank_deposit),
+                can_add_outlet = VALUES(can_add_outlet),
+                can_add_sales = VALUES(can_add_sales)`,
             [
                 deliveryBoyId,
                 permissions.includes('dashboard') ? 1 : 0,
@@ -200,6 +213,10 @@ class DeliveryBoyModel {
                 permissions.includes('add_seller') ? 1 : 0,
                 permissions.includes('add_item') ? 1 : 0,
                 permissions.includes('item_list') ? 1 : 0,
+                permissions.includes('update_payment') ? 1 : 0,
+                permissions.includes('bank_deposit') ? 1 : 0,
+                permissions.includes('add_outlet') ? 1 : 0,
+                permissions.includes('add_sales') ? 1 : 0,
             ]
         );
     }

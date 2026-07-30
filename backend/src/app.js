@@ -5,6 +5,8 @@ import staffRoutes from './routes/staffRoutes.js';
 import deliveryBoyRoutes from './routes/deliveryBoyRoutes.js';
 import chalanRoutes from './routes/chalanRoutes.js';
 import authRoutes from './routes/authRoutes.js';
+import auditRoutes from './routes/auditRoutes.js';
+import { auditStaffChanges } from './middlewares/auditMiddleware.js';
 import {
     enforceManagedUserApiScope,
     enforceStaffApiScope,
@@ -37,10 +39,12 @@ app.use('/api/auth', authRoutes);
 app.use(
     '/api/staff',
     verifyTokenMiddleware,
+    auditStaffChanges,
     enforceStaffApiScope,
     enforceManagedUserApiScope,
     staffRoutes
 );
+app.use('/api/audit-logs', verifyTokenMiddleware, requireRole('admin'), auditRoutes);
 app.use('/api/delivery-boy', deliveryBoyRoutes);
 app.use('/api/chalan', verifyTokenMiddleware, requireRole('admin'), chalanRoutes);
 

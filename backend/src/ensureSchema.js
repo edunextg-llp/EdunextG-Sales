@@ -268,8 +268,39 @@ export async function ensureSchema() {
                 can_add_seller TINYINT(1) NOT NULL DEFAULT 0,
                 can_add_item TINYINT(1) NOT NULL DEFAULT 0,
                 can_item_list TINYINT(1) NOT NULL DEFAULT 0,
+                can_update_payment TINYINT(1) NOT NULL DEFAULT 0,
+                can_bank_deposit TINYINT(1) NOT NULL DEFAULT 0,
+                can_add_outlet TINYINT(1) NOT NULL DEFAULT 0,
+                can_add_sales TINYINT(1) NOT NULL DEFAULT 0,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
                 FOREIGN KEY (delivery_boy_id) REFERENCES delivery_boys(id) ON DELETE CASCADE
+            );
+        `);
+        for (const permissionColumn of [
+            'can_update_payment',
+            'can_bank_deposit',
+            'can_add_outlet',
+            'can_add_sales',
+        ]) {
+            await tryQuery(
+                connection,
+                `ALTER TABLE delivery_user_permissions ADD COLUMN ${permissionColumn} TINYINT(1) NOT NULL DEFAULT 0`,
+                `${permissionColumn} on delivery_user_permissions`
+            );
+        }
+
+        await connection.query(`
+            CREATE TABLE IF NOT EXISTS staff_activity_logs (
+                id BIGINT AUTO_INCREMENT PRIMARY KEY,
+                actor_id INT NULL,
+                actor_role VARCHAR(32) NOT NULL,
+                action VARCHAR(32) NOT NULL,
+                entity_type VARCHAR(50) NOT NULL,
+                entity_id VARCHAR(100) NULL,
+                details JSON NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                INDEX idx_staff_activity_created (created_at),
+                INDEX idx_staff_activity_actor (actor_role, actor_id)
             );
         `);
 
