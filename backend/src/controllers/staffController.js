@@ -1778,6 +1778,110 @@ function buildSellerItemPayload(body) {
     };
 }
 
+const SELLER_ITEM_HEADER_ALIASES = {
+    productErpId: ['product erp id', 'product erp id.', 'erp id'],
+    skuName: ['sku name', 'product name'],
+    variantName: ['variant name', 'variant'],
+    hsnCode: ['hsn code', 'hsn'],
+    gstPercent: ['gst', 'gst %', 'gst percent'],
+    pcsPerBox: ['pcs/box', 'pcs per box', 'pieces per box'],
+};
+
+const normalizeSellerItemHeader = (value) => String(value || '')
+    .toLowerCase()
+    .replace(/[_-]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+const findSellerItemCell = (row, field) => {
+    const aliases = SELLER_ITEM_HEADER_ALIASES[field] || [];
+    const entry = Object.entries(row).find(([header]) =>
+        aliases.includes(normalizeSellerItemHeader(header))
+    );
+    return entry ? entry[1] : '';
+};
+
+export const uploadSellerItems = async (req, res) => {
+    try {
+        const companyId = Number(req.body?.companyId);
+        const sellerId = Number(req.body?.sellerId);
+        if (!Number.isInteger(companyId) || companyId <= 0) {
+            return res.status(400).json({ error: 'Please choose a company first.' });
+        }
+        if (!Number.isInteger(sellerId) || sellerId <= 0) {
+            return res.status(400).json({ error: 'Please choose a seller.' });
+        }
+        if (!req.file) {
+            return res.status(400).json({ error: 'Please choose an XLS or XLSX file.' });
+        }
+
+        const extension = (req.file.originalname.split('.').pop() || '').toLowerCase();
+        if (!['xls', 'xlsx'].includes(extension)) {
+            return res.status(400).json({ error: 'Only XLS and XLSX files are supported.' });
+        }
+
+        const seller = await PurchaseSellerModel.getById(sellerId);
+        if (!seller || Number(seller.company_id) !== companyId) {
+            return res.status(404).json({ error: 'Seller not found for the selected company.' });
+        }
+
+        const workbook = xlsx.read(req.file.buffer, { type: 'buffer', cellDates: false });
+        const firstSheetName = workbook.SheetNames[0];
+        const sourceRows = firstSheetName
+            ? xlsx.utils.sheet_to_json(workbook.Sheets[firstSheetName], { defval: '', raw: false })
+            : [];
+        if (!sourceRows.length) {
+            return res.status(400).json({ error: 'No item rows found in the uploaded file.' });
+        }
+
+        const itemsByErpId = new Map();
+        const errors = [];
+        let duplicateRows = 0;
+        sourceRows.forEach((row, index) => {
+            const body = {
+                companyId,
+                sellerId,
+                productErpId: findSellerItemCell(row, 'productErpId'),
+                skuName: findSellerItemCell(row, 'skuName'),
+                variantName: findSellerItemCell(row, 'variantName'),
+                hsnCode: findSellerItemCell(row, 'hsnCode'),
+                gstPercent: findSellerItemCell(row, 'gstPercent') || 5,
+                pcsPerBox: findSellerItemCell(row, 'pcsPerBox'),
+            };
+            const payload = buildSellerItemPayload(body);
+            if (payload.error) {
+                errors.push(`Row ${index + 2}: ${payload.error}`);
+                return;
+            }
+            const normalizedErpId = payload.productErpId.toLowerCase();
+            if (itemsByErpId.has(normalizedErpId)) duplicateRows += 1;
+            itemsByErpId.set(normalizedErpId, payload);
+        });
+
+        if (errors.length) {
+            return res.status(400).json({
+                error: `Upload contains ${errors.length} invalid row${errors.length === 1 ? '' : 's'}.`,
+                details: errors.slice(0, 20),
+            });
+        }
+
+        const items = [...itemsByErpId.values()];
+        const result = await SellerItemModel.importMany(items);
+        const duplicateMessage = duplicateRows
+            ? ` ${duplicateRows} duplicate row${duplicateRows === 1 ? ' was' : 's were'} consolidated.`
+            : '';
+        return res.status(201).json({
+            message: `${items.length} items uploaded successfully (${result.inserted} added, ${result.updated} updated).${duplicateMessage}`,
+            total: items.length,
+            duplicateRows,
+            ...result,
+        });
+    } catch (error) {
+        console.error('Error uploading seller items:', error);
+        return res.status(500).json({ error: 'Failed to upload seller items.' });
+    }
+};
+
 export const getSellerItems = async (req, res) => {
     try {
         const companyId = Number(req.query.companyId);

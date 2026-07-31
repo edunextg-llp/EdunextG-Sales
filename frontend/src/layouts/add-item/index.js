@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import Grid from "@mui/material/Grid";
 import Card from "@mui/material/Card";
@@ -86,8 +86,11 @@ function AddItem() {
   const [loadingSellers, setLoadingSellers] = useState(false);
   const [loadingItems, setLoadingItems] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [selectedFile, setSelectedFile] = useState(null);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+  const fileInputRef = useRef(null);
 
   const [editModalOpen, setEditModalOpen] = useState(false);
   const [editingId, setEditingId] = useState(null);
@@ -165,6 +168,8 @@ function AddItem() {
     setForm(emptyForm());
     setError("");
     setSuccess("");
+    setSelectedFile(null);
+    if (fileInputRef.current) fileInputRef.current.value = "";
     fetchSellers(selectedCompanyId);
   }, [selectedCompanyId, fetchSellers]);
 
@@ -174,6 +179,49 @@ function AddItem() {
     setSuccess("");
     fetchItems(selectedCompanyId, selectedSellerId);
   }, [selectedCompanyId, selectedSellerId, fetchItems]);
+
+  const handleUpload = async () => {
+    if (!selectedCompanyId) {
+      setError("Please choose a company first.");
+      return;
+    }
+    if (!selectedSellerId) {
+      setError("Please choose a seller.");
+      return;
+    }
+    if (!selectedFile) {
+      setError("Please choose an XLS or XLSX file.");
+      return;
+    }
+
+    const formData = new FormData();
+    formData.append("companyId", selectedCompanyId);
+    formData.append("sellerId", selectedSellerId);
+    formData.append("file", selectedFile);
+    setUploading(true);
+    setError("");
+    setSuccess("");
+    try {
+      const res = await fetch(`${API}/staff/seller-items/upload`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
+        body: formData,
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        const details = Array.isArray(data.details) ? ` ${data.details.join(" ")}` : "";
+        throw new Error(`${data.error || "Upload failed."}${details}`);
+      }
+      setSuccess(data.message || "Items uploaded successfully.");
+      setSelectedFile(null);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+      fetchItems(selectedCompanyId, selectedSellerId);
+    } catch (uploadError) {
+      setError(uploadError.message || "Upload failed.");
+    } finally {
+      setUploading(false);
+    }
+  };
 
   const handleChange = (field, value) => {
     setError("");
@@ -406,7 +454,58 @@ function AddItem() {
                     <>
                       <Grid item xs={12}>
                         <MDTypography variant="button" fontWeight="medium" color="dark">
-                          Item Details
+                          Upload Items
+                        </MDTypography>
+                        <MDTypography variant="caption" color="text" display="block">
+                          Excel columns: Product Erp Id, SKU Name, Variant Name, Pcs/Box. HSN Code and GST are optional; GST defaults to 5%.
+                        </MDTypography>
+                      </Grid>
+
+                      <Grid item xs={12}>
+                        <MDBox
+                          display="flex"
+                          alignItems="center"
+                          gap={1.5}
+                          flexWrap="wrap"
+                          sx={{ border: "1px dashed #94a3b8", borderRadius: 1, p: 1.5, backgroundColor: "#f8fafc" }}
+                        >
+                          <MDButton
+                            color="info"
+                            variant="outlined"
+                            onClick={() => fileInputRef.current?.click()}
+                            disabled={uploading}
+                          >
+                            <Icon sx={{ mr: 1 }}>upload_file</Icon>
+                            Choose File
+                          </MDButton>
+                          <MDTypography variant="button" color="dark" sx={{ flex: 1, overflowWrap: "anywhere" }}>
+                            {selectedFile ? selectedFile.name : "XLS or XLSX"}
+                          </MDTypography>
+                          <MDButton
+                            color="info"
+                            variant="gradient"
+                            onClick={handleUpload}
+                            disabled={!selectedFile || uploading}
+                          >
+                            {uploading ? "Uploading..." : "Upload"}
+                          </MDButton>
+                          <input
+                            ref={fileInputRef}
+                            type="file"
+                            accept=".xls,.xlsx"
+                            onChange={(event) => {
+                              setSelectedFile(event.target.files?.[0] || null);
+                              setError("");
+                              setSuccess("");
+                            }}
+                            style={{ display: "none" }}
+                          />
+                        </MDBox>
+                      </Grid>
+
+                      <Grid item xs={12}>
+                        <MDTypography variant="button" fontWeight="medium" color="dark">
+                          Or Add One Item
                         </MDTypography>
                       </Grid>
 

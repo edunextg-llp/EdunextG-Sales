@@ -19,6 +19,54 @@ const ITEM_COLUMNS = `
 `;
 
 class SellerItemModel {
+    static async importMany(rows) {
+        const connection = await db.getConnection();
+        let inserted = 0;
+        let updated = 0;
+        try {
+            await connection.beginTransaction();
+            for (const data of rows) {
+                const [result] = await connection.execute(
+                    `INSERT INTO seller_items (
+                        company_id, seller_id, product_erp_id, sku_name, variant_name, hsn_code,
+                        gst_percent, cgst_percent, sgst_percent, pcs_per_box
+                     )
+                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                     ON DUPLICATE KEY UPDATE
+                        company_id = VALUES(company_id),
+                        sku_name = VALUES(sku_name),
+                        variant_name = VALUES(variant_name),
+                        hsn_code = VALUES(hsn_code),
+                        gst_percent = VALUES(gst_percent),
+                        cgst_percent = VALUES(cgst_percent),
+                        sgst_percent = VALUES(sgst_percent),
+                        pcs_per_box = VALUES(pcs_per_box)`,
+                    [
+                        data.companyId,
+                        data.sellerId,
+                        data.productErpId,
+                        data.skuName,
+                        data.variantName,
+                        data.hsnCode || null,
+                        data.gstPercent,
+                        data.cgstPercent,
+                        data.sgstPercent,
+                        data.pcsPerBox,
+                    ]
+                );
+                if (result.affectedRows === 1) inserted += 1;
+                else updated += 1;
+            }
+            await connection.commit();
+            return { inserted, updated };
+        } catch (error) {
+            await connection.rollback();
+            throw error;
+        } finally {
+            connection.release();
+        }
+    }
+
     static async create(data) {
         const [result] = await db.execute(
             `INSERT INTO seller_items (

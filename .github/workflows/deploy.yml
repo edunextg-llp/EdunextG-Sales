@@ -33,18 +33,6 @@ jobs:
           printf '%s\n' "$SERVER_KNOWN_HOSTS" > ~/.ssh/known_hosts
           chmod 600 ~/.ssh/known_hosts
 
-      - name: Debug secrets (TEMPORARY - remove after debugging)
-        env:
-          SERVER_HOST: ${{ secrets.SERVER_HOST }}
-          SERVER_PORT: ${{ secrets.SERVER_PORT }}
-          SERVER_USER: ${{ secrets.SERVER_USER }}
-        run: |
-          echo "Host length: ${#SERVER_HOST}"
-          echo "Port length: ${#SERVER_PORT}"
-          echo "User length: ${#SERVER_USER}"
-          echo "Testing raw TCP connection to host:port..."
-          timeout 10 bash -c "echo > /dev/tcp/$SERVER_HOST/${SERVER_PORT:-22}" && echo "TCP CONNECTION SUCCEEDED" || echo "TCP CONNECTION FAILED"
-
       - name: Deploy selected commit
         env:
           SERVER_HOST: ${{ secrets.SERVER_HOST }}

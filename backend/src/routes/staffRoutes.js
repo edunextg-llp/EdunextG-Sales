@@ -40,6 +40,7 @@ router.put('/purchase-sellers/:sellerId', staffController.updatePurchaseSeller);
 router.delete('/purchase-sellers/:sellerId', staffController.deletePurchaseSeller);
 router.get('/seller-items', staffController.getSellerItems);
 router.post('/seller-items', staffController.createSellerItem);
+router.post('/seller-items/upload', upload.single('file'), staffController.uploadSellerItems);
 router.put('/seller-items/:itemId', staffController.updateSellerItem);
 router.delete('/seller-items/:itemId', staffController.deleteSellerItem);
 router.get('/purchases', staffController.getPurchases);

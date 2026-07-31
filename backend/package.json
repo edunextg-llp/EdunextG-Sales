@@ -6,7 +6,8 @@
   "scripts": {
   "test": "echo \"No tests configured\"",
   "generate-delivery-credentials": "node src/scripts/generateDeliveryCredentials.js",
-  "update-schema": "node updateSchema.js"
+  "update-schema": "node updateSchema.js",
+  "dev": "nodemon src/index.js"
 },
   "keywords": [],
   "author": "",
