@@ -4,10 +4,10 @@
   "description": "",
   "main": "src/index.js",
   "scripts": {
-   
-    "generate-delivery-credentials": "node src/scripts/generateDeliveryCredentials.js",
-    "update-schema": "node updateSchema.js"
-  },
+  "test": "echo \"No tests configured\"",
+  "generate-delivery-credentials": "node src/scripts/generateDeliveryCredentials.js",
+  "update-schema": "node updateSchema.js"
+},
   "keywords": [],
   "author": "",
   "type": "module",
