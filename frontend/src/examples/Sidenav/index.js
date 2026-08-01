@@ -66,6 +66,11 @@ function Sidenav({ color, brand, brandName, routes, ...rest }) {
 
   const closeSidenav = () => setMiniSidenav(dispatch, true);
   const handleLogout = () => {
+    const confirmed = window.confirm(
+      "Are you sure you want to log out? Any unsaved changes will be lost."
+    );
+    if (!confirmed) return;
+
     logout();
     closeSidenav();
     navigate("/authentication/sign-in", { replace: true });
