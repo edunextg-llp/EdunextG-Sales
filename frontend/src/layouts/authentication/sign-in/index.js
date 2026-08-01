@@ -6,9 +6,9 @@ import { useAuth } from "context/AuthContext";
 import Switch from "@mui/material/Switch";
 import Grid from "@mui/material/Grid";
 import Icon from "@mui/material/Icon";
-
-// react-icons/fa for eye/eye-slash
-import { FaEye, FaEyeSlash } from "react-icons/fa";
+import Alert from "@mui/material/Alert";
+import IconButton from "@mui/material/IconButton";
+import InputAdornment from "@mui/material/InputAdornment";
 
 // Material Dashboard 2 React components
 import MDBox from "components/MDBox";
@@ -121,128 +121,199 @@ function Basic() {
 
   return (
     <PageLayout background="white">
-      <Grid container sx={{ minHeight: "100vh", margin: 0, padding: 0, overflow: "hidden" }}>
-        {/* Left Column - Vector Illustration (Only visible on md and up) */}
+      <Grid
+        container
+        sx={{
+          height: "100dvh",
+          minHeight: 0,
+          maxHeight: "100dvh",
+          m: 0,
+          overflow: "hidden",
+          backgroundColor: "#f8fafc",
+        }}
+      >
         <Grid
           item
           xs={0}
           md={6}
-          lg={7}
+          lg={6.5}
           sx={{
             display: { xs: "none", md: "flex" },
             flexDirection: "column",
-            alignItems: "center",
-            justifyContent: "center",
-            backgroundColor: "#f8fafc",
-            padding: 4,
-            borderRight: "1px solid #e2e8f0",
+            justifyContent: "space-between",
+            position: "relative",
+            overflow: "hidden",
+            p: { md: 4, lg: 5 },
+            color: "white",
+            background: "linear-gradient(145deg, #0f172a 0%, #172554 48%, #1d4ed8 100%)",
           }}
         >
           <MDBox
-            component="img"
-            src="https://mdbcdn.b-cdn.net/img/Photos/new-templates/bootstrap-login-form/draw2.webp"
-            alt="Login illustration"
             sx={{
-              width: "100%",
-              maxWidth: "600px",
-              height: "auto",
-              maxHeight: "70vh",
-              objectFit: "contain",
-              transition: "transform 0.4s ease-in-out",
-              "&:hover": {
-                transform: "scale(1.02)",
-              },
+              position: "absolute", width: 420, height: 420, borderRadius: "50%",
+              border: "1px solid rgba(255,255,255,0.13)", top: -150, right: -130,
             }}
           />
+          <MDBox
+            sx={{
+              position: "absolute", width: 300, height: 300, borderRadius: "50%",
+              background: "rgba(56,189,248,0.10)", bottom: -120, left: -80,
+            }}
+          />
+
+          <MDBox position="relative" zIndex={1} display="flex" alignItems="center" gap={1.5}>
+            <MDBox
+              width={44} height={44} borderRadius="12px" display="flex" alignItems="center"
+              justifyContent="center" sx={{ background: "rgba(255,255,255,0.14)", backdropFilter: "blur(8px)" }}
+            >
+              <MDTypography variant="h5" color="white" fontWeight="bold">E</MDTypography>
+            </MDBox>
+            <MDBox>
+              <MDTypography variant="h5" color="white" fontWeight="bold">EduNextG Sales</MDTypography>
+              <MDTypography variant="caption" sx={{ color: "rgba(255,255,255,0.68)" }}>
+                Business operations, connected
+              </MDTypography>
+            </MDBox>
+          </MDBox>
+
+          <MDBox position="relative" zIndex={1} maxWidth={580} my={3}>
+            <MDTypography variant="h2" color="white" fontWeight="bold" lineHeight={1.15}>
+              Run every sales operation from one place.
+            </MDTypography>
+            <MDTypography variant="body1" mt={2} sx={{ color: "rgba(255,255,255,0.72)", lineHeight: 1.65 }}>
+              Keep stock, outlets, invoicing, delivery, collections, and reporting aligned with a secure workspace built for your team.
+            </MDTypography>
+            <Grid container spacing={1.5} mt={2}>
+              {["Role-based access", "Real-time operations", "Protected business data"].map((feature) => (
+                <Grid item xs={12} lg={6} key={feature}>
+                  <MDBox display="flex" alignItems="center" gap={1.2}>
+                    <MDBox
+                      width={28} height={28} borderRadius="50%" display="flex" alignItems="center"
+                      justifyContent="center" sx={{ background: "rgba(56,189,248,0.18)" }}
+                    >
+                      <Icon sx={{ color: "#7dd3fc", fontSize: "17px !important" }}>check</Icon>
+                    </MDBox>
+                    <MDTypography variant="button" color="white" fontWeight="medium">{feature}</MDTypography>
+                  </MDBox>
+                </Grid>
+              ))}
+            </Grid>
+          </MDBox>
+
+          <MDTypography variant="caption" position="relative" zIndex={1} sx={{ color: "rgba(255,255,255,0.5)" }}>
+            © {new Date().getFullYear()} EduNextG India LLP. Authorized access only.
+          </MDTypography>
         </Grid>
 
-        {/* Right Column - Login Form */}
         <Grid
           item
           xs={12}
           md={6}
-          lg={5}
+          lg={5.5}
           sx={{
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
-            padding: { xs: 3, sm: 6, md: 8 },
-            backgroundColor: "#ffffff",
+            p: { xs: 1.5, sm: 2.5, md: 3, lg: 4 },
+            position: "relative",
           }}
         >
-          <MDBox width="100%" maxWidth={420} px={2}>
-            <MDBox mb={4}>
-              <MDTypography variant="h3" fontWeight="bold" color="dark" gutterBottom>
-                Sign In
+          <MDBox
+            width="100%"
+            maxWidth={470}
+            p={{ xs: 2.25, sm: 3 }}
+            sx={{
+              backgroundColor: "#fff", border: "1px solid #e2e8f0", borderRadius: "20px",
+              boxShadow: "0 24px 60px rgba(15,23,42,0.10)",
+              maxHeight: "calc(100dvh - 24px)",
+            }}
+          >
+            <MDBox display={{ xs: "flex", md: "none" }} alignItems="center" gap={1.25} mb={2}>
+              <MDBox width={38} height={38} borderRadius="10px" display="flex" alignItems="center"
+                justifyContent="center" sx={{ background: "linear-gradient(135deg, #172554, #2563eb)" }}>
+                <MDTypography variant="button" color="white" fontWeight="bold">E</MDTypography>
+              </MDBox>
+              <MDTypography variant="h6" fontWeight="bold">EduNextG Sales</MDTypography>
+            </MDBox>
+
+            <MDBox mb={2}>
+              <MDTypography variant="h3" fontWeight="bold" color="dark" mb={0.75}>
+                Welcome back
               </MDTypography>
-              <MDTypography variant="button" color="text" fontWeight="regular">
-                Enter your admin email, staff ID, delivery ID, or login ID and password.
-              </MDTypography>
+              {/* <MDTypography variant="body2" color="text" sx={{ lineHeight: 1.6 }}>
+                Sign in with your assigned account to continue to your workspace.
+              </MDTypography> */}
             </MDBox>
 
             <MDBox component="form" role="form" onSubmit={handleSubmit}>
-              <MDBox mb={2.5}>
+              <MDBox mb={1.5}>
+                <MDTypography variant="caption" fontWeight="bold" color="dark" display="block" mb={0.75}>
+                  Account ID
+                </MDTypography>
                 <MDInput
                   type="text"
-                  label="Email, Staff ID, Delivery ID, or Login ID"
+                  placeholder="Email, staff ID, delivery ID, or login ID"
                   fullWidth
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
+                  autoComplete="username"
                   required
+                  sx={{ "& .MuiInputBase-root": { minHeight: 44, borderRadius: "10px" } }}
                 />
               </MDBox>
-              <MDBox mb={2.5} position="relative">
+              <MDBox mb={1.5}>
+                <MDTypography variant="caption" fontWeight="bold" color="dark" display="block" mb={0.75}>
+                  Password
+                </MDTypography>
                 <MDInput
                   type={showPassword ? "text" : "password"}
-                  label="Password"
+                  placeholder="Enter your password"
                   fullWidth
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
+                  autoComplete="current-password"
                   required
-                />
-                <MDBox
-                  sx={{
-                    position: "absolute",
-                    top: "50%",
-                    right: 12,
-                    transform: "translateY(-50%)",
-                    cursor: "pointer",
-                    zIndex: 2,
-                    color: "#94a3b8",
-                    display: "flex",
-                    alignItems: "center",
+                  sx={{ "& .MuiInputBase-root": { minHeight: 44, borderRadius: "10px" } }}
+                  InputProps={{
+                    endAdornment: (
+                      <InputAdornment position="end">
+                        <IconButton
+                          size="small"
+                          edge="end"
+                          aria-label={showPassword ? "Hide password" : "Show password"}
+                          onClick={() => setShowPassword((show) => !show)}
+                        >
+                          <Icon fontSize="small">{showPassword ? "visibility_off" : "visibility"}</Icon>
+                        </IconButton>
+                      </InputAdornment>
+                    ),
                   }}
-                  onClick={() => setShowPassword((show) => !show)}
-                >
-                  {showPassword ? <FaEyeSlash size={20} /> : <FaEye size={20} />}
-                </MDBox>
+                />
               </MDBox>
 
-              {/* CAPTCHA Container */}
               <MDBox
-                mb={2.5}
-                p={2}
+                mb={1.5}
+                p={1.5}
                 sx={{
-                  border: "1px solid #e2e8f0",
-                  borderRadius: "12px",
-                  backgroundColor: "#f8fafc",
+                  border: "1px solid #dbe4f0", borderRadius: "12px", backgroundColor: "#f8fafc",
                 }}
               >
-                <MDBox mb={1.5}>
-                  <MDTypography variant="caption" color="text" fontWeight="medium">
-                    CAPTCHA verification
-                  </MDTypography>
-                  <MDBox display="flex" alignItems="center" gap={1.5} mt={1}>
+                <MDBox mb={1}>
+                  <MDBox display="flex" alignItems="center" gap={0.75}>
+                    <Icon sx={{ color: "#2563eb", fontSize: "17px !important" }}>verified_user</Icon>
+                    <MDTypography variant="caption" color="dark" fontWeight="bold">
+                      Security verification
+                    </MDTypography>
+                  </MDBox>
+                  <MDBox display="flex" alignItems="center" gap={1.25} mt={0.75}>
                     <MDBox
                       px={2}
-                      py={1}
+                      py={0.6}
                       sx={{
-                        border: "1px dashed #cbd5e1",
-                        borderRadius: "8px",
+                        border: "1px dashed #94a3b8", borderRadius: "9px",
                         background:
                           "repeating-linear-gradient(135deg, #ffffff, #ffffff 8px, #f1f5f9 8px, #f1f5f9 16px)",
-                        flexGrow: 1,
-                        textAlign: "center",
+                        flexGrow: 1, textAlign: "center",
                       }}
                     >
                       <MDTypography
@@ -262,8 +333,10 @@ function Basic() {
                       variant="outlined"
                       color="info"
                       size="small"
+                      type="button"
+                      aria-label="Refresh security code"
                       onClick={fetchCaptcha}
-                      sx={{ minWidth: 38, width: 38, height: 38, p: 0, borderRadius: "8px" }}
+                      sx={{ minWidth: 38, width: 38, height: 38, p: 0, borderRadius: "9px" }}
                     >
                       <Icon fontSize="small">refresh</Icon>
                     </MDButton>
@@ -271,7 +344,7 @@ function Basic() {
                 </MDBox>
                 <MDInput
                   type="text"
-                  label="Type the code shown above"
+                  placeholder="Enter the code shown above"
                   fullWidth
                   value={captchaAnswer}
                   onChange={(e) => setCaptchaAnswer(e.target.value)}
@@ -279,19 +352,18 @@ function Basic() {
                   onCopy={(e) => e.preventDefault()}
                   onCut={(e) => e.preventDefault()}
                   required
+                  autoComplete="off"
+                  sx={{ "& .MuiInputBase-root": { minHeight: 42, borderRadius: "9px", backgroundColor: "#fff" } }}
                 />
               </MDBox>
 
               {error && (
-                <MDBox mb={2.5}>
-                  <MDTypography variant="caption" color="error" fontWeight="medium">
-                    {error}
-                  </MDTypography>
-                </MDBox>
+                <Alert severity="error" sx={{ mb: 2.25, borderRadius: "10px", py: 0.5 }}>
+                  {error}
+                </Alert>
               )}
 
-              {/* Remember Me and Forgot Password Container */}
-              <MDBox display="flex" alignItems="center" justifyContent="space-between" mb={3}>
+              <MDBox display="flex" alignItems="center" justifyContent="space-between" mb={1.5}>
                 <MDBox display="flex" alignItems="center" ml={-1}>
                   <Switch checked={rememberMe} onChange={handleSetRememberMe} />
                   <MDTypography
@@ -304,26 +376,20 @@ function Basic() {
                     Remember me
                   </MDTypography>
                 </MDBox>
-                {/* <MDTypography
-                  component="a"
-                  href="#forgot-password"
-                  variant="button"
-                  color="info"
-                  fontWeight="medium"
-                  sx={{ textDecoration: "none", "&:hover": { textDecoration: "underline" } }}
-                >
-                  Forgot password?
-                </MDTypography> */}
               </MDBox>
 
-              {/* Submit button */}
-              <MDBox mt={4} mb={1}>
-                <MDButton variant="gradient" color="info" fullWidth type="submit" disabled={loading} size="large">
+              <MDButton
+                variant="gradient" color="info" fullWidth type="submit" disabled={loading} size="large"
+                sx={{ minHeight: 44, borderRadius: "10px", fontSize: "0.82rem", boxShadow: "0 10px 24px rgba(37,99,235,0.22)" }}
+              >
                   {loading ? "Signing in..." : "Sign in"}
-                </MDButton>
+              </MDButton>
+
+              <MDBox mt={1.75} pt={1.5} sx={{ borderTop: "1px solid #e2e8f0" }} textAlign="center">
+                <MDTypography variant="caption" color="text">
+                  Having trouble signing in? Contact your system administrator.
+                </MDTypography>
               </MDBox>
-
-
             </MDBox>
           </MDBox>
         </Grid>
