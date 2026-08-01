@@ -25,6 +25,13 @@ export const requireRole = (...roles) => (req, res, next) => {
     return next();
 };
 
+export const requirePermission = (permission) => (req, res, next) => {
+    if (req.user?.role === 'admin' || req.user?.permissions?.includes(permission)) {
+        return next();
+    }
+    return res.status(403).json({ error: 'You do not have permission to perform this action.' });
+};
+
 export const enforceStaffApiScope = (req, res, next) => {
     if (req.user?.role !== 'staff') return next();
 
@@ -61,6 +68,7 @@ export const enforceManagedUserApiScope = (req, res, next) => {
             || permissions.has('add_outlet')
             || permissions.has('add_sales')
             || permissions.has('update_payment')
+            || permissions.has('out_bill')
         );
     } else if (path === '/companies') {
         allowed = method === 'GET' && (hasDms || permissions.has('update_payment'));
@@ -78,6 +86,8 @@ export const enforceManagedUserApiScope = (req, res, next) => {
         );
     } else if (path === '/bank-deposits' || path.startsWith('/bank-deposits/')) {
         allowed = permissions.has('bank_deposit');
+    } else if (path.startsWith('/credits/')) {
+        allowed = permissions.has('out_bill');
     } else if (/^\/\d+\/counters$/.test(path) || /^\/counter\/\d+$/.test(path)) {
         allowed = permissions.has('add_outlet');
     } else if (path === '/outlets-export' || path === '/outlets-template' || /^\/\d+\/outlets-upload$/.test(path)) {

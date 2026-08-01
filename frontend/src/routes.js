@@ -371,6 +371,8 @@ const routes = [
     icon: <Icon fontSize="small">receipt_long</Icon>,
     route: "/out-bill",
     component: <OutBill />,
+    allowedRoles: ["admin", "packaging_staff", "delivery_boy"],
+    requiredPermission: "out_bill",
   },
   {
     type: "collapse",

@@ -385,8 +385,8 @@ export const createManualDmsStock = async (req, res) => {
             || !/^\d{4}-\d{2}-\d{2}$/.test(String(item?.mfgDate || ''))
             || !/^\d{4}-\d{2}-\d{2}$/.test(String(item?.expiryDate || ''))
             || String(item.mfgDate) > String(item.expiryDate)
-            || !Number.isFinite(Number(item?.dpPrice))
-            || Number(item.dpPrice) <= 0
+            || (item?.dpPrice !== '' && item?.dpPrice != null
+                && (!Number.isFinite(Number(item.dpPrice)) || Number(item.dpPrice) < 0))
             || !Number.isFinite(Number(item?.mrp))
             || Number(item.mrp) <= 0
             || (Number(item?.retailPrice) / 1.05) < Number(item.dpPrice)
@@ -394,7 +394,7 @@ export const createManualDmsStock = async (req, res) => {
         ));
         if (invalidItem) {
             return res.status(400).json({
-                error: 'Every item requires batch number, valid MFG/expiry dates, MRP, DP, retail, and wholesale prices.',
+                error: 'Every item requires batch number, valid MFG/expiry dates, MRP, retail, and wholesale prices.',
             });
         }
 

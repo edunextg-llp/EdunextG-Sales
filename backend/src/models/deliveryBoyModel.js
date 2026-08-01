@@ -136,7 +136,8 @@ class DeliveryBoyModel {
                     COALESCE(p.can_update_payment, 0) AS can_update_payment,
                     COALESCE(p.can_bank_deposit, 0) AS can_bank_deposit,
                     COALESCE(p.can_add_outlet, 0) AS can_add_outlet,
-                    COALESCE(p.can_add_sales, 0) AS can_add_sales
+                    COALESCE(p.can_add_sales, 0) AS can_add_sales,
+                    COALESCE(p.can_out_bill, 0) AS can_out_bill
              FROM delivery_boys db
              LEFT JOIN delivery_user_permissions p ON p.delivery_boy_id = db.id
              WHERE db.delivery_login_id = ?
@@ -169,7 +170,8 @@ class DeliveryBoyModel {
                     COALESCE(p.can_update_payment, 0) AS can_update_payment,
                     COALESCE(p.can_bank_deposit, 0) AS can_bank_deposit,
                     COALESCE(p.can_add_outlet, 0) AS can_add_outlet,
-                    COALESCE(p.can_add_sales, 0) AS can_add_sales
+                    COALESCE(p.can_add_sales, 0) AS can_add_sales,
+                    COALESCE(p.can_out_bill, 0) AS can_out_bill
              FROM delivery_boys db
              LEFT JOIN delivery_user_permissions p ON p.delivery_boy_id = db.id
              ORDER BY db.role, db.name`
@@ -194,8 +196,8 @@ class DeliveryBoyModel {
         await db.execute(
             `INSERT INTO delivery_user_permissions (
                 delivery_boy_id, can_dashboard, can_dms, can_add_seller, can_add_item, can_item_list,
-                can_update_payment, can_bank_deposit, can_add_outlet, can_add_sales
-             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                can_update_payment, can_bank_deposit, can_add_outlet, can_add_sales, can_out_bill
+             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
              ON DUPLICATE KEY UPDATE
                 can_dashboard = VALUES(can_dashboard),
                 can_dms = VALUES(can_dms),
@@ -205,7 +207,8 @@ class DeliveryBoyModel {
                 can_update_payment = VALUES(can_update_payment),
                 can_bank_deposit = VALUES(can_bank_deposit),
                 can_add_outlet = VALUES(can_add_outlet),
-                can_add_sales = VALUES(can_add_sales)`,
+                can_add_sales = VALUES(can_add_sales),
+                can_out_bill = VALUES(can_out_bill)`,
             [
                 deliveryBoyId,
                 permissions.includes('dashboard') ? 1 : 0,
@@ -217,6 +220,7 @@ class DeliveryBoyModel {
                 permissions.includes('bank_deposit') ? 1 : 0,
                 permissions.includes('add_outlet') ? 1 : 0,
                 permissions.includes('add_sales') ? 1 : 0,
+                permissions.includes('out_bill') ? 1 : 0,
             ]
         );
     }

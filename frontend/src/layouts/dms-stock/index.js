@@ -741,10 +741,6 @@ function DmsStock() {
       setError("Expiry Date must be after MFG Date.");
       return;
     }
-    if (!manualItem.dpPrice || Number(manualItem.dpPrice) <= 0) {
-      setError("Please enter a valid DP Price.");
-      return;
-    }
     if (!manualItem.mrp || Number(manualItem.mrp) <= 0) {
       setError("Please enter a valid MRP.");
       return;
@@ -1503,7 +1499,7 @@ function DmsStock() {
                 />
               </Grid>
               <Grid item xs={12} md={3}>
-                <MDTypography sx={fieldLabelSx}>Batch Number{requiredMark}</MDTypography>
+                <MDTypography sx={fieldLabelSx}>Batch Number</MDTypography>
                 <MDInput fullWidth value={manualItem.batchNumber}
                   onChange={(event) => updateManualItem("batchNumber", event.target.value)}
                   sx={{ "& .MuiInputBase-root": { backgroundColor: "#fff", height: 40 } }} />
@@ -1554,7 +1550,7 @@ function DmsStock() {
                   sx={{ "& .MuiInputBase-root": { backgroundColor: "#fff", height: 40 } }} />
               </Grid>
               <Grid item xs={6} md={2}>
-                <MDTypography sx={fieldLabelSx}>DP Price{requiredMark}</MDTypography>
+                <MDTypography sx={fieldLabelSx}>DP Price</MDTypography>
                 <MDInput fullWidth type="number" value={manualItem.dpPrice}
                   onChange={(event) => updateManualItem("dpPrice", event.target.value)}
                   sx={{ "& .MuiInputBase-root": { backgroundColor: "#fff", height: 40 } }} />
@@ -1617,13 +1613,13 @@ function DmsStock() {
                 </Grid>
               ))}
               <Grid item xs={6} md={2}>
-                <MDTypography sx={fieldLabelSx}>Retail Price (Incl. 5% GST){requiredMark}</MDTypography>
+                <MDTypography sx={fieldLabelSx}>Retail Price (Incl. 5% GST)</MDTypography>
                 <MDInput fullWidth type="number" value={manualItem.retailPrice}
                   onChange={(event) => updateManualItem("retailPrice", event.target.value)}
                   sx={{ "& .MuiInputBase-root": { backgroundColor: "#fff", height: 40 } }} />
               </Grid>
               <Grid item xs={6} md={2}>
-                <MDTypography sx={fieldLabelSx}>Wholesale Price (Incl. 5% GST){requiredMark}</MDTypography>
+                <MDTypography sx={fieldLabelSx}>Wholesale Price (Incl. 5% GST)</MDTypography>
                 <MDInput fullWidth type="number" value={manualItem.wholesalePrice}
                   onChange={(event) => updateManualItem("wholesalePrice", event.target.value)}
                   sx={{ "& .MuiInputBase-root": { backgroundColor: "#fff", height: 40 } }} />

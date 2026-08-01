@@ -98,11 +98,13 @@ function Basic() {
                       ? "/update-payment"
                       : permissions.includes("bank_deposit")
                         ? "/bank-deposit"
-                        : permissions.includes("add_outlet")
-                          ? "/add-outlet"
-                          : permissions.includes("add_sales")
-                            ? "/add-sales"
-                            : "/welcome";
+                        : permissions.includes("out_bill")
+                          ? "/out-bill"
+                          : permissions.includes("add_outlet")
+                            ? "/add-outlet"
+                            : permissions.includes("add_sales")
+                              ? "/add-sales"
+                              : "/welcome";
         navigate(destination, { replace: true });
       } else {
         const err = await response.json().catch(() => ({}));

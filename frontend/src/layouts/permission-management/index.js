@@ -23,6 +23,7 @@ const PERMISSIONS = [
   ["bank_deposit", "Bank Deposit", "View and manage cash, cheque, and UPI bank deposits."],
   ["add_outlet", "Add Outlet", "Create, edit, import, export, or delete customer outlets."],
   ["add_sales", "Add Sales", "Create and manage sales invoices for outlets or customers."],
+  ["out_bill", "Out Bill", "Assign, track, and return outstanding credit bills."],
 ];
 
 function PermissionManagement() {

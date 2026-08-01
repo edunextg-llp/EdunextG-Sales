@@ -2,7 +2,7 @@ import express from 'express';
 const router = express.Router();
 import * as deliveryBoyController from '../controllers/deliveryBoyController.js';
 import jwt from 'jsonwebtoken';
-import { requireRole, verifyTokenMiddleware } from '../middlewares/authMiddleware.js';
+import { requirePermission, requireRole, verifyTokenMiddleware } from '../middlewares/authMiddleware.js';
 
 function verifyDeliveryBoyToken(req, res, next) {
     const authHeader = req.headers.authorization || '';
@@ -39,7 +39,7 @@ router.put('/:id/permissions', verifyTokenMiddleware, requireRole('admin'), deli
 router.post('/', verifyTokenMiddleware, requireRole('admin'), deliveryBoyController.createDeliveryBoy);
 router.get('/companies', verifyTokenMiddleware, requireRole('admin'), deliveryBoyController.getStaffAssignedCompanies);
 router.get('/collections', verifyTokenMiddleware, requireRole('admin'), deliveryBoyController.getDeliveryBoyCollections);
-router.get('/', verifyTokenMiddleware, requireRole('admin'), deliveryBoyController.getDeliveryBoys);
+router.get('/', verifyTokenMiddleware, requirePermission('out_bill'), deliveryBoyController.getDeliveryBoys);
 router.post('/:id/credentials', verifyTokenMiddleware, requireRole('admin'), deliveryBoyController.generateDeliveryBoyCredentials);
 router.put('/:id/toggle-active', verifyTokenMiddleware, requireRole('admin'), deliveryBoyController.toggleDeliveryBoyActive);
 router.put('/:id', verifyTokenMiddleware, requireRole('admin'), deliveryBoyController.updateDeliveryBoy);

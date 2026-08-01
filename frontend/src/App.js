@@ -200,6 +200,8 @@ export default function App() {
                         ? "/update-payment"
                         : permissions.includes("bank_deposit")
                           ? "/bank-deposit"
+                          : permissions.includes("out_bill")
+                            ? "/out-bill"
                           : permissions.includes("add_outlet")
                             ? "/add-outlet"
                             : permissions.includes("add_sales")
@@ -246,6 +248,8 @@ export default function App() {
                       ? "/update-payment"
                       : permissions.includes("bank_deposit")
                         ? "/bank-deposit"
+                        : permissions.includes("out_bill")
+                          ? "/out-bill"
                         : permissions.includes("add_outlet")
                           ? "/add-outlet"
                           : permissions.includes("add_sales")
