@@ -288,8 +288,6 @@ const calcManualTotals = (item) => {
   const discountPercent = Math.min(100, Math.max(0, Number(item.discountPercent) || 0));
   const retailPrice = Number(item.retailPrice) || 0;
   const wholesalePrice = Number(item.wholesalePrice) || 0;
-  const retailPriceExcludingGst = retailPrice / INCLUDED_GST_FACTOR;
-  const wholesalePriceExcludingGst = wholesalePrice / INCLUDED_GST_FACTOR;
 
   const totalCurrentStockInPcs = (pcsPerBox * currentStockInCase) + currentStockInPcs;
   const priceWithGst = pricePerPiece * 1.05;
@@ -313,9 +311,11 @@ const calcManualTotals = (item) => {
     dpPriceAfterDiscount: dpPrice ? dpPriceAfterDiscount.toFixed(4) : "",
     cgstAmount: cgstAmount ? cgstAmount.toFixed(2) : "",
     sgstAmount: sgstAmount ? sgstAmount.toFixed(2) : "",
-    retailMargin: retailPrice && dpPrice ? (retailPriceExcludingGst - dpPrice).toFixed(2) : "",
+    retailMargin: retailPrice && dpPrice
+      ? (retailPrice - dpPriceAfterDiscount).toFixed(2)
+      : "",
     wholesaleMargin: wholesalePrice && dpPrice
-      ? (wholesalePriceExcludingGst - dpPrice).toFixed(2)
+      ? (wholesalePrice - dpPriceAfterDiscount).toFixed(2)
       : "",
   };
 };

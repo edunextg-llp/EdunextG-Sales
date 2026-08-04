@@ -273,6 +273,9 @@ export async function ensureSchema() {
                 can_add_outlet TINYINT(1) NOT NULL DEFAULT 0,
                 can_location_assignments TINYINT(1) NOT NULL DEFAULT 0,
                 can_add_sales TINYINT(1) NOT NULL DEFAULT 0,
+                can_packaging TINYINT(1) NOT NULL DEFAULT 0,
+                can_delivery TINYINT(1) NOT NULL DEFAULT 0,
+                can_delivered TINYINT(1) NOT NULL DEFAULT 0,
                 can_out_bill TINYINT(1) NOT NULL DEFAULT 0,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
                 FOREIGN KEY (delivery_boy_id) REFERENCES delivery_boys(id) ON DELETE CASCADE
@@ -284,6 +287,9 @@ export async function ensureSchema() {
             'can_add_outlet',
             'can_location_assignments',
             'can_add_sales',
+            'can_packaging',
+            'can_delivery',
+            'can_delivered',
             'can_out_bill',
         ]) {
             await tryQuery(

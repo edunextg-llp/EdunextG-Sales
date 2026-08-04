@@ -32,6 +32,16 @@ export const requirePermission = (permission) => (req, res, next) => {
     return res.status(403).json({ error: 'You do not have permission to perform this action.' });
 };
 
+export const requireAnyPermission = (...requiredPermissions) => (req, res, next) => {
+    if (
+        req.user?.role === 'admin'
+        || requiredPermissions.some((permission) => req.user?.permissions?.includes(permission))
+    ) {
+        return next();
+    }
+    return res.status(403).json({ error: 'You do not have permission to perform this action.' });
+};
+
 export const enforceStaffApiScope = (req, res, next) => {
     if (req.user?.role !== 'staff') return next();
 
@@ -69,6 +79,9 @@ export const enforceManagedUserApiScope = (req, res, next) => {
             || permissions.has('location_assignments')
             || permissions.has('add_sales')
             || permissions.has('update_payment')
+            || permissions.has('packaging')
+            || permissions.has('delivery')
+            || permissions.has('delivered')
             || permissions.has('out_bill')
         );
     } else if (path === '/companies') {
@@ -100,7 +113,14 @@ export const enforceManagedUserApiScope = (req, res, next) => {
     } else if (/^\/\d+\/sales$/.test(path)) {
         allowed = permissions.has('add_sales');
     } else if (path === '/sales/by-date' || path === '/sales/lookup' || /^\/\d+\/sales-by-date$/.test(path)) {
-        allowed = permissions.has('add_sales') || permissions.has('update_payment');
+        allowed = permissions.has('add_sales') || permissions.has('update_payment')
+            || permissions.has('packaging') || permissions.has('delivery') || permissions.has('delivered');
+    } else if (path === '/sales/cancelled') {
+        allowed = method === 'GET' && permissions.has('delivered');
+    } else if (/^\/sales\/\d+\/packaging$/.test(path)) {
+        allowed = permissions.has('packaging') || permissions.has('delivery') || permissions.has('delivered');
+    } else if (/^\/sales\/\d+\/status-history$/.test(path)) {
+        allowed = method === 'GET' && (permissions.has('packaging') || permissions.has('delivery'));
     } else if (/^\/sales\/\d+\/payment$/.test(path) || /^\/sales\/\d+\/payments(?:\/\d+)?$/.test(path)) {
         allowed = permissions.has('update_payment');
     } else if (/^\/sales\/\d+\/cancel-log$/.test(path)) {

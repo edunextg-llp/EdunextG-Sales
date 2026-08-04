@@ -202,8 +202,14 @@ export default function App() {
                           ? "/bank-deposit"
                           : permissions.includes("out_bill")
                             ? "/out-bill"
-                          : permissions.includes("location_assignments")
-                            ? "/location-assignments"
+                            : permissions.includes("location_assignments")
+                              ? "/location-assignments"
+                            : permissions.includes("packaging")
+                              ? "/packaging"
+                            : permissions.includes("delivery")
+                              ? "/delivery"
+                            : permissions.includes("delivered")
+                              ? "/delivered"
                           : permissions.includes("add_outlet")
                             ? "/add-outlet"
                             : permissions.includes("add_sales")
@@ -252,8 +258,14 @@ export default function App() {
                         ? "/bank-deposit"
                         : permissions.includes("out_bill")
                           ? "/out-bill"
-                        : permissions.includes("location_assignments")
-                          ? "/location-assignments"
+                          : permissions.includes("location_assignments")
+                            ? "/location-assignments"
+                          : permissions.includes("packaging")
+                            ? "/packaging"
+                          : permissions.includes("delivery")
+                            ? "/delivery"
+                          : permissions.includes("delivered")
+                            ? "/delivered"
                         : permissions.includes("add_outlet")
                           ? "/add-outlet"
                           : permissions.includes("add_sales")

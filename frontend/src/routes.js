@@ -266,6 +266,7 @@ const routes = [
     name: "Delivery Manager",
     key: "delivery-management",
     icon: <Icon fontSize="small">local_shipping</Icon>,
+    allowedRoles: ["admin", "packaging_staff", "delivery_boy"],
     collapse: [
       {
         type: "collapse",
@@ -274,6 +275,8 @@ const routes = [
         icon: <Icon fontSize="small">inventory_2</Icon>,
         route: "/packaging",
         component: <Packaging />,
+        allowedRoles: ["admin", "packaging_staff", "delivery_boy"],
+        requiredPermission: "packaging",
       },
       {
         type: "collapse",
@@ -282,6 +285,8 @@ const routes = [
         icon: <Icon fontSize="small">local_shipping</Icon>,
         route: "/delivery",
         component: <Delivery />,
+        allowedRoles: ["admin", "packaging_staff", "delivery_boy"],
+        requiredPermission: "delivery",
       },
       {
         type: "collapse",
@@ -290,6 +295,8 @@ const routes = [
         icon: <Icon fontSize="small">verified</Icon>,
         route: "/delivered",
         component: <Delivered />,
+        allowedRoles: ["admin", "packaging_staff", "delivery_boy"],
+        requiredPermission: "delivered",
       },
     ],
   },

@@ -433,8 +433,8 @@ export const createManualDmsStock = async (req, res) => {
                     taxableAmount,
                     retailPrice,
                     wholesalePrice,
-                    retailMargin: roundRate((retailPrice / 1.05) - dpPrice),
-                    wholesaleMargin: roundRate((wholesalePrice / 1.05) - dpPrice),
+                    retailMargin: roundRate(retailPrice - (dpPrice * (1 - discountPercent / 100))),
+                    wholesaleMargin: roundRate(wholesalePrice - (dpPrice * (1 - discountPercent / 100))),
                 };
             })
             .filter((row) => row.productErpId || row.productName)
@@ -518,8 +518,8 @@ export const updateDmsStockItem = async (req, res) => {
             totalValue: roundRate(taxableAmount + cgstAmount + sgstAmount),
             retailPrice,
             wholesalePrice,
-            retailMargin: roundRate((retailPrice / 1.05) - dpPrice),
-            wholesaleMargin: roundRate((wholesalePrice / 1.05) - dpPrice),
+            retailMargin: roundRate(retailPrice - (dpPrice * (1 - discountPercent / 100))),
+            wholesaleMargin: roundRate(wholesalePrice - (dpPrice * (1 - discountPercent / 100))),
         };
         if (!row.batchNumber || !/^\d{4}-\d{2}-\d{2}$/.test(row.mfgDate)
             || !/^\d{4}-\d{2}-\d{2}$/.test(row.expiryDate) || row.mfgDate > row.expiryDate
