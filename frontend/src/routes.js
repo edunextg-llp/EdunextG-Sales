@@ -10,6 +10,7 @@ import Welcome from "layouts/welcome";
 // import SignIn from "layouts/authentication/sign-in";
 // import SignUp from "layouts/authentication/sign-up";
 import CreateStaff from "layouts/create-staff";
+import LocationAssignments from "./layouts/location-assignments/index.js";
 import AddCompany from "layouts/add-company";
 import AddCounter from "layouts/add-counter";
 import AddSales from "layouts/add-sales";
@@ -183,6 +184,7 @@ const routes = [
     name: "Staff Management",
     key: "staff-management",
     icon: <Icon fontSize="small">people</Icon>,
+    allowedRoles: ["admin", "packaging_staff", "delivery_boy"],
     collapse: [
       {
         type: "collapse",
@@ -199,6 +201,16 @@ const routes = [
         icon: <Icon fontSize="small">person_add</Icon>,
         route: "/create-staff",
         component: <CreateStaff />,
+      },
+      {
+        type: "collapse",
+        name: "Location Assignments",
+        key: "location-assignments",
+        icon: <Icon fontSize="small">location_on</Icon>,
+        route: "/location-assignments",
+        component: <LocationAssignments />,
+        allowedRoles: ["admin", "packaging_staff", "delivery_boy"],
+        requiredPermission: "location_assignments",
       },
       {
         type: "collapse",

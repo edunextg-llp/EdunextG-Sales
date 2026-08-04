@@ -1268,6 +1268,7 @@ async function initDB() {
             can_update_payment TINYINT(1) NOT NULL DEFAULT 0,
             can_bank_deposit TINYINT(1) NOT NULL DEFAULT 0,
             can_add_outlet TINYINT(1) NOT NULL DEFAULT 0,
+            can_location_assignments TINYINT(1) NOT NULL DEFAULT 0,
             can_add_sales TINYINT(1) NOT NULL DEFAULT 0,
             can_out_bill TINYINT(1) NOT NULL DEFAULT 0,
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,

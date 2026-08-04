@@ -5,8 +5,6 @@ import Grid from "@mui/material/Grid";
 import Card from "@mui/material/Card";
 import Icon from "@mui/material/Icon";
 import {
-  Tabs,
-  Tab,
   Table,
   TableBody,
   TableCell,
@@ -44,7 +42,6 @@ import DashboardNavbar from "examples/Navbars/DashboardNavbar";
 import Footer from "examples/Footer";
 import { FaEye } from "react-icons/fa";
 import { FaRegEdit } from "react-icons/fa";
-import { CiTrash } from "react-icons/ci";
 import {
   formatDateLabel,
   isImageDocument,
@@ -75,9 +72,6 @@ const tableHeadRowSx = {
   backgroundColor: "#f9fafb",
   "& .MuiTableCell-root": { backgroundColor: "#f9fafb" },
 };
-
-const routeDays = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
-const cnfRouteDay = "CNF";
 
 const createEmptyAssignments = () => ({
   Monday: [],
@@ -174,7 +168,6 @@ function DocumentPreview({ title, url }) {
 }
 
 function CreateStaff() {
-  const [activeTab, setActiveTab] = useState(0);
   const [staffList, setStaffList] = useState([]);
   const [staffTypeFilter, setStaffTypeFilter] = useState("all");
   const [showInactive, setShowInactive] = useState(false);
@@ -226,11 +219,6 @@ function CreateStaff() {
       fetchCompanyOptions(formData.staffType);
     }
   }, [staffModalOpen, formData.staffType, formData.staffCategory]);
-
-  // Tabs
-  const handleTabChange = (event, newValue) => {
-    setActiveTab(newValue);
-  };
 
   const handleInputChange = (e) => {
     const { name, value } = e.target;
@@ -306,7 +294,6 @@ function CreateStaff() {
         ...prev.assignments,
       },
     }));
-    setActiveTab(0);
   };
 
   const filteredStaffList =
@@ -328,47 +315,6 @@ function CreateStaff() {
 
   const getCompanyIds = () =>
     formData.selectedCompanies.map((company) => company.id).filter(Boolean);
-
-  // Add Location
-  const addLocation = (day) => {
-    const updatedAssignments = { ...formData.assignments };
-    updatedAssignments[day] = updatedAssignments[day] || [];
-
-    updatedAssignments[day].push({
-      locationName: "",
-    });
-
-    setFormData((prev) => ({
-      ...prev,
-      assignments: updatedAssignments,
-    }));
-  };
-
-  // Remove Location
-  const removeLocation = (day, locIndex) => {
-    const updatedAssignments = { ...formData.assignments };
-    updatedAssignments[day] = updatedAssignments[day] || [];
-
-    updatedAssignments[day].splice(locIndex, 1);
-
-    setFormData((prev) => ({
-      ...prev,
-      assignments: updatedAssignments,
-    }));
-  };
-
-  // Location Change
-  const handleLocationChange = (day, locIndex, value) => {
-    const updatedAssignments = { ...formData.assignments };
-    updatedAssignments[day] = updatedAssignments[day] || [];
-
-    updatedAssignments[day][locIndex].locationName = value;
-
-    setFormData((prev) => ({
-      ...prev,
-      assignments: updatedAssignments,
-    }));
-  };
 
   const handleToggleActive = async (staff) => {
     const action = staff.is_active ? "deactivate" : "activate";
@@ -469,7 +415,6 @@ function CreateStaff() {
   const resetForm = () => {
     setFormData(createEmptyFormData());
     setEditingStaffId(null);
-    setActiveTab(0);
     setUploadingAadhar(false);
     setUploadingPcc(false);
     setSavingStaff(false);
@@ -513,17 +458,6 @@ function CreateStaff() {
       const method = editingStaffId ? "PUT" : "POST";
       const companyNames = formData.staffCategory === "company_staff" ? getCompanyNames() : [];
       const companyIds = formData.staffCategory === "company_staff" ? getCompanyIds() : [];
-      const activeAssignments =
-        formData.staffType === "cnf"
-          ? { [cnfRouteDay]: formData.assignments[cnfRouteDay] || [] }
-          : routeDays.reduce(
-            (acc, day) => ({
-              ...acc,
-              [day]: formData.assignments[day] || [],
-            }),
-            {}
-          );
-
       const response = await fetch(url, {
         method,
         headers: {
@@ -544,7 +478,6 @@ function CreateStaff() {
           companyNames,
           companyIds,
           companyName: companyNames.join(", "),
-          assignments: activeAssignments,
         }),
       });
 
@@ -1016,116 +949,6 @@ function CreateStaff() {
               </Grid>
             </Grid>
 
-            <Divider sx={{ mb: 3 }} />
-
-            <MDBox mt={2} mb={2}>
-              <MDTypography variant="h6" fontWeight="bold">
-                Location Assignments
-              </MDTypography>
-
-              {formData.staffType === "distributor" ? (
-                <>
-                  <MDBox sx={{ borderBottom: 1, borderColor: "divider" }}>
-                    <Tabs
-                      value={activeTab}
-                      onChange={handleTabChange}
-                      variant="scrollable"
-                      scrollButtons="auto"
-                    >
-                      {routeDays.map((day) => (
-                        <Tab key={day} label={day} />
-                      ))}
-                    </Tabs>
-                  </MDBox>
-
-                  {routeDays.map((day, index) => (
-                    <MDBox key={day} hidden={activeTab !== index} py={3}>
-                      <MDBox
-                        display="flex"
-                        flexDirection={{ xs: "column", sm: "row" }}
-                        justifyContent="space-between"
-                        alignItems={{ xs: "flex-start", sm: "center" }}
-                        mb={2}
-                        gap={2}
-                      >
-                        <MDTypography variant="subtitle2" color="text">
-                          Assigned Locations for {day}
-                        </MDTypography>
-                        <MDButton variant="gradient" color="dark" size="small" onClick={() => addLocation(day)}>
-                          <Icon sx={{ mr: 1 }}>add</Icon>
-                          Add Location
-                        </MDButton>
-                      </MDBox>
-
-                      {(formData.assignments[day] || []).map((loc, locIndex) => (
-                        <MDBox
-                          key={locIndex}
-                          mb={2}
-                          p={2}
-                          sx={{ backgroundColor: "#f8f9fa", borderRadius: "10px", border: "1px solid #e9ecef" }}
-                        >
-                          <Grid container spacing={2} alignItems="center">
-                            <Grid item xs={12} sm={9}>
-                              <MDInput
-                                label="Location Name"
-                                fullWidth
-                                value={loc.locationName}
-                                onChange={(e) => handleLocationChange(day, locIndex, e.target.value)}
-                              />
-                            </Grid>
-                            <Grid item xs={12} sm={3}>
-                              <CiTrash onClick={() => removeLocation(day, locIndex)} style={{ cursor: "pointer" }} color="#FF0000" size={20} />
-                            </Grid>
-                          </Grid>
-                        </MDBox>
-                      ))}
-                    </MDBox>
-                  ))}
-                </>
-              ) : (
-                <MDBox py={3}>
-                  <MDBox
-                    display="flex"
-                    flexDirection={{ xs: "column", sm: "row" }}
-                    justifyContent="space-between"
-                    alignItems={{ xs: "flex-start", sm: "center" }}
-                    mb={2}
-                    gap={2}
-                  >
-                    <MDTypography variant="subtitle2" color="text">
-                      Assigned CNF Locations
-                    </MDTypography>
-                    <MDButton variant="gradient" color="dark" size="small" onClick={() => addLocation(cnfRouteDay)}>
-                      <Icon sx={{ mr: 1 }}>add</Icon>
-                      Add Location
-                    </MDButton>
-                  </MDBox>
-
-                  {(formData.assignments[cnfRouteDay] || []).map((loc, locIndex) => (
-                    <MDBox
-                      key={locIndex}
-                      mb={2}
-                      p={2}
-                      sx={{ backgroundColor: "#f8f9fa", borderRadius: "10px", border: "1px solid #e9ecef" }}
-                    >
-                      <Grid container spacing={2} alignItems="center">
-                        <Grid item xs={12} sm={9}>
-                          <MDInput
-                            label="Location Name"
-                            fullWidth
-                            value={loc.locationName}
-                            onChange={(e) => handleLocationChange(cnfRouteDay, locIndex, e.target.value)}
-                          />
-                        </Grid>
-                        <Grid item xs={12} sm={3}>
-                          <CiTrash onClick={() => removeLocation(cnfRouteDay, locIndex)} style={{ cursor: "pointer" }} color="#FF0000" size={20} />
-                        </Grid>
-                      </Grid>
-                    </MDBox>
-                  ))}
-                </MDBox>
-              )}
-            </MDBox>
           </MDBox>
         </DialogContent>
         <DialogActions sx={{ px: 3, py: 2 }}>
@@ -1141,8 +964,8 @@ function CreateStaff() {
             {savingStaff
               ? "Saving..."
               : editingStaffId
-                ? "Update Staff & Locations"
-                : "Save Staff & Locations"}
+                ? "Update Staff"
+                : "Save Staff"}
           </MDButton>
         </DialogActions>
       </Dialog>

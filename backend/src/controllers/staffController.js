@@ -661,15 +661,9 @@ export const updateStaff = async (req, res) => {
         );
         await StaffModel.setCompanies(id, resolvedCompanyIds);
 
-        // Replace locations
-        await StaffModel.deleteLocations(id);
-        for (const day in assignments) {
-            const locations = assignments[day];
-            if (Array.isArray(locations)) {
-                for (const locObj of locations) {
-                    await StaffModel.addLocation(id, day, locObj.locationName);
-                }
-            }
+        // Keep assignments unchanged when staff details are edited from the separate page.
+        if (Object.prototype.hasOwnProperty.call(req.body, 'assignments')) {
+            await StaffModel.replaceLocations(id, assignments);
         }
 
         res.status(200).json({ message: 'Staff updated successfully' });
@@ -1785,6 +1779,41 @@ const SELLER_ITEM_HEADER_ALIASES = {
     hsnCode: ['hsn code', 'hsn'],
     gstPercent: ['gst', 'gst %', 'gst percent'],
     pcsPerBox: ['pcs/box', 'pcs per box', 'pieces per box'],
+};
+
+export const updateStaffLocations = async (req, res) => {
+    try {
+        const staffId = Number(req.params.id);
+        const staff = await StaffModel.getDetails(staffId);
+        if (!staff) {
+            return res.status(404).json({ error: 'Staff not found' });
+        }
+
+        const allowedDays = staff.staff_type === 'cnf'
+            ? ['CNF']
+            : ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+        const submitted = req.body.assignments;
+        if (!submitted || typeof submitted !== 'object' || Array.isArray(submitted)) {
+            return res.status(400).json({ error: 'Assignments are required.' });
+        }
+
+        const assignments = {};
+        for (const day of allowedDays) {
+            const locations = submitted[day] || [];
+            if (!Array.isArray(locations)) {
+                return res.status(400).json({ error: `Locations for ${day} must be a list.` });
+            }
+            assignments[day] = locations
+                .map((location) => ({ locationName: String(location?.locationName || '').trim() }))
+                .filter((location) => location.locationName);
+        }
+
+        await StaffModel.replaceLocations(staffId, assignments);
+        res.status(200).json({ message: 'Location assignments updated successfully' });
+    } catch (error) {
+        console.error('Error updating staff locations:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
 };
 
 const normalizeSellerItemHeader = (value) => String(value || '')

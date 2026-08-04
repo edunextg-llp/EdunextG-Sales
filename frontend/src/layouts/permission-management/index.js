@@ -22,6 +22,7 @@ const PERMISSIONS = [
   ["update_payment", "Update Payment", "View sales and add, edit, or delete their payment entries."],
   ["bank_deposit", "Bank Deposit", "View and manage cash, cheque, and UPI bank deposits."],
   ["add_outlet", "Add Outlet", "Create, edit, import, export, or delete customer outlets."],
+  ["location_assignments", "Location Assignments", "Assign and update day-wise locations for staff."],
   ["add_sales", "Add Sales", "Create and manage sales invoices for outlets or customers."],
   ["out_bill", "Out Bill", "Assign, track, and return outstanding credit bills."],
 ];

@@ -81,6 +81,7 @@ router.put('/:id', staffController.updateStaff);
 router.post('/:id/generate-credentials', staffController.generateStaffCredentials);
 router.put('/:id/toggle-active', staffController.toggleStaffActive);
 router.get('/:id/locations', staffController.getStaffLocations);
+router.put('/:id/locations', staffController.updateStaffLocations);
 router.get('/:id/outlets-by-date', staffController.getOutletsByStaffAndDate);
 router.get('/:id/all-counters', staffController.getAllOutletsForStaff);
 router.get('/:id/outlets-by-day', staffController.getOutletsByStaffAndDayName);

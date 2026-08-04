@@ -322,6 +322,30 @@ class StaffModel {
         );
     }
 
+    static async replaceLocations(staffId, assignments) {
+        const connection = await db.getConnection();
+        try {
+            await connection.beginTransaction();
+            await connection.execute('DELETE FROM staff_locations WHERE staff_id = ?', [staffId]);
+
+            for (const [day, locations] of Object.entries(assignments)) {
+                for (const location of locations) {
+                    await connection.execute(
+                        'INSERT INTO staff_locations (staff_id, day, location_name) VALUES (?, ?, ?)',
+                        [staffId, day, location.locationName]
+                    );
+                }
+            }
+
+            await connection.commit();
+        } catch (error) {
+            await connection.rollback();
+            throw error;
+        } finally {
+            connection.release();
+        }
+    }
+
     static async getAllLocations(staffId) {
         const [rows] = await db.execute(
             'SELECT * FROM staff_locations WHERE staff_id = ?',

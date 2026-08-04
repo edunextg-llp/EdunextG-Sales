@@ -136,7 +136,7 @@ export const login = async (req, res) => {
                 }
                 const permissionKeys = [
                     'dashboard', 'dms', 'add_seller', 'add_item', 'item_list',
-                    'update_payment', 'bank_deposit', 'add_outlet', 'add_sales', 'out_bill',
+                    'update_payment', 'bank_deposit', 'add_outlet', 'location_assignments', 'add_sales', 'out_bill',
                 ];
                 const permissions = permissionKeys.filter((key) => Boolean(deliveryUser[`can_${key}`]));
                 const role = deliveryUser.role === 'packaging_staff' ? 'packaging_staff' : 'delivery_boy';
