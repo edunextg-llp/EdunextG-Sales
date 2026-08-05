@@ -35,7 +35,6 @@ const API = "https://bawarchee.edunextg.co/api";
 const DMS_STOCK_TEMPLATE_URL =
   "https://res.cloudinary.com/ddwp5cuhl/raw/upload/v1782977868/DMS_Stock_-_Copy_cgba8i.xlsx";
 const MANUAL_DMS_DRAFT_KEY = "dms-manual-stock-draft";
-const INCLUDED_GST_FACTOR = 1.05;
 
 const loadManualDmsDraft = () => {
   try {
@@ -745,9 +744,14 @@ function DmsStock() {
       setError("Please enter a valid MRP.");
       return;
     }
-    if ((Number(manualItem.retailPrice) / INCLUDED_GST_FACTOR) < Number(manualItem.dpPrice)
-      || (Number(manualItem.wholesalePrice) / INCLUDED_GST_FACTOR) < Number(manualItem.dpPrice)) {
-      setError("Retail and Wholesale Price excluding included 5% GST must be at least DP Price.");
+    const discountPercent = Math.min(
+      100,
+      Math.max(0, Number(manualItem.discountPercent) || 0)
+    );
+    const dpPriceAfterDiscount = Number(manualItem.dpPrice) * (1 - discountPercent / 100);
+    if (Number(manualItem.retailPrice) < dpPriceAfterDiscount
+      || Number(manualItem.wholesalePrice) < dpPriceAfterDiscount) {
+      setError("Retail and Wholesale Price must be at least DP Price after discount.");
       return;
     }
 

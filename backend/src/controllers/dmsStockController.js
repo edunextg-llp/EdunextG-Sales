@@ -68,6 +68,11 @@ const roundRate = (value) => Math.round((Number(value) + Number.EPSILON) * 10000
 
 const textValue = (value) => String(value || '').trim();
 
+const getDpPriceAfterDiscount = (dpPrice, discountPercent) => {
+    const normalizedDiscount = Math.max(0, Math.min(100, toNumber(discountPercent)));
+    return toNumber(dpPrice) * (1 - normalizedDiscount / 100);
+};
+
 export function parseRows(file) {
     const extension = (file.originalname.split('.').pop() || '').toLowerCase();
 
@@ -389,8 +394,8 @@ export const createManualDmsStock = async (req, res) => {
                 && (!Number.isFinite(Number(item.dpPrice)) || Number(item.dpPrice) < 0))
             || !Number.isFinite(Number(item?.mrp))
             || Number(item.mrp) <= 0
-            || (Number(item?.retailPrice) / 1.05) < Number(item.dpPrice)
-            || (Number(item?.wholesalePrice) / 1.05) < Number(item.dpPrice)
+            || Number(item?.retailPrice) < getDpPriceAfterDiscount(item.dpPrice, item.discountPercent)
+            || Number(item?.wholesalePrice) < getDpPriceAfterDiscount(item.dpPrice, item.discountPercent)
         ));
         if (invalidItem) {
             return res.status(400).json({
@@ -433,8 +438,8 @@ export const createManualDmsStock = async (req, res) => {
                     taxableAmount,
                     retailPrice,
                     wholesalePrice,
-                    retailMargin: roundRate(retailPrice - (dpPrice * (1 - discountPercent / 100))),
-                    wholesaleMargin: roundRate(wholesalePrice - (dpPrice * (1 - discountPercent / 100))),
+                    retailMargin: roundRate(retailPrice - getDpPriceAfterDiscount(dpPrice, discountPercent)),
+                    wholesaleMargin: roundRate(wholesalePrice - getDpPriceAfterDiscount(dpPrice, discountPercent)),
                 };
             })
             .filter((row) => row.productErpId || row.productName)
@@ -518,14 +523,14 @@ export const updateDmsStockItem = async (req, res) => {
             totalValue: roundRate(taxableAmount + cgstAmount + sgstAmount),
             retailPrice,
             wholesalePrice,
-            retailMargin: roundRate(retailPrice - (dpPrice * (1 - discountPercent / 100))),
-            wholesaleMargin: roundRate(wholesalePrice - (dpPrice * (1 - discountPercent / 100))),
+            retailMargin: roundRate(retailPrice - getDpPriceAfterDiscount(dpPrice, discountPercent)),
+            wholesaleMargin: roundRate(wholesalePrice - getDpPriceAfterDiscount(dpPrice, discountPercent)),
         };
         if (!row.batchNumber || !/^\d{4}-\d{2}-\d{2}$/.test(row.mfgDate)
             || !/^\d{4}-\d{2}-\d{2}$/.test(row.expiryDate) || row.mfgDate > row.expiryDate
             || row.dpPrice <= 0 || row.mrp <= 0
-            || (row.retailPrice / 1.05) < row.dpPrice
-            || (row.wholesalePrice / 1.05) < row.dpPrice) {
+            || row.retailPrice < getDpPriceAfterDiscount(row.dpPrice, row.discountPercent)
+            || row.wholesalePrice < getDpPriceAfterDiscount(row.dpPrice, row.discountPercent)) {
             return res.status(400).json({
                 error: 'Enter valid batch, dates, MRP, DP, and GST-inclusive retail/wholesale prices.',
             });
