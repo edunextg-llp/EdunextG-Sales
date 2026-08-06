@@ -46,6 +46,7 @@ const PERMISSION_FOLDERS = [
 ];
 const FOLDER_KEYS = PERMISSION_FOLDERS.flatMap((folder) => [folder.key, ...folder.children]);
 const OTHER_PERMISSIONS = PERMISSIONS.filter(([key]) => !FOLDER_KEYS.includes(key));
+const DISPLAY_ONLY_FOLDER_KEYS = ["delivery_manager", "staff_management", "chalan"];
 // Retained for the legacy, hidden DMS block below while the folder UI is rendered above it.
 const DMS_PERMISSION = ["dms", "DMS", "Grant every DMS submenu."];
 const DMS_CHILD_PERMISSIONS = PERMISSIONS.filter(([key]) => PERMISSION_FOLDERS[0].children.includes(key));
@@ -115,6 +116,9 @@ function PermissionManagement() {
 
   const savePermissions = async () => {
     if (!selectedUser) return;
+    // Folder keys are UI grouping keys. The child menu permissions are what the
+    // server persists and enforces, so older assigned permissions remain valid.
+    const savedPermissions = permissions.filter((key) => !DISPLAY_ONLY_FOLDER_KEYS.includes(key));
     const permissionLabels = PERMISSIONS
       .filter(([key]) => permissions.includes(key))
       .map(([, label]) => label);
@@ -132,12 +136,12 @@ function PermissionManagement() {
       const response = await fetch(`${API}/delivery-boy/${selectedUser.id}/permissions`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ permissions }),
+        body: JSON.stringify({ permissions: savedPermissions }),
       });
       const data = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(data.error || "Unable to save permissions.");
       setUsers((current) => current.map((user) => (
-        user.id === selectedUser.id ? { ...user, permissions } : user
+        user.id === selectedUser.id ? { ...user, permissions: savedPermissions } : user
       )));
       setMessage(data.message || "Permissions updated successfully.");
     } catch (saveError) {

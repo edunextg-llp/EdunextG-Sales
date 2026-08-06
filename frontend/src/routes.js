@@ -185,7 +185,6 @@ const routes = [
     key: "staff-management",
     icon: <Icon fontSize="small">people</Icon>,
     allowedRoles: ["admin", "packaging_staff", "delivery_boy"],
-    requiredPermission: "staff_management",
     collapse: [
       {
         type: "collapse",
@@ -269,7 +268,6 @@ const routes = [
     key: "delivery-management",
     icon: <Icon fontSize="small">local_shipping</Icon>,
     allowedRoles: ["admin", "packaging_staff", "delivery_boy"],
-    requiredPermission: "delivery_manager",
     collapse: [
       {
         type: "collapse",
@@ -309,7 +307,6 @@ const routes = [
     key: "chalan",
     icon: <Icon fontSize="small">description</Icon>,
     allowedRoles: ["admin", "packaging_staff", "delivery_boy"],
-    requiredPermission: "chalan",
     collapse: [
       {
         type: "collapse",
