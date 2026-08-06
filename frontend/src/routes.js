@@ -25,7 +25,7 @@ import BankDeposit from "layouts/bank-deposit";
 import Packaging from "layouts/packaging";
 import Delivery from "layouts/delivery";
 import Delivered from "layouts/delivered";
-import DBCollection from "layouts/db-collection";
+// import DBCollection from "layouts/db-collection";
 import ChalanAddSales from "layouts/chalan/add-sales";
 import ChalanPackagingDelivery from "layouts/chalan/packaging-delivery";
 import ChalanDelivery from "layouts/chalan/delivery";
@@ -381,14 +381,14 @@ const routes = [
     allowedRoles: ["admin", "packaging_staff", "delivery_boy"],
     requiredPermission: "update_payment",
   },
-  {
-    type: "collapse",
-    name: "D.B. Collection",
-    key: "db-collection",
-    icon: <Icon fontSize="small">payments</Icon>,
-    route: "/db-collection",
-    component: <DBCollection />,
-  },
+  // {
+  //   type: "collapse",
+  //   name: "D.B. Collection",
+  //   key: "db-collection",
+  //   icon: <Icon fontSize="small">payments</Icon>,
+  //   route: "/db-collection",
+  //   component: <DBCollection />,
+  // },
 
   {
     type: "collapse",
