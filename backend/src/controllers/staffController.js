@@ -2921,7 +2921,7 @@ export const updatePaymentMode = async (req, res) => {
 export const logOrderCancellation = async (req, res) => {
     try {
         const { saleId } = req.params;
-        const { outletName, invoiceNumber, productName, productSize, amount } = req.body;
+        const { outletName, invoiceNumber, productName, productSize, amount, reason } = req.body;
 
         if (!outletName) {
             return res.status(400).json({ error: 'Outlet name is required' });
@@ -2934,6 +2934,9 @@ export const logOrderCancellation = async (req, res) => {
         }
         if (!productSize) {
             return res.status(400).json({ error: 'Product size is required' });
+        }
+        if (!String(reason || '').trim()) {
+            return res.status(400).json({ error: 'Cancellation reason is required' });
         }
 
         const amountValidation = validateNumeric(amount, 'Amount');
@@ -2950,7 +2953,8 @@ export const logOrderCancellation = async (req, res) => {
             invoiceNumber,
             productName,
             productSize,
-            amount: amountValidation.value
+            amount: amountValidation.value,
+            reason: String(reason).trim().slice(0, 255)
         });
 
         res.status(201).json({

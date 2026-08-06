@@ -144,6 +144,7 @@ function UpdatePayment() {
     productName: "",
     productSize: "",
     amount: "",
+    reason: "",
   });
   const [loggingCancel, setLoggingCancel] = useState(false);
   const [cancellationHistory, setCancellationHistory] = useState([]);
@@ -571,6 +572,7 @@ function UpdatePayment() {
       productName: "",
       productSize: "",
       amount: "",
+      reason: "",
     });
     setCancellationHistory([]);
     await fetchCancellationHistory(sale.id);
@@ -582,6 +584,7 @@ function UpdatePayment() {
       productName: "",
       productSize: "",
       amount: "",
+      reason: "",
     });
     setCancellationHistory([]);
   };
@@ -593,7 +596,7 @@ function UpdatePayment() {
   const handleSaveCancellation = async () => {
     if (!cancelDialogSale) return;
 
-    const { productName, productSize, amount } = cancelForm;
+    const { productName, productSize, amount, reason } = cancelForm;
 
     if (!productName.trim()) {
       alert("Please enter product name.");
@@ -601,6 +604,10 @@ function UpdatePayment() {
     }
     if (!productSize.trim()) {
       alert("Please enter product size.");
+      return;
+    }
+    if (!reason) {
+      alert("Please select a cancellation reason.");
       return;
     }
     const parsedAmount = parseFloat(amount);
@@ -622,6 +629,7 @@ function UpdatePayment() {
             productName: productName.trim(),
             productSize: productSize.trim(),
             amount: parsedAmount,
+            reason,
           }),
         }
       );
@@ -632,6 +640,7 @@ function UpdatePayment() {
           productName: "",
           productSize: "",
           amount: "",
+          reason: "",
         });
         await fetchCancellationHistory(cancelDialogSale.id);
       } else {
@@ -1949,6 +1958,26 @@ function UpdatePayment() {
                     disabled
                   />
                 </Grid>
+                <Grid item xs={12}>
+                  <FormControl fullWidth>
+                    <InputLabel id="cancellation-reason-label">Cancellation Reason *</InputLabel>
+                    <Select
+                      labelId="cancellation-reason-label"
+                      label="Cancellation Reason *"
+                      value={cancelForm.reason}
+                      onChange={(e) => handleCancelFormChange("reason", e.target.value)}
+                    >
+                      <MenuItem value="">Select reason</MenuItem>
+                      <MenuItem value="Customer request">Customer request</MenuItem>
+                      <MenuItem value="Product unavailable">Product unavailable</MenuItem>
+                      <MenuItem value="Incorrect order">Incorrect order</MenuItem>
+                      <MenuItem value="Duplicate order">Duplicate order</MenuItem>
+                      <MenuItem value="Payment issue">Payment issue</MenuItem>
+                      <MenuItem value="Delivery issue">Delivery issue</MenuItem>
+                      <MenuItem value="Other">Other</MenuItem>
+                    </Select>
+                  </FormControl>
+                </Grid>
                 <Grid item xs={12} sm={6}>
                   <MDInput
                     label="Invoice Number"
@@ -2019,6 +2048,7 @@ function UpdatePayment() {
                           <TableCell sx={{ fontWeight: "bold" }}>Date</TableCell>
                           <TableCell sx={{ fontWeight: "bold" }}>Product</TableCell>
                           <TableCell sx={{ fontWeight: "bold" }}>Size</TableCell>
+                          <TableCell sx={{ fontWeight: "bold" }}>Reason</TableCell>
                           <TableCell sx={{ fontWeight: "bold" }} align="right">Amount</TableCell>
                           <TableCell sx={{ fontWeight: "bold" }} align="center">Action</TableCell>
                         </TableRow>
@@ -2029,6 +2059,7 @@ function UpdatePayment() {
                             <TableCell>{c.created_at.split(" ")[0]}</TableCell>
                             <TableCell>{c.product_name}</TableCell>
                             <TableCell>{c.product_size}</TableCell>
+                            <TableCell>{c.reason || "—"}</TableCell>
                             <TableCell align="right">₹{Number(c.amount).toFixed(2)}</TableCell>
                             <TableCell align="center">
                               <MDButton

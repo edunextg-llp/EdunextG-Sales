@@ -1291,10 +1291,12 @@ export async function ensureSchema() {
                 product_name VARCHAR(255) NOT NULL,
                 product_size VARCHAR(100) NOT NULL,
                 amount DECIMAL(10, 2) NOT NULL,
+                reason VARCHAR(255) NULL,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY (sale_id) REFERENCES staff_sales(id) ON DELETE SET NULL
             );
         `);
+        await tryQuery(connection, 'ALTER TABLE order_cancellations ADD COLUMN reason VARCHAR(255) NULL', 'order cancellation reason');
 
         await connection.query(`
             CREATE TABLE IF NOT EXISTS taken_bills (
