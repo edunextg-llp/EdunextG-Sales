@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import {
-  Alert, Card, Checkbox, Chip, CircularProgress, FormControlLabel, Grid, IconButton,
+  Alert, Card, Checkbox, Chip, CircularProgress, Collapse, FormControlLabel, Grid, IconButton,
   MenuItem, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Tooltip,
 } from "@mui/material";
 import Icon from "@mui/material/Icon";
@@ -28,7 +28,27 @@ const PERMISSIONS = [
   ["delivery", "Delivery", "View packaged orders, assign delivery staff, and update delivery status."],
   ["delivered", "Delivered", "View delivered or cancelled orders and their delivery details."],
   ["out_bill", "Out Bill", "Assign, track, and return outstanding credit bills."],
+  ["requisition_approval", "Requisition Approval", "View, approve, or cancel staff purchase requisitions."],
+  ["delivery_manager", "Delivery Manager", "Grant every Delivery Manager submenu."],
+  ["staff_management", "Staff Management", "Grant every available Staff Management submenu."],
+  ["chalan", "Chalan", "Grant every Chalan submenu."],
+  ["chalan_add_sales", "Chalan Add Sales", "Create and manage Chalan sales."],
+  ["chalan_packaging", "Chalan Packaging", "Package Chalan sales."],
+  ["chalan_delivery", "Chalan Delivery", "Assign and deliver Chalan sales."],
+  ["chalan_delivered", "Chalan Delivered", "View and manage delivered Chalan sales."],
+  ["chalan_return", "Chalan Return", "Process and manage Chalan returns."],
 ];
+const PERMISSION_FOLDERS = [
+  { key: "dms", label: "DMS", description: "Grant every DMS submenu.", children: ["add_seller", "add_item", "item_list"] },
+  { key: "delivery_manager", label: "Delivery Manager", description: "Grant every Delivery Manager submenu.", children: ["packaging", "delivery", "delivered"] },
+  { key: "staff_management", label: "Staff Management", description: "Grant the available Staff Management submenu.", children: ["location_assignments"] },
+  { key: "chalan", label: "Chalan", description: "Grant every Chalan submenu.", children: ["chalan_add_sales", "chalan_packaging", "chalan_delivery", "chalan_delivered", "chalan_return"] },
+];
+const FOLDER_KEYS = PERMISSION_FOLDERS.flatMap((folder) => [folder.key, ...folder.children]);
+const OTHER_PERMISSIONS = PERMISSIONS.filter(([key]) => !FOLDER_KEYS.includes(key));
+// Retained for the legacy, hidden DMS block below while the folder UI is rendered above it.
+const DMS_PERMISSION = ["dms", "DMS", "Grant every DMS submenu."];
+const DMS_CHILD_PERMISSIONS = PERMISSIONS.filter(([key]) => PERMISSION_FOLDERS[0].children.includes(key));
 
 function PermissionManagement() {
   const [users, setUsers] = useState([]);
@@ -38,6 +58,8 @@ function PermissionManagement() {
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+  const [expandedFolders, setExpandedFolders] = useState({ dms: true, delivery_manager: true, staff_management: true, chalan: true });
+  const [dmsExpanded, setDmsExpanded] = useState(true);
 
   const loadUsers = useCallback(async () => {
     setLoading(true);
@@ -64,17 +86,32 @@ function PermissionManagement() {
 
   const selectedUser = users.find((user) => String(user.id) === String(selectedId));
   const togglePermission = (key) => setPermissions((current) => {
+    const folder = PERMISSION_FOLDERS.find((item) => item.children.includes(key));
     if (current.includes(key)) {
-      if (key === "dms") {
-        return current.filter((item) => !["dms", "add_seller", "add_item", "item_list"].includes(item));
+      if (folder) {
+        const next = current.filter((item) => item !== key);
+        return folder.children.some((permission) => next.includes(permission))
+          ? next
+          : next.filter((item) => item !== folder.key);
       }
       return current.filter((item) => item !== key);
     }
-    if (["add_seller", "add_item", "item_list"].includes(key)) {
-      return [...new Set([...current, "dms", key])];
+    if (folder) {
+      return [...new Set([...current, folder.key, key])];
     }
     return [...current, key];
   });
+
+  const toggleFolder = (folder) => setPermissions((current) => {
+    const allFolderPermissions = [folder.key, ...folder.children];
+    const allSelected = folder.children.every((key) => current.includes(key));
+    return allSelected
+      ? current.filter((key) => !allFolderPermissions.includes(key))
+      : [...new Set([...current, ...allFolderPermissions])];
+  });
+  const selectedDmsCount = PERMISSION_FOLDERS[0].children.filter((key) => permissions.includes(key)).length;
+  const allDmsSelected = selectedDmsCount === PERMISSION_FOLDERS[0].children.length;
+  const toggleDmsFolder = () => toggleFolder(PERMISSION_FOLDERS[0]);
 
   const savePermissions = async () => {
     if (!selectedUser) return;
@@ -170,8 +207,73 @@ function PermissionManagement() {
                 </Grid>
                 <Grid item xs={12} md={7}>
                   <MDTypography variant="h6" mb={1}>Page Permissions</MDTypography>
+                  {PERMISSION_FOLDERS.map((folder) => {
+                    const childPermissions = PERMISSIONS.filter(([key]) => folder.children.includes(key));
+                    const selectedCount = folder.children.filter((key) => permissions.includes(key)).length;
+                    const allSelected = selectedCount === folder.children.length;
+                    const expanded = expandedFolders[folder.key];
+                    return <MDBox key={folder.key} sx={{ border: "1px solid #cbd5e1", borderRadius: 2, overflow: "hidden", mb: 1.5 }}>
+                      <MDBox display="flex" alignItems="center" px={1} py={0.5} sx={{ backgroundColor: "#f8fafc" }}>
+                        <Checkbox checked={allSelected} indeterminate={selectedCount > 0 && !allSelected} onChange={() => toggleFolder(folder)} />
+                        <MDTypography variant="button" fontWeight="bold" sx={{ flexGrow: 1 }}>{folder.label} - all menus</MDTypography>
+                        <Tooltip title={folder.description} arrow><IconButton size="small"><Icon fontSize="small">info_outline</Icon></IconButton></Tooltip>
+                        <IconButton size="small" onClick={() => setExpandedFolders((current) => ({ ...current, [folder.key]: !expanded }))}>
+                          <Icon fontSize="small">{expanded ? "expand_less" : "expand_more"}</Icon>
+                        </IconButton>
+                      </MDBox>
+                      <Collapse in={expanded}><MDBox pl={3} pr={1} py={0.75}>
+                        {childPermissions.map(([key, label, description]) => <MDBox key={key} display="flex" alignItems="center">
+                          <FormControlLabel sx={{ mr: 0 }} control={<Checkbox checked={permissions.includes(key)} onChange={() => togglePermission(key)} />} label={label} />
+                          <Tooltip title={description} arrow><IconButton size="small"><Icon fontSize="small">info_outline</Icon></IconButton></Tooltip>
+                        </MDBox>)}
+                      </MDBox></Collapse>
+                    </MDBox>;
+                  })}
+                  {false && <MDBox sx={{ border: "1px solid #cbd5e1", borderRadius: 2, overflow: "hidden", mb: 1.5 }}>
+                    <MDBox display="flex" alignItems="center" px={1} py={0.5} sx={{ backgroundColor: "#f8fafc" }}>
+                      <Checkbox
+                        checked={allDmsSelected}
+                        indeterminate={selectedDmsCount > 0 && !allDmsSelected}
+                        onChange={toggleDmsFolder}
+                        inputProps={{ "aria-label": "Grant all DMS permissions" }}
+                      />
+                      <MDTypography variant="button" fontWeight="bold" sx={{ flexGrow: 1 }}>
+                        {DMS_PERMISSION[1]} — all DMS menus
+                      </MDTypography>
+                      <Tooltip title={DMS_PERMISSION[2]} arrow>
+                        <IconButton size="small" aria-label="About DMS permissions">
+                          <Icon fontSize="small">info_outline</Icon>
+                        </IconButton>
+                      </Tooltip>
+                      <IconButton
+                        size="small"
+                        onClick={() => setDmsExpanded((expanded) => !expanded)}
+                        aria-label={dmsExpanded ? "Collapse DMS permissions" : "Expand DMS permissions"}
+                      >
+                        <Icon fontSize="small">{dmsExpanded ? "expand_less" : "expand_more"}</Icon>
+                      </IconButton>
+                    </MDBox>
+                    <Collapse in={dmsExpanded}>
+                      <MDBox pl={3} pr={1} py={0.75}>
+                        {DMS_CHILD_PERMISSIONS.map(([key, label, description]) => (
+                          <MDBox key={key} display="flex" alignItems="center">
+                            <FormControlLabel
+                              sx={{ mr: 0 }}
+                              control={<Checkbox checked={permissions.includes(key)} onChange={() => togglePermission(key)} />}
+                              label={label}
+                            />
+                            <Tooltip title={description} arrow>
+                              <IconButton size="small" aria-label={`About ${label} permission`}>
+                                <Icon fontSize="small">info_outline</Icon>
+                              </IconButton>
+                            </Tooltip>
+                          </MDBox>
+                        ))}
+                      </MDBox>
+                    </Collapse>
+                  </MDBox>}
                   <MDBox display="grid" sx={{ gridTemplateColumns: { xs: "1fr", sm: "1fr 1fr" }, gap: 1 }}>
-                    {PERMISSIONS.map(([key, label, description]) => (
+                    {OTHER_PERMISSIONS.map(([key, label, description]) => (
                       <MDBox key={key} display="flex" alignItems="center">
                         <FormControlLabel
                           sx={{ mr: 0 }}
@@ -187,7 +289,7 @@ function PermissionManagement() {
                     ))}
                   </MDBox>
                   <Alert severity="info" sx={{ mt: 2 }}>
-                    Check DMS together with Add Seller, Add Item, or Item List.
+                    Select DMS to grant every DMS submenu, or expand DMS and choose individual submenu permissions.
                   </Alert>
                 </Grid>
                 <Grid item xs={12}>

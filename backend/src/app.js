@@ -10,6 +10,7 @@ import { auditStaffChanges } from './middlewares/auditMiddleware.js';
 import {
     enforceManagedUserApiScope,
     enforceStaffApiScope,
+    requireAnyPermission,
     requireRole,
     verifyTokenMiddleware,
 } from './middlewares/authMiddleware.js';
@@ -46,7 +47,9 @@ app.use(
 );
 app.use('/api/audit-logs', verifyTokenMiddleware, requireRole('admin'), auditRoutes);
 app.use('/api/delivery-boy', deliveryBoyRoutes);
-app.use('/api/chalan', verifyTokenMiddleware, requireRole('admin'), chalanRoutes);
+app.use('/api/chalan', verifyTokenMiddleware, requireAnyPermission(
+    'chalan_add_sales', 'chalan_packaging', 'chalan_delivery', 'chalan_delivered', 'chalan_return'
+), chalanRoutes);
 
 // Basic health check
 app.get('/', (req, res) => {

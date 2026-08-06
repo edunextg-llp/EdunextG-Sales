@@ -100,6 +100,8 @@ function Basic() {
                         ? "/bank-deposit"
                         : permissions.includes("out_bill")
                           ? "/out-bill"
+                          : permissions.includes("requisition_approval")
+                            ? "/requisition-approvals"
                           : permissions.includes("add_outlet")
                             ? "/add-outlet"
                             : permissions.includes("add_sales")

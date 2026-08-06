@@ -52,6 +52,8 @@ const toDateInputValue = (value) => {
 function PurchaseRequisition() {
   const { user } = useAuth();
   const isStaff = user?.role === "staff";
+  const canApproveRequisitions = user?.role === "admin"
+    || user?.permissions?.includes("requisition_approval");
   const [sellerType, setSellerType] = useState("");
   const [companies, setCompanies] = useState([]);
   const [staff, setStaff] = useState([]);
@@ -94,6 +96,9 @@ function PurchaseRequisition() {
       }
       return;
     }
+    // Approvers only need the review queue. Keeping its filters admin-only avoids
+    // exposing the staff and company management APIs to managed users.
+    if (user?.role !== "admin") return;
     Promise.all([
       fetch(`${API}/staff/companies`, { headers: auth() }).then((r) => r.json()),
       fetch(`${API}/staff`, { headers: auth() }).then((r) => r.json()),
@@ -101,7 +106,7 @@ function PurchaseRequisition() {
       setCompanies(Array.isArray(companyRows) ? companyRows : []);
       setStaff(Array.isArray(staffRows) ? staffRows : []);
     });
-  }, [isStaff, user]);
+  }, [isStaff, user, canApproveRequisitions]);
 
   const filteredStaff = staff.filter((row) => {
     const ids = String(row.company_ids || row.company_id || "").split(",").map((id) => id.trim());
@@ -435,10 +440,10 @@ function PurchaseRequisition() {
                       ? "Your submitted requisitions, grouped by date."
                       : staffId
                         ? "Showing requisitions for selected staff, grouped by date."
-                        : "Admin review queue for all staff requisitions."}
+                        : "Review queue for all staff requisitions."}
                   </MDTypography>
                 </MDBox>
-                {!isStaff && <MDBox minWidth={200}>
+                {!isStaff && user?.role === "admin" && <MDBox minWidth={200}>
                   <MDTypography variant="caption" fontWeight="bold">Company</MDTypography>
                   <FormControl fullWidth>
                     <Select
@@ -457,7 +462,7 @@ function PurchaseRequisition() {
                     </Select>
                   </FormControl>
                 </MDBox>}
-                {!isStaff && <MDBox minWidth={200}>
+                {!isStaff && user?.role === "admin" && <MDBox minWidth={200}>
                   <MDTypography variant="caption" fontWeight="bold">Staff</MDTypography>
                   <FormControl fullWidth>
                     <Select value={historyStaffId} displayEmpty onChange={(e) => setHistoryStaffId(e.target.value)} sx={{ height: 44 }}>
@@ -499,7 +504,7 @@ function PurchaseRequisition() {
                             {[
                               "Sr. No.", "Requisition No", ...(!isStaff ? ["Staff", "Company"] : []),
                               "Outlet", "Items", "Total Qty", "Amount", "Status", "View",
-                              ...(!isStaff ? ["Admin Action"] : []),
+                              ...(!isStaff && canApproveRequisitions ? ["Approval Action"] : []),
                             ].map((h) => (
                               <TableCell key={h} sx={{ fontWeight: 700 }}>{h}</TableCell>
                             ))}
@@ -538,7 +543,7 @@ function PurchaseRequisition() {
                                   <Icon fontSize="small">visibility</Icon>
                                 </MDButton>
                               </TableCell>
-                              {!isStaff && (
+                              {!isStaff && canApproveRequisitions && (
                                 <TableCell>
                                   {["open", "pending"].includes(row.status || "pending") ? (
                                     <MDBox display="flex" gap={1}>

@@ -107,8 +107,10 @@ export const getByNumber = async (req, res) => {
 
 export const review = async (req, res) => {
     try {
-        if (req.user?.role !== 'admin') {
-            return res.status(403).json({ error: 'Only an admin can approve or cancel requisitions.' });
+        const canReview = req.user?.role === 'admin'
+            || req.user?.permissions?.includes('requisition_approval');
+        if (!canReview) {
+            return res.status(403).json({ error: 'You do not have permission to approve or cancel requisitions.' });
         }
         const status = String(req.body?.status || '').toLowerCase();
         if (!['approved', 'cancelled'].includes(status)) {

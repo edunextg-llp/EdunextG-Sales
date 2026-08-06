@@ -43,9 +43,11 @@ const ProtectedRoute = ({ children, allowedRoles, requiredPermission }) => {
               ? "/update-payment"
               : user.permissions.includes("bank_deposit")
                 ? "/bank-deposit"
-                : user.permissions.includes("out_bill")
-                  ? "/out-bill"
-                  : user.permissions.includes("location_assignments")
+              : user.permissions.includes("out_bill")
+                ? "/out-bill"
+                : user.permissions.includes("requisition_approval")
+                  ? "/requisition-approvals"
+                : user.permissions.includes("location_assignments")
                     ? "/location-assignments"
                   : user.permissions.includes("packaging")
                     ? "/packaging"

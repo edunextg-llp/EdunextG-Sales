@@ -126,7 +126,10 @@ export const enforceManagedUserApiScope = (req, res, next) => {
     } else if (/^\/sales\/\d+\/cancel-log$/.test(path)) {
         allowed = permissions.has('update_payment');
     } else if (/^\/purchase-requisitions\/[^/]+$/.test(path)) {
-        allowed = method === 'GET' && permissions.has('add_sales');
+        allowed = (method === 'GET' && permissions.has('add_sales'))
+            || (method === 'PUT' && permissions.has('requisition_approval'));
+    } else if (path === '/purchase-requisitions') {
+        allowed = permissions.has('requisition_approval');
     } else if (/^\/sales\/\d+$/.test(path)) {
         allowed = permissions.has('add_sales');
     }

@@ -185,6 +185,7 @@ const routes = [
     key: "staff-management",
     icon: <Icon fontSize="small">people</Icon>,
     allowedRoles: ["admin", "packaging_staff", "delivery_boy"],
+    requiredPermission: "staff_management",
     collapse: [
       {
         type: "collapse",
@@ -249,7 +250,8 @@ const routes = [
     icon: <Icon fontSize="small">approval</Icon>,
     route: "/requisition-approvals",
     component: <PurchaseRequisition />,
-    allowedRoles: ["admin"],
+    allowedRoles: ["admin", "packaging_staff", "delivery_boy"],
+    requiredPermission: "requisition_approval",
   },
   {
     type: "collapse",
@@ -267,6 +269,7 @@ const routes = [
     key: "delivery-management",
     icon: <Icon fontSize="small">local_shipping</Icon>,
     allowedRoles: ["admin", "packaging_staff", "delivery_boy"],
+    requiredPermission: "delivery_manager",
     collapse: [
       {
         type: "collapse",
@@ -305,6 +308,8 @@ const routes = [
     name: "Chalan",
     key: "chalan",
     icon: <Icon fontSize="small">description</Icon>,
+    allowedRoles: ["admin", "packaging_staff", "delivery_boy"],
+    requiredPermission: "chalan",
     collapse: [
       {
         type: "collapse",
@@ -313,6 +318,8 @@ const routes = [
         icon: <Icon fontSize="small">payments</Icon>,
         route: "/chalan-add-sales",
         component: <ChalanAddSales />,
+        allowedRoles: ["admin", "packaging_staff", "delivery_boy"],
+        requiredPermission: "chalan_add_sales",
       },
       {
         type: "collapse",
@@ -321,6 +328,8 @@ const routes = [
         icon: <Icon fontSize="small">inventory_2</Icon>,
         route: "/chalan-packaging-delivery",
         component: <ChalanPackagingDelivery />,
+        allowedRoles: ["admin", "packaging_staff", "delivery_boy"],
+        requiredPermission: "chalan_packaging",
       },
       {
         type: "collapse",
@@ -329,6 +338,8 @@ const routes = [
         icon: <Icon fontSize="small">local_shipping</Icon>,
         route: "/chalan-delivery",
         component: <ChalanDelivery />,
+        allowedRoles: ["admin", "packaging_staff", "delivery_boy"],
+        requiredPermission: "chalan_delivery",
       },
       {
         type: "collapse",
@@ -337,6 +348,8 @@ const routes = [
         icon: <Icon fontSize="small">verified</Icon>,
         route: "/chalan-delivered",
         component: <ChalanDelivered />,
+        allowedRoles: ["admin", "packaging_staff", "delivery_boy"],
+        requiredPermission: "chalan_delivered",
       },
       {
         type: "collapse",
@@ -345,6 +358,8 @@ const routes = [
         icon: <Icon fontSize="small">keyboard_return</Icon>,
         route: "/chalan-return",
         component: <ChalanReturn />,
+        allowedRoles: ["admin", "packaging_staff", "delivery_boy"],
+        requiredPermission: "chalan_return",
       },
     ],
   },

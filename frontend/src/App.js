@@ -202,6 +202,8 @@ export default function App() {
                           ? "/bank-deposit"
                           : permissions.includes("out_bill")
                             ? "/out-bill"
+                            : permissions.includes("requisition_approval")
+                              ? "/requisition-approvals"
                             : permissions.includes("location_assignments")
                               ? "/location-assignments"
                             : permissions.includes("packaging")
@@ -258,6 +260,8 @@ export default function App() {
                         ? "/bank-deposit"
                         : permissions.includes("out_bill")
                           ? "/out-bill"
+                          : permissions.includes("requisition_approval")
+                            ? "/requisition-approvals"
                           : permissions.includes("location_assignments")
                             ? "/location-assignments"
                           : permissions.includes("packaging")
