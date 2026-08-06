@@ -289,7 +289,7 @@ function CreateBawarcheeStaff() {
                     <DataTable
                       table={{
                         columns: [
-                          { Header: <MDTypography variant="subtitle2" color="dark" fontWeight="bold">#</MDTypography>, accessor: "id", width: "10%", align: "left" },
+                          // { Header: <MDTypography variant="subtitle2" color="dark" fontWeight="bold">#</MDTypography>, accessor: "id", width: "10%", align: "left" },
                           { Header: <MDTypography variant="subtitle2" color="dark" fontWeight="bold">Company</MDTypography>, accessor: "company", width: "30%", align: "left" },
                           { Header: <MDTypography variant="subtitle2" color="dark" fontWeight="bold">Name</MDTypography>, accessor: "name", width: "30%", align: "left" },
                           { Header: <MDTypography variant="subtitle2" color="dark" fontWeight="bold">Role</MDTypography>, accessor: "role", align: "center" },
@@ -300,11 +300,11 @@ function CreateBawarcheeStaff() {
                           { Header: <MDTypography variant="subtitle2" color="dark" fontWeight="bold">Action</MDTypography>, accessor: "action", align: "center" },
                         ],
                         rows: deliveryBoys.map((boy, index) => ({
-                          id: (
-                            <MDTypography component="span" variant="caption" color="text" fontWeight="medium" sx={{ opacity: boy.is_active === 0 ? 0.5 : 1 }}>
-                              {index + 1}
-                            </MDTypography>
-                          ),
+                          // id: (
+                          //   <MDTypography component="span" variant="caption" color="text" fontWeight="medium" sx={{ opacity: boy.is_active === 0 ? 0.5 : 1 }}>
+                          //     {index + 1}
+                          //   </MDTypography>
+                          // ),
                           name: (
                             <MDTypography component="span" variant="caption" color="text" fontWeight="medium" sx={{ opacity: boy.is_active === 0 ? 0.5 : 1 }}>
                               {boy.name}

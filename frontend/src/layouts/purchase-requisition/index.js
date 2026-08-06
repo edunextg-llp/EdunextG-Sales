@@ -236,7 +236,12 @@ function PurchaseRequisition() {
       setSelectedItem(null);
       setQuantity("");
       await fetchHistory(isStaff ? staffId : historyStaffId, historyCompanyId, historyDateFilter);
-      printPurchaseRequisitionPdf(requisition);
+      // Printing used to start automatically here. Browsers treat the print dialog as
+      // modal, leaving the staff portal unusable until it is closed. The saved
+      // requisition is immediately available in the list below via its View button.
+    } catch (error) {
+      console.error("Unable to create purchase requisition:", error);
+      alert(error.message || "Unable to create requisition. Please try again.");
     } finally {
       setSaving(false);
     }

@@ -4,7 +4,7 @@ const purchaseRequisitionPrintTemplate = String.raw`<!DOCTYPE html>
     <meta charset="utf-8" />
     <title>Tax Invoice - <%= requisitionNumber %></title>
     <style>
-      @page { size: A4 landscape; margin: 8mm; }
+      @page { size: A4 landscape; margin: 0.11in; }
       * { box-sizing: border-box; }
       body {
         margin: 0;
@@ -16,7 +16,6 @@ const purchaseRequisitionPrintTemplate = String.raw`<!DOCTYPE html>
       .page {
         border: 1px solid #111827;
         padding: 8px 10px;
-        min-height: 190mm;
       }
       .top-meta {
         display: flex;

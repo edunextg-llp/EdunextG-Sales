@@ -2,325 +2,121 @@ const salesInvoicePrintTemplate = String.raw`<!DOCTYPE html>
 <html>
   <head>
     <meta charset="utf-8" />
-    <title>Sales Invoice Report</title>
+    <title>Tax Invoice</title>
     <style>
-      @page {
-        size: A4;
-        margin: 14mm;
-      }
-
-      * {
-        box-sizing: border-box;
-      }
-
-      body {
-        margin: 0;
-        color: #111827;
-        font-family: Arial, Helvetica, sans-serif;
-        font-size: 12px;
-        line-height: 1.35;
-        background: #ffffff;
-      }
-
-      .page {
-        min-height: 269mm;
-        border: 1px solid #111827;
-        padding: 16px 18px 18px;
-        position: relative;
-        display: flex;
-        flex-direction: column;
-      }
-
-      .letterhead {
-        border-bottom: 2px solid #111827;
-        padding-bottom: 12px;
-        margin-bottom: 14px;
-        text-align: center;
-      }
-
-      .company-name {
-        margin: 0;
-        color: #b91c1c;
-        font-size: 22px;
-        line-height: 1.1;
-        font-weight: 800;
-        letter-spacing: 0;
-        text-transform: uppercase;
-      }
-
-      .company-subtitle {
-        margin-top: 4px;
-        color: #374151;
-        font-size: 11px;
-        font-weight: 700;
-        text-transform: uppercase;
-      }
-
-      .company-address {
-        max-width: 720px;
-        margin: 8px auto 0;
-        color: #111827;
-        font-size: 10.5px;
-        font-weight: 600;
-      }
-
-      .company-legal {
-        margin-top: 5px;
-        color: #111827;
-        font-size: 10.5px;
-        font-weight: 700;
-        word-spacing: 4px;
-      }
-
-      .document-title {
-        margin: 14px 0 12px;
-        padding: 8px 10px;
-        background: #f3f4f6;
-        border: 1px solid #d1d5db;
-        color: #111827;
-        font-size: 16px;
-        font-weight: 800;
-        text-align: center;
-        text-transform: uppercase;
-      }
-
-      .details-grid {
-        display: grid;
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-        gap: 8px 14px;
-        margin-bottom: 14px;
-      }
-
-      .field {
-        display: grid;
-        grid-template-columns: 116px minmax(0, 1fr);
-        border-bottom: 1px solid #d1d5db;
-        min-height: 24px;
-        align-items: end;
-      }
-
-      .field-label {
-        color: #374151;
-        font-weight: 700;
-        padding: 0 8px 5px 0;
-      }
-
-      .field-value {
-        color: #111827;
-        font-weight: 600;
-        padding: 0 0 5px;
-        word-break: break-word;
-      }
-
-      table {
-        width: 100%;
-        border-collapse: collapse;
-      }
-
-      th,
-      td {
-        border: 1px solid #111827;
-        padding: 7px 8px;
-        vertical-align: middle;
-      }
-
-      th {
-        background: #e5e7eb;
-        color: #111827;
-        font-size: 11px;
-        text-align: left;
-        text-transform: uppercase;
-      }
-
-      td.number,
-      th.number {
-        text-align: right;
-      }
-
-      td.center,
-      th.center {
-        text-align: center;
-      }
-
-      .total-row td {
-        background: #f9fafb;
-        font-size: 13px;
-        font-weight: 800;
-      }
-
-      .invoice-heading {
-        width: max-content;
-        margin: 14px auto 12px;
-        border-bottom: 2px solid #111827;
-        color: #111827;
-        font-size: 15px;
-        font-weight: 800;
-        text-align: center;
-        text-transform: uppercase;
-      }
-
-      .invoice-box {
-        border: 1px solid #111827;
-        padding: 10px;
-        margin-bottom: 14px;
-      }
-
-      .invoice-box-title {
-        margin: 0 0 8px;
-        color: #111827;
-        font-size: 13px;
-        font-weight: 800;
-        text-transform: uppercase;
-      }
-
-      .invoice-meta {
-        display: grid;
-        grid-template-columns: repeat(3, minmax(0, 1fr));
-        gap: 6px 10px;
-        margin-bottom: 10px;
-        font-size: 11px;
-      }
-
-      .invoice-meta strong {
-        color: #374151;
-      }
-
-      .amount-words {
-        margin-top: 12px;
-        border: 1px solid #d1d5db;
-        padding: 9px 10px;
-        font-weight: 700;
-      }
-
-      .grand-total {
-        margin-top: 8px;
-        padding: 10px;
-        border: 1px solid #111827;
-        background: #f9fafb;
-        font-size: 14px;
-        font-weight: 800;
-        text-align: right;
-      }
-
-      .signature-grid {
-        display: grid;
-        grid-template-columns: repeat(3, minmax(0, 1fr));
-        gap: 18px;
-        margin-top: auto;
-        padding-top: 46px;
-        padding-bottom: 18px;
-      }
-
-      .signature {
-        border-top: 1px solid #111827;
-        padding-top: 6px;
-        text-align: center;
-        font-size: 11px;
-        font-weight: 700;
-      }
-
-      @media print {
-        body {
-          -webkit-print-color-adjust: exact;
-          print-color-adjust: exact;
-        }
-      }
+      @page { size: A4 landscape; margin: 0.11in; }
+      * { box-sizing: border-box; }
+      body { margin: 0; color: #000; font-family: Arial, Helvetica, sans-serif; font-size: 9px; line-height: 1.2; }
+      .page { border: 1px solid #000; padding: 6px; page-break-after: always; break-after: page; }
+      .page:last-child { page-break-after: auto; break-after: auto; }
+      .top-meta { display: flex; justify-content: space-between; align-items: flex-start; font-size: 8px; font-weight: 700; }
+      .title { margin: 2px 0 6px; font-size: 15px; font-weight: 800; text-align: center; }
+      .panel { border: 1px solid #000; margin-bottom: 5px; }
+      .panel-grid { display: grid; grid-template-columns: 1.2fr 1fr 1fr; }
+      .panel-col { min-height: 54px; padding: 4px 5px; border-right: 1px solid #000; }
+      .panel-col:last-child { border-right: 0; }
+      .line { margin-bottom: 2px; word-break: break-word; }
+      .label { font-weight: 700; }
+      .value { font-weight: 600; }
+      table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+      th, td { border: 1px solid #000; padding: 3px 2px; vertical-align: middle; overflow-wrap: anywhere; }
+      th { background: #f2f2f2; font-size: 7px; line-height: 1.1; font-weight: 700; text-align: center; }
+      td.center { text-align: center; }
+      td.num { text-align: right; }
+      .total-row td { background: #fafafa; font-weight: 800; }
+      .footer-grid { display: grid; grid-template-columns: 1.4fr 1fr; gap: 5px; margin-top: 5px; }
+      .footer-box { min-height: 70px; border: 1px solid #000; padding: 5px; }
+      .summary-line { display: flex; justify-content: space-between; gap: 8px; margin-bottom: 3px; font-weight: 700; }
+      .summary-total { border-top: 1px solid #000; margin-top: 4px; padding-top: 4px; font-size: 10px; }
+      .signature { display: flex; justify-content: flex-end; padding-top: 18px; font-size: 8px; font-weight: 700; }
+      @media print { body { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
     </style>
   </head>
   <body>
-    <main class="page">
-      <header class="letterhead">
-        <h1 class="company-name"><%= companyName %></h1>
-        <div class="company-subtitle"><%= companySubtitle %></div>
-        <div class="company-address"><%= companyAddress %></div>
-        <div class="company-legal"><%= companyLegal %></div>
-      </header>
+    <% invoices.forEach(function(invoice, invoiceIndex) { %>
+      <main class="page">
+        <div class="top-meta"><span><%= invoiceIndex + 1 %>/<%= invoiceCount %></span><span>Seller Copy</span></div>
+        <div class="title">Tax Invoice</div>
 
-      <section class="document-title">Sales Invoice Report</section>
-
-      <section class="details-grid">
-        <div class="field">
-          <div class="field-label">Outlet Name</div>
-          <div class="field-value"><%= outletName %></div>
-        </div>
-        <div class="field">
-          <div class="field-label">ERP ID</div>
-          <div class="field-value"><%= outletErpId %></div>
-        </div>
-        <div class="field">
-          <div class="field-label">Area</div>
-          <div class="field-value"><%= locationName %></div>
-        </div>
-        <div class="field">
-          <div class="field-label">Date</div>
-          <div class="field-value"><%= saleDate %></div>
-        </div>
-        <div class="field">
-          <div class="field-label">Staff</div>
-          <div class="field-value"><%= staffName %></div>
-        </div>
-        <div class="field">
-          <div class="field-label">Company</div>
-          <div class="field-value"><%= companyLabel %></div>
-        </div>
-        <div class="field">
-          <div class="field-label">Invoices</div>
-          <div class="field-value"><%= invoiceCount %></div>
-        </div>
-      </section>
-
-      <div class="invoice-heading">Invoice Details</div>
-
-      <% invoices.forEach(function(invoice, invoiceIndex) { %>
-        <section class="invoice-box">
-          <h2 class="invoice-box-title">
-            Invoice <%= invoiceIndex + 1 %> — <%= invoice.invoiceNumber %>
-          </h2>
-          <div class="invoice-meta">
-            <div><strong>Sticker:</strong> <%= invoice.stickerNumber || "—" %></div>
-            <div><strong>Items Qty:</strong> <%= invoice.itemCount || "—" %></div>
-            <div><strong>Invoice Total:</strong> <%= invoice.amountText %></div>
+        <section class="panel">
+          <div class="panel-grid">
+            <div class="panel-col">
+              <div class="line"><span class="label">FROM:-</span> <span class="value"><%= companyName %></span></div>
+              <div class="line"><span class="label">Seller Address:-</span> <span class="value"><%= companyAddress %></span></div>
+              <div class="line"><span class="label">FSSAI Number:-</span> <span class="value">--</span></div>
+            </div>
+            <div class="panel-col">
+              <div class="line"><span class="label">GST No:-</span> <span class="value"><%= companyLegal %></span></div>
+              <div class="line"><span class="label">PAN No:-</span> <span class="value">--</span></div>
+              <div class="line"><span class="label">Phone No:-</span> <span class="value">--</span></div>
+            </div>
+            <div class="panel-col">
+              <div class="line"><span class="label">Invoice No:-</span> <span class="value"><%= invoice.invoiceNumber %></span></div>
+              <div class="line"><span class="label">Date:-</span> <span class="value"><%= saleDate %></span></div>
+              <div class="line"><span class="label">Sticker No:-</span> <span class="value"><%= invoice.stickerNumber %></span></div>
+            </div>
           </div>
-          <table>
-            <thead>
-              <tr>
-                <th class="center" style="width: 40px;">#</th>
-                <th>Product Name</th>
-                <th class="center" style="width: 60px;">Unit</th>
-                <th class="number" style="width: 70px;">Qty</th>
-                <th class="number" style="width: 90px;">Rate</th>
-                <th class="number" style="width: 100px;">Amount</th>
-              </tr>
-            </thead>
-            <tbody>
-              <% invoice.products.forEach(function(product, productIndex) { %>
-                <tr>
-                  <td class="center"><%= productIndex + 1 %></td>
-                  <td><%= product.name %></td>
-                  <td class="center"><%= product.unit %></td>
-                  <td class="number"><%= product.qty %></td>
-                  <td class="number"><%= product.rateText %></td>
-                  <td class="number"><%= product.amountText %></td>
-                </tr>
-              <% }); %>
-              <tr class="total-row">
-                <td colspan="5">Invoice Total</td>
-                <td class="number"><%= invoice.amountText %></td>
-              </tr>
-            </tbody>
-          </table>
         </section>
-      <% }); %>
 
-      <div class="grand-total">Grand Total (All Invoices): <%= grandTotal %></div>
-      <div class="amount-words">Amount in words: <%= amountInWords %></div>
+        <section class="panel">
+          <div class="panel-grid">
+            <div class="panel-col">
+              <div class="line"><span class="label">TO:-</span> <span class="value"><%= outletName %></span></div>
+              <div class="line"><span class="label">Buyer Address:-</span> <span class="value"><%= locationName %></span></div>
+              <div class="line"><span class="label">Company:-</span> <span class="value"><%= companyLabel %></span></div>
+            </div>
+            <div class="panel-col">
+              <div class="line"><span class="label">GST No:-</span> <span class="value">--</span></div>
+              <div class="line"><span class="label">PAN No:-</span> <span class="value">--</span></div>
+              <div class="line"><span class="label">Phone No:-</span> <span class="value">--</span></div>
+            </div>
+            <div class="panel-col">
+              <div class="line"><span class="label">Buyer ERP Id:-</span> <span class="value"><%= outletErpId %></span></div>
+              <div class="line"><span class="label">Salesman Name:-</span> <span class="value"><%= staffName %></span></div>
+              <div class="line"><span class="label">Total Items:-</span> <span class="value"><%= invoice.itemCount %></span></div>
+            </div>
+          </div>
+        </section>
 
-      <section class="signature-grid">
-        <div class="signature">Prepared By</div>
-        <div class="signature">Checked By</div>
-        <div class="signature">Received By</div>
-      </section>
-    </main>
+        <table>
+          <thead>
+            <tr>
+              <th style="width:4%">S No.</th><th style="width:31%">Item Name</th><th style="width:9%">Unit</th>
+              <th style="width:9%">Order Qty</th><th style="width:9%">Free Qty</th><th style="width:10%">Invoice Qty</th>
+              <th style="width:14%">Price/Piece</th><th style="width:14%">Total Value (Rs.)</th>
+            </tr>
+          </thead>
+          <tbody>
+            <% invoice.products.forEach(function(product, productIndex) { %>
+              <tr>
+                <td class="center"><%= productIndex + 1 %></td><td><%= product.name %></td><td class="center"><%= product.unit %></td>
+                <td class="num"><%= product.qty %></td><td class="num">0</td><td class="num"><%= product.qty %></td>
+                <td class="num"><%= product.rateText %></td><td class="num"><%= product.amountText %></td>
+              </tr>
+            <% }); %>
+            <tr class="total-row"><td colspan="3" class="center">Total</td><td class="num"><%= invoice.itemCount %></td><td class="num">0</td><td class="num"><%= invoice.itemCount %></td><td></td><td class="num"><%= invoice.amountText %></td></tr>
+          </tbody>
+        </table>
+
+        <div class="footer-grid">
+          <section class="footer-box">
+            <div class="line"><span class="label">CGST -</span> 0.00, <span class="label">SGST -</span> 0.00, <span class="label">IGST -</span> 0.00, <span class="label">UTGST -</span> 0.00</div>
+            <div class="line"><span class="label">CREDIT NOTE Remarks:</span> --</div>
+            <div class="line"><span class="label">DEBIT NOTE Remarks:</span> --</div>
+            <div class="line"><span class="label">Amount in words:</span> <%= amountInWords %></div>
+            <div class="signature">For <%= companyName %></div>
+          </section>
+          <section class="footer-box">
+            <div class="summary-line"><span>CREDIT NOTE Adjustment:</span><span>+ 0.00</span></div>
+            <div class="summary-line"><span>DEBIT NOTE Adjustment:</span><span>- 0.00</span></div>
+            <div class="summary-line"><span>Round Off:</span><span>Rs. 0.00</span></div>
+            <div class="summary-line"><span>Total Value (Rs.) INCL.5% GST:</span><span><%= invoice.amountText %></span></div>
+            <div class="summary-line summary-total"><span>Total Value:</span><span><%= invoice.amountText %></span></div>
+            <div class="summary-line summary-total"><span>Net Payable Amount:</span><span><%= invoice.amountText %></span></div>
+          </section>
+        </div>
+      </main>
+    <% }); %>
   </body>
 </html>`;
 
