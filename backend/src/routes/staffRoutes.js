@@ -103,7 +103,10 @@ router.delete('/sales/:saleId/payments/:paymentId', staffController.deleteSalePa
 router.put('/sales/:saleId', staffController.updateSale);
 router.delete('/sales/:saleId', staffController.deleteSale);
 router.put('/sales/:saleId/packaging', staffController.updatePackagingStatus);
+router.get('/sales/:saleId/packaging-remarks', staffController.getPackagingRemarks);
+router.post('/sales/:saleId/packaging-remarks', staffController.savePackagingRemarks);
 router.post('/sales/:saleId/cancel-log', staffController.logOrderCancellation);
 router.get('/sales/:saleId/cancel-log', staffController.getOrderCancellations);
+router.get('/sales/:saleId/items', staffController.getSaleItems);
 
 export default router;

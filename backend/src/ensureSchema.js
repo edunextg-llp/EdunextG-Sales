@@ -1297,6 +1297,60 @@ export async function ensureSchema() {
             );
         `);
         await tryQuery(connection, 'ALTER TABLE order_cancellations ADD COLUMN reason VARCHAR(255) NULL', 'order cancellation reason');
+        await tryQuery(connection, 'ALTER TABLE order_cancellations ADD COLUMN product_qty DECIMAL(10, 2) NULL', 'order cancellation product qty');
+
+        await connection.query(`
+            CREATE TABLE IF NOT EXISTS packaging_sale_remarks (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                sale_id INT NOT NULL,
+                remark_category VARCHAR(50) NOT NULL DEFAULT 'pending_item',
+                issue_type VARCHAR(50) NOT NULL,
+                item_name VARCHAR(255) NOT NULL,
+                wrong_item VARCHAR(255) NULL,
+                original_item VARCHAR(255) NULL,
+                qty DECIMAL(10, 2) NOT NULL,
+                amount DECIMAL(10, 2) NOT NULL,
+                remarks TEXT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (sale_id) REFERENCES staff_sales(id) ON DELETE CASCADE,
+                INDEX idx_packaging_sale_remarks_sale_id (sale_id)
+            );
+        `);
+        await tryQuery(connection, 'ALTER TABLE packaging_sale_remarks ADD COLUMN wrong_item VARCHAR(255) NULL', 'packaging remark wrong item');
+        await tryQuery(connection, 'ALTER TABLE packaging_sale_remarks ADD COLUMN original_item VARCHAR(255) NULL', 'packaging remark original item');
+
+        await connection.query(`
+            UPDATE staff_sales ss
+            SET paid_amount = COALESCE((
+                    SELECT SUM(sp.amount) FROM sale_payments sp
+                    WHERE sp.sale_id = ss.id AND sp.payment_mode IN ('cash', 'upi', 'cheque')
+                ), 0),
+                balance_amount = GREATEST(0, ss.price - COALESCE((
+                    SELECT SUM(oc.amount) FROM order_cancellations oc WHERE oc.sale_id = ss.id
+                ), 0) - COALESCE((
+                    SELECT SUM(sp.amount) FROM sale_payments sp
+                    WHERE sp.sale_id = ss.id AND sp.payment_mode IN ('cash', 'upi', 'cheque')
+                ), 0))
+            WHERE EXISTS (SELECT 1 FROM order_cancellations oc WHERE oc.sale_id = ss.id)
+        `);
+
+        await connection.query(`
+            CREATE TABLE IF NOT EXISTS staff_sale_items (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                sale_id INT NOT NULL,
+                product_erp_id VARCHAR(100) NOT NULL,
+                product_name VARCHAR(255) NOT NULL,
+                product_division VARCHAR(255) NULL,
+                variant_name VARCHAR(255) NULL,
+                qty DECIMAL(10, 2) NOT NULL DEFAULT 0,
+                rate DECIMAL(10, 2) NOT NULL DEFAULT 0,
+                line_total DECIMAL(12, 2) NOT NULL DEFAULT 0,
+                sort_order INT NOT NULL DEFAULT 0,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (sale_id) REFERENCES staff_sales(id) ON DELETE CASCADE,
+                INDEX idx_staff_sale_items_sale_id (sale_id)
+            );
+        `);
 
         await connection.query(`
             CREATE TABLE IF NOT EXISTS taken_bills (

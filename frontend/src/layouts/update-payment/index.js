@@ -18,6 +18,8 @@ import {
   DialogContent,
   DialogActions,
   InputLabel,
+  Tooltip,
+  CircularProgress,
 } from "@mui/material";
 
 import MDBox from "components/MDBox";
@@ -141,12 +143,16 @@ function UpdatePayment() {
   const [deliveryBoys, setDeliveryBoys] = useState([]);
   const [cancelDialogSale, setCancelDialogSale] = useState(null);
   const [cancelForm, setCancelForm] = useState({
+    selectedItemId: "",
     productName: "",
-    productSize: "",
+    productQtyToCancel: "",
     amount: "",
     reason: "",
   });
+  const [cancelSaleItems, setCancelSaleItems] = useState([]);
+  const [loadingCancelItems, setLoadingCancelItems] = useState(false);
   const [loggingCancel, setLoggingCancel] = useState(false);
+  const [addCancelDialogOpen, setAddCancelDialogOpen] = useState(false);
   const [cancellationHistory, setCancellationHistory] = useState([]);
   const [loadingCancellations, setLoadingCancellations] = useState(false);
   const [page, setPage] = useState(1);
@@ -566,26 +572,89 @@ function UpdatePayment() {
     }
   };
 
-  const openCancelDialog = async (sale) => {
-    setCancelDialogSale(sale);
+  const fetchCancelSaleItems = async (saleId) => {
+    setLoadingCancelItems(true);
+    try {
+      const response = await fetch(`${API}/staff/sales/${saleId}/items`);
+      if (response.ok) {
+        const data = await response.json();
+        setCancelSaleItems(Array.isArray(data) ? data : []);
+      } else {
+        setCancelSaleItems([]);
+      }
+    } catch (error) {
+      console.error("Error fetching sale items:", error);
+      setCancelSaleItems([]);
+    } finally {
+      setLoadingCancelItems(false);
+    }
+  };
+
+  const calculateCancelAmount = (item, cancelQty) => {
+    const orderedQty = Number(item?.qty) || 0;
+    const rate = Number(item?.rate) || 0;
+    const lineTotal = Number(item?.line_total) || 0;
+    const parsedCancelQty = Number(cancelQty) || 0;
+    if (parsedCancelQty <= 0) return 0;
+    if (rate > 0) return parsedCancelQty * rate;
+    if (orderedQty > 0) return (parsedCancelQty / orderedQty) * lineTotal;
+    return 0;
+  };
+
+  const formatCancelQtyDisplay = (cancellation) => {
+    if (cancellation?.product_qty != null && cancellation.product_qty !== "") {
+      return Number(cancellation.product_qty);
+    }
+    const legacyValue = String(cancellation?.product_size ?? "").trim();
+    if (legacyValue && !Number.isNaN(Number(legacyValue))) {
+      return Number(legacyValue);
+    }
+    return "—";
+  };
+
+  const formatItemQtyDisplay = (qty) => {
+    const parsed = Number(qty);
+    return Number.isFinite(parsed) ? parsed : "";
+  };
+
+  const resetCancelForm = () => {
     setCancelForm({
+      selectedItemId: "",
       productName: "",
-      productSize: "",
+      productQtyToCancel: "",
       amount: "",
       reason: "",
     });
+  };
+
+  const openCancelDialog = async (sale) => {
+    setCancelDialogSale(sale);
+    setAddCancelDialogOpen(false);
+    resetCancelForm();
+    setCancelSaleItems([]);
     setCancellationHistory([]);
     await fetchCancellationHistory(sale.id);
   };
 
+  const openAddCancelDialog = async () => {
+    if (!cancelDialogSale) return;
+    resetCancelForm();
+    setCancelSaleItems([]);
+    setAddCancelDialogOpen(true);
+    await fetchCancelSaleItems(cancelDialogSale.id);
+  };
+
+  const closeAddCancelDialog = () => {
+    setAddCancelDialogOpen(false);
+    resetCancelForm();
+    setCancelSaleItems([]);
+  };
+
   const closeCancelDialog = () => {
     setCancelDialogSale(null);
-    setCancelForm({
-      productName: "",
-      productSize: "",
-      amount: "",
-      reason: "",
-    });
+    setAddCancelDialogOpen(false);
+    resetCancelForm();
+    setCancelSaleItems([]);
     setCancellationHistory([]);
   };
 
@@ -593,18 +662,86 @@ function UpdatePayment() {
     setCancelForm((prev) => ({ ...prev, [field]: value }));
   };
 
+  const handleCancelProductSelect = (itemId) => {
+    if (String(itemId) === "manual") {
+      setCancelForm((prev) => ({
+        ...prev,
+        selectedItemId: "manual",
+        productName: "",
+        productQtyToCancel: "",
+        amount: "",
+      }));
+      return;
+    }
+
+    const selectedItem = cancelSaleItems.find((item) => String(item.id) === String(itemId));
+    if (!selectedItem) {
+      setCancelForm((prev) => ({
+        ...prev,
+        selectedItemId: "",
+        productName: "",
+        productQtyToCancel: "",
+        amount: "",
+      }));
+      return;
+    }
+
+    const orderedQty = formatItemQtyDisplay(selectedItem.qty);
+    const cancelAmount = calculateCancelAmount(selectedItem, orderedQty);
+    setCancelForm((prev) => ({
+      ...prev,
+      selectedItemId: String(itemId),
+      productName: selectedItem.product_name || "",
+      productQtyToCancel: orderedQty === "" ? "" : String(orderedQty),
+      amount: cancelAmount > 0 ? cancelAmount.toFixed(2) : "",
+    }));
+  };
+
+  const handleCancelQtyChange = (value) => {
+    const selectedItem = cancelSaleItems.find(
+      (item) => String(item.id) === String(cancelForm.selectedItemId)
+    );
+    if (!selectedItem) {
+      setCancelForm((prev) => ({ ...prev, productQtyToCancel: value, amount: "" }));
+      return;
+    }
+
+    const cancelAmount = calculateCancelAmount(selectedItem, value);
+    setCancelForm((prev) => ({
+      ...prev,
+      productQtyToCancel: value,
+      amount: cancelAmount > 0 ? cancelAmount.toFixed(2) : "",
+    }));
+  };
+
+  const selectedCancelItem =
+    cancelForm.selectedItemId && cancelForm.selectedItemId !== "manual"
+      ? cancelSaleItems.find((item) => String(item.id) === String(cancelForm.selectedItemId))
+      : null;
+
+  const isManualCancelEntry =
+    cancelForm.selectedItemId === "manual" || cancelSaleItems.length === 0;
+
   const handleSaveCancellation = async () => {
     if (!cancelDialogSale) return;
 
-    const { productName, productSize, amount, reason } = cancelForm;
+    const { productName, productQtyToCancel, amount, reason } = cancelForm;
 
     if (!productName.trim()) {
       alert("Please enter product name.");
       return;
     }
-    if (!productSize.trim()) {
-      alert("Please enter product size.");
+    const parsedQty = parseFloat(productQtyToCancel);
+    if (!productQtyToCancel || Number.isNaN(parsedQty) || parsedQty <= 0) {
+      alert("Please enter a valid product qty to cancel.");
       return;
+    }
+    if (selectedCancelItem) {
+      const orderedQty = Number(selectedCancelItem.qty) || 0;
+      if (orderedQty > 0 && parsedQty > orderedQty) {
+        alert(`Qty to cancel cannot exceed ordered qty (${orderedQty}).`);
+        return;
+      }
     }
     if (!reason) {
       alert("Please select a cancellation reason.");
@@ -627,7 +764,7 @@ function UpdatePayment() {
             outletName: cancelDialogSale.outlet_name,
             invoiceNumber: cancelDialogSale.invoice_number,
             productName: productName.trim(),
-            productSize: productSize.trim(),
+            productQty: parsedQty,
             amount: parsedAmount,
             reason,
           }),
@@ -635,13 +772,33 @@ function UpdatePayment() {
       );
 
       if (response.ok) {
+        const data = await response.json().catch(() => ({}));
         alert("Order cancellation logged successfully.");
-        setCancelForm({
-          productName: "",
-          productSize: "",
-          amount: "",
-          reason: "",
-        });
+        closeAddCancelDialog();
+        if (data.summary) {
+          setSalesData((prev) =>
+            prev.map((sale) =>
+              sale.id === cancelDialogSale.id
+                ? {
+                    ...sale,
+                    balance_amount: data.summary.balanceAmount,
+                    paid_amount: data.summary.paidAmount,
+                  }
+                : sale
+            )
+          );
+          setCancelDialogSale((prev) =>
+            prev
+              ? {
+                  ...prev,
+                  balance_amount: data.summary.balanceAmount,
+                  paid_amount: data.summary.paidAmount,
+                }
+              : prev
+          );
+        } else {
+          await fetchSales();
+        }
         await fetchCancellationHistory(cancelDialogSale.id);
       } else {
         const err = await response.json().catch(() => ({}));
@@ -685,7 +842,7 @@ function UpdatePayment() {
               <div class="row"><strong>Invoice No:</strong> <span>${cancellation.invoice_number}</span></div>
               <div class="divider"></div>
               <div class="row"><strong>Product:</strong> <span>${cancellation.product_name}</span></div>
-              <div class="row"><strong>Size:</strong> <span>${cancellation.product_size}</span></div>
+              <div class="row"><strong>Qty to Cancel:</strong> <span>${formatCancelQtyDisplay(cancellation)}</span></div>
               <div class="row"><strong>Amount:</strong> <span>₹${Number(cancellation.amount).toFixed(2)}</span></div>
             </div>
             <div class="divider"></div>
@@ -715,7 +872,7 @@ function UpdatePayment() {
         <tr>
           <td>${c.created_at}</td>
           <td>${c.product_name}</td>
-          <td>${c.product_size}</td>
+          <td>${formatCancelQtyDisplay(c)}</td>
           <td align="right">₹${Number(c.amount).toFixed(2)}</td>
         </tr>
       `;
@@ -750,7 +907,7 @@ function UpdatePayment() {
               <tr>
                 <th>Date</th>
                 <th>Product Name</th>
-                <th>Product Size</th>
+                <th>Qty to Cancel</th>
                 <th style="text-align: right">Amount</th>
               </tr>
             </thead>
@@ -1374,22 +1531,28 @@ function UpdatePayment() {
                                 </TableCell>
                                 <TableCell align="center">
                                   <MDBox display="flex" justifyContent="center" alignItems="center" gap={1}>
-                                    <MDButton
-                                      variant="outlined"
-                                      color="info"
-                                      size="small"
-                                      onClick={() => openPaymentDialog(sale)}
-                                    >
-                                      Manage Payments
-                                    </MDButton>
-                                    <MDButton
-                                      variant="outlined"
-                                      color="error"
-                                      size="small"
-                                      onClick={() => openCancelDialog(sale)}
-                                    >
-                                      Order Cancel
-                                    </MDButton>
+                                    <Tooltip title="Manage Payments">
+                                      <MDButton
+                                        variant="outlined"
+                                        color="info"
+                                        size="small"
+                                        iconOnly
+                                        onClick={() => openPaymentDialog(sale)}
+                                      >
+                                        <Icon fontSize="small">payments</Icon>
+                                      </MDButton>
+                                    </Tooltip>
+                                    <Tooltip title="Order Cancel">
+                                      <MDButton
+                                        variant="outlined"
+                                        color="error"
+                                        size="small"
+                                        iconOnly
+                                        onClick={() => openCancelDialog(sale)}
+                                      >
+                                        <Icon fontSize="small">cancel</Icon>
+                                      </MDButton>
+                                    </Tooltip>
                                   </MDBox>
                                 </TableCell>
                               </TableRow>
@@ -1935,15 +2098,207 @@ function UpdatePayment() {
           )}
         </DialogContent>
         <DialogActions>
-          <MDButton variant="outlined" color="dark" onClick={closePaymentDialog}>
-            Close
-          </MDButton>
+          <Tooltip title="Close">
+            <MDButton variant="outlined" color="dark" iconOnly onClick={closePaymentDialog}>
+              <Icon fontSize="small">close</Icon>
+            </MDButton>
+          </Tooltip>
         </DialogActions>
       </Dialog>
 
-      <Dialog open={!!cancelDialogSale} onClose={closeCancelDialog} maxWidth="sm" fullWidth>
+      <Dialog
+        open={!!cancelDialogSale}
+        onClose={closeCancelDialog}
+        maxWidth="md"
+        fullWidth
+        PaperProps={{
+          sx: {
+            width: "100%",
+            maxWidth: 760,
+            mx: 2,
+          },
+        }}
+      >
         <DialogTitle sx={{ fontWeight: "bold", color: "#344767" }}>
           Log Cancelled Order
+        </DialogTitle>
+        <DialogContent>
+          {cancelDialogSale && (
+            <MDBox pt={1}>
+              <MDBox
+                display="flex"
+                flexWrap="wrap"
+                gap={2}
+                mb={3}
+                p={2}
+                sx={{ backgroundColor: "#f8f9fa", borderRadius: "10px", border: "1px solid #e9ecef" }}
+              >
+                <MDTypography variant="body2">
+                  <strong>Outlet:</strong> {cancelDialogSale.outlet_name || "—"}
+                </MDTypography>
+                <MDTypography variant="body2">
+                  <strong>Invoice:</strong> {cancelDialogSale.invoice_number || "—"}
+                </MDTypography>
+              </MDBox>
+
+              <MDBox display="flex" justifyContent="space-between" alignItems="center" mb={2}>
+                <MDTypography variant="h6" fontWeight="medium">
+                  Cancellation History
+                </MDTypography>
+                <MDBox display="flex" gap={1}>
+                  {cancellationHistory.length > 0 && (
+                    <Tooltip title="Print All">
+                      <MDButton
+                        variant="outlined"
+                        color="info"
+                        size="small"
+                        iconOnly
+                        onClick={handlePrintAllCancellations}
+                      >
+                        <Icon fontSize="small">print</Icon>
+                      </MDButton>
+                    </Tooltip>
+                  )}
+                </MDBox>
+              </MDBox>
+
+              {loadingCancellations ? (
+                <MDTypography variant="body2" color="text">
+                  Loading history...
+                </MDTypography>
+              ) : cancellationHistory.length === 0 ? (
+                <MDTypography variant="body2" color="text">
+                  No cancellations logged for this invoice.
+                </MDTypography>
+              ) : (
+                <TableContainer
+                  sx={{
+                    boxShadow: "none",
+                    border: "1px solid #e5e7eb",
+                    borderRadius: "8px",
+                    backgroundColor: "#fff",
+                    overflowX: "auto",
+                  }}
+                >
+                  <Table
+                    size="small"
+                    sx={{
+                      tableLayout: "fixed",
+                      width: "100%",
+                      minWidth: 640,
+                      "& .MuiTableCell-root": { overflow: "hidden", textOverflow: "ellipsis" },
+                    }}
+                  >
+                    <colgroup>
+                      <col style={{ width: "30%" }} />
+                      <col style={{ width: "30%" }} />
+                      <col style={{ width: "14%" }} />
+                      <col style={{ width: "14%" }} />
+                      <col style={{ width: "12%" }} />
+                    </colgroup>
+                    <TableHead
+                      sx={{
+                        display: "table-header-group",
+                        backgroundColor: "#f9fafb",
+                        "& .MuiTableCell-root": { backgroundColor: "#f9fafb" },
+                      }}
+                    >
+                      <TableRow>
+                        <TableCell align="left" sx={tableHeadSx}>
+                          Date
+                        </TableCell>
+                        <TableCell align="left" sx={tableHeadSx}>
+                          Product Name
+                        </TableCell>
+                        <TableCell align="left" sx={tableHeadSx}>
+                          Qty to Cancel
+                        </TableCell>
+                        <TableCell align="right" sx={tableHeadSx}>
+                          Amount
+                        </TableCell>
+                        <TableCell align="center" sx={tableHeadSx}>
+                          Action
+                        </TableCell>
+                      </TableRow>
+                    </TableHead>
+                    <TableBody>
+                      {cancellationHistory.map((c) => (
+                        <TableRow key={c.id}>
+                          <TableCell
+                            align="left"
+                            sx={{ ...tableBodySx, borderBottom: "1px solid #e5e7eb", fontSize: "0.875rem", color: "#374151" }}
+                          >
+                            {c.created_at}
+                          </TableCell>
+                          <TableCell
+                            align="left"
+                            sx={{ ...tableBodySx, borderBottom: "1px solid #e5e7eb", fontSize: "0.875rem", color: "#374151" }}
+                          >
+                            {c.product_name}
+                          </TableCell>
+                          <TableCell
+                            align="left"
+                            sx={{ ...tableBodySx, borderBottom: "1px solid #e5e7eb", fontSize: "0.875rem", color: "#374151" }}
+                          >
+                            {formatCancelQtyDisplay(c)}
+                          </TableCell>
+                          <TableCell
+                            align="right"
+                            sx={{ ...tableBodySx, borderBottom: "1px solid #e5e7eb", fontSize: "0.875rem", fontWeight: 500, color: "#111827" }}
+                          >
+                            ₹{Number(c.amount).toFixed(2)}
+                          </TableCell>
+                          <TableCell align="center" sx={{ ...tableBodySx, borderBottom: "1px solid #e5e7eb" }}>
+                            <Tooltip title="Print">
+                              <MDButton
+                                variant="outlined"
+                                color="info"
+                                size="small"
+                                iconOnly
+                                onClick={() => handlePrintCancellation(c)}
+                              >
+                                <Icon fontSize="small">print</Icon>
+                              </MDButton>
+                            </Tooltip>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </TableContainer>
+              )}
+            </MDBox>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Tooltip title="Close">
+            <MDButton variant="outlined" color="dark" iconOnly onClick={closeCancelDialog}>
+              <Icon fontSize="small">close</Icon>
+            </MDButton>
+          </Tooltip>
+          <Tooltip title="Add Cancellation">
+            <MDButton variant="gradient" color="error" iconOnly onClick={openAddCancelDialog}>
+              <Icon fontSize="small">add</Icon>
+            </MDButton>
+          </Tooltip>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog
+        open={addCancelDialogOpen}
+        onClose={closeAddCancelDialog}
+        maxWidth="md"
+        fullWidth
+        PaperProps={{
+          sx: {
+            width: "100%",
+            maxWidth: 760,
+            mx: 2,
+          },
+        }}
+      >
+        <DialogTitle sx={{ fontWeight: "bold", color: "#344767" }}>
+          Add Cancellation
         </DialogTitle>
         <DialogContent>
           {cancelDialogSale && (
@@ -1958,13 +2313,23 @@ function UpdatePayment() {
                     disabled
                   />
                 </Grid>
-                <Grid item xs={12}>
+                <Grid item xs={12} sm={6}>
+                  <MDInput
+                    label="Invoice Number"
+                    fullWidth
+                    value={cancelDialogSale.invoice_number || ""}
+                    InputProps={{ readOnly: true }}
+                    disabled
+                  />
+                </Grid>
+                <Grid item xs={12} sm={6}>
                   <FormControl fullWidth>
                     <InputLabel id="cancellation-reason-label">Cancellation Reason *</InputLabel>
                     <Select
                       labelId="cancellation-reason-label"
                       label="Cancellation Reason *"
                       value={cancelForm.reason}
+                      sx={{ height: 43 }}
                       onChange={(e) => handleCancelFormChange("reason", e.target.value)}
                     >
                       <MenuItem value="">Select reason</MenuItem>
@@ -1979,28 +2344,71 @@ function UpdatePayment() {
                   </FormControl>
                 </Grid>
                 <Grid item xs={12} sm={6}>
-                  <MDInput
-                    label="Invoice Number"
-                    fullWidth
-                    value={cancelDialogSale.invoice_number || ""}
-                    InputProps={{ readOnly: true }}
-                    disabled
-                  />
-                </Grid>
-                <Grid item xs={12}>
-                  <MDInput
-                    label="Product Name"
-                    fullWidth
-                    value={cancelForm.productName}
-                    onChange={(e) => handleCancelFormChange("productName", e.target.value)}
-                  />
+                  {loadingCancelItems ? (
+                    <MDTypography variant="body2" color="text" sx={{ pt: 1.5 }}>
+                      Loading invoice products...
+                    </MDTypography>
+                  ) : cancelSaleItems.length > 0 ? (
+                    <>
+                      <FormControl fullWidth>
+                        <InputLabel id="cancel-product-label">Product Name *</InputLabel>
+                        <Select
+                          labelId="cancel-product-label"
+                          label="Product Name *"
+                          value={cancelForm.selectedItemId}
+                          sx={{ height: 43 }}
+                          onChange={(e) => handleCancelProductSelect(e.target.value)}
+                        >
+                          <MenuItem value="">Select product</MenuItem>
+                          <MenuItem value="manual">Manual entry</MenuItem>
+                          {cancelSaleItems.map((item) => (
+                            <MenuItem key={item.id} value={String(item.id)}>
+                              {item.product_name} — Qty: {formatItemQtyDisplay(item.qty)}
+                            </MenuItem>
+                          ))}
+                        </Select>
+                      </FormControl>
+                      {isManualCancelEntry && cancelForm.selectedItemId === "manual" && (
+                        <MDBox mt={2}>
+                          <MDInput
+                            label="Product Name *"
+                            fullWidth
+                            value={cancelForm.productName}
+                            onChange={(e) => handleCancelFormChange("productName", e.target.value)}
+                          />
+                        </MDBox>
+                      )}
+                    </>
+                  ) : (
+                    <MDInput
+                      label="Product Name *"
+                      fullWidth
+                      value={cancelForm.productName}
+                      onChange={(e) => handleCancelFormChange("productName", e.target.value)}
+                    />
+                  )}
                 </Grid>
                 <Grid item xs={12} sm={6}>
                   <MDInput
-                    label="Product Size"
+                    type="number"
+                    label="Qty to Cancel"
                     fullWidth
-                    value={cancelForm.productSize}
-                    onChange={(e) => handleCancelFormChange("productSize", e.target.value)}
+                    value={cancelForm.productQtyToCancel}
+                    onChange={(e) =>
+                      selectedCancelItem
+                        ? handleCancelQtyChange(e.target.value)
+                        : handleCancelFormChange("productQtyToCancel", e.target.value)
+                    }
+                    inputProps={
+                      selectedCancelItem
+                        ? { min: 0, max: Number(selectedCancelItem.qty) || undefined, step: "any" }
+                        : { min: 0, step: "any" }
+                    }
+                    helperText={
+                      selectedCancelItem
+                        ? `Ordered qty: ${formatItemQtyDisplay(selectedCancelItem.qty)}`
+                        : undefined
+                    }
                   />
                 </Grid>
                 <Grid item xs={12} sm={6}>
@@ -2010,84 +2418,49 @@ function UpdatePayment() {
                     fullWidth
                     value={cancelForm.amount}
                     onChange={(e) => handleCancelFormChange("amount", e.target.value)}
+                    inputProps={{ min: 0, step: "0.01" }}
+                    helperText={
+                      selectedCancelItem
+                        ? "Auto-filled from qty; you can edit manually"
+                        : "Enter cancel amount manually"
+                    }
                   />
                 </Grid>
               </Grid>
-
-              {/* Cancellation History Section */}
-              <MDBox mt={4}>
-                <MDBox display="flex" justifyContent="space-between" alignItems="center" mb={2}>
-                  <MDTypography variant="h6" fontWeight="medium">
-                    Cancellation History
-                  </MDTypography>
-                  {cancellationHistory.length > 0 && (
-                    <MDButton
-                      variant="outlined"
-                      color="info"
-                      size="small"
-                      onClick={handlePrintAllCancellations}
-                    >
-                      Print All
-                    </MDButton>
-                  )}
-                </MDBox>
-
-                {loadingCancellations ? (
-                  <MDTypography variant="body2" color="text">
-                    Loading history...
-                  </MDTypography>
-                ) : cancellationHistory.length === 0 ? (
-                  <MDTypography variant="body2" color="text">
-                    No cancellations logged for this invoice.
-                  </MDTypography>
-                ) : (
-                  <TableContainer component={Paper} sx={{ boxShadow: "none", border: "1px solid #e5e7eb" }}>
-                    <Table size="small">
-                      <TableHead sx={{ display: "table-header-group", backgroundColor: "#f9fafb" }}>
-                        <TableRow>
-                          <TableCell sx={{ fontWeight: "bold" }}>Date</TableCell>
-                          <TableCell sx={{ fontWeight: "bold" }}>Product</TableCell>
-                          <TableCell sx={{ fontWeight: "bold" }}>Size</TableCell>
-                          <TableCell sx={{ fontWeight: "bold" }}>Reason</TableCell>
-                          <TableCell sx={{ fontWeight: "bold" }} align="right">Amount</TableCell>
-                          <TableCell sx={{ fontWeight: "bold" }} align="center">Action</TableCell>
-                        </TableRow>
-                      </TableHead>
-                      <TableBody>
-                        {cancellationHistory.map((c) => (
-                          <TableRow key={c.id}>
-                            <TableCell>{c.created_at.split(" ")[0]}</TableCell>
-                            <TableCell>{c.product_name}</TableCell>
-                            <TableCell>{c.product_size}</TableCell>
-                            <TableCell>{c.reason || "—"}</TableCell>
-                            <TableCell align="right">₹{Number(c.amount).toFixed(2)}</TableCell>
-                            <TableCell align="center">
-                              <MDButton
-                                variant="outlined"
-                                color="info"
-                                size="small"
-                                onClick={() => handlePrintCancellation(c)}
-                              >
-                                Print
-                              </MDButton>
-                            </TableCell>
-                          </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
-                  </TableContainer>
-                )}
-              </MDBox>
             </MDBox>
           )}
         </DialogContent>
         <DialogActions>
-          <MDButton variant="outlined" color="dark" onClick={closeCancelDialog} disabled={loggingCancel}>
-            Close
-          </MDButton>
-          <MDButton variant="gradient" color="error" onClick={handleSaveCancellation} disabled={loggingCancel}>
-            {loggingCancel ? "Saving..." : "Log Cancellation"}
-          </MDButton>
+          <Tooltip title="Close">
+            <span>
+              <MDButton
+                variant="outlined"
+                color="dark"
+                iconOnly
+                onClick={closeAddCancelDialog}
+                disabled={loggingCancel}
+              >
+                <Icon fontSize="small">close</Icon>
+              </MDButton>
+            </span>
+          </Tooltip>
+          <Tooltip title={loggingCancel ? "Saving..." : "Create Cancel"}>
+            <span>
+              <MDButton
+                variant="gradient"
+                color="error"
+                iconOnly
+                onClick={handleSaveCancellation}
+                disabled={loggingCancel}
+              >
+                {loggingCancel ? (
+                  <CircularProgress size={18} color="inherit" />
+                ) : (
+                  <Icon fontSize="small">check</Icon>
+                )}
+              </MDButton>
+            </span>
+          </Tooltip>
         </DialogActions>
       </Dialog>
       <Footer />

@@ -19,6 +19,7 @@ import {
   Tabs,
   Tab,
   InputLabel,
+  Tooltip,
 } from "@mui/material";
 
 import MDBox from "components/MDBox";
@@ -45,6 +46,15 @@ import {
 } from "utils/tablePagination";
 import { IoSaveOutline } from "react-icons/io5";
 import { FaEye } from "react-icons/fa";
+
+const tableActionBoxSx = {
+  backgroundColor: "#f0fdfa",
+  padding: "6px 10px",
+  borderRadius: "8px",
+  border: "1px solid #99f6e4",
+  flexWrap: "nowrap",
+  minWidth: "fit-content",
+};
 
 const getTodayLocalDate = () => {
   const now = new Date();
@@ -671,10 +681,25 @@ function Delivery() {
                                       {(row.delivery_boy_id && row.vehicle_no && row.delivery_date) ? "Edit Details" : "Assign Details"}
                                     </MDButton>
                                   </TableCell>
-                                  <TableCell align="center" sx={{ borderBottom: borderCol, py: 2 }}>
-                                    <MDBox display="flex" gap={1} justifyContent="center" flexWrap="wrap" sx={{ backgroundColor: "#f0fdfa", padding: "8px 12px", borderRadius: "8px", border: "1px solid #99f6e4" }}>
-                                      <IoSaveOutline onClick={() => handleSaveDelivery(row.id)} style={{ cursor: "pointer" }} color="#059669" size={20} />
-                                      <FaEye onClick={() => handleViewHistory(row.id)} style={{ cursor: "pointer" }} color="#E0E388" size={20} />
+                                  <TableCell align="center" sx={{ borderBottom: borderCol, py: 2, minWidth: 96 }}>
+                                    <MDBox
+                                      display="flex"
+                                      flexDirection="row"
+                                      gap={0.75}
+                                      justifyContent="center"
+                                      alignItems="center"
+                                      sx={tableActionBoxSx}
+                                    >
+                                      <Tooltip title="Save">
+                                        <span>
+                                          <IoSaveOutline onClick={() => handleSaveDelivery(row.id)} style={{ cursor: "pointer" }} color="#059669" size={20} />
+                                        </span>
+                                      </Tooltip>
+                                      <Tooltip title="Status History">
+                                        <span>
+                                          <FaEye onClick={() => handleViewHistory(row.id)} style={{ cursor: "pointer" }} color="#E0E388" size={20} />
+                                        </span>
+                                      </Tooltip>
                                     </MDBox>
                                   </TableCell>
                                 </>

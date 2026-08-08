@@ -69,6 +69,17 @@ function formatCurrency(value) {
   return `Rs. ${Number(value || 0).toFixed(2)}`;
 }
 
+function formatCancelQtyDisplay(cancellation) {
+  if (cancellation?.product_qty != null && cancellation.product_qty !== "") {
+    return Number(cancellation.product_qty);
+  }
+  const legacyValue = String(cancellation?.product_size ?? "").trim();
+  if (legacyValue && !Number.isNaN(Number(legacyValue))) {
+    return Number(legacyValue);
+  }
+  return "—";
+}
+
 function formatDate(value) {
   if (!value) return "N/A";
   const dateOnly = String(value).split("T")[0].split(" ")[0];
@@ -320,7 +331,7 @@ function InvoiceDetails({ details }) {
               <TableHead>
                 <TableRow>
                   <TableCell>Product</TableCell>
-                  <TableCell>Size</TableCell>
+                  <TableCell>Qty to Cancel</TableCell>
                   <TableCell>Amount</TableCell>
                   <TableCell>Date</TableCell>
                 </TableRow>
@@ -329,7 +340,7 @@ function InvoiceDetails({ details }) {
                 {cancellations.map((row) => (
                   <TableRow key={row.id}>
                     <TableCell>{row.product_name}</TableCell>
-                    <TableCell>{row.product_size || "—"}</TableCell>
+                    <TableCell>{formatCancelQtyDisplay(row)}</TableCell>
                     <TableCell>{formatCurrency(row.amount)}</TableCell>
                     <TableCell>{formatDateTime(row.created_at)}</TableCell>
                   </TableRow>

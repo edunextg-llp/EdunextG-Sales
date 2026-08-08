@@ -119,11 +119,15 @@ export const enforceManagedUserApiScope = (req, res, next) => {
         allowed = method === 'GET' && permissions.has('delivered');
     } else if (/^\/sales\/\d+\/packaging$/.test(path)) {
         allowed = permissions.has('packaging') || permissions.has('delivery') || permissions.has('delivered');
+    } else if (/^\/sales\/\d+\/packaging-remarks$/.test(path)) {
+        allowed = permissions.has('packaging') || permissions.has('delivery') || permissions.has('delivered');
     } else if (/^\/sales\/\d+\/status-history$/.test(path)) {
         allowed = method === 'GET' && (permissions.has('packaging') || permissions.has('delivery'));
     } else if (/^\/sales\/\d+\/payment$/.test(path) || /^\/sales\/\d+\/payments(?:\/\d+)?$/.test(path)) {
         allowed = permissions.has('update_payment');
     } else if (/^\/sales\/\d+\/cancel-log$/.test(path)) {
+        allowed = permissions.has('update_payment');
+    } else if (/^\/sales\/\d+\/items$/.test(path)) {
         allowed = permissions.has('update_payment');
     } else if (/^\/purchase-requisitions\/[^/]+$/.test(path)) {
         allowed = (method === 'GET' && permissions.has('add_sales'))

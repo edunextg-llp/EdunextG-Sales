@@ -18,6 +18,7 @@ import {
   DialogContent,
   DialogActions,
   InputLabel,
+  Tooltip,
 } from "@mui/material";
 
 import MDBox from "components/MDBox";
@@ -44,6 +45,82 @@ import {
 } from "utils/tablePagination";
 import { IoSaveOutline } from "react-icons/io5";
 import { FaRegEdit } from "react-icons/fa";
+import { MdOutlineComment, MdDeleteOutline } from "react-icons/md";
+
+const REMARK_CATEGORIES = [{ value: "pending_item", label: "Pending Item" }];
+
+const ISSUE_TYPES = [
+  { value: "cancel", label: "Cancel" },
+  { value: "wrong_delivered", label: "Wrong Delivered" },
+];
+
+const remarkCategoryLabels = {
+  pending_item: "Pending Item",
+};
+
+const issueTypeLabels = {
+  cancel: "Cancel",
+  wrong_delivered: "Wrong Delivered",
+};
+
+const emptyRemarkItemForm = () => ({
+  itemName: "",
+  wrongItem: "",
+  originalItem: "",
+  qty: "",
+  amount: "",
+  remarks: "",
+});
+
+const remarkTableHeadSx = {
+  color: "#6b7280",
+  fontSize: "0.75rem",
+  fontWeight: 600,
+  textTransform: "none",
+  borderBottom: "1px solid #e5e7eb",
+  px: 2,
+  py: 1.25,
+  whiteSpace: "nowrap",
+};
+
+const remarkTableBodySx = {
+  px: 2,
+  py: 1.25,
+  fontSize: "0.875rem",
+  borderBottom: "1px solid #e5e7eb",
+};
+
+const remarkSelectSx = {
+  height: 44,
+  backgroundColor: "#fff",
+  "& .MuiSelect-select": {
+    display: "flex",
+    alignItems: "center",
+    minHeight: "44px !important",
+    boxSizing: "border-box",
+  },
+};
+
+const remarkTableSx = {
+  tableLayout: "fixed",
+  width: "100%",
+  "& .MuiTableCell-root": { overflow: "hidden", textOverflow: "ellipsis" },
+};
+
+const remarkTableHeadWrapperSx = {
+  display: "table-header-group",
+  backgroundColor: "#f9fafb",
+  "& .MuiTableCell-root": { backgroundColor: "#f9fafb" },
+};
+
+const tableActionBoxSx = {
+  backgroundColor: "#f0fdfa",
+  padding: "6px 10px",
+  borderRadius: "8px",
+  border: "1px solid #99f6e4",
+  flexWrap: "nowrap",
+  minWidth: "fit-content",
+};
 
 function Packaging() {
   const [dateFilterMode, setDateFilterMode] = useState("all");
@@ -59,6 +136,15 @@ function Packaging() {
     previousStatus: "",
     fromSave: false,
   });
+  const [remarksDialog, setRemarksDialog] = useState({ open: false, sale: null });
+  const [savedRemarks, setSavedRemarks] = useState([]);
+  const [loadingRemarks, setLoadingRemarks] = useState(false);
+  const [savingRemarks, setSavingRemarks] = useState(false);
+  const [remarkCategory, setRemarkCategory] = useState("pending_item");
+  const [issueType, setIssueType] = useState("");
+  const [remarkItemForm, setRemarkItemForm] = useState(emptyRemarkItemForm());
+  const [pendingRemarkItems, setPendingRemarkItems] = useState([]);
+  const pendingRemarkIdRef = useRef(0);
   const [packagingStaff, setPackagingStaff] = useState([]);
   const [savingSaleIds, setSavingSaleIds] = useState(new Set());
   const [page, setPage] = useState(1);
@@ -340,6 +426,154 @@ function Packaging() {
         next.delete(saleId);
         return next;
       });
+    }
+  };
+
+  const fetchPackagingRemarks = async (saleId) => {
+    setLoadingRemarks(true);
+    try {
+      const response = await fetch(`${API}/staff/sales/${saleId}/packaging-remarks`);
+      if (response.ok) {
+        const data = await response.json();
+        setSavedRemarks(Array.isArray(data) ? data : []);
+      } else {
+        setSavedRemarks([]);
+      }
+    } catch (error) {
+      console.error("Error fetching packaging remarks:", error);
+      setSavedRemarks([]);
+    } finally {
+      setLoadingRemarks(false);
+    }
+  };
+
+  const openRemarksDialog = async (sale) => {
+    setRemarksDialog({ open: true, sale });
+    setRemarkCategory("pending_item");
+    setIssueType("");
+    setRemarkItemForm(emptyRemarkItemForm());
+    setPendingRemarkItems([]);
+    await fetchPackagingRemarks(sale.id);
+  };
+
+  const closeRemarksDialog = () => {
+    setRemarksDialog({ open: false, sale: null });
+    setSavedRemarks([]);
+    setRemarkCategory("pending_item");
+    setIssueType("");
+    setRemarkItemForm(emptyRemarkItemForm());
+    setPendingRemarkItems([]);
+    setLoadingRemarks(false);
+    setSavingRemarks(false);
+  };
+
+  const handleRemarkFormChange = (field, value) => {
+    setRemarkItemForm((prev) => ({ ...prev, [field]: value }));
+  };
+
+  const handleIssueTypeChange = (value) => {
+    setIssueType(value);
+    setRemarkItemForm(emptyRemarkItemForm());
+    setPendingRemarkItems([]);
+  };
+
+  const handleAddPendingRemarkItem = () => {
+    if (!issueType) {
+      alert("Please choose Cancel or Wrong Delivered.");
+      return;
+    }
+    const { itemName, wrongItem, originalItem, qty, amount, remarks } = remarkItemForm;
+
+    if (issueType === "wrong_delivered") {
+      if (!wrongItem.trim()) {
+        alert("Please enter wrong item.");
+        return;
+      }
+      if (!originalItem.trim()) {
+        alert("Please enter original item.");
+        return;
+      }
+    } else if (!itemName.trim()) {
+      alert("Please enter item name.");
+      return;
+    }
+
+    const parsedQty = parseFloat(qty);
+    if (!qty || Number.isNaN(parsedQty) || parsedQty <= 0) {
+      alert("Please enter a valid qty.");
+      return;
+    }
+    const parsedAmount = parseFloat(amount);
+    if (!amount || Number.isNaN(parsedAmount) || parsedAmount <= 0) {
+      alert("Please enter a valid total amount.");
+      return;
+    }
+
+    pendingRemarkIdRef.current += 1;
+    setPendingRemarkItems((prev) => [
+      ...prev,
+      {
+        id: `pending-${pendingRemarkIdRef.current}`,
+        itemName: issueType === "wrong_delivered" ? wrongItem.trim() : itemName.trim(),
+        wrongItem: issueType === "wrong_delivered" ? wrongItem.trim() : "",
+        originalItem: issueType === "wrong_delivered" ? originalItem.trim() : "",
+        qty: parsedQty,
+        amount: parsedAmount,
+        remarks: remarks.trim(),
+      },
+    ]);
+    setRemarkItemForm(emptyRemarkItemForm());
+  };
+
+  const handleRemovePendingRemarkItem = (itemId) => {
+    setPendingRemarkItems((prev) => prev.filter((item) => item.id !== itemId));
+  };
+
+  const handleSaveRemarks = async () => {
+    if (!remarksDialog.sale) return;
+    if (!issueType) {
+      alert("Please choose Cancel or Wrong Delivered.");
+      return;
+    }
+    if (pendingRemarkItems.length === 0) {
+      alert("Please add at least one item.");
+      return;
+    }
+
+    setSavingRemarks(true);
+    try {
+      const response = await fetch(`${API}/staff/sales/${remarksDialog.sale.id}/packaging-remarks`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          remarkCategory,
+          issueType,
+          items: pendingRemarkItems.map(({ itemName, wrongItem, originalItem, qty, amount, remarks }) => ({
+            itemName,
+            wrongItem,
+            originalItem,
+            qty,
+            amount,
+            remarks,
+          })),
+        }),
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setSavedRemarks(Array.isArray(data.remarks) ? data.remarks : []);
+        setPendingRemarkItems([]);
+        setRemarkItemForm(emptyRemarkItemForm());
+        alert("Remarks saved successfully.");
+      } else {
+        const err = await response.json().catch(() => ({}));
+        alert(err.error || "Failed to save remarks.");
+      }
+    } catch (error) {
+      console.error("Error saving packaging remarks:", error);
+      alert("Error saving remarks.");
+    } finally {
+      setSavingRemarks(false);
     }
   };
 
@@ -650,11 +884,30 @@ function Packaging() {
                                   sx={{ width: 150, backgroundColor: "#fff" }}
                                 />
                               </TableCell>
-                              <TableCell align="center" sx={{ borderBottom: borderCol, py: 2 }}>
-                                <MDBox display="flex" gap={1} justifyContent="center" flexWrap="wrap" sx={{ backgroundColor: "#f0fdfa", padding: "8px 12px", borderRadius: "8px", border: "1px solid #99f6e4" }}>
-                                  <IoSaveOutline onClick={() => handleSavePackaging(row.id)} style={{ cursor: "pointer" }} color="#059669" size={20} />
-                                  <FaRegEdit onClick={() => handleViewHistory(row.id)} style={{ cursor: "pointer" }} color="#E0E388" size={20} />
-                                  {/* <CiTrash   onClick={() => handleDeleteSale(row.id)} style={{ cursor: "pointer" }} color="#FF0000" size={20}/> */}
+                              <TableCell align="center" sx={{ borderBottom: borderCol, py: 2, minWidth: 120 }}>
+                                <MDBox
+                                  display="flex"
+                                  flexDirection="row"
+                                  gap={0.75}
+                                  justifyContent="center"
+                                  alignItems="center"
+                                  sx={tableActionBoxSx}
+                                >
+                                  <Tooltip title="Save">
+                                    <span>
+                                      <IoSaveOutline onClick={() => handleSavePackaging(row.id)} style={{ cursor: "pointer" }} color="#059669" size={20} />
+                                    </span>
+                                  </Tooltip>
+                                  <Tooltip title="Status History">
+                                    <span>
+                                      <FaRegEdit onClick={() => handleViewHistory(row.id)} style={{ cursor: "pointer" }} color="#E0E388" size={20} />
+                                    </span>
+                                  </Tooltip>
+                                  <Tooltip title="Remarks">
+                                    <span>
+                                      <MdOutlineComment onClick={() => openRemarksDialog(row)} style={{ cursor: "pointer" }} color="#2563eb" size={20} />
+                                    </span>
+                                  </Tooltip>
                                 </MDBox>
                               </TableCell>
                             </TableRow>
@@ -782,6 +1035,346 @@ function Packaging() {
           </MDButton>
           <MDButton color="info" variant="gradient" onClick={() => handleClosePackerDialog(true)}>
             Confirm
+          </MDButton>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog
+        open={remarksDialog.open}
+        onClose={closeRemarksDialog}
+        fullWidth
+        maxWidth="md"
+        PaperProps={{ sx: { width: "100%", maxWidth: 900, mx: 2 } }}
+      >
+        <DialogTitle sx={{ fontWeight: "bold", color: "#344767" }}>
+          Add Remarks
+        </DialogTitle>
+        <DialogContent dividers>
+          {remarksDialog.sale && (
+            <MDBox pt={1}>
+              <MDBox
+                display="flex"
+                flexWrap="wrap"
+                gap={2}
+                mb={3}
+                p={2}
+                sx={{ backgroundColor: "#f8f9fa", borderRadius: "10px", border: "1px solid #e9ecef" }}
+              >
+                <MDTypography variant="body2">
+                  <strong>Outlet:</strong> {remarksDialog.sale.outlet_name || "—"}
+                </MDTypography>
+                <MDTypography variant="body2">
+                  <strong>Invoice:</strong> {remarksDialog.sale.invoice_number || "—"}
+                </MDTypography>
+                <MDTypography variant="body2">
+                  <strong>Sale ID:</strong> {formatBpSaleId(remarksDialog.sale)}
+                </MDTypography>
+              </MDBox>
+
+              <Grid container spacing={2} mb={2} alignItems="flex-start">
+                <Grid item xs={12} sm={6}>
+                  <FormControl fullWidth size="small">
+                    <InputLabel id="remark-category-label" shrink>
+                      Remark Type
+                    </InputLabel>
+                    <Select
+                      labelId="remark-category-label"
+                      label="Remark Type"
+                      value={remarkCategory}
+                      onChange={(e) => setRemarkCategory(e.target.value)}
+                      sx={remarkSelectSx}
+                    >
+                      {REMARK_CATEGORIES.map((option) => (
+                        <MenuItem key={option.value} value={option.value}>
+                          {option.label}
+                        </MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
+                </Grid>
+                <Grid item xs={12} sm={6}>
+                  <FormControl fullWidth size="small">
+                    <InputLabel id="issue-type-label" shrink>
+                      Issue Type *
+                    </InputLabel>
+                    <Select
+                      labelId="issue-type-label"
+                      label="Issue Type *"
+                      value={issueType}
+                      displayEmpty
+                      onChange={(e) => handleIssueTypeChange(e.target.value)}
+                      renderValue={(selected) => {
+                        if (!selected) {
+                          return (
+                            <MDTypography component="span" variant="body2" sx={{ color: "#9ca3af" }}>
+                              Select Cancel or Wrong Delivered
+                            </MDTypography>
+                          );
+                        }
+                        return issueTypeLabels[selected] || selected;
+                      }}
+                      sx={remarkSelectSx}
+                    >
+                      {ISSUE_TYPES.map((option) => (
+                        <MenuItem key={option.value} value={option.value}>
+                          {option.label}
+                        </MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
+                </Grid>
+              </Grid>
+
+              <MDTypography variant="button" fontWeight="medium" color="dark" mb={1} display="block">
+                Add Item
+              </MDTypography>
+              {issueType === "wrong_delivered" && (
+                <MDTypography variant="caption" color="text" mb={1} display="block">
+                  Enter the wrong item that was delivered and the original item it should be replaced with.
+                </MDTypography>
+              )}
+              <Grid container spacing={2} mb={2}>
+                {issueType === "wrong_delivered" ? (
+                  <>
+                    <Grid item xs={12} sm={6}>
+                      <MDInput
+                        label="Wrong Item *"
+                        fullWidth
+                        value={remarkItemForm.wrongItem}
+                        onChange={(e) => handleRemarkFormChange("wrongItem", e.target.value)}
+                      />
+                    </Grid>
+                    <Grid item xs={12} sm={6}>
+                      <MDInput
+                        label="Original Item *"
+                        fullWidth
+                        value={remarkItemForm.originalItem}
+                        onChange={(e) => handleRemarkFormChange("originalItem", e.target.value)}
+                      />
+                    </Grid>
+                  </>
+                ) : (
+                  <Grid item xs={12} sm={6}>
+                    <MDInput
+                      label="Item Name *"
+                      fullWidth
+                      value={remarkItemForm.itemName}
+                      onChange={(e) => handleRemarkFormChange("itemName", e.target.value)}
+                      disabled={!issueType}
+                    />
+                  </Grid>
+                )}
+                <Grid item xs={12} sm={3}>
+                  <MDInput
+                    label="Qty *"
+                    type="number"
+                    fullWidth
+                    value={remarkItemForm.qty}
+                    onChange={(e) => handleRemarkFormChange("qty", e.target.value)}
+                    inputProps={{ min: 0, step: "any" }}
+                  />
+                </Grid>
+                <Grid item xs={12} sm={3}>
+                  <MDInput
+                    label="Total Amount *"
+                    type="number"
+                    fullWidth
+                    value={remarkItemForm.amount}
+                    onChange={(e) => handleRemarkFormChange("amount", e.target.value)}
+                    inputProps={{ min: 0, step: "0.01" }}
+                  />
+                </Grid>
+                <Grid item xs={12}>
+                  <MDInput
+                    label="Remarks"
+                    fullWidth
+                    multiline
+                    rows={2}
+                    value={remarkItemForm.remarks}
+                    onChange={(e) => handleRemarkFormChange("remarks", e.target.value)}
+                  />
+                </Grid>
+                <Grid item xs={12}>
+                  <MDButton
+                    variant="gradient"
+                    color="info"
+                    onClick={handleAddPendingRemarkItem}
+                    disabled={!issueType}
+                  >
+                    Add Item
+                  </MDButton>
+                </Grid>
+              </Grid>
+
+              {pendingRemarkItems.length > 0 && (
+                <MDBox mb={3}>
+                  <MDTypography variant="button" fontWeight="medium" color="dark" mb={1} display="block">
+                    Items to Save ({pendingRemarkItems.length})
+                  </MDTypography>
+                  <TableContainer
+                    component={Paper}
+                    variant="outlined"
+                    sx={{ boxShadow: "none", overflowX: "auto" }}
+                  >
+                    <Table
+                      size="small"
+                      sx={{ ...remarkTableSx, minWidth: issueType === "wrong_delivered" ? 720 : 560 }}
+                    >
+                      <colgroup>
+                        {issueType === "wrong_delivered" ? (
+                          <>
+                            <col style={{ width: "18%" }} />
+                            <col style={{ width: "18%" }} />
+                            <col style={{ width: "8%" }} />
+                            <col style={{ width: "12%" }} />
+                            <col style={{ width: "34%" }} />
+                            <col style={{ width: "10%" }} />
+                          </>
+                        ) : (
+                          <>
+                            <col style={{ width: "22%" }} />
+                            <col style={{ width: "10%" }} />
+                            <col style={{ width: "14%" }} />
+                            <col style={{ width: "44%" }} />
+                            <col style={{ width: "10%" }} />
+                          </>
+                        )}
+                      </colgroup>
+                      <TableHead sx={remarkTableHeadWrapperSx}>
+                        <TableRow>
+                          {issueType === "wrong_delivered" ? (
+                            <>
+                              <TableCell align="left" sx={remarkTableHeadSx}>Wrong Item</TableCell>
+                              <TableCell align="left" sx={remarkTableHeadSx}>Original Item</TableCell>
+                            </>
+                          ) : (
+                            <TableCell align="left" sx={remarkTableHeadSx}>Item Name</TableCell>
+                          )}
+                          <TableCell align="left" sx={remarkTableHeadSx}>Qty</TableCell>
+                          <TableCell align="right" sx={remarkTableHeadSx}>Amount</TableCell>
+                          <TableCell align="left" sx={remarkTableHeadSx}>Remarks</TableCell>
+                          <TableCell align="center" sx={remarkTableHeadSx}>Action</TableCell>
+                        </TableRow>
+                      </TableHead>
+                      <TableBody>
+                        {pendingRemarkItems.map((item) => (
+                          <TableRow key={item.id}>
+                            {issueType === "wrong_delivered" ? (
+                              <>
+                                <TableCell align="left" sx={remarkTableBodySx}>{item.wrongItem}</TableCell>
+                                <TableCell align="left" sx={remarkTableBodySx}>{item.originalItem}</TableCell>
+                              </>
+                            ) : (
+                              <TableCell align="left" sx={remarkTableBodySx}>{item.itemName}</TableCell>
+                            )}
+                            <TableCell align="left" sx={remarkTableBodySx}>{item.qty}</TableCell>
+                            <TableCell align="right" sx={remarkTableBodySx}>₹{Number(item.amount).toFixed(2)}</TableCell>
+                            <TableCell align="left" sx={remarkTableBodySx}>{item.remarks || "—"}</TableCell>
+                            <TableCell align="center" sx={remarkTableBodySx}>
+                              <Tooltip title="Remove">
+                                <MDButton
+                                  variant="outlined"
+                                  color="error"
+                                  size="small"
+                                  iconOnly
+                                  onClick={() => handleRemovePendingRemarkItem(item.id)}
+                                >
+                                  <MdDeleteOutline size={18} />
+                                </MDButton>
+                              </Tooltip>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </TableContainer>
+                </MDBox>
+              )}
+
+              <MDTypography variant="button" fontWeight="medium" color="dark" mb={1} display="block">
+                Saved Remarks
+              </MDTypography>
+              {loadingRemarks ? (
+                <MDTypography variant="body2" color="text" mb={2}>
+                  Loading remarks...
+                </MDTypography>
+              ) : savedRemarks.length === 0 ? (
+                <MDTypography variant="body2" color="text" mb={2}>
+                  No remarks saved yet.
+                </MDTypography>
+              ) : (
+                <TableContainer
+                  component={Paper}
+                  variant="outlined"
+                  sx={{ boxShadow: "none", overflowX: "auto" }}
+                >
+                  <Table size="small" sx={{ ...remarkTableSx, minWidth: 980 }}>
+                    <colgroup>
+                      <col style={{ width: "14%" }} />
+                      <col style={{ width: "10%" }} />
+                      <col style={{ width: "10%" }} />
+                      <col style={{ width: "14%" }} />
+                      <col style={{ width: "14%" }} />
+                      <col style={{ width: "14%" }} />
+                      <col style={{ width: "6%" }} />
+                      <col style={{ width: "10%" }} />
+                      <col style={{ width: "8%" }} />
+                    </colgroup>
+                    <TableHead sx={remarkTableHeadWrapperSx}>
+                      <TableRow>
+                        <TableCell align="left" sx={remarkTableHeadSx}>Date</TableCell>
+                        <TableCell align="left" sx={remarkTableHeadSx}>Type</TableCell>
+                        <TableCell align="left" sx={remarkTableHeadSx}>Issue</TableCell>
+                        <TableCell align="left" sx={remarkTableHeadSx}>Item Name</TableCell>
+                        <TableCell align="left" sx={remarkTableHeadSx}>Wrong Item</TableCell>
+                        <TableCell align="left" sx={remarkTableHeadSx}>Original Item</TableCell>
+                        <TableCell align="left" sx={remarkTableHeadSx}>Qty</TableCell>
+                        <TableCell align="right" sx={remarkTableHeadSx}>Amount</TableCell>
+                        <TableCell align="left" sx={remarkTableHeadSx}>Remarks</TableCell>
+                      </TableRow>
+                    </TableHead>
+                    <TableBody>
+                      {savedRemarks.map((item) => (
+                        <TableRow key={item.id}>
+                          <TableCell align="left" sx={remarkTableBodySx}>{item.created_at}</TableCell>
+                          <TableCell align="left" sx={remarkTableBodySx}>
+                            {remarkCategoryLabels[item.remark_category] || item.remark_category}
+                          </TableCell>
+                          <TableCell align="left" sx={remarkTableBodySx}>
+                            {issueTypeLabels[item.issue_type] || item.issue_type}
+                          </TableCell>
+                          <TableCell align="left" sx={remarkTableBodySx}>
+                            {item.issue_type === "wrong_delivered" ? "—" : item.item_name}
+                          </TableCell>
+                          <TableCell align="left" sx={remarkTableBodySx}>
+                            {item.issue_type === "wrong_delivered" ? (item.wrong_item || item.item_name || "—") : "—"}
+                          </TableCell>
+                          <TableCell align="left" sx={remarkTableBodySx}>
+                            {item.issue_type === "wrong_delivered" ? (item.original_item || "—") : "—"}
+                          </TableCell>
+                          <TableCell align="left" sx={remarkTableBodySx}>{Number(item.qty)}</TableCell>
+                          <TableCell align="right" sx={remarkTableBodySx}>₹{Number(item.amount).toFixed(2)}</TableCell>
+                          <TableCell align="left" sx={remarkTableBodySx}>{item.remarks || "—"}</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </TableContainer>
+              )}
+            </MDBox>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <MDButton color="secondary" onClick={closeRemarksDialog}>
+            Close
+          </MDButton>
+          <MDButton
+            color="info"
+            variant="gradient"
+            onClick={handleSaveRemarks}
+            disabled={savingRemarks || pendingRemarkItems.length === 0}
+          >
+            {savingRemarks ? "Saving..." : "Save Remarks"}
           </MDButton>
         </DialogActions>
       </Dialog>

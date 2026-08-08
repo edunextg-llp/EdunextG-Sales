@@ -548,6 +548,10 @@ class StaffModel {
                     );
                 }
 
+                if (Array.isArray(item.lineItems) && item.lineItems.length) {
+                    await StaffModel.saveSaleItems(connection, saleId, item.lineItems);
+                }
+
                 stickers.push({
                     saleId,
                     outletId: item.outletId,
@@ -898,6 +902,64 @@ class StaffModel {
             [saleId]
         );
         return rows[0] || null;
+    }
+
+    static normalizeSaleLineItem(line = {}) {
+        const qty = Number(line.qty) || 0;
+        const rate = Number(line.rate) || 0;
+        const taxable = qty * rate;
+        const gst = taxable * 0.05;
+        const computedTotal = taxable + gst;
+        const lineTotal = Number(line.lineTotal ?? line.line_total);
+        return {
+            productErpId: String(line.productErpId || line.product_erp_id || '').trim(),
+            productName: String(line.productName || line.product_name || line.productErpId || line.product_erp_id || '').trim(),
+            productDivision: String(line.productDivision || line.product_division || '').trim(),
+            variantName: String(line.variantName || line.variant_name || '').trim(),
+            qty,
+            rate,
+            lineTotal: Number.isFinite(lineTotal) && lineTotal > 0 ? lineTotal : computedTotal,
+        };
+    }
+
+    static async saveSaleItems(connection, saleId, lineItems = []) {
+        await connection.execute('DELETE FROM staff_sale_items WHERE sale_id = ?', [saleId]);
+
+        const normalized = (Array.isArray(lineItems) ? lineItems : [])
+            .map((line) => StaffModel.normalizeSaleLineItem(line))
+            .filter((line) => line.productErpId && line.productErpId !== '__existing_sale__' && line.qty > 0);
+
+        for (let index = 0; index < normalized.length; index += 1) {
+            const line = normalized[index];
+            await connection.execute(
+                `INSERT INTO staff_sale_items
+                 (sale_id, product_erp_id, product_name, product_division, variant_name, qty, rate, line_total, sort_order)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                [
+                    saleId,
+                    line.productErpId,
+                    line.productName,
+                    line.productDivision || null,
+                    line.variantName || null,
+                    line.qty,
+                    line.rate,
+                    line.lineTotal,
+                    index,
+                ]
+            );
+        }
+    }
+
+    static async getSaleItemsBySaleId(saleId) {
+        const [rows] = await db.execute(
+            `SELECT id, sale_id, product_erp_id, product_name, product_division, variant_name,
+                    qty, rate, line_total
+             FROM staff_sale_items
+             WHERE sale_id = ?
+             ORDER BY sort_order ASC, id ASC`,
+            [saleId]
+        );
+        return rows;
     }
 
     static async getTakenBillsForSale(saleId) {

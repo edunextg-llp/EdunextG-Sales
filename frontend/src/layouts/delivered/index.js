@@ -21,6 +21,7 @@ import {
   Tabs,
   Tab,
   Icon,
+  Tooltip,
 } from "@mui/material";
 
 import MDBox from "components/MDBox";
@@ -44,6 +45,12 @@ import { printSalesInvoicePdf } from "utils/printSalesInvoicePdf";
 // import { formatBpSaleId } from "utils/saleId";
 // import { IoSaveOutline } from "react-icons/io5";
 import { FaRegEdit } from "react-icons/fa";
+import { MdCancel, MdCheckCircle, MdUndo } from "react-icons/md";
+
+const tableActionBoxSx = {
+  flexWrap: "nowrap",
+  minWidth: "fit-content",
+};
 // import { CiTrash } from "react-icons/ci";
 
 function escapeHtml(value) {
@@ -929,36 +936,85 @@ function Delivered() {
                                     <Chip label={row.packaging_status || "Unknown"} color="default" variant="outlined" size="small" />
                                   )}
                                 </TableCell>
-                                <TableCell align="center" sx={{ borderBottom: "1px solid #cbd5e1", py: 2 }}>
+                                <TableCell align="center" sx={{ borderBottom: "1px solid #cbd5e1", py: 2, minWidth: 160 }}>
                                   {row.packaging_status === 'out_for_delivery' ? (
-                                    <MDBox display="flex" gap={1} justifyContent="center" alignItems="center" flexWrap="wrap">
-                                      <Icon
-                                        onClick={() => downloadOutletInvoicePdf(row)}
-                                        sx={{ cursor: "pointer", color: "#2563eb", fontSize: 22 }}
-                                        titleAccess="Download Invoice PDF"
-                                      >
-                                        picture_as_pdf
-                                      </Icon>
-                                      <MDButton color="error" variant="contained" size="small" onClick={() => handleUpdateStatus(row.id, 'cancelled', row.delivery_boy_id, row.vehicle_no, row.delivery_date)}>
-                                        Cancel
-                                      </MDButton>
-                                      <MDButton color="success" variant="contained" size="small" onClick={() => handleUpdateStatus(row.id, 'delivered', row.delivery_boy_id, row.vehicle_no, row.delivery_date)}>
-                                        Deliver
-                                      </MDButton>
-                                      <MDButton color="dark" variant="gradient" size="small" onClick={() => handleUpdateStatus(row.id, 'packing_done', row.delivery_boy_id, row.vehicle_no, row.delivery_date)}>
-                                        Return
-                                      </MDButton>
+                                    <MDBox
+                                      display="flex"
+                                      flexDirection="row"
+                                      gap={0.75}
+                                      justifyContent="center"
+                                      alignItems="center"
+                                      sx={tableActionBoxSx}
+                                    >
+                                      <Tooltip title="Download Invoice PDF">
+                                        <Icon
+                                          onClick={() => downloadOutletInvoicePdf(row)}
+                                          sx={{ cursor: "pointer", color: "#2563eb", fontSize: 22 }}
+                                        >
+                                          picture_as_pdf
+                                        </Icon>
+                                      </Tooltip>
+                                      <Tooltip title="Cancel">
+                                        <MDButton
+                                          color="error"
+                                          variant="outlined"
+                                          size="small"
+                                          iconOnly
+                                          onClick={() => handleUpdateStatus(row.id, 'cancelled', row.delivery_boy_id, row.vehicle_no, row.delivery_date)}
+                                        >
+                                          <MdCancel size={18} />
+                                        </MDButton>
+                                      </Tooltip>
+                                      <Tooltip title="Deliver">
+                                        <MDButton
+                                          color="success"
+                                          variant="outlined"
+                                          size="small"
+                                          iconOnly
+                                          onClick={() => handleUpdateStatus(row.id, 'delivered', row.delivery_boy_id, row.vehicle_no, row.delivery_date)}
+                                        >
+                                          <MdCheckCircle size={18} />
+                                        </MDButton>
+                                      </Tooltip>
+                                      <Tooltip title="Return">
+                                        <MDButton
+                                          color="dark"
+                                          variant="outlined"
+                                          size="small"
+                                          iconOnly
+                                          onClick={() => handleUpdateStatus(row.id, 'packing_done', row.delivery_boy_id, row.vehicle_no, row.delivery_date)}
+                                        >
+                                          <MdUndo size={18} />
+                                        </MDButton>
+                                      </Tooltip>
                                     </MDBox>
                                   ) : (
-                                    <MDBox display="flex" gap={1} justifyContent="center" alignItems="center">
-                                      <Icon
-                                        onClick={() => downloadOutletInvoicePdf(row)}
-                                        sx={{ cursor: "pointer", color: "#2563eb", fontSize: 22 }}
-                                        titleAccess="Download Invoice PDF"
-                                      >
-                                        picture_as_pdf
-                                      </Icon>
-                                      <FaRegEdit onClick={() => handleUpdateStatus(row.id, 'out_for_delivery', row.delivery_boy_id, row.vehicle_no, row.delivery_date)} style={{ cursor: "pointer" }} color="#E0E388" size={20} />
+                                    <MDBox
+                                      display="flex"
+                                      flexDirection="row"
+                                      gap={0.75}
+                                      justifyContent="center"
+                                      alignItems="center"
+                                      sx={tableActionBoxSx}
+                                    >
+                                      <Tooltip title="Download Invoice PDF">
+                                        <Icon
+                                          onClick={() => downloadOutletInvoicePdf(row)}
+                                          sx={{ cursor: "pointer", color: "#2563eb", fontSize: 22 }}
+                                        >
+                                          picture_as_pdf
+                                        </Icon>
+                                      </Tooltip>
+                                      <Tooltip title="Revert to Out for Delivery">
+                                        <span>
+                                          <FaRegEdit
+                                            onClick={() => handleUpdateStatus(row.id, 'out_for_delivery', row.delivery_boy_id, row.vehicle_no, row.delivery_date)}
+                                            style={{ cursor: "pointer" }}
+                                            color="#E0E388"
+                                            size={20}
+                                          />
+                                        </span>
+                                      </Tooltip>
                                     </MDBox>
                                   )}
                                 </TableCell>

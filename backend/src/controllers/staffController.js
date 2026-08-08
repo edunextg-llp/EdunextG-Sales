@@ -8,7 +8,9 @@ import PurchaseSellerModel from '../models/purchaseSellerModel.js';
 import SellerItemModel from '../models/sellerItemModel.js';
 import PurchaseModel from '../models/purchaseModel.js';
 import OrderCancellationModel from '../models/orderCancellationModel.js';
+import PackagingRemarkModel from '../models/packagingRemarkModel.js';
 import DeliveryCollectionModel from '../models/deliveryCollectionModel.js';
+import db from '../config/db.js';
 import {
     validateDigitsOnly,
     validateNumeric,
@@ -1149,7 +1151,12 @@ export const recordSales = async (req, res) => {
                     ? item.lineItems
                         .map((line) => ({
                             productErpId: String(line.productErpId || line.product_erp_id || '').trim(),
+                            productName: String(line.productName || line.product_name || '').trim(),
+                            productDivision: String(line.productDivision || line.product_division || '').trim(),
+                            variantName: String(line.variantName || line.variant_name || '').trim(),
                             qty: Number(line.qty) || 0,
+                            rate: Number(line.rate) || 0,
+                            lineTotal: Number(line.lineTotal ?? line.line_total) || 0,
                         }))
                         .filter((line) => line.productErpId && line.productErpId !== '__existing_sale__' && line.qty > 0)
                     : [],
@@ -2921,7 +2928,8 @@ export const updatePaymentMode = async (req, res) => {
 export const logOrderCancellation = async (req, res) => {
     try {
         const { saleId } = req.params;
-        const { outletName, invoiceNumber, productName, productSize, amount, reason } = req.body;
+        const { outletName, invoiceNumber, productName, productQty, productSize, amount, reason } = req.body;
+        const qtyValue = productQty ?? productSize;
 
         if (!outletName) {
             return res.status(400).json({ error: 'Outlet name is required' });
@@ -2932,8 +2940,12 @@ export const logOrderCancellation = async (req, res) => {
         if (!productName) {
             return res.status(400).json({ error: 'Product name is required' });
         }
-        if (!productSize) {
-            return res.status(400).json({ error: 'Product size is required' });
+        const qtyValidation = validateNumeric(qtyValue, 'Product qty to cancel');
+        if (!qtyValidation.valid) {
+            return res.status(400).json({ error: qtyValidation.error });
+        }
+        if (qtyValidation.value <= 0) {
+            return res.status(400).json({ error: 'Product qty to cancel must be greater than zero' });
         }
         if (!String(reason || '').trim()) {
             return res.status(400).json({ error: 'Cancellation reason is required' });
@@ -2947,20 +2959,52 @@ export const logOrderCancellation = async (req, res) => {
             return res.status(400).json({ error: 'Amount must be greater than zero' });
         }
 
-        const cancellationId = await OrderCancellationModel.create({
-            saleId,
-            outletName,
-            invoiceNumber,
-            productName,
-            productSize,
-            amount: amountValidation.value,
-            reason: String(reason).trim().slice(0, 255)
-        });
+        const connection = await db.getConnection();
 
-        res.status(201).json({
-            message: 'Order cancellation logged successfully',
-            cancellationId
-        });
+        try {
+            await connection.beginTransaction();
+
+            const salePrice = await PaymentModel.getSalePrice(connection, saleId);
+            if (salePrice === null) {
+                await connection.rollback();
+                return res.status(404).json({ error: 'Sale not found' });
+            }
+
+            const alreadyCancelled = await OrderCancellationModel.getTotalCancelledAmount(connection, saleId);
+            const remainingInvoiceAmount = Math.round((salePrice - alreadyCancelled) * 100) / 100;
+            if (amountValidation.value > remainingInvoiceAmount + 0.001) {
+                await connection.rollback();
+                return res.status(400).json({
+                    error: `Cancellation amount exceeds remaining invoice value (₹${remainingInvoiceAmount.toFixed(2)} left)`,
+                });
+            }
+
+            const cancellationId = await OrderCancellationModel.create({
+                saleId,
+                outletName,
+                invoiceNumber,
+                productName,
+                productQty: qtyValidation.value,
+                amount: amountValidation.value,
+                reason: String(reason).trim().slice(0, 255),
+            }, connection);
+
+            await PaymentModel.recalculateSaleTotals(connection, saleId);
+            await connection.commit();
+
+            const summary = await PaymentModel.buildPaymentResponse(saleId);
+
+            res.status(201).json({
+                message: 'Order cancellation logged successfully',
+                cancellationId,
+                summary: summary.summary,
+            });
+        } catch (error) {
+            await connection.rollback();
+            throw error;
+        } finally {
+            connection.release();
+        }
     } catch (error) {
         console.error('Error logging order cancellation:', error);
         res.status(500).json({ error: 'Internal server error' });
@@ -2974,6 +3018,148 @@ export const getOrderCancellations = async (req, res) => {
         res.status(200).json(cancellations);
     } catch (error) {
         console.error('Error fetching order cancellations:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+};
+
+export const getPackagingRemarks = async (req, res) => {
+    try {
+        const { saleId } = req.params;
+        const remarks = await PackagingRemarkModel.getBySaleId(saleId);
+        res.status(200).json(remarks);
+    } catch (error) {
+        console.error('Error fetching packaging remarks:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+};
+
+export const savePackagingRemarks = async (req, res) => {
+    try {
+        const { saleId } = req.params;
+        const { remarkCategory, issueType, items } = req.body;
+
+        if (!['pending_item'].includes(String(remarkCategory || ''))) {
+            return res.status(400).json({ error: 'Invalid remark category.' });
+        }
+        if (!['cancel', 'wrong_delivered'].includes(String(issueType || ''))) {
+            return res.status(400).json({ error: 'Please choose Cancel or Wrong Delivered.' });
+        }
+        if (!Array.isArray(items) || items.length === 0) {
+            return res.status(400).json({ error: 'Please add at least one item.' });
+        }
+
+        const salePrice = await PaymentModel.getSalePrice(db, saleId);
+        if (salePrice === null) {
+            return res.status(404).json({ error: 'Sale not found' });
+        }
+
+        const normalizedItems = [];
+        for (const item of items) {
+            const qtyValidation = validateNumeric(item.qty, 'Qty');
+            if (!qtyValidation.valid || qtyValidation.value <= 0) {
+                return res.status(400).json({ error: 'Please enter a valid qty for each item.' });
+            }
+
+            const amountValidation = validateNumeric(item.amount, 'Total amount');
+            if (!amountValidation.valid || amountValidation.value <= 0) {
+                return res.status(400).json({ error: 'Please enter a valid total amount for each item.' });
+            }
+
+            const remarksText = item.remarks != null ? String(item.remarks).trim().slice(0, 2000) : null;
+
+            if (issueType === 'wrong_delivered') {
+                const wrongItemValidation = validateRequiredText(item.wrongItem, 'Wrong item');
+                if (!wrongItemValidation.valid) {
+                    return res.status(400).json({ error: wrongItemValidation.error });
+                }
+                const originalItemValidation = validateRequiredText(item.originalItem, 'Original item');
+                if (!originalItemValidation.valid) {
+                    return res.status(400).json({ error: originalItemValidation.error });
+                }
+
+                normalizedItems.push({
+                    saleId,
+                    remarkCategory,
+                    issueType,
+                    itemName: wrongItemValidation.value.slice(0, 255),
+                    wrongItem: wrongItemValidation.value.slice(0, 255),
+                    originalItem: originalItemValidation.value.slice(0, 255),
+                    qty: qtyValidation.value,
+                    amount: amountValidation.value,
+                    remarks: remarksText || null,
+                });
+                continue;
+            }
+
+            const itemNameValidation = validateRequiredText(item.itemName, 'Item name');
+            if (!itemNameValidation.valid) {
+                return res.status(400).json({ error: itemNameValidation.error });
+            }
+
+            normalizedItems.push({
+                saleId,
+                remarkCategory,
+                issueType,
+                itemName: itemNameValidation.value.slice(0, 255),
+                wrongItem: null,
+                originalItem: null,
+                qty: qtyValidation.value,
+                amount: amountValidation.value,
+                remarks: remarksText || null,
+            });
+        }
+
+        const connection = await db.getConnection();
+        try {
+            await connection.beginTransaction();
+            await PackagingRemarkModel.createBatch(normalizedItems, connection);
+            await connection.commit();
+        } catch (error) {
+            await connection.rollback();
+            throw error;
+        } finally {
+            connection.release();
+        }
+
+        const savedRemarks = await PackagingRemarkModel.getBySaleId(saleId);
+        res.status(201).json({
+            message: 'Packaging remarks saved successfully',
+            remarks: savedRemarks,
+        });
+    } catch (error) {
+        console.error('Error saving packaging remarks:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+};
+
+export const getSaleItems = async (req, res) => {
+    try {
+        const { saleId } = req.params;
+        const items = await StaffModel.getSaleItemsBySaleId(saleId);
+        if (items.length) {
+            return res.status(200).json(items);
+        }
+
+        const sale = await StaffModel.getSaleById(saleId);
+        const itemCount = Number(sale?.item_count) || 0;
+        const price = Number(sale?.price) || 0;
+        if (sale && itemCount > 0 && price >= 0) {
+            return res.status(200).json([{
+                id: 'manual-entry',
+                sale_id: Number(saleId),
+                product_erp_id: 'manual-entry',
+                product_name: 'Manual entry items',
+                product_division: null,
+                variant_name: `${itemCount} item(s)`,
+                qty: itemCount,
+                rate: itemCount > 0 ? price / itemCount : price,
+                line_total: price,
+            }]);
+        }
+
+        res.status(200).json([]);
+    } catch (error) {
+        console.error('Error fetching sale items:', error);
         res.status(500).json({ error: 'Internal server error' });
     }
 };

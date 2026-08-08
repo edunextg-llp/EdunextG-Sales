@@ -1,4 +1,5 @@
 import db from '../config/db.js';
+import OrderCancellationModel from './orderCancellationModel.js';
 
 class PaymentModel {
     static async getBySaleId(saleId) {
@@ -27,6 +28,15 @@ class PaymentModel {
             return null;
         }
         return parseFloat(rows[0].price);
+    }
+
+    static async getEffectiveSalePrice(connection, saleId) {
+        const price = await PaymentModel.getSalePrice(connection, saleId);
+        if (price === null) {
+            return null;
+        }
+        const totalCancelled = await OrderCancellationModel.getTotalCancelledAmount(connection, saleId);
+        return Math.max(0, Math.round((price - totalCancelled) * 100) / 100);
     }
 
     /** Sum of cash, UPI, and cheque only — credit does not count as paid. */
@@ -123,7 +133,7 @@ class PaymentModel {
             lastMode = payment.payment_mode;
         }
 
-        // Balance = invoice price minus money received; credit entries do not reduce balance.
+        // Balance = invoice price minus money received (cancellations are logged only, not deducted).
         const balanceAmount = Math.max(0, Math.round((price - paidAmount) * 100) / 100);
         const paymentMode =
             balanceAmount === 0
@@ -153,6 +163,8 @@ class PaymentModel {
 
         const sale = rows[0];
         const price = parseFloat(sale.price) || 0;
+        const totalCancelled = await OrderCancellationModel.getTotalCancelledAmount(db, saleId);
+        const effectivePrice = Math.max(0, Math.round((price - totalCancelled) * 100) / 100);
 
         let payments = [];
         try {
@@ -182,6 +194,8 @@ class PaymentModel {
             return {
                 id: sale.id,
                 price,
+                effectivePrice,
+                cancelledAmount: totalCancelled,
                 paid_amount: paidAmount,
                 balance_amount: Math.max(0, Math.round((price - paidAmount) * 100) / 100),
                 payment_mode: lastMode,
@@ -200,6 +214,8 @@ class PaymentModel {
         return {
             id: sale.id,
             price,
+            effectivePrice,
+            cancelledAmount: totalCancelled,
             paid_amount: paidAmount,
             balance_amount: balanceAmount,
             invoice_number: sale.invoice_number,
