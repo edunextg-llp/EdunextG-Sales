@@ -706,7 +706,7 @@ function DmsStock() {
     });
   };
 
-  const handleAddManualItem = () => {
+  const handleAddManualItem = async () => {
     setError("");
     if (!manualCompanyId) {
       setError("Please select a company.");
@@ -792,6 +792,35 @@ function DmsStock() {
       isUpdate: replacingExisting,
     };
 
+    // Items opened from Purchase History already exist in dms_stock_items. Persist
+    // their edits when the item-level Save button is clicked so closing the modal
+    // cannot leave the database with the previous retail/wholesale prices.
+    if (snapshot.sourceDmsItemId) {
+      setSavingManual(true);
+      try {
+        const response = await fetch(
+          `${API}/staff/dms-stock/items/${snapshot.sourceDmsItemId}`,
+          {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(snapshot),
+          }
+        );
+        const data = await response.json();
+        if (!response.ok) {
+          throw new Error(data.error || "Unable to save the invoice item.");
+        }
+        setStockImport(data.import || null);
+        setItems(data.items || []);
+        await fetchImportDates();
+      } catch (saveError) {
+        setError(saveError.message);
+        setSavingManual(false);
+        return;
+      }
+      setSavingManual(false);
+    }
+
     setPendingItems((prev) => {
       if (editingPendingId) {
         return prev.map((item) => (
@@ -817,7 +846,9 @@ function DmsStock() {
     setIsEditingPending(false);
     setEditingPendingId(null);
     setMessage(
-      snapshot.isUpdate
+      snapshot.sourceDmsItemId
+        ? `ERP ID ${snapshot.productErpId} saved to the database.`
+        : snapshot.isUpdate
         ? `ERP ID ${snapshot.productErpId} updated in list. Save to apply changes.`
         : `Item added. Add more items or click Save Stock.`
     );
@@ -1656,9 +1687,10 @@ function DmsStock() {
                 color={isEditingPending ? "success" : "info"}
                 variant="gradient"
                 onClick={handleAddManualItem}
+                disabled={savingManual}
               >
                 <Icon sx={{ mr: 0.5 }}>{isEditingPending ? "save" : "add"}</Icon>
-                {isEditingPending ? "Save" : "Add"}
+                {savingManual ? "Saving..." : isEditingPending ? "Save" : "Add"}
               </MDButton>
             </MDBox>
           </MDBox>
