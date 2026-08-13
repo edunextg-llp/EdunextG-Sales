@@ -32,6 +32,7 @@ router.post('/mobile/login', deliveryBoyController.mobileLogin);
 router.get('/mobile/profile', verifyDeliveryBoyToken, deliveryBoyController.getMobileProfile);
 router.get('/mobile/items', verifyDeliveryBoyToken, deliveryBoyController.getMobileAssignedItems);
 router.put('/mobile/items/:saleId/status', verifyDeliveryBoyToken, deliveryBoyController.updateMobileAssignedItemStatus);
+router.put('/mobile/items/:saleId/location', verifyDeliveryBoyToken, deliveryBoyController.updateMobileAssignedItemLocation);
 router.get('/mobile/collections', verifyDeliveryBoyToken, deliveryBoyController.getMobileCollections);
 router.put('/mobile/items/:saleId/collection', verifyDeliveryBoyToken, deliveryBoyController.updateMobileCollection);
 router.get('/permissions', verifyTokenMiddleware, requireRole('admin'), deliveryBoyController.getPermissionUsers);

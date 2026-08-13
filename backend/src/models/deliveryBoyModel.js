@@ -437,6 +437,25 @@ class DeliveryBoyModel {
             connection.release();
         }
     }
+
+    static async updateAssignedSaleLocation(deliveryBoyId, saleId, googleLocation) {
+        const [result] = await db.execute(
+            `UPDATE staff_counters sc
+             INNER JOIN staff_sales ss ON ss.outlet_id = sc.id
+             SET sc.google_location = ?
+             WHERE ss.id = ?
+               AND ss.delivery_boy_id = ?
+               AND ss.packaging_status = 'out_for_delivery'
+               AND (sc.google_location IS NULL OR TRIM(sc.google_location) = '')`,
+            [googleLocation, saleId, deliveryBoyId]
+        );
+
+        if (result.affectedRows === 0) {
+            return null;
+        }
+
+        return { id: saleId, google_location: googleLocation };
+    }
 }
 
 export default DeliveryBoyModel;

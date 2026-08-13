@@ -531,3 +531,42 @@ export const updateMobileAssignedItemStatus = async (req, res) => {
         res.status(500).json({ error: 'Internal server error' });
     }
 };
+
+export const updateMobileAssignedItemLocation = async (req, res) => {
+    try {
+        const saleId = Number(req.params.saleId);
+        const rawLatitude = req.body.latitude;
+        const rawLongitude = req.body.longitude;
+        const latitude = Number(rawLatitude);
+        const longitude = Number(rawLongitude);
+
+        if (!Number.isInteger(saleId) || saleId <= 0) {
+            return res.status(400).json({ error: 'saleId must be a positive integer' });
+        }
+        if (rawLatitude === '' || rawLatitude === null || rawLatitude === undefined || !Number.isFinite(latitude) || latitude < -90 || latitude > 90) {
+            return res.status(400).json({ error: 'latitude must be between -90 and 90' });
+        }
+        if (rawLongitude === '' || rawLongitude === null || rawLongitude === undefined || !Number.isFinite(longitude) || longitude < -180 || longitude > 180) {
+            return res.status(400).json({ error: 'longitude must be between -180 and 180' });
+        }
+
+        const googleLocation = `https://www.google.com/maps/search/?api=1&query=${latitude},${longitude}`;
+        const updatedSale = await DeliveryBoyModel.updateAssignedSaleLocation(
+            req.deliveryBoyId,
+            saleId,
+            googleLocation
+        );
+
+        if (!updatedSale) {
+            return res.status(404).json({ error: 'Assigned delivery item without a saved location was not found' });
+        }
+
+        return res.status(200).json({
+            message: 'Outlet location saved successfully',
+            sale: updatedSale,
+        });
+    } catch (error) {
+        console.error('Error saving delivery outlet location:', error);
+        return res.status(500).json({ error: 'Internal server error' });
+    }
+};
