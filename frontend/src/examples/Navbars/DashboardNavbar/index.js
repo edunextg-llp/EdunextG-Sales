@@ -147,11 +147,13 @@ function DashboardNavbar({ absolute, light, isMini }) {
 
     setSavingCredentials(true);
     try {
+      const authToken = token || sessionStorage.getItem("auth_token") || localStorage.getItem("auth_token");
+      if (!authToken) throw new Error("Your session has expired. Please sign in again.");
       const response = await fetch("https://bawarchee.edunextg.co/api/auth/admin/credentials", {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
+          Authorization: `Bearer ${authToken}`,
         },
         body: JSON.stringify({
           loginId: loginId.trim(),
