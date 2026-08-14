@@ -49,7 +49,7 @@ function DashboardNavbar({ absolute, light, isMini }) {
   const [navbarType, setNavbarType] = useState();
   const [controller, dispatch] = useMaterialUIController();
   const { transparentNavbar, fixedNavbar, darkMode } = controller;
-  const { user } = useAuth();
+  const { user, token } = useAuth();
   const [openMenu, setOpenMenu] = useState(false);
   const route = useLocation().pathname.split("/").slice(1);
   const [notifications, setNotifications] = useState([]);
@@ -149,7 +149,10 @@ function DashboardNavbar({ absolute, light, isMini }) {
     try {
       const response = await fetch("https://bawarchee.edunextg.co/api/auth/admin/credentials", {
         method: "PUT",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
         body: JSON.stringify({
           loginId: loginId.trim(),
           currentPassword,
