@@ -1,4 +1,5 @@
 import DeliveryBoyModel from '../models/deliveryBoyModel.js';
+import StaffModel from '../models/staffModel.js';
 import DeliveryCollectionModel from '../models/deliveryCollectionModel.js';
 import CompanyModel from '../models/companyModel.js';
 import {
@@ -529,6 +530,38 @@ export const updateMobileAssignedItemStatus = async (req, res) => {
     } catch (error) {
         console.error('Error updating delivery boy assigned item status:', error);
         res.status(500).json({ error: 'Internal server error' });
+    }
+};
+
+export const updateDeliveryBoyCredentials = async (req, res) => {
+    try {
+        const deliveryBoyId = Number(req.params.id);
+        const loginId = String(req.body.loginId || '').trim();
+        const password = String(req.body.password || '');
+
+        if (!Number.isInteger(deliveryBoyId) || deliveryBoyId <= 0) {
+            return res.status(400).json({ error: 'Staff id must be a positive integer.' });
+        }
+        if (!/^[a-zA-Z0-9._-]{3,50}$/.test(loginId)) {
+            return res.status(400).json({ error: 'Login ID must be 3–50 characters and may only use letters, numbers, dots, hyphens, and underscores.' });
+        }
+        if (password.length < 8) {
+            return res.status(400).json({ error: 'Password must be at least 8 characters.' });
+        }
+        const staffWithLoginId = await StaffModel.findByLoginId(loginId);
+        if (staffWithLoginId) {
+            return res.status(409).json({ error: 'That Login ID is already in use.' });
+        }
+
+        const updated = await DeliveryBoyModel.updateCredentials(deliveryBoyId, loginId, password);
+        if (!updated) return res.status(404).json({ error: 'Delivery Boy not found.' });
+        return res.json({ message: 'Staff login credentials updated successfully.' });
+    } catch (error) {
+        if (error.code === 'ER_DUP_ENTRY') {
+            return res.status(409).json({ error: 'That Login ID is already in use.' });
+        }
+        console.error('Error updating delivery boy credentials:', error);
+        return res.status(500).json({ error: 'Internal server error' });
     }
 };
 

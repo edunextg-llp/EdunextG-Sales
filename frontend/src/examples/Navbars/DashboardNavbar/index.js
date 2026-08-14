@@ -14,11 +14,16 @@ import Menu from "@mui/material/Menu";
 import MenuItem from "@mui/material/MenuItem";
 import Icon from "@mui/material/Icon";
 import Badge from "@mui/material/Badge";
+import Dialog from "@mui/material/Dialog";
+import DialogActions from "@mui/material/DialogActions";
+import DialogContent from "@mui/material/DialogContent";
+import DialogTitle from "@mui/material/DialogTitle";
 
 // Material Dashboard 2 React components
 import MDBox from "components/MDBox";
 import MDTypography from "components/MDTypography";
-// import MDInput from "components/MDInput";
+import MDInput from "components/MDInput";
+import MDButton from "components/MDButton";
 
 // Material Dashboard 2 React example components
 import Breadcrumbs from "examples/Breadcrumbs";
@@ -48,6 +53,12 @@ function DashboardNavbar({ absolute, light, isMini }) {
   const [openMenu, setOpenMenu] = useState(false);
   const route = useLocation().pathname.split("/").slice(1);
   const [notifications, setNotifications] = useState([]);
+  const [credentialsDialogOpen, setCredentialsDialogOpen] = useState(false);
+  const [loginId, setLoginId] = useState("");
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [savingCredentials, setSavingCredentials] = useState(false);
 
   useEffect(() => {
     // Credit notifications are an admin-only feature. Avoid making this
@@ -111,6 +122,50 @@ function DashboardNavbar({ absolute, light, isMini }) {
   // const handleConfiguratorOpen = () => setOpenConfigurator(dispatch, !openConfigurator);
   const handleOpenMenu = (event) => setOpenMenu(event.currentTarget);
   const handleCloseMenu = () => setOpenMenu(false);
+
+  const openCredentialsDialog = () => {
+    setLoginId(user?.email || "");
+    setCurrentPassword("");
+    setNewPassword("");
+    setConfirmPassword("");
+    setCredentialsDialogOpen(true);
+  };
+
+  const closeCredentialsDialog = () => {
+    if (!savingCredentials) setCredentialsDialogOpen(false);
+  };
+
+  const handleUpdateAdminCredentials = async () => {
+    if (!loginId.trim() || !currentPassword || newPassword.length < 8) {
+      alert("Enter your Login ID, current password, and a new password of at least 8 characters.");
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      alert("New password and confirmation do not match.");
+      return;
+    }
+
+    setSavingCredentials(true);
+    try {
+      const response = await fetch("https://bawarchee.edunextg.co/api/auth/admin/credentials", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          loginId: loginId.trim(),
+          currentPassword,
+          newPassword,
+        }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || "Unable to update admin credentials.");
+      alert("Admin Login ID and password updated successfully. Use the new details the next time you sign in.");
+      setCredentialsDialogOpen(false);
+    } catch (error) {
+      alert(error.message || "Unable to update admin credentials.");
+    } finally {
+      setSavingCredentials(false);
+    }
+  };
 
   const renderMenu = () => (
     <Menu
@@ -196,6 +251,19 @@ function DashboardNavbar({ absolute, light, isMini }) {
                   <Icon sx={iconsStyle}>account_circle</Icon>
                 </IconButton>
               </Link> */}
+              {user?.role === "admin" && (
+                <IconButton
+                  size="small"
+                  disableRipple
+                  color="inherit"
+                  sx={navbarIconButton}
+                  aria-label="Update admin credentials"
+                  title="Update Login ID and Password"
+                  onClick={openCredentialsDialog}
+                >
+                  <Icon sx={iconsStyle}>manage_accounts</Icon>
+                </IconButton>
+              )}
               {/* <IconButton
                 size="small"
                 disableRipple
@@ -235,6 +303,60 @@ function DashboardNavbar({ absolute, light, isMini }) {
           </MDBox>
         )}
       </Toolbar>
+      <Dialog open={credentialsDialogOpen} onClose={closeCredentialsDialog} fullWidth maxWidth="xs">
+        <DialogTitle sx={{ fontWeight: "bold", color: "#344767" }}>
+          Update Admin Login
+        </DialogTitle>
+        <DialogContent dividers>
+          <MDBox mb={2}>
+            <MDInput
+              type="email"
+              label="Login ID (Email)"
+              fullWidth
+              value={loginId}
+              onChange={(event) => setLoginId(event.target.value)}
+              inputProps={{ autoComplete: "username" }}
+            />
+          </MDBox>
+          <MDBox mb={2}>
+            <MDInput
+              type="password"
+              label="Current Password"
+              fullWidth
+              value={currentPassword}
+              onChange={(event) => setCurrentPassword(event.target.value)}
+              inputProps={{ autoComplete: "current-password" }}
+            />
+          </MDBox>
+          <MDBox mb={2}>
+            <MDInput
+              type="password"
+              label="New Password"
+              fullWidth
+              value={newPassword}
+              onChange={(event) => setNewPassword(event.target.value)}
+              inputProps={{ minLength: 8, autoComplete: "new-password" }}
+              helperText="Minimum 8 characters"
+            />
+          </MDBox>
+          <MDInput
+            type="password"
+            label="Confirm New Password"
+            fullWidth
+            value={confirmPassword}
+            onChange={(event) => setConfirmPassword(event.target.value)}
+            inputProps={{ minLength: 8, autoComplete: "new-password" }}
+          />
+        </DialogContent>
+        <DialogActions sx={{ px: 3, py: 2 }}>
+          <MDButton variant="outlined" color="dark" onClick={closeCredentialsDialog} disabled={savingCredentials}>
+            Cancel
+          </MDButton>
+          <MDButton variant="gradient" color="info" onClick={handleUpdateAdminCredentials} disabled={savingCredentials}>
+            {savingCredentials ? "Updating..." : "Update Credentials"}
+          </MDButton>
+        </DialogActions>
+      </Dialog>
     </AppBar>
   );
 }

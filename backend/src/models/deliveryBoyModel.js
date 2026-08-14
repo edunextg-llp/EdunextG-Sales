@@ -438,6 +438,26 @@ class DeliveryBoyModel {
         }
     }
 
+    static async updateCredentials(id, deliveryLoginId, passcode) {
+        const passcodeHash = await bcrypt.hash(passcode, 10);
+        const encryptedPasscode = encryptDeliveryPasscode(passcode);
+        const [result] = await db.execute(
+            `UPDATE delivery_boys
+             SET delivery_login_id = ?, delivery_passcode_hash = ?, delivery_passcode = ?
+             WHERE id = ?`,
+            [deliveryLoginId, passcodeHash, encryptedPasscode, id]
+        );
+        return result.affectedRows > 0;
+    }
+
+    static async findByLoginId(loginId) {
+        const [rows] = await db.execute(
+            'SELECT id FROM delivery_boys WHERE LOWER(delivery_login_id) = LOWER(?) LIMIT 1',
+            [loginId]
+        );
+        return rows[0] || null;
+    }
+
     static async updateAssignedSaleLocation(deliveryBoyId, saleId, googleLocation) {
         const [result] = await db.execute(
             `UPDATE staff_counters sc

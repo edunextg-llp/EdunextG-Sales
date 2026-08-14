@@ -229,6 +229,41 @@ export const refreshToken = async (req, res) => {
     }
 };
 
+export const updateAdminCredentials = async (req, res) => {
+    try {
+        const adminId = Number(req.user?.id);
+        const loginId = String(req.body.loginId || '').trim().toLowerCase();
+        const currentPassword = String(req.body.currentPassword || '');
+        const newPassword = String(req.body.newPassword || '');
+
+        if (!Number.isInteger(adminId) || adminId <= 0) {
+            return res.status(401).json({ error: 'Invalid admin session.' });
+        }
+        if (!/^\S+@\S+\.\S+$/.test(loginId)) {
+            return res.status(400).json({ error: 'Enter a valid email address for the Login ID.' });
+        }
+        if (newPassword.length < 8) {
+            return res.status(400).json({ error: 'New password must be at least 8 characters.' });
+        }
+
+        const admin = await UserModel.findById(adminId);
+        if (!admin || !await bcrypt.compare(currentPassword, admin.password)) {
+            return res.status(400).json({ error: 'Current password is incorrect.' });
+        }
+
+        const existingAdmin = await UserModel.findByEmail(loginId);
+        if (existingAdmin && Number(existingAdmin.id) !== adminId) {
+            return res.status(409).json({ error: 'That Login ID is already in use.' });
+        }
+
+        await UserModel.updateCredentials(adminId, loginId, await bcrypt.hash(newPassword, 10));
+        return res.json({ message: 'Admin Login ID and password updated successfully.' });
+    } catch (error) {
+        console.error('Error updating admin credentials:', error);
+        return res.status(500).json({ error: 'Internal server error' });
+    }
+};
+
 export const register = async (req, res) => {
     try {
         const { username, email, password } = req.body;

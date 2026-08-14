@@ -180,6 +180,11 @@ function CreateStaff() {
   const [uploadingAadhar, setUploadingAadhar] = useState(false);
   const [uploadingPcc, setUploadingPcc] = useState(false);
   const [savingStaff, setSavingStaff] = useState(false);
+  const [credentialsModalOpen, setCredentialsModalOpen] = useState(false);
+  const [credentialStaff, setCredentialStaff] = useState(null);
+  const [loginId, setLoginId] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [savingCredentials, setSavingCredentials] = useState(false);
 
   const [formData, setFormData] = useState(createEmptyFormData());
 
@@ -333,16 +338,44 @@ function CreateStaff() {
     }
   };
 
-  const handleGenerateCredentials = async (staff) => {
-    if (!window.confirm(`Generate a new login ID and password for ${staff.name}? Any old password will stop working.`)) {
+  const openCredentialsModal = (staff) => {
+    setCredentialStaff(staff);
+    setLoginId(staff.login_id || "");
+    setNewPassword("");
+    setCredentialsModalOpen(true);
+  };
+
+  const closeCredentialsModal = () => {
+    setCredentialsModalOpen(false);
+    setCredentialStaff(null);
+    setLoginId("");
+    setNewPassword("");
+  };
+
+  const handleUpdateCredentials = async () => {
+    if (!credentialStaff) return;
+    if (!loginId.trim() || newPassword.length < 8) {
+      alert("Enter a Login ID and a password of at least 8 characters.");
       return;
     }
-    const response = await fetch(`${API}/staff/${staff.id}/generate-credentials`, { method: "POST" });
-    const data = await response.json().catch(() => ({}));
-    if (!response.ok) return alert(data.error || "Unable to generate staff credentials.");
-    alert(
-      `Login credentials for ${staff.name}\n\nLogin ID: ${data.credentials.loginId}\nPassword: ${data.credentials.password}\n\nSave these credentials now; the password is shown only once.`
-    );
+
+    setSavingCredentials(true);
+    try {
+      const response = await fetch(`${API}/staff/${credentialStaff.id}/credentials`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ loginId: loginId.trim(), password: newPassword }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || "Unable to update credentials.");
+      alert("Login ID and password updated successfully.");
+      closeCredentialsModal();
+      fetchStaffList(showInactive);
+    } catch (error) {
+      alert(error.message || "Unable to update credentials.");
+    } finally {
+      setSavingCredentials(false);
+    }
   };
 
   // View Staff Location Details
@@ -698,8 +731,8 @@ function CreateStaff() {
                                   color="info"
                                   variant="text"
                                   size="small"
-                                  title="Generate Staff Login"
-                                  onClick={() => handleGenerateCredentials(staff)}
+                                  title="Update Login ID and Password"
+                                  onClick={() => openCredentialsModal(staff)}
                                 >
                                   <Icon fontSize="small">key</Icon>
                                 </MDButton>
@@ -718,6 +751,43 @@ function CreateStaff() {
       </MDBox>
 
       <Footer />
+
+      <Dialog open={credentialsModalOpen} onClose={closeCredentialsModal} fullWidth maxWidth="xs">
+        <DialogTitle sx={{ fontWeight: "bold", color: "#344767" }}>
+          Update Login ID & Password
+        </DialogTitle>
+        <DialogContent dividers>
+          <MDTypography variant="body2" color="text" mb={2}>
+            {credentialStaff?.name || "Staff"}
+          </MDTypography>
+          <MDBox mb={2}>
+            <MDInput
+              label="Login ID"
+              fullWidth
+              value={loginId}
+              onChange={(e) => setLoginId(e.target.value)}
+              inputProps={{ maxLength: 50, autoComplete: "username" }}
+            />
+          </MDBox>
+          <MDInput
+            type="password"
+            label="New Password"
+            fullWidth
+            value={newPassword}
+            onChange={(e) => setNewPassword(e.target.value)}
+            inputProps={{ minLength: 8, autoComplete: "new-password" }}
+            helperText="Minimum 8 characters"
+          />
+        </DialogContent>
+        <DialogActions sx={{ px: 3, py: 2 }}>
+          <MDButton variant="outlined" color="dark" onClick={closeCredentialsModal} disabled={savingCredentials}>
+            Cancel
+          </MDButton>
+          <MDButton variant="gradient" color="info" onClick={handleUpdateCredentials} disabled={savingCredentials}>
+            {savingCredentials ? "Updating..." : "Update Credentials"}
+          </MDButton>
+        </DialogActions>
+      </Dialog>
 
       <Dialog open={staffModalOpen} onClose={closeStaffModal} fullWidth maxWidth="lg" scroll="paper">
         <DialogTitle sx={{ fontWeight: "bold", color: "#344767" }}>

@@ -48,6 +48,11 @@ function CreateBawarcheeStaff() {
   const [deliveryModalOpen, setDeliveryModalOpen] = useState(false);
   const [role, setRole] = useState("delivery_boy");
   const [showInactive, setShowInactive] = useState(false);
+  const [credentialsModalOpen, setCredentialsModalOpen] = useState(false);
+  const [credentialStaff, setCredentialStaff] = useState(null);
+  const [loginId, setLoginId] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [savingCredentials, setSavingCredentials] = useState(false);
 
   const API = "https://bawarchee.edunextg.co/api";
 
@@ -211,6 +216,46 @@ function CreateBawarcheeStaff() {
     }
   };
 
+  const openCredentialsModal = (boy) => {
+    setCredentialStaff(boy);
+    setLoginId(boy.delivery_login_id || "");
+    setNewPassword("");
+    setCredentialsModalOpen(true);
+  };
+
+  const closeCredentialsModal = () => {
+    setCredentialsModalOpen(false);
+    setCredentialStaff(null);
+    setLoginId("");
+    setNewPassword("");
+  };
+
+  const handleUpdateCredentials = async () => {
+    if (!credentialStaff) return;
+    if (!loginId.trim() || newPassword.length < 8) {
+      alert("Enter a Login ID and a password of at least 8 characters.");
+      return;
+    }
+
+    setSavingCredentials(true);
+    try {
+      const response = await fetch(`${API}/delivery-boy/${credentialStaff.id}/credentials`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ loginId: loginId.trim(), password: newPassword }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || "Unable to update credentials.");
+      alert("Login ID and password updated successfully.");
+      closeCredentialsModal();
+      fetchDeliveryBoys();
+    } catch (error) {
+      alert(error.message || "Unable to update credentials.");
+    } finally {
+      setSavingCredentials(false);
+    }
+  };
+
   const handleDeleteDeliveryBoy = async (boy) => {
     if (!window.confirm(`Delete delivery boy "${boy.name}"?`)) {
       return;
@@ -353,6 +398,13 @@ function CreateBawarcheeStaff() {
                                   key
                                 </Icon>
                               )}
+                              <Icon
+                                title="Update Login ID and Password"
+                                onClick={() => openCredentialsModal(boy)}
+                                sx={{ cursor: "pointer", color: "#0288d1", fontSize: 21 }}
+                              >
+                                manage_accounts
+                              </Icon>
                               <FaRegEdit onClick={() => startEditDeliveryBoy(boy)} style={{ cursor: "pointer" }} color="#E0E388" size={20} />
                               <CiTrash onClick={() => handleDeleteDeliveryBoy(boy)} style={{ cursor: "pointer" }} color="#FF0000" size={20} />
                             </MDBox>
@@ -371,6 +423,43 @@ function CreateBawarcheeStaff() {
           </Grid>
         </Grid>
       </MDBox>
+
+      <Dialog open={credentialsModalOpen} onClose={closeCredentialsModal} fullWidth maxWidth="xs">
+        <DialogTitle sx={{ fontWeight: "bold", color: "#344767" }}>
+          Update Login ID & Password
+        </DialogTitle>
+        <DialogContent dividers>
+          <MDTypography variant="body2" color="text" mb={2}>
+            {credentialStaff?.name || "Staff"}
+          </MDTypography>
+          <MDBox mb={2}>
+            <MDInput
+              label="Login ID"
+              fullWidth
+              value={loginId}
+              onChange={(e) => setLoginId(e.target.value)}
+              inputProps={{ maxLength: 50, autoComplete: "username" }}
+            />
+          </MDBox>
+          <MDInput
+            type="password"
+            label="New Password"
+            fullWidth
+            value={newPassword}
+            onChange={(e) => setNewPassword(e.target.value)}
+            inputProps={{ minLength: 8, autoComplete: "new-password" }}
+            helperText="Minimum 8 characters"
+          />
+        </DialogContent>
+        <DialogActions sx={{ px: 3, py: 2 }}>
+          <MDButton variant="outlined" color="dark" onClick={closeCredentialsModal} disabled={savingCredentials}>
+            Cancel
+          </MDButton>
+          <MDButton variant="gradient" color="info" onClick={handleUpdateCredentials} disabled={savingCredentials}>
+            {savingCredentials ? "Updating..." : "Update Credentials"}
+          </MDButton>
+        </DialogActions>
+      </Dialog>
 
       <Dialog open={deliveryModalOpen} onClose={closeDeliveryModal} fullWidth maxWidth="sm">
         <DialogTitle sx={{ fontWeight: "bold", color: "#344767" }}>

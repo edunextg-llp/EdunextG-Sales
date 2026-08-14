@@ -119,7 +119,7 @@ class StaffModel {
 
     static async getDetails(id) {
         const [rows] = await db.execute(
-            `SELECT s.id, s.name, s.contact_no, s.company_id, s.staff_type, s.staff_category, s.is_active,
+            `SELECT s.id, s.name, s.contact_no, s.company_id, s.staff_type, s.staff_category, s.login_id, s.is_active,
                     s.dob, s.whatsapp_number, s.aadhar_no, s.aadhar_document_url, s.pcc_certificate_url,
                     COALESCE(sc.company_names, c.name) AS company_name,
                     sc.company_ids
@@ -382,7 +382,7 @@ class StaffModel {
         }
         const whereClause = filters.length ? `WHERE ${filters.join(' AND ')}` : '';
         const [rows] = await db.execute(
-            `SELECT s.id, s.name, s.contact_no, s.company_id, s.staff_type, s.staff_category, s.is_active,
+            `SELECT s.id, s.name, s.contact_no, s.company_id, s.staff_type, s.staff_category, s.login_id, s.is_active,
                     COALESCE(sc.company_names, c.name) AS company_name,
                     sc.company_ids
              FROM staff s

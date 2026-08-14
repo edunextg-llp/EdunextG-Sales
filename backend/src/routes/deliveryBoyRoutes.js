@@ -42,6 +42,7 @@ router.get('/companies', verifyTokenMiddleware, requireRole('admin'), deliveryBo
 router.get('/collections', verifyTokenMiddleware, requireRole('admin'), deliveryBoyController.getDeliveryBoyCollections);
 router.get('/', verifyTokenMiddleware, requireAnyPermission('out_bill', 'packaging', 'delivery', 'delivered'), deliveryBoyController.getDeliveryBoys);
 router.post('/:id/credentials', verifyTokenMiddleware, requireRole('admin'), deliveryBoyController.generateDeliveryBoyCredentials);
+router.put('/:id/credentials', verifyTokenMiddleware, requireRole('admin'), deliveryBoyController.updateDeliveryBoyCredentials);
 router.put('/:id/toggle-active', verifyTokenMiddleware, requireRole('admin'), deliveryBoyController.toggleDeliveryBoyActive);
 router.put('/:id', verifyTokenMiddleware, requireRole('admin'), deliveryBoyController.updateDeliveryBoy);
 router.delete('/:id', verifyTokenMiddleware, requireRole('admin'), deliveryBoyController.deleteDeliveryBoy);

@@ -1,7 +1,7 @@
 import express from 'express';
 import rateLimit from 'express-rate-limit';
-import { getCaptcha, login, refreshToken, register, verifyTokenCtrl } from '../controllers/authController.js';
-import { verifyTokenMiddleware } from '../middlewares/authMiddleware.js';
+import { getCaptcha, login, refreshToken, register, updateAdminCredentials, verifyTokenCtrl } from '../controllers/authController.js';
+import { requireRole, verifyTokenMiddleware } from '../middlewares/authMiddleware.js';
 
 const router = express.Router();
 
@@ -22,6 +22,7 @@ const loginLimiter = rateLimit({
 router.get('/captcha', captchaLimiter, getCaptcha);
 router.post('/login', loginLimiter, login);
 router.post('/refresh', refreshToken);
+router.put('/admin/credentials', verifyTokenMiddleware, requireRole('admin'), updateAdminCredentials);
 router.post('/register', register);
 // Route to test token validity
 router.get('/verify', verifyTokenMiddleware, verifyTokenCtrl);

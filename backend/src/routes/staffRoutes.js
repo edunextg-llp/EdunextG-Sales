@@ -6,6 +6,7 @@ import * as dmsStockController from '../controllers/dmsStockController.js';
 import * as currentStockController from '../controllers/currentStockController.js';
 import * as physicalStockController from '../controllers/physicalStockController.js';
 import * as purchaseRequisitionController from '../controllers/purchaseRequisitionController.js';
+import { requireRole, verifyTokenMiddleware } from '../middlewares/authMiddleware.js';
 
 const upload = multer({
     storage: multer.memoryStorage(),
@@ -79,6 +80,7 @@ router.get('/outlets-template', staffController.downloadOutletUploadTemplate);
 router.get('/:id', staffController.getStaffFullDetails);
 router.put('/:id', staffController.updateStaff);
 router.post('/:id/generate-credentials', staffController.generateStaffCredentials);
+router.put('/:id/credentials', verifyTokenMiddleware, requireRole('admin'), staffController.updateStaffCredentials);
 router.put('/:id/toggle-active', staffController.toggleStaffActive);
 router.get('/:id/locations', staffController.getStaffLocations);
 router.put('/:id/locations', staffController.updateStaffLocations);
