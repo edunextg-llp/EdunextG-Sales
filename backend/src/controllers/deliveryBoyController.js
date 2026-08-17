@@ -482,6 +482,57 @@ export const updateMobileCollection = async (req, res) => {
     }
 };
 
+export const getMobileCreditDues = async (req, res) => {
+    try {
+        res.status(200).json(await DeliveryCollectionModel.getOutstandingSalesForDeliveryBoy(req.deliveryBoyId));
+    } catch (error) {
+        console.error('Error fetching mobile credit dues:', error);
+        res.status(500).json({ error: 'Unable to fetch credit dues' });
+    }
+};
+
+export const collectMobileCreditDue = async (req, res) => {
+    try {
+        const saleId = Number(req.params.saleId);
+        const paymentMode = String(req.body.paymentMode || '').trim().toLowerCase();
+        if (!Number.isInteger(saleId) || saleId <= 0) return res.status(400).json({ error: 'Invalid sale' });
+        if (!['cash', 'upi', 'cheque', 'credit'].includes(paymentMode)) return res.status(400).json({ error: 'Select cash, UPI, cheque, or credit' });
+        let amount;
+        let cashDetails = null;
+        if (paymentMode === 'cash') {
+            const cashResult = normalizeCashCollectionDetails(req.body.cashDetails || {});
+            if (cashResult.error) return res.status(400).json({ error: cashResult.error });
+            amount = cashResult.amount;
+            cashDetails = cashResult.cashDetails;
+        } else {
+            const amountResult = validateNumeric(req.body.amount, 'Amount');
+            if (!amountResult.valid || amountResult.value <= 0) return res.status(400).json({ error: 'Amount must be greater than zero' });
+            amount = amountResult.value;
+        }
+        const referenceNo = String(req.body.referenceNo || '').trim() || null;
+        const referenceDate = normalizeDateInput(req.body.referenceDate);
+        if (paymentMode === 'upi' && !referenceNo) return res.status(400).json({ error: 'UPI number is required' });
+        if (paymentMode === 'cheque' && (!referenceNo || !referenceDate)) return res.status(400).json({ error: 'Cheque number and date are required' });
+        let creditDays = null;
+        if (paymentMode === 'credit') {
+            const creditDaysResult = validatePositiveInteger(req.body.creditDays, 'Credit days');
+            if (!creditDaysResult.valid) return res.status(400).json({ error: creditDaysResult.error });
+            creditDays = creditDaysResult.value;
+        }
+        const result = await DeliveryCollectionModel.collectOutstandingPayment(req.deliveryBoyId, saleId, {
+            paymentDate: normalizeDateInput(req.body.paymentDate) || new Date().toISOString().slice(0, 10),
+            paymentMode, amount, cashDetails, referenceNo, referenceDate, creditDays,
+        });
+        if (!result) return res.status(404).json({ error: 'Outstanding payment not found or unavailable' });
+        res.status(200).json({ message: 'Payment submitted for admin settlement', ...result });
+    } catch (error) {
+        if (error.message === 'EXISTING_CREDIT_DUE') return res.status(400).json({ error: 'Credit is unavailable because this outlet already has a credit due' });
+        if (['EXCEEDS_BALANCE', 'EXCEEDS_CREDIT_BALANCE'].includes(error.message)) return res.status(400).json({ error: `Amount exceeds remaining balance of ${error.remaining}` });
+        console.error('Error updating mobile credit payment:', error);
+        res.status(500).json({ error: 'Unable to update payment' });
+    }
+};
+
 export const getDeliveryBoyCollections = async (req, res) => {
     try {
         const search = String(req.query.search || '').trim();
@@ -530,6 +581,21 @@ export const updateMobileAssignedItemStatus = async (req, res) => {
     } catch (error) {
         console.error('Error updating delivery boy assigned item status:', error);
         res.status(500).json({ error: 'Internal server error' });
+    }
+};
+
+export const settleDeliveryBoyCollection = async (req, res) => {
+    try {
+        const collectionId = Number(req.params.collectionId);
+        if (!Number.isInteger(collectionId) || collectionId <= 0) return res.status(400).json({ error: 'Invalid collection' });
+        if (!await DeliveryCollectionModel.settle(collectionId)) return res.status(404).json({ error: 'Collection not found or already settled' });
+        res.status(200).json({ message: 'Collection settled successfully' });
+    } catch (error) {
+        if (error.message === 'COLLECTION_EXCEEDS_BALANCE') {
+            return res.status(400).json({ error: `Collection exceeds current balance of ${Number(error.remaining).toFixed(2)}` });
+        }
+        console.error('Error settling collection:', error);
+        res.status(500).json({ error: 'Unable to settle collection' });
     }
 };
 

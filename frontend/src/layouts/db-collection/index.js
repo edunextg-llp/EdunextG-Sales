@@ -96,10 +96,16 @@ function getPaymentDetails(row) {
   return "N/A";
 }
 
+function authHeaders() {
+  const token = localStorage.getItem("auth_token") || sessionStorage.getItem("auth_token") || localStorage.getItem("token");
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
 function DBCollection() {
   const [collections, setCollections] = useState([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [loading, setLoading] = useState(false);
+  const [settlingId, setSettlingId] = useState(null);
   const [page, setPage] = useState(1);
   const API = "https://bawarchee.edunextg.co/api";
 
@@ -112,7 +118,7 @@ function DBCollection() {
         params.set("search", normalizedSearch);
       }
       const query = params.toString();
-      const response = await fetch(`${API}/delivery-boy/collections${query ? `?${query}` : ""}`);
+      const response = await fetch(`${API}/delivery-boy/collections${query ? `?${query}` : ""}`, { headers: authHeaders() });
       if (response.ok) {
         setCollections(await response.json());
       } else {
@@ -124,6 +130,17 @@ function DBCollection() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const settleCollection = async (id) => {
+    setSettlingId(id);
+    try {
+      const response = await fetch(`${API}/delivery-boy/collections/${id}/settle`, { headers: authHeaders(), method: "PUT" });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "Unable to settle collection");
+      await fetchCollections();
+    } catch (error) { alert(error.message || "Unable to settle collection"); }
+    finally { setSettlingId(null); }
   };
 
   useEffect(() => {
@@ -168,7 +185,7 @@ function DBCollection() {
                   D.B. Collection
                 </MDTypography>
                 <MDTypography variant="button" color="text">
-                  Read-only payment details submitted from delivery-boy mobile accounts.
+                  Payments submitted from delivery-boy mobile accounts. Settle after reconciliation.
                 </MDTypography>
               </MDBox>
               <MDBox display="flex" gap={1.5} alignItems="center" flexWrap="wrap">
@@ -206,12 +223,13 @@ function DBCollection() {
                     <TableCell align="right" sx={paginatedTableHeadCellSx}>Amount</TableCell>
                     <TableCell align="left" sx={paginatedTableHeadCellSx}>Details</TableCell>
                     <TableCell align="center" sx={paginatedTableHeadCellSx}>Updated</TableCell>
+                    <TableCell align="center" sx={paginatedTableHeadCellSx}>Settlement</TableCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>
                   {loading ? (
                     <TableRow>
-                      <TableCell colSpan={9} align="center">
+                      <TableCell colSpan={10} align="center">
                         <MDTypography variant="button" color="text">Loading...</MDTypography>
                       </TableCell>
                     </TableRow>
@@ -234,11 +252,12 @@ function DBCollection() {
                         <TableCell align="right">{formatCurrency(row.amount)}</TableCell>
                         <TableCell sx={{ minWidth: 260 }}>{getPaymentDetails(row)}</TableCell>
                         <TableCell align="center">{formatDate(row.updated_at)}</TableCell>
+                        <TableCell align="center">{row.settled_at ? <Chip label="Settled" color="success" size="small" variant="outlined" /> : <MDButton color="success" size="small" variant="gradient" disabled={settlingId === row.id} onClick={() => settleCollection(row.id)}>{settlingId === row.id ? "Settling..." : "Settle"}</MDButton>}</TableCell>
                       </TableRow>
                     ))
                   ) : (
                     <TableRow>
-                      <TableCell colSpan={9} align="center">
+                      <TableCell colSpan={10} align="center">
                         <MDTypography variant="button" color="text">
                           No delivery-boy collection updates found.
                         </MDTypography>

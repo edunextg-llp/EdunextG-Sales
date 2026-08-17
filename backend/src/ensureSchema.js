@@ -398,6 +398,11 @@ export async function ensureSchema() {
             );
         `);
 
+        await tryQuery(connection, `ALTER TABLE delivery_boy_collections ADD COLUMN sale_payment_id INT NULL`, 'sale_payment_id on delivery collections');
+        await tryQuery(connection, `ALTER TABLE delivery_boy_collections ADD COLUMN settled_at DATETIME NULL`, 'settled_at on delivery collections');
+        await tryQuery(connection, `ALTER TABLE delivery_boy_collections DROP INDEX uq_delivery_boy_collections_sale_delivery`, 'allow delivery collection history');
+        await tryQuery(connection, `ALTER TABLE delivery_boy_collections ADD INDEX idx_delivery_boy_collections_sale_delivery (sale_id, delivery_boy_id)`, 'delivery collection sale lookup');
+
         await tryQuery(
             connection,
             `

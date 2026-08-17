@@ -337,12 +337,13 @@ class DeliveryBoyModel {
                     DATE_FORMAT(ss.delivery_date, '%Y-%m-%d') AS delivery_date,
                     ss.item_count, ss.packed_item_count, ss.box_count, ss.packet_count, ss.price,
                     ss.packaging_status, ss.vehicle_no,
-                    sc.outlet_name, sc.outlet_erp_id, sc.contact_number, sc.google_location,
-                    s.name AS staff_name,
+                    sc.outlet_name, sc.outlet_erp_id, sc.contact_number, sc.location_name, sc.google_location,
+                    s.name AS staff_name, c.name AS company_name,
                     DATE_FORMAT(ssh.status_updated_at, '%Y-%m-%d %H:%i:%s') AS status_updated_at
              FROM staff_sales ss
              LEFT JOIN staff_counters sc ON ss.outlet_id = sc.id
              LEFT JOIN staff s ON ss.staff_id = s.id
+             LEFT JOIN companies c ON s.company_id = c.id
              LEFT JOIN (
                  SELECT sale_id, MAX(changed_at) AS status_updated_at
                  FROM staff_sale_status_history

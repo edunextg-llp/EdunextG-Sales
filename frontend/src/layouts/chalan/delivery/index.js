@@ -119,7 +119,8 @@ function ChalanDelivery() {
       try {
         const response = await fetch(`${API}/delivery-boy`);
         if (response.ok) {
-          setDeliveryBoys(await response.json());
+          const data = await response.json();
+          setDeliveryBoys(data.filter((person) => person.role === "delivery_boy"));
         }
       } catch (error) {
         console.error("Error fetching delivery boys:", error);

@@ -34,12 +34,15 @@ router.get('/mobile/items', verifyDeliveryBoyToken, deliveryBoyController.getMob
 router.put('/mobile/items/:saleId/status', verifyDeliveryBoyToken, deliveryBoyController.updateMobileAssignedItemStatus);
 router.put('/mobile/items/:saleId/location', verifyDeliveryBoyToken, deliveryBoyController.updateMobileAssignedItemLocation);
 router.get('/mobile/collections', verifyDeliveryBoyToken, deliveryBoyController.getMobileCollections);
+router.get('/mobile/credit-dues', verifyDeliveryBoyToken, deliveryBoyController.getMobileCreditDues);
+router.post('/mobile/credit-dues/:saleId/payments', verifyDeliveryBoyToken, deliveryBoyController.collectMobileCreditDue);
 router.put('/mobile/items/:saleId/collection', verifyDeliveryBoyToken, deliveryBoyController.updateMobileCollection);
 router.get('/permissions', verifyTokenMiddleware, requireRole('admin'), deliveryBoyController.getPermissionUsers);
 router.put('/:id/permissions', verifyTokenMiddleware, requireRole('admin'), deliveryBoyController.updatePermissionUser);
 router.post('/', verifyTokenMiddleware, requireRole('admin'), deliveryBoyController.createDeliveryBoy);
 router.get('/companies', verifyTokenMiddleware, requireRole('admin'), deliveryBoyController.getStaffAssignedCompanies);
 router.get('/collections', verifyTokenMiddleware, requireRole('admin'), deliveryBoyController.getDeliveryBoyCollections);
+router.put('/collections/:collectionId/settle', verifyTokenMiddleware, requireRole('admin'), deliveryBoyController.settleDeliveryBoyCollection);
 router.get('/', verifyTokenMiddleware, requireAnyPermission('out_bill', 'packaging', 'delivery', 'delivered'), deliveryBoyController.getDeliveryBoys);
 router.post('/:id/credentials', verifyTokenMiddleware, requireRole('admin'), deliveryBoyController.generateDeliveryBoyCredentials);
 router.put('/:id/credentials', verifyTokenMiddleware, requireRole('admin'), deliveryBoyController.updateDeliveryBoyCredentials);
