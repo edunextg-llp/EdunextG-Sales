@@ -980,7 +980,7 @@ async function initDB() {
             price_per_piece DECIMAL(14, 4) NOT NULL DEFAULT 0.0000,
             mrp DECIMAL(14, 4) NOT NULL DEFAULT 0.0000,
             total_value DECIMAL(14, 2) NOT NULL DEFAULT 0.00,
-            expired_stock_date DATE NULL,
+            stock_update_date DATE NULL,
             raw_data JSON NULL,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (import_id) REFERENCES physical_stock_imports(id) ON DELETE CASCADE,
@@ -992,12 +992,12 @@ async function initDB() {
 
     try {
         await connection.query(`
-            ALTER TABLE physical_stock_items ADD COLUMN expired_stock_date DATE NULL
+            ALTER TABLE physical_stock_items ADD COLUMN stock_update_date DATE NULL
         `);
-        console.log('Added expired_stock_date to physical_stock_items');
+        console.log('Added stock_update_date to physical_stock_items');
     } catch (err) {
         if (err.code !== 'ER_DUP_FIELDNAME') {
-            console.log('expired_stock_date column may already exist on physical_stock_items');
+            console.log('stock_update_date column may already exist on physical_stock_items');
         }
     }
 
@@ -1018,7 +1018,7 @@ async function initDB() {
             price_per_piece DECIMAL(14, 4) NOT NULL DEFAULT 0.0000,
             mrp DECIMAL(14, 4) NOT NULL DEFAULT 0.0000,
             total_value DECIMAL(14, 4) NOT NULL DEFAULT 0.0000,
-            expired_stock_date DATE NULL,
+            stock_update_date DATE NULL,
             source_type ENUM('upload', 'manual', 'sale') NOT NULL DEFAULT 'manual',
             source_label VARCHAR(255) NULL,
             change_type ENUM('create', 'update', 'deduct') NOT NULL DEFAULT 'update',
@@ -1134,8 +1134,19 @@ async function initDB() {
           AND TRIM(remarks) <> ''
           AND NOT EXISTS (
               SELECT 1 FROM credit_payment_remarks cpr WHERE cpr.payment_id = sale_payments.id
-          )
+        )
     `);
+
+    try {
+        await connection.query(`
+            ALTER TABLE physical_stock_item_history ADD COLUMN stock_update_date DATE NULL
+        `);
+        console.log('Added stock_update_date to physical_stock_item_history');
+    } catch (err) {
+        if (err.code !== 'ER_DUP_FIELDNAME') {
+            console.log('stock_update_date column may already exist on physical_stock_item_history');
+        }
+    }
 
     try {
         await connection.query(`

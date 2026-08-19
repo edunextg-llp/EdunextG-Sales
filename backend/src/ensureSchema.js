@@ -1028,7 +1028,7 @@ export async function ensureSchema() {
                 price_per_piece DECIMAL(14, 4) NOT NULL DEFAULT 0.0000,
                 mrp DECIMAL(14, 4) NOT NULL DEFAULT 0.0000,
                 total_value DECIMAL(14, 2) NOT NULL DEFAULT 0.00,
-                expired_stock_date DATE NULL,
+                stock_update_date DATE NULL,
                 raw_data JSON NULL,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY (import_id) REFERENCES physical_stock_imports(id) ON DELETE CASCADE,
@@ -1039,8 +1039,13 @@ export async function ensureSchema() {
 
         await tryQuery(
             connection,
-            `ALTER TABLE physical_stock_items ADD COLUMN expired_stock_date DATE NULL`,
-            'expired_stock_date on physical_stock_items'
+            `ALTER TABLE physical_stock_items ADD COLUMN stock_update_date DATE NULL`,
+            'stock_update_date on physical_stock_items'
+        );
+        await tryQuery(
+            connection,
+            `UPDATE physical_stock_items SET stock_update_date = expired_stock_date WHERE stock_update_date IS NULL AND expired_stock_date IS NOT NULL`,
+            'backfill stock_update_date on physical_stock_items'
         );
 
         await connection.query(`
@@ -1060,7 +1065,7 @@ export async function ensureSchema() {
                 price_per_piece DECIMAL(14, 4) NOT NULL DEFAULT 0.0000,
                 mrp DECIMAL(14, 4) NOT NULL DEFAULT 0.0000,
                 total_value DECIMAL(14, 4) NOT NULL DEFAULT 0.0000,
-                expired_stock_date DATE NULL,
+                stock_update_date DATE NULL,
                 source_type ENUM('upload', 'manual', 'sale') NOT NULL DEFAULT 'manual',
                 source_label VARCHAR(255) NULL,
                 change_type ENUM('create', 'update', 'deduct') NOT NULL DEFAULT 'update',
@@ -1069,6 +1074,16 @@ export async function ensureSchema() {
                 INDEX idx_physical_stock_history_created (created_at)
             )
         `);
+        await tryQuery(
+            connection,
+            `ALTER TABLE physical_stock_item_history ADD COLUMN stock_update_date DATE NULL`,
+            'stock_update_date on physical_stock_item_history'
+        );
+        await tryQuery(
+            connection,
+            `UPDATE physical_stock_item_history SET stock_update_date = expired_stock_date WHERE stock_update_date IS NULL AND expired_stock_date IS NOT NULL`,
+            'backfill stock_update_date on physical_stock_item_history'
+        );
 
         await tryQuery(
             connection,

@@ -45,7 +45,7 @@ class PhysicalStockModel {
             pricePerPiece: toNumber(row.pricePerPiece ?? row.price_per_piece),
             mrp: toNumber(row.mrp),
             totalValue: toNumber(row.totalValue ?? row.total_value),
-            expiredStockDate: row.expiredStockDate || row.expired_stock_date || null,
+            stockUpdateDate: row.stockUpdateDate || row.stock_update_date || null,
         };
     }
 
@@ -74,7 +74,7 @@ class PhysicalStockModel {
             `INSERT INTO physical_stock_item_history
              (dms_import_id, import_id, item_id, product_erp_id, product_name,
               product_division, variant_name, pcs_per_box, physical_stock_in_case, physical_stock_in_pcs,
-              total_physical_stock_in_pcs, price_per_piece, mrp, total_value, expired_stock_date,
+              total_physical_stock_in_pcs, price_per_piece, mrp, total_value, stock_update_date,
               source_type, source_label, change_type)
              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
             [
@@ -92,7 +92,7 @@ class PhysicalStockModel {
                 payload.pricePerPiece,
                 payload.mrp,
                 payload.totalValue,
-                payload.expiredStockDate,
+                payload.stockUpdateDate,
                 sourceType,
                 resolvedSourceLabel,
                 changeType,
@@ -125,7 +125,7 @@ class PhysicalStockModel {
                     product_erp_id, product_name, product_division, variant_name,
                     COALESCE(pcs_per_box, 0) AS pcs_per_box,
                     physical_stock_in_case, physical_stock_in_pcs, total_physical_stock_in_pcs,
-                    price_per_piece, mrp, total_value, expired_stock_date,
+                    price_per_piece, mrp, total_value, stock_update_date,
                     source_type, source_label,
                     change_type,
                     DATE_FORMAT(created_at, '%Y-%m-%d %H:%i:%s') AS created_at,
@@ -144,7 +144,7 @@ class PhysicalStockModel {
             `SELECT psi.id AS item_id, p.id AS import_id, p.dms_import_id, psi.product_erp_id, psi.product_name,
                     psi.product_division, psi.variant_name, psi.pcs_per_box, psi.physical_stock_in_case,
                     psi.physical_stock_in_pcs, psi.total_physical_stock_in_pcs, psi.price_per_piece, psi.mrp,
-                    psi.total_value, psi.expired_stock_date,
+                    psi.total_value, psi.stock_update_date,
                     CASE WHEN p.file_name = 'Manual Entry' THEN 'manual' ELSE 'upload' END AS source_type,
                     p.file_name AS source_label,
                     'create' AS change_type,
@@ -158,6 +158,53 @@ class PhysicalStockModel {
         );
 
         return legacyRows.map((row) => PhysicalStockModel.normalizeHistoryRow(row));
+    }
+
+    static async getAllItemHistory(dmsImportId, updateDate = '') {
+        const importId = parseInt(dmsImportId, 10);
+        if (!Number.isFinite(importId) || importId <= 0) return [];
+
+        const date = String(updateDate || '').trim();
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return [];
+
+        const [rows] = await db.execute(
+            `SELECT id, dms_import_id, import_id, item_id,
+                    product_erp_id, product_name, product_division, variant_name,
+                    COALESCE(pcs_per_box, 0) AS pcs_per_box,
+                    physical_stock_in_case, physical_stock_in_pcs, total_physical_stock_in_pcs,
+                    price_per_piece, mrp, total_value, stock_update_date,
+                    source_type, source_label, change_type,
+                    DATE_FORMAT(created_at, '%Y-%m-%d %H:%i:%s') AS created_at,
+                    DATE_FORMAT(COALESCE(stock_update_date, DATE(created_at)), '%Y-%m-%d') AS update_date
+             FROM physical_stock_item_history
+             WHERE dms_import_id = ?
+               AND COALESCE(stock_update_date, DATE(created_at)) = ?
+             ORDER BY COALESCE(stock_update_date, DATE(created_at)) DESC, created_at DESC, id DESC`,
+            [importId, date]
+        );
+
+        return rows.map((row) => PhysicalStockModel.normalizeHistoryRow(row));
+    }
+
+    static async getHistoryUpdateDates(dmsImportId) {
+        const importId = parseInt(dmsImportId, 10);
+        if (!Number.isFinite(importId) || importId <= 0) return [];
+
+        const [rows] = await db.execute(
+            `SELECT DATE_FORMAT(COALESCE(stock_update_date, DATE(created_at)), '%Y-%m-%d') AS update_date,
+                    COUNT(*) AS product_count,
+                    DATE_FORMAT(MAX(created_at), '%Y-%m-%d %H:%i:%s') AS last_updated_at
+             FROM physical_stock_item_history
+             WHERE dms_import_id = ?
+             GROUP BY DATE_FORMAT(COALESCE(stock_update_date, DATE(created_at)), '%Y-%m-%d')
+             ORDER BY update_date DESC`,
+            [importId]
+        );
+
+        return rows.map((row) => ({
+            ...row,
+            product_count: toNumber(row.product_count),
+        }));
     }
 
     static async getManualImportByDmsImportId(dmsImportId) {
@@ -255,7 +302,7 @@ class PhysicalStockModel {
                              price_per_piece = ?,
                              mrp = ?,
                              total_value = ?,
-                             expired_stock_date = ?,
+                             stock_update_date = ?,
                              raw_data = ?
                          WHERE id = ?`,
                         [
@@ -270,7 +317,7 @@ class PhysicalStockModel {
                             row.pricePerPiece,
                             row.mrp,
                             row.totalValue,
-                            row.expiredStockDate || null,
+                            row.stockUpdateDate || null,
                             JSON.stringify(row.rawData || {}),
                             existing.id,
                         ]
@@ -290,7 +337,7 @@ class PhysicalStockModel {
                          (import_id, product_erp_id, product_name, product_division, variant_name,
                           pcs_per_box, physical_stock_in_case, physical_stock_in_pcs,
                           total_physical_stock_in_pcs, price_per_piece, mrp, total_value,
-                          expired_stock_date, raw_data)
+                          stock_update_date, raw_data)
                          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
                         [
                             importId,
@@ -305,7 +352,7 @@ class PhysicalStockModel {
                             row.pricePerPiece,
                             row.mrp,
                             row.totalValue,
-                            row.expiredStockDate || null,
+                            row.stockUpdateDate || null,
                             JSON.stringify(row.rawData || {}),
                         ]
                     );
@@ -368,7 +415,7 @@ class PhysicalStockModel {
                     row.pricePerPiece,
                     row.mrp,
                     row.totalValue,
-                    row.expiredStockDate || null,
+                    row.stockUpdateDate || null,
                     JSON.stringify(row.rawData),
                 ]);
 
@@ -377,7 +424,7 @@ class PhysicalStockModel {
                      (import_id, product_erp_id, product_name, product_division, variant_name,
                       pcs_per_box, physical_stock_in_case, physical_stock_in_pcs,
                       total_physical_stock_in_pcs, price_per_piece, mrp, total_value,
-                      expired_stock_date, raw_data)
+                      stock_update_date, raw_data)
                      VALUES ?`,
                     [values]
                 );
@@ -437,7 +484,7 @@ class PhysicalStockModel {
             `SELECT psi.id, psi.import_id, psi.product_erp_id, psi.product_name, psi.product_division,
                     psi.variant_name, psi.pcs_per_box, psi.physical_stock_in_case, psi.physical_stock_in_pcs,
                     psi.total_physical_stock_in_pcs, psi.price_per_piece, psi.mrp, psi.total_value,
-                    psi.expired_stock_date, psi.raw_data
+                    psi.stock_update_date, psi.raw_data
              FROM physical_stock_items psi
              INNER JOIN physical_stock_imports p ON p.id = psi.import_id
              INNER JOIN (
@@ -508,7 +555,7 @@ class PhysicalStockModel {
             `SELECT id, import_id, product_erp_id, product_name, product_division, variant_name,
                     pcs_per_box, physical_stock_in_case, physical_stock_in_pcs,
                     total_physical_stock_in_pcs, price_per_piece, mrp, total_value,
-                    expired_stock_date
+                    stock_update_date
              FROM physical_stock_items
              WHERE import_id = ?
              ORDER BY id ASC

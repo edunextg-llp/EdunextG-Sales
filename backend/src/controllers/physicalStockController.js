@@ -13,7 +13,7 @@ const HEADER_ALIASES = {
     pcsPerBox: ['pcs/box', 'pcs per box'],
     physicalStockInCase: ['current stock in case', 'physical stock in case'],
     physicalStockInPcs: ['current stock in pcs', 'physical stock in pcs'],
-    expiredStockDate: ['expired stock', 'expiry date', 'expired date'],
+    stockUpdateDate: ['stock update date', 'update date', 'date'],
     pricePerPiece: ['price/pcs', 'price per pcs', 'price per piece'],
     mrp: ['mrp'],
 };
@@ -104,8 +104,8 @@ export function normalizePhysicalStockRow(row) {
     const pricePerPiece = toNumber(findValue(row, 'pricePerPiece'));
     const totalPhysicalStockInPcs = roundQuantity((physicalStockInCase * pcsPerBox) + physicalStockInPcs);
     const totalValue = roundMoney(totalPhysicalStockInPcs * pricePerPiece);
-    const expiredStockDateRaw = findValue(row, 'expiredStockDate');
-    const expiredStockDate = toIsoDateOrNull(expiredStockDateRaw);
+    const stockUpdateDateRaw = findValue(row, 'stockUpdateDate');
+    const stockUpdateDate = toIsoDateOrNull(stockUpdateDateRaw);
 
     return {
         productErpId: textValue(findValue(row, 'productErpId')),
@@ -119,7 +119,7 @@ export function normalizePhysicalStockRow(row) {
         pricePerPiece,
         mrp: toNumber(findValue(row, 'mrp')),
         totalValue,
-        expiredStockDate,
+        stockUpdateDate,
         rawData: row,
     };
 }
@@ -283,7 +283,7 @@ async function buildPhysicalRowFromDmsProduct(dmsImportId, item) {
         'Physical Stock In Pcs': item.physicalStockInPcs ?? 0,
         'Price/Pcs': product.price_per_piece || 0,
         MRP: product.mrp || 0,
-        'Expired Stock': product.expiry_date || item.expiredStockDate || '',
+        'Stock Update Date': item.stockUpdateDate || '',
     });
 }
 
@@ -291,15 +291,19 @@ export const getPhysicalStockItemHistory = async (req, res) => {
     try {
         const dmsImportId = parseDmsImportId(req.query.dmsImportId);
         const erpId = String(req.query.erpId || '').trim();
+        const updateDate = String(req.query.updateDate || '').trim();
 
         if (!dmsImportId) {
             return res.status(400).json({ error: 'Please choose a DMS stock upload date.' });
         }
-        if (!erpId) {
-            return res.status(400).json({ error: 'Product ERP ID is required.' });
+        if (!erpId && !updateDate) {
+            const dates = await PhysicalStockModel.getHistoryUpdateDates(dmsImportId);
+            return res.status(200).json({ dates, history: [] });
         }
 
-        const history = await PhysicalStockModel.getItemHistory(dmsImportId, erpId);
+        const history = erpId
+            ? await PhysicalStockModel.getItemHistory(dmsImportId, erpId)
+            : await PhysicalStockModel.getAllItemHistory(dmsImportId, updateDate);
         return res.status(200).json({ history });
     } catch (error) {
         console.error('Error fetching physical stock item history:', error);
@@ -495,7 +499,7 @@ export const approvePhysicalStockFromDms = async (req, res) => {
             'Physical Stock In Pcs': physicalStockInPcs,
             'Price/Pcs': product.price_per_piece,
             MRP: product.mrp,
-            'Expired Stock': product.expiry_date || '',
+            'Stock Update Date': new Date().toISOString().slice(0, 10),
         });
         row.rawData = {
             ...row.rawData,

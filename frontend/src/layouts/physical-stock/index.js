@@ -242,6 +242,10 @@ function PhysicalStock() {
   const [historyRows, setHistoryRows] = useState([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
   const [historyError, setHistoryError] = useState("");
+  const [allProductsHistory, setAllProductsHistory] = useState(false);
+  const [historyDates, setHistoryDates] = useState([]);
+  const [selectedHistoryDate, setSelectedHistoryDate] = useState("");
+  const [historySearch, setHistorySearch] = useState("");
 
   const authToken = localStorage.getItem("auth_token") || sessionStorage.getItem("auth_token");
   const authHeaders = authToken ? { Authorization: `Bearer ${authToken}` } : {};
@@ -449,7 +453,7 @@ function PhysicalStock() {
       const loadToken = bulkEditLoadTokenRef.current + 1;
       bulkEditLoadTokenRef.current = loadToken;
       const existingDates = [...new Set(preparedRows.map((row) => (
-        String(row.expiry_date || row.expired_stock_date || "").slice(0, 10)
+        String(row.physical_stock?.stock_update_date || row.stock_update_date || "").slice(0, 10)
       )).filter(Boolean))];
       const sharedDate = existingDates.length === 1 ? existingDates[0] : "";
       bulkEditDateRef.current = sharedDate;
@@ -471,7 +475,7 @@ function PhysicalStock() {
         setBulkEditRows((current) => [
           ...current,
           ...nextRows.map((row) => bulkEditDateRef.current
-            ? { ...row, expiry_date: bulkEditDateRef.current, expired_stock_date: bulkEditDateRef.current }
+            ? { ...row, stock_update_date: bulkEditDateRef.current }
             : row),
         ]);
         nextIndex += nextRows.length;
@@ -497,8 +501,7 @@ function PhysicalStock() {
     setBulkEditDate(value);
     setBulkEditRows((rows) => rows.map((row) => ({
       ...row,
-      expiry_date: value,
-      expired_stock_date: value,
+      stock_update_date: value,
     })));
   };
 
@@ -531,7 +534,7 @@ function PhysicalStock() {
             productErpId: item.product_erp_id,
             physicalStockInCase: item.physicalStockInCase,
             physicalStockInPcs: item.physicalStockInPcs,
-            expiredStockDate: item.expiry_date || item.expired_stock_date || "",
+            stockUpdateDate: item.stock_update_date || "",
           })),
         }),
       });
@@ -552,6 +555,39 @@ function PhysicalStock() {
     setHistoryItem(null);
     setHistoryRows([]);
     setHistoryError("");
+    setAllProductsHistory(false);
+    setHistoryDates([]);
+    setSelectedHistoryDate("");
+    setHistorySearch("");
+  };
+
+  const handleViewAllHistory = () => {
+    if (!dmsImportId) return;
+    setHistoryItem(null);
+    setAllProductsHistory(true);
+    setHistoryModalOpen(true);
+    fetchAllHistoryDates(dmsImportId);
+  };
+
+  const fetchAllHistoryDates = async (importId) => {
+    setLoadingHistory(true);
+    setHistoryError("");
+    setHistoryRows([]);
+    try {
+      const params = new URLSearchParams({ dmsImportId: String(importId) });
+      const response = await fetch(`${API}/staff/physical-stock/item-history?${params}`, { headers: authHeaders });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "Failed to fetch stock history dates.");
+      const dates = Array.isArray(data.dates) ? data.dates : [];
+      setHistoryDates(dates);
+      const latestDate = dates[0]?.update_date || "";
+      setSelectedHistoryDate(latestDate);
+      if (latestDate) await fetchItemHistory(null, importId, "", latestDate);
+    } catch (fetchError) {
+      setHistoryError(fetchError.message);
+    } finally {
+      setLoadingHistory(false);
+    }
   };
 
   const handleViewItemHistory = async (item) => {
@@ -562,19 +598,21 @@ function PhysicalStock() {
       return;
     }
     setHistoryItem(item);
+    setAllProductsHistory(false);
     setHistoryModalOpen(true);
     fetchItemHistory(item, dmsImportId, productErpId);
   };
 
-  const fetchItemHistory = async (item, importId, productErpId = getProductErpId(item)) => {
+  const fetchItemHistory = async (item, importId, productErpId = getProductErpId(item), updateDate = "") => {
     setLoadingHistory(true);
     setHistoryError("");
     try {
-      const params = new URLSearchParams({
-        dmsImportId: String(importId),
-        erpId: productErpId,
-        productErpId,
-      });
+      const params = new URLSearchParams({ dmsImportId: String(importId) });
+      if (productErpId) {
+        params.set("erpId", productErpId);
+        params.set("productErpId", productErpId);
+      }
+      if (updateDate) params.set("updateDate", updateDate);
       const response = await fetch(`${API}/staff/physical-stock/item-history?${params}`, { headers: authHeaders });
       const data = await response.json();
       if (!response.ok) {
@@ -612,6 +650,17 @@ function PhysicalStock() {
       .sort((a, b) => b[0].localeCompare(a[0]))
       .map(([date, rows]) => [date, [...rows].reverse()]);
   }, [historyRows]);
+
+  const visibleAllHistoryRows = useMemo(() => {
+    const query = historySearch.trim().toLowerCase();
+    if (!query) return historyRows;
+    return historyRows.filter((entry) => [
+      entry.product_erp_id,
+      entry.product_name,
+      entry.product_division,
+      entry.variant_name,
+    ].some((value) => String(value || "").toLowerCase().includes(query)));
+  }, [historyRows, historySearch]);
 
   const updateStockForm = (field, value) => {
     setStockForm((prev) => ({ ...prev, [field]: value }));
@@ -782,7 +831,7 @@ function PhysicalStock() {
             productErpId: selectedProduct.product_erp_id,
             physicalStockInCase: stockForm.physicalStockInCase,
             physicalStockInPcs: stockForm.physicalStockInPcs,
-            expiredStockDate: selectedProduct.expiry_date || "",
+            stockUpdateDate: new Date().toISOString().slice(0, 10),
           }],
         }),
       });
@@ -917,6 +966,10 @@ function PhysicalStock() {
                     <Icon sx={{ mr: 1 }}>edit</Icon>
                     Edit All Products
                   </MDButton>
+                  <MDButton color="dark" variant="gradient" onClick={handleViewAllHistory} disabled={!dmsImportId}>
+                    <Icon sx={{ mr: 1 }}>history</Icon>
+                    Stock History
+                  </MDButton>
                 </MDBox>
               </MDBox>
               <MDBox px={3} pb={3}>
@@ -965,7 +1018,7 @@ function PhysicalStock() {
                         <TableCell sx={stickyColumnSx(3, { isHead: true, baseSx: tableHeadSx })}>Product Division</TableCell>
                         <TableCell sx={stickyHeadRowSx(tableHeadSx)}>Variant Name</TableCell>
                         <TableCell align="right" sx={stickyHeadRowSx(tableHeadSx)}>Pcs/Box</TableCell>
-                        <TableCell sx={stickyHeadRowSx(tableHeadSx)}>Expiry Date</TableCell>
+                        <TableCell sx={stickyHeadRowSx(tableHeadSx)}>Stock Update Date</TableCell>
                         <TableCell align="right" sx={stickyHeadRowSx(tableHeadSx)}>Physical Stock In Case</TableCell>
                         <TableCell align="right" sx={stickyHeadRowSx(tableHeadSx)}>Physical Stock In Pcs</TableCell>
                         <TableCell align="right" sx={stickyHeadRowSx(tableHeadSx, "#dbeafe")}>Total Physical Stock In Pcs</TableCell>
@@ -990,7 +1043,7 @@ function PhysicalStock() {
                           <TableCell sx={stickyColumnSx(3, { baseSx: tableBodySx })}>{item.product_division}</TableCell>
                           <TableCell sx={tableBodySx}>{item.variant_name}</TableCell>
                           <TableCell align="right" sx={tableBodySx}>{unitFormat(item.pcs_per_box)}</TableCell>
-                          <TableCell sx={tableBodySx}>{formatExpiredStockDate(item.expiry_date || item.expired_stock_date)}</TableCell>
+                          <TableCell sx={tableBodySx}>{formatExpiredStockDate(item.physical_stock?.stock_update_date)}</TableCell>
                           <TableCell align="right" sx={tableBodySx}>{unitFormat(item.physical_stock ? item.physical_stock.physical_stock_in_case : item.current_stock_in_case)}</TableCell>
                           <TableCell align="right" sx={tableBodySx}>{unitFormat(item.physical_stock ? item.physical_stock.physical_stock_in_pcs : item.current_stock_in_pcs)}</TableCell>
                           <TableCell align="right" sx={calculatedCellSx}>{unitFormat(item.physical_stock ? item.physical_stock.total_physical_stock_in_pcs : item.total_current_stock_in_pcs)}</TableCell>
@@ -1147,7 +1200,7 @@ function PhysicalStock() {
             <MDBox display="flex" alignItems="center" gap={1}>
               <MDInput
                 type="date"
-                label="Expiry Date (All)"
+                label="Stock Update Date (All)"
                 value={bulkEditDate}
                 onChange={(event) => applyBulkEditDate(event.target.value)}
                 InputLabelProps={{ shrink: true }}
@@ -1201,7 +1254,7 @@ function PhysicalStock() {
                   ["5", "Pcs/Box", (item) => unitFormat(item.pcs_per_box)],
                   ["6", "MRP", (item) => unitFormat(item.mrp)],
                   ["", "Price/Pcs", (item) => unitFormat(item.price_per_piece)],
-                  ["", "DATE", (item) => formatExpiredStockDate(item.expiry_date || item.expired_stock_date), "date"],
+                  ["", "STOCK UPDATE DATE", (item) => formatExpiredStockDate(item.stock_update_date), "date"],
                   ["", "Current Stock In Case", (item, index) => <MDInput type="number" inputProps={{ min: 0, step: "any" }} value={item.physicalStockInCase} onChange={(event) => updateBulkEditRow(index, "physicalStockInCase", event.target.value)} sx={{ minWidth: 82, "& .MuiInputBase-root": { height: 28, fontSize: "0.75rem" } }} />, "input"],
                   ["", "Current Stock In Pcs", (item, index) => <MDInput type="number" inputProps={{ min: 0, step: "any" }} value={item.physicalStockInPcs} onChange={(event) => updateBulkEditRow(index, "physicalStockInPcs", event.target.value)} sx={{ minWidth: 82, "& .MuiInputBase-root": { height: 28, fontSize: "0.75rem" } }} />, "input"],
                   ["", "TOTAL CURRENT QTY", (item) => unitFormat(calcPhysicalTotals(item, item).totalPhysicalStockInPcs)],
@@ -1497,9 +1550,9 @@ function PhysicalStock() {
         </DialogActions>
       </Dialog>
 
-      <Dialog open={historyModalOpen} onClose={closeHistoryModal} fullWidth maxWidth="lg">
+      <Dialog open={historyModalOpen} onClose={closeHistoryModal} fullWidth maxWidth={allProductsHistory ? "xl" : "lg"}>
         <DialogTitle sx={{ fontWeight: "bold", color: "#1e3a5f", backgroundColor: "#dbeafe", borderBottom: "1px solid #93c5fd" }}>
-          Physical Stock History
+          {allProductsHistory ? "Physical Stock History — All Products" : "Physical Stock History"}
         </DialogTitle>
         <DialogContent dividers sx={{ backgroundColor: "#f8fafc" }}>
           {historyItem && (
@@ -1531,13 +1584,81 @@ function PhysicalStock() {
             </MDTypography>
           )}
 
-          {!loadingHistory && !historyError && groupedHistory.length === 0 && (
+          {!loadingHistory && !historyError && historyRows.length === 0 && (
             <MDTypography variant="body2" color="text">
-              No update history found for this item.
+              No physical stock update history found.
             </MDTypography>
           )}
 
-          {!loadingHistory && !historyError && groupedHistory.map(([dateKey, rows]) => (
+          {!loadingHistory && !historyError && allProductsHistory && historyDates.length > 0 && (
+            <MDBox display="flex" alignItems="center" gap={2} mb={2} flexWrap="wrap">
+              <FormControl size="small" sx={{ minWidth: 240 }}>
+                <Select
+                  value={selectedHistoryDate}
+                  onChange={(event) => {
+                    const value = event.target.value;
+                    setSelectedHistoryDate(value);
+                    fetchItemHistory(null, dmsImportId, "", value);
+                  }}
+                  sx={{ height: 42, backgroundColor: "#fff" }}
+                >
+                  {historyDates.map((entry) => (
+                    <MenuItem key={entry.update_date} value={entry.update_date}>
+                      {formatDate(entry.update_date)} — {unitFormat(entry.product_count)} updates
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+              <MDInput
+                label="Search product or ERP ID"
+                value={historySearch}
+                onChange={(event) => setHistorySearch(event.target.value)}
+                sx={{ width: { xs: "100%", sm: 320 } }}
+              />
+              <MDTypography variant="caption" color="text">
+                Showing {visibleAllHistoryRows.length} of {historyRows.length} records for this update date
+              </MDTypography>
+            </MDBox>
+          )}
+
+          {!loadingHistory && !historyError && allProductsHistory && historyRows.length > 0 && (
+            <TableContainer component={Paper} sx={{ maxHeight: "62vh" }}>
+              <Table size="small" stickyHeader>
+                <TableHead sx={{ display: "table-header-group" }}>
+                  <TableRow>
+                    {["Stock Update Date", "ERP ID", "Product", "Division", "Variant", "Cases", "Loose Pcs", "Total Pcs", "Total Value", "Change", "Source"].map((heading) => (
+                      <TableCell
+                        key={heading}
+                        align={["Cases", "Loose Pcs", "Total Pcs", "Total Value"].includes(heading) ? "right" : "left"}
+                        sx={{ ...tableHeadSx, py: 1, whiteSpace: "nowrap", backgroundColor: "#dbeafe" }}
+                      >
+                        {heading}
+                      </TableCell>
+                    ))}
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {visibleAllHistoryRows.map((entry) => (
+                    <TableRow key={entry.id || `${entry.product_erp_id}-${entry.created_at}`} hover>
+                      <TableCell sx={{ ...tableBodySx, whiteSpace: "nowrap" }}>{formatDate(entry.stock_update_date || entry.update_date || entry.created_at)}</TableCell>
+                      <TableCell sx={tableBodySx}>{entry.product_erp_id}</TableCell>
+                      <TableCell sx={{ ...tableBodySx, minWidth: 220 }}>{entry.product_name}</TableCell>
+                      <TableCell sx={tableBodySx}>{entry.product_division}</TableCell>
+                      <TableCell sx={tableBodySx}>{entry.variant_name}</TableCell>
+                      <TableCell align="right" sx={tableBodySx}>{unitFormat(entry.physical_stock_in_case)}</TableCell>
+                      <TableCell align="right" sx={tableBodySx}>{unitFormat(entry.physical_stock_in_pcs)}</TableCell>
+                      <TableCell align="right" sx={calculatedCellSx}>{unitFormat(entry.total_physical_stock_in_pcs)}</TableCell>
+                      <TableCell align="right" sx={tableBodySx}>{money(entry.total_value)}</TableCell>
+                      <TableCell sx={tableBodySx}>{formatChangeType(entry.change_type)}</TableCell>
+                      <TableCell sx={tableBodySx}>{formatHistorySource(entry)}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </TableContainer>
+          )}
+
+          {!loadingHistory && !historyError && !allProductsHistory && groupedHistory.map(([dateKey, rows]) => (
             <MDBox key={dateKey} mb={3}>
               <MDTypography variant="button" fontWeight="bold" color="dark" mb={1} display="block">
                 {dateKey === "unknown" ? "Unknown Date" : formatDate(dateKey)}
