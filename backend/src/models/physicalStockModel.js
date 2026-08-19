@@ -694,6 +694,128 @@ class PhysicalStockModel {
             await PhysicalStockModel.recalculateImportTotals(connection, importId);
         }
     }
+
+    static async restoreStockForCompany(connection, companyName, lineItems = [], sourceLabel = 'Full Bill Cancellation') {
+        const name = String(companyName || '').trim();
+        if (!name || !Array.isArray(lineItems) || !lineItems.length) return;
+
+        const dmsImport = await DmsStockModel.getLatestImportByCompanyName(name);
+        if (!dmsImport?.id) {
+            throw new Error(`No DMS stock upload found for company "${name}".`);
+        }
+
+        const physicalItems = await PhysicalStockModel.getMergedItemsByDmsImportId(dmsImport.id, 2000);
+        const physicalByErp = new Map(physicalItems.map((item) => [
+            String(item.product_erp_id || '').trim().toLowerCase(),
+            item,
+        ]));
+        const restorations = new Map();
+
+        for (const line of lineItems) {
+            const erpId = String(line.productErpId || line.product_erp_id || '').trim();
+            const qty = toNumber(line.qty);
+            if (!erpId || erpId === '__existing_sale__' || qty <= 0) continue;
+            const key = erpId.toLowerCase();
+            const current = restorations.get(key) || { qty: 0, line };
+            restorations.set(key, { qty: roundQuantity(current.qty + qty), line: current.line });
+        }
+
+        const touchedImportIds = new Set();
+        let fallbackImportId = null;
+        for (const [erpKey, restoration] of restorations.entries()) {
+            const { qty, line } = restoration;
+            let physicalItem = physicalByErp.get(erpKey);
+            if (!physicalItem) {
+                if (!fallbackImportId) {
+                    const [importRows] = await connection.execute(
+                        `SELECT id FROM physical_stock_imports
+                         WHERE dms_import_id = ? AND file_name = 'Manual Entry'
+                         ORDER BY id DESC LIMIT 1`,
+                        [dmsImport.id]
+                    );
+                    fallbackImportId = importRows[0]?.id || null;
+                    if (!fallbackImportId) {
+                        const [importResult] = await connection.execute(
+                            `INSERT INTO physical_stock_imports
+                             (dms_import_id, file_name, row_count, total_cases, total_loose_pcs, total_pieces, total_value)
+                             VALUES (?, 'Manual Entry', 0, 0, 0, 0, 0)`,
+                            [dmsImport.id]
+                        );
+                        fallbackImportId = importResult.insertId;
+                    }
+                }
+
+                const pricePerPiece = toNumber(line.rate);
+                const [insertResult] = await connection.execute(
+                    `INSERT INTO physical_stock_items
+                     (import_id, product_erp_id, product_name, product_division, variant_name,
+                      pcs_per_box, physical_stock_in_case, physical_stock_in_pcs,
+                      total_physical_stock_in_pcs, price_per_piece, mrp, total_value,
+                      stock_update_date, raw_data)
+                     VALUES (?, ?, ?, ?, ?, 0, 0, 0, 0, ?, 0, 0, ?, ?)`,
+                    [
+                        fallbackImportId,
+                        line.productErpId || line.product_erp_id,
+                        line.productName || line.product_name || erpKey,
+                        line.productDivision || line.product_division || name,
+                        line.variantName || line.variant_name || '',
+                        pricePerPiece,
+                        new Date().toISOString().slice(0, 10),
+                        JSON.stringify({ approvedAsCurrentStock: true, createdFromCancelledSale: true }),
+                    ]
+                );
+                physicalItem = {
+                    id: insertResult.insertId,
+                    import_id: fallbackImportId,
+                    product_erp_id: line.productErpId || line.product_erp_id,
+                    product_name: line.productName || line.product_name || erpKey,
+                    product_division: line.productDivision || line.product_division || name,
+                    variant_name: line.variantName || line.variant_name || '',
+                    pcs_per_box: 0,
+                    physical_stock_in_case: 0,
+                    physical_stock_in_pcs: 0,
+                    total_physical_stock_in_pcs: 0,
+                    price_per_piece: pricePerPiece,
+                    mrp: 0,
+                    total_value: 0,
+                };
+            }
+
+            const newTotal = roundQuantity(toNumber(physicalItem.total_physical_stock_in_pcs) + qty);
+            const split = splitTotalPieces(newTotal, physicalItem.pcs_per_box);
+            const totalValue = roundMoney(split.total * toNumber(physicalItem.price_per_piece));
+
+            await connection.execute(
+                `UPDATE physical_stock_items
+                 SET physical_stock_in_case = ?, physical_stock_in_pcs = ?,
+                     total_physical_stock_in_pcs = ?, total_value = ?
+                 WHERE id = ?`,
+                [split.cases, split.loose, split.total, totalValue, physicalItem.id]
+            );
+
+            await PhysicalStockModel.logItemHistory(connection, {
+                dmsImportId: dmsImport.id,
+                importId: physicalItem.import_id,
+                itemId: physicalItem.id,
+                row: {
+                    ...physicalItem,
+                    physical_stock_in_case: split.cases,
+                    physical_stock_in_pcs: split.loose,
+                    total_physical_stock_in_pcs: split.total,
+                    total_value: totalValue,
+                    stock_update_date: new Date().toISOString().slice(0, 10),
+                },
+                sourceType: 'sale',
+                sourceLabel,
+                changeType: 'update',
+            });
+            touchedImportIds.add(physicalItem.import_id);
+        }
+
+        for (const importId of touchedImportIds) {
+            await PhysicalStockModel.recalculateImportTotals(connection, importId);
+        }
+    }
 }
 
 export default PhysicalStockModel;

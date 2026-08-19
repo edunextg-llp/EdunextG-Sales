@@ -1123,6 +1123,39 @@ class StaffModel {
 
             if (status === 'cancelled') {
                 if (currentStatus !== 'cancelled') {
+                    const [saleRows] = await connection.execute(
+                        `SELECT COALESCE(c.name, '') AS company_name
+                         FROM staff_sales ss
+                         LEFT JOIN staff s ON s.id = ss.staff_id
+                         LEFT JOIN companies c ON c.id = s.company_id
+                         WHERE ss.id = ? LIMIT 1`,
+                        [saleId]
+                    );
+                    const [saleItems] = await connection.execute(
+                        `SELECT product_erp_id, product_name, product_division, variant_name, qty, rate
+                         FROM staff_sale_items WHERE sale_id = ? ORDER BY sort_order ASC, id ASC`,
+                        [saleId]
+                    );
+
+                    const itemsByCompany = new Map();
+                    for (const item of saleItems) {
+                        const companyName = String(item.product_division || saleRows[0]?.company_name || '').trim();
+                        if (!companyName) {
+                            throw new Error(`Company could not be determined for cancelled product ${item.product_erp_id}.`);
+                        }
+                        if (!itemsByCompany.has(companyName)) itemsByCompany.set(companyName, []);
+                        itemsByCompany.get(companyName).push(item);
+                    }
+
+                    for (const [companyName, items] of itemsByCompany.entries()) {
+                        await PhysicalStockModel.restoreStockForCompany(
+                            connection,
+                            companyName,
+                            items,
+                            `Full Bill Cancellation #${saleId}`
+                        );
+                    }
+
                     if (statusDate) {
                         await connection.execute(
                             `INSERT INTO staff_sale_status_history (sale_id, status, changed_at)

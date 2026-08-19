@@ -34,6 +34,7 @@ import ChalanReturn from "layouts/chalan/return";
 // import Reports from "layouts/reports";
 import DmsStock from "layouts/dms-stock";
 import DmsPurchaseHistory from "layouts/dms-purchase-history";
+import ExpiryItems from "layouts/expiry-items";
 import AddSeller from "layouts/add-seller";
 import AddItem from "layouts/add-item";
 import CurrentStock from "layouts/current-stock";
@@ -126,6 +127,17 @@ const routes = [
         icon: <Icon fontSize="small">history</Icon>,
         route: "/dms-purchase-history",
         component: <DmsPurchaseHistory />,
+      },
+
+      {
+        type: "collapse",
+        name: "Expiry Items",
+        key: "expiry-items",
+        icon: <Icon fontSize="small">event_busy</Icon>,
+        route: "/expiry-items",
+        component: <ExpiryItems />,
+        allowedRoles: ["admin", "packaging_staff", "delivery_boy"],
+        requiredPermission: "item_list",
       },
 
       {

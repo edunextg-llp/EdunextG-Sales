@@ -1240,6 +1240,7 @@ function DmsStock() {
               </MDBox>
             </Card>
           </Grid>
+
         </Grid>
       </MDBox>
 

@@ -133,8 +133,9 @@ class PaymentModel {
             lastMode = payment.payment_mode;
         }
 
-        // Balance = invoice price minus money received (cancellations are logged only, not deducted).
-        const balanceAmount = Math.max(0, Math.round((price - paidAmount) * 100) / 100);
+        const totalCancelled = await OrderCancellationModel.getTotalCancelledAmount(connection, saleId);
+        const effectivePrice = Math.max(0, Math.round((price - totalCancelled) * 100) / 100);
+        const balanceAmount = Math.max(0, Math.round((effectivePrice - paidAmount) * 100) / 100);
         const paymentMode =
             balanceAmount === 0
                 ? lastMode
@@ -230,7 +231,7 @@ class PaymentModel {
         try {
             await connection.beginTransaction();
 
-            const price = await PaymentModel.getSalePrice(connection, saleId);
+            const price = await PaymentModel.getEffectiveSalePrice(connection, saleId);
             if (price === null) {
                 const err = new Error('SALE_NOT_FOUND');
                 throw err;
@@ -311,7 +312,7 @@ class PaymentModel {
                 throw err;
             }
 
-            const price = await PaymentModel.getSalePrice(connection, saleId);
+            const price = await PaymentModel.getEffectiveSalePrice(connection, saleId);
             if (price === null) {
                 const err = new Error('SALE_NOT_FOUND');
                 throw err;
@@ -367,7 +368,7 @@ class PaymentModel {
         try {
             await connection.beginTransaction();
 
-            const price = await PaymentModel.getSalePrice(connection, saleId);
+            const price = await PaymentModel.getEffectiveSalePrice(connection, saleId);
             if (price === null) {
                 const err = new Error('SALE_NOT_FOUND');
                 throw err;

@@ -68,6 +68,7 @@ function Delivered() {
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCompanyId, setSelectedCompanyId] = useState("");
   const [selectedStaffId, setSelectedStaffId] = useState("");
+  const [selectedArea, setSelectedArea] = useState("");
   const [cancelRangeStart, setCancelRangeStart] = useState("");
   const [cancelRangeEnd, setCancelRangeEnd] = useState("");
   const [deliveryRangeStart, setDeliveryRangeStart] = useState("");
@@ -170,6 +171,7 @@ function Delivered() {
     searchQuery,
     selectedCompanyId,
     selectedStaffId,
+    selectedArea,
     cancelRangeStart,
     cancelRangeEnd,
     deliveryRangeStart,
@@ -220,9 +222,16 @@ function Delivered() {
   const selectedStaffName =
     staffOptions.find((staff) => staff.id === Number(selectedStaffId))?.name || "";
 
+  const areaOptions = useMemo(() => [...new Set(cancelledSalesData
+    .filter((row) => !selectedCompanyId || getCompanyIds(row).includes(Number(selectedCompanyId)))
+    .filter((row) => !selectedStaffId || Number(row.staff_id) === Number(selectedStaffId))
+    .map((row) => row.location_name)
+    .filter(Boolean))].sort(), [cancelledSalesData, selectedCompanyId, selectedStaffId]);
+
   const handleCompanyChange = (value) => {
     setSelectedCompanyId(value);
     setSelectedStaffId("");
+    setSelectedArea("");
   };
 
   const matchesDeliveryDateRange = (row) => {
@@ -265,6 +274,9 @@ function Delivered() {
       return false;
     }
     if (selectedStaffId && Number(row.staff_id) !== Number(selectedStaffId)) {
+      return false;
+    }
+    if (selectedArea && row.location_name !== selectedArea) {
       return false;
     }
 
@@ -318,6 +330,7 @@ function Delivered() {
   );
   const reportCompanyLabel = selectedCompanyName || "All Companies";
   const reportStaffLabel = selectedStaffName || "All Staff";
+  const reportAreaLabel = selectedArea || "All Areas";
   const reportRangeLabel =
     cancelRangeStart || cancelRangeEnd
       ? `${cancelRangeStart ? formatDate(cancelRangeStart) : "Start"} to ${cancelRangeEnd ? formatDate(cancelRangeEnd) : "Today"
@@ -417,6 +430,7 @@ function Delivered() {
 
   const staffCancelSummary = buildSummary(cancelledSales, (row) => row.staff_name || "Unknown Staff");
   const companyCancelSummary = buildSummary(cancelledSales, (row) => row.company_name || "Unknown Company");
+  const areaCancelSummary = buildSummary(cancelledSales, (row) => row.location_name || "Unknown Area");
   const rangeCancelSummary = buildSummary(cancelledSales, (row) =>
     formatDate(row.delivery_date || row.status_updated_at)
   );
@@ -500,7 +514,7 @@ function Delivered() {
             th, td { border: 1px solid #d1d5db; padding: 7px; text-align: left; vertical-align: top; }
             th { background: #fef2f2; font-weight: 700; color: #7f1d1d; }
             .right { text-align: right; white-space: nowrap; }
-            .summary-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; margin-bottom: 16px; }
+            .summary-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; margin-bottom: 16px; }
             .summary-block { page-break-inside: avoid; }
             .empty { padding: 24px; text-align: center; color: #6b7280; border: 1px solid #d1d5db; }
             @media print { body { margin: 12mm; } .summary-grid { display: block; } }
@@ -508,10 +522,11 @@ function Delivered() {
         </head>
         <body>
           <h1>Cancelled Invoice Report</h1>
-          <div class="sub">Staff-wise, company-wise, and date-range-wise cancelled invoice totals.</div>
+          <div class="sub">Company-wise, staff-wise, area-wise, and date-wise cancelled invoice totals.</div>
           <div class="meta">
             <div><strong>Company:</strong> ${escapeHtml(reportCompanyLabel)}</div>
             <div><strong>Staff:</strong> ${escapeHtml(reportStaffLabel)}</div>
+            <div><strong>Area:</strong> ${escapeHtml(reportAreaLabel)}</div>
             <div><strong>Range:</strong> ${escapeHtml(reportRangeLabel)}</div>
             <div><strong>Generated:</strong> ${escapeHtml(new Date().toLocaleString("en-GB"))}</div>
           </div>
@@ -519,6 +534,7 @@ function Delivered() {
           <div class="summary-grid">
             ${renderSummaryTable("Staff Wise Total", "Staff Name", staffCancelSummary)}
             ${renderSummaryTable("Company Wise Total", "Company Name", companyCancelSummary)}
+            ${renderSummaryTable("Area Wise Total", "Area Name", areaCancelSummary)}
             ${renderSummaryTable("Range Wise Total", "Cancel Date", rangeCancelSummary)}
           </div>
           <h2>Cancelled Invoice Details</h2>
@@ -561,6 +577,11 @@ function Delivered() {
     csv += "\n\nReport Type,Name,Cancel Count,Cancel Amount\n";
     csv += companyCancelSummary
       .map((row) => `Company Wise,${csvValue(row.name)},${row.count},${row.amount.toFixed(2)}`)
+      .join("\n");
+
+    csv += "\n\nReport Type,Area,Cancel Count,Cancel Amount\n";
+    csv += areaCancelSummary
+      .map((row) => `Area Wise,${csvValue(row.name)},${row.count},${row.amount.toFixed(2)}`)
       .join("\n");
 
     csv += "\n\nReport Type,Date,Cancel Count,Cancel Amount\n";
@@ -678,7 +699,7 @@ function Delivered() {
               </MDBox>
               <MDBox pb={3} px={3}>
                 <Grid container spacing={3} mb={3}>
-                  <Grid item xs={12} md={4}>
+                  <Grid item xs={12} md={activeTab === "cancelled" ? 2 : 4}>
                     <MDInput
                       type="text"
                       label="Search by Outlet Name, Area, ID, Staff Name, Sale ID, or Invoice No."
@@ -739,7 +760,10 @@ function Delivered() {
                             labelId="cancel-page-staff-label"
                             value={selectedStaffId}
                             label="Staff"
-                            onChange={(e) => setSelectedStaffId(e.target.value)}
+                            onChange={(e) => {
+                              setSelectedStaffId(e.target.value);
+                              setSelectedArea("");
+                            }}
                             sx={{ height: 44 }}
                           >
                             <MenuItem value="">All Staff</MenuItem>
@@ -748,6 +772,21 @@ function Delivered() {
                                 {staff.name}
                               </MenuItem>
                             ))}
+                          </Select>
+                        </FormControl>
+                      </Grid>
+                      <Grid item xs={12} md={2}>
+                        <FormControl size="small" fullWidth>
+                          <InputLabel id="cancel-page-area-label">Area</InputLabel>
+                          <Select
+                            labelId="cancel-page-area-label"
+                            value={selectedArea}
+                            label="Area"
+                            onChange={(e) => setSelectedArea(e.target.value)}
+                            sx={{ height: 44 }}
+                          >
+                            <MenuItem value="">All Areas</MenuItem>
+                            {areaOptions.map((area) => <MenuItem key={area} value={area}>{area}</MenuItem>)}
                           </Select>
                         </FormControl>
                       </Grid>
@@ -1164,7 +1203,7 @@ function Delivered() {
         <DialogTitle>Cancelled Invoice Report</DialogTitle>
         <DialogContent dividers>
           <Grid container spacing={2} mb={2}>
-            <Grid item xs={12} md={3}>
+            <Grid item xs={12} md={2}>
               <FormControl size="small" fullWidth>
                 <InputLabel id="cancel-company-filter-label">Company</InputLabel>
                 <Select
@@ -1183,14 +1222,17 @@ function Delivered() {
                 </Select>
               </FormControl>
             </Grid>
-            <Grid item xs={12} md={3}>
+            <Grid item xs={12} md={2}>
               <FormControl size="small" fullWidth>
                 <InputLabel id="cancel-staff-filter-label">Staff</InputLabel>
                 <Select
                   labelId="cancel-staff-filter-label"
                   value={selectedStaffId}
                   label="Staff"
-                  onChange={(e) => setSelectedStaffId(e.target.value)}
+                  onChange={(e) => {
+                    setSelectedStaffId(e.target.value);
+                    setSelectedArea("");
+                  }}
                   sx={{ height: 44 }}
                 >
                   <MenuItem value="">All Staff</MenuItem>
@@ -1202,7 +1244,16 @@ function Delivered() {
                 </Select>
               </FormControl>
             </Grid>
-            <Grid item xs={12} md={3}>
+            <Grid item xs={12} md={2}>
+              <FormControl size="small" fullWidth>
+                <InputLabel id="cancel-area-filter-label">Area</InputLabel>
+                <Select labelId="cancel-area-filter-label" value={selectedArea} label="Area" onChange={(e) => setSelectedArea(e.target.value)} sx={{ height: 44 }}>
+                  <MenuItem value="">All Areas</MenuItem>
+                  {areaOptions.map((area) => <MenuItem key={area} value={area}>{area}</MenuItem>)}
+                </Select>
+              </FormControl>
+            </Grid>
+            <Grid item xs={12} md={2}>
               <MDInput
                 type="date"
                 label="Cancel From"
@@ -1212,7 +1263,7 @@ function Delivered() {
                 onChange={(e) => setCancelRangeStart(e.target.value)}
               />
             </Grid>
-            <Grid item xs={12} md={3}>
+            <Grid item xs={12} md={2}>
               <MDInput
                 type="date"
                 label="Cancel To"
@@ -1225,7 +1276,7 @@ function Delivered() {
           </Grid>
           <MDBox display="flex" justifyContent="space-between" alignItems="center" mb={2} flexWrap="wrap" gap={1}>
             <MDTypography variant="body2" color="text">
-              {reportCompanyLabel} / {reportStaffLabel} / {reportRangeLabel}
+              {reportCompanyLabel} / {reportStaffLabel} / {reportAreaLabel} / {reportRangeLabel}
             </MDTypography>
             <MDTypography variant="h6" color="error" fontWeight="bold">
               Total Cancel: {cancelledTotal} | Amount: Rs. {cancelledAmount.toFixed(2)}
@@ -1235,9 +1286,10 @@ function Delivered() {
             {[
               { title: "Staff Wise Total", rows: staffCancelSummary },
               { title: "Company Wise Total", rows: companyCancelSummary },
+              { title: "Area Wise Total", rows: areaCancelSummary },
               { title: "Range Wise Total", rows: rangeCancelSummary },
             ].map((section) => (
-              <Grid item xs={12} md={4} key={section.title}>
+              <Grid item xs={12} md={6} key={section.title}>
                 <MDBox p={1.5} borderRadius="lg" sx={{ border: "1px solid #fecaca", backgroundColor: "#fff7f7" }}>
                   <MDTypography variant="button" color="error" fontWeight="bold">
                     {section.title}

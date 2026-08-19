@@ -142,6 +142,7 @@ function UpdatePayment() {
   const [activeCreditPayment, setActiveCreditPayment] = useState(null);
   const [deliveryBoys, setDeliveryBoys] = useState([]);
   const [cancelDialogSale, setCancelDialogSale] = useState(null);
+  const [cancellingFullBillId, setCancellingFullBillId] = useState(null);
   const [cancelForm, setCancelForm] = useState({
     selectedItemId: "",
     productName: "",
@@ -590,6 +591,41 @@ function UpdatePayment() {
     }
   };
 
+  const handleCancelFullBill = async (sale) => {
+    if (!sale?.id || cancellingFullBillId) return;
+
+    const invoiceLabel = sale.invoice_number || sale.sticker_number || sale.id;
+    const confirmed = window.confirm(
+      `Cancel the complete bill ${invoiceLabel} for ${sale.outlet_name || "this outlet"}?\n\n` +
+      "Click OK to move this bill to Delivered → Cancelled Items. This action cancels the full invoice."
+    );
+    if (!confirmed) return;
+
+    setCancellingFullBillId(sale.id);
+    try {
+      const response = await fetch(`${API}/staff/sales/${sale.id}/packaging`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          packagingStatus: "cancelled",
+          expectedStatus: sale.packaging_status || "delivered",
+          statusDate: getTodayLocalDate(),
+        }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || "Failed to cancel the full bill.");
+
+      setSalesData((current) => current.filter((entry) => entry.id !== sale.id));
+      if (paymentDialogSale?.id === sale.id) closePaymentDialog();
+      window.alert(`Bill ${invoiceLabel} was cancelled, its items were restored to stock, and it was moved to Delivered → Cancelled Items.`);
+    } catch (cancelError) {
+      window.alert(cancelError.message);
+      fetchSales();
+    } finally {
+      setCancellingFullBillId(null);
+    }
+  };
+
   const calculateCancelAmount = (item, cancelQty) => {
     const orderedQty = Number(item?.qty) || 0;
     const rate = Number(item?.rate) || 0;
@@ -764,6 +800,8 @@ function UpdatePayment() {
             outletName: cancelDialogSale.outlet_name,
             invoiceNumber: cancelDialogSale.invoice_number,
             productName: productName.trim(),
+            saleItemId: selectedCancelItem?.id || null,
+            productErpId: selectedCancelItem?.product_erp_id || "",
             productQty: parsedQty,
             amount: parsedAmount,
             reason,
@@ -773,7 +811,7 @@ function UpdatePayment() {
 
       if (response.ok) {
         const data = await response.json().catch(() => ({}));
-        alert("Order cancellation logged successfully.");
+        alert("Order cancellation logged, balance reduced, and stock restored successfully.");
         closeAddCancelDialog();
         if (data.summary) {
           setSalesData((prev) =>
@@ -1553,6 +1591,22 @@ function UpdatePayment() {
                                         <Icon fontSize="small">cancel</Icon>
                                       </MDButton>
                                     </Tooltip>
+                                    {Number(sale.payment_count || 0) === 0 && (
+                                      <Tooltip title="Cancel Full Bill">
+                                        <MDButton
+                                          variant="outlined"
+                                          color="error"
+                                          size="small"
+                                          iconOnly
+                                          onClick={() => handleCancelFullBill(sale)}
+                                          disabled={cancellingFullBillId === sale.id}
+                                        >
+                                          {cancellingFullBillId === sale.id
+                                            ? <CircularProgress size={16} color="inherit" />
+                                            : <Icon fontSize="small">cancel_presentation</Icon>}
+                                        </MDButton>
+                                      </Tooltip>
+                                    )}
                                   </MDBox>
                                 </TableCell>
                               </TableRow>

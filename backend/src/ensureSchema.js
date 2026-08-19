@@ -1336,6 +1336,8 @@ export async function ensureSchema() {
             CREATE TABLE IF NOT EXISTS order_cancellations (
                 id INT AUTO_INCREMENT PRIMARY KEY,
                 sale_id INT NULL,
+                sale_item_id INT NULL,
+                product_erp_id VARCHAR(100) NULL,
                 outlet_name VARCHAR(255) NOT NULL,
                 invoice_number VARCHAR(255) NOT NULL,
                 product_name VARCHAR(255) NOT NULL,
@@ -1346,6 +1348,8 @@ export async function ensureSchema() {
                 FOREIGN KEY (sale_id) REFERENCES staff_sales(id) ON DELETE SET NULL
             );
         `);
+        await tryQuery(connection, 'ALTER TABLE order_cancellations ADD COLUMN sale_item_id INT NULL', 'sale item on order cancellation');
+        await tryQuery(connection, 'ALTER TABLE order_cancellations ADD COLUMN product_erp_id VARCHAR(100) NULL', 'product ERP on order cancellation');
         await tryQuery(connection, 'ALTER TABLE order_cancellations ADD COLUMN reason VARCHAR(255) NULL', 'order cancellation reason');
         await tryQuery(connection, 'ALTER TABLE order_cancellations ADD COLUMN product_qty DECIMAL(10, 2) NULL', 'order cancellation product qty');
 

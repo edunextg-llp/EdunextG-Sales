@@ -8,6 +8,7 @@ import PurchaseSellerModel from '../models/purchaseSellerModel.js';
 import SellerItemModel from '../models/sellerItemModel.js';
 import PurchaseModel from '../models/purchaseModel.js';
 import OrderCancellationModel from '../models/orderCancellationModel.js';
+import PhysicalStockModel from '../models/physicalStockModel.js';
 import PackagingRemarkModel from '../models/packagingRemarkModel.js';
 import DeliveryCollectionModel from '../models/deliveryCollectionModel.js';
 import db from '../config/db.js';
@@ -3059,7 +3060,7 @@ export const updatePaymentMode = async (req, res) => {
 export const logOrderCancellation = async (req, res) => {
     try {
         const { saleId } = req.params;
-        const { outletName, invoiceNumber, productName, productQty, productSize, amount, reason } = req.body;
+        const { outletName, invoiceNumber, productName, productErpId, saleItemId, productQty, productSize, amount, reason } = req.body;
         const qtyValue = productQty ?? productSize;
 
         if (!outletName) {
@@ -3110,8 +3111,35 @@ export const logOrderCancellation = async (req, res) => {
                 });
             }
 
+            let saleItem = null;
+            if (saleItemId) {
+                const [itemRows] = await connection.execute(
+                    `SELECT id, sale_id, product_erp_id, product_name, product_division, variant_name, qty, rate
+                     FROM staff_sale_items WHERE id = ? AND sale_id = ? LIMIT 1`,
+                    [saleItemId, saleId]
+                );
+                saleItem = itemRows[0] || null;
+                if (!saleItem) {
+                    await connection.rollback();
+                    return res.status(400).json({ error: 'Selected sale item was not found.' });
+                }
+
+                const [cancelledQtyRows] = await connection.execute(
+                    `SELECT COALESCE(SUM(product_qty), 0) AS cancelled_qty
+                     FROM order_cancellations WHERE sale_id = ? AND sale_item_id = ?`,
+                    [saleId, saleItem.id]
+                );
+                const remainingQty = Math.max(0, Number(saleItem.qty) - Number(cancelledQtyRows[0]?.cancelled_qty || 0));
+                if (qtyValidation.value > remainingQty + 0.001) {
+                    await connection.rollback();
+                    return res.status(400).json({ error: `Cancellation qty exceeds remaining sold qty (${remainingQty} left).` });
+                }
+            }
+
             const cancellationId = await OrderCancellationModel.create({
                 saleId,
+                saleItemId: saleItem?.id || null,
+                productErpId: saleItem?.product_erp_id || productErpId || null,
                 outletName,
                 invoiceNumber,
                 productName,
@@ -3119,6 +3147,24 @@ export const logOrderCancellation = async (req, res) => {
                 amount: amountValidation.value,
                 reason: String(reason).trim().slice(0, 255),
             }, connection);
+
+            if (saleItem) {
+                const [companyRows] = await connection.execute(
+                    `SELECT c.name AS company_name
+                     FROM staff_sales ss
+                     LEFT JOIN staff s ON s.id = ss.staff_id
+                     LEFT JOIN companies c ON c.id = s.company_id
+                     WHERE ss.id = ? LIMIT 1`,
+                    [saleId]
+                );
+                const companyName = String(saleItem.product_division || companyRows[0]?.company_name || '').trim();
+                await PhysicalStockModel.restoreStockForCompany(
+                    connection,
+                    companyName,
+                    [{ ...saleItem, qty: qtyValidation.value }],
+                    `Cancelled Order #${cancellationId}`
+                );
+            }
 
             await PaymentModel.recalculateSaleTotals(connection, saleId);
             await connection.commit();
