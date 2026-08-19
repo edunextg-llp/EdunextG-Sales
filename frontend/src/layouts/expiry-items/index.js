@@ -48,6 +48,7 @@ const expiryDetails = (value) => {
 
 function ExpiryItems() {
   const [imports, setImports] = useState([]);
+  const [selectedCompanyId, setSelectedCompanyId] = useState("");
   const [selectedImportId, setSelectedImportId] = useState("");
   const [stockImport, setStockImport] = useState(null);
   const [items, setItems] = useState([]);
@@ -81,6 +82,26 @@ function ExpiryItems() {
       .finally(() => setLoading(false));
   }, [selectedImportId]);
 
+  const companyOptions = useMemo(() => {
+    const companies = new Map();
+    imports.forEach((entry) => {
+      if (entry.company_id && entry.company_name) companies.set(String(entry.company_id), entry.company_name);
+    });
+    return [...companies.entries()].map(([id, name]) => ({ id, name })).sort((a, b) => a.name.localeCompare(b.name));
+  }, [imports]);
+
+  const companyImports = useMemo(() => selectedCompanyId
+    ? imports.filter((entry) => String(entry.company_id) === selectedCompanyId)
+    : imports, [imports, selectedCompanyId]);
+
+  const handleCompanyChange = (companyId) => {
+    setSelectedCompanyId(companyId);
+    const latestCompanyImport = companyId
+      ? imports.find((entry) => String(entry.company_id) === String(companyId))
+      : null;
+    setSelectedImportId(latestCompanyImport ? String(latestCompanyImport.id) : "");
+  };
+
   const expiryItems = useMemo(() => items
     .filter((item) => item.expiry_date)
     .map((item) => ({ ...item, expiry: expiryDetails(item.expiry_date) }))
@@ -112,11 +133,19 @@ function ExpiryItems() {
               </MDBox>
               <MDBox px={3} pb={3}>
                 <Grid container spacing={2} mb={2} alignItems="center">
-                  <Grid item xs={12} md={4}>
+                  <Grid item xs={12} md={3}>
+                    <FormControl size="small" fullWidth>
+                      <Select displayEmpty value={selectedCompanyId} onChange={(event) => handleCompanyChange(event.target.value)} sx={{ height: 44, backgroundColor: "#fff" }}>
+                        <MenuItem value="">All Companies</MenuItem>
+                        {companyOptions.map((company) => <MenuItem key={company.id} value={company.id}>{company.name}</MenuItem>)}
+                      </Select>
+                    </FormControl>
+                  </Grid>
+                  <Grid item xs={12} md={3}>
                     <FormControl size="small" fullWidth>
                       <Select displayEmpty value={selectedImportId} onChange={(event) => setSelectedImportId(event.target.value)} sx={{ height: 44, backgroundColor: "#fff" }}>
-                        <MenuItem value="">Latest DMS Upload</MenuItem>
-                        {imports.map((entry) => (
+                        {!selectedCompanyId && <MenuItem value="">Latest DMS Upload</MenuItem>}
+                        {companyImports.map((entry) => (
                           <MenuItem key={entry.id} value={String(entry.id)}>
                             {formatDate(entry.upload_date)}{entry.company_name ? ` — ${entry.company_name}` : ""}{entry.invoice_number ? ` — Inv: ${entry.invoice_number}` : ""}
                           </MenuItem>
