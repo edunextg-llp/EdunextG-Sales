@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 
 import Autocomplete from "@mui/material/Autocomplete";
 import Card from "@mui/material/Card";
@@ -219,6 +219,15 @@ function PhysicalStock() {
   const [uploadModalOpen, setUploadModalOpen] = useState(false);
   const [uploadDmsImportFilter, setUploadDmsImportFilter] = useState("");
   const [manualModalOpen, setManualModalOpen] = useState(false);
+  const [bulkEditOpen, setBulkEditOpen] = useState(false);
+  const [bulkEditRows, setBulkEditRows] = useState([]);
+  const [bulkEditLoading, setBulkEditLoading] = useState(false);
+  const [bulkEditTotal, setBulkEditTotal] = useState(0);
+  const [bulkEditSearch, setBulkEditSearch] = useState("");
+  const deferredBulkEditSearch = useDeferredValue(bulkEditSearch);
+  const [bulkEditDate, setBulkEditDate] = useState("");
+  const bulkEditDateRef = useRef("");
+  const bulkEditLoadTokenRef = useRef(0);
   const [manualDmsImportFilter, setManualDmsImportFilter] = useState("");
   const [selectedProduct, setSelectedProduct] = useState(null);
   const [stockForm, setStockForm] = useState(emptyStockForm);
@@ -234,9 +243,8 @@ function PhysicalStock() {
   const [loadingHistory, setLoadingHistory] = useState(false);
   const [historyError, setHistoryError] = useState("");
 
-  const authHeaders = {
-    Authorization: `Bearer ${localStorage.getItem("token")}`,
-  };
+  const authToken = localStorage.getItem("auth_token") || sessionStorage.getItem("auth_token");
+  const authHeaders = authToken ? { Authorization: `Bearer ${authToken}` } : {};
 
   const handleApprove = async () => {
     if (!dmsImportId || !selectedApproveItem) return;
@@ -422,6 +430,120 @@ function PhysicalStock() {
       setMessage(`Editing ${item.product_name}. Update the quantity and save.`);
     } catch (editError) {
       setError(editError.message);
+    }
+  };
+
+  const openBulkPhysicalStockEdit = async () => {
+    if (!dmsImportId) {
+      setError("Please select a company first.");
+      return;
+    }
+    try {
+      setError("");
+      const preparedRows = items.map((item, itemIndex) => ({
+        ...item,
+        bulkRowIndex: itemIndex,
+        physicalStockInCase: String(item.physical_stock?.physical_stock_in_case ?? item.current_stock_in_case ?? 0),
+        physicalStockInPcs: String(item.physical_stock?.physical_stock_in_pcs ?? item.current_stock_in_pcs ?? 0),
+      }));
+      const loadToken = bulkEditLoadTokenRef.current + 1;
+      bulkEditLoadTokenRef.current = loadToken;
+      const existingDates = [...new Set(preparedRows.map((row) => (
+        String(row.expiry_date || row.expired_stock_date || "").slice(0, 10)
+      )).filter(Boolean))];
+      const sharedDate = existingDates.length === 1 ? existingDates[0] : "";
+      bulkEditDateRef.current = sharedDate;
+      setBulkEditDate(sharedDate);
+      setBulkEditTotal(preparedRows.length);
+      setBulkEditSearch("");
+      setBulkEditRows(preparedRows.slice(0, 1));
+      setBulkEditLoading(preparedRows.length > 1);
+      setBulkEditOpen(true);
+
+      let nextIndex = 1;
+      const appendNextProducts = () => {
+        if (bulkEditLoadTokenRef.current !== loadToken) return;
+        const nextRows = preparedRows.slice(nextIndex, nextIndex + 4);
+        if (!nextRows.length) {
+          setBulkEditLoading(false);
+          return;
+        }
+        setBulkEditRows((current) => [
+          ...current,
+          ...nextRows.map((row) => bulkEditDateRef.current
+            ? { ...row, expiry_date: bulkEditDateRef.current, expired_stock_date: bulkEditDateRef.current }
+            : row),
+        ]);
+        nextIndex += nextRows.length;
+        window.setTimeout(appendNextProducts, 0);
+      };
+      window.setTimeout(appendNextProducts, 0);
+    } catch (loadError) {
+      setError(loadError.message);
+    }
+  };
+
+  const closeBulkPhysicalStockEdit = () => {
+    bulkEditLoadTokenRef.current += 1;
+    setBulkEditLoading(false);
+    setBulkEditSearch("");
+    setBulkEditDate("");
+    bulkEditDateRef.current = "";
+    setBulkEditOpen(false);
+  };
+
+  const applyBulkEditDate = (value) => {
+    bulkEditDateRef.current = value;
+    setBulkEditDate(value);
+    setBulkEditRows((rows) => rows.map((row) => ({
+      ...row,
+      expiry_date: value,
+      expired_stock_date: value,
+    })));
+  };
+
+  const visibleBulkEditRows = useMemo(() => {
+    const query = deferredBulkEditSearch.trim().toLowerCase();
+    if (!query) return bulkEditRows;
+    return bulkEditRows.filter((item) => [
+      item.product_erp_id,
+      item.product_name,
+      item.product_division,
+      item.variant_name,
+    ].some((value) => String(value || "").toLowerCase().includes(query)));
+  }, [bulkEditRows, deferredBulkEditSearch]);
+
+  const updateBulkEditRow = (index, field, value) => {
+    setBulkEditRows((rows) => rows.map((row, rowIndex) => rowIndex === index ? { ...row, [field]: value } : row));
+  };
+
+  const saveBulkPhysicalStock = async () => {
+    if (!dmsImportId || !bulkEditRows.length) return;
+    setSavingManual(true);
+    setError("");
+    try {
+      const response = await fetch(`${API}/staff/physical-stock/manual`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...authHeaders },
+        body: JSON.stringify({
+          dmsImportId,
+          items: bulkEditRows.map((item) => ({
+            productErpId: item.product_erp_id,
+            physicalStockInCase: item.physicalStockInCase,
+            physicalStockInPcs: item.physicalStockInPcs,
+            expiredStockDate: item.expiry_date || item.expired_stock_date || "",
+          })),
+        }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "Failed to update physical stock.");
+      await fetchPhysicalStock(companyFilter);
+      setBulkEditOpen(false);
+      setMessage(data.message || "Physical stock updated successfully.");
+    } catch (saveError) {
+      setError(saveError.message);
+    } finally {
+      setSavingManual(false);
     }
   };
 
@@ -791,6 +913,10 @@ function PhysicalStock() {
                     <Icon sx={{ mr: 1 }}>cloud_upload</Icon>
                     Upload File
                   </MDButton>
+                  <MDButton color="success" variant="gradient" onClick={openBulkPhysicalStockEdit} disabled={!dmsImportId || !items.length}>
+                    <Icon sx={{ mr: 1 }}>edit</Icon>
+                    Edit All Products
+                  </MDButton>
                 </MDBox>
               </MDBox>
               <MDBox px={3} pb={3}>
@@ -902,7 +1028,7 @@ function PhysicalStock() {
                               color="info"
                               variant="text"
                               size="small"
-                              onClick={() => handleEditPhysicalItem(item)}
+                              onClick={openBulkPhysicalStockEdit}
                             >
                               <Icon fontSize="small">edit</Icon>
                             </MDButton>
@@ -1010,6 +1136,89 @@ function PhysicalStock() {
             {uploading ? "Uploading" : "Upload & Calculate"}
           </MDButton>
         </DialogActions>
+      </Dialog>
+
+      <Dialog open={bulkEditOpen} onClose={() => !savingManual && closeBulkPhysicalStockEdit()} fullWidth maxWidth="xl">
+        <DialogTitle sx={{ py: 1, px: 1.5, color: "#1e3a5f", backgroundColor: "#dbeafe", borderBottom: "1px solid #93c5fd" }}>
+          <MDBox display="flex" alignItems="center" justifyContent="space-between" gap={2}>
+            <MDTypography variant="h6" fontWeight="bold" color="dark" sx={{ whiteSpace: "nowrap" }}>
+              Edit Physical Stock — All Products
+            </MDTypography>
+            <MDBox display="flex" alignItems="center" gap={1}>
+              <MDInput
+                type="date"
+                label="Expiry Date (All)"
+                value={bulkEditDate}
+                onChange={(event) => applyBulkEditDate(event.target.value)}
+                InputLabelProps={{ shrink: true }}
+                InputProps={{ sx: { height: 36, backgroundColor: "#fff" } }}
+                sx={{ width: 165, flexShrink: 0 }}
+              />
+              <MDInput
+                placeholder="Search products"
+                value={bulkEditSearch}
+                onChange={(event) => setBulkEditSearch(event.target.value)}
+                InputProps={{
+                  startAdornment: <Icon sx={{ mr: 0.75, color: "#64748b" }}>search</Icon>,
+                  sx: { height: 36, backgroundColor: "#fff" },
+                }}
+                sx={{ width: { xs: 190, sm: 300 }, flexShrink: 0 }}
+              />
+            </MDBox>
+          </MDBox>
+        </DialogTitle>
+        <DialogContent dividers sx={{ p: 0 }}>
+          {bulkEditLoading && (
+            <MDBox px={1.5} py={1} sx={{ backgroundColor: "#eff6ff", borderBottom: "1px solid #bfdbfe" }}>
+              <MDTypography variant="caption" color="info" fontWeight="medium">
+                Showing {bulkEditRows.length} of {bulkEditTotal} products…
+              </MDTypography>
+              <LinearProgress
+                color="info"
+                variant="determinate"
+                value={bulkEditTotal ? (bulkEditRows.length / bulkEditTotal) * 100 : 0}
+                sx={{ mt: 0.5 }}
+              />
+            </MDBox>
+          )}
+          <TableContainer component={Paper} sx={{ maxHeight: "72vh", borderRadius: 0 }}>
+            <Table
+              size="small"
+              sx={{
+                width: `${270 + visibleBulkEditRows.length * 105}px`,
+                minWidth: `${270 + visibleBulkEditRows.length * 105}px`,
+                tableLayout: "fixed",
+                borderCollapse: "collapse",
+              }}
+            >
+              <TableBody>
+                {[
+                  ["SR", "SR NO", (item, index) => index + 1, "header"],
+                  ["1", "Product Erp Id", (item) => item.product_erp_id, "erp"],
+                  ["2", "SKU Name", (item) => item.product_name, "header"],
+                  ["3", "Product Division", (item) => item.product_division, "header"],
+                  ["4", "Variant Name", (item) => item.variant_name],
+                  ["5", "Pcs/Box", (item) => unitFormat(item.pcs_per_box)],
+                  ["6", "MRP", (item) => unitFormat(item.mrp)],
+                  ["", "Price/Pcs", (item) => unitFormat(item.price_per_piece)],
+                  ["", "DATE", (item) => formatExpiredStockDate(item.expiry_date || item.expired_stock_date), "date"],
+                  ["", "Current Stock In Case", (item, index) => <MDInput type="number" inputProps={{ min: 0, step: "any" }} value={item.physicalStockInCase} onChange={(event) => updateBulkEditRow(index, "physicalStockInCase", event.target.value)} sx={{ minWidth: 82, "& .MuiInputBase-root": { height: 28, fontSize: "0.75rem" } }} />, "input"],
+                  ["", "Current Stock In Pcs", (item, index) => <MDInput type="number" inputProps={{ min: 0, step: "any" }} value={item.physicalStockInPcs} onChange={(event) => updateBulkEditRow(index, "physicalStockInPcs", event.target.value)} sx={{ minWidth: 82, "& .MuiInputBase-root": { height: 28, fontSize: "0.75rem" } }} />, "input"],
+                  ["", "TOTAL CURRENT QTY", (item) => unitFormat(calcPhysicalTotals(item, item).totalPhysicalStockInPcs)],
+                  ["", "CURRENT STOCK (B/F-CF)", () => "", "date"],
+                  ["", "Total Value", (item) => money(calcPhysicalTotals(item, item).totalValue || 0), "total"],
+                ].map(([serial, label, value, type]) => (
+                  <TableRow key={label} sx={type === "date" ? { backgroundColor: "#b00000" } : {}}>
+                    <TableCell sx={{ ...tableBodySx, px: 0.5, py: 0.35, fontSize: "0.75rem", lineHeight: 1.1, position: "sticky", left: 0, zIndex: 3, width: 42, minWidth: 42, maxWidth: 42, textAlign: "center", fontWeight: 700, color: type === "date" ? "#fff" : "#000", backgroundColor: type === "date" ? "#b00000" : type === "header" ? "#16dfe3" : "#fff" }}>{serial}</TableCell>
+                    <TableCell sx={{ ...tableBodySx, px: 0.5, py: 0.35, fontSize: "0.75rem", lineHeight: 1.1, position: "sticky", left: 42, zIndex: 3, width: 228, minWidth: 228, maxWidth: 228, textAlign: "center", fontWeight: 700, color: type === "date" ? "#fff" : "#000", backgroundColor: type === "date" ? "#b00000" : type === "header" ? "#16dfe3" : "#fff" }}>{label}</TableCell>
+                    {visibleBulkEditRows.map((item, index) => <TableCell key={item.product_erp_id || index} align="center" sx={{ ...tableBodySx, px: 0.5, py: 0.35, width: 105, minWidth: 105, maxWidth: 105, fontSize: "0.75rem", lineHeight: 1.1, whiteSpace: "normal", overflowWrap: "anywhere", fontWeight: type === "total" ? 700 : 400, backgroundColor: type === "date" ? "#b00000" : type === "header" ? "#16dfe3" : type === "erp" ? "#fff500" : "#fff", color: type === "date" ? "#fff" : "#000" }}>{value(item, type === "input" ? item.bulkRowIndex : index)}</TableCell>)}
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </TableContainer>
+        </DialogContent>
+        <DialogActions sx={{ px: 1.5, py: 1 }}><MDButton size="small" color="secondary" onClick={closeBulkPhysicalStockEdit} disabled={savingManual}>Cancel</MDButton><MDButton size="small" color="success" variant="gradient" onClick={saveBulkPhysicalStock} disabled={savingManual || bulkEditLoading || !bulkEditRows.length}><Icon sx={{ mr: 0.5, fontSize: "0.9rem" }}>save</Icon>{savingManual ? "Saving..." : bulkEditLoading ? "Loading Products..." : "Save All Products"}</MDButton></DialogActions>
       </Dialog>
 
       <Dialog open={manualModalOpen} onClose={closeManualModal} fullWidth maxWidth="lg">

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  Autocomplete, Card, FormControl, Grid, Icon, MenuItem, Select,
+  Autocomplete, Card, Checkbox, FormControl, Grid, Icon, MenuItem, Select,
   Table, TableBody, TableCell, TableContainer, TableHead, TableRow,
 } from "@mui/material";
 
@@ -11,7 +11,10 @@ import MDTypography from "components/MDTypography";
 import DashboardLayout from "examples/LayoutContainers/DashboardLayout";
 import DashboardNavbar from "examples/Navbars/DashboardNavbar";
 import Footer from "examples/Footer";
-import { printPurchaseRequisitionPdf } from "utils/printPurchaseRequisitionPdf";
+import {
+  printPurchaseRequisitionPdf,
+  printPurchaseRequisitionsPdf,
+} from "utils/printPurchaseRequisitionPdf";
 import { useAuth } from "context/AuthContext";
 
 const API = "https://bawarchee.edunextg.co/api";
@@ -74,6 +77,7 @@ function PurchaseRequisition() {
   const [historyDateFilter, setHistoryDateFilter] = useState("");
   const [loadingHistory, setLoadingHistory] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [selectedRequisitionIds, setSelectedRequisitionIds] = useState([]);
 
   useEffect(() => {
     if (isStaff) {
@@ -161,6 +165,36 @@ function PurchaseRequisition() {
     });
     return [...groups.entries()].sort((a, b) => b[0].localeCompare(a[0]));
   }, [savedRequisitions]);
+
+  const visibleRequisitionIds = useMemo(
+    () => savedRequisitions.map((row) => String(row.id || row.requisition_number)),
+    [savedRequisitions]
+  );
+  const allVisibleSelected = visibleRequisitionIds.length > 0
+    && visibleRequisitionIds.every((id) => selectedRequisitionIds.includes(id));
+  const someVisibleSelected = visibleRequisitionIds.some((id) => selectedRequisitionIds.includes(id));
+
+  useEffect(() => {
+    setSelectedRequisitionIds((current) => current.filter((id) => visibleRequisitionIds.includes(id)));
+  }, [visibleRequisitionIds]);
+
+  const toggleRequisition = (id) => {
+    const key = String(id);
+    setSelectedRequisitionIds((current) => (
+      current.includes(key) ? current.filter((value) => value !== key) : [...current, key]
+    ));
+  };
+
+  const toggleAllVisible = () => {
+    setSelectedRequisitionIds(allVisibleSelected ? [] : visibleRequisitionIds);
+  };
+
+  const printSelectedRequisitions = () => {
+    const selected = savedRequisitions.filter((row) => (
+      selectedRequisitionIds.includes(String(row.id || row.requisition_number))
+    ));
+    printPurchaseRequisitionsPdf(selected);
+  };
 
   const chooseCompany = async (value) => {
     setCompanyId(value);
@@ -443,6 +477,15 @@ function PurchaseRequisition() {
                         : "Review queue for all staff requisitions."}
                   </MDTypography>
                 </MDBox>
+                <MDButton
+                  color="info"
+                  variant="gradient"
+                  disabled={!selectedRequisitionIds.length}
+                  onClick={printSelectedRequisitions}
+                >
+                  <Icon sx={{ mr: 0.5 }}>print</Icon>
+                  Print Selected ({selectedRequisitionIds.length})
+                </MDButton>
                 {!isStaff && user?.role === "admin" && <MDBox minWidth={200}>
                   <MDTypography variant="caption" fontWeight="bold">Company</MDTypography>
                   <FormControl fullWidth>
@@ -502,11 +545,24 @@ function PurchaseRequisition() {
                         <TableHead sx={{ display: "table-header-group" }}>
                           <TableRow>
                             {[
-                              "Sr. No.", "Requisition No", ...(!isStaff ? ["Staff", "Company"] : []),
+                              "Select", "Sr. No.", "Requisition No", ...(!isStaff ? ["Staff", "Company"] : []),
                               "Outlet", "Items", "Total Qty", "Amount", "Status", "View",
                               ...(!isStaff && canApproveRequisitions ? ["Approval Action"] : []),
                             ].map((h) => (
-                              <TableCell key={h} sx={{ fontWeight: 700 }}>{h}</TableCell>
+                              <TableCell
+                                key={h}
+                                sx={{ fontWeight: 700 }}
+                                padding={h === "Select" ? "checkbox" : "normal"}
+                              >
+                                {h === "Select" ? (
+                                  <Checkbox
+                                    checked={allVisibleSelected}
+                                    indeterminate={!allVisibleSelected && someVisibleSelected}
+                                    onChange={toggleAllVisible}
+                                    inputProps={{ "aria-label": "Select all visible requisitions" }}
+                                  />
+                                ) : h}
+                              </TableCell>
                             ))}
                           </TableRow>
                         </TableHead>
@@ -515,13 +571,22 @@ function PurchaseRequisition() {
                             <TableRow
                               key={row.id || row.requisition_number}
                               sx={
-                                row.status === "approved"
+                                row.status === "invoiced"
+                                  ? { backgroundColor: "#86b887" }
+                                  : row.status === "approved"
                                   ? { backgroundColor: "#dcfce7" }
                                   : row.status === "cancelled"
                                     ? { backgroundColor: "#fee2e2" }
                                     : {}
                               }
                             >
+                              <TableCell padding="checkbox">
+                                <Checkbox
+                                  checked={selectedRequisitionIds.includes(String(row.id || row.requisition_number))}
+                                  onChange={() => toggleRequisition(row.id || row.requisition_number)}
+                                  inputProps={{ "aria-label": `Select requisition ${row.requisition_number}` }}
+                                />
+                              </TableCell>
                               <TableCell>{index + 1}</TableCell>
                               <TableCell>{row.requisition_number}</TableCell>
                               {!isStaff && <TableCell>{row.staff_name}</TableCell>}

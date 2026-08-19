@@ -121,16 +121,11 @@ const mapLineItems = (items = []) => {
   };
 };
 
-export function printPurchaseRequisitionPdf(requisition) {
-  if (!requisition) {
-    alert("No requisition data available to print.");
-    return;
-  }
-
+const renderPurchaseRequisition = (requisition) => {
   const { rows, totals, payable } = mapLineItems(requisition.items || []);
   const beatRoute = requisition.location_name || requisition.outlet_day || "—";
 
-  const html = ejs.render(purchaseRequisitionPrintTemplate, {
+  return ejs.render(purchaseRequisitionPrintTemplate, {
     requisitionNumber: requisition.requisition_number || "—",
     invoiceDate: formatInvoiceDate(requisition.created_at),
     sellerName: "BAWARCHEE FOOD PACKAGING PRIVATE LIMITED",
@@ -156,6 +151,9 @@ export function printPurchaseRequisitionPdf(requisition) {
     remarks: requisition.company_name ? `Company: ${requisition.company_name}` : "—",
     roundOff: fmt(0),
   });
+};
+
+const openPrintWindow = (html) => {
 
   const printWindow = window.open("", "_blank", "width=1200,height=900");
   if (!printWindow) {
@@ -168,4 +166,35 @@ export function printPurchaseRequisitionPdf(requisition) {
   printWindow.document.close();
   printWindow.focus();
   setTimeout(() => printWindow.print(), 250);
+};
+
+export function printPurchaseRequisitionPdf(requisition) {
+  if (!requisition) {
+    alert("No requisition data available to print.");
+    return;
+  }
+
+  openPrintWindow(renderPurchaseRequisition(requisition));
+}
+
+export function printPurchaseRequisitionsPdf(requisitions = []) {
+  const printable = requisitions.filter(Boolean);
+  if (!printable.length) {
+    alert("Select at least one requisition to print.");
+    return;
+  }
+
+  const rendered = printable.map(renderPurchaseRequisition);
+  const styles = rendered[0].match(/<style>[\s\S]*?<\/style>/i)?.[0] || "";
+  const pages = rendered.map((html) => {
+    const body = html.match(/<body[^>]*>([\s\S]*?)<\/body>/i)?.[1] || html;
+    return `<section class="print-document">${body}</section>`;
+  }).join("");
+  const title = printable.map((row) => row.requisition_number).filter(Boolean).join(", ");
+
+  openPrintWindow(`<!DOCTYPE html><html><head><meta charset="utf-8" />
+    <title>Selected Requisitions - ${title}</title>${styles}
+    <style>.print-document { break-after: page; page-break-after: always; }
+    .print-document:last-child { break-after: auto; page-break-after: auto; }</style>
+    </head><body>${pages}</body></html>`);
 }

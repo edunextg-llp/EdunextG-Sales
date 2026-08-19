@@ -539,6 +539,11 @@ export const addCounter = async (req, res) => {
                     });
                 }
 
+                const priorityValidation = validatePositiveInteger(counter.priorityNumber, `Counter ${i + 1} priority number`);
+                if (!priorityValidation.valid) return res.status(400).json({ error: priorityValidation.error });
+                const operatingHoursValidation = parseOutletOperatingHours(counter.operatingHours, `Counter ${i + 1} operating hours`);
+                if (!operatingHoursValidation.valid) return res.status(400).json({ error: operatingHoursValidation.error });
+
                 if (erpIds.has(normalizedErpId)) {
                     return res.status(400).json({ error: 'Same ERP Id already exists in this entry.' });
                 }
@@ -547,6 +552,8 @@ export const addCounter = async (req, res) => {
                 if (duplicateCounter) {
                     return res.status(400).json({ error: 'Same ERP Id already exists.' });
                 }
+                const duplicatePriority = await StaffModel.findCounterByPriority(id, day, location, priorityValidation.value);
+                if (duplicatePriority) return res.status(400).json({ error: `Priority ${priorityValidation.value} already exists for this location.` });
 
                 erpIds.add(normalizedErpId);
 
@@ -560,6 +567,8 @@ export const addCounter = async (req, res) => {
                     googleLocation,
                     hasGst,
                     gstNumber: hasGst ? gstNumber : null,
+                    priorityNumber: priorityValidation.value,
+                    operatingHours: operatingHoursValidation.value,
                 });
             }
         }
@@ -748,6 +757,62 @@ const normalizeOutletUploadDay = (value) => {
     };
     return days[normalized] || normalizeOutletUploadText(value);
 };
+const OUTLET_OFF_DAYS = new Set(['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']);
+
+const parseOutletOpenTime = (value, fieldName = 'Open time') => {
+    const normalized = normalizeOutletUploadText(value);
+    if (!normalized) {
+        return { valid: true, value: null };
+    }
+    const match = normalized.match(/^(\d{1,2}):(\d{2})(?::\d{2})?$/);
+    if (!match) {
+        return { valid: false, error: `${fieldName} must be in HH:MM format.` };
+    }
+    const hours = Number(match[1]);
+    const minutes = Number(match[2]);
+    if (hours > 23 || minutes > 59) {
+        return { valid: false, error: `${fieldName} must be a valid time.` };
+    }
+    return {
+        valid: true,
+        value: `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:00`,
+    };
+};
+
+const parseOutletOperatingHours = (value, fieldName = 'Operating hours') => {
+    if (value == null || value === '') return { valid: true, value: null };
+    let schedule;
+    try {
+        schedule = typeof value === 'string' ? JSON.parse(value) : value;
+    } catch {
+        return { valid: false, error: `${fieldName} must be valid JSON.` };
+    }
+    if (!schedule || typeof schedule !== 'object' || Array.isArray(schedule)) {
+        return { valid: false, error: `${fieldName} must be a weekly schedule.` };
+    }
+    const normalized = {};
+    for (const day of OUTLET_OFF_DAYS) {
+        const entry = schedule[day];
+        if (!entry) continue;
+        if (Boolean(entry.isOff)) {
+            normalized[day] = { isOff: true };
+            continue;
+        }
+        const parsed = {};
+        for (const field of ['firstHalfStart', 'firstHalfEnd', 'secondHalfStart', 'secondHalfEnd']) {
+            const result = parseOutletOpenTime(entry[field], `${fieldName} ${day}`);
+            if (!result.valid || !result.value) {
+                return { valid: false, error: `${fieldName}: enter both first-half and second-half times for ${day}, or mark it off.` };
+            }
+            parsed[field] = result.value.slice(0, 5);
+        }
+        if (parsed.firstHalfStart >= parsed.firstHalfEnd || parsed.secondHalfStart >= parsed.secondHalfEnd || parsed.firstHalfEnd > parsed.secondHalfStart) {
+            return { valid: false, error: `${fieldName}: ${day} timings are not in order.` };
+        }
+        normalized[day] = { isOff: false, ...parsed };
+    }
+    return { valid: true, value: normalized };
+};
 const parseOutletUploadBoolean = (value) => ['yes', 'y', 'true', '1'].includes(normalizeOutletUploadKey(value));
 
 export const uploadOutletsExcel = async (req, res) => {
@@ -901,6 +966,7 @@ export const downloadOutletsExcel = async (req, res) => {
         const rows = outlets.map((outlet) => ({
             Staff: outlet.staff_name || '',
             Day: outlet.day || '',
+            'Serial No': outlet.serial_no || '',
             'ERP ID': outlet.outlet_erp_id || '',
             'Outlet Name': outlet.outlet_name || '',
             'Contact No': outlet.contact_number || '',
@@ -912,10 +978,13 @@ export const downloadOutletsExcel = async (req, res) => {
             'GST Number': outlet.gst_number || '',
         }));
         const worksheet = xlsx.utils.json_to_sheet(rows, {
-            header: ['Staff', 'Day', 'ERP ID', 'Outlet Name', 'Contact No', 'WhatsApp No', 'Location', 'Address', 'Google Location', 'GST Applicable', 'GST Number'],
+            header: [
+                'Staff', 'Day', 'Serial No', 'ERP ID', 'Outlet Name', 'Contact No', 'WhatsApp No',
+                'Location', 'Address', 'Google Location', 'GST Applicable', 'GST Number',
+            ],
         });
         worksheet['!cols'] = [
-            { wch: 28 }, { wch: 14 }, { wch: 18 }, { wch: 32 }, { wch: 18 }, { wch: 18 },
+            { wch: 28 }, { wch: 14 }, { wch: 10 }, { wch: 18 }, { wch: 32 }, { wch: 18 }, { wch: 18 },
             { wch: 24 }, { wch: 45 }, { wch: 55 }, { wch: 18 }, { wch: 20 },
         ];
 
@@ -1047,6 +1116,7 @@ export const downloadOutletUploadTemplate = async (req, res) => {
             'If GST YES/NO is YES, GST NO is mandatory.',
             'CONTACT and WHATSAPP must contain numbers only.',
             'Google Location must be a Google Maps short share link.',
+            'Serial numbers are assigned automatically in upload order.',
         ].forEach((rule, index) => instructions.addRow([index + 1, rule]));
 
         const file = await workbook.xlsx.writeBuffer();
@@ -1175,6 +1245,7 @@ export const recordSales = async (req, res) => {
             validatedSales.push({
                 outletId: outletValidation.value,
                 invoiceNumber: invoiceValidation.value,
+                requisitionNumber: String(item.requisitionNumber || '').trim(),
                 itemCount: itemCountValidation.value,
                 price: priceValidation.value,
                 deliveryBoyId,
@@ -1314,6 +1385,9 @@ export const recordSales = async (req, res) => {
             || error.message?.includes('No DMS stock upload found')
         ) {
             return res.status(400).json({ error: error.message });
+        }
+        if (error.code === 'REQUISITION_NOT_APPROVED') {
+            return res.status(409).json({ error: error.message });
         }
         if (error.code === 'ER_DUP_ENTRY') {
             return res.status(400).json({
@@ -2605,7 +2679,10 @@ export const fetchSalesByDate = async (req, res) => {
 export const editCounter = async (req, res) => {
     try {
         const { counterId } = req.params;
-        const { outletErpId, outletName, contactNumber, whatsappNumber, address, googleLocation, hasGst, gstNumber } = req.body;
+        const {
+            outletErpId, outletName, contactNumber, whatsappNumber, address, googleLocation,
+            hasGst, gstNumber, serialNo, priorityNumber, operatingHours,
+        } = req.body;
         const existingCounter = await StaffModel.getCounterById(counterId);
         if (!existingCounter) {
             return res.status(404).json({ error: 'Counter not found' });
@@ -2640,11 +2717,29 @@ export const editCounter = async (req, res) => {
             return res.status(400).json({ error: 'GST number is required when GST is enabled.' });
         }
 
+        const priorityValidation = validatePositiveInteger(priorityNumber, 'Priority number');
+        if (!priorityValidation.valid) return res.status(400).json({ error: priorityValidation.error });
+        const operatingHoursValidation = parseOutletOperatingHours(operatingHours, 'Operating hours');
+        if (!operatingHoursValidation.valid) return res.status(400).json({ error: operatingHoursValidation.error });
+
+        let parsedSerialNo = existingCounter.serial_no;
+        if (serialNo !== undefined && serialNo !== null && String(serialNo).trim() !== '') {
+            const serialValidation = validatePositiveInteger(serialNo, 'Serial number');
+            if (!serialValidation.valid) {
+                return res.status(400).json({ error: serialValidation.error });
+            }
+            parsedSerialNo = serialValidation.value;
+        }
+
         const duplicateCounter = await StaffModel.findCounterByErpId(normalizedOutletErpId);
 
         if (duplicateCounter && Number(duplicateCounter.id) !== Number(counterId)) {
             return res.status(400).json({ error: 'Same ERP Id already exists.' });
         }
+        const duplicatePriority = await StaffModel.findCounterByPriority(
+            existingCounter.staff_id, existingCounter.day, existingCounter.location_name, priorityValidation.value, counterId
+        );
+        if (duplicatePriority) return res.status(400).json({ error: `Priority ${priorityValidation.value} already exists for this location.` });
 
         await StaffModel.editCounter(counterId, {
             outletErpId: normalizedOutletErpId,
@@ -2655,6 +2750,9 @@ export const editCounter = async (req, res) => {
             googleLocation: normalizedGoogleLocation,
             hasGst: outletHasGst,
             gstNumber: outletHasGst ? normalizedGstNumber : null,
+            serialNo: parsedSerialNo,
+            priorityNumber: priorityValidation.value,
+            operatingHours: operatingHoursValidation.value,
         });
         res.status(200).json({ message: 'Counter updated successfully' });
     } catch (error) {

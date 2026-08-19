@@ -253,9 +253,22 @@ async function buildPhysicalRowFromDmsProduct(dmsImportId, item) {
         throw error;
     }
 
-    const product = await DmsStockModel.getProductByErpIdInImport(dmsImportId, erpId);
+    let product = await DmsStockModel.getProductByErpIdInImport(dmsImportId, erpId);
     if (!product) {
-        const error = new Error(`Product not found in DMS stock for ERP ID: ${erpId}`);
+        const [masterRows] = await db.execute(
+            `SELECT si.product_erp_id, si.sku_name AS product_name, c.name AS product_division,
+                    si.variant_name, si.pcs_per_box
+             FROM seller_items si
+             INNER JOIN dms_stock_imports dsi ON dsi.company_id = si.company_id
+             LEFT JOIN companies c ON c.id = si.company_id
+             WHERE dsi.id = ? AND LOWER(TRIM(si.product_erp_id)) = LOWER(TRIM(?))
+             LIMIT 1`,
+            [dmsImportId, erpId]
+        );
+        product = masterRows[0] || null;
+    }
+    if (!product) {
+        const error = new Error(`Product is not available for the selected company: ${erpId}`);
         error.statusCode = 404;
         throw error;
     }
@@ -268,8 +281,8 @@ async function buildPhysicalRowFromDmsProduct(dmsImportId, item) {
         'Pcs/Box': product.pcs_per_box,
         'Physical Stock In Case': item.physicalStockInCase ?? 0,
         'Physical Stock In Pcs': item.physicalStockInPcs ?? 0,
-        'Price/Pcs': product.price_per_piece,
-        MRP: product.mrp,
+        'Price/Pcs': product.price_per_piece || 0,
+        MRP: product.mrp || 0,
         'Expired Stock': product.expiry_date || item.expiredStockDate || '',
     });
 }

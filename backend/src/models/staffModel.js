@@ -139,7 +139,17 @@ class StaffModel {
         return rows[0];
     }
 
-    static async addCounter(staffId, day, location, counterData) {
+    static async getMaxSerialNo(staffId, day, locationName, connection = db) {
+        const [rows] = await connection.execute(
+            `SELECT COALESCE(MAX(serial_no), 0) AS max_serial
+             FROM staff_counters
+             WHERE staff_id = ? AND day = ? AND COALESCE(location_name, '') = COALESCE(?, '')`,
+            [staffId, day, locationName || null]
+        );
+        return parseInt(rows[0]?.max_serial, 10) || 0;
+    }
+
+    static async addCounter(staffId, day, location, counterData, connection = db) {
         const {
             outletErpId,
             outletName,
@@ -149,13 +159,23 @@ class StaffModel {
             googleLocation,
             hasGst = false,
             gstNumber = null,
+            serialNo = null,
+            priorityNumber = null,
+            operatingHours = null,
         } = counterData;
         const locationName = String(location || '').trim() || null;
-        await db.execute(
+        let nextSerial = serialNo;
+        if (nextSerial == null || Number.isNaN(Number(nextSerial))) {
+            const maxSerial = await StaffModel.getMaxSerialNo(staffId, day, locationName, connection);
+            nextSerial = maxSerial + 1;
+        }
+
+        await connection.execute(
             `INSERT INTO staff_counters (
                 staff_id, day, location_name, outlet_erp_id, outlet_name,
-                contact_number, whatsapp_number, address, google_location, has_gst, gst_number
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                contact_number, whatsapp_number, address, google_location, has_gst, gst_number,
+                serial_no, priority_number, operating_hours
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
             [
                 staffId,
                 day,
@@ -168,6 +188,9 @@ class StaffModel {
                 googleLocation || null,
                 hasGst ? 1 : 0,
                 gstNumber || null,
+                nextSerial,
+                priorityNumber,
+                operatingHours ? JSON.stringify(operatingHours) : null,
             ]
         );
     }
@@ -205,20 +228,41 @@ class StaffModel {
         return rows[0] || null;
     }
 
+    static async findCounterByPriority(staffId, day, location, priorityNumber, excludeCounterId = null) {
+        const params = [staffId, day, String(location || '').trim() || null, priorityNumber];
+        let excludeClause = '';
+        if (excludeCounterId) {
+            excludeClause = ' AND id <> ?';
+            params.push(excludeCounterId);
+        }
+        const [rows] = await db.execute(
+            `SELECT id FROM staff_counters
+             WHERE staff_id = ? AND day = ? AND COALESCE(location_name, '') = COALESCE(?, '')
+               AND priority_number = ?${excludeClause} LIMIT 1`,
+            params
+        );
+        return rows[0] || null;
+    }
+
     static async addCounters(staffId, day, location, counters) {
         const connection = await db.getConnection();
         try {
             await connection.beginTransaction();
+            const locationName = String(location || '').trim() || null;
+            let nextSerial = await StaffModel.getMaxSerialNo(staffId, day, locationName, connection);
+
             for (const counter of counters) {
+                nextSerial += 1;
                 await connection.execute(
                     `INSERT INTO staff_counters (
                         staff_id, day, location_name, outlet_erp_id, outlet_name,
-                        contact_number, whatsapp_number, address, google_location, has_gst, gst_number
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                        contact_number, whatsapp_number, address, google_location, has_gst, gst_number,
+                        serial_no, priority_number, operating_hours
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
                     [
                         staffId,
                         day,
-                        location,
+                        locationName,
                         counter.outletErpId,
                         counter.outletName,
                         counter.contactNumber,
@@ -227,6 +271,9 @@ class StaffModel {
                         counter.googleLocation || null,
                         counter.hasGst ? 1 : 0,
                         counter.gstNumber || null,
+                        counter.serialNo != null ? counter.serialNo : nextSerial,
+                        counter.priorityNumber || null,
+                        counter.operatingHours ? JSON.stringify(counter.operatingHours) : null,
                     ]
                 );
             }
@@ -241,7 +288,10 @@ class StaffModel {
 
     static async getCounterById(counterId) {
         const [rows] = await db.execute(
-            'SELECT id, staff_id, outlet_erp_id, outlet_name, contact_number, whatsapp_number, location_name, address, google_location, has_gst, gst_number FROM staff_counters WHERE id = ?',
+            `SELECT id, staff_id, day, outlet_erp_id, outlet_name, contact_number, whatsapp_number,
+                    location_name, address, google_location, has_gst, gst_number,
+                    serial_no, priority_number, operating_hours
+             FROM staff_counters WHERE id = ?`,
             [counterId]
         );
         return rows[0] || null;
@@ -257,11 +307,15 @@ class StaffModel {
             googleLocation,
             hasGst = false,
             gstNumber = null,
+            serialNo = null,
+            priorityNumber = null,
+            operatingHours = null,
         } = counterData;
         await db.execute(
             `UPDATE staff_counters
              SET outlet_erp_id = ?, outlet_name = ?, contact_number = ?, whatsapp_number = ?,
-                 address = ?, google_location = ?, has_gst = ?, gst_number = ?
+                 address = ?, google_location = ?, has_gst = ?, gst_number = ?,
+                 serial_no = ?, priority_number = ?, operating_hours = ?
              WHERE id = ?`,
             [
                 outletErpId,
@@ -272,6 +326,9 @@ class StaffModel {
                 googleLocation || null,
                 hasGst ? 1 : 0,
                 gstNumber || null,
+                serialNo,
+                priorityNumber,
+                operatingHours ? JSON.stringify(operatingHours) : null,
                 counterId,
             ]
         );
@@ -404,7 +461,11 @@ class StaffModel {
 
     static async getOutletsForStaffAndDay(staffId, dayName) {
         const [rows] = await db.execute(
-            'SELECT id, outlet_erp_id, outlet_name, contact_number, whatsapp_number, location_name, address, google_location, has_gst, gst_number FROM staff_counters WHERE staff_id = ? AND day = ?',
+            `SELECT id, outlet_erp_id, outlet_name, contact_number, whatsapp_number, location_name,
+                    address, google_location, has_gst, gst_number, serial_no, priority_number, operating_hours
+             FROM staff_counters
+             WHERE staff_id = ? AND day = ?
+             ORDER BY COALESCE(location_name, ''), COALESCE(priority_number, 999999), COALESCE(serial_no, 999999), id`,
             [staffId, dayName]
         );
         return rows;
@@ -422,10 +483,11 @@ class StaffModel {
         const [rows] = await db.execute(
             `SELECT sc.id, sc.outlet_erp_id, sc.outlet_name, sc.contact_number, sc.whatsapp_number,
                     sc.location_name, sc.address, sc.google_location, sc.has_gst, sc.gst_number, sc.day,
+                    sc.serial_no, sc.priority_number, sc.operating_hours,
                     s.name AS staff_name
              FROM staff_counters sc
              INNER JOIN staff s ON s.id = sc.staff_id
-             ORDER BY s.name, sc.day, sc.outlet_name`
+             ORDER BY s.name, sc.day, COALESCE(sc.location_name, ''), COALESCE(sc.priority_number, 999999), COALESCE(sc.serial_no, 999999), sc.outlet_name`
         );
         return rows;
     }
@@ -550,6 +612,25 @@ class StaffModel {
 
                 if (Array.isArray(item.lineItems) && item.lineItems.length) {
                     await StaffModel.saveSaleItems(connection, saleId, item.lineItems);
+                }
+
+                if (item.requisitionNumber) {
+                    const [requisitionResult] = await connection.execute(
+                        `UPDATE purchase_requisitions
+                         SET status = 'invoiced'
+                         WHERE UPPER(requisition_number) = UPPER(?)
+                           AND staff_id = ?
+                           AND outlet_id = ?
+                           AND status = 'approved'`,
+                        [item.requisitionNumber, staffId, item.outletId]
+                    );
+                    if (!requisitionResult.affectedRows) {
+                        const error = new Error(
+                            `Requisition ${item.requisitionNumber} is not approved or has already been invoiced.`
+                        );
+                        error.code = 'REQUISITION_NOT_APPROVED';
+                        throw error;
+                    }
                 }
 
                 stickers.push({

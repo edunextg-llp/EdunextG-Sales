@@ -200,6 +200,36 @@ export async function ensureSchema() {
         );
         await tryQuery(
             connection,
+            `ALTER TABLE staff_counters ADD COLUMN serial_no INT NULL`,
+            'serial_no on staff_counters'
+        );
+        await tryQuery(
+            connection,
+            `ALTER TABLE staff_counters ADD COLUMN priority_number INT NULL`,
+            'priority_number on staff_counters'
+        );
+        await tryQuery(
+            connection,
+            `ALTER TABLE staff_counters ADD COLUMN operating_hours JSON NULL`,
+            'operating_hours on staff_counters'
+        );
+        await tryQuery(
+            connection,
+            `UPDATE staff_counters sc
+             INNER JOIN (
+                 SELECT id,
+                        ROW_NUMBER() OVER (
+                            PARTITION BY staff_id, day, COALESCE(location_name, '')
+                            ORDER BY id
+                        ) AS next_serial
+                 FROM staff_counters
+             ) ranked ON ranked.id = sc.id
+             SET sc.serial_no = ranked.next_serial
+             WHERE sc.serial_no IS NULL`,
+            'backfill serial_no on staff_counters'
+        );
+        await tryQuery(
+            connection,
             `UPDATE staff_counters sc
              INNER JOIN (
                  SELECT staff_id, day, MIN(location_name) AS location_name

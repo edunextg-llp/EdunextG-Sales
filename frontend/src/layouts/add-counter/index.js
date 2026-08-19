@@ -26,6 +26,26 @@ import { formatGoogleMapsLocation, isValidGoogleMapsShortUrl } from "utils/googl
 
 const GOOGLE_MAPS_HELPER_TEXT = "Use Google Maps Share link, e.g. https://maps.app.goo.gl/T9zxVHUGoiYcBX2s8";
 
+const WEEK_DAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+
+const createWeeklySchedule = () => Object.fromEntries(WEEK_DAYS.map((day) => [day, {
+  isOff: false, firstHalfStart: "", firstHalfEnd: "", secondHalfStart: "", secondHalfEnd: "",
+}]));
+
+const createTimingTemplate = () => ({
+  firstHalfStart: "",
+  firstHalfEnd: "",
+  secondHalfStart: "",
+  secondHalfEnd: "",
+});
+
+const parseWeeklySchedule = (value) => {
+  try {
+    const stored = typeof value === "string" ? JSON.parse(value) : value;
+    return WEEK_DAYS.reduce((schedule, day) => ({ ...schedule, [day]: { ...schedule[day], ...(stored?.[day] || {}) } }), createWeeklySchedule());
+  } catch { return createWeeklySchedule(); }
+};
+
 const sectionLabelSx = {
   fontSize: "0.7rem",
   fontWeight: 700,
@@ -53,6 +73,9 @@ const createEmptyOutlet = () => ({
   gstNumber: "",
   address: "",
   googleLocation: "",
+  priorityNumber: "",
+  timingTemplate: createTimingTemplate(),
+  operatingHours: createWeeklySchedule(),
 });
 
 const createEmptyEditForm = () => ({
@@ -65,6 +88,9 @@ const createEmptyEditForm = () => ({
   gstNumber: "",
   address: "",
   googleLocation: "",
+  serialNo: "",
+  priorityNumber: "",
+  operatingHours: createWeeklySchedule(),
 });
 
 function AddCounter() {
@@ -112,6 +138,19 @@ function AddCounter() {
   });
 
   const normalizeText = (value) => String(value || "").trim().toLowerCase();
+
+  const displayedSavedOutlets = selectedLocation
+    ? savedOutlets.filter(
+      (outlet) => normalizeText(outlet.location_name) === normalizeText(selectedLocation)
+    )
+    : savedOutlets;
+
+  const locationSavedSerialMax = displayedSavedOutlets.reduce(
+    (max, outlet) => Math.max(max, Number(outlet.serial_no) || 0),
+    0
+  );
+
+  const getPendingSerial = (index) => locationSavedSerialMax + index + 1;
 
   const fetchStaffOptions = async (query = "") => {
     try {
@@ -317,6 +356,26 @@ function AddCounter() {
     setOutlets(updated);
   };
 
+  const handleTimingTemplateChange = (index, field, value) => {
+    setOutlets((current) => current.map((outlet, outletIndex) => (
+      outletIndex === index
+        ? { ...outlet, timingTemplate: { ...outlet.timingTemplate, [field]: value } }
+        : outlet
+    )));
+  };
+
+  const applyTimingTemplateToWorkingDays = (index) => {
+    setOutlets((current) => current.map((outlet, outletIndex) => {
+      if (outletIndex !== index) return outlet;
+      const template = outlet.timingTemplate || createTimingTemplate();
+      const operatingHours = Object.fromEntries(WEEK_DAYS.map((day) => {
+        const hours = outlet.operatingHours[day];
+        return [day, hours.isOff ? hours : { ...hours, ...template }];
+      }));
+      return { ...outlet, operatingHours };
+    }));
+  };
+
   const handleOutletGoogleLocationBlur = (index) => {
     const updated = [...outlets];
     updated[index].googleLocation = formatGoogleMapsLocation(updated[index].googleLocation);
@@ -348,6 +407,8 @@ function AddCounter() {
       gstNumber: outlet.hasGst === "yes" ? String(outlet.gstNumber || "").trim().toUpperCase() : "",
       address: String(outlet.address || "").trim(),
       googleLocation: formatGoogleMapsLocation(outlet.googleLocation),
+      priorityNumber: outlet.priorityNumber,
+      operatingHours: outlet.operatingHours,
     }));
     const missingGstNumber = formattedOutlets.some(
       (outlet) => outlet.hasGst && !outlet.gstNumber
@@ -453,6 +514,9 @@ function AddCounter() {
       gstNumber: outlet.gst_number || "",
       address: outlet.address || "",
       googleLocation: outlet.google_location || "",
+      serialNo: outlet.serial_no != null ? String(outlet.serial_no) : "",
+      priorityNumber: outlet.priority_number != null ? String(outlet.priority_number) : "",
+      operatingHours: parseWeeklySchedule(outlet.operating_hours),
     });
   };
 
@@ -489,18 +553,6 @@ function AddCounter() {
   };
 
   const handleSaveEdit = async (counterId) => {
-    const editErpId = normalizeText(editFormData.outletErpId);
-    const hasDuplicateSavedOutlet = savedOutlets.some(
-      (outlet) =>
-        outlet.id !== counterId &&
-        normalizeText(outlet.outlet_erp_id) === editErpId
-    );
-
-    if (hasDuplicateSavedOutlet) {
-      alert("Same ERP Id already exists. Please use a unique ERP Id.");
-      return;
-    }
-
     if (editFormData.hasGst === "yes" && !String(editFormData.gstNumber || "").trim()) {
       alert("Please enter GST number when GST is enabled.");
       return;
@@ -536,6 +588,9 @@ function AddCounter() {
             : "",
           address: String(editFormData.address || "").trim(),
           googleLocation: formattedGoogleLocation,
+          serialNo: editFormData.serialNo,
+          priorityNumber: editFormData.priorityNumber,
+          operatingHours: editFormData.operatingHours,
         }),
       });
 
@@ -878,10 +933,10 @@ function AddCounter() {
                                       fontWeight: 700,
                                     }}
                                   >
-                                    {index + 1}
+                                    {getPendingSerial(index)}
                                   </MDBox>
                                   <MDTypography variant="button" fontWeight="medium" color="dark">
-                                    Outlet {index + 1}
+                                    Outlet {getPendingSerial(index)}
                                   </MDTypography>
                                 </MDBox>
                                 <IconButton
@@ -1007,6 +1062,77 @@ function AddCounter() {
 
                                 <Divider sx={{ mb: 2.5 }} />
 
+                                <MDTypography sx={sectionLabelSx}>Visit Schedule</MDTypography>
+                                <Grid container spacing={2} mb={2.5}>
+                                  <Grid item xs={12} sm={6} md={4}>
+                                    <MDInput
+                                      label="Priority Number *"
+                                      type="number"
+                                      fullWidth
+                                      inputProps={{ min: 1 }}
+                                      InputProps={{ sx: { minHeight: 44 } }}
+                                      value={outlet.priorityNumber}
+                                      onChange={(e) => handleOutletChange(index, "priorityNumber", e.target.value)}
+                                    />
+                                  </Grid>
+                                </Grid>
+
+                                <MDTypography sx={sectionLabelSx}>Weekly Outlet Timings</MDTypography>
+                                <MDTypography variant="caption" color="text" display="block" mb={1.5}>
+                                  Set two opening periods for each day, or mark the day as off.
+                                </MDTypography>
+                                <MDBox
+                                  mb={2}
+                                  p={2}
+                                  sx={{ backgroundColor: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: "10px" }}
+                                >
+                                  <MDTypography variant="button" fontWeight="bold" display="block" mb={1.5}>
+                                    Timings for all working days
+                                  </MDTypography>
+                                  <Grid container spacing={1.5} alignItems="center">
+                                    {[["firstHalfStart", "First half start"], ["firstHalfEnd", "First half end"], ["secondHalfStart", "Second half start"], ["secondHalfEnd", "Second half end"]].map(([field, label]) => (
+                                      <Grid item xs={6} sm={3} md={2} key={field}>
+                                        <MDInput
+                                          label={label}
+                                          type="time"
+                                          fullWidth
+                                          InputLabelProps={{ shrink: true }}
+                                          value={outlet.timingTemplate?.[field] || ""}
+                                          onChange={(e) => handleTimingTemplateChange(index, field, e.target.value)}
+                                        />
+                                      </Grid>
+                                    ))}
+                                    <Grid item xs={12} md={4}>
+                                      <MDButton
+                                        color="info"
+                                        variant="outlined"
+                                        fullWidth
+                                        onClick={() => applyTimingTemplateToWorkingDays(index)}
+                                      >
+                                        Apply to All Days
+                                      </MDButton>
+                                    </Grid>
+                                  </Grid>
+                                </MDBox>
+                                {WEEK_DAYS.map((day) => {
+                                  const hours = outlet.operatingHours[day];
+                                  return (
+                                    <Grid container spacing={1.5} alignItems="center" mb={1} key={day}>
+                                      <Grid item xs={12} sm={2}><MDTypography variant="body2" fontWeight="medium">{day}</MDTypography></Grid>
+                                      <Grid item xs={12} sm={2}><FormControlLabel control={<Checkbox size="small" checked={hours.isOff} onChange={(e) => {
+                                        const updated = [...outlets]; updated[index].operatingHours[day].isOff = e.target.checked; setOutlets(updated);
+                                      }} />} label="Off" /></Grid>
+                                      {[["firstHalfStart", "First start"], ["firstHalfEnd", "First end"], ["secondHalfStart", "Second start"], ["secondHalfEnd", "Second end"]].map(([field, label]) => (
+                                        <Grid item xs={6} sm={2} key={field}><MDInput label={label} type="time" fullWidth disabled={hours.isOff} InputLabelProps={{ shrink: true }} value={hours[field]} onChange={(e) => {
+                                          const updated = [...outlets]; updated[index].operatingHours[day][field] = e.target.value; setOutlets(updated);
+                                        }} /></Grid>
+                                      ))}
+                                    </Grid>
+                                  );
+                                })}
+
+                                <Divider sx={{ mb: 2.5 }} />
+
                                 <MDTypography sx={sectionLabelSx}>Location</MDTypography>
                                 <Grid container spacing={2}>
                                   <Grid item xs={12}>
@@ -1064,12 +1190,13 @@ function AddCounter() {
                   </MDBox>
                 )}
 
-                {savedOutlets.length > 0 && (
+                {displayedSavedOutlets.length > 0 && (
                   <MDBox mt={5}>
                     <MDTypography variant="h6" mb={2}>
                       Saved Outlets for {isCnfStaff ? "CNF" : selectedDay}
+                      {selectedLocation ? ` — ${selectedLocation}` : ""}
                     </MDTypography>
-                    {savedOutlets.map((saved) => (
+                    {displayedSavedOutlets.map((saved) => (
                       <MDBox
                         key={saved.id}
                         mb={2}
@@ -1082,6 +1209,26 @@ function AddCounter() {
                       >
                         {editingOutletId === saved.id ? (
                           <Grid container spacing={1.5} alignItems="center">
+                            <Grid item xs={12} sm={6} md={1}>
+                              <MDInput
+                                label="Sr No"
+                                fullWidth
+                                type="number"
+                                value={editFormData.serialNo}
+                                onChange={(e) => handleEditFormChange("serialNo", e.target.value)}
+                                inputProps={{ min: 1 }}
+                              />
+                            </Grid>
+                            <Grid item xs={12} sm={6} md={1}>
+                              <MDInput
+                                label="Priority *"
+                                fullWidth
+                                type="number"
+                                inputProps={{ min: 1 }}
+                                value={editFormData.priorityNumber}
+                                onChange={(e) => handleEditFormChange("priorityNumber", e.target.value)}
+                              />
+                            </Grid>
                             <Grid item xs={12} sm={6} md={2}>
                               <MDInput
                                 label="ERP Id"
@@ -1089,6 +1236,17 @@ function AddCounter() {
                                 value={editFormData.outletErpId}
                                 onChange={(e) => handleEditFormChange("outletErpId", e.target.value)}
                               />
+                            </Grid>
+                            <Grid item xs={12}>
+                              <MDTypography variant="caption" color="text" display="block" mb={0.5}>Weekly outlet timings</MDTypography>
+                              {WEEK_DAYS.map((day) => {
+                                const hours = editFormData.operatingHours[day];
+                                return <Grid container spacing={1} alignItems="center" mb={0.5} key={day}>
+                                  <Grid item xs={12} sm={2}><MDTypography variant="caption">{day}</MDTypography></Grid>
+                                  <Grid item xs={12} sm={2}><FormControlLabel control={<Checkbox size="small" checked={hours.isOff} onChange={(e) => setEditFormData((prev) => ({ ...prev, operatingHours: { ...prev.operatingHours, [day]: { ...prev.operatingHours[day], isOff: e.target.checked } } }))} />} label="Off" /></Grid>
+                                  {[["firstHalfStart", "First start"], ["firstHalfEnd", "First end"], ["secondHalfStart", "Second start"], ["secondHalfEnd", "Second end"]].map(([field, label]) => <Grid item xs={6} sm={2} key={field}><MDInput label={label} type="time" fullWidth disabled={hours.isOff} InputLabelProps={{ shrink: true }} value={hours[field]} onChange={(e) => setEditFormData((prev) => ({ ...prev, operatingHours: { ...prev.operatingHours, [day]: { ...prev.operatingHours[day], [field]: e.target.value } } }))} /></Grid>)}
+                                </Grid>;
+                              })}
                             </Grid>
                             <Grid item xs={12} sm={6} md={2}>
                               <MDInput
@@ -1182,6 +1340,18 @@ function AddCounter() {
                           </Grid>
                         ) : (
                           <Grid container spacing={1.5} alignItems="center">
+                            <Grid item xs={6} sm={4} md={1}>
+                              <MDTypography variant="caption" color="text" display="block">
+                                Sr No
+                              </MDTypography>
+                              <MDTypography variant="body2" fontWeight="bold">
+                                {saved.serial_no || "—"}
+                              </MDTypography>
+                            </Grid>
+                            <Grid item xs={6} sm={4} md={1}>
+                              <MDTypography variant="caption" color="text" display="block">Priority</MDTypography>
+                              <MDTypography variant="body2" fontWeight="bold">{saved.priority_number || "—"}</MDTypography>
+                            </Grid>
                             <Grid item xs={12} sm={6} md={2}>
                               <MDTypography variant="body2" fontWeight="medium">
                                 {saved.outlet_erp_id}
@@ -1210,11 +1380,6 @@ function AddCounter() {
                             <Grid item xs={12} sm={6} md={1}>
                               <MDTypography variant="body2" fontWeight="medium">
                                 GST: {saved.has_gst ? "Yes" : "No"}
-                              </MDTypography>
-                            </Grid>
-                            <Grid item xs={12} sm={6} md={2}>
-                              <MDTypography variant="body2" fontWeight="medium">
-                                {saved.has_gst ? saved.gst_number || "-" : "—"}
                               </MDTypography>
                             </Grid>
                             <Grid item xs={12} sm={6} md={2}>

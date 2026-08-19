@@ -147,6 +147,8 @@ async function initDB() {
             location_name VARCHAR(255) NULL,
             address TEXT NULL,
             google_location TEXT NULL,
+            priority_number INT NULL,
+            operating_hours JSON NULL,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (staff_id) REFERENCES staff(id) ON DELETE CASCADE
         );
@@ -163,6 +165,19 @@ async function initDB() {
         console.log('Updated staff route day enums');
     } catch (err) {
         console.log('staff route day enums may already be updated');
+    }
+
+    try {
+        await connection.query(`ALTER TABLE staff_counters ADD COLUMN priority_number INT NULL`);
+        console.log('Added outlet priority');
+    } catch (err) {
+        console.log('outlet priority column may already exist');
+    }
+    try {
+        await connection.query(`ALTER TABLE staff_counters ADD COLUMN operating_hours JSON NULL`);
+        console.log('Added outlet operating hours');
+    } catch (err) {
+        console.log('outlet operating hours column may already exist');
     }
 
     try {
