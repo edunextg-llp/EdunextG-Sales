@@ -67,6 +67,7 @@ function OutBillPage() {
   const [reportStartDate, setReportStartDate] = useState("");
   const [reportEndDate, setReportEndDate] = useState("");
   const [reportStaffId, setReportStaffId] = useState("");
+  const [takenBillSearch, setTakenBillSearch] = useState("");
   const [reportPage, setReportPage] = useState(1);
   const [reportRowsPerPage, setReportRowsPerPage] = useState(ROWS_PER_PAGE);
 
@@ -165,7 +166,7 @@ function OutBillPage() {
   useEffect(() => {
     setReportPage(1);
     setSelectedTakenBillIds([]);
-  }, [reportStaffId, reportStartDate, reportEndDate, reportRowsPerPage]);
+  }, [reportStaffId, reportStartDate, reportEndDate, reportRowsPerPage, takenBillSearch]);
 
   useEffect(() => {
     setSelectedCreditIds((prev) =>
@@ -230,7 +231,7 @@ function OutBillPage() {
       ? staffOptions.find((s) => s.id === Number(reportStaffId))?.name || "Selected Staff"
       : "All Staff";
     const generatedOn = new Date().toLocaleString("en-GB");
-    const rowsHtml = takenBills
+    const rowsHtml = filteredTakenBills
       .map(
         (bill, index) => `
           <tr>
@@ -288,7 +289,7 @@ function OutBillPage() {
             <div><strong>Generated:</strong> ${escapeHtml(generatedOn)}</div>
             <div><strong>Total Balance:</strong> Rs. ${totalTakenAmount.toFixed(2)}</div>
           </div>
-          ${takenBills.length > 0
+          ${filteredTakenBills.length > 0
         ? ` <table>
         <thead>
           <tr>
@@ -518,8 +519,24 @@ function OutBillPage() {
   };
 
   // Taken Bills Pagination & Filtered Totals
-  const reportTotalPages = Math.max(1, Math.ceil(takenBills.length / reportRowsPerPage));
-  const paginatedTakenBills = takenBills.slice(
+  const normalizedTakenBillSearch = takenBillSearch.trim().toLowerCase();
+  const filteredTakenBills = takenBills.filter((bill) => {
+    if (!normalizedTakenBillSearch) return true;
+    return [
+      bill.outlet_name,
+      bill.location_name,
+      bill.outlet_erp_id,
+      bill.contact_number,
+      bill.sticker_number,
+      bill.invoice_number,
+      bill.staff_name,
+      bill.company_name,
+      bill.balance_amount,
+      formatTakerName(bill),
+    ].some((value) => String(value ?? "").toLowerCase().includes(normalizedTakenBillSearch));
+  });
+  const reportTotalPages = Math.max(1, Math.ceil(filteredTakenBills.length / reportRowsPerPage));
+  const paginatedTakenBills = filteredTakenBills.slice(
     (reportPage - 1) * reportRowsPerPage,
     reportPage * reportRowsPerPage
   );
@@ -577,7 +594,7 @@ function OutBillPage() {
     }
   };
 
-  const totalTakenAmount = takenBills.reduce(
+  const totalTakenAmount = filteredTakenBills.reduce(
     (sum, b) => sum + (Number(b.balance_amount) || 0),
     0
   );
@@ -673,7 +690,7 @@ function OutBillPage() {
                     </>
                   ) : (
                     <>
-                      <Grid item xs={12} md={3}>
+                      <Grid item xs={12} md={2}>
                         <MDInput
                           type="date"
                           label="From Date"
@@ -683,7 +700,7 @@ function OutBillPage() {
                           onChange={(e) => setReportStartDate(e.target.value)}
                         />
                       </Grid>
-                      <Grid item xs={12} md={3}>
+                      <Grid item xs={12} md={2}>
                         <MDInput
                           type="date"
                           label="To Date"
@@ -693,7 +710,7 @@ function OutBillPage() {
                           onChange={(e) => setReportEndDate(e.target.value)}
                         />
                       </Grid>
-                      <Grid item xs={12} md={3}>
+                      <Grid item xs={12} md={2}>
                         <FormControl size="small" fullWidth>
                           <InputLabel id="report-staff-filter-label">Staff (Taker)</InputLabel>
                           <Select
@@ -712,13 +729,23 @@ function OutBillPage() {
                           </Select>
                         </FormControl>
                       </Grid>
-                      <Grid item xs={12} md={3} display="flex" alignItems="center">
+                      <Grid item xs={12} md={4}>
+                        <MDInput
+                          type="text"
+                          label="Search Taken Bills"
+                          placeholder="Outlet, area, ERP, contact, invoice, staff or company"
+                          fullWidth
+                          value={takenBillSearch}
+                          onChange={(e) => setTakenBillSearch(e.target.value)}
+                        />
+                      </Grid>
+                      <Grid item xs={12} md={2} display="flex" alignItems="center">
                         <MDButton
                           color="info"
                           variant="gradient"
                           fullWidth
                           onClick={handlePrintPdf}
-                          disabled={takenBills.length === 0}
+                          disabled={filteredTakenBills.length === 0}
                           sx={{ height: 44 }}
                         >
                           Print PDF
@@ -922,17 +949,19 @@ function OutBillPage() {
                         ))}
                       </TableBody>
                     </Table>
-                    {takenBills.length === 0 && (
+                    {filteredTakenBills.length === 0 && (
                       <MDBox mt={4} textAlign="center">
                         <MDTypography variant="body2" color="text">
-                          No taken bills recorded in this period!
+                          {takenBillSearch.trim()
+                            ? "No taken bills match your search."
+                            : "No taken bills recorded in this period!"}
                         </MDTypography>
                       </MDBox>
                     )}
                     <TablePaginationFooter
                       page={reportPage}
                       totalPages={reportTotalPages}
-                      total={takenBills.length}
+                      total={filteredTakenBills.length}
                       onPageChange={setReportPage}
                       limit={reportRowsPerPage}
                       onLimitChange={setReportRowsPerPage}
