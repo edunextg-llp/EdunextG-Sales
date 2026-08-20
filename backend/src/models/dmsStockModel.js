@@ -216,6 +216,46 @@ class DmsStockModel {
         return DmsStockModel.normalizeProductItem(rows[0]);
     }
 
+    static async getLatestItemsByCompanyId(companyId, limit = 2000) {
+        const company = parseInt(companyId, 10);
+        if (!Number.isFinite(company) || company <= 0) return [];
+
+        const numericLimit = Math.min(Math.max(parseInt(limit, 10) || 2000, 1), 2000);
+        const [rows] = await db.execute(
+            `SELECT dsi.id, dsi.import_id, dsi.product_erp_id, dsi.product_name,
+                    dsi.product_division, dsi.variant_name, dsi.pcs_per_box,
+                    dsi.current_stock_in_case, dsi.current_stock_in_pcs,
+                    dsi.total_current_stock_in_pcs, dsi.price_per_piece, dsi.mrp,
+                    dsi.total_value, dsi.dp_price, dsi.retail_price,
+                    dsi.wholesale_price, si.hsn_code
+             FROM dms_stock_items dsi
+             INNER JOIN dms_stock_imports i ON i.id = dsi.import_id
+             INNER JOIN (
+                 SELECT LOWER(TRIM(dsi2.product_erp_id)) AS erp_key,
+                        MAX(dsi2.id) AS latest_item_id
+                 FROM dms_stock_items dsi2
+                 INNER JOIN dms_stock_imports i2 ON i2.id = dsi2.import_id
+                 WHERE i2.company_id = ?
+                   AND dsi2.product_erp_id IS NOT NULL
+                   AND TRIM(dsi2.product_erp_id) <> ''
+                 GROUP BY LOWER(TRIM(dsi2.product_erp_id))
+             ) latest ON latest.latest_item_id = dsi.id
+             LEFT JOIN seller_items si
+                ON si.company_id = i.company_id
+               AND LOWER(TRIM(si.product_erp_id)) = LOWER(TRIM(dsi.product_erp_id))
+             WHERE i.company_id = ?
+             ORDER BY dsi.product_erp_id ASC
+             LIMIT ${numericLimit}`,
+            [company, company]
+        );
+
+        return rows.map((row) => ({
+            ...DmsStockModel.normalizeProductItem(row),
+            product_division: row.product_division || '',
+            hsn_code: row.hsn_code || '',
+        }));
+    }
+
     static async getProductsByImportId(importId, search = '', limit = 500) {
         const dmsImportId = parseInt(importId, 10);
         if (!Number.isFinite(dmsImportId) || dmsImportId <= 0) {

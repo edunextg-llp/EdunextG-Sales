@@ -1149,6 +1149,47 @@ export async function ensureSchema() {
 
         await tryQuery(
             connection,
+            `UPDATE physical_stock_items psi
+             INNER JOIN physical_stock_imports pi ON pi.id = psi.import_id
+             INNER JOIN dms_stock_items dsi
+                ON dsi.import_id = pi.dms_import_id
+               AND LOWER(TRIM(dsi.product_erp_id)) = LOWER(TRIM(psi.product_erp_id))
+             SET psi.price_per_piece = COALESCE(
+                     NULLIF(dsi.price_per_piece, 0),
+                     NULLIF(dsi.dp_price, 0),
+                     psi.price_per_piece,
+                     0
+                 ),
+                 psi.mrp = CASE
+                     WHEN COALESCE(dsi.mrp, 0) > 0 THEN dsi.mrp
+                     ELSE psi.mrp
+                 END,
+                 psi.total_value = ROUND(
+                     COALESCE(psi.total_physical_stock_in_pcs, 0) *
+                     COALESCE(
+                         NULLIF(dsi.price_per_piece, 0),
+                         NULLIF(dsi.dp_price, 0),
+                         psi.price_per_piece,
+                         0
+                     ),
+                     2
+                 )`,
+            'sync physical stock prices and values from DMS items'
+        );
+        await tryQuery(
+            connection,
+            `UPDATE physical_stock_imports pi
+             LEFT JOIN (
+                 SELECT import_id, COALESCE(SUM(total_value), 0) AS total_value
+                 FROM physical_stock_items
+                 GROUP BY import_id
+             ) totals ON totals.import_id = pi.id
+             SET pi.total_value = COALESCE(totals.total_value, 0)`,
+            'recalculate physical stock import values'
+        );
+
+        await tryQuery(
+            connection,
             `ALTER TABLE bank_deposits ADD COLUMN deposit_ref_no VARCHAR(20) NULL UNIQUE`,
             'deposit_ref_no on bank_deposits'
         );

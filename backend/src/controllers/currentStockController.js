@@ -189,7 +189,7 @@ export const getCurrentStock = async (req, res) => {
         const [physicalItems, physicalImports, dmsItems] = await Promise.all([
             PhysicalStockModel.getMergedItemsByDmsImportId(dmsImportId, 2000),
             PhysicalStockModel.getImportsByDmsImportId(dmsImportId),
-            DmsStockModel.getItems(dmsImportId, 2000),
+            DmsStockModel.getLatestItemsByCompanyId(dmsResult.import.company_id, 2000),
         ]);
 
         if (!physicalItems.length) {
@@ -200,7 +200,7 @@ export const getCurrentStock = async (req, res) => {
 
         if (!dmsItems.length) {
             return res.status(404).json({
-                error: 'DMS stock has no products for this import.',
+                error: 'DMS stock has no products for this company.',
             });
         }
 

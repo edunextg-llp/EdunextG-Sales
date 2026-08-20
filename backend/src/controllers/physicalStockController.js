@@ -273,7 +273,7 @@ async function buildPhysicalRowFromDmsProduct(dmsImportId, item) {
         throw error;
     }
 
-    return normalizePhysicalStockRow({
+    const physicalRow = normalizePhysicalStockRow({
         'Product ERP ID': product.product_erp_id,
         'SKU Name': product.product_name,
         'Product Division': product.product_division,
@@ -285,6 +285,11 @@ async function buildPhysicalRowFromDmsProduct(dmsImportId, item) {
         MRP: product.mrp || 0,
         'Stock Update Date': item.stockUpdateDate || '',
     });
+    physicalRow.rawData = {
+        ...physicalRow.rawData,
+        approvedAsCurrentStock: true,
+    };
+    return physicalRow;
 }
 
 export const getPhysicalStockItemHistory = async (req, res) => {
@@ -431,10 +436,26 @@ export const getPhysicalStockForCompany = async (req, res) => {
         const items = dmsProducts.map((dmsItem) => {
             const key = String(dmsItem.product_erp_id || '').trim().toLowerCase();
             const physItem = physicalByErp.get(key) || null;
+            const effectivePricePerPiece = Number(dmsItem.price_per_piece)
+                || Number(physItem?.price_per_piece)
+                || 0;
+            const effectiveMrp = Number(dmsItem.mrp) || Number(physItem?.mrp) || 0;
+            const physicalStock = physItem
+                ? {
+                    ...physItem,
+                    price_per_piece: effectivePricePerPiece,
+                    mrp: effectiveMrp,
+                    total_value: roundMoney(
+                        (Number(physItem.total_physical_stock_in_pcs) || 0) * effectivePricePerPiece
+                    ),
+                }
+                : null;
             return {
                 ...dmsItem,
-                physical_stock: physItem,
-                is_approved: physItem !== null,
+                price_per_piece: effectivePricePerPiece,
+                mrp: effectiveMrp,
+                physical_stock: physicalStock,
+                is_approved: physicalStock !== null,
             };
         });
 
@@ -601,8 +622,8 @@ export const createManualPhysicalStock = async (req, res) => {
 
         return res.status(201).json({
             message: existingImport
-                ? 'Physical stock updated successfully'
-                : 'Physical stock saved successfully',
+                ? 'Physical stock updated and synced to current stock successfully'
+                : 'Physical stock saved and synced to current stock successfully',
             ...result,
         });
     } catch (error) {

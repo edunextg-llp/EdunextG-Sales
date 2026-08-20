@@ -483,10 +483,20 @@ class PhysicalStockModel {
         const [rows] = await db.execute(
             `SELECT psi.id, psi.import_id, psi.product_erp_id, psi.product_name, psi.product_division,
                     psi.variant_name, psi.pcs_per_box, psi.physical_stock_in_case, psi.physical_stock_in_pcs,
-                    psi.total_physical_stock_in_pcs, psi.price_per_piece, psi.mrp, psi.total_value,
+                    psi.total_physical_stock_in_pcs,
+                    COALESCE(NULLIF(dsi.price_per_piece, 0), NULLIF(dsi.dp_price, 0), psi.price_per_piece, 0) AS price_per_piece,
+                    COALESCE(NULLIF(dsi.mrp, 0), psi.mrp, 0) AS mrp,
+                    ROUND(
+                        COALESCE(psi.total_physical_stock_in_pcs, 0) *
+                        COALESCE(NULLIF(dsi.price_per_piece, 0), NULLIF(dsi.dp_price, 0), psi.price_per_piece, 0),
+                        2
+                    ) AS total_value,
                     psi.stock_update_date, psi.raw_data
              FROM physical_stock_items psi
              INNER JOIN physical_stock_imports p ON p.id = psi.import_id
+             LEFT JOIN dms_stock_items dsi
+                ON dsi.import_id = p.dms_import_id
+               AND LOWER(TRIM(dsi.product_erp_id)) = LOWER(TRIM(psi.product_erp_id))
              INNER JOIN (
                  SELECT LOWER(TRIM(psi2.product_erp_id)) AS erp_key, MAX(psi2.id) AS max_item_id
                  FROM physical_stock_items psi2
