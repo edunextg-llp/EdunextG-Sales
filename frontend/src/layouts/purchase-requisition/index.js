@@ -299,6 +299,21 @@ function PurchaseRequisition() {
     await fetchHistory(isStaff ? staffId : historyStaffId, historyCompanyId, historyDateFilter);
   };
 
+  const deletePendingRequisition = async (row) => {
+    if (row.status !== "pending") return;
+    if (!window.confirm(`Delete pending requisition ${row.requisition_number}? This cannot be undone.`)) return;
+
+    const response = await fetch(`${API}/staff/purchase-requisitions/${row.id}`, {
+      method: "DELETE",
+      headers: auth(),
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) return alert(data.error || "Unable to delete requisition.");
+
+    setSelectedRequisitionIds((current) => current.filter((id) => id !== String(row.id)));
+    await fetchHistory(isStaff ? staffId : historyStaffId, historyCompanyId, historyDateFilter);
+  };
+
   return (
     <DashboardLayout>
       <DashboardNavbar />
@@ -547,6 +562,7 @@ function PurchaseRequisition() {
                             {[
                               "Select", "Sr. No.", "Requisition No", ...(!isStaff ? ["Staff", "Company"] : []),
                               "Outlet", "Items", "Total Qty", "Amount", "Status", "View",
+                              ...(isStaff ? ["Delete"] : []),
                               ...(!isStaff && canApproveRequisitions ? ["Approval Action"] : []),
                             ].map((h) => (
                               <TableCell
@@ -608,6 +624,24 @@ function PurchaseRequisition() {
                                   <Icon fontSize="small">visibility</Icon>
                                 </MDButton>
                               </TableCell>
+                              {isStaff && (
+                                <TableCell>
+                                  {row.status === "pending" ? (
+                                    <MDButton
+                                      color="error"
+                                      variant="outlined"
+                                      size="small"
+                                      title="Delete pending requisition"
+                                      aria-label={`Delete requisition ${row.requisition_number}`}
+                                      onClick={() => deletePendingRequisition(row)}
+                                    >
+                                      <Icon fontSize="small">delete</Icon>
+                                    </MDButton>
+                                  ) : (
+                                    <MDTypography variant="caption" color="text">—</MDTypography>
+                                  )}
+                                </TableCell>
+                              )}
                               {!isStaff && canApproveRequisitions && (
                                 <TableCell>
                                   {["open", "pending"].includes(row.status || "pending") ? (

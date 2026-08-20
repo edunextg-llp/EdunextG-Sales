@@ -27,11 +27,14 @@ export const create = async (req, res) => {
         }
         const dmsImport = await DmsStockModel.getLatestImportByCompanyName(company.name);
         if (!dmsImport) return res.status(400).json({ error: 'No Item List stock found for this company.' });
-        const dms = await DmsStockModel.getItems(dmsImport.id, 2000);
+        const dms = await DmsStockModel.getLatestItemsByCompanyId(companyId, 2000);
         const physical = await PhysicalStockModel.getMergedItemsByDmsImportId(dmsImport.id);
         const stock = buildCurrentStockDiff(physical, dms);
         const items = requested.map((entry) => {
-            const product = stock.find((row) => row.product_erp_id === entry.productErpId);
+            const product = stock.find((row) =>
+                String(row.product_erp_id || '').trim().toLowerCase()
+                === String(entry.productErpId || '').trim().toLowerCase()
+            );
             const quantity = Number(entry.quantity);
             if (!product || quantity <= 0 || quantity > Number(product.total_current_stock_in_pcs)) {
                 const error = new Error(`Invalid or unavailable quantity for ${entry.productErpId}.`);
@@ -39,14 +42,29 @@ export const create = async (req, res) => {
                 throw error;
             }
             const priceType = entry.priceType === 'wholesale' ? 'wholesale' : 'retail';
-            const rate = priceType === 'wholesale' ? product.wholesale_price : product.retail_price;
-            const amount = quantity * Number(rate || 0);
+            const preferredRate = priceType === 'wholesale'
+                ? Number(product.wholesale_price)
+                : Number(product.retail_price);
+            const alternateRate = priceType === 'wholesale'
+                ? Number(product.retail_price)
+                : Number(product.wholesale_price);
+            const rate = preferredRate
+                || alternateRate
+                || Number(product.price_per_piece)
+                || Number(product.dp_price)
+                || 0;
+            if (rate <= 0) {
+                const error = new Error(`Selling price is missing for ${entry.productErpId}. Update this product in DMS Entry before submitting.`);
+                error.statusCode = 400;
+                throw error;
+            }
+            const amount = quantity * rate;
             const gstPercent = Number(product.gst_percent) || 5;
             return {
                 ...product,
                 quantity,
                 priceType,
-                rate: Number(rate || 0),
+                rate,
                 amount,
                 gst_percent: gstPercent,
             };
@@ -129,6 +147,30 @@ export const review = async (req, res) => {
             message: status === 'approved' ? 'Requisition approved.' : 'Requisition cancelled.',
             requisition,
         });
+    } catch (error) {
+        return res.status(500).json({ error: error.message || 'Internal server error' });
+    }
+};
+
+export const removePending = async (req, res) => {
+    try {
+        if (req.user?.role !== 'staff') {
+            return res.status(403).json({ error: 'Only the staff member who created the requisition can delete it.' });
+        }
+        const requisitionId = Number(req.params.id);
+        if (!Number.isInteger(requisitionId) || requisitionId <= 0) {
+            return res.status(400).json({ error: 'Invalid requisition ID.' });
+        }
+        const deleted = await PurchaseRequisitionModel.deletePendingByStaff(
+            requisitionId,
+            Number(req.user.staffId)
+        );
+        if (!deleted) {
+            return res.status(409).json({
+                error: 'Only your own pending requisition can be deleted. It may already be approved, cancelled, or invoiced.',
+            });
+        }
+        return res.json({ message: 'Pending requisition deleted successfully.' });
     } catch (error) {
         return res.status(500).json({ error: error.message || 'Internal server error' });
     }

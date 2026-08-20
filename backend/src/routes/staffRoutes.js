@@ -52,6 +52,7 @@ router.get('/purchase-reports', staffController.getPurchaseReports);
 router.post('/purchase-requisitions', purchaseRequisitionController.create);
 router.get('/purchase-requisitions', purchaseRequisitionController.list);
 router.put('/purchase-requisitions/:id/status', purchaseRequisitionController.review);
+router.delete('/purchase-requisitions/:id', purchaseRequisitionController.removePending);
 router.get('/purchase-requisitions/:number', purchaseRequisitionController.getByNumber);
 router.get('/dms-stock', dmsStockController.getLatestDmsStock);
 router.get('/dms-stock/imports', dmsStockController.getDmsStockImports);

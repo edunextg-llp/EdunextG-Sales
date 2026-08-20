@@ -130,6 +130,16 @@ class PurchaseRequisitionModel {
         return result.affectedRows ? PurchaseRequisitionModel.getById(id) : null;
     }
 
+    static async deletePendingByStaff(id, staffId) {
+        const [result] = await db.execute(
+            `DELETE FROM purchase_requisitions
+             WHERE id = ? AND staff_id = ? AND status = 'pending'
+             LIMIT 1`,
+            [id, staffId]
+        );
+        return result.affectedRows > 0;
+    }
+
     static normalize(row) {
         if (!row) return null;
         let items = row.items;
