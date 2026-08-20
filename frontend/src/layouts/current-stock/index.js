@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 
 import Card from "@mui/material/Card";
 import FormControl from "@mui/material/FormControl";
@@ -17,7 +17,6 @@ import TableRow from "@mui/material/TableRow";
 
 import MDBox from "components/MDBox";
 import MDButton from "components/MDButton";
-import MDInput from "components/MDInput";
 import MDTypography from "components/MDTypography";
 import DashboardLayout from "examples/LayoutContainers/DashboardLayout";
 import DashboardNavbar from "examples/Navbars/DashboardNavbar";
@@ -99,81 +98,42 @@ const formatExpiredStockDate = (value) => {
   return `${d}-${months[m]}-${String(y).slice(-2)}`;
 };
 
-const formatDmsImportLabel = (stock) => {
-  const date = formatDate(stock.upload_date);
-  const company = stock.company_name ? ` - ${stock.company_name}` : "";
-  const source = stock.file_name ? ` (${stock.file_name})` : "";
-  return `${date}${company}${source}`;
-};
-
-const resolveSelectedImportId = (importFilter, imports) => {
-  if (!imports.length) return "";
-  if (!importFilter) return String(imports[0].id);
-  return String(importFilter);
-};
-
-function Metric({ label, value }) {
-  return (
-    <MDBox p={2} sx={{ border: "1px solid #e5e7eb", borderRadius: 1, backgroundColor: "#fff" }}>
-      <MDTypography variant="caption" color="text" fontWeight="medium">
-        {label}
-      </MDTypography>
-      <MDTypography variant="h6" color="dark" fontWeight="bold">
-        {value}
-      </MDTypography>
-    </MDBox>
-  );
-}
-
 function CurrentStock() {
-  const [dmsImports, setDmsImports] = useState([]);
+  const [companies, setCompanies] = useState([]);
+  const [companyFilter, setCompanyFilter] = useState("");
   const [stockImport, setStockImport] = useState(null);
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
-  const [divisionFilter, setDivisionFilter] = useState("");
-  const [erpSearch, setErpSearch] = useState("");
-  const [productSearch, setProductSearch] = useState("");
-  const [stockListImportFilter, setStockListImportFilter] = useState("");
-
-  const selectedDmsImportId = useMemo(
-    () => resolveSelectedImportId(stockListImportFilter, dmsImports),
-    [stockListImportFilter, dmsImports]
-  );
-
-  const selectedDmsImport = useMemo(
-    () => dmsImports.find((item) => String(item.id) === String(selectedDmsImportId)) || null,
-    [dmsImports, selectedDmsImportId]
-  );
-
-  const fetchDmsImports = async () => {
+  const fetchCompanies = async () => {
     try {
       const response = await fetch(`${API}/staff/dms-stock/imports`);
       const data = await response.json();
-      if (!response.ok) throw new Error(data.error || "Failed to fetch DMS stock dates.");
-      setDmsImports(data.imports || []);
+      if (!response.ok) throw new Error(data.error || "Failed to fetch companies.");
+      const uniqueCompanies = [...new Map(
+        (data.imports || [])
+          .filter((entry) => entry.company_name)
+          .map((entry) => [String(entry.company_name).trim().toLowerCase(), entry.company_name])
+      ).values()].sort((left, right) => left.localeCompare(right));
+      setCompanies(uniqueCompanies);
     } catch (fetchError) {
       setError(fetchError.message);
     }
   };
 
-  const fetchCurrentStock = async (dmsImportId = selectedDmsImportId) => {
-    if (!dmsImportId) {
-      setStockImport(null);
-      setItems([]);
-      setMessage("");
-      return;
-    }
+  const fetchCurrentStock = async (companyName = companyFilter) => {
     setLoading(true);
     setMessage("");
     setError("");
     try {
-      const response = await fetch(`${API}/staff/current-stock?dmsImportId=${dmsImportId}`);
+      const query = companyName ? `?companyName=${encodeURIComponent(companyName)}` : "";
+      const response = await fetch(`${API}/staff/current-stock${query}`);
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "Failed to fetch current stock.");
       setStockImport(data.import || null);
       setItems(data.items || []);
+      if (!companyName && data.import?.company_name) setCompanyFilter(data.import.company_name);
       setMessage("Current stock calculated as Physical Stock minus DMS Stock.");
     } catch (fetchError) {
       setError(fetchError.message);
@@ -185,35 +145,16 @@ function CurrentStock() {
   };
 
   useEffect(() => {
-    fetchDmsImports();
+    fetchCompanies();
+    fetchCurrentStock();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  useEffect(() => {
-    if (!dmsImports.length) return;
-    fetchCurrentStock(selectedDmsImportId);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [stockListImportFilter, dmsImports]);
-
-  const handleImportChange = (event) => {
-    setStockListImportFilter(event.target.value);
-    setMessage("");
-    setError("");
+  const handleCompanyChange = (event) => {
+    const companyName = event.target.value;
+    setCompanyFilter(companyName);
+    fetchCurrentStock(companyName);
   };
-
-  const divisionOptions = useMemo(
-    () => [...new Set(items.map((item) => item.product_division).filter(Boolean))].sort(),
-    [items]
-  );
-
-  const filteredItems = useMemo(() => {
-    const normalizedErp = erpSearch.trim().toLowerCase();
-    const normalizedProduct = productSearch.trim().toLowerCase();
-    return items.filter((item) =>
-      (!divisionFilter || item.product_division === divisionFilter) &&
-      (!normalizedErp || String(item.product_erp_id || "").toLowerCase().includes(normalizedErp)) &&
-      (!normalizedProduct || String(item.product_name || "").toLowerCase().includes(normalizedProduct))
-    );
-  }, [divisionFilter, erpSearch, items, productSearch]);
 
   return (
     <DashboardLayout>
@@ -228,10 +169,10 @@ function CurrentStock() {
                     Current Stock
                   </MDTypography>
                   <MDTypography variant="caption" color="text">
-                    Calculated as Physical Stock minus DMS Stock for the selected DMS date.
+                    Automatically calculated from the latest DMS upload.
                   </MDTypography>
                 </MDBox>
-                <MDButton color="dark" variant="outlined" onClick={() => fetchCurrentStock()} disabled={!selectedDmsImportId || loading}>
+                <MDButton color="dark" variant="outlined" onClick={() => fetchCurrentStock()} disabled={loading}>
                   <Icon sx={{ mr: 1 }}>refresh</Icon>
                   Calculate
                 </MDButton>
@@ -266,11 +207,13 @@ function CurrentStock() {
               <MDBox p={3} pb={2}>
                 <MDTypography variant="h6" fontWeight="medium">Current Stock Items</MDTypography>
                 <MDTypography variant="caption" color="text" display="block">
-                  Select a DMS import to auto-calculate Current Stock. No manual entry is required.
+                  Current Stock is automatically fetched from the latest DMS upload. No manual selection is required.
                 </MDTypography>
-                {selectedDmsImport && (
+                {stockImport && (
                   <MDTypography variant="caption" color="text" display="block" mt={0.5}>
-                    DMS import: {formatDmsImportLabel(selectedDmsImport)}
+                    Latest DMS upload: {formatDate(stockImport.dms_upload_date)}
+                    {stockImport.company_name ? ` - ${stockImport.company_name}` : ""}
+                    {stockImport.dms_file_name ? ` (${stockImport.dms_file_name})` : ""}
                   </MDTypography>
                 )}
                 <MDTypography variant="caption" color="info" display="block" mt={0.5}>
@@ -279,37 +222,13 @@ function CurrentStock() {
               </MDBox>
               <MDBox px={3} pb={3}>
                 <Grid container spacing={2} mb={2} alignItems="center">
-                  <Grid item xs={12} md={2}>
+                  <Grid item xs={12} sm={6} md={4}>
                     <FormControl size="small" fullWidth>
-                      <Select
-                        displayEmpty
-                        value={stockListImportFilter}
-                        onChange={handleImportChange}
-                        sx={{ height: 44, backgroundColor: "#fff" }}
-                      >
-                        <MenuItem value="">Latest Import</MenuItem>
-                        {dmsImports.map((stock) => (
-                          <MenuItem key={stock.id} value={String(stock.id)}>
-                            {formatDmsImportLabel(stock)}
-                          </MenuItem>
-                        ))}
+                      <Select displayEmpty value={companyFilter} onChange={handleCompanyChange} sx={{ height: 44, backgroundColor: "#fff" }}>
+                        <MenuItem value="" disabled>Select Company</MenuItem>
+                        {companies.map((company) => <MenuItem key={company} value={company}>{company}</MenuItem>)}
                       </Select>
                     </FormControl>
-                  </Grid>
-                  <Grid item xs={12} md={2}>
-                    <FormControl size="small" fullWidth>
-                      <Select displayEmpty value={divisionFilter} onChange={(event) => setDivisionFilter(event.target.value)} sx={{ height: 44, backgroundColor: "#fff" }}>
-                        <MenuItem value="">All Divisions</MenuItem>
-                        {divisionOptions.map((division) => <MenuItem key={division} value={division}>{division}</MenuItem>)}
-                      </Select>
-                    </FormControl>
-                  </Grid>
-                  <Grid item xs={12} md={2}><MDInput label="Search ERP ID" fullWidth value={erpSearch} onChange={(event) => setErpSearch(event.target.value)} /></Grid>
-                  <Grid item xs={12} md={3}><MDInput label="Search Product" fullWidth value={productSearch} onChange={(event) => setProductSearch(event.target.value)} /></Grid>
-                  <Grid item xs={12} md={2}>
-                    <MDButton color="dark" variant="outlined" fullWidth onClick={() => { setStockListImportFilter(""); setDivisionFilter(""); setErpSearch(""); setProductSearch(""); }}>
-                      <Icon sx={{ mr: 1 }}>filter_alt_off</Icon>Clear
-                    </MDButton>
                   </Grid>
                 </Grid>
 
@@ -339,12 +258,9 @@ function CurrentStock() {
                     </TableHead>
                     <TableBody>
                       {items.length === 0 && (
-                        <TableRow><TableCell colSpan={17} align="center" sx={tableBodySx}><MDTypography variant="button" color="text">{selectedDmsImportId ? "Add Physical Stock for this DMS import to auto-calculate Current Stock." : "Choose a DMS import first."}</MDTypography></TableCell></TableRow>
+                        <TableRow><TableCell colSpan={18} align="center" sx={tableBodySx}><MDTypography variant="button" color="text">No current stock is available for the latest DMS upload.</MDTypography></TableCell></TableRow>
                       )}
-                      {items.length > 0 && filteredItems.length === 0 && (
-                        <TableRow><TableCell colSpan={17} align="center" sx={tableBodySx}><MDTypography variant="button" color="text">No rows match the selected filters.</MDTypography></TableCell></TableRow>
-                      )}
-                      {filteredItems.map((item, index) => (
+                      {items.map((item, index) => (
                         <TableRow key={`${item.product_erp_id}-${index}`}>
                           <TableCell sx={stickyColumnSx(0, { baseSx: tableBodySx })}>{index + 1}</TableCell>
                           <TableCell sx={stickyColumnSx(1, { baseSx: tableBodySx })}>{item.product_erp_id}</TableCell>

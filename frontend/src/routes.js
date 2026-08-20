@@ -129,16 +129,7 @@ const routes = [
         component: <DmsPurchaseHistory />,
       },
 
-      {
-        type: "collapse",
-        name: "Expiry Items",
-        key: "expiry-items",
-        icon: <Icon fontSize="small">event_busy</Icon>,
-        route: "/expiry-items",
-        component: <ExpiryItems />,
-        allowedRoles: ["admin", "packaging_staff", "delivery_boy"],
-        requiredPermission: "item_list",
-      },
+    
 
       {
         type: "collapse",
@@ -155,6 +146,16 @@ const routes = [
         icon: <Icon fontSize="small">fact_check</Icon>,
         route: "/current-stock",
         component: <CurrentStock />,
+      },
+      {
+        type: "collapse",
+        name: "Expiry Items",
+        key: "expiry-items",
+        icon: <Icon fontSize="small">event_busy</Icon>,
+        route: "/expiry-items",
+        component: <ExpiryItems />,
+        allowedRoles: ["admin", "packaging_staff", "delivery_boy"],
+        requiredPermission: "item_list",
       },
       {
         type: "collapse",

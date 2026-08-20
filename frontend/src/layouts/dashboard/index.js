@@ -114,7 +114,7 @@ function getFinancialYearOptions() {
   const currentMonth = now.getMonth() + 1;
   const startYear = currentMonth >= 4 ? currentYear : currentYear - 1;
 
-  return Array.from({ length: 6 }, (_, index) => {
+  return Array.from({ length: 2 }, (_, index) => {
     const year = startYear - index;
     return {
       value: `${year}-${year + 1}`,
