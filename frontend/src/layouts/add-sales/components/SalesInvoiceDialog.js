@@ -513,7 +513,9 @@ export default function SalesInvoiceDialog({
   };
 
   const loadRequisition = async (requestedNumber = requisitionNumber) => {
-    const code = requestedNumber.trim();
+    const code = String(
+      typeof requestedNumber === "string" ? requestedNumber : requisitionNumber || ""
+    ).trim();
     if (!code) return alert("Enter a requisition number.");
     if (!outlet?.id) return alert("Select an outlet before loading a requisition.");
     try {
@@ -673,7 +675,7 @@ export default function SalesInvoiceDialog({
             <MDBox display="flex" gap={0.5}>
               <MDInput fullWidth value={requisitionNumber} onChange={(e) => setRequisitionNumber(e.target.value)}
                 placeholder="PRQ000001" sx={headerInput} />
-              <MDButton color="info" variant="gradient" size="small" onClick={loadRequisition}>Load</MDButton>
+              <MDButton color="info" variant="gradient" size="small" onClick={() => loadRequisition()}>Load</MDButton>
             </MDBox>
           </Grid>
 

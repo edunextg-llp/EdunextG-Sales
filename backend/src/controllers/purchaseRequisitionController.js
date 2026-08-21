@@ -107,8 +107,19 @@ export const getByNumber = async (req, res) => {
     try {
         const requisition = await PurchaseRequisitionModel.getByNumber(String(req.params.number || '').trim());
         if (!requisition) return res.status(404).json({ error: 'Requisition was not found.' });
-        if (requisition.status !== 'approved') {
-            return res.status(409).json({ error: 'This requisition must be approved before it can be used in Add Sales.' });
+        const requisitionStatus = String(requisition.status || '').trim().toLowerCase();
+        if (requisitionStatus !== 'approved') {
+            const statusMessages = {
+                invoiced: 'This requisition has already been used for an invoice and cannot be used again.',
+                cancelled: 'This requisition was cancelled and cannot be used in Add Sales.',
+                pending: 'This requisition is still pending approval.',
+                open: 'This requisition is still pending approval.',
+            };
+            return res.status(409).json({
+                error: statusMessages[requisitionStatus]
+                    || `This requisition cannot be used because its current status is "${requisitionStatus || 'unknown'}".`,
+                status: requisitionStatus || null,
+            });
         }
         const outletId = Number(req.query.outletId);
         if (Number.isInteger(outletId) && outletId > 0 && Number(requisition.outlet_id) !== outletId) {
