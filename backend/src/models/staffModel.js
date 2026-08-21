@@ -617,12 +617,12 @@ class StaffModel {
                 if (item.requisitionNumber) {
                     const [requisitionResult] = await connection.execute(
                         `UPDATE purchase_requisitions
-                         SET status = 'invoiced'
+                         SET status = 'invoiced', invoiced_sale_id = ?, invoiced_at = NOW()
                          WHERE UPPER(requisition_number) = UPPER(?)
                            AND staff_id = ?
                            AND outlet_id = ?
                            AND status = 'approved'`,
-                        [item.requisitionNumber, staffId, item.outletId]
+                        [saleId, item.requisitionNumber, staffId, item.outletId]
                     );
                     if (!requisitionResult.affectedRows) {
                         const error = new Error(

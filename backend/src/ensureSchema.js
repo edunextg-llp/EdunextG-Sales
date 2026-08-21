@@ -925,6 +925,8 @@ export async function ensureSchema() {
         await tryQuery(connection, `ALTER TABLE purchase_requisitions ADD COLUMN reviewed_by INT NULL`, 'reviewed_by on purchase requisitions');
         await tryQuery(connection, `ALTER TABLE purchase_requisitions ADD COLUMN reviewed_at DATETIME NULL`, 'reviewed_at on purchase requisitions');
         await tryQuery(connection, `ALTER TABLE purchase_requisitions ADD COLUMN review_note VARCHAR(500) NULL`, 'review_note on purchase requisitions');
+        await tryQuery(connection, `ALTER TABLE purchase_requisitions ADD COLUMN invoiced_sale_id INT NULL`, 'invoiced_sale_id on purchase requisitions');
+        await tryQuery(connection, `ALTER TABLE purchase_requisitions ADD COLUMN invoiced_at DATETIME NULL`, 'invoiced_at on purchase requisitions');
         await tryQuery(
             connection,
             `UPDATE purchase_requisitions SET status = 'pending' WHERE status = 'open'`,

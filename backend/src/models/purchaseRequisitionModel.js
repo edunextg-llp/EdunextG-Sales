@@ -50,11 +50,13 @@ class PurchaseRequisitionModel {
         const [rows] = await db.execute(
             `SELECT pr.*, c.name AS company_name, s.name AS staff_name, s.contact_no AS staff_contact,
                     sc.outlet_name, sc.outlet_erp_id, sc.address AS outlet_address,
-                    sc.contact_number AS outlet_contact, sc.location_name, sc.has_gst, sc.gst_number
+                    sc.contact_number AS outlet_contact, sc.location_name, sc.has_gst, sc.gst_number,
+                    sale.invoice_number AS invoiced_invoice_number
              FROM purchase_requisitions pr
              JOIN companies c ON c.id = pr.company_id
              JOIN staff s ON s.id = pr.staff_id
              JOIN staff_counters sc ON sc.id = pr.outlet_id
+             LEFT JOIN staff_sales sale ON sale.id = pr.invoiced_sale_id
              WHERE UPPER(pr.requisition_number) = UPPER(?)`,
             [number]
         );

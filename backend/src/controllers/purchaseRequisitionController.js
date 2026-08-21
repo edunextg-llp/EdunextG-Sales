@@ -110,7 +110,9 @@ export const getByNumber = async (req, res) => {
         const requisitionStatus = String(requisition.status || '').trim().toLowerCase();
         if (requisitionStatus !== 'approved') {
             const statusMessages = {
-                invoiced: 'This requisition has already been used for an invoice and cannot be used again.',
+                invoiced: requisition.invoiced_invoice_number
+                    ? `This requisition has already been used for invoice ${requisition.invoiced_invoice_number} and cannot be used again.`
+                    : 'This requisition has already been used for an invoice and cannot be used again. The invoice link was not recorded for this older requisition.',
                 cancelled: 'This requisition was cancelled and cannot be used in Add Sales.',
                 pending: 'This requisition is still pending approval.',
                 open: 'This requisition is still pending approval.',
@@ -119,6 +121,8 @@ export const getByNumber = async (req, res) => {
                 error: statusMessages[requisitionStatus]
                     || `This requisition cannot be used because its current status is "${requisitionStatus || 'unknown'}".`,
                 status: requisitionStatus || null,
+                invoiceNumber: requisition.invoiced_invoice_number || null,
+                saleId: requisition.invoiced_sale_id || null,
             });
         }
         const outletId = Number(req.query.outletId);
