@@ -52,6 +52,21 @@ const toDateInputValue = (value) => {
   return dt.toISOString().slice(0, 10);
 };
 
+const getRequisitionTotalPayable = (requisition) => {
+  const requisitionItems = Array.isArray(requisition?.items) ? requisition.items : [];
+  if (!requisitionItems.length) {
+    return Number(requisition?.total_amount || 0) * 1.05;
+  }
+
+  return requisitionItems.reduce((total, item) => {
+    const quantity = Number(item.quantity) || 0;
+    const rate = Number(item.rate) || 0;
+    const gstPercent = Number(item.gst_percent) || 5;
+    const taxableValue = quantity * rate;
+    return total + taxableValue + ((taxableValue * gstPercent) / 100);
+  }, 0);
+};
+
 function PurchaseRequisition() {
   const { user } = useAuth();
   const isStaff = user?.role === "staff";
@@ -561,7 +576,7 @@ function PurchaseRequisition() {
                           <TableRow>
                             {[
                               "Select", "Sr. No.", "Requisition No", ...(!isStaff ? ["Staff", "Company"] : []),
-                              "Outlet", "Items", "Total Qty", "Amount", "Status", "View",
+                              "Outlet", "Items", "Total Qty", "Value", "Total Payable", "Status", "View",
                               ...(isStaff ? ["Delete"] : []),
                               ...(!isStaff && canApproveRequisitions ? ["Approval Action"] : []),
                             ].map((h) => (
@@ -611,6 +626,7 @@ function PurchaseRequisition() {
                               <TableCell>{row.item_count}</TableCell>
                               <TableCell>{Number(row.total_quantity || 0).toFixed(2)}</TableCell>
                               <TableCell>{Number(row.total_amount || 0).toFixed(2)}</TableCell>
+                              <TableCell>{getRequisitionTotalPayable(row).toFixed(2)}</TableCell>
                               <TableCell>{row.status || "open"}</TableCell>
                               <TableCell>
                                 <MDButton
