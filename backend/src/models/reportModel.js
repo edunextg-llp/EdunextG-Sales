@@ -311,6 +311,45 @@ class ReportModel {
         return toNumberRows(rows);
     }
 
+    static async getPaymentDetails(startDate, endDate, staffId = null, companyId = null) {
+        const dateWhere = ReportModel.buildDateWhere('sp.payment_date', startDate, endDate);
+        const staffFilter = staffId ? { sql: ' AND sale_staff.id = ?', params: [staffId] } : { sql: '', params: [] };
+        const companyFilter = ReportModel.buildSalesCompanyFilter(companyId);
+        const [rows] = await db.execute(
+            `SELECT sp.id AS payment_id,
+                    DATE_FORMAT(sp.payment_date, '%Y-%m-%d') AS payment_date,
+                    sp.payment_mode,
+                    sp.amount,
+                    sp.cash_details,
+                    sp.reference_no,
+                    DATE_FORMAT(sp.reference_date, '%Y-%m-%d') AS reference_date,
+                    ss.id AS sale_id,
+                    ss.invoice_number,
+                    sc.outlet_name,
+                    sc.outlet_erp_id,
+                    sale_staff.id AS staff_id,
+                    sale_staff.name AS staff_name,
+                    COALESCE(staff_company.company_names, sale_company.name, 'N/A') AS company_name
+             FROM sale_payments sp
+             INNER JOIN staff_sales ss ON ss.id = sp.sale_id
+             LEFT JOIN staff_counters sc ON sc.id = ss.outlet_id
+             LEFT JOIN staff sale_staff ON sale_staff.id = ss.staff_id
+             LEFT JOIN companies sale_company ON sale_company.id = sale_staff.company_id
+             LEFT JOIN (
+                 SELECT sc_map.staff_id,
+                        GROUP_CONCAT(c.name ORDER BY c.name SEPARATOR ', ') AS company_names
+                 FROM staff_companies sc_map
+                 INNER JOIN companies c ON c.id = sc_map.company_id
+                 GROUP BY sc_map.staff_id
+             ) staff_company ON staff_company.staff_id = sale_staff.id
+             ${dateWhere.sql ? `${dateWhere.sql} AND` : 'WHERE'}
+                 sp.payment_mode IN ('cash', 'upi', 'cheque')${staffFilter.sql}${companyFilter.sql}
+             ORDER BY sp.payment_date DESC, sp.id DESC`,
+            [...dateWhere.params, ...staffFilter.params, ...companyFilter.params]
+        );
+        return toNumberRows(rows);
+    }
+
     static async getMonthlyCollection(startDate, endDate) {
         const dateWhere = ReportModel.buildDateWhere('payment_date', startDate, endDate);
         const [rows] = await db.execute(

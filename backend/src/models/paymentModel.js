@@ -7,7 +7,7 @@ class PaymentModel {
             `SELECT sp.id, sp.sale_id, sp.parent_credit_payment_id,
                     DATE_FORMAT(sp.payment_date, '%Y-%m-%d') AS payment_date,
                     sp.payment_mode, sp.amount, sp.collector_staff_id, collector.name AS collector_staff_name,
-                    sp.collector_name, sp.reference_no,
+                    sp.collector_name, sp.reference_no, sp.cash_details,
                     DATE_FORMAT(sp.reference_date, '%Y-%m-%d') AS reference_date,
                     sp.credit_days, sp.created_at
              FROM sale_payments sp
@@ -225,7 +225,7 @@ class PaymentModel {
     }
 
     static async addPayment(saleId, data) {
-        const { paymentDate, paymentMode, amount, collectorStaffId, collectorName, referenceNo, referenceDate, creditDays, parentCreditPaymentId } = data;
+        const { paymentDate, paymentMode, amount, collectorStaffId, collectorName, referenceNo, referenceDate, creditDays, parentCreditPaymentId, cashDetails } = data;
         const connection = await db.getConnection();
 
         try {
@@ -268,8 +268,8 @@ class PaymentModel {
 
             await connection.execute(
                 `INSERT INTO sale_payments
-                 (sale_id, payment_date, payment_mode, amount, collector_staff_id, collector_name, parent_credit_payment_id, reference_no, reference_date, credit_days)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                 (sale_id, payment_date, payment_mode, amount, collector_staff_id, collector_name, parent_credit_payment_id, reference_no, reference_date, credit_days, cash_details)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
                 [
                     saleId,
                     paymentDate,
@@ -281,6 +281,7 @@ class PaymentModel {
                     referenceNo || null,
                     referenceDate || null,
                     creditDays ?? null,
+                    paymentMode === 'cash' ? JSON.stringify(cashDetails || {}) : null,
                 ]
             );
 
@@ -297,7 +298,7 @@ class PaymentModel {
     }
 
     static async updatePayment(saleId, paymentId, data) {
-        const { paymentDate, paymentMode, amount, collectorStaffId, collectorName, referenceNo, referenceDate, creditDays } = data;
+        const { paymentDate, paymentMode, amount, collectorStaffId, collectorName, referenceNo, referenceDate, creditDays, cashDetails } = data;
         const connection = await db.getConnection();
 
         try {
@@ -362,7 +363,7 @@ class PaymentModel {
     }
 
     static async updatePayment(paymentId, saleId, data) {
-        const { paymentDate, paymentMode, amount, collectorStaffId, collectorName, referenceNo, referenceDate, creditDays } = data;
+        const { paymentDate, paymentMode, amount, collectorStaffId, collectorName, referenceNo, referenceDate, creditDays, cashDetails } = data;
         const connection = await db.getConnection();
 
         try {
@@ -419,7 +420,7 @@ class PaymentModel {
 
             await connection.execute(
                 `UPDATE sale_payments
-                 SET payment_date = ?, payment_mode = ?, amount = ?, collector_staff_id = ?, collector_name = ?, reference_no = ?, reference_date = ?, credit_days = ?
+                 SET payment_date = ?, payment_mode = ?, amount = ?, collector_staff_id = ?, collector_name = ?, reference_no = ?, reference_date = ?, credit_days = ?, cash_details = ?
                  WHERE id = ? AND sale_id = ?`,
                 [
                     paymentDate,
@@ -430,6 +431,7 @@ class PaymentModel {
                     referenceNo || null,
                     referenceDate || null,
                     creditDays ?? null,
+                    paymentMode === 'cash' ? JSON.stringify(cashDetails || {}) : null,
                     paymentId,
                     saleId
                 ]

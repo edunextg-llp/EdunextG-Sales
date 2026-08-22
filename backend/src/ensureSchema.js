@@ -427,6 +427,7 @@ export async function ensureSchema() {
                 FOREIGN KEY (delivery_boy_id) REFERENCES delivery_boys(id) ON DELETE CASCADE
             );
         `);
+        await tryQuery(connection, 'ALTER TABLE sale_payments ADD COLUMN cash_details JSON NULL', 'cash details on sale payments');
 
         await tryQuery(connection, `ALTER TABLE delivery_boy_collections ADD COLUMN sale_payment_id INT NULL`, 'sale_payment_id on delivery collections');
         await tryQuery(connection, `ALTER TABLE delivery_boy_collections ADD COLUMN settled_at DATETIME NULL`, 'settled_at on delivery collections');

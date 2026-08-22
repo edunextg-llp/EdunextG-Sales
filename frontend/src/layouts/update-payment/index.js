@@ -56,7 +56,16 @@ const emptyCashNotes = () =>
   CASH_DENOMINATIONS.reduce((notes, item) => {
     notes[item.key] = "";
     return notes;
-  }, {});
+  }, { paise: "" });
+
+const parseCashDetails = (value) => {
+  if (!value) return emptyCashNotes();
+  try {
+    return { ...emptyCashNotes(), ...(typeof value === "string" ? JSON.parse(value) : value) };
+  } catch (error) {
+    return emptyCashNotes();
+  }
+};
 
 const tableHeadSx = {
   color: "#6b7280",
@@ -124,8 +133,8 @@ const toInputDate = (value) => {
 function UpdatePayment() {
   const [searchQuery, setSearchQuery] = useState("");
   const [collectionDate, setCollectionDate] = useState(getTodayLocalDate());
-  const [collectionRows, setCollectionRows] = useState([]);
-  const [collectionDeliveryBoyName, setCollectionDeliveryBoyName] = useState("");
+  const [collectionEndDate, setCollectionEndDate] = useState(getTodayLocalDate());
+  const [paymentDetailRows, setPaymentDetailRows] = useState([]);
   const [collectionCompanyStaffId, setCollectionCompanyStaffId] = useState("");
   const [collectionCompanyId, setCollectionCompanyId] = useState("");
   const [companyOptions, setCompanyOptions] = useState([]);
@@ -232,54 +241,19 @@ function UpdatePayment() {
       const params = new URLSearchParams();
       if (collectionDate) {
         params.set("startDate", collectionDate);
-        params.set("endDate", collectionDate);
+      }
+      if (collectionEndDate) {
+        params.set("endDate", collectionEndDate);
       }
       if (collectionCompanyId) {
         params.set("companyId", collectionCompanyId);
       }
-      const response = await fetch(`${API}/staff/reports?${params.toString()}`);
-      if (!response.ok) throw new Error("Unable to load collection report");
-
-      const data = await response.json();
-      const grouped = (data.collectionDetails || []).reduce((result, row) => {
-        const collectorType = row.collector_type === "bawarchee_staff" ? "Delivery boy" : "Company staff";
-        const collectorName = row.collector_type === "bawarchee_staff"
-          ? row.bawarchee_collector_name || "Unassigned"
-          : row.company_collector_name || "Unassigned";
-        const deliveryBoyName = row.delivery_boy_name || row.bawarchee_collector_name || "N/A";
-        const key = [
-          row.collection_date || collectionDate || "N/A",
-          collectorType,
-          collectorName,
-          deliveryBoyName,
-          row.company_name || "N/A",
-          row.sale_id,
-        ].join("|");
-        if (!result[key]) {
-          result[key] = {
-            collectionDate: row.collection_date || collectionDate || "N/A",
-            collectorType,
-            collectorName,
-            deliveryBoyName,
-            companyName: row.company_name || "N/A",
-            outletName: row.outlet_name || "N/A",
-            invoiceNumber: row.invoice_number || "N/A",
-            cash: 0,
-            upi: 0,
-            cheque: 0,
-            total: 0,
-          };
-        }
-        result[key].cash += Number(row.cash_amount) || 0;
-        result[key].upi += Number(row.upi_amount) || 0;
-        result[key].cheque += Number(row.cheque_amount) || 0;
-        result[key].total += Number(row.total_amount) || 0;
-        return result;
-      }, {});
-      setCollectionRows(Object.values(grouped));
+      const response = await fetch(`${API}/staff/reports/payments?${params.toString()}`);
+      if (!response.ok) throw new Error("Unable to load payment update history");
+      setPaymentDetailRows(await response.json());
     } catch (error) {
-      console.error("Error fetching collection report:", error);
-      setCollectionRows([]);
+      console.error("Error fetching payment update history:", error);
+      setPaymentDetailRows([]);
     }
   };
 
@@ -293,10 +267,9 @@ function UpdatePayment() {
   }, [searchQuery]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
-    setCollectionDeliveryBoyName("");
     setCollectionCompanyStaffId("");
     fetchCollectionReport();
-  }, [collectionDate, collectionCompanyId]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [collectionDate, collectionEndDate, collectionCompanyId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     const fetchCompanyStaff = async () => {
@@ -330,82 +303,32 @@ function UpdatePayment() {
     return getStaffCompanyIds(staff).includes(Number(collectionCompanyId));
   });
 
-  const formatReportCurrency = (amount) =>
-    `Rs. ${Number(amount || 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  const filteredPaymentDetailRows = paymentDetailRows.filter((row) => (
+    !collectionCompanyStaffId || String(row.staff_id) === String(collectionCompanyStaffId)
+  ));
 
-  const filteredCollectionRows = collectionRows.filter((row) => {
-    if (collectionDeliveryBoyName && (
-      row.deliveryBoyName !== collectionDeliveryBoyName
-      && !(row.collectorType === "Delivery boy" && row.collectorName === collectionDeliveryBoyName)
-    )) {
-      return false;
+  const downloadPaymentExcel = async () => {
+    const params = new URLSearchParams();
+    if (collectionDate) params.set("startDate", collectionDate);
+    if (collectionEndDate) params.set("endDate", collectionEndDate);
+    if (collectionCompanyId) params.set("companyId", collectionCompanyId);
+    if (collectionCompanyStaffId) params.set("staffId", collectionCompanyStaffId);
+    try {
+      const response = await fetch(`${API}/staff/reports/payments/export?${params.toString()}`);
+      if (!response.ok) throw new Error("Unable to download payment report");
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `Payment_Details_${collectionDate || "all"}_to_${collectionEndDate || "all"}.xlsx`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error("Payment report download failed:", error);
+      alert("Unable to download the Excel report. Please try again.");
     }
-
-    const selectedCompanyStaffName = companyStaff.find(
-      (staff) => String(staff.id) === String(collectionCompanyStaffId)
-    )?.name;
-    if (selectedCompanyStaffName && (
-      row.collectorType !== "Company staff" || row.collectorName !== selectedCompanyStaffName
-    )) {
-      return false;
-    }
-
-    return true;
-  });
-
-  const collectionDeliveryBoyOptions = [...new Set(
-    collectionRows.flatMap((row) => {
-      const names = [];
-      if (row.deliveryBoyName && row.deliveryBoyName !== "N/A") {
-        names.push(row.deliveryBoyName);
-      }
-      if (row.collectorType === "Delivery boy" && row.collectorName && row.collectorName !== "Unassigned") {
-        names.push(row.collectorName);
-      }
-      return names;
-    })
-  )].sort((first, second) => first.localeCompare(second));
-
-  const collectionAmounts = filteredCollectionRows.reduce(
-    (amounts, row) => ({
-      cash: amounts.cash + row.cash,
-      upi: amounts.upi + row.upi,
-      cheque: amounts.cheque + row.cheque,
-      total: amounts.total + row.total,
-    }),
-    { cash: 0, upi: 0, cheque: 0, total: 0 }
-  );
-
-  const escapeHtml = (value) => String(value ?? "").replace(/[&<>"']/g, (character) => ({
-    "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#039;",
-  }[character]));
-
-  const downloadCollectionPdf = () => {
-    if (!filteredCollectionRows.length) return;
-    const rows = filteredCollectionRows.map((row) => `
-      <tr>
-        <td>${escapeHtml(row.collectionDate)}</td>
-        <td>${escapeHtml(row.companyName)}</td>
-        <td>${escapeHtml(row.collectorType)}</td>
-        <td>${escapeHtml(row.deliveryBoyName)}</td>
-        <td>${escapeHtml(row.collectorType === "Company staff" ? row.collectorName : "N/A")}</td>
-        <td>${escapeHtml(row.outletName)}</td>
-        <td>${escapeHtml(row.invoiceNumber)}</td>
-        <td>${formatReportCurrency(row.cash)}</td>
-        <td>${formatReportCurrency(row.upi)}</td>
-        <td>${formatReportCurrency(row.cheque)}</td>
-        <td>${formatReportCurrency(row.total)}</td>
-      </tr>`).join("");
-    const total = collectionAmounts.total;
-    const printWindow = window.open("", "_blank", "width=1100,height=800");
-    if (!printWindow) {
-      alert("Please allow popups to download the PDF.");
-      return;
-    }
-    printWindow.document.write(`<!doctype html><html><head><title>Payment Collection Report</title><style>
-      body { font-family: Arial, sans-serif; color: #1f2937; padding: 28px; } h1 { margin: 0 0 6px; font-size: 20px; } p { margin: 0 0 22px; color: #4b5563; } table { width: 100%; border-collapse: collapse; font-size: 12px; } th, td { border: 1px solid #d1d5db; padding: 9px; text-align: left; } th { background: #0ea5e9; color: white; } td:nth-last-child(-n+4), th:nth-last-child(-n+4) { text-align: right; } tfoot td { font-weight: bold; background: #f3f4f6; } @media print { body { padding: 0; } }
-      </style></head><body><h1>Payment Collection Report</h1><p>Date: ${escapeHtml(collectionDate)}</p><table><thead><tr><th>Date</th><th>Company</th><th>Collected By</th><th>Delivery Boy</th><th>Company Staff</th><th>Outlet Name</th><th>Invoice No.</th><th>Cash</th><th>UPI</th><th>Cheque</th><th>Total</th></tr></thead><tbody>${rows}</tbody><tfoot><tr><td colspan="10">Grand Total</td><td>${formatReportCurrency(total)}</td></tr></tfoot></table><script>window.onload = function () { window.print(); };</script></body></html>`);
-    printWindow.document.close();
   };
 
   useEffect(() => {
@@ -984,7 +907,7 @@ function UpdatePayment() {
         ? resolveDeliveryBoyIdFromName(payment.collector_name)
         : "",
       collectorName: payment.collector_name || "",
-      cashNotes: emptyCashNotes(),
+      cashNotes: payment.payment_mode === "cash" ? parseCashDetails(payment.cash_details) : emptyCashNotes(),
       referenceNo: payment.reference_no || "",
       referenceDate: formattedDate,
       creditDays: payment.credit_days ? String(payment.credit_days) : "",
@@ -1065,10 +988,11 @@ function UpdatePayment() {
     CASH_DENOMINATIONS.reduce(
       (total, item) => total + item.denomination * (parseInt(cashNotes[item.key], 10) || 0),
       0
-    );
+    ) + (parseInt(cashNotes.paise, 10) || 0) / 100;
 
   const handleCashNoteChange = (denomination, value) => {
-    const count = value === "" ? "" : Math.max(0, parseInt(value, 10) || 0);
+    const maximum = denomination === "paise" ? 99 : Number.MAX_SAFE_INTEGER;
+    const count = value === "" ? "" : Math.min(maximum, Math.max(0, parseInt(value, 10) || 0));
 
     setPaymentForm((prev) => {
       const cashNotes = {
@@ -1084,6 +1008,17 @@ function UpdatePayment() {
   };
 
   const formatPaymentDetails = (payment) => {
+    if (payment.payment_mode === "cash") {
+      const cashDetails = parseCashDetails(payment.cash_details);
+      const parts = CASH_DENOMINATIONS
+        .filter((item) => (parseInt(cashDetails[item.key], 10) || 0) > 0)
+        .map((item) => {
+          return `₹${item.denomination} × ${parseInt(cashDetails[item.key], 10)}`;
+        });
+      const paise = parseInt(cashDetails.paise, 10) || 0;
+      if (paise > 0) parts.push(`${paise} paise`);
+      return parts.join(", ") || "—";
+    }
     if (payment.payment_mode === "upi" && payment.reference_no) {
       return `UPI: ${payment.reference_no}`;
     }
@@ -1117,7 +1052,7 @@ function UpdatePayment() {
     if (paymentForm.paymentMode === "cash") {
       const hasCashCount = CASH_DENOMINATIONS.some(
         (item) => (parseInt(paymentForm.cashNotes[item.key], 10) || 0) > 0
-      );
+      ) || (parseInt(paymentForm.cashNotes.paise, 10) || 0) > 0;
       if (!hasCashCount) {
         alert("Please enter cash note count.");
         return null;
@@ -1203,6 +1138,7 @@ function UpdatePayment() {
       creditDays:
         paymentForm.paymentMode === "credit" ? parseInt(paymentForm.creditDays, 10) : null,
       parentCreditPaymentId: activeCreditPayment?.id || null,
+      cashDetails: paymentForm.paymentMode === "cash" ? paymentForm.cashNotes : null,
     };
   };
 
@@ -1369,32 +1305,21 @@ function UpdatePayment() {
                 >
                   <MDBox>
                     <MDTypography variant="h5" fontWeight="medium">
-                      Date-wise Collection Details
+                      Payment Update History
                     </MDTypography>
-                    <MDBox display="flex" alignItems="center" flexWrap="wrap" gap={1}>
-                      <MDTypography variant="button" color="text">
-                        Cash, UPI and cheque collections by company staff and delivery boy.
-                      </MDTypography>
-                      <MDTypography variant="button" fontWeight="bold" color="info">
-                        Cash: {formatReportCurrency(collectionAmounts.cash)}
-                      </MDTypography>
-                      <MDTypography variant="button" fontWeight="bold" color="info">
-                        UPI: {formatReportCurrency(collectionAmounts.upi)}
-                      </MDTypography>
-                      <MDTypography variant="button" fontWeight="bold" color="info">
-                        Cheque: {formatReportCurrency(collectionAmounts.cheque)}
-                      </MDTypography>
-                    </MDBox>
+                    <MDTypography variant="button" color="text">
+                      Download every payment update with its payment date, filtered by company and staff.
+                    </MDTypography>
                   </MDBox>
                   <MDButton
-                    variant="outlined"
-                    color="info"
+                    variant="gradient"
+                    color="success"
                     size="small"
-                    onClick={downloadCollectionPdf}
-                    disabled={!filteredCollectionRows.length}
+                    onClick={downloadPaymentExcel}
+                    disabled={!filteredPaymentDetailRows.length}
                   >
-                    <Icon sx={{ mr: 1 }}>picture_as_pdf</Icon>
-                    Download PDF
+                    <Icon sx={{ mr: 1 }}>download</Icon>
+                    Download Excel
                   </MDButton>
                 </MDBox>
 
@@ -1402,11 +1327,22 @@ function UpdatePayment() {
                   <Grid item xs={12} sm={6} md={3}>
                     <MDInput
                       type="date"
-                      label="Date"
+                      label="From Date"
                       fullWidth
                       InputLabelProps={{ shrink: true }}
                       value={collectionDate}
                       onChange={(event) => setCollectionDate(event.target.value)}
+                    />
+                  </Grid>
+                  <Grid item xs={12} sm={6} md={3}>
+                    <MDInput
+                      type="date"
+                      label="To Date"
+                      fullWidth
+                      InputLabelProps={{ shrink: true }}
+                      value={collectionEndDate}
+                      inputProps={{ min: collectionDate || undefined }}
+                      onChange={(event) => setCollectionEndDate(event.target.value)}
                     />
                   </Grid>
                   <Grid item xs={12} sm={6} md={3}>
@@ -1420,7 +1356,6 @@ function UpdatePayment() {
                         onChange={(event) => {
                           setCollectionCompanyId(event.target.value);
                           setCollectionCompanyStaffId("");
-                          setCollectionDeliveryBoyName("");
                         }}
                       >
                         <MenuItem value="">All Companies</MenuItem>
@@ -1439,36 +1374,13 @@ function UpdatePayment() {
                         value={collectionCompanyStaffId}
                         sx={{ height: 43 }}
                         disabled={!collectionCompanyId}
-                        onChange={(event) => {
-                          setCollectionCompanyStaffId(event.target.value);
-                          setCollectionDeliveryBoyName("");
-                        }}
+                        onChange={(event) => setCollectionCompanyStaffId(event.target.value)}
                       >
                         <MenuItem value="">
                           {collectionCompanyId ? "All Company Staff" : "Choose company first"}
                         </MenuItem>
                         {filteredCompanyStaffOptions.map((staff) => (
                           <MenuItem key={staff.id} value={String(staff.id)}>{staff.name}</MenuItem>
-                        ))}
-                      </Select>
-                    </FormControl>
-                  </Grid>
-                  <Grid item xs={12} sm={6} md={3}>
-                    <FormControl fullWidth>
-                      <InputLabel id="collection-delivery-boy-filter-label">Delivery Boy</InputLabel>
-                      <Select
-                        labelId="collection-delivery-boy-filter-label"
-                        label="Delivery Boy"
-                        value={collectionDeliveryBoyName}
-                        sx={{ height: 43 }}
-                        onChange={(event) => {
-                          setCollectionDeliveryBoyName(event.target.value);
-                          setCollectionCompanyStaffId("");
-                        }}
-                      >
-                        <MenuItem value="">All Delivery Boys</MenuItem>
-                        {collectionDeliveryBoyOptions.map((name) => (
-                          <MenuItem key={name} value={name}>{name}</MenuItem>
                         ))}
                       </Select>
                     </FormControl>
@@ -2036,6 +1948,14 @@ function UpdatePayment() {
                               fullWidth
                             />
                           ))}
+                          <MDInput
+                            type="number"
+                            label="Paise (0–99)"
+                            value={paymentForm.cashNotes.paise || ""}
+                            onChange={(e) => handleCashNoteChange("paise", e.target.value)}
+                            inputProps={{ min: 0, max: 99, step: 1 }}
+                            fullWidth
+                          />
                         </MDBox>
                         <MDTypography variant="caption" color="text" display="block" mt={1}>
                           Cash amount auto-calculates from note and coin count.

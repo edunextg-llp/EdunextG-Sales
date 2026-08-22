@@ -520,6 +520,7 @@ async function initDB() {
             reference_no VARCHAR(100) NULL,
             reference_date DATE NULL,
             credit_days INT NULL,
+            cash_details JSON NULL,
             remarks TEXT NULL,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (sale_id) REFERENCES staff_sales(id) ON DELETE CASCADE

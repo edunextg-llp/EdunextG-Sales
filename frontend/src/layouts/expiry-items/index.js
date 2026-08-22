@@ -35,6 +35,16 @@ const formatDate = (value) => {
 
 const number = (value) => Number(value || 0).toLocaleString("en-IN", { maximumFractionDigits: 2 });
 
+const getExpiryQuantities = (item) => {
+  const currentQty = Math.max(0, Number(item?.total_current_stock_in_pcs) || 0);
+  const expiredQty = item?.expiry?.days < 0 ? currentQty : 0;
+  return {
+    currentQty,
+    expiredQty,
+    qtyAfterDeduction: Math.max(0, currentQty - expiredQty),
+  };
+};
+
 const expiryDetails = (value) => {
   const expiry = new Date(`${String(value).slice(0, 10)}T00:00:00`);
   const today = new Date();
@@ -107,7 +117,13 @@ function ExpiryItems() {
     .map((item) => ({ ...item, expiry: expiryDetails(item.expiry_date) }))
     .filter((item) => {
       const query = search.trim().toLowerCase();
-      const matchesSearch = !query || [item.product_erp_id, item.product_name, item.batch_number]
+      const matchesSearch = !query || [
+        item.product_erp_id,
+        item.product_name,
+        item.batch_number,
+        item.invoice_number,
+        stockImport?.invoice_number,
+      ]
         .some((value) => String(value || "").toLowerCase().includes(query));
       const matchesStatus = status === "all"
         || (status === "expired" && item.expiry.days < 0)
@@ -116,7 +132,7 @@ function ExpiryItems() {
         || (status === "valid" && item.expiry.days > 90);
       return matchesSearch && matchesStatus;
     })
-    .sort((left, right) => String(left.expiry_date).localeCompare(String(right.expiry_date))), [items, search, status]);
+    .sort((left, right) => String(left.expiry_date).localeCompare(String(right.expiry_date))), [items, search, status, stockImport]);
 
   return (
     <DashboardLayout>
@@ -170,16 +186,19 @@ function ExpiryItems() {
                 {error && <MDTypography color="error" variant="button">{error}</MDTypography>}
                 {loading && <LinearProgress color="info" sx={{ mb: 2 }} />}
                 <TableContainer component={Paper} sx={{ maxHeight: "68vh", border: "1px solid #e5e7eb" }}>
-                  <Table size="small" stickyHeader sx={{ minWidth: 1150 }}>
-                    <TableHead sx={{ display: "table-header-group" }}><TableRow>{["Sr No", "ERP ID", "SKU Name", "Company", "Variant", "Batch", "MFG Date", "Expiry Date", "Days Remaining", "Status", "Current Stock"].map((heading) => <TableCell key={heading} align={["Days Remaining", "Current Stock"].includes(heading) ? "right" : "left"} sx={headSx}>{heading}</TableCell>)}</TableRow></TableHead>
+                  <Table size="small" stickyHeader sx={{ minWidth: 1650 }}>
+                    <TableHead sx={{ display: "table-header-group" }}><TableRow>{["Sr No", "Invoice No.", "Invoice Date", "ERP ID", "SKU Name", "Company", "Variant", "Batch", "MFG Date", "Expiry Date", "Days Remaining", "Status", "Expired Qty", "Current Qty", "Expiry Deduction", "Qty After Deduction"].map((heading) => <TableCell key={heading} align={["Days Remaining", "Expired Qty", "Current Qty", "Qty After Deduction"].includes(heading) ? "right" : "left"} sx={headSx}>{heading}</TableCell>)}</TableRow></TableHead>
                     <TableBody>
-                      {!loading && expiryItems.length === 0 && <TableRow><TableCell colSpan={11} align="center" sx={cellSx}>No expiry items match the selected filters.</TableCell></TableRow>}
-                      {expiryItems.map((item, index) => (
-                        <TableRow key={item.id} hover>
-                          <TableCell sx={cellSx}>{index + 1}</TableCell><TableCell sx={cellSx}>{item.product_erp_id}</TableCell><TableCell sx={{ ...cellSx, minWidth: 200 }}>{item.product_name}</TableCell><TableCell sx={cellSx}>{item.company_name || stockImport?.company_name || item.product_division || "N/A"}</TableCell><TableCell sx={cellSx}>{item.variant_name || "—"}</TableCell><TableCell sx={cellSx}>{item.batch_number || "—"}</TableCell><TableCell sx={cellSx}>{formatDate(item.mfg_date)}</TableCell><TableCell sx={{ ...cellSx, fontWeight: 700 }}>{formatDate(item.expiry_date)}</TableCell><TableCell align="right" sx={cellSx}>{item.expiry.days < 0 ? `${Math.abs(item.expiry.days)} days ago` : `${item.expiry.days} days`}</TableCell>
-                          <TableCell sx={cellSx}><MDBox component="span" px={1} py={0.5} sx={{ display: "inline-block", borderRadius: 1, color: item.expiry.color, backgroundColor: item.expiry.bg, fontSize: "0.7rem", fontWeight: 700 }}>{item.expiry.label}</MDBox></TableCell><TableCell align="right" sx={{ ...cellSx, fontWeight: 700 }}>{number(item.total_current_stock_in_pcs)}</TableCell>
-                        </TableRow>
-                      ))}
+                      {!loading && expiryItems.length === 0 && <TableRow><TableCell colSpan={16} align="center" sx={cellSx}>No expiry items match the selected filters.</TableCell></TableRow>}
+                      {expiryItems.map((item, index) => {
+                        const quantities = getExpiryQuantities(item);
+                        return (
+                          <TableRow key={item.id} hover>
+                            <TableCell sx={cellSx}>{index + 1}</TableCell><TableCell sx={cellSx}>{item.invoice_number || stockImport?.invoice_number || "—"}</TableCell><TableCell sx={cellSx}>{formatDate(item.upload_date || stockImport?.upload_date)}</TableCell><TableCell sx={cellSx}>{item.product_erp_id}</TableCell><TableCell sx={{ ...cellSx, minWidth: 200 }}>{item.product_name}</TableCell><TableCell sx={cellSx}>{item.company_name || stockImport?.company_name || item.product_division || "N/A"}</TableCell><TableCell sx={cellSx}>{item.variant_name || "—"}</TableCell><TableCell sx={cellSx}>{item.batch_number || "—"}</TableCell><TableCell sx={cellSx}>{formatDate(item.mfg_date)}</TableCell><TableCell sx={{ ...cellSx, fontWeight: 700 }}>{formatDate(item.expiry_date)}</TableCell><TableCell align="right" sx={cellSx}>{item.expiry.days < 0 ? `${Math.abs(item.expiry.days)} days ago` : `${item.expiry.days} days`}</TableCell>
+                            <TableCell sx={cellSx}><MDBox component="span" px={1} py={0.5} sx={{ display: "inline-block", borderRadius: 1, color: item.expiry.color, backgroundColor: item.expiry.bg, fontSize: "0.7rem", fontWeight: 700 }}>{item.expiry.label}</MDBox></TableCell><TableCell align="right" sx={{ ...cellSx, fontWeight: 700, color: quantities.expiredQty > 0 ? "#991b1b" : "inherit" }}>{number(quantities.expiredQty)}</TableCell><TableCell align="right" sx={{ ...cellSx, fontWeight: 700 }}>{number(quantities.currentQty)}</TableCell><TableCell sx={cellSx}>{quantities.expiredQty > 0 ? `Yes (−${number(quantities.expiredQty)})` : "No"}</TableCell><TableCell align="right" sx={{ ...cellSx, fontWeight: 700 }}>{number(quantities.qtyAfterDeduction)}</TableCell>
+                          </TableRow>
+                        );
+                      })}
                     </TableBody>
                   </Table>
                 </TableContainer>

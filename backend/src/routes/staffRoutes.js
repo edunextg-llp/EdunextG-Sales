@@ -76,6 +76,8 @@ router.get('/sales/by-date', staffController.getAllSalesByDate);
 router.get('/sales/lookup', staffController.lookupSaleByInvoice);
 router.get('/sales/cancelled', staffController.getCancelledDeliverySales);
 router.get('/reports', staffController.getReports);
+router.get('/reports/payments', staffController.getPaymentDetailsReport);
+router.get('/reports/payments/export', staffController.downloadPaymentDetailsExcel);
 router.get('/outlets-export', staffController.downloadOutletsExcel);
 router.get('/outlets-template', staffController.downloadOutletUploadTemplate);
 router.get('/:id', staffController.getStaffFullDetails);

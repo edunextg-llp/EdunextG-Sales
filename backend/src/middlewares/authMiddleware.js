@@ -72,7 +72,7 @@ export const enforceManagedUserApiScope = (req, res, next) => {
     const hasDms = permissions.has('dms');
 
     let allowed = false;
-    if (path === '/reports' || path === '/purchase-reports' || path === '/' || path === '/search') {
+    if (path === '/reports' || path === '/reports/payments' || path === '/reports/payments/export' || path === '/purchase-reports' || path === '/' || path === '/search') {
         allowed = method === 'GET' && (
             permissions.has('dashboard')
             || permissions.has('add_outlet')

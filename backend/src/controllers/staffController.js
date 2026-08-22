@@ -2558,6 +2558,106 @@ export const getReports = async (req, res) => {
     }
 };
 
+export const downloadPaymentDetailsExcel = async (req, res) => {
+    try {
+        const { startDate, endDate, companyId, staffId } = req.query;
+        const datePattern = /^\d{4}-\d{2}-\d{2}$/;
+        if ((startDate && !datePattern.test(startDate)) || (endDate && !datePattern.test(endDate))) {
+            return res.status(400).json({ error: 'Dates must be YYYY-MM-DD' });
+        }
+
+        const parsedCompanyId = companyId ? Number(companyId) : null;
+        const parsedStaffId = staffId ? Number(staffId) : null;
+        if (companyId && (!Number.isInteger(parsedCompanyId) || parsedCompanyId <= 0)) {
+            return res.status(400).json({ error: 'companyId must be a positive integer' });
+        }
+        if (staffId && (!Number.isInteger(parsedStaffId) || parsedStaffId <= 0)) {
+            return res.status(400).json({ error: 'staffId must be a positive integer' });
+        }
+
+        const rows = await ReportModel.getPaymentDetails(
+            startDate || null,
+            endDate || null,
+            parsedStaffId,
+            parsedCompanyId
+        );
+        const workbook = new ExcelJS.Workbook();
+        const sheet = workbook.addWorksheet('Payment Details', { views: [{ state: 'frozen', ySplit: 1 }] });
+        sheet.columns = [
+            { header: 'Payment Date', key: 'payment_date', width: 15 },
+            { header: 'Payment ID', key: 'payment_id', width: 12 },
+            { header: 'Company', key: 'company_name', width: 24 },
+            { header: 'Staff', key: 'staff_name', width: 22 },
+            { header: 'Outlet', key: 'outlet_name', width: 28 },
+            { header: 'Outlet ERP ID', key: 'outlet_erp_id', width: 16 },
+            { header: 'Sale ID', key: 'sale_id', width: 12 },
+            { header: 'Invoice Number', key: 'invoice_number', width: 20 },
+            { header: 'Payment Mode', key: 'payment_mode', width: 15 },
+            { header: 'Amount', key: 'amount', width: 16 },
+            { header: 'Cash Details', key: 'cash_details_text', width: 42 },
+            { header: 'Reference Number', key: 'reference_no', width: 20 },
+            { header: 'Reference Date', key: 'reference_date', width: 15 },
+        ];
+        rows.forEach((row) => {
+            let details = row.cash_details;
+            if (typeof details === 'string') {
+                try { details = JSON.parse(details); } catch (error) { details = {}; }
+            }
+            const cashDetailsText = row.payment_mode === 'cash'
+                ? Object.entries(details || {})
+                    .filter(([, count]) => Number(count) > 0)
+                    .map(([key, count]) => key === 'paise' ? `${count} paise` : `₹${key.split('_')[1]} x ${count}`)
+                    .join(', ')
+                : '';
+            sheet.addRow({
+                ...row,
+                payment_mode: String(row.payment_mode || '').toUpperCase(),
+                cash_details_text: cashDetailsText,
+            });
+        });
+        sheet.getRow(1).eachCell((cell) => {
+            cell.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF0EA5E9' } };
+            cell.alignment = { vertical: 'middle', horizontal: 'center' };
+        });
+        sheet.getColumn('amount').numFmt = '₹#,##0.00';
+        sheet.autoFilter = { from: 'A1', to: 'M1' };
+
+        const file = await workbook.xlsx.writeBuffer();
+        res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        res.setHeader('Content-Disposition', `attachment; filename="Payment_Details_${startDate || 'all'}_to_${endDate || 'all'}.xlsx"`);
+        return res.send(Buffer.from(file));
+    } catch (error) {
+        console.error('Error exporting payment details:', error);
+        return res.status(500).json({ error: 'Unable to export payment details' });
+    }
+};
+
+export const getPaymentDetailsReport = async (req, res) => {
+    try {
+        const { startDate, endDate, companyId, staffId } = req.query;
+        const datePattern = /^\d{4}-\d{2}-\d{2}$/;
+        if ((startDate && !datePattern.test(startDate)) || (endDate && !datePattern.test(endDate))) {
+            return res.status(400).json({ error: 'Dates must be YYYY-MM-DD' });
+        }
+        const parsedCompanyId = companyId ? Number(companyId) : null;
+        const parsedStaffId = staffId ? Number(staffId) : null;
+        if (companyId && (!Number.isInteger(parsedCompanyId) || parsedCompanyId <= 0)) {
+            return res.status(400).json({ error: 'companyId must be a positive integer' });
+        }
+        if (staffId && (!Number.isInteger(parsedStaffId) || parsedStaffId <= 0)) {
+            return res.status(400).json({ error: 'staffId must be a positive integer' });
+        }
+        const rows = await ReportModel.getPaymentDetails(
+            startDate || null, endDate || null, parsedStaffId, parsedCompanyId
+        );
+        return res.status(200).json(rows);
+    } catch (error) {
+        console.error('Error fetching payment details report:', error);
+        return res.status(500).json({ error: 'Unable to load payment details' });
+    }
+};
+
 export const getOutletsByStaffAndDayName = async (req, res) => {
     try {
         const { id } = req.params;
@@ -2807,7 +2907,7 @@ export const getSalePayments = async (req, res) => {
 export const addSalePayment = async (req, res) => {
     try {
         const { saleId } = req.params;
-        const { paymentDate, paymentMode, amount, collectorStaffId, collectorName, collectorType, referenceNo, referenceDate, creditDays, parentCreditPaymentId } = req.body;
+        const { paymentDate, paymentMode, amount, collectorStaffId, collectorName, collectorType, referenceNo, referenceDate, creditDays, parentCreditPaymentId, cashDetails } = req.body;
 
         if (!paymentDate) {
             return res.status(400).json({ error: 'Payment date is required' });
@@ -2876,6 +2976,7 @@ export const addSalePayment = async (req, res) => {
             referenceDate: formattedRefDate,
             creditDays: mode === 'credit' ? parseInt(creditDays, 10) : null,
             parentCreditPaymentId: normalizedParentCreditPaymentId,
+            cashDetails: mode === 'cash' ? cashDetails : null,
         });
 
 
@@ -2912,7 +3013,7 @@ export const addSalePayment = async (req, res) => {
 export const editSalePayment = async (req, res) => {
     try {
         const { saleId, paymentId } = req.params;
-        const { paymentDate, paymentMode, amount, collectorStaffId, collectorName, collectorType, referenceNo, referenceDate, creditDays } = req.body;
+        const { paymentDate, paymentMode, amount, collectorStaffId, collectorName, collectorType, referenceNo, referenceDate, creditDays, cashDetails } = req.body;
 
         if (!paymentDate) {
             return res.status(400).json({ error: 'Payment date is required' });
@@ -2974,6 +3075,7 @@ export const editSalePayment = async (req, res) => {
             referenceNo: referenceNo || null,
             referenceDate: formattedRefDate,
             creditDays: mode === 'credit' ? parseInt(creditDays, 10) : null,
+            cashDetails: mode === 'cash' ? cashDetails : null,
 
         });
 
