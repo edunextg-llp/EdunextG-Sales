@@ -9,7 +9,7 @@ import DashboardLayout from "examples/LayoutContainers/DashboardLayout";
 import DashboardNavbar from "examples/Navbars/DashboardNavbar";
 import Footer from "examples/Footer";
 
-const API = "http://localhost:5001/api";
+const API = "https://bawarchee.edunextg.co/api";
 const emptyForm = () => ({ companyId: "", staffId: "", area: "", outletId: "", productSource: "fetched",
   productErpId: "", productName: "", expiryDate: "", qty: "", amount: "" });
 const cellSx = { px: 1.5, py: 1.25, fontSize: "0.8125rem", whiteSpace: "nowrap" };
