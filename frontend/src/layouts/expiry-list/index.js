@@ -10,7 +10,7 @@ import DashboardNavbar from "examples/Navbars/DashboardNavbar";
 import Footer from "examples/Footer";
 
 const API = "https://bawarchee.edunextg.co/api";
-const emptyForm = () => ({ companyId: "", staffId: "", area: "", outletId: "", productSource: "fetched",
+const emptyForm = () => ({ companyId: "", sellerId: "", staffId: "", area: "", outletId: "", productSource: "fetched",
   productErpId: "", productName: "", expiryDate: "", qty: "", amount: "" });
 const cellSx = { px: 1.5, py: 1.25, fontSize: "0.8125rem", whiteSpace: "nowrap" };
 const headSx = { ...cellSx, fontWeight: 700, color: "#475569", backgroundColor: "#f8fafc" };
@@ -25,6 +25,7 @@ const formatDate = (value) => value ? String(value).slice(0, 10).split("-").reve
 export default function ExpiryList() {
   const [records, setRecords] = useState([]);
   const [companies, setCompanies] = useState([]);
+  const [sellers, setSellers] = useState([]);
   const [staff, setStaff] = useState([]);
   const [outlets, setOutlets] = useState([]);
   const [products, setProducts] = useState([]);
@@ -42,16 +43,18 @@ export default function ExpiryList() {
   }, []);
 
   const changeCompany = async (companyId) => {
-    setForm((old) => ({ ...old, companyId, staffId: "", area: "", outletId: "", productErpId: "", productName: "" }));
-    setOutlets([]); setProducts([]);
+    setForm((old) => ({ ...old, companyId, sellerId: "", staffId: "", area: "", outletId: "", productErpId: "", productName: "" }));
+    setOutlets([]); setProducts([]); setSellers([]);
     if (!companyId) return setStaff([]);
-    const [staffResponse, productResponse] = await Promise.all([
+    const [staffResponse, productResponse, sellerResponse] = await Promise.all([
       fetch(`${API}/staff?companyId=${companyId}`),
       fetch(`${API}/staff/dms-stock/product-search?companyId=${companyId}&search=`),
+      fetch(`${API}/staff/purchase-sellers/company/${companyId}`),
     ]);
     setStaff(staffResponse.ok ? await staffResponse.json() : []);
     const productData = productResponse.ok ? await productResponse.json() : {};
     setProducts(productData.products || []);
+    setSellers(sellerResponse.ok ? await sellerResponse.json() : []);
   };
   const changeStaff = async (staffId) => {
     setForm((old) => ({ ...old, staffId, area: "", outletId: "" }));
@@ -63,14 +66,14 @@ export default function ExpiryList() {
   const areaOutlets = useMemo(() => outlets.filter((o) => o.location_name === form.area), [outlets, form.area]);
 
   const save = async () => {
-    if (!form.companyId || !form.staffId || !form.area || !form.outletId || !form.productName.trim() || !form.expiryDate || !form.qty || form.amount === "") {
-      alert("Please complete company, staff, area, outlet, product, expiry date, quantity, and amount."); return;
+    if (!form.companyId || !form.sellerId || !form.staffId || !form.area || !form.outletId || !form.productName.trim() || !form.expiryDate || !form.qty || form.amount === "") {
+      alert("Please complete company, seller, staff, area, outlet, product, expiry date, quantity, and amount."); return;
     }
     setSaving(true);
     try {
       const response = await fetch(`${API}/staff/expiry-list`, { method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ ...form, companyId: Number(form.companyId), staffId: Number(form.staffId),
-          outletId: Number(form.outletId), qty: Number(form.qty), amount: Number(form.amount) }) });
+          sellerId: Number(form.sellerId), outletId: Number(form.outletId), qty: Number(form.qty), amount: Number(form.amount) }) });
       const data = await response.json().catch(() => ({}));
       if (!response.ok) return alert(data.error || "Unable to save expiry item.");
       setOpen(false); setForm(emptyForm()); setStaff([]); setOutlets([]); setProducts([]); await loadRecords();
@@ -82,12 +85,13 @@ export default function ExpiryList() {
       <MDBox><MDTypography variant="h5">Expiry List</MDTypography><MDTypography variant="caption" color="text">Outlet-wise product expiry records.</MDTypography></MDBox>
       <MDButton color="info" variant="gradient" onClick={() => setOpen(true)}>Add Expiry</MDButton>
     </MDBox><MDBox px={3} pb={3}><TableContainer component={Paper} sx={{ border: "1px solid #e5e7eb" }}><Table size="small">
-      <TableHead sx={{ display: "table-header-group" }}><TableRow>{["Company", "Staff", "Area", "Outlet", "ERP ID", "Product", "Expiry Date", "Qty", "Amount"].map((h) => <TableCell key={h} sx={headSx}>{h}</TableCell>)}</TableRow></TableHead>
-      <TableBody>{records.map((r) => <TableRow key={r.id}><TableCell sx={cellSx}>{r.company_name}</TableCell><TableCell sx={cellSx}>{r.staff_name}</TableCell><TableCell sx={cellSx}>{r.location_name}</TableCell><TableCell sx={cellSx}>{r.outlet_name}</TableCell><TableCell sx={cellSx}>{r.product_erp_id || "Manual"}</TableCell><TableCell sx={cellSx}>{r.product_name}</TableCell><TableCell sx={cellSx}>{formatDate(r.expiry_date)}</TableCell><TableCell sx={cellSx}>{Number(r.qty)}</TableCell><TableCell sx={cellSx}>₹{Number(r.amount).toFixed(2)}</TableCell></TableRow>)}
-        {!records.length && <TableRow><TableCell colSpan={9} align="center" sx={cellSx}>No expiry records added yet.</TableCell></TableRow>}</TableBody>
+      <TableHead sx={{ display: "table-header-group" }}><TableRow>{["Company", "Seller", "Staff", "Area", "Outlet", "ERP ID", "Product", "Expiry Date", "Qty", "Amount"].map((h) => <TableCell key={h} sx={headSx}>{h}</TableCell>)}</TableRow></TableHead>
+      <TableBody>{records.map((r) => <TableRow key={r.id}><TableCell sx={cellSx}>{r.company_name}</TableCell><TableCell sx={cellSx}>{r.seller_name}</TableCell><TableCell sx={cellSx}>{r.staff_name}</TableCell><TableCell sx={cellSx}>{r.location_name}</TableCell><TableCell sx={cellSx}>{r.outlet_name}</TableCell><TableCell sx={cellSx}>{r.product_erp_id || "Manual"}</TableCell><TableCell sx={cellSx}>{r.product_name}</TableCell><TableCell sx={cellSx}>{formatDate(r.expiry_date)}</TableCell><TableCell sx={cellSx}>{Number(r.qty)}</TableCell><TableCell sx={cellSx}>₹{Number(r.amount).toFixed(2)}</TableCell></TableRow>)}
+        {!records.length && <TableRow><TableCell colSpan={10} align="center" sx={cellSx}>No expiry records added yet.</TableCell></TableRow>}</TableBody>
     </Table></TableContainer></MDBox></Card></MDBox>
     <Dialog open={open} onClose={() => !saving && setOpen(false)} fullWidth maxWidth="md"><DialogTitle>Add Expiry</DialogTitle><DialogContent dividers><Grid container spacing={2}>
       <Grid item xs={12} md={6}><FormControl fullWidth size="small"><Select sx={chooseSx} displayEmpty value={form.companyId} onChange={(e) => changeCompany(e.target.value)}><MenuItem value="" disabled>Choose Company *</MenuItem>{companies.map((c) => <MenuItem key={c.id} value={String(c.id)}>{c.name}</MenuItem>)}</Select></FormControl></Grid>
+      <Grid item xs={12} md={6}><FormControl fullWidth size="small"><Select sx={chooseSx} displayEmpty disabled={!form.companyId} value={form.sellerId} onChange={(e) => setForm((old) => ({ ...old, sellerId: e.target.value }))}><MenuItem value="" disabled>Choose Seller *</MenuItem>{sellers.map((seller) => <MenuItem key={seller.id} value={String(seller.id)}>{seller.seller_name}</MenuItem>)}</Select></FormControl></Grid>
       <Grid item xs={12} md={6}><FormControl fullWidth size="small"><Select sx={chooseSx} displayEmpty disabled={!form.companyId} value={form.staffId} onChange={(e) => changeStaff(e.target.value)}><MenuItem value="" disabled>Choose Staff *</MenuItem>{staff.map((s) => <MenuItem key={s.id} value={String(s.id)}>{s.name}</MenuItem>)}</Select></FormControl></Grid>
       <Grid item xs={12} md={6}><FormControl fullWidth size="small"><Select sx={chooseSx} displayEmpty disabled={!form.staffId} value={form.area} onChange={(e) => setForm((o) => ({ ...o, area: e.target.value, outletId: "" }))}><MenuItem value="" disabled>Choose Area *</MenuItem>{areas.map((a) => <MenuItem key={a} value={a}>{a}</MenuItem>)}</Select></FormControl></Grid>
       <Grid item xs={12} md={6}>

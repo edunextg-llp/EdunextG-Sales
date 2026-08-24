@@ -1319,6 +1319,7 @@ async function initDB() {
         CREATE TABLE IF NOT EXISTS outlet_expiry_list (
             id INT AUTO_INCREMENT PRIMARY KEY,
             company_id INT NOT NULL,
+            seller_id INT NOT NULL,
             staff_id INT NOT NULL,
             outlet_id INT NOT NULL,
             product_source ENUM('manual', 'fetched') NOT NULL DEFAULT 'manual',
@@ -1330,11 +1331,17 @@ async function initDB() {
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             INDEX idx_outlet_expiry_date (expiry_date),
             FOREIGN KEY (company_id) REFERENCES companies(id),
+            FOREIGN KEY (seller_id) REFERENCES purchase_sellers(id),
             FOREIGN KEY (staff_id) REFERENCES staff(id),
             FOREIGN KEY (outlet_id) REFERENCES staff_counters(id) ON DELETE CASCADE
         );
     `);
     console.log('Outlet expiry list table ready');
+    try {
+        await connection.query(`ALTER TABLE outlet_expiry_list ADD COLUMN seller_id INT NULL AFTER company_id`);
+    } catch (err) {
+        if (err.code !== 'ER_DUP_FIELDNAME') console.log('seller_id column may already exist on outlet_expiry_list');
+    }
     try {
         await connection.query(`ALTER TABLE outlet_expiry_list ADD COLUMN qty DECIMAL(12, 2) NOT NULL DEFAULT 1.00`);
     } catch (err) {

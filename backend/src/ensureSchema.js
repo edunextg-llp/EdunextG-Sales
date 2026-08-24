@@ -900,6 +900,7 @@ export async function ensureSchema() {
                 requisition_number VARCHAR(30) NOT NULL UNIQUE,
                 seller_type ENUM('distributor', 'cnf') NOT NULL DEFAULT 'distributor',
                 company_id INT NOT NULL,
+                seller_id INT NOT NULL,
                 staff_id INT NOT NULL,
                 outlet_id INT NOT NULL,
                 outlet_day VARCHAR(20) NULL,
@@ -1659,10 +1660,12 @@ export async function ensureSchema() {
                 INDEX idx_outlet_expiry_date (expiry_date),
                 INDEX idx_outlet_expiry_outlet (outlet_id),
                 FOREIGN KEY (company_id) REFERENCES companies(id),
+                FOREIGN KEY (seller_id) REFERENCES purchase_sellers(id),
                 FOREIGN KEY (staff_id) REFERENCES staff(id),
                 FOREIGN KEY (outlet_id) REFERENCES staff_counters(id) ON DELETE CASCADE
             );
         `);
+        await tryQuery(connection, 'ALTER TABLE outlet_expiry_list ADD COLUMN seller_id INT NULL AFTER company_id', 'seller on outlet expiry list');
         await tryQuery(connection, 'ALTER TABLE outlet_expiry_list ADD COLUMN qty DECIMAL(12, 2) NOT NULL DEFAULT 1.00', 'quantity on outlet expiry list');
 
         console.log('Database schema verified');
