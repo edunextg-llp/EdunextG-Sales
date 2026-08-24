@@ -1643,6 +1643,28 @@ export async function ensureSchema() {
         `);
         console.log('overdue_sale_permissions table verified');
 
+        await connection.query(`
+            CREATE TABLE IF NOT EXISTS outlet_expiry_list (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                company_id INT NOT NULL,
+                staff_id INT NOT NULL,
+                outlet_id INT NOT NULL,
+                product_source ENUM('manual', 'fetched') NOT NULL DEFAULT 'manual',
+                product_erp_id VARCHAR(100) NULL,
+                product_name VARCHAR(255) NOT NULL,
+                expiry_date DATE NOT NULL,
+                qty DECIMAL(12, 2) NOT NULL DEFAULT 1.00,
+                amount DECIMAL(12, 2) NOT NULL DEFAULT 0.00,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                INDEX idx_outlet_expiry_date (expiry_date),
+                INDEX idx_outlet_expiry_outlet (outlet_id),
+                FOREIGN KEY (company_id) REFERENCES companies(id),
+                FOREIGN KEY (staff_id) REFERENCES staff(id),
+                FOREIGN KEY (outlet_id) REFERENCES staff_counters(id) ON DELETE CASCADE
+            );
+        `);
+        await tryQuery(connection, 'ALTER TABLE outlet_expiry_list ADD COLUMN qty DECIMAL(12, 2) NOT NULL DEFAULT 1.00', 'quantity on outlet expiry list');
+
         console.log('Database schema verified');
     } finally {
         await connection.end();

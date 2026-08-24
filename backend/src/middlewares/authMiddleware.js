@@ -83,10 +83,13 @@ export const enforceManagedUserApiScope = (req, res, next) => {
             || permissions.has('delivery')
             || permissions.has('delivered')
             || permissions.has('out_bill')
+            || (hasDms && permissions.has('item_list'))
         );
     } else if (path === '/companies') {
         allowed = method === 'GET' && (hasDms || permissions.has('update_payment') || permissions.has('location_assignments'));
     } else if (path.startsWith('/dms-stock')) {
+        allowed = hasDms && permissions.has('item_list');
+    } else if (path.startsWith('/expiry-list')) {
         allowed = hasDms && permissions.has('item_list');
     } else if (path.startsWith('/purchase-sellers')) {
         allowed = hasDms && (
@@ -107,7 +110,8 @@ export const enforceManagedUserApiScope = (req, res, next) => {
     } else if (path === '/outlets-export' || path === '/outlets-template' || /^\/\d+\/outlets-upload$/.test(path)) {
         allowed = permissions.has('add_outlet');
     } else if (/^\/\d+\/(locations|outlets-by-date|all-counters|outlets-by-day|next-bill-number)$/.test(path)) {
-        allowed = permissions.has('add_outlet') || permissions.has('add_sales') || permissions.has('location_assignments');
+        allowed = permissions.has('add_outlet') || permissions.has('add_sales') || permissions.has('location_assignments')
+            || (hasDms && permissions.has('item_list'));
     } else if (/^\/\d+$/.test(path)) {
         allowed = method === 'GET' && permissions.has('location_assignments');
     } else if (/^\/\d+\/sales$/.test(path)) {

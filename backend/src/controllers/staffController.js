@@ -11,6 +11,7 @@ import OrderCancellationModel from '../models/orderCancellationModel.js';
 import PhysicalStockModel from '../models/physicalStockModel.js';
 import PackagingRemarkModel from '../models/packagingRemarkModel.js';
 import DeliveryCollectionModel from '../models/deliveryCollectionModel.js';
+import ExpiryListModel from '../models/expiryListModel.js';
 import db from '../config/db.js';
 import {
     validateDigitsOnly,
@@ -27,6 +28,49 @@ import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
 import xlsx from 'xlsx';
 import ExcelJS from 'exceljs';
+
+export const getExpiryList = async (_req, res) => {
+    try {
+        res.status(200).json(await ExpiryListModel.getAll());
+    } catch (error) {
+        console.error('Error fetching expiry list:', error);
+        res.status(500).json({ error: 'Unable to load expiry list' });
+    }
+};
+
+export const createExpiryListItem = async (req, res) => {
+    try {
+        const companyId = Number(req.body.companyId);
+        const staffId = Number(req.body.staffId);
+        const outletId = Number(req.body.outletId);
+        const productSource = req.body.productSource === 'manual' ? 'manual' : 'fetched';
+        const productName = String(req.body.productName || '').trim();
+        const productErpId = String(req.body.productErpId || '').trim();
+        const expiryDate = normalizeDateInput(req.body.expiryDate);
+        const qty = Number(req.body.qty);
+        const amount = Number(req.body.amount);
+        if (![companyId, staffId, outletId].every((value) => Number.isInteger(value) && value > 0)) {
+            return res.status(400).json({ error: 'Company, staff, and outlet are required' });
+        }
+        if (!productName) return res.status(400).json({ error: 'Product name is required' });
+        if (!expiryDate) return res.status(400).json({ error: 'Expiry date is required' });
+        if (!Number.isFinite(qty) || qty <= 0) return res.status(400).json({ error: 'Enter a valid quantity' });
+        if (!Number.isFinite(amount) || amount < 0) return res.status(400).json({ error: 'Enter a valid amount' });
+        const [outlets] = await db.execute(
+            `SELECT sc.id FROM staff_counters sc
+             INNER JOIN staff_companies sm ON sm.staff_id = sc.staff_id
+             WHERE sc.id = ? AND sc.staff_id = ? AND sm.company_id = ? LIMIT 1`,
+            [outletId, staffId, companyId]
+        );
+        if (!outlets.length) return res.status(400).json({ error: 'Outlet does not match the selected company and staff' });
+        const item = await ExpiryListModel.create({ companyId, staffId, outletId, productSource,
+            productErpId, productName: productName.slice(0, 255), expiryDate, qty, amount });
+        res.status(201).json({ message: 'Expiry item saved successfully', item });
+    } catch (error) {
+        console.error('Error saving expiry list item:', error);
+        res.status(500).json({ error: 'Unable to save expiry item' });
+    }
+};
 
 function buildStaffProfile(body = {}) {
     const whatsappSource = String(body.whatsappNumber || '').trim() || String(body.contactNo || '').trim();
