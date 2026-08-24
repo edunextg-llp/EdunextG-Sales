@@ -90,7 +90,19 @@ export default function ExpiryList() {
       <Grid item xs={12} md={6}><FormControl fullWidth size="small"><Select sx={chooseSx} displayEmpty value={form.companyId} onChange={(e) => changeCompany(e.target.value)}><MenuItem value="" disabled>Choose Company *</MenuItem>{companies.map((c) => <MenuItem key={c.id} value={String(c.id)}>{c.name}</MenuItem>)}</Select></FormControl></Grid>
       <Grid item xs={12} md={6}><FormControl fullWidth size="small"><Select sx={chooseSx} displayEmpty disabled={!form.companyId} value={form.staffId} onChange={(e) => changeStaff(e.target.value)}><MenuItem value="" disabled>Choose Staff *</MenuItem>{staff.map((s) => <MenuItem key={s.id} value={String(s.id)}>{s.name}</MenuItem>)}</Select></FormControl></Grid>
       <Grid item xs={12} md={6}><FormControl fullWidth size="small"><Select sx={chooseSx} displayEmpty disabled={!form.staffId} value={form.area} onChange={(e) => setForm((o) => ({ ...o, area: e.target.value, outletId: "" }))}><MenuItem value="" disabled>Choose Area *</MenuItem>{areas.map((a) => <MenuItem key={a} value={a}>{a}</MenuItem>)}</Select></FormControl></Grid>
-      <Grid item xs={12} md={6}><FormControl fullWidth size="small"><Select sx={chooseSx} displayEmpty disabled={!form.area} value={form.outletId} onChange={(e) => setForm((o) => ({ ...o, outletId: e.target.value }))}><MenuItem value="" disabled>Choose Outlet *</MenuItem>{areaOutlets.map((o) => <MenuItem key={o.id} value={String(o.id)}>{o.outlet_name}{o.outlet_erp_id ? ` — ${o.outlet_erp_id}` : ""}</MenuItem>)}</Select></FormControl></Grid>
+      <Grid item xs={12} md={6}>
+        <Autocomplete
+          sx={productInputSx}
+          size="small"
+          disabled={!form.area}
+          options={areaOutlets}
+          value={areaOutlets.find((outlet) => String(outlet.id) === String(form.outletId)) || null}
+          getOptionLabel={(outlet) => `${outlet.outlet_name || ""}${outlet.outlet_erp_id ? ` — ${outlet.outlet_erp_id}` : ""}`}
+          isOptionEqualToValue={(option, value) => String(option.id) === String(value.id)}
+          onChange={(_, outlet) => setForm((old) => ({ ...old, outletId: outlet ? String(outlet.id) : "" }))}
+          renderInput={(params) => <MDInput {...params} label="Search Outlet *" placeholder="Type outlet name or ERP ID" />}
+        />
+      </Grid>
       <Grid item xs={12} md={4}><FormControl fullWidth size="small"><Select sx={chooseSx} value={form.productSource} onChange={(e) => setForm((o) => ({ ...o, productSource: e.target.value, productErpId: "", productName: "" }))}><MenuItem value="fetched">Fetch Product</MenuItem><MenuItem value="manual">Manual Entry</MenuItem></Select></FormControl></Grid>
       <Grid item xs={12} md={8}>{form.productSource === "manual" ? <MDInput sx={productInputSx} label="Product Name *" fullWidth value={form.productName} onChange={(e) => setForm((o) => ({ ...o, productName: e.target.value }))} /> : <Autocomplete sx={productInputSx} size="small" options={products} getOptionLabel={(p) => `${p.product_name || ""}${p.product_erp_id ? ` — ${p.product_erp_id}` : ""}`} onChange={(_, p) => setForm((o) => ({ ...o, productName: p?.product_name || "", productErpId: p?.product_erp_id || "" }))} renderInput={(params) => <MDInput {...params} label="Choose Product *" />} />}</Grid>
       <Grid item xs={12} md={4}><MDInput type="date" label="Expiry Date *" fullWidth InputLabelProps={{ shrink: true }} value={form.expiryDate} onChange={(e) => setForm((o) => ({ ...o, expiryDate: e.target.value }))} /></Grid>
