@@ -91,6 +91,8 @@ export const enforceManagedUserApiScope = (req, res, next) => {
         allowed = hasDms && permissions.has('item_list');
     } else if (path.startsWith('/expiry-list')) {
         allowed = hasDms && permissions.has('item_list');
+    } else if (path.startsWith('/damage-list')) {
+        allowed = hasDms && permissions.has('item_list');
     } else if (path.startsWith('/purchase-sellers')) {
         allowed = hasDms && (
             permissions.has('add_seller')

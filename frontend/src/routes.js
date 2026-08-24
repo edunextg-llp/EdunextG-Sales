@@ -170,6 +170,16 @@ const routes = [
       },
       {
         type: "collapse",
+        name: "Damage List",
+        key: "damage-list",
+        icon: <Icon fontSize="small">broken_image</Icon>,
+        route: "/damage-list",
+        component: <ExpiryList mode="damage" />,
+        allowedRoles: ["admin", "packaging_staff", "delivery_boy"],
+        requiredPermission: "item_list",
+      },
+      {
+        type: "collapse",
         name: "Purchase",
         key: "purchase",
         icon: <Icon fontSize="small">receipt_long</Icon>,

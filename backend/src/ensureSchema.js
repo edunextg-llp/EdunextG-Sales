@@ -1670,6 +1670,19 @@ export async function ensureSchema() {
         await tryQuery(connection, 'ALTER TABLE outlet_expiry_list ADD COLUMN seller_id INT NULL AFTER company_id', 'seller on outlet expiry list');
         await tryQuery(connection, 'ALTER TABLE outlet_expiry_list ADD COLUMN invoice_number VARCHAR(100) NULL', 'invoice on outlet expiry list');
         await tryQuery(connection, 'ALTER TABLE outlet_expiry_list ADD COLUMN batch_number VARCHAR(100) NULL', 'batch on outlet expiry list');
+        await connection.query(`
+            CREATE TABLE IF NOT EXISTS outlet_damage_list (
+                id INT AUTO_INCREMENT PRIMARY KEY, company_id INT NOT NULL, seller_id INT NOT NULL,
+                staff_id INT NOT NULL, outlet_id INT NOT NULL,
+                product_source ENUM('manual','fetched') NOT NULL DEFAULT 'manual', product_erp_id VARCHAR(100) NULL,
+                product_name VARCHAR(255) NOT NULL, invoice_number VARCHAR(100) NOT NULL,
+                batch_number VARCHAR(100) NOT NULL, damage_description TEXT NOT NULL,
+                qty DECIMAL(12,2) NOT NULL DEFAULT 1.00, amount DECIMAL(12,2) NOT NULL DEFAULT 0.00,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, INDEX idx_damage_outlet (outlet_id),
+                FOREIGN KEY (company_id) REFERENCES companies(id), FOREIGN KEY (seller_id) REFERENCES purchase_sellers(id),
+                FOREIGN KEY (staff_id) REFERENCES staff(id), FOREIGN KEY (outlet_id) REFERENCES staff_counters(id) ON DELETE CASCADE
+            );
+        `);
         await tryQuery(connection, 'ALTER TABLE outlet_expiry_list ADD COLUMN qty DECIMAL(12, 2) NOT NULL DEFAULT 1.00', 'quantity on outlet expiry list');
 
         console.log('Database schema verified');

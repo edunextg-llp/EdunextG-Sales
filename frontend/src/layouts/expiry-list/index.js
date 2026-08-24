@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import PropTypes from "prop-types";
 import { Autocomplete, Card, Dialog, DialogActions, DialogContent, DialogTitle, FormControl,
   Grid, MenuItem, Select, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper } from "@mui/material";
 import MDBox from "components/MDBox";
@@ -11,7 +12,7 @@ import Footer from "examples/Footer";
 
 const API = "https://bawarchee.edunextg.co/api";
 const emptyForm = () => ({ companyId: "", sellerId: "", staffId: "", area: "", outletId: "", productSource: "fetched",
-  productErpId: "", productName: "", invoiceNumber: "", batchNumber: "", expiryDate: "", qty: "", amount: "" });
+  productErpId: "", productName: "", invoiceNumber: "", batchNumber: "", expiryDate: "", damageDescription: "", qty: "", amount: "" });
 const cellSx = { px: 1.5, py: 1.25, fontSize: "0.8125rem", whiteSpace: "nowrap" };
 const headSx = { ...cellSx, fontWeight: 700, color: "#475569", backgroundColor: "#f8fafc" };
 const chooseSx = {
@@ -22,7 +23,9 @@ const chooseSx = {
 const productInputSx = { "& .MuiInputBase-root": { height: 44, minHeight: 44, paddingTop: "0 !important", paddingBottom: "0 !important" } };
 const formatDate = (value) => value ? String(value).slice(0, 10).split("-").reverse().join("-") : "—";
 
-export default function ExpiryList() {
+export default function ExpiryList({ mode = "expiry" }) {
+  const isDamage = mode === "damage";
+  const listPath = isDamage ? "damage-list" : "expiry-list";
   const [records, setRecords] = useState([]);
   const [companies, setCompanies] = useState([]);
   const [sellers, setSellers] = useState([]);
@@ -34,14 +37,14 @@ export default function ExpiryList() {
   const [saving, setSaving] = useState(false);
   const [editingId, setEditingId] = useState(null);
 
-  const loadRecords = async () => {
-    const response = await fetch(`${API}/staff/expiry-list`);
+  const loadRecords = useCallback(async () => {
+    const response = await fetch(`${API}/staff/${listPath}`);
     if (response.ok) setRecords(await response.json());
-  };
+  }, [listPath]);
   useEffect(() => {
     loadRecords();
     fetch(`${API}/staff/companies`).then((r) => r.ok ? r.json() : []).then((data) => setCompanies(Array.isArray(data) ? data : []));
-  }, []);
+  }, [loadRecords]);
 
   const changeCompany = async (companyId) => {
     setForm((old) => ({ ...old, companyId, sellerId: "", staffId: "", area: "", outletId: "", productErpId: "", productName: "" }));
@@ -82,18 +85,20 @@ export default function ExpiryList() {
       area: record.location_name || "", outletId: String(record.outlet_id), productSource: record.product_source || "manual",
       productErpId: record.product_erp_id || "", productName: record.product_name || "",
       invoiceNumber: record.invoice_number || "", batchNumber: record.batch_number || "",
-      expiryDate: record.expiry_date || "", qty: String(record.qty || ""), amount: String(record.amount ?? "") });
+      expiryDate: record.expiry_date || "", damageDescription: record.damage_description || "",
+      qty: String(record.qty || ""), amount: String(record.amount ?? "") });
     setEditingId(record.id);
     setOpen(true);
   };
 
   const save = async () => {
-    if (!form.companyId || !form.sellerId || !form.staffId || !form.area || !form.outletId || !form.productName.trim() || !form.invoiceNumber.trim() || !form.batchNumber.trim() || !form.expiryDate || !form.qty || form.amount === "") {
+    const issueDetailMissing = isDamage ? !form.damageDescription.trim() : !form.expiryDate;
+    if (!form.companyId || !form.sellerId || !form.staffId || !form.area || !form.outletId || !form.productName.trim() || !form.invoiceNumber.trim() || !form.batchNumber.trim() || issueDetailMissing || !form.qty || form.amount === "") {
       alert("Please complete all required fields, including invoice and batch number."); return;
     }
     setSaving(true);
     try {
-      const response = await fetch(editingId ? `${API}/staff/expiry-list/${editingId}` : `${API}/staff/expiry-list`, { method: editingId ? "PUT" : "POST", headers: { "Content-Type": "application/json" },
+      const response = await fetch(editingId ? `${API}/staff/${listPath}/${editingId}` : `${API}/staff/${listPath}`, { method: editingId ? "PUT" : "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ ...form, companyId: Number(form.companyId), staffId: Number(form.staffId),
           sellerId: Number(form.sellerId), outletId: Number(form.outletId), qty: Number(form.qty), amount: Number(form.amount) }) });
       const data = await response.json().catch(() => ({}));
@@ -104,14 +109,14 @@ export default function ExpiryList() {
 
   return <DashboardLayout><DashboardNavbar /><MDBox pt={6} pb={3}><Card>
     <MDBox p={3} display="flex" justifyContent="space-between" alignItems="center">
-      <MDBox><MDTypography variant="h5">Expiry List</MDTypography><MDTypography variant="caption" color="text">Outlet-wise product expiry records.</MDTypography></MDBox>
-      <MDButton color="info" variant="gradient" onClick={() => { setEditingId(null); setForm(emptyForm()); setOpen(true); }}>Add Expiry</MDButton>
+      <MDBox><MDTypography variant="h5">{isDamage ? "Damage List" : "Expiry List"}</MDTypography><MDTypography variant="caption" color="text">Outlet-wise product {isDamage ? "damage" : "expiry"} records.</MDTypography></MDBox>
+      <MDButton color="info" variant="gradient" onClick={() => { setEditingId(null); setForm(emptyForm()); setOpen(true); }}>Add {isDamage ? "Damage" : "Expiry"}</MDButton>
     </MDBox><MDBox px={3} pb={3}><TableContainer component={Paper} sx={{ border: "1px solid #e5e7eb" }}><Table size="small">
-      <TableHead sx={{ display: "table-header-group" }}><TableRow>{["Company", "Seller", "Staff", "Area", "Outlet", "Invoice No", "ERP ID", "Product", "Batch No", "Expiry Date", "Qty", "Amount", "Action"].map((h) => <TableCell key={h} sx={headSx}>{h}</TableCell>)}</TableRow></TableHead>
-      <TableBody>{records.map((r) => <TableRow key={r.id}><TableCell sx={cellSx}>{r.company_name}</TableCell><TableCell sx={cellSx}>{r.seller_name}</TableCell><TableCell sx={cellSx}>{r.staff_name}</TableCell><TableCell sx={cellSx}>{r.location_name}</TableCell><TableCell sx={cellSx}>{r.outlet_name}</TableCell><TableCell sx={cellSx}>{r.invoice_number}</TableCell><TableCell sx={cellSx}>{r.product_erp_id || "Manual"}</TableCell><TableCell sx={cellSx}>{r.product_name}</TableCell><TableCell sx={cellSx}>{r.batch_number}</TableCell><TableCell sx={cellSx}>{formatDate(r.expiry_date)}</TableCell><TableCell sx={cellSx}>{Number(r.qty)}</TableCell><TableCell sx={cellSx}>₹{Number(r.amount).toFixed(2)}</TableCell><TableCell sx={cellSx}><MDButton size="small" color="info" variant="outlined" onClick={() => editRecord(r)}>Edit</MDButton></TableCell></TableRow>)}
+      <TableHead sx={{ display: "table-header-group" }}><TableRow>{["Company", "Seller", "Staff", "Area", "Outlet", "Invoice No", "ERP ID", "Product", "Batch No", isDamage ? "Damage Description" : "Expiry Date", "Qty", "Amount", "Action"].map((h) => <TableCell key={h} sx={headSx}>{h}</TableCell>)}</TableRow></TableHead>
+      <TableBody>{records.map((r) => <TableRow key={r.id}><TableCell sx={cellSx}>{r.company_name}</TableCell><TableCell sx={cellSx}>{r.seller_name}</TableCell><TableCell sx={cellSx}>{r.staff_name}</TableCell><TableCell sx={cellSx}>{r.location_name}</TableCell><TableCell sx={cellSx}>{r.outlet_name}</TableCell><TableCell sx={cellSx}>{r.invoice_number}</TableCell><TableCell sx={cellSx}>{r.product_erp_id || "Manual"}</TableCell><TableCell sx={cellSx}>{r.product_name}</TableCell><TableCell sx={cellSx}>{r.batch_number}</TableCell><TableCell sx={{ ...cellSx, whiteSpace: isDamage ? "normal" : "nowrap", minWidth: isDamage ? 180 : undefined }}>{isDamage ? r.damage_description : formatDate(r.expiry_date)}</TableCell><TableCell sx={cellSx}>{Number(r.qty)}</TableCell><TableCell sx={cellSx}>₹{Number(r.amount).toFixed(2)}</TableCell><TableCell sx={cellSx}><MDButton size="small" color="info" variant="outlined" onClick={() => editRecord(r)}>Edit</MDButton></TableCell></TableRow>)}
         {!records.length && <TableRow><TableCell colSpan={13} align="center" sx={cellSx}>No expiry records added yet.</TableCell></TableRow>}</TableBody>
     </Table></TableContainer></MDBox></Card></MDBox>
-    <Dialog open={open} onClose={() => !saving && setOpen(false)} fullWidth maxWidth="md"><DialogTitle>{editingId ? "Edit Expiry" : "Add Expiry"}</DialogTitle><DialogContent dividers><Grid container spacing={2}>
+    <Dialog open={open} onClose={() => !saving && setOpen(false)} fullWidth maxWidth="md"><DialogTitle>{editingId ? "Edit" : "Add"} {isDamage ? "Damage" : "Expiry"}</DialogTitle><DialogContent dividers><Grid container spacing={2}>
       <Grid item xs={12} md={6}><FormControl fullWidth size="small"><Select sx={chooseSx} displayEmpty value={form.companyId} onChange={(e) => changeCompany(e.target.value)}><MenuItem value="" disabled>Choose Company *</MenuItem>{companies.map((c) => <MenuItem key={c.id} value={String(c.id)}>{c.name}</MenuItem>)}</Select></FormControl></Grid>
       <Grid item xs={12} md={6}><FormControl fullWidth size="small"><Select sx={chooseSx} displayEmpty disabled={!form.companyId} value={form.sellerId} onChange={(e) => setForm((old) => ({ ...old, sellerId: e.target.value }))}><MenuItem value="" disabled>Choose Seller *</MenuItem>{sellers.map((seller) => <MenuItem key={seller.id} value={String(seller.id)}>{seller.seller_name}</MenuItem>)}</Select></FormControl></Grid>
       <Grid item xs={12} md={6}><FormControl fullWidth size="small"><Select sx={chooseSx} displayEmpty disabled={!form.companyId} value={form.staffId} onChange={(e) => changeStaff(e.target.value)}><MenuItem value="" disabled>Choose Staff *</MenuItem>{staff.map((s) => <MenuItem key={s.id} value={String(s.id)}>{s.name}</MenuItem>)}</Select></FormControl></Grid>
@@ -133,9 +138,11 @@ export default function ExpiryList() {
       <Grid item xs={12} md={8}>{form.productSource === "manual" ? <MDInput sx={productInputSx} label="Product Name *" fullWidth value={form.productName} onChange={(e) => setForm((o) => ({ ...o, productName: e.target.value }))} /> : <Autocomplete sx={productInputSx} size="small" options={products} value={products.find((p) => String(p.product_erp_id) === String(form.productErpId)) || null} getOptionLabel={(p) => `${p.product_name || ""}${p.product_erp_id ? ` — ${p.product_erp_id}` : ""}`} isOptionEqualToValue={(option, value) => String(option.product_erp_id) === String(value.product_erp_id)} onChange={(_, p) => setForm((o) => ({ ...o, productName: p?.product_name || "", productErpId: p?.product_erp_id || "" }))} renderInput={(params) => <MDInput {...params} label="Choose Product *" />} />}</Grid>
       <Grid item xs={12} md={6}><MDInput label="Invoice Number *" fullWidth value={form.invoiceNumber} onChange={(e) => setForm((o) => ({ ...o, invoiceNumber: e.target.value }))} /></Grid>
       <Grid item xs={12} md={6}><MDInput label="Batch Number *" fullWidth value={form.batchNumber} onChange={(e) => setForm((o) => ({ ...o, batchNumber: e.target.value }))} /></Grid>
-      <Grid item xs={12} md={4}><MDInput type="date" label="Expiry Date *" fullWidth InputLabelProps={{ shrink: true }} value={form.expiryDate} onChange={(e) => setForm((o) => ({ ...o, expiryDate: e.target.value }))} /></Grid>
-      <Grid item xs={12} md={4}><MDInput type="number" label="Qty *" fullWidth inputProps={{ min: 0.01, step: "any" }} value={form.qty} onChange={(e) => setForm((o) => ({ ...o, qty: e.target.value }))} /></Grid>
-      <Grid item xs={12} md={4}><MDInput type="number" label="Amount *" fullWidth inputProps={{ min: 0, step: "0.01" }} value={form.amount} onChange={(e) => setForm((o) => ({ ...o, amount: e.target.value }))} /></Grid>
-    </Grid></DialogContent><DialogActions><MDButton color="dark" variant="outlined" onClick={() => { setOpen(false); setEditingId(null); }} disabled={saving}>Cancel</MDButton><MDButton color="info" variant="gradient" onClick={save} disabled={saving}>{saving ? "Saving..." : editingId ? "Update Expiry" : "Save Expiry"}</MDButton></DialogActions></Dialog>
+      {isDamage ? <Grid item xs={12}><MDInput label="Damage Description *" fullWidth multiline rows={3} value={form.damageDescription} onChange={(e) => setForm((o) => ({ ...o, damageDescription: e.target.value }))} /></Grid> : <Grid item xs={12} md={4}><MDInput type="date" label="Expiry Date *" fullWidth InputLabelProps={{ shrink: true }} value={form.expiryDate} onChange={(e) => setForm((o) => ({ ...o, expiryDate: e.target.value }))} /></Grid>}
+      <Grid item xs={12} md={isDamage ? 6 : 4}><MDInput type="number" label="Qty *" fullWidth inputProps={{ min: 0.01, step: "any" }} value={form.qty} onChange={(e) => setForm((o) => ({ ...o, qty: e.target.value }))} /></Grid>
+      <Grid item xs={12} md={isDamage ? 6 : 4}><MDInput type="number" label="Amount *" fullWidth inputProps={{ min: 0, step: "0.01" }} value={form.amount} onChange={(e) => setForm((o) => ({ ...o, amount: e.target.value }))} /></Grid>
+    </Grid></DialogContent><DialogActions><MDButton color="dark" variant="outlined" onClick={() => { setOpen(false); setEditingId(null); }} disabled={saving}>Cancel</MDButton><MDButton color="info" variant="gradient" onClick={save} disabled={saving}>{saving ? "Saving..." : `${editingId ? "Update" : "Save"} ${isDamage ? "Damage" : "Expiry"}`}</MDButton></DialogActions></Dialog>
     <Footer /></DashboardLayout>;
 }
+
+ExpiryList.propTypes = { mode: PropTypes.oneOf(["expiry", "damage"]) };

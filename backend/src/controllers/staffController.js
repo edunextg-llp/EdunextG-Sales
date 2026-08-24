@@ -12,6 +12,7 @@ import PhysicalStockModel from '../models/physicalStockModel.js';
 import PackagingRemarkModel from '../models/packagingRemarkModel.js';
 import DeliveryCollectionModel from '../models/deliveryCollectionModel.js';
 import ExpiryListModel from '../models/expiryListModel.js';
+import DamageListModel from '../models/damageListModel.js';
 import db from '../config/db.js';
 import {
     validateDigitsOnly,
@@ -113,6 +114,42 @@ export const updateExpiryListItem = async (req, res) => {
         console.error('Error updating expiry list item:', error);
         res.status(500).json({ error: 'Unable to update expiry item' });
     }
+};
+
+const normalizeDamageListPayload = async (body) => {
+    const data = {
+        companyId: Number(body.companyId), sellerId: Number(body.sellerId), staffId: Number(body.staffId),
+        outletId: Number(body.outletId), productSource: body.productSource === 'manual' ? 'manual' : 'fetched',
+        productErpId: String(body.productErpId || '').trim(), productName: String(body.productName || '').trim(),
+        invoiceNumber: String(body.invoiceNumber || '').trim(), batchNumber: String(body.batchNumber || '').trim(),
+        damageDescription: String(body.damageDescription || '').trim(), qty: Number(body.qty), amount: Number(body.amount),
+    };
+    if (![data.companyId, data.sellerId, data.staffId, data.outletId].every((v) => Number.isInteger(v) && v > 0)) throw new Error('Company, seller, staff, and outlet are required');
+    if (!data.productName || !data.invoiceNumber || !data.batchNumber || !data.damageDescription) throw new Error('Product, invoice number, batch number, and damage description are required');
+    if (!Number.isFinite(data.qty) || data.qty <= 0 || !Number.isFinite(data.amount) || data.amount < 0) throw new Error('Enter valid quantity and amount');
+    const [sellerRows] = await db.execute('SELECT id FROM purchase_sellers WHERE id=? AND company_id=? LIMIT 1', [data.sellerId, data.companyId]);
+    const [outletRows] = await db.execute(`SELECT sc.id FROM staff_counters sc INNER JOIN staff_companies sm ON sm.staff_id=sc.staff_id WHERE sc.id=? AND sc.staff_id=? AND sm.company_id=? LIMIT 1`, [data.outletId, data.staffId, data.companyId]);
+    if (!sellerRows.length || !outletRows.length) throw new Error('Seller or outlet does not match the selection');
+    data.productName = data.productName.slice(0, 255); data.invoiceNumber = data.invoiceNumber.slice(0, 100);
+    data.batchNumber = data.batchNumber.slice(0, 100); data.damageDescription = data.damageDescription.slice(0, 2000);
+    return data;
+};
+
+export const getDamageList = async (_req, res) => {
+    try { res.json(await DamageListModel.getAll()); }
+    catch (error) { console.error('Error fetching damage list:', error); res.status(500).json({ error: 'Unable to load damage list' }); }
+};
+export const createDamageListItem = async (req, res) => {
+    try { const item = await DamageListModel.create(await normalizeDamageListPayload(req.body)); res.status(201).json({ message: 'Damage item saved successfully', item }); }
+    catch (error) { res.status(400).json({ error: error.message || 'Unable to save damage item' }); }
+};
+export const updateDamageListItem = async (req, res) => {
+    try {
+        const id = Number(req.params.id); if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ error: 'Invalid damage record' });
+        const item = await DamageListModel.update(id, await normalizeDamageListPayload(req.body));
+        if (!item) return res.status(404).json({ error: 'Damage record not found' });
+        res.json({ message: 'Damage item updated successfully', item });
+    } catch (error) { res.status(400).json({ error: error.message || 'Unable to update damage item' }); }
 };
 
 function buildStaffProfile(body = {}) {
