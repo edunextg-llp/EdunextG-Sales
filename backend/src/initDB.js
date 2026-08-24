@@ -642,6 +642,7 @@ async function initDB() {
     await connection.query(`
         CREATE TABLE IF NOT EXISTS bank_deposits (
             id INT AUTO_INCREMENT PRIMARY KEY,
+            company_id INT NULL,
             deposit_ref_no VARCHAR(20) NULL UNIQUE,
             deposit_date DATE NOT NULL,
             bank_name VARCHAR(255) NOT NULL,
@@ -660,6 +661,13 @@ async function initDB() {
         );
     `);
     console.log('Bank deposits table created');
+
+    try {
+        await connection.query(`ALTER TABLE bank_deposits ADD COLUMN company_id INT NULL`);
+        console.log('Added company_id to bank_deposits');
+    } catch (err) {
+        if (err.code !== 'ER_DUP_FIELDNAME') console.log('company_id column may already exist on bank_deposits');
+    }
 
     await connection.query(`
         CREATE TABLE IF NOT EXISTS purchase_sellers (

@@ -34,6 +34,7 @@ import { printUpiDepositPdf } from "utils/printUpiDepositPdf";
 import {
   ROWS_PER_PAGE,
   TablePaginationFooter,
+  compactTableTextSx,
   paginatedTableContainerSx,
   paginatedTableHeadSx,
 } from "utils/tablePagination";
@@ -137,6 +138,7 @@ const toComparableDate = (value) => {
 };
 
 const emptyForm = () => ({
+  companyId: "",
   depositDate: getTodayLocalDate(),
   bankName: "",
   accountName: "",
@@ -273,6 +275,7 @@ const upiDisplayText = (deposit, field) => {
 
 function BankDeposit() {
   const [form, setForm] = useState(emptyForm());
+  const [companies, setCompanies] = useState([]);
   const [deposits, setDeposits] = useState([]);
   const [pendingCheques, setPendingCheques] = useState([]);
   const [loadingPendingCheques, setLoadingPendingCheques] = useState(false);
@@ -408,8 +411,21 @@ function BankDeposit() {
     }
   };
 
+  const fetchCompanies = async () => {
+    try {
+      const response = await fetch(`${API}/staff/companies`);
+      if (response.ok) {
+        const data = await response.json();
+        setCompanies(Array.isArray(data) ? data : []);
+      }
+    } catch (error) {
+      console.error("Error fetching companies:", error);
+    }
+  };
+
   useEffect(() => {
     fetchDeposits();
+    fetchCompanies();
   }, []);
 
   useEffect(() => {
@@ -647,6 +663,7 @@ function BankDeposit() {
   };
 
   const validateForm = () => {
+    if (!form.companyId) return "Please choose a company.";
     if (!form.depositDate) return "Deposit date is required.";
     if (!form.bankName.trim()) return "Bank name is required.";
     if (!form.branchName.trim()) return "Branch name is required.";
@@ -692,6 +709,7 @@ function BankDeposit() {
     setSaving(true);
     try {
       const payload = {
+        companyId: Number(form.companyId),
         depositDate: form.depositDate,
         bankName: form.bankName.trim(),
         accountName: form.accountName.trim(),
@@ -765,6 +783,7 @@ function BankDeposit() {
 
     setEditingDepositId(deposit.id);
     setForm({
+      companyId: deposit.company_id ? String(deposit.company_id) : "",
       depositDate: deposit.deposit_date || getTodayLocalDate(),
       bankName: deposit.bank_name || "",
       accountName: deposit.account_name || "",
@@ -1243,12 +1262,13 @@ function BankDeposit() {
               </MDBox>
               <MDBox px={3} pb={3}>
                 <TableContainer component={Paper} sx={paginatedTableContainerSx}>
-                  <Table stickyHeader sx={{ minWidth: 1180 }}>
+                  <Table stickyHeader sx={{ minWidth: 1180, ...compactTableTextSx }}>
                     <TableHead sx={paginatedTableHeadSx()}>
                       <TableRow>
                         <TableCell sx={tableHeadSx}>Sr No</TableCell>
                         <TableCell sx={tableHeadSx}>Deposit ID</TableCell>
                         <TableCell sx={tableHeadSx}>Date</TableCell>
+                        <TableCell sx={tableHeadSx}>Company</TableCell>
                         <TableCell sx={tableHeadSx}>Bank</TableCell>
                         <TableCell sx={tableHeadSx}>Branch</TableCell>
                         <TableCell sx={tableHeadSx}>Bank No</TableCell>
@@ -1268,6 +1288,7 @@ function BankDeposit() {
                               {deposit.deposit_ref_no || "N/A"}
                             </TableCell>
                             <TableCell sx={tableBodySx}>{formatDate(deposit.deposit_date)}</TableCell>
+                            <TableCell sx={tableBodySx}>{deposit.company_name || "N/A"}</TableCell>
                             <TableCell sx={tableBodySx}>{deposit.bank_name}</TableCell>
                             <TableCell sx={tableBodySx}>{deposit.branch_name}</TableCell>
                             <TableCell sx={tableBodySx}>{deposit.bank_account_no}</TableCell>
@@ -1318,7 +1339,7 @@ function BankDeposit() {
                         ))
                       ) : (
                         <TableRow>
-                          <TableCell colSpan={10} align="center" sx={{ py: 3, borderBottom: 0 }}>
+                          <TableCell colSpan={11} align="center" sx={{ py: 3, borderBottom: 0 }}>
                             <MDTypography variant="body2" color="text">
                               No bank deposits found. Click &quot;Add Deposit&quot; to create one.
                             </MDTypography>
@@ -1350,6 +1371,21 @@ function BankDeposit() {
         <DialogContent dividers>
           <MDBox pt={1}>
             <Grid container spacing={2.5}>
+              <Grid item xs={12} md={3}>
+                <FormControl size="small" fullWidth>
+                  <Select
+                    displayEmpty
+                    value={form.companyId}
+                    onChange={(e) => handleFormChange("companyId", e.target.value)}
+                    sx={{ height: 44, backgroundColor: "#fff" }}
+                  >
+                    <MenuItem value="" disabled>Choose Company *</MenuItem>
+                    {companies.map((company) => (
+                      <MenuItem key={company.id} value={String(company.id)}>{company.name}</MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+              </Grid>
               <Grid item xs={12} md={3}>
                 <MDInput
                   type="date"
@@ -1789,6 +1825,9 @@ function BankDeposit() {
         <DialogContent dividers>
           {selectedViewDeposit && (
             <MDBox>
+              <MDTypography variant="subtitle2" fontWeight="bold" gutterBottom>
+                Company: <span style={{ fontWeight: 400 }}>{selectedViewDeposit.company_name || "N/A"}</span>
+              </MDTypography>
               <MDTypography variant="subtitle2" fontWeight="bold" gutterBottom>
                 IFSC:{" "}
                 <span style={{ fontWeight: 400 }}>

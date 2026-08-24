@@ -20,6 +20,7 @@ class BankDepositModel {
 
     static async create(data) {
         const {
+            companyId,
             depositDate,
             bankName,
             accountName,
@@ -38,10 +39,11 @@ class BankDepositModel {
 
         const [result] = await db.execute(
             `INSERT INTO bank_deposits
-             (deposit_ref_no, deposit_date, bank_name, account_name, branch_name, bank_account_no, ifsc_code, depositor_name, store_name, deposit_mode, amount, cheque_no, cheque_date, cash_details)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+             (deposit_ref_no, company_id, deposit_date, bank_name, account_name, branch_name, bank_account_no, ifsc_code, depositor_name, store_name, deposit_mode, amount, cheque_no, cheque_date, cash_details)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
             [
                 depositRefNo,
+                companyId,
                 depositDate,
                 bankName,
                 accountName || null,
@@ -63,12 +65,13 @@ class BankDepositModel {
 
     static async getById(id) {
         const [rows] = await db.execute(
-            `SELECT id, DATE_FORMAT(deposit_date, '%Y-%m-%d') AS deposit_date,
+            `SELECT bd.id, bd.company_id, c.name AS company_name, DATE_FORMAT(bd.deposit_date, '%Y-%m-%d') AS deposit_date,
                     deposit_ref_no, bank_name, account_name, branch_name, bank_account_no, ifsc_code, depositor_name, store_name,
                     deposit_mode, amount, cheque_no, DATE_FORMAT(cheque_date, '%Y-%m-%d') AS cheque_date, cash_details,
-                    DATE_FORMAT(created_at, '%Y-%m-%d %H:%i:%s') AS created_at
-             FROM bank_deposits
-             WHERE id = ?`,
+                    DATE_FORMAT(bd.created_at, '%Y-%m-%d %H:%i:%s') AS created_at
+             FROM bank_deposits bd
+             LEFT JOIN companies c ON c.id = bd.company_id
+             WHERE bd.id = ?`,
             [id]
         );
         return rows[0] || null;
@@ -76,12 +79,13 @@ class BankDepositModel {
 
     static async getRecent() {
         const [rows] = await db.execute(
-            `SELECT id, DATE_FORMAT(deposit_date, '%Y-%m-%d') AS deposit_date,
+            `SELECT bd.id, bd.company_id, c.name AS company_name, DATE_FORMAT(bd.deposit_date, '%Y-%m-%d') AS deposit_date,
                     deposit_ref_no, bank_name, account_name, branch_name, bank_account_no, ifsc_code, depositor_name, store_name,
                     deposit_mode, amount, cheque_no, DATE_FORMAT(cheque_date, '%Y-%m-%d') AS cheque_date, cash_details,
-                    DATE_FORMAT(created_at, '%Y-%m-%d %H:%i:%s') AS created_at
-             FROM bank_deposits
-             ORDER BY deposit_date DESC, id DESC
+                    DATE_FORMAT(bd.created_at, '%Y-%m-%d %H:%i:%s') AS created_at
+             FROM bank_deposits bd
+             LEFT JOIN companies c ON c.id = bd.company_id
+             ORDER BY bd.deposit_date DESC, bd.id DESC
              LIMIT 200`
         );
         return rows;
@@ -89,6 +93,7 @@ class BankDepositModel {
 
     static async update(id, data) {
         const {
+            companyId,
             depositDate,
             bankName,
             accountName,
@@ -106,11 +111,12 @@ class BankDepositModel {
 
         const [result] = await db.execute(
             `UPDATE bank_deposits
-             SET deposit_date = ?, bank_name = ?, account_name = ?, branch_name = ?,
+             SET company_id = ?, deposit_date = ?, bank_name = ?, account_name = ?, branch_name = ?,
                  bank_account_no = ?, ifsc_code = ?, depositor_name = ?, store_name = ?, deposit_mode = ?,
                  amount = ?, cheque_no = ?, cheque_date = ?, cash_details = ?
              WHERE id = ?`,
             [
+                companyId,
                 depositDate,
                 bankName,
                 accountName || null,

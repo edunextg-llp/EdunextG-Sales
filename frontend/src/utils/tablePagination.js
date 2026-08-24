@@ -16,6 +16,15 @@ export const paginatedTableContainerSx = {
   overflow: "auto",
 };
 
+// A subtle one-step reduction for information-dense operational tables.
+export const compactTableTextSx = {
+  "& .MuiTableCell-root": {
+    fontSize: "0.8125rem",
+    paddingTop: "10px !important",
+    paddingBottom: "10px !important",
+  },
+};
+
 export const paginatedTableHeadSx = (backgroundColor = "#f9fafb") => ({
   display: "table-header-group",
   "& .MuiTableCell-head": {

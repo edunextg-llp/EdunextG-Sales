@@ -36,6 +36,7 @@ import { useSalesPolling } from "utils/salesSync";
 import {
   ROWS_PER_PAGE,
   TablePaginationFooter,
+  compactTableTextSx,
   paginatedTableContainerSx,
   paginatedTableHeadCellSx,
   paginatedTableHeadCellErrorSx,
@@ -895,7 +896,7 @@ function Delivered() {
                       </MDButton>
                     </MDBox>
                     <TableContainer component={Paper} sx={paginatedTableContainerSx}>
-                      <Table stickyHeader sx={{ minWidth: 650 }}>
+                      <Table stickyHeader sx={{ minWidth: 650, ...compactTableTextSx }}>
                         <TableHead sx={paginatedTableHeadSx()}>
                           <TableRow>
                             <TableCell align="center" sx={{ ...paginatedTableHeadCellSx, width: 56 }}>
@@ -1108,7 +1109,7 @@ function Delivered() {
                       </MDBox>
                     </MDBox>
                     <TableContainer component={Paper} sx={{ ...paginatedTableContainerSx, border: "1px solid #fecaca" }}>
-                      <Table stickyHeader sx={{ minWidth: 650 }}>
+                      <Table stickyHeader sx={{ minWidth: 650, ...compactTableTextSx }}>
                         <TableHead sx={paginatedTableHeadSx("#fef2f2")}>
                           <TableRow>
                             <TableCell align="center" sx={{ ...paginatedTableHeadCellErrorSx, width: 56 }}>

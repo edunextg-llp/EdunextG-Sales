@@ -34,6 +34,7 @@ import Footer from "examples/Footer";
 import {
   ROWS_PER_PAGE,
   TablePaginationFooter,
+  compactTableTextSx,
   paginatedTableContainerSx,
   paginatedTableHeadCellSx,
   paginatedTableHeadSx,
@@ -793,7 +794,7 @@ function OutBillPage() {
                     component={Paper}
                     sx={{ ...paginatedTableContainerSx, backgroundColor: "transparent" }}
                   >
-                    <Table stickyHeader size="small">
+                    <Table stickyHeader size="small" sx={compactTableTextSx}>
                       <TableHead sx={paginatedTableHeadSx()}>
                         <TableRow>
                           <TableCell align="center" sx={{ ...paginatedTableHeadCellSx, width: 56 }}>
@@ -887,7 +888,7 @@ function OutBillPage() {
                     component={Paper}
                     sx={{ ...paginatedTableContainerSx, backgroundColor: "transparent" }}
                   >
-                    <Table stickyHeader size="small">
+                    <Table stickyHeader size="small" sx={compactTableTextSx}>
                       <TableHead sx={paginatedTableHeadSx()}>
                         <TableRow>
                           <TableCell align="center" sx={{ ...paginatedTableHeadCellSx, width: 56 }}>

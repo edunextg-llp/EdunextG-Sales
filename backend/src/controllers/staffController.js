@@ -2292,6 +2292,7 @@ export const getPurchaseReports = async (req, res) => {
 export const createBankDeposit = async (req, res) => {
     try {
         const {
+            companyId,
             depositDate,
             bankName,
             accountName,
@@ -2308,6 +2309,13 @@ export const createBankDeposit = async (req, res) => {
             upiDetails = [],
             cashDetails = {},
         } = req.body;
+
+        const normalizedCompanyId = Number(companyId);
+        if (!Number.isInteger(normalizedCompanyId) || normalizedCompanyId <= 0) {
+            return res.status(400).json({ error: 'Company is required' });
+        }
+        const company = await CompanyModel.getById(normalizedCompanyId);
+        if (!company) return res.status(400).json({ error: 'Selected company was not found' });
 
         const normalizedDepositDate = normalizeDateInput(depositDate);
         if (!normalizedDepositDate) {
@@ -2369,6 +2377,7 @@ export const createBankDeposit = async (req, res) => {
         }
 
         const deposit = await BankDepositModel.create({
+            companyId: normalizedCompanyId,
             depositDate: normalizedDepositDate,
             bankName: bankValidation.value,
             accountName: accountName ? String(accountName).trim() : null,
@@ -2400,6 +2409,7 @@ export const updateBankDeposit = async (req, res) => {
         }
 
         const {
+            companyId,
             depositDate,
             bankName,
             accountName,
@@ -2416,6 +2426,13 @@ export const updateBankDeposit = async (req, res) => {
             upiDetails = [],
             cashDetails = {},
         } = req.body;
+
+        const normalizedCompanyId = Number(companyId);
+        if (!Number.isInteger(normalizedCompanyId) || normalizedCompanyId <= 0) {
+            return res.status(400).json({ error: 'Company is required' });
+        }
+        const company = await CompanyModel.getById(normalizedCompanyId);
+        if (!company) return res.status(400).json({ error: 'Selected company was not found' });
 
         const normalizedDepositDate = normalizeDateInput(depositDate);
         if (!normalizedDepositDate) return res.status(400).json({ error: 'Deposit date is required' });
@@ -2474,6 +2491,7 @@ export const updateBankDeposit = async (req, res) => {
         }
 
         const deposit = await BankDepositModel.update(depositId, {
+            companyId: normalizedCompanyId,
             depositDate: normalizedDepositDate,
             bankName: bankValidation.value,
             accountName: accountName ? String(accountName).trim() : null,
@@ -3162,7 +3180,7 @@ export const updatePaymentMode = async (req, res) => {
 export const logOrderCancellation = async (req, res) => {
     try {
         const { saleId } = req.params;
-        const { outletName, invoiceNumber, productName, productErpId, saleItemId, productQty, productSize, amount, reason } = req.body;
+        const { outletName, invoiceNumber, productName, productErpId, saleItemId, productQty, productSize, amount, reason, remarks } = req.body;
         const qtyValue = productQty ?? productSize;
 
         if (!outletName) {
@@ -3248,6 +3266,7 @@ export const logOrderCancellation = async (req, res) => {
                 productQty: qtyValidation.value,
                 amount: amountValidation.value,
                 reason: String(reason).trim().slice(0, 255),
+                remarks: String(remarks || '').trim().slice(0, 2000) || null,
             }, connection);
 
             if (saleItem) {

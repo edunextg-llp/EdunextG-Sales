@@ -33,6 +33,7 @@ import Footer from "examples/Footer";
 import {
   ROWS_PER_PAGE,
   TablePaginationFooter,
+  compactTableTextSx,
   paginatedTableContainerSx,
   paginatedTableHeadCellSx,
   paginatedTableHeadSx,
@@ -158,6 +159,7 @@ function UpdatePayment() {
     productQtyToCancel: "",
     amount: "",
     reason: "",
+    remarks: "",
   });
   const [cancelSaleItems, setCancelSaleItems] = useState([]);
   const [loadingCancelItems, setLoadingCancelItems] = useState(false);
@@ -583,6 +585,7 @@ function UpdatePayment() {
       productQtyToCancel: "",
       amount: "",
       reason: "",
+      remarks: "",
     });
   };
 
@@ -684,7 +687,7 @@ function UpdatePayment() {
   const handleSaveCancellation = async () => {
     if (!cancelDialogSale) return;
 
-    const { productName, productQtyToCancel, amount, reason } = cancelForm;
+    const { productName, productQtyToCancel, amount, reason, remarks } = cancelForm;
 
     if (!productName.trim()) {
       alert("Please enter product name.");
@@ -728,6 +731,7 @@ function UpdatePayment() {
             productQty: parsedQty,
             amount: parsedAmount,
             reason,
+            remarks: remarks.trim(),
           }),
         }
       );
@@ -805,6 +809,8 @@ function UpdatePayment() {
               <div class="row"><strong>Product:</strong> <span>${cancellation.product_name}</span></div>
               <div class="row"><strong>Qty to Cancel:</strong> <span>${formatCancelQtyDisplay(cancellation)}</span></div>
               <div class="row"><strong>Amount:</strong> <span>₹${Number(cancellation.amount).toFixed(2)}</span></div>
+              <div class="row"><strong>Reason:</strong> <span>${cancellation.reason || "—"}</span></div>
+              <div class="row"><strong>Remarks:</strong> <span>${cancellation.remarks || "—"}</span></div>
             </div>
             <div class="divider"></div>
             <div class="footer">
@@ -834,6 +840,8 @@ function UpdatePayment() {
           <td>${c.created_at}</td>
           <td>${c.product_name}</td>
           <td>${formatCancelQtyDisplay(c)}</td>
+          <td>${c.reason || "—"}</td>
+          <td>${c.remarks || "—"}</td>
           <td align="right">₹${Number(c.amount).toFixed(2)}</td>
         </tr>
       `;
@@ -869,6 +877,8 @@ function UpdatePayment() {
                 <th>Date</th>
                 <th>Product Name</th>
                 <th>Qty to Cancel</th>
+                <th>Reason</th>
+                <th>Remarks</th>
                 <th style="text-align: right">Amount</th>
               </tr>
             </thead>
@@ -1425,7 +1435,7 @@ function UpdatePayment() {
                     component={Paper}
                     sx={{ ...paginatedTableContainerSx, backgroundColor: "transparent" }}
                   >
-                    <Table stickyHeader size="small">
+                    <Table stickyHeader size="small" sx={compactTableTextSx}>
                       <TableHead sx={paginatedTableHeadSx()}>
                         <TableRow>
                           <TableCell align="center" sx={{ ...paginatedTableHeadCellSx, width: 56 }}>
@@ -2159,16 +2169,18 @@ function UpdatePayment() {
                     sx={{
                       tableLayout: "fixed",
                       width: "100%",
-                      minWidth: 640,
+                      minWidth: 900,
                       "& .MuiTableCell-root": { overflow: "hidden", textOverflow: "ellipsis" },
                     }}
                   >
                     <colgroup>
-                      <col style={{ width: "30%" }} />
-                      <col style={{ width: "30%" }} />
-                      <col style={{ width: "14%" }} />
-                      <col style={{ width: "14%" }} />
-                      <col style={{ width: "12%" }} />
+                      <col style={{ width: "17%" }} />
+                      <col style={{ width: "19%" }} />
+                      <col style={{ width: "11%" }} />
+                      <col style={{ width: "15%" }} />
+                      <col style={{ width: "18%" }} />
+                      <col style={{ width: "10%" }} />
+                      <col style={{ width: "10%" }} />
                     </colgroup>
                     <TableHead
                       sx={{
@@ -2186,6 +2198,12 @@ function UpdatePayment() {
                         </TableCell>
                         <TableCell align="left" sx={tableHeadSx}>
                           Qty to Cancel
+                        </TableCell>
+                        <TableCell align="left" sx={tableHeadSx}>
+                          Reason
+                        </TableCell>
+                        <TableCell align="left" sx={tableHeadSx}>
+                          Remarks
                         </TableCell>
                         <TableCell align="right" sx={tableHeadSx}>
                           Amount
@@ -2215,6 +2233,19 @@ function UpdatePayment() {
                             sx={{ ...tableBodySx, borderBottom: "1px solid #e5e7eb", fontSize: "0.875rem", color: "#374151" }}
                           >
                             {formatCancelQtyDisplay(c)}
+                          </TableCell>
+                          <TableCell
+                            align="left"
+                            sx={{ ...tableBodySx, borderBottom: "1px solid #e5e7eb", fontSize: "0.875rem", color: "#374151" }}
+                          >
+                            {c.reason || "—"}
+                          </TableCell>
+                          <TableCell
+                            align="left"
+                            title={c.remarks || ""}
+                            sx={{ ...tableBodySx, borderBottom: "1px solid #e5e7eb", fontSize: "0.875rem", color: "#374151" }}
+                          >
+                            {c.remarks || "—"}
                           </TableCell>
                           <TableCell
                             align="right"
@@ -2313,6 +2344,7 @@ function UpdatePayment() {
                       <MenuItem value="Duplicate order">Duplicate order</MenuItem>
                       <MenuItem value="Payment issue">Payment issue</MenuItem>
                       <MenuItem value="Delivery issue">Delivery issue</MenuItem>
+                      <MenuItem value="Wrong packing">Wrong packing</MenuItem>
                       <MenuItem value="Other">Other</MenuItem>
                     </Select>
                   </FormControl>
@@ -2398,6 +2430,17 @@ function UpdatePayment() {
                         ? "Auto-filled from qty; you can edit manually"
                         : "Enter cancel amount manually"
                     }
+                  />
+                </Grid>
+                <Grid item xs={12}>
+                  <MDInput
+                    label="Remarks"
+                    fullWidth
+                    multiline
+                    rows={3}
+                    value={cancelForm.remarks}
+                    onChange={(e) => handleCancelFormChange("remarks", e.target.value)}
+                    inputProps={{ maxLength: 2000 }}
                   />
                 </Grid>
               </Grid>

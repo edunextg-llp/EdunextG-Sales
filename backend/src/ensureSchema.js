@@ -563,6 +563,7 @@ export async function ensureSchema() {
         await connection.query(`
             CREATE TABLE IF NOT EXISTS bank_deposits (
                 id INT AUTO_INCREMENT PRIMARY KEY,
+                company_id INT NULL,
                 deposit_ref_no VARCHAR(20) NULL UNIQUE,
                 deposit_date DATE NOT NULL,
                 bank_name VARCHAR(255) NOT NULL,
@@ -580,6 +581,7 @@ export async function ensureSchema() {
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
         `);
+        await tryQuery(connection, 'ALTER TABLE bank_deposits ADD COLUMN company_id INT NULL', 'company on bank deposits');
 
         await connection.query(`
             CREATE TABLE IF NOT EXISTS purchase_sellers (
@@ -1388,6 +1390,7 @@ export async function ensureSchema() {
                 product_size VARCHAR(100) NOT NULL,
                 amount DECIMAL(10, 2) NOT NULL,
                 reason VARCHAR(255) NULL,
+                remarks TEXT NULL,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY (sale_id) REFERENCES staff_sales(id) ON DELETE SET NULL
             );
@@ -1395,6 +1398,7 @@ export async function ensureSchema() {
         await tryQuery(connection, 'ALTER TABLE order_cancellations ADD COLUMN sale_item_id INT NULL', 'sale item on order cancellation');
         await tryQuery(connection, 'ALTER TABLE order_cancellations ADD COLUMN product_erp_id VARCHAR(100) NULL', 'product ERP on order cancellation');
         await tryQuery(connection, 'ALTER TABLE order_cancellations ADD COLUMN reason VARCHAR(255) NULL', 'order cancellation reason');
+        await tryQuery(connection, 'ALTER TABLE order_cancellations ADD COLUMN remarks TEXT NULL', 'order cancellation remarks');
         await tryQuery(connection, 'ALTER TABLE order_cancellations ADD COLUMN product_qty DECIMAL(10, 2) NULL', 'order cancellation product qty');
 
         await connection.query(`

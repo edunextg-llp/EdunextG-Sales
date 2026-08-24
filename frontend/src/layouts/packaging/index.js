@@ -39,6 +39,7 @@ import { formatBpSaleId } from "utils/saleId";
 import {
   ROWS_PER_PAGE,
   TablePaginationFooter,
+  compactTableTextSx,
   paginatedTableContainerSx,
   paginatedTableHeadCellSx,
   paginatedTableHeadSx,
@@ -711,7 +712,7 @@ function Packaging() {
                 </Grid>
 
                 <TableContainer component={Paper} sx={paginatedTableContainerSx}>
-                  <Table stickyHeader sx={{ minWidth: 650 }}>
+                  <Table stickyHeader sx={{ minWidth: 650, ...compactTableTextSx }}>
                     <TableHead sx={paginatedTableHeadSx()}>
                       <TableRow>
                         <TableCell align="center" sx={{ ...paginatedTableHeadCellSx, width: 56 }}>
