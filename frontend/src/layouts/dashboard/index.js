@@ -247,6 +247,22 @@ function emptyMonthlyRow(period) {
 
 const tooltipTextSx = { fontSize: "0.65rem", lineHeight: 1.25 };
 
+const compactDashboardTextSx = {
+  "& .MuiTypography-body2, & .MuiTypography-button": { fontSize: "0.8125rem" },
+  "& .MuiTypography-caption": { fontSize: "0.7rem" },
+  "& .MuiTypography-h6": { fontSize: "0.9375rem" },
+  "& .MuiTypography-h4": { fontSize: "1.25rem" },
+  "& .MuiTypography-h3": { fontSize: "1.5rem" },
+  "& .MuiTableCell-root": {
+    fontSize: "0.8125rem",
+    paddingTop: "10px",
+    paddingBottom: "10px",
+  },
+  "& .MuiInputBase-input, & .MuiSelect-select, & .MuiInputLabel-root": {
+    fontSize: "0.8125rem",
+  },
+};
+
 const collectionChartSlots = {
   axisContent: CollectionAxisTooltipContent,
 };
@@ -1551,6 +1567,7 @@ function Dashboard() {
   return (
     <DashboardLayout>
       <DashboardNavbar />
+      <MDBox sx={compactDashboardTextSx}>
 
       <MDBox pt={3} px={1}>
         <Card sx={{ display: "inline-flex", p: 0.5, boxShadow: "none", border: "1px solid #e5e7eb" }}>
@@ -2463,6 +2480,7 @@ function Dashboard() {
           </MDBox>
         </DialogActions>
       </Dialog>
+      </MDBox>
       <Footer />
     </DashboardLayout>
   );
