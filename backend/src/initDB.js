@@ -1325,6 +1325,8 @@ async function initDB() {
             product_source ENUM('manual', 'fetched') NOT NULL DEFAULT 'manual',
             product_erp_id VARCHAR(100) NULL,
             product_name VARCHAR(255) NOT NULL,
+            invoice_number VARCHAR(100) NOT NULL,
+            batch_number VARCHAR(100) NOT NULL,
             expiry_date DATE NOT NULL,
             qty DECIMAL(12, 2) NOT NULL DEFAULT 1.00,
             amount DECIMAL(12, 2) NOT NULL DEFAULT 0.00,
@@ -1337,6 +1339,16 @@ async function initDB() {
         );
     `);
     console.log('Outlet expiry list table ready');
+    try {
+        await connection.query(`ALTER TABLE outlet_expiry_list ADD COLUMN invoice_number VARCHAR(100) NULL`);
+    } catch (err) {
+        if (err.code !== 'ER_DUP_FIELDNAME') console.log('invoice column may already exist on outlet_expiry_list');
+    }
+    try {
+        await connection.query(`ALTER TABLE outlet_expiry_list ADD COLUMN batch_number VARCHAR(100) NULL`);
+    } catch (err) {
+        if (err.code !== 'ER_DUP_FIELDNAME') console.log('batch column may already exist on outlet_expiry_list');
+    }
     try {
         await connection.query(`ALTER TABLE outlet_expiry_list ADD COLUMN seller_id INT NULL AFTER company_id`);
     } catch (err) {

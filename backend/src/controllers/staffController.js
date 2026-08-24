@@ -47,6 +47,8 @@ export const createExpiryListItem = async (req, res) => {
         const productSource = req.body.productSource === 'manual' ? 'manual' : 'fetched';
         const productName = String(req.body.productName || '').trim();
         const productErpId = String(req.body.productErpId || '').trim();
+        const invoiceNumber = String(req.body.invoiceNumber || '').trim();
+        const batchNumber = String(req.body.batchNumber || '').trim();
         const expiryDate = normalizeDateInput(req.body.expiryDate);
         const qty = Number(req.body.qty);
         const amount = Number(req.body.amount);
@@ -56,6 +58,8 @@ export const createExpiryListItem = async (req, res) => {
         const [sellerRows] = await db.execute('SELECT id FROM purchase_sellers WHERE id = ? AND company_id = ? LIMIT 1', [sellerId, companyId]);
         if (!sellerRows.length) return res.status(400).json({ error: 'Seller does not match the selected company' });
         if (!productName) return res.status(400).json({ error: 'Product name is required' });
+        if (!invoiceNumber) return res.status(400).json({ error: 'Invoice number is required' });
+        if (!batchNumber) return res.status(400).json({ error: 'Batch number is required' });
         if (!expiryDate) return res.status(400).json({ error: 'Expiry date is required' });
         if (!Number.isFinite(qty) || qty <= 0) return res.status(400).json({ error: 'Enter a valid quantity' });
         if (!Number.isFinite(amount) || amount < 0) return res.status(400).json({ error: 'Enter a valid amount' });
@@ -67,11 +71,47 @@ export const createExpiryListItem = async (req, res) => {
         );
         if (!outlets.length) return res.status(400).json({ error: 'Outlet does not match the selected company and staff' });
         const item = await ExpiryListModel.create({ companyId, sellerId, staffId, outletId, productSource,
-            productErpId, productName: productName.slice(0, 255), expiryDate, qty, amount });
+            productErpId, productName: productName.slice(0, 255), invoiceNumber: invoiceNumber.slice(0, 100),
+            batchNumber: batchNumber.slice(0, 100), expiryDate, qty, amount });
         res.status(201).json({ message: 'Expiry item saved successfully', item });
     } catch (error) {
         console.error('Error saving expiry list item:', error);
         res.status(500).json({ error: 'Unable to save expiry item' });
+    }
+};
+
+export const updateExpiryListItem = async (req, res) => {
+    try {
+        const id = Number(req.params.id);
+        const companyId = Number(req.body.companyId), sellerId = Number(req.body.sellerId);
+        const staffId = Number(req.body.staffId), outletId = Number(req.body.outletId);
+        const productSource = req.body.productSource === 'manual' ? 'manual' : 'fetched';
+        const productName = String(req.body.productName || '').trim();
+        const productErpId = String(req.body.productErpId || '').trim();
+        const invoiceNumber = String(req.body.invoiceNumber || '').trim();
+        const batchNumber = String(req.body.batchNumber || '').trim();
+        const expiryDate = normalizeDateInput(req.body.expiryDate);
+        const qty = Number(req.body.qty), amount = Number(req.body.amount);
+        if (![id, companyId, sellerId, staffId, outletId].every((value) => Number.isInteger(value) && value > 0)) {
+            return res.status(400).json({ error: 'Valid company, seller, staff, and outlet are required' });
+        }
+        if (!productName || !invoiceNumber || !batchNumber || !expiryDate) {
+            return res.status(400).json({ error: 'Product, invoice number, batch number, and expiry date are required' });
+        }
+        if (!Number.isFinite(qty) || qty <= 0 || !Number.isFinite(amount) || amount < 0) {
+            return res.status(400).json({ error: 'Enter valid quantity and amount' });
+        }
+        const [sellerRows] = await db.execute('SELECT id FROM purchase_sellers WHERE id = ? AND company_id = ? LIMIT 1', [sellerId, companyId]);
+        const [outletRows] = await db.execute(`SELECT sc.id FROM staff_counters sc INNER JOIN staff_companies sm ON sm.staff_id = sc.staff_id WHERE sc.id = ? AND sc.staff_id = ? AND sm.company_id = ? LIMIT 1`, [outletId, staffId, companyId]);
+        if (!sellerRows.length || !outletRows.length) return res.status(400).json({ error: 'Seller or outlet does not match the selection' });
+        const item = await ExpiryListModel.update(id, { companyId, sellerId, staffId, outletId, productSource,
+            productErpId, productName: productName.slice(0, 255), invoiceNumber: invoiceNumber.slice(0, 100),
+            batchNumber: batchNumber.slice(0, 100), expiryDate, qty, amount });
+        if (!item) return res.status(404).json({ error: 'Expiry record not found' });
+        res.json({ message: 'Expiry item updated successfully', item });
+    } catch (error) {
+        console.error('Error updating expiry list item:', error);
+        res.status(500).json({ error: 'Unable to update expiry item' });
     }
 };
 

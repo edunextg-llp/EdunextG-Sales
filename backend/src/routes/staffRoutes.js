@@ -20,6 +20,7 @@ router.get('/search', staffController.searchStaff);
 router.get('/credits/pending', staffController.getPendingCredits);
 router.get('/expiry-list', staffController.getExpiryList);
 router.post('/expiry-list', staffController.createExpiryListItem);
+router.put('/expiry-list/:id', staffController.updateExpiryListItem);
 router.post('/credits/take', staffController.recordTakenBills);
 router.post('/credits/return', staffController.returnTakenBills);
 router.get('/credits/taken', staffController.getTakenBillsReport);

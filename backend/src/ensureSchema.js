@@ -1388,6 +1388,8 @@ export async function ensureSchema() {
                 outlet_name VARCHAR(255) NOT NULL,
                 invoice_number VARCHAR(255) NOT NULL,
                 product_name VARCHAR(255) NOT NULL,
+                invoice_number VARCHAR(100) NOT NULL,
+                batch_number VARCHAR(100) NOT NULL,
                 product_size VARCHAR(100) NOT NULL,
                 amount DECIMAL(10, 2) NOT NULL,
                 reason VARCHAR(255) NULL,
@@ -1666,6 +1668,8 @@ export async function ensureSchema() {
             );
         `);
         await tryQuery(connection, 'ALTER TABLE outlet_expiry_list ADD COLUMN seller_id INT NULL AFTER company_id', 'seller on outlet expiry list');
+        await tryQuery(connection, 'ALTER TABLE outlet_expiry_list ADD COLUMN invoice_number VARCHAR(100) NULL', 'invoice on outlet expiry list');
+        await tryQuery(connection, 'ALTER TABLE outlet_expiry_list ADD COLUMN batch_number VARCHAR(100) NULL', 'batch on outlet expiry list');
         await tryQuery(connection, 'ALTER TABLE outlet_expiry_list ADD COLUMN qty DECIMAL(12, 2) NOT NULL DEFAULT 1.00', 'quantity on outlet expiry list');
 
         console.log('Database schema verified');
