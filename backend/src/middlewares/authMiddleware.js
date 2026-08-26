@@ -73,8 +73,9 @@ export const enforceManagedUserApiScope = (req, res, next) => {
 
     let allowed = false;
     if (path === '/reports' || path === '/reports/payments' || path === '/reports/payments/export' || path === '/purchase-reports' || path === '/' || path === '/search') {
-        allowed = method === 'GET' && (
+        allowed = (method === 'GET' && (
             permissions.has('dashboard')
+            || permissions.has('create_staff')
             || permissions.has('add_outlet')
             || permissions.has('location_assignments')
             || permissions.has('add_sales')
@@ -84,9 +85,9 @@ export const enforceManagedUserApiScope = (req, res, next) => {
             || permissions.has('delivered')
             || permissions.has('out_bill')
             || (hasDms && permissions.has('item_list'))
-        );
+        )) || (path === '/' && method === 'POST' && permissions.has('create_staff'));
     } else if (path === '/companies') {
-        allowed = method === 'GET' && (hasDms || permissions.has('update_payment') || permissions.has('location_assignments'));
+        allowed = method === 'GET' && (hasDms || permissions.has('update_payment') || permissions.has('create_staff') || permissions.has('location_assignments'));
     } else if (path.startsWith('/dms-stock')) {
         allowed = hasDms && permissions.has('item_list');
     } else if (path.startsWith('/expiry-list')) {
@@ -115,7 +116,10 @@ export const enforceManagedUserApiScope = (req, res, next) => {
         allowed = permissions.has('add_outlet') || permissions.has('add_sales') || permissions.has('location_assignments')
             || (hasDms && permissions.has('item_list'));
     } else if (/^\/\d+$/.test(path)) {
-        allowed = method === 'GET' && permissions.has('location_assignments');
+        allowed = (method === 'GET' && (permissions.has('create_staff') || permissions.has('location_assignments')))
+            || (method === 'PUT' && permissions.has('create_staff'));
+    } else if (/^\/\d+\/(toggle-active|generate-credentials)$/.test(path)) {
+        allowed = permissions.has('create_staff');
     } else if (/^\/\d+\/sales$/.test(path)) {
         allowed = permissions.has('add_sales');
     } else if (path === '/sales/by-date' || path === '/sales/lookup' || /^\/\d+\/sales-by-date$/.test(path)) {

@@ -41,7 +41,8 @@ const getExpiryQuantities = (item) => {
   return {
     currentQty,
     expiredQty,
-    qtyAfterDeduction: Math.max(0, currentQty - expiredQty),
+    // Expiry Items is a monitoring report only. An expired date must not alter stock.
+    qtyAfterExpiry: currentQty,
   };
 };
 
@@ -144,7 +145,7 @@ function ExpiryItems() {
               <MDBox p={3} pb={2}>
                 <MDTypography variant="h5" fontWeight="medium" color="dark">Expiry Items</MDTypography>
                 <MDTypography variant="caption" color="text">
-                  Monitor expired and upcoming-expiry stock from each DMS upload.
+                  Monitor expired and upcoming-expiry stock from each DMS upload. Expiry does not deduct current stock.
                 </MDTypography>
               </MDBox>
               <MDBox px={3} pb={3}>
@@ -187,7 +188,7 @@ function ExpiryItems() {
                 {loading && <LinearProgress color="info" sx={{ mb: 2 }} />}
                 <TableContainer component={Paper} sx={{ maxHeight: "68vh", border: "1px solid #e5e7eb" }}>
                   <Table size="small" stickyHeader sx={{ minWidth: 1650 }}>
-                    <TableHead sx={{ display: "table-header-group" }}><TableRow>{["Sr No", "Invoice No.", "Invoice Date", "ERP ID", "SKU Name", "Company", "Variant", "Batch", "MFG Date", "Expiry Date", "Days Remaining", "Status", "Expired Qty", "Current Qty", "Expiry Deduction", "Qty After Deduction"].map((heading) => <TableCell key={heading} align={["Days Remaining", "Expired Qty", "Current Qty", "Qty After Deduction"].includes(heading) ? "right" : "left"} sx={headSx}>{heading}</TableCell>)}</TableRow></TableHead>
+                    <TableHead sx={{ display: "table-header-group" }}><TableRow>{["Sr No", "Invoice No.", "Invoice Date", "ERP ID", "SKU Name", "Company", "Variant", "Batch", "MFG Date", "Expiry Date", "Days Remaining", "Status", "Expired Qty", "Current Qty", "Stock Deduction", "Qty After Expiry"].map((heading) => <TableCell key={heading} align={["Days Remaining", "Expired Qty", "Current Qty", "Qty After Expiry"].includes(heading) ? "right" : "left"} sx={headSx}>{heading}</TableCell>)}</TableRow></TableHead>
                     <TableBody>
                       {!loading && expiryItems.length === 0 && <TableRow><TableCell colSpan={16} align="center" sx={cellSx}>No expiry items match the selected filters.</TableCell></TableRow>}
                       {expiryItems.map((item, index) => {
@@ -195,7 +196,7 @@ function ExpiryItems() {
                         return (
                           <TableRow key={item.id} hover>
                             <TableCell sx={cellSx}>{index + 1}</TableCell><TableCell sx={cellSx}>{item.invoice_number || stockImport?.invoice_number || "—"}</TableCell><TableCell sx={cellSx}>{formatDate(item.upload_date || stockImport?.upload_date)}</TableCell><TableCell sx={cellSx}>{item.product_erp_id}</TableCell><TableCell sx={{ ...cellSx, minWidth: 200 }}>{item.product_name}</TableCell><TableCell sx={cellSx}>{item.company_name || stockImport?.company_name || item.product_division || "N/A"}</TableCell><TableCell sx={cellSx}>{item.variant_name || "—"}</TableCell><TableCell sx={cellSx}>{item.batch_number || "—"}</TableCell><TableCell sx={cellSx}>{formatDate(item.mfg_date)}</TableCell><TableCell sx={{ ...cellSx, fontWeight: 700 }}>{formatDate(item.expiry_date)}</TableCell><TableCell align="right" sx={cellSx}>{item.expiry.days < 0 ? `${Math.abs(item.expiry.days)} days ago` : `${item.expiry.days} days`}</TableCell>
-                            <TableCell sx={cellSx}><MDBox component="span" px={1} py={0.5} sx={{ display: "inline-block", borderRadius: 1, color: item.expiry.color, backgroundColor: item.expiry.bg, fontSize: "0.7rem", fontWeight: 700 }}>{item.expiry.label}</MDBox></TableCell><TableCell align="right" sx={{ ...cellSx, fontWeight: 700, color: quantities.expiredQty > 0 ? "#991b1b" : "inherit" }}>{number(quantities.expiredQty)}</TableCell><TableCell align="right" sx={{ ...cellSx, fontWeight: 700 }}>{number(quantities.currentQty)}</TableCell><TableCell sx={cellSx}>{quantities.expiredQty > 0 ? `Yes (−${number(quantities.expiredQty)})` : "No"}</TableCell><TableCell align="right" sx={{ ...cellSx, fontWeight: 700 }}>{number(quantities.qtyAfterDeduction)}</TableCell>
+                            <TableCell sx={cellSx}><MDBox component="span" px={1} py={0.5} sx={{ display: "inline-block", borderRadius: 1, color: item.expiry.color, backgroundColor: item.expiry.bg, fontSize: "0.7rem", fontWeight: 700 }}>{item.expiry.label}</MDBox></TableCell><TableCell align="right" sx={{ ...cellSx, fontWeight: 700, color: quantities.expiredQty > 0 ? "#991b1b" : "inherit" }}>{number(quantities.expiredQty)}</TableCell><TableCell align="right" sx={{ ...cellSx, fontWeight: 700 }}>{number(quantities.currentQty)}</TableCell><TableCell sx={cellSx}>No</TableCell><TableCell align="right" sx={{ ...cellSx, fontWeight: 700 }}>{number(quantities.qtyAfterExpiry)}</TableCell>
                           </TableRow>
                         );
                       })}

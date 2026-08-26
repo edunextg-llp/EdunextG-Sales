@@ -705,6 +705,49 @@ class PhysicalStockModel {
         }
     }
 
+    static async getAutoImportByDmsImportId(dmsImportId) {
+        const importId = parseInt(dmsImportId, 10);
+        if (!Number.isFinite(importId) || importId <= 0) return null;
+        const [rows] = await db.execute(
+            `SELECT id, dms_import_id, file_name, row_count,
+                    total_cases, total_loose_pcs, total_pieces, total_value
+             FROM physical_stock_imports
+             WHERE dms_import_id = ? AND file_name = 'DMS Auto Sync'
+             ORDER BY id DESC LIMIT 1`,
+            [importId]
+        );
+        return rows[0] || null;
+    }
+
+    static async deleteAutoSyncedItem(dmsImportId, productErpId) {
+        const connection = await db.getConnection();
+        try {
+            await connection.beginTransaction();
+            const [imports] = await connection.execute(
+                `SELECT id FROM physical_stock_imports
+                 WHERE dms_import_id = ? AND file_name = 'DMS Auto Sync'
+                 ORDER BY id DESC LIMIT 1`,
+                [dmsImportId]
+            );
+            if (!imports[0]) {
+                await connection.commit();
+                return;
+            }
+            await connection.execute(
+                `DELETE FROM physical_stock_items
+                 WHERE import_id = ? AND LOWER(TRIM(product_erp_id)) = LOWER(?)`,
+                [imports[0].id, String(productErpId || '').trim()]
+            );
+            await PhysicalStockModel.recalculateImportTotals(connection, imports[0].id);
+            await connection.commit();
+        } catch (error) {
+            await connection.rollback();
+            throw error;
+        } finally {
+            connection.release();
+        }
+    }
+
     static async restoreStockForCompany(connection, companyName, lineItems = [], sourceLabel = 'Full Bill Cancellation') {
         const name = String(companyName || '').trim();
         if (!name || !Array.isArray(lineItems) || !lineItems.length) return;

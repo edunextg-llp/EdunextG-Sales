@@ -21,8 +21,9 @@ const PERMISSIONS = [
   ["item_list", "Item List", "View and manage the DMS product and stock item list."],
   ["update_payment", "Update Payment", "View sales and add, edit, or delete their payment entries."],
   ["bank_deposit", "Bank Deposit", "View and manage cash, cheque, and UPI bank deposits."],
+  ["create_staff", "Create Staff", "Create and manage staff only for companies assigned to this user."],
+  ["location_assignments", "Add Location", "Add and update day-wise locations for staff."],
   ["add_outlet", "Add Outlet", "Create, edit, import, export, or delete customer outlets."],
-  ["location_assignments", "Location Assignments", "Assign and update day-wise locations for staff."],
   ["add_sales", "Add Sales", "Create and manage sales invoices for outlets or customers."],
   ["packaging", "Packaging", "View orders awaiting packaging and update packaging status."],
   ["delivery", "Delivery", "View packaged orders, assign delivery staff, and update delivery status."],
@@ -41,7 +42,7 @@ const PERMISSIONS = [
 const PERMISSION_FOLDERS = [
   { key: "dms", label: "DMS", description: "Grant every DMS submenu.", children: ["add_seller", "add_item", "item_list"] },
   { key: "delivery_manager", label: "Delivery Manager", description: "Grant every Delivery Manager submenu.", children: ["packaging", "delivery", "delivered"] },
-  { key: "staff_management", label: "Staff Management", description: "Grant the available Staff Management submenu.", children: ["location_assignments"] },
+  { key: "staff_management", label: "Staff Management", description: "Grant Create Staff, Add Location, and Add Outlet in workflow order.", children: ["create_staff", "location_assignments", "add_outlet"] },
   { key: "chalan", label: "Chalan", description: "Grant every Chalan submenu.", children: ["chalan_add_sales", "chalan_packaging", "chalan_delivery", "chalan_delivered", "chalan_return"] },
 ];
 const FOLDER_KEYS = PERMISSION_FOLDERS.flatMap((folder) => [folder.key, ...folder.children]);

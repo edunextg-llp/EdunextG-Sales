@@ -235,10 +235,12 @@ const routes = [
         icon: <Icon fontSize="small">person_add</Icon>,
         route: "/create-staff",
         component: <CreateStaff />,
+        allowedRoles: ["admin", "packaging_staff", "delivery_boy"],
+        requiredPermission: "create_staff",
       },
       {
         type: "collapse",
-        name: "Location Assignments",
+        name: "Add Location",
         key: "location-assignments",
         icon: <Icon fontSize="small">location_on</Icon>,
         route: "/location-assignments",

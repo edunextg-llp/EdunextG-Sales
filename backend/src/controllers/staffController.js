@@ -185,6 +185,22 @@ function normalizeStaffCategory(value) {
     return value === 'bawarchee_staff' ? 'bawarchee_staff' : 'company_staff';
 }
 
+function managedCompanyScopeError(req, staffCategory, companyIds) {
+    if (!['packaging_staff', 'delivery_boy'].includes(req.user?.role)) return null;
+    if (staffCategory !== 'company_staff') return 'You can create and manage company staff only.';
+    const assignedCompanyIds = new Set((req.user.companyIds || []).map(Number));
+    return companyIds.some((id) => !assignedCompanyIds.has(Number(id)))
+        ? 'You can create and manage staff only for your assigned companies.'
+        : null;
+}
+
+function canAccessManagedStaff(req, staff) {
+    if (!['packaging_staff', 'delivery_boy'].includes(req.user?.role)) return true;
+    const assignedCompanyIds = new Set((req.user.companyIds || []).map(Number));
+    return String(staff?.company_ids || staff?.company_id || '')
+        .split(',').map(Number).some((id) => assignedCompanyIds.has(id));
+}
+
 async function parseCollectorPayload(body) {
     const collectorType = String(body.collectorType || 'company_staff').toLowerCase();
 
@@ -423,6 +439,9 @@ export const createStaff = async (req, res) => {
             ? await resolveCompanyIds(companyNames, companyName, companyIds)
             : [];
 
+        const scopeError = managedCompanyScopeError(req, normalizedStaffCategory, resolvedCompanyIds);
+        if (scopeError) return res.status(403).json({ error: scopeError });
+
         if (normalizedStaffCategory === 'company_staff' && resolvedCompanyIds.length === 0) {
             return res.status(400).json({ error: 'Please select at least one company.' });
         }
@@ -609,6 +628,11 @@ export const addCounter = async (req, res) => {
     try {
         const { id } = req.params;
         const { day, location, counters } = req.body;
+        const staff = await StaffModel.getDetails(id);
+        if (!staff) return res.status(404).json({ error: 'Staff not found' });
+        if (!canAccessManagedStaff(req, staff)) {
+            return res.status(403).json({ error: 'This staff member is outside your assigned companies.' });
+        }
 
         if (Array.isArray(counters)) {
             const erpIds = new Set();
@@ -712,6 +736,9 @@ export const toggleStaffActive = async (req, res) => {
         if (!staff) {
             return res.status(404).json({ error: 'Staff not found' });
         }
+        if (!canAccessManagedStaff(req, staff)) {
+            return res.status(403).json({ error: 'This staff member is outside your assigned companies.' });
+        }
         const result = await StaffModel.toggleActive(id);
         res.status(200).json({
             message: result.is_active ? 'Staff activated' : 'Staff deactivated',
@@ -730,7 +757,12 @@ export const getStaff = async (req, res) => {
         if (req.query.companyId && (!Number.isInteger(companyId) || companyId <= 0)) {
             return res.status(400).json({ error: 'companyId must be a positive integer' });
         }
-        const staff = await StaffModel.getAll(includeInactive, companyId);
+        let staff = await StaffModel.getAll(includeInactive, companyId);
+        if (['packaging_staff', 'delivery_boy'].includes(req.user?.role)) {
+            const assignedCompanyIds = new Set((req.user.companyIds || []).map(Number));
+            staff = staff.filter((item) => String(item.company_ids || item.company_id || '')
+                .split(',').map(Number).some((id) => assignedCompanyIds.has(id)));
+        }
         res.status(200).json(staff);
     } catch (error) {
         res.status(500).json({ error: 'Internal server error' });
@@ -743,6 +775,9 @@ export const getStaffFullDetails = async (req, res) => {
         const staff = await StaffModel.getDetails(id);
         if (!staff) {
             return res.status(404).json({ error: 'Staff not found' });
+        }
+        if (!canAccessManagedStaff(req, staff)) {
+            return res.status(403).json({ error: 'This staff member is outside your assigned companies.' });
         }
         const locations = await StaffModel.getAllLocations(id);
         
@@ -767,6 +802,11 @@ export const getStaffFullDetails = async (req, res) => {
 export const updateStaff = async (req, res) => {
     try {
         const { id } = req.params;
+        const existingStaff = await StaffModel.getDetails(id);
+        if (!existingStaff) return res.status(404).json({ error: 'Staff not found' });
+        if (!canAccessManagedStaff(req, existingStaff)) {
+            return res.status(403).json({ error: 'This staff member is outside your assigned companies.' });
+        }
         const {
             name,
             contactNo,
@@ -804,6 +844,9 @@ export const updateStaff = async (req, res) => {
         const resolvedCompanyIds = normalizedStaffCategory === 'company_staff'
             ? await resolveCompanyIds(companyNames, companyName, companyIds)
             : [];
+
+        const scopeError = managedCompanyScopeError(req, normalizedStaffCategory, resolvedCompanyIds);
+        if (scopeError) return res.status(403).json({ error: scopeError });
 
         if (normalizedStaffCategory === 'company_staff' && resolvedCompanyIds.length === 0) {
             return res.status(400).json({ error: 'Please select at least one company.' });
@@ -1832,7 +1875,11 @@ export const getPurchaseSellersByCompany = async (req, res) => {
 export const getCompanies = async (req, res) => {
     try {
         const { type } = req.query;
-        const companies = await CompanyModel.getAll(type || null);
+        let companies = await CompanyModel.getAll(type || null);
+        if (['packaging_staff', 'delivery_boy'].includes(req.user?.role)) {
+            const assignedCompanyIds = new Set((req.user.companyIds || []).map(Number));
+            companies = companies.filter((company) => assignedCompanyIds.has(Number(company.id)));
+        }
         res.status(200).json(companies);
     } catch (error) {
         console.error('Error fetching companies:', error);
@@ -2026,6 +2073,9 @@ export const updateStaffLocations = async (req, res) => {
         const staff = await StaffModel.getDetails(staffId);
         if (!staff) {
             return res.status(404).json({ error: 'Staff not found' });
+        }
+        if (!canAccessManagedStaff(req, staff)) {
+            return res.status(403).json({ error: 'This staff member is outside your assigned companies.' });
         }
 
         const allowedDays = staff.staff_type === 'cnf'

@@ -136,7 +136,7 @@ export const login = async (req, res) => {
                 }
                 const permissionKeys = [
                     'dashboard', 'dms', 'add_seller', 'add_item', 'item_list',
-                    'update_payment', 'bank_deposit', 'add_outlet', 'location_assignments', 'add_sales',
+                    'update_payment', 'bank_deposit', 'create_staff', 'add_outlet', 'location_assignments', 'add_sales',
                     'packaging', 'delivery', 'delivered', 'out_bill',
                 ];
                 const permissions = permissionKeys.filter((key) => Boolean(deliveryUser[`can_${key}`]));
@@ -147,6 +147,8 @@ export const login = async (req, res) => {
                     loginId: deliveryUser.delivery_login_id,
                     role,
                     permissions,
+                    companyIds: String(deliveryUser.company_ids || deliveryUser.company_id || '')
+                        .split(',').map(Number).filter((id) => Number.isInteger(id) && id > 0),
                 };
                 user = {
                     id: deliveryUser.id,
@@ -155,6 +157,9 @@ export const login = async (req, res) => {
                     loginId: deliveryUser.delivery_login_id,
                     role,
                     permissions,
+                    companies: String(deliveryUser.company_ids || deliveryUser.company_id || '')
+                        .split(',').map(Number).filter((id) => Number.isInteger(id) && id > 0)
+                        .map((id) => ({ id })),
                 };
             }
         }

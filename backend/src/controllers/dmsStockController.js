@@ -2,6 +2,7 @@ import { parse } from 'csv-parse/sync';
 import xlsx from 'xlsx';
 import CompanyModel from '../models/companyModel.js';
 import DmsStockModel from '../models/dmsStockModel.js';
+import PhysicalStockModel from '../models/physicalStockModel.js';
 
 const HEADER_ALIASES = {
     productErpId: ['product erp id'],
@@ -217,6 +218,48 @@ function normalizeUploadDate(value) {
     return `${year}-${month}-${day}`;
 }
 
+const syncDmsRowsToPhysicalAndCurrent = async (dmsImportId, rows, stockUpdateDate) => {
+    const physicalRows = rows.map((row) => {
+        const pcsPerBox = Math.max(0, toNumber(row.pcsPerBox));
+        const totalPcs = Math.max(0, toNumber(row.totalCurrentStockInPcs));
+        const physicalStockInCase = pcsPerBox > 0 ? Math.floor(totalPcs / pcsPerBox) : 0;
+        const physicalStockInPcs = roundRate(totalPcs - (physicalStockInCase * pcsPerBox));
+        const pricePerPiece = toNumber(row.pricePerPiece || row.dpPrice);
+        return {
+            productErpId: row.productErpId,
+            productName: row.productName,
+            productDivision: row.productDivision,
+            variantName: row.variantName,
+            pcsPerBox,
+            physicalStockInCase,
+            physicalStockInPcs,
+            totalPhysicalStockInPcs: totalPcs,
+            pricePerPiece,
+            mrp: toNumber(row.mrp),
+            totalValue: roundRate(totalPcs * pricePerPiece),
+            stockUpdateDate,
+            rawData: { approvedAsCurrentStock: true, source: 'dms_auto_sync' },
+        };
+    });
+    const existingImport = await PhysicalStockModel.getAutoImportByDmsImportId(dmsImportId);
+    if (existingImport) {
+        return PhysicalStockModel.upsertItemsToImport(existingImport.id, physicalRows);
+    }
+    const summary = physicalRows.reduce((total, row) => ({
+        totalCases: roundRate(total.totalCases + row.physicalStockInCase),
+        totalLoosePcs: roundRate(total.totalLoosePcs + row.physicalStockInPcs),
+        totalPieces: roundRate(total.totalPieces + row.totalPhysicalStockInPcs),
+        totalValue: roundRate(total.totalValue + row.totalValue),
+    }), { totalCases: 0, totalLoosePcs: 0, totalPieces: 0, totalValue: 0 });
+    return PhysicalStockModel.createImport({
+        dmsImportId,
+        fileName: 'DMS Auto Sync',
+        rowCount: physicalRows.length,
+        summary,
+        rows: physicalRows,
+    });
+};
+
 export const uploadDmsStock = async (req, res) => {
     try {
         if (!req.file) {
@@ -256,9 +299,10 @@ export const uploadDmsStock = async (req, res) => {
             summary,
             rows,
         });
+        await syncDmsRowsToPhysicalAndCurrent(result.import.id, rows, result.import.upload_date);
 
         res.status(201).json({
-            message: 'DMS stock uploaded successfully',
+            message: 'DMS stock uploaded and synced to Physical Stock and Current Stock successfully',
             ...result,
         });
     } catch (error) {
@@ -476,11 +520,12 @@ export const createManualDmsStock = async (req, res) => {
                 rows,
             });
         }
+        await syncDmsRowsToPhysicalAndCurrent(result.import.id, rows, uploadDate);
 
         res.status(201).json({
             message: existingImport
-                ? 'DMS stock updated successfully'
-                : 'DMS stock saved successfully',
+                ? 'DMS stock updated and synced to Physical Stock and Current Stock successfully'
+                : 'DMS stock saved and synced to Physical Stock and Current Stock successfully',
             ...result,
         });
     } catch (error) {
@@ -536,6 +581,16 @@ export const updateDmsStockItem = async (req, res) => {
             });
         }
         const result = await DmsStockModel.updateInvoiceItem(itemId, row);
+        await syncDmsRowsToPhysicalAndCurrent(existing.import_id, [{
+            productErpId: existing.product_erp_id,
+            productName: existing.product_name,
+            productDivision: existing.product_division,
+            variantName: existing.variant_name,
+            pcsPerBox,
+            totalCurrentStockInPcs: totalPieces,
+            pricePerPiece: dpPrice,
+            mrp: row.mrp,
+        }], new Date().toISOString().slice(0, 10));
         res.json({ message: 'Invoice item updated successfully.', ...result });
     } catch (error) {
         console.error('Error updating DMS invoice item:', error);
@@ -545,8 +600,13 @@ export const updateDmsStockItem = async (req, res) => {
 
 export const deleteDmsStockItem = async (req, res) => {
     try {
-        const result = await DmsStockModel.deleteInvoiceItem(parseInt(req.params.itemId, 10));
+        const itemId = parseInt(req.params.itemId, 10);
+        const existing = await DmsStockModel.getItemById(itemId);
+        const result = await DmsStockModel.deleteInvoiceItem(itemId);
         if (!result) return res.status(404).json({ error: 'Invoice item was not found.' });
+        if (existing) {
+            await PhysicalStockModel.deleteAutoSyncedItem(existing.import_id, existing.product_erp_id);
+        }
         res.json({ message: 'Invoice item deleted successfully.', ...result });
     } catch (error) {
         console.error('Error deleting DMS invoice item:', error);

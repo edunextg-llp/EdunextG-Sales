@@ -204,6 +204,8 @@ export default function App() {
                             ? "/out-bill"
                             : permissions.includes("requisition_approval")
                               ? "/requisition-approvals"
+                            : permissions.includes("create_staff")
+                              ? "/create-staff"
                             : permissions.includes("location_assignments")
                               ? "/location-assignments"
                             : permissions.includes("packaging")
@@ -262,6 +264,8 @@ export default function App() {
                           ? "/out-bill"
                           : permissions.includes("requisition_approval")
                             ? "/requisition-approvals"
+                          : permissions.includes("create_staff")
+                            ? "/create-staff"
                           : permissions.includes("location_assignments")
                             ? "/location-assignments"
                           : permissions.includes("packaging")
