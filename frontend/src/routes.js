@@ -218,7 +218,7 @@ const routes = [
     name: "Staff Management",
     key: "staff-management",
     icon: <Icon fontSize="small">people</Icon>,
-    allowedRoles: ["admin", "packaging_staff", "delivery_boy"],
+    allowedRoles: ["admin", "packaging_staff", "delivery_boy", "staff"],
     collapse: [
       {
         type: "collapse",
@@ -245,7 +245,7 @@ const routes = [
         icon: <Icon fontSize="small">location_on</Icon>,
         route: "/location-assignments",
         component: <LocationAssignments />,
-        allowedRoles: ["admin", "packaging_staff", "delivery_boy"],
+        allowedRoles: ["admin", "packaging_staff", "delivery_boy", "staff"],
         requiredPermission: "location_assignments",
       },
       {
@@ -266,7 +266,7 @@ const routes = [
     icon: <Icon fontSize="small">store</Icon>,
     route: "/add-outlet",
     component: <AddCounter />,
-    allowedRoles: ["admin", "packaging_staff", "delivery_boy"],
+    allowedRoles: ["admin", "packaging_staff", "delivery_boy", "staff"],
     requiredPermission: "add_outlet",
   },
   {

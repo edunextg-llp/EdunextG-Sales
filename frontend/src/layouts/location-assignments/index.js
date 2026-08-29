@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Card from "@mui/material/Card";
 import Grid from "@mui/material/Grid";
 import Icon from "@mui/material/Icon";
@@ -11,6 +11,7 @@ import MDTypography from "components/MDTypography";
 import DashboardLayout from "examples/LayoutContainers/DashboardLayout";
 import DashboardNavbar from "examples/Navbars/DashboardNavbar";
 import Footer from "examples/Footer";
+import { useAuth } from "context/AuthContext";
 
 const API = "https://bawarchee.edunextg.co/api";
 const routeDays = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
@@ -20,6 +21,8 @@ const emptyAssignments = () => ({
 });
 
 function LocationAssignments() {
+  const { user } = useAuth();
+  const isSelfService = user?.role === "staff";
   const [staffType, setStaffType] = useState("");
   const [companies, setCompanies] = useState([]);
   const [selectedCompany, setSelectedCompany] = useState(null);
@@ -29,6 +32,21 @@ function LocationAssignments() {
   const [activeTab, setActiveTab] = useState(0);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (!isSelfService || !user?.staffId) return;
+    setLoading(true);
+    fetch(`${API}/staff/${user.staffId}`)
+      .then((response) => response.json().then((data) => ({ response, data })))
+      .then(({ response, data }) => {
+        if (!response.ok) throw new Error(data.error || "Unable to load your assignments.");
+        setStaffType(data.staff_type || user.staffType || "distributor");
+        setSelectedStaff(data);
+        setAssignments({ ...emptyAssignments(), ...(data.assignments || {}) });
+      })
+      .catch((error) => alert(error.message))
+      .finally(() => setLoading(false));
+  }, [isSelfService, user?.staffId, user?.staffType]);
 
   const resetStaffSelection = () => {
     setStaff([]);
@@ -144,13 +162,15 @@ function LocationAssignments() {
             <Card>
               <MDBox p={3}>
                 <MDTypography variant="h5" fontWeight="medium" mb={0.5}>
-                  Location Assignments
+                  {isSelfService ? "My Day-wise Locations" : "Location Assignments"}
                 </MDTypography>
                 <MDTypography variant="body2" color="text" mb={3}>
-                  Choose the staff type, company, and staff member, then manage day-wise locations.
+                  {isSelfService
+                    ? "Add and manage your own working locations for each day."
+                    : "Choose the staff type, company, and staff member, then manage day-wise locations."}
                 </MDTypography>
 
-                <Grid container spacing={2}>
+                {!isSelfService && <Grid container spacing={2}>
                   <Grid item xs={12} md={4}>
                     <FormControl fullWidth size="small">
                       <InputLabel id="location-staff-type-label">Staff Type</InputLabel>
@@ -188,7 +208,7 @@ function LocationAssignments() {
                       renderInput={(params) => <MDInput {...params} label="Select Staff" />}
                     />
                   </Grid>
-                </Grid>
+                </Grid>}
 
                 {selectedStaff && (
                   <MDBox mt={3}>

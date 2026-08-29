@@ -362,7 +362,7 @@ class DeliveryBoyModel {
         return rows;
     }
 
-    static async updateAssignedSaleStatus(deliveryBoyId, saleId, status) {
+    static async updateAssignedSaleStatus(deliveryBoyId, saleId, status, cancellationReason = null) {
         const connection = await db.getConnection();
 
         try {
@@ -404,6 +404,7 @@ class DeliveryBoyModel {
                 await connection.execute(
                     `UPDATE staff_sales
                      SET packaging_status = 'cancelled',
+                         cancellation_reason = ?,
                          delivery_boy_id = NULL,
                          vehicle_no = NULL,
                          delivery_date = NULL,
@@ -411,7 +412,7 @@ class DeliveryBoyModel {
                          box_count = NULL,
                          packet_count = NULL
                      WHERE id = ? AND delivery_boy_id = ?`,
-                    [resetPackedCount, saleId, deliveryBoyId]
+                    [cancellationReason, resetPackedCount, saleId, deliveryBoyId]
                 );
             } else {
                 await connection.execute(

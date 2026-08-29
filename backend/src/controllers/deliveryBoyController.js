@@ -552,15 +552,20 @@ export const updateMobileAssignedItemStatus = async (req, res) => {
         }
 
         const status = String(req.body.status || '').trim().toLowerCase();
+        const cancellationReason = String(req.body.cancellationReason || req.body.reason || '').trim();
         const allowedStatuses = ['delivered', 'cancelled', 'returned'];
         if (!allowedStatuses.includes(status)) {
             return res.status(400).json({ error: 'Status must be delivered, cancelled, or returned' });
+        }
+        if (status === 'cancelled' && !cancellationReason) {
+            return res.status(400).json({ error: 'Cancellation reason is required.' });
         }
 
         const updatedSale = await DeliveryBoyModel.updateAssignedSaleStatus(
             req.deliveryBoyId,
             saleId,
-            status
+            status,
+            cancellationReason || null
         );
 
         if (updatedSale?.locked) {

@@ -23,6 +23,7 @@ import Footer from "examples/Footer";
 import { FaRegEdit } from "react-icons/fa";
 import { CiTrash } from "react-icons/ci";
 import { formatGoogleMapsLocation, isValidGoogleMapsShortUrl } from "utils/googleMapsLocation";
+import { useAuth } from "context/AuthContext";
 
 const GOOGLE_MAPS_HELPER_TEXT = "Use Google Maps Share link, e.g. https://maps.app.goo.gl/T9zxVHUGoiYcBX2s8";
 
@@ -94,6 +95,9 @@ const createEmptyEditForm = () => ({
 });
 
 function AddCounter() {
+  const { user } = useAuth();
+  const isSelfService = user?.role === "staff";
+  const userCompanyName = user?.companies?.[0]?.name || "";
   const days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
   const cnfRouteDay = "CNF";
   const [staffOptions, setStaffOptions] = useState([]);
@@ -167,17 +171,33 @@ function AddCounter() {
   };
 
   useEffect(() => {
-    fetchStaffOptions();
-  }, []);
+    if (!isSelfService) {
+      fetchStaffOptions();
+      return;
+    }
+    fetch(`${API}/staff/${user.staffId}`)
+      .then((response) => response.json().then((data) => ({ response, data })))
+      .then(({ response, data }) => {
+        if (!response.ok) throw new Error(data.error || "Unable to load your employee profile.");
+        const companyName = getStaffCompanies(data)[0] || userCompanyName;
+        setStaffOptions([data]);
+        setSelectedStaffType(data.staff_type || user.staffType || "distributor");
+        setSelectedCompanyName(companyName);
+        setSelectedStaff(data);
+      })
+      .catch((error) => alert(error.message));
+  }, [isSelfService, user?.staffId, user?.staffType, userCompanyName]);
 
   useEffect(() => {
+    if (isSelfService) return;
     setSelectedCompanyName("");
     setSelectedStaff(null);
-  }, [selectedStaffType]);
+  }, [selectedStaffType, isSelfService]);
 
   useEffect(() => {
+    if (isSelfService) return;
     setSelectedStaff(null);
-  }, [selectedCompanyName]);
+  }, [selectedCompanyName, isSelfService]);
 
   const fetchSavedOutlets = async (staffId, day) => {
     try {
@@ -627,11 +647,11 @@ function AddCounter() {
                 textAlign="center"
               >
                 <MDTypography variant="h4" fontWeight="medium" color="white" mt={1}>
-                  Add Outlets to Staff
+                  {isSelfService ? "My Day-wise Outlets" : "Add Outlets to Staff"}
                 </MDTypography>
               </MDBox>
               <MDBox pt={4} pb={3} px={3}>
-                <Grid container spacing={3}>
+                {!isSelfService && <Grid container spacing={3}>
                   <Grid item xs={12} md={4}>
                     <FormControl fullWidth size="small">
                       <InputLabel id="staff-type-filter-label">Staff Type</InputLabel>
@@ -725,7 +745,18 @@ function AddCounter() {
                       </MDBox>
                     </Grid>
                   )} */}
-                </Grid>
+                </Grid>}
+
+                {isSelfService && selectedStaff && (
+                  <MDBox px={1} mb={2}>
+                    <MDTypography variant="body2" fontWeight="medium">
+                      {selectedStaff.name} — {selectedCompanyName}
+                    </MDTypography>
+                    <MDTypography variant="caption" color="text">
+                      Select a day and one of your saved locations, then add outlets.
+                    </MDTypography>
+                  </MDBox>
+                )}
 
                 <MDBox mt={2} display="flex" justifyContent="flex-end" gap={1} flexWrap="wrap">
                   <MDButton
@@ -738,7 +769,7 @@ function AddCounter() {
                   >
                     {downloadingTemplate ? "Preparing Template..." : "Download Add Outlet Template"}
                   </MDButton>
-                  <MDButton
+                  {!isSelfService && <MDButton
                     variant="gradient"
                     color="success"
                     size="small"
@@ -747,7 +778,7 @@ function AddCounter() {
                     startIcon={<Icon>download</Icon>}
                   >
                     {exportingOutlets ? "Preparing Excel..." : "Download All Outlets Excel"}
-                  </MDButton>
+                  </MDButton>}
                 </MDBox>
 
                 {selectedStaff && (

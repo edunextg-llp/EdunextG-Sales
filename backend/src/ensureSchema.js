@@ -1291,6 +1291,11 @@ export async function ensureSchema() {
             `ALTER TABLE staff_sales ADD COLUMN delivery_date DATE NULL`,
             'delivery_date on staff_sales'
         );
+        await tryQuery(
+            connection,
+            `ALTER TABLE staff_sales ADD COLUMN cancellation_reason TEXT NULL`,
+            'cancellation_reason on staff_sales'
+        );
 
         await tryQuery(
             connection,

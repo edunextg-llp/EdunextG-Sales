@@ -240,6 +240,7 @@ async function initDB() {
             price DECIMAL(10, 2) NOT NULL,
             sticker_number VARCHAR(20) NULL UNIQUE,
             payment_mode ENUM('cash', 'upi') NOT NULL DEFAULT 'cash',
+            cancellation_reason TEXT NULL,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             UNIQUE KEY unique_sale (staff_id, outlet_id, sale_date, invoice_number),
             FOREIGN KEY (staff_id) REFERENCES staff(id) ON DELETE CASCADE,
@@ -247,6 +248,12 @@ async function initDB() {
         );
     `);
     console.log('Staff Sales table created');
+
+    try {
+        await connection.query(`ALTER TABLE staff_sales ADD COLUMN cancellation_reason TEXT NULL`);
+    } catch (err) {
+        if (err.code !== 'ER_DUP_FIELDNAME') console.log('cancellation_reason column may already exist on staff_sales');
+    }
 
     try {
         await connection.query(`

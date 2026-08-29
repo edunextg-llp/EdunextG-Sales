@@ -45,6 +45,17 @@ const formatDateTime = (value) => {
   });
 };
 
+const deliveryStatusLabel = (status) => ({
+  pending: "Pending Invoice",
+  not_packing: "Pending at Packaging",
+  packing: "Packaging in Progress",
+  packing_done: "Packed — Ready for Delivery",
+  out_for_delivery: "Out for Delivery",
+  delivered: "Delivered",
+  cancelled: "Cancelled",
+  returned: "Returned",
+}[String(status || "pending").toLowerCase()] || String(status || "Pending"));
+
 const toDateInputValue = (value) => {
   if (!value) return "";
   const dt = new Date(value);
@@ -576,7 +587,9 @@ function PurchaseRequisition() {
                           <TableRow>
                             {[
                               "Select", "Sr. No.", "Requisition No", ...(!isStaff ? ["Staff", "Company"] : []),
-                              "Outlet", "Items", "Total Qty", "Value", "Total Payable", "Status", "View",
+                              "Outlet", "Items", "Total Qty", "Value", "Total Payable", "Requisition Status",
+                              ...(isStaff ? ["Invoice No.", "Delivery Status", "Delivered/Cancelled At", "Cancellation Reason(s)"] : []),
+                              "View",
                               ...(isStaff ? ["Delete"] : []),
                               ...(!isStaff && canApproveRequisitions ? ["Approval Action"] : []),
                             ].map((h) => (
@@ -602,8 +615,12 @@ function PurchaseRequisition() {
                             <TableRow
                               key={row.id || row.requisition_number}
                               sx={
-                                row.status === "invoiced"
+                                isStaff && row.delivery_status === "cancelled"
+                                  ? { backgroundColor: "#fee2e2" }
+                                  : isStaff && row.delivery_status === "delivered"
                                   ? { backgroundColor: "#86b887" }
+                                : row.status === "invoiced"
+                                  ? { backgroundColor: "#fef9c3" }
                                   : row.status === "approved"
                                   ? { backgroundColor: "#dcfce7" }
                                   : row.status === "cancelled"
@@ -627,7 +644,17 @@ function PurchaseRequisition() {
                               <TableCell>{Number(row.total_quantity || 0).toFixed(2)}</TableCell>
                               <TableCell>{Number(row.total_amount || 0).toFixed(2)}</TableCell>
                               <TableCell>{getRequisitionTotalPayable(row).toFixed(2)}</TableCell>
-                              <TableCell>{row.status || "open"}</TableCell>
+                              <TableCell sx={{ textTransform: "capitalize" }}>{row.status || "open"}</TableCell>
+                              {isStaff && <TableCell>{row.invoiced_invoice_number || "—"}</TableCell>}
+                              {isStaff && <TableCell sx={{ fontWeight: 700 }}>
+                                {deliveryStatusLabel(row.delivery_status)}
+                              </TableCell>}
+                              {isStaff && <TableCell>
+                                {row.delivery_status_at ? formatDateTime(row.delivery_status_at) : "—"}
+                              </TableCell>}
+                              {isStaff && <TableCell sx={{ minWidth: 180 }}>
+                                {row.cancellation_reason || "—"}
+                              </TableCell>}
                               <TableCell>
                                 <MDButton
                                   color="info"

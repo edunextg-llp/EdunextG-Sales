@@ -20,7 +20,7 @@ const ProtectedRoute = ({ children, allowedRoles, requiredPermission }) => {
 
   if (
     requiredPermission
-    && user?.role !== "admin"
+    && !["admin", "staff"].includes(user?.role)
     && !Array.isArray(user?.permissions)
   ) {
     return <Navigate to="/authentication/sign-in" replace />;
@@ -28,7 +28,7 @@ const ProtectedRoute = ({ children, allowedRoles, requiredPermission }) => {
 
   if (
     requiredPermission
-    && user?.role !== "admin"
+    && !["admin", "staff"].includes(user?.role)
     && !user.permissions.includes(requiredPermission)
   ) {
     const firstAllowedRoute = user.permissions.includes("dashboard")

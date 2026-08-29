@@ -616,6 +616,15 @@ function Delivered() {
     const currentRow = salesData.find((row) => row.id === saleId);
     if (!currentRow) return;
 
+    let cancellationReason = "";
+    if (newStatus === "cancelled") {
+      cancellationReason = String(window.prompt("Enter cancellation reason:") || "").trim();
+      if (!cancellationReason) {
+        alert("Cancellation reason is required.");
+        return;
+      }
+    }
+
     setUpdatingSaleIds((prev) => new Set(prev).add(saleId));
 
     try {
@@ -628,6 +637,7 @@ function Delivered() {
             ? currentDeliveryDate || getTodayLocalDate()
             : null,
         expectedStatus: currentRow.packaging_status,
+        cancellationReason,
       };
 
       const response = await fetch(`${API}/staff/sales/${saleId}/packaging`, {

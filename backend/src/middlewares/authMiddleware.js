@@ -47,18 +47,20 @@ export const enforceStaffApiScope = (req, res, next) => {
 
     const path = req.path;
     const method = req.method.toUpperCase();
-    const ownOutletPath = path.match(/^\/(\d+)\/outlets-by-day$/);
+    const ownStaffPath = path.match(/^\/(\d+)(?:\/(locations|outlets-by-day|all-counters|counters|outlets-upload))?$/);
+    const isOwnStaffPath = ownStaffPath && Number(ownStaffPath[1]) === Number(req.user.staffId);
+    const ownOperation = ownStaffPath?.[2] || 'details';
     const allowed =
         path.startsWith('/purchase-requisitions')
         || (method === 'GET' && path === '/current-stock')
-        || (
-            method === 'GET'
-            && ownOutletPath
-            && Number(ownOutletPath[1]) === Number(req.user.staffId)
-        );
+        || (method === 'GET' && path === '/outlets-template')
+        || (isOwnStaffPath && method === 'GET' && ['details', 'locations', 'outlets-by-day', 'all-counters'].includes(ownOperation))
+        || (isOwnStaffPath && method === 'PUT' && ownOperation === 'locations')
+        || (isOwnStaffPath && method === 'POST' && ['counters', 'outlets-upload'].includes(ownOperation))
+        || (/^\/counter\/\d+$/.test(path) && ['PUT', 'DELETE'].includes(method));
 
     if (!allowed) {
-        return res.status(403).json({ error: 'Staff access is limited to Purchase Requisition.' });
+        return res.status(403).json({ error: 'You can manage locations and outlets only for your own employee account.' });
     }
     return next();
 };

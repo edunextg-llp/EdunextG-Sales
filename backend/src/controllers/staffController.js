@@ -1646,9 +1646,13 @@ export const updatePackagingStatus = async (req, res) => {
     try {
         const { saleId } = req.params;
         const { packagingStatus, deliveryBoyId, vehicleNo, deliveryDate, statusDate, expectedStatus, packedItemCount, boxCount, packetCount, packedById } = req.body;
+        const cancellationReason = String(req.body?.cancellationReason || '').trim();
 
         if (!['not_packing', 'packing', 'packing_done', 'out_for_delivery', 'delivered', 'cancelled', 'returned'].includes(packagingStatus)) {
             return res.status(400).json({ error: 'Invalid packaging status' });
+        }
+        if (packagingStatus === 'cancelled' && !cancellationReason) {
+            return res.status(400).json({ error: 'Cancellation reason is required.' });
         }
 
         const currentStatus = await StaffModel.getSaleStatusById(saleId);
@@ -1724,7 +1728,8 @@ export const updatePackagingStatus = async (req, res) => {
             normalizedPackedItemCount,
             normalizedBoxCount,
             normalizedPacketCount,
-            normalizedPackedById
+            normalizedPackedById,
+            cancellationReason || null
         );
         const updated = await StaffModel.getSaleById(saleId);
         res.status(200).json({
@@ -2980,6 +2985,9 @@ export const editCounter = async (req, res) => {
         if (!existingCounter) {
             return res.status(404).json({ error: 'Counter not found' });
         }
+        if (req.user?.role === 'staff' && Number(existingCounter.staff_id) !== Number(req.user.staffId)) {
+            return res.status(403).json({ error: 'You can edit only your own outlets.' });
+        }
 
         const normalizedOutletErpId = String(outletErpId || '').trim();
         const normalizedOutletName = String(outletName || '').trim();
@@ -3057,6 +3065,11 @@ export const editCounter = async (req, res) => {
 export const deleteCounter = async (req, res) => {
     try {
         const { counterId } = req.params;
+        const existingCounter = await StaffModel.getCounterById(counterId);
+        if (!existingCounter) return res.status(404).json({ error: 'Counter not found' });
+        if (req.user?.role === 'staff' && Number(existingCounter.staff_id) !== Number(req.user.staffId)) {
+            return res.status(403).json({ error: 'You can delete only your own outlets.' });
+        }
         await StaffModel.deleteCounter(counterId);
         res.status(200).json({ message: 'Counter deleted successfully' });
     } catch (error) {

@@ -1109,7 +1109,8 @@ class StaffModel {
         packedItemCount = null,
         boxCount = null,
         packetCount = null,
-        packedById = null
+        packedById = null,
+        cancellationReason = null
     ) {
         const connection = await db.getConnection();
 
@@ -1175,6 +1176,7 @@ class StaffModel {
                 await connection.execute(
                     `UPDATE staff_sales
                      SET packaging_status = 'cancelled',
+                         cancellation_reason = ?,
                          delivery_boy_id = NULL,
                          vehicle_no = NULL,
                          delivery_date = NULL,
@@ -1182,7 +1184,7 @@ class StaffModel {
                          box_count = NULL,
                          packet_count = NULL
                      WHERE id = ?`,
-                    [resetPackedCount, saleId]
+                    [cancellationReason, resetPackedCount, saleId]
                 );
                 await connection.commit();
                 return;
