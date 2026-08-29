@@ -824,6 +824,7 @@ function AddSales() {
 
   const handleInvoiceSubmit = async ({
     invoiceNumber,
+    requisitionNumber,
     itemCount,
     price,
     addAnother,
@@ -902,7 +903,7 @@ function AddSales() {
           itemCount: parseInt(itemCount, 10),
           invoiceNumber,
           price: parseFloat(price),
-          requisitionNumber: invoiceDialog.requisitionNumber || "",
+          requisitionNumber: requisitionNumber || invoiceDialog.requisitionNumber || "",
           lineItems: Array.isArray(lineItems) ? lineItems : [],
         },
       ],

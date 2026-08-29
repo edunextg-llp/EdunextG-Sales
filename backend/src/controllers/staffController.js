@@ -1375,6 +1375,15 @@ export const recordSales = async (req, res) => {
             }
 
             const normalizedInvoice = normalizeInvoiceNumber(invoiceValidation.value);
+            const requisitionNumber = String(item.requisitionNumber || '').trim();
+            if (
+                requisitionNumber
+                && normalizedInvoice === normalizeInvoiceNumber(requisitionNumber)
+            ) {
+                return res.status(400).json({
+                    error: 'Invoice number must be different from the requisition number.',
+                });
+            }
             if (invoiceNumbers.has(normalizedInvoice)) {
                 return res.status(400).json({ error: 'Same invoice number already exists in this entry.' });
             }
@@ -1413,7 +1422,7 @@ export const recordSales = async (req, res) => {
             validatedSales.push({
                 outletId: outletValidation.value,
                 invoiceNumber: invoiceValidation.value,
-                requisitionNumber: String(item.requisitionNumber || '').trim(),
+                requisitionNumber,
                 itemCount: itemCountValidation.value,
                 price: priceValidation.value,
                 deliveryBoyId,
@@ -1654,7 +1663,6 @@ export const updatePackagingStatus = async (req, res) => {
         if (packagingStatus === 'cancelled' && !cancellationReason) {
             return res.status(400).json({ error: 'Cancellation reason is required.' });
         }
-
         const currentStatus = await StaffModel.getSaleStatusById(saleId);
         if (!currentStatus) {
             return res.status(404).json({ error: 'Sale not found' });

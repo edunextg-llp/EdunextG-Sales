@@ -560,7 +560,6 @@ export const updateMobileAssignedItemStatus = async (req, res) => {
         if (status === 'cancelled' && !cancellationReason) {
             return res.status(400).json({ error: 'Cancellation reason is required.' });
         }
-
         const updatedSale = await DeliveryBoyModel.updateAssignedSaleStatus(
             req.deliveryBoyId,
             saleId,

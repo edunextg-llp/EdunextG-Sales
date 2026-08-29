@@ -127,6 +127,7 @@ const renderPurchaseRequisition = (requisition) => {
 
   return ejs.render(purchaseRequisitionPrintTemplate, {
     requisitionNumber: requisition.requisition_number || "—",
+    invoiceNumber: requisition.invoiced_invoice_number || "—",
     invoiceDate: formatInvoiceDate(requisition.created_at),
     sellerName: "BAWARCHEE FOOD PACKAGING PRIVATE LIMITED",
     sellerAddress: "121, ASWANI DUTTA ROAD, SOUTH DUM DUM P.S,BAGUIATI,NORTH 24 PARGANAS",

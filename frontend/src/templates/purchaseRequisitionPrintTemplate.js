@@ -2,7 +2,7 @@ const purchaseRequisitionPrintTemplate = String.raw`<!DOCTYPE html>
 <html>
   <head>
     <meta charset="utf-8" />
-    <title>Tax Invoice - <%= requisitionNumber %></title>
+    <title>Purchase Requisition - <%= requisitionNumber %></title>
     <style>
       @page { size: A4 landscape; margin: 0.11in; }
       * { box-sizing: border-box; }
@@ -107,7 +107,7 @@ const purchaseRequisitionPrintTemplate = String.raw`<!DOCTYPE html>
         <div>1/1</div>
         <div>Seller Copy</div>
       </div>
-      <div class="title">Tax Invoice</div>
+      <div class="title">Purchase Requisition</div>
 
       <section class="panel">
         <div class="panel-grid">
@@ -122,7 +122,8 @@ const purchaseRequisitionPrintTemplate = String.raw`<!DOCTYPE html>
             <div class="line"><span class="label">Phone No:-</span> <span class="value"><%= sellerPhone %></span></div>
           </div>
           <div class="panel-col">
-            <div class="line"><span class="label">Invoice No:-</span> <span class="value"><%= requisitionNumber %></span></div>
+            <div class="line"><span class="label">Requisition No:-</span> <span class="value"><%= requisitionNumber %></span></div>
+            <div class="line"><span class="label">Invoice No:-</span> <span class="value"><%= invoiceNumber %></span></div>
             <div class="line"><span class="label">Date:-</span> <span class="value"><%= invoiceDate %></span></div>
             <div class="line"><span class="label">Phone No:-</span> <span class="value"><%= sellerPhone %></span></div>
           </div>

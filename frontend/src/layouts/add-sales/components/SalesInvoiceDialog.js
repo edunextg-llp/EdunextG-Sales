@@ -527,6 +527,7 @@ export default function SalesInvoiceDialog({
       if (Number(data.requisition.outlet_id) !== Number(outlet.id)) {
         throw new Error(`This requisition belongs to ${data.requisition.outlet_name || "a different outlet"}.`);
       }
+      setRequisitionNumber(data.requisition.requisition_number || code);
       const liveStockItems = await fetchCurrentStock();
       const liveStockByErp = new Map(
         liveStockItems.map((item) => [String(item.product_erp_id || "").trim().toLowerCase(), item])
@@ -579,6 +580,7 @@ export default function SalesInvoiceDialog({
     if (!validateForm()) return;
     onSubmit({
       invoiceNumber: billNo.trim(),
+      requisitionNumber: requisitionNumber.trim(),
       itemCount: totals.qty || lineItems.length,
       price: totals.netPayable,
       remarks,
@@ -592,6 +594,7 @@ export default function SalesInvoiceDialog({
     if (!validateForm()) return;
     const ok = await onSubmit({
       invoiceNumber: billNo.trim(),
+      requisitionNumber: requisitionNumber.trim(),
       itemCount: totals.qty || lineItems.length,
       price: totals.netPayable,
       remarks,
