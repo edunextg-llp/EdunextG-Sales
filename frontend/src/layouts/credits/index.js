@@ -1155,7 +1155,9 @@ function CreditsPage() {
                         onChange={(e) => handleCompanyChange(e.target.value)}
                         sx={{ height: 44 }}
                       >
-                        <MenuItem value="">All Companies</MenuItem>
+                        <MenuItem value="" disabled>
+                          Select Company
+                        </MenuItem>
                         {companyOptions.map((company) => (
                           <MenuItem key={company.id} value={company.id}>
                             {company.name}
@@ -1165,7 +1167,7 @@ function CreditsPage() {
                     </FormControl>
                   </Grid>
                   <Grid item xs={12} md={6} lg={3}>
-                    <FormControl size="small" fullWidth>
+                    <FormControl size="small" fullWidth disabled={!selectedCompanyId}>
                       <InputLabel id="credit-staff-filter-label">Staff</InputLabel>
                       <Select
                         labelId="credit-staff-filter-label"
@@ -1174,7 +1176,9 @@ function CreditsPage() {
                         onChange={(e) => handleStaffChange(e.target.value)}
                         sx={{ height: 44 }}
                       >
-                        <MenuItem value="">All Staff</MenuItem>
+                        <MenuItem value="" disabled>
+                          {selectedCompanyId ? "Select Staff" : "Choose Company First"}
+                        </MenuItem>
                         {staffOptions.map((staff) => (
                           <MenuItem key={staff.id} value={staff.id}>
                             {staff.name}
@@ -1184,7 +1188,7 @@ function CreditsPage() {
                     </FormControl>
                   </Grid>
                   <Grid item xs={12} md={6} lg={3}>
-                    <FormControl size="small" fullWidth>
+                    <FormControl size="small" fullWidth disabled={!selectedStaffId}>
                       <InputLabel id="credit-area-filter-label">Area</InputLabel>
                       <Select
                         labelId="credit-area-filter-label"
@@ -1193,7 +1197,9 @@ function CreditsPage() {
                         onChange={(e) => setSelectedArea(e.target.value)}
                         sx={{ height: 44 }}
                       >
-                        <MenuItem value="">All Areas</MenuItem>
+                        <MenuItem value="" disabled>
+                          {selectedStaffId ? "Select Area" : "Choose Staff First"}
+                        </MenuItem>
                         {areaOptions.map((area) => (
                           <MenuItem key={area} value={area}>
                             {area}
