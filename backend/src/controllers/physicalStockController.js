@@ -169,12 +169,15 @@ export const uploadPhysicalStock = async (req, res) => {
         if (!dmsResult) {
             return res.status(404).json({ error: 'Selected DMS stock upload was not found.' });
         }
-
         const rows = parsePhysicalStockRows(req.file)
             .map(normalizePhysicalStockRow)
             .filter((row) => row.productErpId || row.productName);
         if (!rows.length) {
             return res.status(400).json({ error: 'No physical stock rows found in the uploaded file.' });
+        }
+        const lockedProductKeys = await PhysicalStockModel.getLockedProductKeys(dmsResult.import?.company_id);
+        if (rows.some((row) => lockedProductKeys.has(String(row.productErpId || '').trim().toLowerCase()))) {
+            return res.status(403).json({ error: 'This file includes product(s) locked for 15 days after their update.' });
         }
 
         const summary = buildPhysicalStockSummary(rows);
@@ -431,6 +434,7 @@ export const getPhysicalStockForCompany = async (req, res) => {
                 item,
             ])
         );
+        const lockedProductKeys = await PhysicalStockModel.getLockedProductKeys(companyId);
 
         // 6. Merge: each product + its physical stock status
         const items = dmsProducts.map((dmsItem) => {
@@ -456,6 +460,8 @@ export const getPhysicalStockForCompany = async (req, res) => {
                 mrp: effectiveMrp,
                 physical_stock: physicalStock,
                 is_approved: physicalStock !== null,
+                is_edit_locked: lockedProductKeys.has(key),
+                has_product_edit_locks: lockedProductKeys.size > 0,
             };
         });
 
@@ -599,6 +605,15 @@ export const createManualPhysicalStock = async (req, res) => {
             return res.status(400).json({ error: 'Please select a product.' });
         }
 
+        const companyId = Number(dmsResult.import?.company_id);
+        const lockedProductKeys = await PhysicalStockModel.getLockedProductKeys(companyId);
+        const lockedItem = items.find((item) => lockedProductKeys.has(
+            String(item?.productErpId || item?.product_erp_id || '').trim().toLowerCase()
+        ));
+        if (lockedItem) {
+            return res.status(403).json({ error: 'This product is locked for 15 days after its last update.' });
+        }
+
         const rows = [];
         for (const item of items) {
             rows.push(await buildPhysicalRowFromDmsProduct(dmsImportId, item));
@@ -629,5 +644,41 @@ export const createManualPhysicalStock = async (req, res) => {
     } catch (error) {
         console.error('Error saving manual physical stock:', error);
         return res.status(error.statusCode || 500).json({ error: error.message || 'Internal server error' });
+    }
+};
+
+export const finalizePhysicalStock = async (req, res) => {
+    try {
+        const dmsImportId = parseDmsImportId(req.body?.dmsImportId);
+        if (!dmsImportId) {
+            return res.status(400).json({ error: 'Please choose a company first.' });
+        }
+
+        const dmsResult = await DmsStockModel.getImportById(dmsImportId);
+        const companyId = Number(dmsResult?.import?.company_id);
+        if (!dmsResult || !Number.isFinite(companyId) || companyId <= 0) {
+            return res.status(404).json({ error: 'Selected company stock was not found.' });
+        }
+
+        const productErpIds = Array.isArray(req.body?.productErpIds) ? req.body.productErpIds : [];
+        if (!productErpIds.length) {
+            return res.status(400).json({ error: 'Update at least one product before final submit.' });
+        }
+        const lockedProductKeys = await PhysicalStockModel.getLockedProductKeys(companyId);
+        if (productErpIds.some((id) => lockedProductKeys.has(String(id || '').trim().toLowerCase()))) {
+            return res.status(403).json({ error: 'One or more selected products are already locked.' });
+        }
+        const lockedProductErpIds = await PhysicalStockModel.lockProductsForCompany(
+            companyId,
+            dmsImportId,
+            productErpIds
+        );
+        return res.status(201).json({
+            message: `${lockedProductErpIds.length} updated product(s) are locked for 15 days. Other products can still be updated.`,
+            lockedProductErpIds,
+        });
+    } catch (error) {
+        console.error('Error finalizing physical stock:', error);
+        return res.status(500).json({ error: 'Unable to finalize physical stock.' });
     }
 };

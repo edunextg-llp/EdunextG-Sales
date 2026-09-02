@@ -449,6 +449,8 @@ function PhysicalStock() {
         bulkRowIndex: itemIndex,
         physicalStockInCase: String(item.physical_stock?.physical_stock_in_case ?? item.current_stock_in_case ?? 0),
         physicalStockInPcs: String(item.physical_stock?.physical_stock_in_pcs ?? item.current_stock_in_pcs ?? 0),
+        initialPhysicalStockInCase: String(item.physical_stock?.physical_stock_in_case ?? item.current_stock_in_case ?? 0),
+        initialPhysicalStockInPcs: String(item.physical_stock?.physical_stock_in_pcs ?? item.current_stock_in_pcs ?? 0),
       }));
       const loadToken = bulkEditLoadTokenRef.current + 1;
       bulkEditLoadTokenRef.current = loadToken;
@@ -522,6 +524,15 @@ function PhysicalStock() {
 
   const saveBulkPhysicalStock = async () => {
     if (!dmsImportId || !bulkEditRows.length) return;
+    const changedRows = bulkEditRows.filter((item) => (
+      item.physicalStockInCase !== item.initialPhysicalStockInCase
+      || item.physicalStockInPcs !== item.initialPhysicalStockInPcs
+    ));
+    if (!changedRows.length) {
+      setError("Update at least one product before final submit.");
+      return;
+    }
+    if (!window.confirm(`Final submit will lock the ${changedRows.length} changed product(s) for 15 days. Products you did not change will remain editable. Continue?`)) return;
     setSavingManual(true);
     setError("");
     try {
@@ -530,7 +541,7 @@ function PhysicalStock() {
         headers: { "Content-Type": "application/json", ...authHeaders },
         body: JSON.stringify({
           dmsImportId,
-          items: bulkEditRows.map((item) => ({
+          items: changedRows.map((item) => ({
             productErpId: item.product_erp_id,
             physicalStockInCase: item.physicalStockInCase,
             physicalStockInPcs: item.physicalStockInPcs,
@@ -540,9 +551,21 @@ function PhysicalStock() {
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "Failed to update physical stock.");
+
+      const finalResponse = await fetch(`${API}/staff/physical-stock/final-submit`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...authHeaders },
+        body: JSON.stringify({
+          dmsImportId,
+          productErpIds: changedRows.map((item) => item.product_erp_id),
+        }),
+      });
+      const finalData = await finalResponse.json();
+      if (!finalResponse.ok) throw new Error(finalData.error || "Unable to finalize physical stock.");
+
       await fetchPhysicalStock(companyFilter);
       setBulkEditOpen(false);
-      setMessage(data.message || "Physical stock updated successfully.");
+      setMessage(finalData.message || data.message || "Physical stock submitted successfully.");
     } catch (saveError) {
       setError(saveError.message);
     } finally {
@@ -937,7 +960,7 @@ function PhysicalStock() {
                   )}
                 </MDBox>
                 <MDBox display="flex" gap={1} flexWrap="wrap" justifyContent="flex-end">
-                  <MDButton
+                  {/* <MDButton
                     color="info"
                     variant="outlined"
                     component="a"
@@ -948,7 +971,7 @@ function PhysicalStock() {
                   >
                     <Icon sx={{ mr: 1 }}>download</Icon>
                     Download Template
-                  </MDButton>
+                  </MDButton> */}
                   <MDButton
                     color="dark"
                     variant="outlined"
@@ -974,6 +997,13 @@ function PhysicalStock() {
               </MDBox>
               <MDBox px={3} pb={3}>
                 <Grid container spacing={2} mb={2} alignItems="center">
+                  {items.some((item) => item.has_product_edit_locks) && (
+                    <Grid item xs={12}>
+                      <MDTypography variant="caption" color="warning" fontWeight="bold">
+                        Yellow products were updated and are locked for 15 days. Blue products were not updated and can still be edited.
+                      </MDTypography>
+                    </Grid>
+                  )}
                   <Grid item xs={12} md={2}>
                     <FormControl size="small" fullWidth>
                       <Select
@@ -1036,7 +1066,7 @@ function PhysicalStock() {
                         <TableRow><TableCell colSpan={14} align="center" sx={tableBodySx}><MDTypography variant="button" color="text">No rows match the selected filters.</MDTypography></TableCell></TableRow>
                       )}
                       {filteredItems.map((item, index) => (
-                        <TableRow key={item.id} sx={item.is_approved ? { backgroundColor: "#dcfce7" } : {}}>
+                        <TableRow key={item.id} sx={item.is_edit_locked ? { backgroundColor: "#fef3c7" } : item.has_product_edit_locks ? { backgroundColor: "#dbeafe" } : item.is_approved ? { backgroundColor: "#dcfce7" } : {}}>
                           <TableCell sx={stickyColumnSx(0, { baseSx: tableBodySx })}>{index + 1}</TableCell>
                           <TableCell sx={stickyColumnSx(1, { baseSx: tableBodySx })}>{item.product_erp_id}</TableCell>
                           <TableCell sx={stickyColumnSx(2, { baseSx: { ...tableBodySx, overflow: "hidden", textOverflow: "ellipsis" } })}>{item.product_name}</TableCell>
@@ -1081,7 +1111,8 @@ function PhysicalStock() {
                               color="info"
                               variant="text"
                               size="small"
-                              onClick={openBulkPhysicalStockEdit}
+                              onClick={() => handleEditPhysicalItem(item)}
+                              disabled={item.is_edit_locked}
                             >
                               <Icon fontSize="small">edit</Icon>
                             </MDButton>
@@ -1271,7 +1302,7 @@ function PhysicalStock() {
             </Table>
           </TableContainer>
         </DialogContent>
-        <DialogActions sx={{ px: 1.5, py: 1 }}><MDButton size="small" color="secondary" onClick={closeBulkPhysicalStockEdit} disabled={savingManual}>Cancel</MDButton><MDButton size="small" color="success" variant="gradient" onClick={saveBulkPhysicalStock} disabled={savingManual || bulkEditLoading || !bulkEditRows.length}><Icon sx={{ mr: 0.5, fontSize: "0.9rem" }}>save</Icon>{savingManual ? "Saving..." : bulkEditLoading ? "Loading Products..." : "Save All Products"}</MDButton></DialogActions>
+        <DialogActions sx={{ px: 1.5, py: 1 }}><MDButton size="small" color="secondary" onClick={closeBulkPhysicalStockEdit} disabled={savingManual}>Cancel</MDButton><MDButton size="small" color="success" variant="gradient" onClick={saveBulkPhysicalStock} disabled={savingManual || bulkEditLoading || !bulkEditRows.length}><Icon sx={{ mr: 0.5, fontSize: "0.9rem" }}>check_circle</Icon>{savingManual ? "Submitting..." : bulkEditLoading ? "Loading Products..." : "Final Submit"}</MDButton></DialogActions>
       </Dialog>
 
       <Dialog open={manualModalOpen} onClose={closeManualModal} fullWidth maxWidth="lg">

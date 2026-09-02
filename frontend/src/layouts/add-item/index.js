@@ -87,6 +87,7 @@ function AddItem() {
   const [loadingItems, setLoadingItems] = useState(false);
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [downloadingTemplate, setDownloadingTemplate] = useState(false);
   const [selectedFile, setSelectedFile] = useState(null);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
@@ -220,6 +221,38 @@ function AddItem() {
       setError(uploadError.message || "Upload failed.");
     } finally {
       setUploading(false);
+    }
+  };
+
+  const downloadItemTemplate = async () => {
+    if (!selectedCompanyId || !selectedSellerId) {
+      setError("Please choose a company and seller first.");
+      return;
+    }
+
+    setDownloadingTemplate(true);
+    setError("");
+    try {
+      const response = await fetch(`${API}/staff/seller-items/template`, {
+        headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
+      });
+      if (!response.ok) {
+        const responseError = await response.json().catch(() => ({}));
+        throw new Error(responseError.error || "Failed to download item template.");
+      }
+      const file = await response.blob();
+      const url = window.URL.createObjectURL(file);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = "DMS_Add_Item_Template.xlsx";
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (downloadError) {
+      setError(downloadError.message || "Failed to download item template.");
+    } finally {
+      setDownloadingTemplate(false);
     }
   };
 
@@ -457,7 +490,7 @@ function AddItem() {
                           Upload Items
                         </MDTypography>
                         <MDTypography variant="caption" color="text" display="block">
-                          Excel columns: Product Erp Id, SKU Name, Variant Name, Pcs/Box. HSN Code and GST are optional; GST defaults to 5%.
+                          Excel columns: Product ERP ID, SKU Name, Variant Name, HSN Code, Pcs/Box. GST, CGST, and SGST are calculated automatically.
                         </MDTypography>
                       </Grid>
 
@@ -469,6 +502,15 @@ function AddItem() {
                           flexWrap="wrap"
                           sx={{ border: "1px dashed #94a3b8", borderRadius: 1, p: 1.5, backgroundColor: "#f8fafc" }}
                         >
+                          <MDButton
+                            color="info"
+                            variant="outlined"
+                            onClick={downloadItemTemplate}
+                            disabled={downloadingTemplate || uploading}
+                          >
+                            <Icon sx={{ mr: 1 }}>download</Icon>
+                            {downloadingTemplate ? "Preparing Template..." : "Download Template"}
+                          </MDButton>
                           <MDButton
                             color="info"
                             variant="outlined"

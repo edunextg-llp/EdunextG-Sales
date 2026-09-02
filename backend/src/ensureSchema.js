@@ -1055,6 +1055,22 @@ export async function ensureSchema() {
             `ALTER TABLE physical_stock_items ADD COLUMN stock_update_date DATE NULL`,
             'stock_update_date on physical_stock_items'
         );
+
+        await connection.query(`
+            CREATE TABLE IF NOT EXISTS physical_stock_item_edit_locks (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                company_id INT NOT NULL,
+                dms_import_id INT NOT NULL,
+                product_erp_id VARCHAR(100) NOT NULL,
+                locked_at DATETIME NOT NULL,
+                editable_after DATETIME NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                UNIQUE KEY uq_physical_stock_item_edit_lock (company_id, product_erp_id),
+                FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE CASCADE,
+                FOREIGN KEY (dms_import_id) REFERENCES dms_stock_imports(id) ON DELETE CASCADE
+            );
+        `);
         await tryQuery(
             connection,
             `UPDATE physical_stock_items SET stock_update_date = expired_stock_date WHERE stock_update_date IS NULL AND expired_stock_date IS NOT NULL`,

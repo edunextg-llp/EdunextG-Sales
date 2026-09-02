@@ -3,13 +3,15 @@ import xlsx from 'xlsx';
 import CompanyModel from '../models/companyModel.js';
 import DmsStockModel from '../models/dmsStockModel.js';
 import PhysicalStockModel from '../models/physicalStockModel.js';
+import SellerItemModel from '../models/sellerItemModel.js';
+import PurchaseSellerModel from '../models/purchaseSellerModel.js';
 
 const HEADER_ALIASES = {
     productErpId: ['product erp id'],
     productName: ['sku name', 'product name'],
     variantName: ['variant name'],
     pcsPerBox: ['pcs/box', 'pcs per box'],
-    currentStockInCase: ['current stock in case'],
+    currentStockInCase: ['current stock in case', 'no. of boxes', 'no of boxes', 'number of boxes'],
     currentStockInPcs: ['current stock in pcs'],
     totalCurrentStockInPcs: ['total current stock in pcs'],
     pricePerPiece: ['price/pcs', 'price per pcs', 'price per piece'],
@@ -27,6 +29,12 @@ const HEADER_ALIASES = {
     totalValue: ['value (closing + in transit)', 'total value'],
     purchasePrice: ['purchase price'],
     expiryDate: ['expiry date', 'expiration date'],
+    batchNumber: ['batch number', 'batch no', 'batch'],
+    mfgDate: ['mfg date', 'manufacturing date'],
+    dpPrice: ['dp price', 'dp'],
+    discountPercent: ['discount %', 'discount percent'],
+    retailPrice: ['retail price (incl. 5% gst)', 'retail price'],
+    wholesalePrice: ['wholesale price (incl. 5% gst)', 'wholesale price'],
 };
 
 const normalizeHeader = (header) =>
@@ -311,6 +319,117 @@ export const uploadDmsStock = async (req, res) => {
     }
 };
 
+export const uploadManualDmsStock = async (req, res) => {
+    try {
+        if (!req.file) {
+            return res.status(400).json({ error: 'Please upload a stock Excel or CSV file.' });
+        }
+        const companyId = parseInt(req.body?.companyId, 10);
+        const sellerId = parseInt(req.body?.sellerId, 10);
+        if (!Number.isFinite(companyId) || companyId <= 0 || !Number.isFinite(sellerId) || sellerId <= 0) {
+            return res.status(400).json({ error: 'Please select a company and seller before uploading.' });
+        }
+
+        const sellerItems = await SellerItemModel.getBySeller(companyId, sellerId);
+        const byErp = new Map(sellerItems.map((item) => [
+            String(item.product_erp_id || '').trim().toLowerCase(),
+            item,
+        ]));
+        const parsedRows = parseRows(req.file);
+        const items = parsedRows.map((rawRow, index) => {
+            const erpId = textValue(findValue(rawRow, 'productErpId'));
+            const productName = textValue(findValue(rawRow, 'productName'));
+            const variantName = textValue(findValue(rawRow, 'variantName'));
+            let sellerItem = byErp.get(erpId.toLowerCase());
+            if (!sellerItem && productName) {
+                sellerItem = sellerItems.find((item) => (
+                    String(item.sku_name || '').trim().toLowerCase() === productName.toLowerCase()
+                    && (!variantName || String(item.variant_name || '').trim().toLowerCase() === variantName.toLowerCase())
+                ));
+            }
+            if (!sellerItem) {
+                const error = new Error(`Row ${index + 2}: item was not found for the selected seller. Use a valid Product ERP ID, or matching SKU Name and Variant Name.`);
+                error.statusCode = 400;
+                throw error;
+            }
+            return {
+                productErpId: sellerItem.product_erp_id,
+                productName: sellerItem.sku_name,
+                variantName: sellerItem.variant_name || '',
+                pcsPerBox: sellerItem.pcs_per_box,
+                currentStockInCase: findValue(rawRow, 'currentStockInCase'),
+                currentStockInPcs: findValue(rawRow, 'currentStockInPcs'),
+                batchNumber: findValue(rawRow, 'batchNumber'),
+                mfgDate: findValue(rawRow, 'mfgDate'),
+                expiryDate: findValue(rawRow, 'expiryDate'),
+                mrp: findValue(rawRow, 'mrp'),
+                dpPrice: findValue(rawRow, 'dpPrice'),
+                discountPercent: findValue(rawRow, 'discountPercent') || '0',
+                retailPrice: findValue(rawRow, 'retailPrice'),
+                wholesalePrice: findValue(rawRow, 'wholesalePrice'),
+            };
+        });
+        req.body = { ...req.body, items };
+        return createManualDmsStock(req, res);
+    } catch (error) {
+        console.error('Error uploading manual DMS stock:', error);
+        return res.status(error.statusCode || 500).json({ error: error.message || 'Unable to upload DMS stock.' });
+    }
+};
+
+export const downloadManualDmsStockTemplate = async (req, res) => {
+    try {
+        const companyId = parseInt(req.query.companyId, 10);
+        const sellerId = parseInt(req.query.sellerId, 10);
+        if (!Number.isFinite(companyId) || companyId <= 0 || !Number.isFinite(sellerId) || sellerId <= 0) {
+            return res.status(400).json({ error: 'Please select a company and seller first.' });
+        }
+        const seller = await PurchaseSellerModel.getById(sellerId);
+        if (!seller || Number(seller.company_id) !== companyId) {
+            return res.status(404).json({ error: 'Seller was not found for the selected company.' });
+        }
+        const sellerItems = await SellerItemModel.getBySeller(companyId, sellerId);
+        if (!sellerItems.length) {
+            return res.status(400).json({ error: 'No items were found for the selected seller.' });
+        }
+
+        const headers = [
+            'Product ERP ID', 'SKU Name', 'Variant Name', 'HSN Code',
+            'No. of Boxes', 'Current Stock In Pcs', 'Batch Number', 'MFG Date', 'Expiry Date',
+            'MRP', 'DP Price', 'Discount %', 'Retail Price (Incl. 5% GST)', 'Wholesale Price (Incl. 5% GST)',
+        ];
+        const rows = sellerItems.map((item) => ({
+            'Product ERP ID': item.product_erp_id || '',
+            'SKU Name': item.sku_name || '',
+            'Variant Name': item.variant_name || '',
+            'HSN Code': item.hsn_code || '',
+            'No. of Boxes': '',
+            'Current Stock In Pcs': '',
+            'Batch Number': '',
+            'MFG Date': '',
+            'Expiry Date': '',
+            MRP: '',
+            'DP Price': '',
+            'Discount %': 0,
+            'Retail Price (Incl. 5% GST)': '',
+            'Wholesale Price (Incl. 5% GST)': '',
+        }));
+        const worksheet = xlsx.utils.json_to_sheet(rows, { header: headers });
+        worksheet['!cols'] = headers.map((header) => ({ wch: Math.max(14, Math.min(32, header.length + 3)) }));
+        worksheet['!freeze'] = { xSplit: 0, ySplit: 1 };
+        const workbook = xlsx.utils.book_new();
+        xlsx.utils.book_append_sheet(workbook, worksheet, 'DMS Stock Upload');
+        const fileBuffer = xlsx.write(workbook, { type: 'buffer', bookType: 'xlsx' });
+        const safeSellerName = String(seller.seller_name || 'Seller').replace(/[^A-Za-z0-9_-]/g, '_');
+        res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        res.setHeader('Content-Disposition', `attachment; filename="DMS_Stock_${safeSellerName}.xlsx"`);
+        return res.send(fileBuffer);
+    } catch (error) {
+        console.error('Error creating DMS stock upload template:', error);
+        return res.status(500).json({ error: 'Unable to create DMS stock upload template.' });
+    }
+};
+
 export const getLatestDmsStock = async (req, res) => {
     try {
         const uploadDate = String(req.query.uploadDate || '').trim();
@@ -422,18 +541,14 @@ export const createManualDmsStock = async (req, res) => {
         }
 
         const items = Array.isArray(req.body?.items) ? req.body.items : [];
-        const invoiceNumber = textValue(req.body?.invoiceNumber);
-        if (!invoiceNumber) {
-            return res.status(400).json({ error: 'Invoice number is required.' });
-        }
+        const invoiceNumber = textValue(req.body?.invoiceNumber) || null;
         if (!items.length) {
             return res.status(400).json({ error: 'Please add at least one stock item.' });
         }
-        const invalidItem = items.find((item) => (
-            !String(item?.batchNumber || '').trim()
-            || !/^\d{4}-\d{2}-\d{2}$/.test(String(item?.mfgDate || ''))
-            || !/^\d{4}-\d{2}-\d{2}$/.test(String(item?.expiryDate || ''))
-            || String(item.mfgDate) > String(item.expiryDate)
+        const invalidItem = items.map((item, index) => ({ item, rowNumber: index + 2 })).find(({ item }) => (
+            (item?.mfgDate && !/^\d{4}-\d{2}-\d{2}$/.test(String(item.mfgDate)))
+            || (item?.expiryDate && !/^\d{4}-\d{2}-\d{2}$/.test(String(item.expiryDate)))
+            || (item?.mfgDate && item?.expiryDate && String(item.mfgDate) > String(item.expiryDate))
             || (item?.dpPrice !== '' && item?.dpPrice != null
                 && (!Number.isFinite(Number(item.dpPrice)) || Number(item.dpPrice) < 0))
             || !Number.isFinite(Number(item?.mrp))
@@ -442,8 +557,17 @@ export const createManualDmsStock = async (req, res) => {
             || Number(item?.wholesalePrice) < getDpPriceAfterDiscount(item.dpPrice, item.discountPercent)
         ));
         if (invalidItem) {
+            const { item, rowNumber } = invalidItem;
+            let error = `Row ${rowNumber}: Every item requires an MRP and valid retail and wholesale prices.`;
+            if (item?.mfgDate && !/^\d{4}-\d{2}-\d{2}$/.test(String(item.mfgDate))) {
+                error = `Row ${rowNumber}: MFG Date must be blank or in YYYY-MM-DD format.`;
+            } else if (item?.expiryDate && !/^\d{4}-\d{2}-\d{2}$/.test(String(item.expiryDate))) {
+                error = `Row ${rowNumber}: Expiry Date must be blank or in YYYY-MM-DD format.`;
+            } else if (item?.mfgDate && item?.expiryDate && String(item.mfgDate) > String(item.expiryDate)) {
+                error = `Row ${rowNumber}: Expiry Date must be after MFG Date.`;
+            }
             return res.status(400).json({
-                error: 'Every item requires batch number, valid MFG/expiry dates, MRP, retail, and wholesale prices.',
+                error,
             });
         }
 
@@ -571,8 +695,9 @@ export const updateDmsStockItem = async (req, res) => {
             retailMargin: roundRate(retailPrice - getDpPriceAfterDiscount(dpPrice, discountPercent)),
             wholesaleMargin: roundRate(wholesalePrice - getDpPriceAfterDiscount(dpPrice, discountPercent)),
         };
-        if (!row.batchNumber || !/^\d{4}-\d{2}-\d{2}$/.test(row.mfgDate)
-            || !/^\d{4}-\d{2}-\d{2}$/.test(row.expiryDate) || row.mfgDate > row.expiryDate
+        if ((row.mfgDate && !/^\d{4}-\d{2}-\d{2}$/.test(row.mfgDate))
+            || (row.expiryDate && !/^\d{4}-\d{2}-\d{2}$/.test(row.expiryDate))
+            || (row.mfgDate && row.expiryDate && row.mfgDate > row.expiryDate)
             || row.dpPrice <= 0 || row.mrp <= 0
             || row.retailPrice < getDpPriceAfterDiscount(row.dpPrice, row.discountPercent)
             || row.wholesalePrice < getDpPriceAfterDiscount(row.dpPrice, row.discountPercent)) {

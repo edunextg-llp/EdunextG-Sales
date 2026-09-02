@@ -2080,6 +2080,33 @@ const SELLER_ITEM_HEADER_ALIASES = {
     pcsPerBox: ['pcs/box', 'pcs per box', 'pieces per box'],
 };
 
+export const downloadSellerItemUploadTemplate = async (_req, res) => {
+    try {
+        const headers = ['Product ERP ID', 'SKU Name', 'Variant Name', 'HSN Code', 'GST %', 'Pcs/Box'];
+        const example = {
+            'Product ERP ID': 'ERP-001',
+            'SKU Name': 'Sample Product',
+            'Variant Name': '500 ml',
+            'HSN Code': '210390',
+            'GST %': 5,
+            'Pcs/Box': 12,
+        };
+        const worksheet = xlsx.utils.json_to_sheet([example], { header: headers });
+        worksheet['!cols'] = [
+            { wch: 20 }, { wch: 30 }, { wch: 20 }, { wch: 16 }, { wch: 12 }, { wch: 12 },
+        ];
+        const workbook = xlsx.utils.book_new();
+        xlsx.utils.book_append_sheet(workbook, worksheet, 'Add Items');
+        const fileBuffer = xlsx.write(workbook, { type: 'buffer', bookType: 'xlsx' });
+        res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        res.setHeader('Content-Disposition', 'attachment; filename="DMS_Add_Item_Template.xlsx"');
+        return res.send(fileBuffer);
+    } catch (error) {
+        console.error('Error creating seller item upload template:', error);
+        return res.status(500).json({ error: 'Unable to download item upload template.' });
+    }
+};
+
 export const updateStaffLocations = async (req, res) => {
     try {
         const staffId = Number(req.params.id);

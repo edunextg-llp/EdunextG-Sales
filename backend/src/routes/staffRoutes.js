@@ -46,6 +46,7 @@ router.post('/purchase-sellers', staffController.savePurchaseSeller);
 router.put('/purchase-sellers/:sellerId', staffController.updatePurchaseSeller);
 router.delete('/purchase-sellers/:sellerId', staffController.deletePurchaseSeller);
 router.get('/seller-items', staffController.getSellerItems);
+router.get('/seller-items/template', staffController.downloadSellerItemUploadTemplate);
 router.post('/seller-items', staffController.createSellerItem);
 router.post('/seller-items/upload', upload.single('file'), staffController.uploadSellerItems);
 router.put('/seller-items/:itemId', staffController.updateSellerItem);
@@ -66,6 +67,8 @@ router.get('/dms-stock/product-search', dmsStockController.searchDmsStockProduct
 router.get('/dms-stock/product-lookup', dmsStockController.lookupDmsStockProduct);
 router.post('/dms-stock/upload', upload.single('file'), dmsStockController.uploadDmsStock);
 router.post('/dms-stock/manual', dmsStockController.createManualDmsStock);
+router.post('/dms-stock/manual-upload', upload.single('file'), dmsStockController.uploadManualDmsStock);
+router.get('/dms-stock/manual-template', dmsStockController.downloadManualDmsStockTemplate);
 router.put('/dms-stock/items/:itemId', dmsStockController.updateDmsStockItem);
 router.delete('/dms-stock/items/:itemId', dmsStockController.deleteDmsStockItem);
 router.get('/current-stock', currentStockController.getCurrentStock);
@@ -76,6 +79,7 @@ router.get('/physical-stock/product-lookup', physicalStockController.lookupPhysi
 router.get('/physical-stock/item-history', physicalStockController.getPhysicalStockItemHistory);
 router.post('/physical-stock/upload', upload.single('file'), physicalStockController.uploadPhysicalStock);
 router.post('/physical-stock/manual', physicalStockController.createManualPhysicalStock);
+router.post('/physical-stock/final-submit', physicalStockController.finalizePhysicalStock);
 router.post('/physical-stock/approve', physicalStockController.approvePhysicalStockFromDms);
 router.post('/physical-stock/set-current', physicalStockController.approvePhysicalStockAsCurrentStock);
 router.get('/sales/by-date', staffController.getAllSalesByDate);

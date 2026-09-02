@@ -365,10 +365,13 @@ function DmsStock() {
   const restoredDraftRef = useRef(loadManualDmsDraft());
   const restoredDraft = restoredDraftRef.current;
   const fileInputRef = useRef(null);
+  const manualFileInputRef = useRef(null);
   const pendingIdRef = useRef(0);
   const [stockImport, setStockImport] = useState(null);
   const [items, setItems] = useState([]);
   const [selectedFile, setSelectedFile] = useState(null);
+  const [manualUploadFile, setManualUploadFile] = useState(null);
+  const [downloadingManualTemplate, setDownloadingManualTemplate] = useState(false);
   const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [message, setMessage] = useState("");
@@ -639,6 +642,8 @@ function DmsStock() {
     setManualInvoiceNumber("");
     setManualItem(emptyManualItem());
     setPendingItems([]);
+    setManualUploadFile(null);
+    if (manualFileInputRef.current) manualFileInputRef.current.value = "";
     setSellers([]);
     setSellerItems([]);
     setSelectedSellerItemId("");
@@ -712,10 +717,6 @@ function DmsStock() {
       setError("Please select a company.");
       return;
     }
-    if (!manualInvoiceNumber.trim()) {
-      setError("Please enter the invoice number.");
-      return;
-    }
     if (!manualSellerId) {
       setError("Please select a seller.");
       return;
@@ -732,11 +733,7 @@ function DmsStock() {
       setError("Please enter the number of boxes.");
       return;
     }
-    if (!manualItem.batchNumber.trim() || !manualItem.mfgDate || !manualItem.expiryDate) {
-      setError("Please enter Batch Number, MFG Date, and Expiry Date.");
-      return;
-    }
-    if (manualItem.mfgDate > manualItem.expiryDate) {
+    if (manualItem.mfgDate && manualItem.expiryDate && manualItem.mfgDate > manualItem.expiryDate) {
       setError("Expiry Date must be after MFG Date.");
       return;
     }
@@ -905,10 +902,6 @@ function DmsStock() {
       setError("Please select a company.");
       return;
     }
-    if (!manualInvoiceNumber.trim()) {
-      setError("Please enter the invoice number.");
-      return;
-    }
     if (!pendingItems.length) {
       setError("Please add at least one stock item.");
       return;
@@ -947,6 +940,78 @@ function DmsStock() {
       setError(saveError.message);
     } finally {
       setSavingManual(false);
+    }
+  };
+
+  const handleManualExcelUpload = async () => {
+    if (!manualCompanyId || !manualSellerId) {
+      setError("Please select a company and seller first.");
+      return;
+    }
+    if (!manualUploadFile) {
+      setError("Please choose the DMS stock Excel file.");
+      return;
+    }
+
+    const formData = new FormData();
+    formData.append("file", manualUploadFile);
+    formData.append("companyId", manualCompanyId);
+    formData.append("sellerId", manualSellerId);
+    formData.append("invoiceNumber", manualInvoiceNumber.trim());
+    formData.append("uploadDate", manualUploadDate);
+
+    setSavingManual(true);
+    setMessage("");
+    setError("");
+    try {
+      const response = await fetch(`${API}/staff/dms-stock/manual-upload`, {
+        method: "POST",
+        body: formData,
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "Unable to upload DMS stock.");
+      setStockImport(data.import || null);
+      setItems(data.items || []);
+      await fetchImportDates();
+      if (data.import?.id) setStockListImportFilter(String(data.import.id));
+      setMessage(data.message || "DMS stock uploaded successfully.");
+      closeManualModal();
+    } catch (uploadError) {
+      setError(uploadError.message);
+    } finally {
+      setSavingManual(false);
+    }
+  };
+
+  const downloadManualExcelTemplate = async () => {
+    if (!manualCompanyId || !manualSellerId) {
+      setError("Please select a company and seller first.");
+      return;
+    }
+    setDownloadingManualTemplate(true);
+    setError("");
+    try {
+      const params = new URLSearchParams({ companyId: manualCompanyId, sellerId: manualSellerId });
+      const response = await fetch(`${API}/staff/dms-stock/manual-template?${params}`, {
+        headers: getAuthHeaders(),
+      });
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        throw new Error(data.error || "Unable to download the DMS stock template.");
+      }
+      const file = await response.blob();
+      const url = window.URL.createObjectURL(file);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = "DMS_Stock_Upload_Template.xlsx";
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (downloadError) {
+      setError(downloadError.message || "Unable to download the DMS stock template.");
+    } finally {
+      setDownloadingManualTemplate(false);
     }
   };
 
@@ -1415,7 +1480,7 @@ function DmsStock() {
               </Grid>
               <Grid item xs={12} md={3}>
                 <MDTypography sx={fieldLabelSx}>
-                  Invoice Number{requiredMark}
+                  Invoice Number
                 </MDTypography>
                 <MDInput
                   fullWidth
@@ -1437,6 +1502,55 @@ function DmsStock() {
                   InputLabelProps={{ shrink: true }}
                   sx={{ "& .MuiInputBase-root": { backgroundColor: "#fff", height: 40 } }}
                 />
+              </Grid>
+              <Grid item xs={12} md={6}>
+                <MDTypography sx={fieldLabelSx}>Upload Stock Excel</MDTypography>
+                <MDBox display="flex" alignItems="center" gap={1}>
+                  <MDButton
+                    size="small"
+                    color="dark"
+                    variant="outlined"
+                    onClick={downloadManualExcelTemplate}
+                    disabled={!manualCompanyId || !manualSellerId || downloadingManualTemplate}
+                  >
+                    <Icon sx={{ mr: 0.5, fontSize: "1rem" }}>download</Icon>
+                    {downloadingManualTemplate ? "Preparing..." : "Download Template"}
+                  </MDButton>
+                  <MDButton
+                    size="small"
+                    color="info"
+                    variant="outlined"
+                    onClick={() => manualFileInputRef.current?.click()}
+                    disabled={!manualCompanyId || !manualSellerId || savingManual}
+                  >
+                    <Icon sx={{ mr: 0.5, fontSize: "1rem" }}>upload_file</Icon>
+                    Choose Excel
+                  </MDButton>
+                  <MDTypography variant="caption" color="text">
+                    {manualUploadFile?.name || "CSV, XLS, or XLSX"}
+                  </MDTypography>
+                  <input
+                    ref={manualFileInputRef}
+                    type="file"
+                    accept=".csv,.xls,.xlsx"
+                    onChange={(event) => setManualUploadFile(event.target.files?.[0] || null)}
+                    style={{ display: "none" }}
+                  />
+                  <MDButton
+                    size="small"
+                    color="success"
+                    variant="gradient"
+                    onClick={handleManualExcelUpload}
+                    disabled={!manualUploadFile || savingManual}
+                  >
+                    {savingManual ? "Uploading..." : "Upload Stock"}
+                  </MDButton>
+                </MDBox>
+              </Grid>
+              <Grid item xs={12}>
+                <MDTypography variant="caption" color="text">
+                  Excel rows are matched to the selected seller by Product ERP ID, or by SKU Name and Variant Name. Only No. of Boxes and MRP are required; calculated fields are created automatically.
+                </MDTypography>
               </Grid>
 
               <Grid item xs={12} md={4}>
@@ -1541,7 +1655,7 @@ function DmsStock() {
                   sx={{ "& .MuiInputBase-root": { backgroundColor: "#fff", height: 40 } }} />
               </Grid>
               <Grid item xs={12} md={3}>
-                <MDTypography sx={fieldLabelSx}>MFG Date{requiredMark}</MDTypography>
+                <MDTypography sx={fieldLabelSx}>MFG Date</MDTypography>
                 <MDInput
                   fullWidth
                   type="date"
@@ -1572,7 +1686,7 @@ function DmsStock() {
                 />
               </Grid>
               <Grid item xs={12} md={3}>
-                <MDTypography sx={fieldLabelSx}>Expiry Date{requiredMark}</MDTypography>
+                <MDTypography sx={fieldLabelSx}>Expiry Date</MDTypography>
                 <MDInput fullWidth type="date" value={manualItem.expiryDate}
                   onChange={(event) => updateManualItem("expiryDate", event.target.value)}
                   InputLabelProps={{ shrink: true }}

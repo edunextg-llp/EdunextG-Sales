@@ -32,6 +32,49 @@ const splitTotalPieces = (totalPcs, pcsPerBox) => {
 };
 
 class PhysicalStockModel {
+    static async getLockedProductKeys(companyId) {
+        const id = parseInt(companyId, 10);
+        if (!Number.isFinite(id) || id <= 0) return new Set();
+        const [rows] = await db.execute(
+            `SELECT product_erp_id
+             FROM physical_stock_item_edit_locks
+             WHERE company_id = ? AND editable_after > NOW()`,
+            [id]
+        );
+        return new Set(rows.map((row) => String(row.product_erp_id || '').trim().toLowerCase()));
+    }
+
+    static async lockProductsForCompany(companyId, dmsImportId, productErpIds) {
+        const ids = [...new Set((productErpIds || [])
+            .map((id) => String(id || '').trim())
+            .filter(Boolean))];
+        if (!ids.length) return [];
+
+        const connection = await db.getConnection();
+        try {
+            await connection.beginTransaction();
+            for (const productErpId of ids) {
+                await connection.execute(
+                    `INSERT INTO physical_stock_item_edit_locks
+                     (company_id, dms_import_id, product_erp_id, locked_at, editable_after)
+                     VALUES (?, ?, ?, NOW(), DATE_ADD(NOW(), INTERVAL 15 DAY))
+                     ON DUPLICATE KEY UPDATE
+                        dms_import_id = VALUES(dms_import_id),
+                        locked_at = VALUES(locked_at),
+                        editable_after = VALUES(editable_after)`,
+                    [companyId, dmsImportId, productErpId]
+                );
+            }
+            await connection.commit();
+            return ids;
+        } catch (error) {
+            await connection.rollback();
+            throw error;
+        } finally {
+            connection.release();
+        }
+    }
+
     static buildHistoryPayload(row) {
         return {
             productErpId: String(row.productErpId || row.product_erp_id || '').trim(),

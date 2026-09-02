@@ -89,7 +89,7 @@ function DmsPurchaseHistory() {
   const rows = useMemo(() => imports.filter((entry) => (
     (!companyId || String(entry.company_id) === String(companyId))
     && (!sellerId || String(entry.seller_id) === String(sellerId))
-    && entry.invoice_number
+    && entry.seller_id
   )), [companyId, imports, sellerId]);
 
   const editInvoice = async (entry) => {
