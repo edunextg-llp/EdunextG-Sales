@@ -2903,9 +2903,10 @@ export const getOutletsByStaffAndDayName = async (req, res) => {
 
 export const getAllSalesByDate = async (req, res) => {
     try {
-        const { date, search } = req.query;
+        const { date, search, scope } = req.query;
+        const salesScope = scope === 'packaging' ? 'packaging' : '';
 
-        const sales = await StaffModel.getAllSalesByDate(date, search);
+        const sales = await StaffModel.getAllSalesByDate(date, search, salesScope);
         res.status(200).json(sales);
     } catch (error) {
         console.error('Error fetching global sales by date:', error);

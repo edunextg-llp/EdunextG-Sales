@@ -308,6 +308,12 @@ export async function ensureSchema() {
                 can_delivery TINYINT(1) NOT NULL DEFAULT 0,
                 can_delivered TINYINT(1) NOT NULL DEFAULT 0,
                 can_out_bill TINYINT(1) NOT NULL DEFAULT 0,
+                can_requisition_approval TINYINT(1) NOT NULL DEFAULT 0,
+                can_chalan_add_sales TINYINT(1) NOT NULL DEFAULT 0,
+                can_chalan_packaging TINYINT(1) NOT NULL DEFAULT 0,
+                can_chalan_delivery TINYINT(1) NOT NULL DEFAULT 0,
+                can_chalan_delivered TINYINT(1) NOT NULL DEFAULT 0,
+                can_chalan_return TINYINT(1) NOT NULL DEFAULT 0,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
                 FOREIGN KEY (delivery_boy_id) REFERENCES delivery_boys(id) ON DELETE CASCADE
             );
@@ -323,6 +329,12 @@ export async function ensureSchema() {
             'can_delivery',
             'can_delivered',
             'can_out_bill',
+            'can_requisition_approval',
+            'can_chalan_add_sales',
+            'can_chalan_packaging',
+            'can_chalan_delivery',
+            'can_chalan_delivered',
+            'can_chalan_return',
         ]) {
             await tryQuery(
                 connection,

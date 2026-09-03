@@ -178,7 +178,7 @@ function Packaging() {
 
   const fetchSales = useCallback(async ({ silent = false } = {}) => {
     try {
-      const response = await fetch(`${API}/staff/sales/by-date`);
+      const response = await fetch(`${API}/staff/sales/by-date?scope=packaging`);
       if (response.ok) {
         const data = await response.json();
         setSalesData((prev) =>

@@ -137,7 +137,8 @@ export const login = async (req, res) => {
                 const permissionKeys = [
                     'dashboard', 'dms', 'add_seller', 'add_item', 'item_list',
                     'update_payment', 'bank_deposit', 'create_staff', 'add_outlet', 'location_assignments', 'add_sales',
-                    'packaging', 'delivery', 'delivered', 'out_bill',
+                    'packaging', 'delivery', 'delivered', 'out_bill', 'requisition_approval',
+                    'chalan_add_sales', 'chalan_packaging', 'chalan_delivery', 'chalan_delivered', 'chalan_return',
                 ];
                 const permissions = permissionKeys.filter((key) => Boolean(deliveryUser[`can_${key}`]));
                 const role = deliveryUser.role === 'packaging_staff' ? 'packaging_staff' : 'delivery_boy';

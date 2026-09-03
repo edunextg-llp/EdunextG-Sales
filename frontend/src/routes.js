@@ -7,7 +7,7 @@ import Welcome from "layouts/welcome";
 // import RTL from "layouts/rtl";
 // import Notifications from "layouts/notifications";
 // import Profile from "layouts/profile";
-// import SignIn from "layouts/authentication/sign-in";
+// import SignIn from "layouts/authentication/sign-in";i
 // import SignUp from "layouts/authentication/sign-up";
 import CreateStaff from "layouts/create-staff";
 import LocationAssignments from "./layouts/location-assignments/index.js";

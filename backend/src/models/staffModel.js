@@ -671,7 +671,7 @@ class StaffModel {
         }
     }
 
-    static async getAllSalesByDate(date, search = '') {
+    static async getAllSalesByDate(date, search = '', scope = '') {
         let query = `
             SELECT ss.id,
                     ss.staff_id, ss.outlet_id, ss.sale_date, ss.item_count, ss.packed_item_count, ss.box_count, ss.packet_count, ss.price, ss.invoice_number, 
@@ -724,6 +724,13 @@ class StaffModel {
             params.push(date);
         }
 
+        // Packaging needs every sale that still requires work. Applying this
+        // condition before ordering avoids losing older pending sales to the
+        // general-purpose 1,000-row cap below.
+        if (scope === 'packaging') {
+            conditions.push("COALESCE(ss.packaging_status, 'not_packing') IN ('not_packing', 'packing')");
+        }
+
         const normalizedSearch = String(search || '').trim();
         if (normalizedSearch) {
             const searchTerm = `%${normalizedSearch}%`;
@@ -743,7 +750,11 @@ class StaffModel {
             query += ` WHERE ${conditions.join(' AND ')}`;
         }
 
-        query += ` ORDER BY ss.sale_date DESC, ss.id DESC LIMIT 1000`;
+        query += ` ORDER BY ss.sale_date DESC, ss.id DESC`;
+
+        if (scope !== 'packaging') {
+            query += ` LIMIT 1000`;
+        }
 
         const [rows] = await db.execute(query, params);
         return rows;

@@ -244,7 +244,8 @@ export const getDeliveryBoys = async (req, res) => {
 const DELIVERY_PERMISSION_KEYS = [
     'dashboard', 'dms', 'add_seller', 'add_item', 'item_list',
     'update_payment', 'bank_deposit', 'create_staff', 'add_outlet', 'location_assignments', 'add_sales',
-    'packaging', 'delivery', 'delivered', 'out_bill',
+    'packaging', 'delivery', 'delivered', 'out_bill', 'requisition_approval',
+    'chalan_add_sales', 'chalan_packaging', 'chalan_delivery', 'chalan_delivered', 'chalan_return',
 ];
 
 export const getPermissionUsers = async (req, res) => {
