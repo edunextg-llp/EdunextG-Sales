@@ -44,7 +44,7 @@ class ExpiryListModel {
              INNER JOIN staff s ON s.id = el.staff_id
              INNER JOIN staff_counters sc ON sc.id = el.outlet_id
              ORDER BY el.expiry_date ASC, el.id DESC
-             LIMIT 1000`
+             LIMIT 10000`
         );
         return rows;
     }

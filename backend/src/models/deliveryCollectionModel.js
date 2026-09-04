@@ -296,7 +296,7 @@ class DeliveryCollectionModel {
              LEFT JOIN delivery_boys dboy ON dboy.id = dbc.delivery_boy_id
              ${where}
              ORDER BY dbc.updated_at DESC, dbc.id DESC
-             LIMIT 1000`,
+             LIMIT 10000`,
             params
         );
         return rows.map(DeliveryCollectionModel.normalizeRow);

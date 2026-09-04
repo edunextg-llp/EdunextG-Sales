@@ -13,7 +13,7 @@ const selectSql = `SELECT dl.id, dl.company_id, dl.seller_id, dl.staff_id, dl.ou
 
 class DamageListModel {
     static async getAll() {
-        const [rows] = await db.execute(`${selectSql} ORDER BY dl.id DESC LIMIT 1000`);
+        const [rows] = await db.execute(`${selectSql} ORDER BY dl.id DESC LIMIT 10000`);
         return rows;
     }
     static async getById(id) {

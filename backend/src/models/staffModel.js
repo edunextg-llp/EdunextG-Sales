@@ -753,7 +753,7 @@ class StaffModel {
         query += ` ORDER BY ss.sale_date DESC, ss.id DESC`;
 
         if (scope !== 'packaging') {
-            query += ` LIMIT 1000`;
+            query += ` LIMIT 10000`;
         }
 
         const [rows] = await db.execute(query, params);
