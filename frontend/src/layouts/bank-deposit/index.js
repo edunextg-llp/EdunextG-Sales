@@ -281,6 +281,8 @@ function BankDeposit() {
   const [loadingPendingCheques, setLoadingPendingCheques] = useState(false);
   const [pendingUpiInvoices, setPendingUpiInvoices] = useState([]);
   const [loadingPendingUpi, setLoadingPendingUpi] = useState(false);
+  const [checkedUpiDate, setCheckedUpiDate] = useState("");
+  const [checkedUpiCompanyId, setCheckedUpiCompanyId] = useState("");
   const [editingDepositId, setEditingDepositId] = useState(null);
   const [depositModalOpen, setDepositModalOpen] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -467,30 +469,6 @@ function BankDeposit() {
     return () => clearTimeout(timer);
   }, [form.depositMode, editingDepositId]);
 
-  useEffect(() => {
-    if (form.depositMode !== "upi" || editingDepositId) {
-      setPendingUpiInvoices([]);
-      return undefined;
-    }
-
-    const timer = setTimeout(async () => {
-      setLoadingPendingUpi(true);
-      try {
-        const response = await fetch(`${API}/staff/bank-deposits/upi-invoices`);
-        if (response.ok) {
-          const data = await response.json();
-          setPendingUpiInvoices(data);
-        }
-      } catch (error) {
-        console.error("Error fetching UPI invoices:", error);
-      } finally {
-        setLoadingPendingUpi(false);
-      }
-    }, 300);
-
-    return () => clearTimeout(timer);
-  }, [form.depositMode, editingDepositId]);
-
   const getAvailableChequesForRow = (rowIndex) => {
     const usedPaymentIds = new Set(
       form.chequeDetails
@@ -553,10 +531,67 @@ function BankDeposit() {
     }));
   };
 
+  const checkUpiCollections = async () => {
+    if (!form.companyId) {
+      alert("Please choose a company first.");
+      return;
+    }
+    if (!form.depositDate) {
+      alert("Please choose a deposit date first.");
+      return;
+    }
+
+    setLoadingPendingUpi(true);
+    try {
+      const params = new URLSearchParams({
+        companyId: form.companyId,
+        paymentDate: form.depositDate,
+      });
+      const response = await fetch(`${API}/staff/bank-deposits/upi-invoices?${params.toString()}`);
+      const data = await response.json().catch(() => []);
+
+      if (!response.ok) {
+        alert(data.error || "Failed to check UPI collections.");
+        return;
+      }
+
+      const payments = Array.isArray(data) ? data : [];
+      setPendingUpiInvoices(payments);
+      setCheckedUpiDate(form.depositDate);
+      setCheckedUpiCompanyId(form.companyId);
+      setForm((prev) => ({
+        ...prev,
+        upiDetails: payments.length ? payments.map(mapPendingUpiToRow) : [emptyUpiRow()],
+      }));
+
+      if (!payments.length) {
+        alert(`No pending UPI collections were found for ${form.depositDate}.`);
+      }
+    } catch (error) {
+      console.error("Error checking UPI collections:", error);
+      alert("Error checking UPI collections.");
+    } finally {
+      setLoadingPendingUpi(false);
+    }
+  };
+
   const handleFormChange = (field, value) => {
+    if ((field === "depositDate" || field === "companyId") && form.depositMode === "upi" && !editingDepositId) {
+      setCheckedUpiDate("");
+      setCheckedUpiCompanyId("");
+      setPendingUpiInvoices([]);
+    }
+    if (field === "depositMode") {
+      setCheckedUpiDate("");
+      setCheckedUpiCompanyId("");
+      setPendingUpiInvoices([]);
+    }
     setForm((prev) => ({
       ...prev,
       [field]: value,
+      ...((field === "depositDate" || field === "companyId") && prev.depositMode === "upi" && !editingDepositId
+        ? { upiDetails: [emptyUpiRow()] }
+        : {}),
       ...(field === "bankName"
         ? {
           accountName: "",
@@ -685,6 +720,9 @@ function BankDeposit() {
       }
     }
     if (form.depositMode === "upi") {
+      if (!editingDepositId && (checkedUpiDate !== form.depositDate || checkedUpiCompanyId !== form.companyId)) {
+        return "Please click Check UPI Collections for the selected company and deposit date.";
+      }
       for (let index = 0; index < form.upiDetails.length; index += 1) {
         const upi = form.upiDetails[index];
         const label = `UPI ${index + 1}`;
@@ -782,6 +820,9 @@ function BankDeposit() {
     }
 
     setEditingDepositId(deposit.id);
+    setCheckedUpiDate("");
+    setCheckedUpiCompanyId("");
+    setPendingUpiInvoices([]);
     setForm({
       companyId: deposit.company_id ? String(deposit.company_id) : "",
       depositDate: deposit.deposit_date || getTodayLocalDate(),
@@ -805,6 +846,9 @@ function BankDeposit() {
 
   const openDepositModal = () => {
     setEditingDepositId(null);
+    setCheckedUpiDate("");
+    setCheckedUpiCompanyId("");
+    setPendingUpiInvoices([]);
     setForm(emptyForm());
     setDepositModalOpen(true);
   };
@@ -812,6 +856,9 @@ function BankDeposit() {
   const closeDepositModal = () => {
     setDepositModalOpen(false);
     setEditingDepositId(null);
+    setCheckedUpiDate("");
+    setCheckedUpiCompanyId("");
+    setPendingUpiInvoices([]);
     setForm(emptyForm());
   };
 
@@ -1679,14 +1726,28 @@ function BankDeposit() {
                       </MDTypography>
                       {!editingDepositId && (
                         <MDTypography variant="caption" color="text" display="block">
-                          Choose invoice number to auto-fill outlet name, UPI ID, and amount.
+                          Choose a company and deposit date, then load that company's pending UPI collections.
                         </MDTypography>
                       )}
                     </MDBox>
-                    <MDButton color="info" variant="outlined" size="small" onClick={addUpiRow}>
-                      <Icon sx={{ mr: 1 }}>add</Icon>
-                      Add UPI
-                    </MDButton>
+                    <MDBox display="flex" gap={1}>
+                      {!editingDepositId && (
+                        <MDButton
+                          color="success"
+                          variant="gradient"
+                          size="small"
+                          onClick={checkUpiCollections}
+                          disabled={loadingPendingUpi || !form.companyId || !form.depositDate}
+                        >
+                          <Icon sx={{ mr: 1 }}>fact_check</Icon>
+                          {loadingPendingUpi ? "Checking..." : "Check UPI Collections"}
+                        </MDButton>
+                      )}
+                      <MDButton color="info" variant="outlined" size="small" onClick={addUpiRow}>
+                        <Icon sx={{ mr: 1 }}>add</Icon>
+                        Add UPI
+                      </MDButton>
+                    </MDBox>
                   </MDBox>
                   <MDBox display="flex" flexDirection="column" gap={1.5}>
                     {form.upiDetails.map((upi, index) => (

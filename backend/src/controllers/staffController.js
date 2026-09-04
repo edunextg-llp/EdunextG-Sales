@@ -223,6 +223,21 @@ async function parseCollectorPayload(body) {
     return { collectorStaffId: collectorValidation.value, collectorName: null };
 }
 
+const getTodayLocalDate = () => {
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const day = String(now.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+};
+
+function getBackdatedPaymentAccessError(req, paymentDate) {
+    if (req.user?.role === 'admin' || paymentDate >= getTodayLocalDate()) {
+        return null;
+    }
+    return 'You can\'t add or update a backdated payment.';
+}
+
 async function resolveCompanyIds(companyNames, fallbackCompanyName, companyIds = []) {
     const normalizedIds = Array.isArray(companyIds)
         ? [...new Set(companyIds.map((id) => Number(id)).filter((id) => Number.isInteger(id) && id > 0))]
@@ -1852,6 +1867,8 @@ export const searchUpiInvoices = async (req, res) => {
     try {
         const upiPayments = await ReportModel.getUpiPaymentsForDeposit({
             search: req.query.search || '',
+            paymentDate: req.query.paymentDate || '',
+            companyId: req.query.companyId ? Number(req.query.companyId) : null,
         });
         res.status(200).json(upiPayments);
     } catch (error) {
@@ -3198,6 +3215,10 @@ export const addSalePayment = async (req, res) => {
 
         const formattedPaymentDate = normalizeDateInput(paymentDate);
         const formattedRefDate = normalizeDateInput(referenceDate);
+        const backdatedAccessError = getBackdatedPaymentAccessError(req, formattedPaymentDate);
+        if (backdatedAccessError) {
+            return res.status(403).json({ error: backdatedAccessError });
+        }
         const collectorPayload = await parseCollectorPayload({
             collectorType,
             collectorStaffId,
@@ -3296,6 +3317,10 @@ export const editSalePayment = async (req, res) => {
         let formattedPaymentDate = paymentDate;
         if (formattedPaymentDate && typeof formattedPaymentDate === 'string' && formattedPaymentDate.includes('T')) {
             formattedPaymentDate = formattedPaymentDate.split('T')[0];
+        }
+        const backdatedAccessError = getBackdatedPaymentAccessError(req, formattedPaymentDate);
+        if (backdatedAccessError) {
+            return res.status(403).json({ error: backdatedAccessError });
         }
         const collectorPayload = await parseCollectorPayload({
             collectorType,

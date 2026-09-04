@@ -601,14 +601,28 @@ class ReportModel {
                )`;
     }
 
-    static async getUpiPaymentsForDeposit({ search = '' } = {}) {
+    static async getUpiPaymentsForDeposit({ search = '', paymentDate = '', companyId = null } = {}) {
         const conditions = ["sp.payment_mode = 'upi'", ReportModel.getUndepositedUpiNotExistsSql()];
         const params = [];
+        const companyFilter = ReportModel.buildSalesCompanyFilter(companyId);
+
+        if (paymentDate && String(paymentDate).trim()) {
+            const normalizedPaymentDate = String(paymentDate).trim();
+            if (!/^\d{4}-\d{2}-\d{2}$/.test(normalizedPaymentDate)) {
+                throw new Error('Payment date must be in YYYY-MM-DD format.');
+            }
+            conditions.push('sp.payment_date = ?');
+            params.push(normalizedPaymentDate);
+        }
 
         if (search && String(search).trim()) {
             conditions.push('(TRIM(ss.invoice_number) LIKE ? OR TRIM(sp.reference_no) LIKE ? OR sc.outlet_name LIKE ?)');
             const term = `%${String(search).trim()}%`;
             params.push(term, term, term);
+        }
+        if (companyFilter.sql) {
+            conditions.push(companyFilter.sql.replace(/^ AND /, ''));
+            params.push(...companyFilter.params);
         }
 
         const [rows] = await db.execute(
@@ -622,7 +636,7 @@ class ReportModel {
              LEFT JOIN staff s ON ss.staff_id = s.id
              WHERE ${conditions.join(' AND ')}
              ORDER BY sp.payment_date DESC, sp.id DESC
-             LIMIT 100`,
+             LIMIT 1000`,
             params
         );
         return toNumberRows(rows);

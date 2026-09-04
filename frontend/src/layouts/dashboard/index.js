@@ -599,6 +599,36 @@ function buildPaymentModePieData(apiRows) {
   }));
 }
 
+function buildPendingCreditCompanyTotals(credits) {
+  const companies = new Map();
+
+  (credits || []).forEach((credit) => {
+    const balance = Number(credit.balance_amount) || 0;
+    if (balance <= 0) return;
+
+    const companyIds = String(credit.company_ids || "")
+      .split(",")
+      .map((id) => Number(id))
+      .filter((id) => Number.isInteger(id) && id > 0);
+    const companyNames = String(credit.company_name || "")
+      .split(",")
+      .map((name) => name.trim())
+      .filter(Boolean);
+    const entries = companyIds.length
+      ? companyIds.map((id, index) => ({ id: String(id), name: companyNames[index] || companyNames[0] || `Company ${id}` }))
+      : [{ id: companyNames[0] || "unknown", name: companyNames[0] || "Unknown Company" }];
+
+    entries.forEach((company) => {
+      const current = companies.get(company.id) || { companyName: company.name, total: 0, count: 0 };
+      current.total += balance;
+      current.count += 1;
+      companies.set(company.id, current);
+    });
+  });
+
+  return [...companies.values()].sort((a, b) => b.total - a.total || a.companyName.localeCompare(b.companyName));
+}
+
 function pieSliceAmount(value) {
   if (typeof value === "number" && Number.isFinite(value)) return value;
   if (value && typeof value === "object" && Number.isFinite(Number(value.value))) {
@@ -852,6 +882,9 @@ function Dashboard() {
   const [activeDashboardTab, setActiveDashboardTab] = useState("purchase");
   const [chequeDialogOpen, setChequeDialogOpen] = useState(false);
   const [paidCollectionDialogOpen, setPaidCollectionDialogOpen] = useState(false);
+  const [companyCreditDialogOpen, setCompanyCreditDialogOpen] = useState(false);
+  const [pendingCreditRows, setPendingCreditRows] = useState([]);
+  const [loadingCompanyCredits, setLoadingCompanyCredits] = useState(false);
   const [collectionPrintDate, setCollectionPrintDate] = useState(getTodayLocalDate());
   const [totalCollectionFromDate, setTotalCollectionFromDate] = useState(getMonthStartLocalDate());
   const [totalCollectionToDate, setTotalCollectionToDate] = useState(getTodayLocalDate());
@@ -912,6 +945,18 @@ function Dashboard() {
   const paidCollectionTotal =
     paidCollectionBreakdown.cash + paidCollectionBreakdown.upi + paidCollectionBreakdown.cheque;
 
+  const companyCreditTotals = useMemo(
+    () => buildPendingCreditCompanyTotals(pendingCreditRows),
+    [pendingCreditRows]
+  );
+
+  const pendingCreditTotal = useMemo(
+    () => pendingCreditRows.reduce((total, credit) => total + (Number(credit.balance_amount) || 0), 0),
+    [pendingCreditRows]
+  );
+
+  const pendingCreditCount = pendingCreditRows.length;
+
   const fetchReports = async () => {
     try {
       const params = new URLSearchParams();
@@ -931,6 +976,26 @@ function Dashboard() {
       console.error("Error fetching dashboard reports:", error);
       setReportData(emptyReportData);
     }
+  };
+
+  const fetchPendingCreditTracker = async () => {
+    setLoadingCompanyCredits(true);
+    try {
+      const response = await fetch(`${API}/staff/credits/pending`);
+      if (!response.ok) throw new Error("Unable to load pending credits.");
+      const data = await response.json();
+      setPendingCreditRows(Array.isArray(data) ? data : []);
+    } catch (error) {
+      console.error("Error fetching pending credits for dashboard:", error);
+      setPendingCreditRows([]);
+    } finally {
+      setLoadingCompanyCredits(false);
+    }
+  };
+
+  const openCompanyCreditDialog = async () => {
+    setCompanyCreditDialogOpen(true);
+    await fetchPendingCreditTracker();
   };
 
   const fetchPurchaseReports = async () => {
@@ -1031,6 +1096,8 @@ function Dashboard() {
     };
 
     fetchSalesCompanies();
+    fetchPendingCreditTracker();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -1560,7 +1627,6 @@ function Dashboard() {
   ).length;
 
   const totalCreditDues = Number(reportData.creditDuesSummary?.total_credit_dues) || 0;
-  const creditDuesCount = Number(reportData.creditDuesSummary?.credit_dues_count) || 0;
   const totalPaidAmount = Number(reportData.summary.total_paid) || 0;
   const netCollection = totalPaidAmount - totalCreditDues;
 
@@ -1978,18 +2044,30 @@ function Dashboard() {
 
 
               <Grid item xs={12} md={6} lg={3}>
-                <MDBox mb={1.5}>
+                <MDBox mb={1.5} position="relative">
                   <ComplexStatisticsCard
                     color="error"
                     icon="credit_card"
                     title="Total Credit Dues"
-                    count={shortMoney(totalCreditDues)}
+                    count={shortMoney(pendingCreditTotal)}
                     percentage={{
-                      color: creditDuesCount > 0 ? "error" : "success",
-                      amount: creditDuesCount,
+                      color: pendingCreditCount > 0 ? "error" : "success",
+                      amount: pendingCreditCount,
                       label: "open credit entries",
                     }}
                   />
+                  <MDBox
+                    position="absolute"
+                    bottom={14}
+                    right={16}
+                    display="flex"
+                    alignItems="center"
+                    onClick={openCompanyCreditDialog}
+                    sx={{ cursor: "pointer", color: "#7b809a", "&:hover": { color: "#344767" } }}
+                    title="View company-wise credit dues"
+                  >
+                    <Icon sx={{ fontSize: "1.1rem" }}>visibility</Icon>
+                  </MDBox>
                 </MDBox>
               </Grid>
               <Grid item xs={12} md={6} lg={3}>
@@ -2417,6 +2495,63 @@ function Dashboard() {
         </DialogContent>
         <DialogActions>
           <MDButton color="dark" variant="outlined" onClick={() => setPaidCollectionDialogOpen(false)}>
+            Close
+          </MDButton>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog
+        open={companyCreditDialogOpen}
+        onClose={() => setCompanyCreditDialogOpen(false)}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle>Company-wise Credit Dues</DialogTitle>
+        <DialogContent dividers>
+          <MDTypography variant="body2" color="text" mb={2}>
+            Amounts are calculated from Pending Credits Tracker.
+          </MDTypography>
+          {loadingCompanyCredits ? (
+            <MDBox py={4} textAlign="center">
+              <MDTypography variant="body2" color="text">Loading pending credits...</MDTypography>
+            </MDBox>
+          ) : (
+            <TableContainer component={Paper} sx={{ boxShadow: "none", border: "1px solid #e5e7eb" }}>
+              <Table size="small">
+                <TableHead sx={{ backgroundColor: "#f9fafb" }}>
+                  <TableRow>
+                    <TableCell sx={{ fontWeight: "bold" }}>Company</TableCell>
+                    <TableCell align="right" sx={{ fontWeight: "bold" }}>Open Entries</TableCell>
+                    <TableCell align="right" sx={{ fontWeight: "bold" }}>Total Due</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {companyCreditTotals.map((company) => (
+                    <TableRow key={company.companyName}>
+                      <TableCell>{company.companyName}</TableCell>
+                      <TableCell align="right">{company.count}</TableCell>
+                      <TableCell align="right">{money(company.total)}</TableCell>
+                    </TableRow>
+                  ))}
+                  {!companyCreditTotals.length && (
+                    <TableRow>
+                      <TableCell colSpan={3} align="center" sx={{ py: 3 }}>
+                        <MDTypography variant="body2" color="text">No pending credits found.</MDTypography>
+                      </TableCell>
+                    </TableRow>
+                  )}
+                  <TableRow sx={{ "& td": { fontWeight: "bold", borderTop: "2px solid #e5e7eb" } }}>
+                    <TableCell>Total Pending Credits</TableCell>
+                    <TableCell align="right">{pendingCreditRows.length}</TableCell>
+                    <TableCell align="right">{money(pendingCreditTotal)}</TableCell>
+                  </TableRow>
+                </TableBody>
+              </Table>
+            </TableContainer>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <MDButton color="dark" variant="outlined" onClick={() => setCompanyCreditDialogOpen(false)}>
             Close
           </MDButton>
         </DialogActions>

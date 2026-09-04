@@ -20,6 +20,8 @@ import {
   InputLabel,
   Tooltip,
   CircularProgress,
+  Snackbar,
+  Alert,
 } from "@mui/material";
 
 import MDBox from "components/MDBox";
@@ -147,6 +149,7 @@ function UpdatePayment() {
   const [paymentForm, setPaymentForm] = useState(emptyPaymentForm());
   const [loadingPayments, setLoadingPayments] = useState(false);
   const [addingPayment, setAddingPayment] = useState(false);
+  const [paymentSuccessMessage, setPaymentSuccessMessage] = useState("");
   const [deletingPaymentId, setDeletingPaymentId] = useState(null);
   const [editingPaymentId, setEditingPaymentId] = useState(null);
   const [activeCreditPayment, setActiveCreditPayment] = useState(null);
@@ -1175,6 +1178,7 @@ function UpdatePayment() {
 
       if (response.ok) {
         const data = await response.json();
+        const outletName = paymentDialogSale.outlet_name || "the selected outlet";
 
         setPayments(data.payments);
         setPaymentSummary(data.summary);
@@ -1192,6 +1196,9 @@ function UpdatePayment() {
               }
               : sale
           )
+        );
+        setPaymentSuccessMessage(
+          `${isEditing ? "Payment updated" : "Payment added"} successfully for ${outletName}.`
         );
 
       } else {
@@ -2480,6 +2487,21 @@ function UpdatePayment() {
           </Tooltip>
         </DialogActions>
       </Dialog>
+      <Snackbar
+        open={Boolean(paymentSuccessMessage)}
+        autoHideDuration={4000}
+        onClose={() => setPaymentSuccessMessage("")}
+        anchorOrigin={{ vertical: "top", horizontal: "right" }}
+      >
+        <Alert
+          severity="success"
+          variant="filled"
+          onClose={() => setPaymentSuccessMessage("")}
+          sx={{ width: "100%" }}
+        >
+          {paymentSuccessMessage}
+        </Alert>
+      </Snackbar>
       <Footer />
     </DashboardLayout>
   );
