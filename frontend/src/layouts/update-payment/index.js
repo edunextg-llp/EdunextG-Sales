@@ -32,6 +32,7 @@ import MDButton from "components/MDButton";
 import DashboardLayout from "examples/LayoutContainers/DashboardLayout";
 import DashboardNavbar from "examples/Navbars/DashboardNavbar";
 import Footer from "examples/Footer";
+import { useAuth } from "context/AuthContext";
 import {
   ROWS_PER_PAGE,
   TablePaginationFooter,
@@ -134,6 +135,8 @@ const toInputDate = (value) => {
 
 
 function UpdatePayment() {
+  const { user } = useAuth();
+  const isAdmin = user?.role === "admin";
   const [searchQuery, setSearchQuery] = useState("");
   const [collectionDate, setCollectionDate] = useState(getTodayLocalDate());
   const [collectionEndDate, setCollectionEndDate] = useState(getTodayLocalDate());
@@ -216,6 +219,13 @@ function UpdatePayment() {
 
   const getCollectorName = (payment) =>
     payment.collector_staff_name || payment.collector_name || getOutletMarketingStaffName() || "N/A";
+
+  const getPaymentUpdatedBy = (payment) => {
+    const roleName = payment.updated_by_role === "admin" ? "Admin" : "Staff";
+    const updaterName = payment.updated_by_name || roleName;
+    const employeeCode = payment.updated_by_employee_code || "Not recorded";
+    return `${updaterName} · ${employeeCode}`;
+  };
 
   const inferCollectorType = (payment) =>
     payment.collector_name && !payment.collector_staff_id ? "bawarchee_staff" : "company_staff";
@@ -1271,6 +1281,12 @@ function UpdatePayment() {
     paymentSummary?.balanceAmount ??
     (paymentDialogSale ? getRemainingBalance(paymentDialogSale) : 0);
 
+  const paymentProgressPercentage = (() => {
+    const invoiceValue = Number(paymentSummary?.price ?? paymentDialogSale?.price) || 0;
+    const paidAmount = Number(paymentSummary?.paidAmount ?? (paymentDialogSale ? getPaidAmount(paymentDialogSale) : 0)) || 0;
+    return invoiceValue > 0 ? Math.min(100, Math.max(0, (paidAmount / invoiceValue) * 100)) : 0;
+  })();
+
   const maxPayableOnEdit = (() => {
     if (!editingPaymentId || !paymentSummary) return dialogRemaining;
     const price = parseFloat(paymentSummary.price) || 0;
@@ -1568,47 +1584,126 @@ function UpdatePayment() {
         </Grid>
       </MDBox>
 
-      <Dialog open={!!paymentDialogSale} onClose={closePaymentDialog} maxWidth="md" fullWidth>
-        <DialogTitle sx={{ fontWeight: "bold", color: "#344767" }}>
-          Payment Ledger — {paymentDialogSale?.outlet_name}
-        </DialogTitle>
-        <DialogContent>
-          {paymentDialogSale && (
-            <MDBox pt={1}>
+      <Dialog
+        open={!!paymentDialogSale}
+        onClose={closePaymentDialog}
+        maxWidth="lg"
+        fullWidth
+        PaperProps={{ sx: { borderRadius: 3, overflow: "hidden" } }}
+      >
+        <DialogTitle sx={{ p: 0 }}>
+          <MDBox
+            px={{ xs: 2, sm: 3 }}
+            py={2.25}
+            display="flex"
+            justifyContent="space-between"
+            alignItems="center"
+            sx={{ background: "linear-gradient(135deg, #1f2937 0%, #344767 100%)", color: "white" }}
+          >
+            <MDBox display="flex" alignItems="center" gap={1.25}>
               <MDBox
+                width="2.5rem"
+                height="2.5rem"
                 display="flex"
-                flexWrap="wrap"
-                gap={2}
-                mb={3}
-                p={2}
-                sx={{ backgroundColor: "#f8f9fa", borderRadius: "10px", border: "1px solid #e9ecef" }}
+                justifyContent="center"
+                alignItems="center"
+                borderRadius="lg"
+                sx={{ backgroundColor: "rgba(255,255,255,0.16)" }}
               >
-                <MDTypography variant="body2">
-                  <strong>Sale ID:</strong> {paymentDialogSale.sticker_number}
+                <Icon>account_balance_wallet</Icon>
+              </MDBox>
+              <MDBox>
+                <MDTypography variant="h6" color="white" fontWeight="medium">
+                  Payment Ledger
                 </MDTypography>
-                <MDTypography variant="body2">
-                  <strong>Invoice:</strong> {paymentDialogSale.invoice_number}
+                <MDTypography variant="caption" color="white" sx={{ opacity: 0.78 }}>
+                  {paymentDialogSale?.outlet_name || "Outlet"} · Invoice {paymentDialogSale?.invoice_number || "N/A"}
                 </MDTypography>
-                <MDTypography variant="body2">
-                  <strong>Price:</strong> ₹{Number(paymentSummary?.price ?? paymentDialogSale.price).toFixed(2)}
+              </MDBox>
+            </MDBox>
+            <MDBox display="flex" alignItems="center" gap={1}>
+              <MDBox
+                px={1.25}
+                py={0.5}
+                borderRadius="lg"
+                sx={{ backgroundColor: dialogRemaining > 0 ? "rgba(255,193,7,0.18)" : "rgba(76,175,80,0.22)" }}
+              >
+                <MDTypography variant="caption" color="white" fontWeight="medium">
+                  {dialogRemaining > 0 ? "Payment Pending" : "Fully Paid"}
                 </MDTypography>
-                <MDTypography variant="body2">
-                  <strong>Paid:</strong> ₹
-                  {Number(paymentSummary?.paidAmount ?? getPaidAmount(paymentDialogSale)).toFixed(2)}
-                </MDTypography>
-                <MDTypography variant="body2" color={dialogRemaining > 0 ? "error" : "success"}>
-                  <strong>Balance:</strong> ₹{dialogRemaining.toFixed(2)}
-                </MDTypography>
+              </MDBox>
+              <MDButton variant="text" color="white" iconOnly onClick={closePaymentDialog}>
+                <Icon>close</Icon>
+              </MDButton>
+            </MDBox>
+          </MDBox>
+        </DialogTitle>
+        <DialogContent dividers sx={{ p: { xs: 2, sm: 3 }, backgroundColor: "#f8fafc" }}>
+          {paymentDialogSale && (
+            <MDBox>
+              <Grid container spacing={1.25} mb={3}>
+                {[
+                  { label: "Sale ID", value: paymentDialogSale.sticker_number || "N/A" },
+                  { label: "Invoice", value: paymentDialogSale.invoice_number || "N/A" },
+                  { label: "Invoice Value", value: `₹${Number(paymentSummary?.price ?? paymentDialogSale.price).toFixed(2)}` },
+                  { label: "Paid", value: `₹${Number(paymentSummary?.paidAmount ?? getPaidAmount(paymentDialogSale)).toFixed(2)}`, color: "#2e7d32" },
+                  { label: "Balance", value: `₹${dialogRemaining.toFixed(2)}`, color: dialogRemaining > 0 ? "#d32f2f" : "#2e7d32" },
+                ].map((item) => (
+                  <Grid item xs={6} sm={4} md key={item.label}>
+                    <MDBox p={1.5} height="100%" sx={{ backgroundColor: "#fff", border: "1px solid #e5e7eb", borderRadius: 2 }}>
+                      <MDTypography variant="caption" color="text" display="block">{item.label}</MDTypography>
+                      <MDTypography variant="button" fontWeight="bold" sx={{ color: item.color || "#344767" }}>
+                        {item.value}
+                      </MDTypography>
+                    </MDBox>
+                  </Grid>
+                ))}
                 {totalCreditOnAccount > 0 && (
-                  <MDTypography variant="body2" color="text">
-                    <strong>Credit remaining:</strong> ₹{remainingCreditOnAccount.toFixed(2)} of ₹{totalCreditOnAccount.toFixed(2)}
-                  </MDTypography>
+                  <Grid item xs={12}>
+                    <MDBox px={1.5} py={1} sx={{ backgroundColor: "#fff8e1", border: "1px solid #ffe0a3", borderRadius: 2 }}>
+                      <MDTypography variant="caption" color="text">
+                        Credit remaining: ₹{remainingCreditOnAccount.toFixed(2)} of ₹{totalCreditOnAccount.toFixed(2)}
+                      </MDTypography>
+                    </MDBox>
+                  </Grid>
                 )}
+              </Grid>
+
+              <MDBox
+                p={1.5}
+                mb={3}
+                sx={{ backgroundColor: "#fff", border: "1px solid #e5e7eb", borderRadius: 2 }}
+              >
+                <MDBox display="flex" justifyContent="space-between" alignItems="center">
+                  <MDTypography variant="button" fontWeight="medium" color="dark">
+                    Payment progress
+                  </MDTypography>
+                  <MDTypography variant="caption" color="text" fontWeight="medium">
+                    {paymentProgressPercentage.toFixed(0)}% paid
+                  </MDTypography>
+                </MDBox>
+                <MDBox mt={1} height="8px" borderRadius="lg" overflow="hidden" sx={{ backgroundColor: "#e5e7eb" }}>
+                  <MDBox
+                    height="100%"
+                    borderRadius="lg"
+                    sx={{
+                      width: `${paymentProgressPercentage}%`,
+                      transition: "width 0.3s ease",
+                      background: dialogRemaining > 0
+                        ? "linear-gradient(90deg, #1a73e8 0%, #42a5f5 100%)"
+                        : "linear-gradient(90deg, #2e7d32 0%, #66bb6a 100%)",
+                    }}
+                  />
+                </MDBox>
               </MDBox>
 
-              <MDTypography variant="h6" fontWeight="medium" mb={2}>
-                Payment History
-              </MDTypography>
+              <MDBox display="flex" alignItems="center" justifyContent="space-between" mb={1.5}>
+                <MDBox display="flex" alignItems="center" gap={0.75}>
+                  <Icon color="info">history</Icon>
+                  <MDTypography variant="h6" fontWeight="medium">Payment History</MDTypography>
+                </MDBox>
+                <MDTypography variant="caption" color="text">{payments.length} entries</MDTypography>
+              </MDBox>
 
               {loadingPayments ? (
                 <MDTypography variant="body2" color="text" mb={3}>
@@ -1622,8 +1717,9 @@ function UpdatePayment() {
                 <TableContainer
                   sx={{
                     boxShadow: "none",
-                    borderTop: "1px solid #e5e7eb",
-                    backgroundColor: "transparent",
+                    border: "1px solid #e5e7eb",
+                    borderRadius: 2,
+                    backgroundColor: "#fff",
                     mb: 3,
                     overflowX: "auto",
                   }}
@@ -1633,17 +1729,17 @@ function UpdatePayment() {
                     sx={{
                       tableLayout: "fixed",
                       width: "100%",
-                      minWidth: 680,
+                      minWidth: 760,
                       "& .MuiTableCell-root": { overflow: "hidden" },
                     }}
                   >
                     <colgroup>
-                      <col style={{ width: "14%" }} />
+                      <col style={{ width: "12%" }} />
+                      <col style={{ width: "11%" }} />
                       <col style={{ width: "12%" }} />
                       <col style={{ width: "14%" }} />
-                      <col style={{ width: "16%" }} />
-                      <col style={{ width: "28%" }} />
-                      <col style={{ width: "16%" }} />
+                      <col style={{ width: "25%" }} />
+                      <col style={{ width: "14%" }} />
                     </colgroup>
                     <TableHead
                       sx={{
@@ -1681,7 +1777,10 @@ function UpdatePayment() {
                         return (
                           <Fragment key={payment.id}>
                             <TableRow
-                              sx={{ backgroundColor: editingPaymentId === payment.id ? "#fff9c4" : "inherit" }}
+                              sx={{
+                                backgroundColor: editingPaymentId === payment.id ? "#fff9c4" : "inherit",
+                                "&:hover": { backgroundColor: editingPaymentId === payment.id ? "#fff9c4" : "#f8fafc" },
+                              }}
                             >
                               <TableCell
                                 align="left"
@@ -1693,7 +1792,20 @@ function UpdatePayment() {
                                 align="left"
                                 sx={{ ...tableBodySx, borderBottom: "1px solid #e5e7eb", fontSize: "0.875rem", color: "#374151" }}
                               >
-                                {PAYMENT_MODE_LABELS[payment.payment_mode] || payment.payment_mode}
+                                <MDBox
+                                  display="inline-flex"
+                                  px={1}
+                                  py={0.35}
+                                  borderRadius="lg"
+                                  sx={{
+                                    backgroundColor: payment.payment_mode === "cash" ? "#e8f5e9" : payment.payment_mode === "upi" ? "#e3f2fd" : payment.payment_mode === "cheque" ? "#fff3e0" : "#f3e5f5",
+                                    color: payment.payment_mode === "cash" ? "#2e7d32" : payment.payment_mode === "upi" ? "#1976d2" : payment.payment_mode === "cheque" ? "#e65100" : "#7b1fa2",
+                                  }}
+                                >
+                                  <MDTypography variant="caption" fontWeight="medium">
+                                    {PAYMENT_MODE_LABELS[payment.payment_mode] || payment.payment_mode}
+                                  </MDTypography>
+                                </MDBox>
                               </TableCell>
                               <TableCell
                                 align="right"
@@ -1722,12 +1834,21 @@ function UpdatePayment() {
                                   color: "#374151",
                                   overflow: "hidden",
                                   textOverflow: "ellipsis",
-                                  whiteSpace: "nowrap",
                                 }}
                               >
-                                {payment.payment_mode === "credit"
-                                  ? `${formatPaymentDetails(payment)} - Remaining: ₹${creditRemaining.toFixed(2)}`
-                                  : formatPaymentDetails(payment)}
+                                <MDTypography variant="caption" color="text" display="block" noWrap>
+                                  {payment.payment_mode === "credit"
+                                    ? `${formatPaymentDetails(payment)} - Remaining: ₹${creditRemaining.toFixed(2)}`
+                                    : formatPaymentDetails(payment)}
+                                </MDTypography>
+                                {isAdmin && (
+                                  <MDBox display="flex" alignItems="center" gap={0.4} mt={0.35}>
+                                    <Icon fontSize="small" color="secondary">manage_accounts</Icon>
+                                    <MDTypography variant="caption" color="text" noWrap>
+                                      Updated by: {getPaymentUpdatedBy(payment)}
+                                    </MDTypography>
+                                  </MDBox>
+                                )}
                               </TableCell>
                               <TableCell align="center" sx={{ ...tableBodySx, borderBottom: "1px solid #e5e7eb" }}>
                                 <MDBox display="flex" justifyContent="center" alignItems="center" gap={0.75}>
@@ -1765,13 +1886,29 @@ function UpdatePayment() {
                             {creditChildren.map((childPayment) => (
                               <TableRow
                                 key={childPayment.id}
-                                sx={{ backgroundColor: editingPaymentId === childPayment.id ? "#fff9c4" : "#f8fafc" }}
+                                sx={{
+                                  backgroundColor: editingPaymentId === childPayment.id ? "#fff9c4" : "#f8fafc",
+                                  "&:hover": { backgroundColor: editingPaymentId === childPayment.id ? "#fff9c4" : "#f1f5f9" },
+                                }}
                               >
                                 <TableCell align="left" sx={{ ...tableBodySx, pl: 4, borderBottom: "1px solid #e5e7eb", fontSize: "0.8125rem", color: "#475569" }}>
                                   {toInputDate(childPayment.payment_date)}
                                 </TableCell>
                                 <TableCell align="left" sx={{ ...tableBodySx, borderBottom: "1px solid #e5e7eb", fontSize: "0.8125rem", color: "#475569" }}>
-                                  {PAYMENT_MODE_LABELS[childPayment.payment_mode] || childPayment.payment_mode}
+                                  <MDBox
+                                    display="inline-flex"
+                                    px={1}
+                                    py={0.35}
+                                    borderRadius="lg"
+                                    sx={{
+                                      backgroundColor: childPayment.payment_mode === "cash" ? "#e8f5e9" : childPayment.payment_mode === "upi" ? "#e3f2fd" : childPayment.payment_mode === "cheque" ? "#fff3e0" : "#f3e5f5",
+                                      color: childPayment.payment_mode === "cash" ? "#2e7d32" : childPayment.payment_mode === "upi" ? "#1976d2" : childPayment.payment_mode === "cheque" ? "#e65100" : "#7b1fa2",
+                                    }}
+                                  >
+                                    <MDTypography variant="caption" fontWeight="medium">
+                                      {PAYMENT_MODE_LABELS[childPayment.payment_mode] || childPayment.payment_mode}
+                                    </MDTypography>
+                                  </MDBox>
                                 </TableCell>
                                 <TableCell align="right" sx={{ ...tableBodySx, borderBottom: "1px solid #e5e7eb", fontSize: "0.8125rem", fontWeight: 500, color: "#111827" }}>
                                   ₹{Number(childPayment.amount).toFixed(2)}
@@ -1779,8 +1916,18 @@ function UpdatePayment() {
                                 <TableCell align="left" sx={{ ...tableBodySx, borderBottom: "1px solid #e5e7eb", fontSize: "0.8125rem", color: "#475569" }}>
                                   {getCollectorName(childPayment)}
                                 </TableCell>
-                                <TableCell align="left" sx={{ ...tableBodySx, borderBottom: "1px solid #e5e7eb", fontSize: "0.8125rem", color: "#475569", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                                  Against credit #{payment.id} - {formatPaymentDetails(childPayment)}
+                                <TableCell align="left" sx={{ ...tableBodySx, borderBottom: "1px solid #e5e7eb", fontSize: "0.8125rem", color: "#475569", overflow: "hidden", textOverflow: "ellipsis" }}>
+                                  <MDTypography variant="caption" color="text" display="block" noWrap>
+                                    Against credit #{payment.id} - {formatPaymentDetails(childPayment)}
+                                  </MDTypography>
+                                  {isAdmin && (
+                                    <MDBox display="flex" alignItems="center" gap={0.4} mt={0.35}>
+                                      <Icon fontSize="small" color="secondary">manage_accounts</Icon>
+                                      <MDTypography variant="caption" color="text" noWrap>
+                                        Updated by: {getPaymentUpdatedBy(childPayment)}
+                                      </MDTypography>
+                                    </MDBox>
+                                  )}
                                 </TableCell>
                                 <TableCell align="center" sx={{ ...tableBodySx, borderBottom: "1px solid #e5e7eb" }}>
                                   <MDBox display="flex" justifyContent="center" alignItems="center" gap={0.75}>
@@ -1815,13 +1962,19 @@ function UpdatePayment() {
 
 
               {showPaymentForm && (
-                <MDBox>
-                  <MDTypography variant="h6" fontWeight="medium" mb={2}>
+                <MDBox p={{ xs: 1.5, sm: 2.5 }} sx={{ backgroundColor: "#fff", border: "1px solid #e5e7eb", borderRadius: 2 }}>
+                  <MDBox display="flex" alignItems="center" gap={0.75} mb={2}>
+                    <Icon color="info">{editingPaymentId ? "edit" : "add_circle"}</Icon>
+                    <MDTypography variant="h6" fontWeight="medium">
                     {editingPaymentId
                       ? "Edit Payment"
                       : activeCreditPayment
                         ? `Add Payment Against Credit - ${activeCreditPayment.credit_days || ""} Days`
                         : "Add Payment"}
+                    </MDTypography>
+                  </MDBox>
+                  <MDTypography variant="caption" color="text" display="block" mt={-1} mb={2}>
+                    Record the payment details below. The balance updates automatically after saving.
                   </MDTypography>
 
                   <Grid container spacing={2}>
@@ -2074,26 +2227,33 @@ function UpdatePayment() {
                 <MDBox
                   mt={2}
                   p={2}
+                  display="flex"
+                  alignItems="center"
+                  gap={1}
                   sx={{
-                    backgroundColor: "#e8f5e9",
+                    backgroundColor: "#ecfdf3",
                     borderRadius: "10px",
                     border: "1px solid #c8e6c9",
                   }}
                 >
-                  <MDTypography variant="body2" color="success">
-                    Fully paid — no balance remaining.
-                  </MDTypography>
+                  <Icon color="success">verified</Icon>
+                  <MDBox>
+                    <MDTypography variant="button" color="success" fontWeight="medium" display="block">
+                      Invoice fully paid
+                    </MDTypography>
+                    <MDTypography variant="caption" color="text">
+                      No balance remaining on this invoice.
+                    </MDTypography>
+                  </MDBox>
                 </MDBox>
               )}
             </MDBox>
           )}
         </DialogContent>
-        <DialogActions>
-          <Tooltip title="Close">
-            <MDButton variant="outlined" color="dark" iconOnly onClick={closePaymentDialog}>
-              <Icon fontSize="small">close</Icon>
-            </MDButton>
-          </Tooltip>
+        <DialogActions sx={{ px: 3, py: 1.5, borderTop: "1px solid #e5e7eb", backgroundColor: "#fff" }}>
+          <MDButton variant="outlined" color="dark" onClick={closePaymentDialog}>
+            Close Ledger
+          </MDButton>
         </DialogActions>
       </Dialog>
 

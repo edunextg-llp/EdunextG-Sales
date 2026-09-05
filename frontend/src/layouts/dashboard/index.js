@@ -929,6 +929,10 @@ function Dashboard() {
     collectionStaffOptions.find((staff) => staff.id === Number(selectedCollectionStaffId))?.name ||
     "All Staff";
 
+  const selectedSalesCompanyName =
+    salesCompanies.find((company) => String(company.id) === String(selectedSalesCompanyId))?.name ||
+    "All Companies";
+
   const selectedSalesStaffName =
     collectionStaffOptions.find((staff) => staff.id === Number(selectedSalesStaffId))?.name ||
     "All Staff";
@@ -1441,6 +1445,35 @@ function Dashboard() {
       printWindow.document.open();
       printWindow.document.write("<p style=\"font-family: Arial, sans-serif; padding: 24px;\">Unable to load collection report.</p>");
       printWindow.document.close();
+    }
+  };
+
+  const handleDownloadTodayCollection = async () => {
+    if (!collectionPrintDate) {
+      alert("Please choose a date.");
+      return;
+    }
+
+    try {
+      const params = new URLSearchParams({
+        startDate: collectionPrintDate,
+        endDate: collectionPrintDate,
+      });
+      if (selectedSalesCompanyId) params.set("companyId", selectedSalesCompanyId);
+      const response = await fetch(`${API}/staff/reports/payments/export?${params.toString()}`);
+      if (!response.ok) throw new Error("Unable to download report.");
+
+      const file = await response.blob();
+      const url = URL.createObjectURL(file);
+      const link = document.createElement("a");
+      const companyPart = selectedSalesCompanyName.replace(/[^a-z0-9]+/gi, "-").replace(/^-|-$/g, "") || "all-companies";
+      link.href = url;
+      link.download = `today-collection-${companyPart}-${collectionPrintDate}.xlsx`;
+      link.click();
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error("Error downloading collection report:", error);
+      alert("Unable to download the collection report.");
     }
   };
 
@@ -2332,7 +2365,7 @@ function Dashboard() {
                 <MDBox mb={3} width="100%" height={460} sx={{ "& > div": { height: "100%" } }}>
                   <PaymentModePieChart
                     data={todayCollectionPieData}
-                    title={`collection ${formatDate(collectionPrintDate)}`}
+                    title={`Today Collection · ${selectedSalesCompanyName}`}
                     icon="today"
                     iconColor="success"
                     actions={
@@ -2342,7 +2375,24 @@ function Dashboard() {
                             Loading collection for selected date...
                           </MDTypography>
                         )}
-                        <MDBox display="flex" gap={0.75} alignItems="center">
+                        <MDBox display="flex" gap={0.75} alignItems="center" flexWrap="wrap">
+                          <FormControl size="small" sx={{ minWidth: 155 }}>
+                            <InputLabel id="today-collection-company-label">Company</InputLabel>
+                            <Select
+                              labelId="today-collection-company-label"
+                              value={selectedSalesCompanyId}
+                              label="Company"
+                              onChange={(event) => setSelectedSalesCompanyId(event.target.value)}
+                              sx={{ height: 36, fontSize: "0.8125rem", backgroundColor: "#fff" }}
+                            >
+                              <MenuItem value="">All Companies</MenuItem>
+                              {salesCompanies.map((company) => (
+                                <MenuItem key={`today-collection-company-${company.id}`} value={String(company.id)}>
+                                  {company.name}
+                                </MenuItem>
+                              ))}
+                            </Select>
+                          </FormControl>
                           <TextField
                             type="date"
                             size="small"
@@ -2353,12 +2403,24 @@ function Dashboard() {
                             sx={compactDateFieldSx}
                           />
                           <MDButton
+                            color="success"
+                            variant="contained"
+                            size="small"
+                            onClick={handleDownloadTodayCollection}
+                            disabled={!collectionPrintDate || collectionDateLoading}
+                            sx={{ minWidth: 44, p: 1.2 }}
+                            title="Download company collection Excel report"
+                          >
+                            <Icon>download</Icon>
+                          </MDButton>
+                          <MDButton
                             color="dark"
                             variant="contained"
                             size="small"
                             onClick={handlePrintTodayCollection}
                             disabled={!collectionPrintDate || collectionDateLoading}
-                            sx={{ minWidth: 44, p: 1.2, ml: "auto" }}
+                            sx={{ minWidth: 44, p: 1.2 }}
+                            title="Print collection report"
                           >
                             <Icon>print</Icon>
                           </MDButton>
@@ -2517,12 +2579,17 @@ function Dashboard() {
             </MDBox>
           ) : (
             <TableContainer component={Paper} sx={{ boxShadow: "none", border: "1px solid #e5e7eb" }}>
-              <Table size="small">
-                <TableHead sx={{ backgroundColor: "#f9fafb" }}>
+              <Table size="small" sx={{ width: "100%", tableLayout: "fixed" }}>
+                <colgroup>
+                  <col style={{ width: "45%" }} />
+                  <col style={{ width: "25%" }} />
+                  <col style={{ width: "30%" }} />
+                </colgroup>
+                <TableHead sx={{ display: "table-header-group", backgroundColor: "#f9fafb" }}>
                   <TableRow>
-                    <TableCell sx={{ fontWeight: "bold" }}>Company</TableCell>
-                    <TableCell align="right" sx={{ fontWeight: "bold" }}>Open Entries</TableCell>
-                    <TableCell align="right" sx={{ fontWeight: "bold" }}>Total Due</TableCell>
+                    <TableCell sx={{ fontWeight: "bold", whiteSpace: "nowrap" }}>Company</TableCell>
+                    <TableCell align="right" sx={{ fontWeight: "bold", whiteSpace: "nowrap" }}>Open Entries</TableCell>
+                    <TableCell align="right" sx={{ fontWeight: "bold", whiteSpace: "nowrap" }}>Total Due</TableCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>
@@ -2530,7 +2597,7 @@ function Dashboard() {
                     <TableRow key={company.companyName}>
                       <TableCell>{company.companyName}</TableCell>
                       <TableCell align="right">{company.count}</TableCell>
-                      <TableCell align="right">{money(company.total)}</TableCell>
+                      <TableCell align="right" sx={{ whiteSpace: "nowrap" }}>{money(company.total)}</TableCell>
                     </TableRow>
                   ))}
                   {!companyCreditTotals.length && (
@@ -2543,7 +2610,7 @@ function Dashboard() {
                   <TableRow sx={{ "& td": { fontWeight: "bold", borderTop: "2px solid #e5e7eb" } }}>
                     <TableCell>Total Pending Credits</TableCell>
                     <TableCell align="right">{pendingCreditRows.length}</TableCell>
-                    <TableCell align="right">{money(pendingCreditTotal)}</TableCell>
+                  <TableCell align="right" sx={{ whiteSpace: "nowrap" }}>{money(pendingCreditTotal)}</TableCell>
                   </TableRow>
                 </TableBody>
               </Table>

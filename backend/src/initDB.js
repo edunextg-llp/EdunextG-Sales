@@ -529,6 +529,10 @@ async function initDB() {
             credit_days INT NULL,
             cash_details JSON NULL,
             remarks TEXT NULL,
+            updated_by_id INT NULL,
+            updated_by_role VARCHAR(32) NULL,
+            updated_by_name VARCHAR(255) NULL,
+            updated_by_employee_code VARCHAR(100) NULL,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (sale_id) REFERENCES staff_sales(id) ON DELETE CASCADE
         );
@@ -560,6 +564,20 @@ async function initDB() {
         console.log('Added collector_name column to sale_payments');
     } catch (err) {
         console.log('collector_name column on sale_payments already exists or skipped');
+    }
+
+    for (const [column, definition] of [
+        ['updated_by_id', 'INT NULL'],
+        ['updated_by_role', 'VARCHAR(32) NULL'],
+        ['updated_by_name', 'VARCHAR(255) NULL'],
+        ['updated_by_employee_code', 'VARCHAR(100) NULL'],
+    ]) {
+        try {
+            await connection.query(`ALTER TABLE sale_payments ADD COLUMN ${column} ${definition}`);
+            console.log(`Added ${column} column to sale_payments`);
+        } catch (err) {
+            console.log(`${column} column on sale_payments already exists or skipped`);
+        }
     }
 
     await connection.query(`

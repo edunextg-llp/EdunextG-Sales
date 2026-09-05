@@ -238,6 +238,18 @@ function getBackdatedPaymentAccessError(req, paymentDate) {
     return 'You can\'t add or update a backdated payment.';
 }
 
+function getPaymentUpdater(req) {
+    const isAdmin = req.user?.role === 'admin';
+    const employeeCode = req.user?.loginId || req.user?.email || (req.user?.id ? `ID ${req.user.id}` : null);
+
+    return {
+        id: req.user?.id || null,
+        role: req.user?.role || null,
+        name: isAdmin ? 'Admin' : (req.user?.username || 'Staff'),
+        employeeCode,
+    };
+}
+
 async function resolveCompanyIds(companyNames, fallbackCompanyName, companyIds = []) {
     const normalizedIds = Array.isArray(companyIds)
         ? [...new Set(companyIds.map((id) => Number(id)).filter((id) => Number.isInteger(id) && id > 0))]
@@ -3239,6 +3251,7 @@ export const addSalePayment = async (req, res) => {
             creditDays: mode === 'credit' ? parseInt(creditDays, 10) : null,
             parentCreditPaymentId: normalizedParentCreditPaymentId,
             cashDetails: mode === 'cash' ? cashDetails : null,
+            updatedBy: getPaymentUpdater(req),
         });
 
 
@@ -3342,6 +3355,7 @@ export const editSalePayment = async (req, res) => {
             referenceDate: formattedRefDate,
             creditDays: mode === 'credit' ? parseInt(creditDays, 10) : null,
             cashDetails: mode === 'cash' ? cashDetails : null,
+            updatedBy: getPaymentUpdater(req),
 
         });
 

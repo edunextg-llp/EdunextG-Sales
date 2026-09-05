@@ -9,7 +9,8 @@ class PaymentModel {
                     sp.payment_mode, sp.amount, sp.collector_staff_id, collector.name AS collector_staff_name,
                     sp.collector_name, sp.reference_no, sp.cash_details,
                     DATE_FORMAT(sp.reference_date, '%Y-%m-%d') AS reference_date,
-                    sp.credit_days, sp.created_at
+                    sp.credit_days, sp.created_at, sp.updated_by_id, sp.updated_by_role,
+                    sp.updated_by_name, sp.updated_by_employee_code
              FROM sale_payments sp
              LEFT JOIN staff collector ON collector.id = sp.collector_staff_id
              WHERE sp.sale_id = ?
@@ -225,7 +226,7 @@ class PaymentModel {
     }
 
     static async addPayment(saleId, data) {
-        const { paymentDate, paymentMode, amount, collectorStaffId, collectorName, referenceNo, referenceDate, creditDays, parentCreditPaymentId, cashDetails } = data;
+        const { paymentDate, paymentMode, amount, collectorStaffId, collectorName, referenceNo, referenceDate, creditDays, parentCreditPaymentId, cashDetails, updatedBy } = data;
         const connection = await db.getConnection();
 
         try {
@@ -268,8 +269,8 @@ class PaymentModel {
 
             await connection.execute(
                 `INSERT INTO sale_payments
-                 (sale_id, payment_date, payment_mode, amount, collector_staff_id, collector_name, parent_credit_payment_id, reference_no, reference_date, credit_days, cash_details)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                 (sale_id, payment_date, payment_mode, amount, collector_staff_id, collector_name, parent_credit_payment_id, reference_no, reference_date, credit_days, cash_details, updated_by_id, updated_by_role, updated_by_name, updated_by_employee_code)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
                 [
                     saleId,
                     paymentDate,
@@ -282,6 +283,10 @@ class PaymentModel {
                     referenceDate || null,
                     creditDays ?? null,
                     paymentMode === 'cash' ? JSON.stringify(cashDetails || {}) : null,
+                    updatedBy?.id || null,
+                    updatedBy?.role || null,
+                    updatedBy?.name || null,
+                    updatedBy?.employeeCode || null,
                 ]
             );
 
@@ -298,7 +303,7 @@ class PaymentModel {
     }
 
     static async updatePayment(saleId, paymentId, data) {
-        const { paymentDate, paymentMode, amount, collectorStaffId, collectorName, referenceNo, referenceDate, creditDays, cashDetails } = data;
+        const { paymentDate, paymentMode, amount, collectorStaffId, collectorName, referenceNo, referenceDate, creditDays, cashDetails, updatedBy } = data;
         const connection = await db.getConnection();
 
         try {
@@ -363,7 +368,7 @@ class PaymentModel {
     }
 
     static async updatePayment(paymentId, saleId, data) {
-        const { paymentDate, paymentMode, amount, collectorStaffId, collectorName, referenceNo, referenceDate, creditDays, cashDetails } = data;
+        const { paymentDate, paymentMode, amount, collectorStaffId, collectorName, referenceNo, referenceDate, creditDays, cashDetails, updatedBy } = data;
         const connection = await db.getConnection();
 
         try {
@@ -420,7 +425,7 @@ class PaymentModel {
 
             await connection.execute(
                 `UPDATE sale_payments
-                 SET payment_date = ?, payment_mode = ?, amount = ?, collector_staff_id = ?, collector_name = ?, reference_no = ?, reference_date = ?, credit_days = ?, cash_details = ?
+                 SET payment_date = ?, payment_mode = ?, amount = ?, collector_staff_id = ?, collector_name = ?, reference_no = ?, reference_date = ?, credit_days = ?, cash_details = ?, updated_by_id = ?, updated_by_role = ?, updated_by_name = ?, updated_by_employee_code = ?
                  WHERE id = ? AND sale_id = ?`,
                 [
                     paymentDate,
@@ -432,6 +437,10 @@ class PaymentModel {
                     referenceDate || null,
                     creditDays ?? null,
                     paymentMode === 'cash' ? JSON.stringify(cashDetails || {}) : null,
+                    updatedBy?.id || null,
+                    updatedBy?.role || null,
+                    updatedBy?.name || null,
+                    updatedBy?.employeeCode || null,
                     paymentId,
                     saleId
                 ]
