@@ -473,7 +473,14 @@ class StaffModel {
 
     static async getAllCountersForStaff(staffId) {
         const [rows] = await db.execute(
-            'SELECT id, outlet_erp_id, outlet_name, contact_number, whatsapp_number, location_name, address, google_location, has_gst, gst_number, day FROM staff_counters WHERE staff_id = ?',
+            `SELECT id, outlet_erp_id, outlet_name, contact_number, whatsapp_number,
+                    location_name, address, google_location, has_gst, gst_number, day,
+                    serial_no, priority_number, operating_hours
+             FROM staff_counters
+             WHERE staff_id = ?
+             ORDER BY FIELD(day, 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday', 'CNF'),
+                      COALESCE(location_name, ''), COALESCE(priority_number, 999999),
+                      COALESCE(serial_no, 999999), outlet_name`,
             [staffId]
         );
         return rows;

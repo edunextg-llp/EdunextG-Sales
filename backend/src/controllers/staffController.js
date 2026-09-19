@@ -715,7 +715,10 @@ export const addCounter = async (req, res) => {
                     });
                 }
 
-                const priorityValidation = validatePositiveInteger(counter.priorityNumber, `Counter ${i + 1} priority number`);
+                const prioritySource = String(counter.priorityNumber ?? '').trim();
+                const priorityValidation = prioritySource
+                    ? validatePositiveInteger(prioritySource, `Counter ${i + 1} priority number`)
+                    : { valid: true, value: null };
                 if (!priorityValidation.valid) return res.status(400).json({ error: priorityValidation.error });
                 const operatingHoursValidation = parseOutletOperatingHours(counter.operatingHours, `Counter ${i + 1} operating hours`);
                 if (!operatingHoursValidation.valid) return res.status(400).json({ error: operatingHoursValidation.error });
@@ -728,8 +731,10 @@ export const addCounter = async (req, res) => {
                 if (duplicateCounter) {
                     return res.status(400).json({ error: 'Same ERP Id already exists.' });
                 }
-                const duplicatePriority = await StaffModel.findCounterByPriority(id, day, location, priorityValidation.value);
-                if (duplicatePriority) return res.status(400).json({ error: `Priority ${priorityValidation.value} already exists for this location.` });
+                if (priorityValidation.value != null) {
+                    const duplicatePriority = await StaffModel.findCounterByPriority(id, day, location, priorityValidation.value);
+                    if (duplicatePriority) return res.status(400).json({ error: `Priority ${priorityValidation.value} already exists for this location.` });
+                }
 
                 erpIds.add(normalizedErpId);
 
@@ -985,6 +990,13 @@ const parseOutletOperatingHours = (value, fieldName = 'Operating hours') => {
     if (!schedule || typeof schedule !== 'object' || Array.isArray(schedule)) {
         return { valid: false, error: `${fieldName} must be a weekly schedule.` };
     }
+    const hasScheduleValue = [...OUTLET_OFF_DAYS].some((day) => {
+        const entry = schedule[day];
+        return Boolean(entry?.isOff)
+            || ['firstHalfStart', 'firstHalfEnd', 'secondHalfStart', 'secondHalfEnd']
+                .some((field) => normalizeOutletUploadText(entry?.[field]));
+    });
+    if (!hasScheduleValue) return { valid: true, value: null };
     const normalized = {};
     for (const day of OUTLET_OFF_DAYS) {
         const entry = schedule[day];
@@ -3083,7 +3095,10 @@ export const editCounter = async (req, res) => {
             return res.status(400).json({ error: 'GST number is required when GST is enabled.' });
         }
 
-        const priorityValidation = validatePositiveInteger(priorityNumber, 'Priority number');
+        const prioritySource = String(priorityNumber ?? '').trim();
+        const priorityValidation = prioritySource
+            ? validatePositiveInteger(prioritySource, 'Priority number')
+            : { valid: true, value: null };
         if (!priorityValidation.valid) return res.status(400).json({ error: priorityValidation.error });
         const operatingHoursValidation = parseOutletOperatingHours(operatingHours, 'Operating hours');
         if (!operatingHoursValidation.valid) return res.status(400).json({ error: operatingHoursValidation.error });
@@ -3102,10 +3117,12 @@ export const editCounter = async (req, res) => {
         if (duplicateCounter && Number(duplicateCounter.id) !== Number(counterId)) {
             return res.status(400).json({ error: 'Same ERP Id already exists.' });
         }
-        const duplicatePriority = await StaffModel.findCounterByPriority(
-            existingCounter.staff_id, existingCounter.day, existingCounter.location_name, priorityValidation.value, counterId
-        );
-        if (duplicatePriority) return res.status(400).json({ error: `Priority ${priorityValidation.value} already exists for this location.` });
+        if (priorityValidation.value != null) {
+            const duplicatePriority = await StaffModel.findCounterByPriority(
+                existingCounter.staff_id, existingCounter.day, existingCounter.location_name, priorityValidation.value, counterId
+            );
+            if (duplicatePriority) return res.status(400).json({ error: `Priority ${priorityValidation.value} already exists for this location.` });
+        }
 
         await StaffModel.editCounter(counterId, {
             outletErpId: normalizedOutletErpId,

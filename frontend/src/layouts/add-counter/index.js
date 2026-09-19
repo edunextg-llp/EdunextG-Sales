@@ -109,6 +109,7 @@ function AddCounter() {
   const [selectedLocation, setSelectedLocation] = useState("");
   const [outlets, setOutlets] = useState([]);
   const [savedOutlets, setSavedOutlets] = useState([]);
+  const [allStaffOutlets, setAllStaffOutlets] = useState([]);
   const [exportingOutlets, setExportingOutlets] = useState(false);
   const [downloadingTemplate, setDownloadingTemplate] = useState(false);
   const [uploadingOutlets, setUploadingOutlets] = useState(false);
@@ -148,6 +149,8 @@ function AddCounter() {
       (outlet) => normalizeText(outlet.location_name) === normalizeText(selectedLocation)
     )
     : savedOutlets;
+
+  const outletsAvailableForEditing = isSelfService ? allStaffOutlets : displayedSavedOutlets;
 
   const locationSavedSerialMax = displayedSavedOutlets.reduce(
     (max, outlet) => Math.max(max, Number(outlet.serial_no) || 0),
@@ -208,6 +211,26 @@ function AddCounter() {
       console.error("Error fetching saved outlets:", error);
     }
   };
+
+  const fetchAllStaffOutlets = async (staffId) => {
+    try {
+      const response = await fetch(`${API}/staff/${staffId}/all-counters`);
+      if (!response.ok) throw new Error("Unable to load all outlets.");
+      const data = await response.json();
+      setAllStaffOutlets(Array.isArray(data) ? data : []);
+    } catch (error) {
+      console.error("Error fetching all staff outlets:", error);
+      setAllStaffOutlets([]);
+    }
+  };
+
+  useEffect(() => {
+    if (isSelfService && selectedStaff?.id) {
+      fetchAllStaffOutlets(selectedStaff.id);
+    } else {
+      setAllStaffOutlets([]);
+    }
+  }, [isSelfService, selectedStaff?.id]);
 
   const downloadOutletsExcel = async () => {
     setExportingOutlets(true);
@@ -284,6 +307,7 @@ function AddCounter() {
       alert(data.message || "Outlets uploaded successfully.");
       setOutlets([]);
       fetchSavedOutlets(selectedStaff.id, routeDay);
+      if (isSelfService) fetchAllStaffOutlets(selectedStaff.id);
     } catch (error) {
       alert(error.message || "Failed to upload outlets.");
     } finally {
@@ -493,6 +517,7 @@ function AddCounter() {
         setOutlets([]);
         setSelectedLocation("");
         fetchSavedOutlets(selectedStaff.id, routeDay);
+        if (isSelfService) fetchAllStaffOutlets(selectedStaff.id);
       } else {
         const err = await response.json().catch(() => ({}));
         alert(err.error || "Failed to add outlets.");
@@ -512,6 +537,7 @@ function AddCounter() {
       if (response.ok) {
         alert("Outlet deleted successfully!");
         fetchSavedOutlets(selectedStaff.id, routeDay);
+        if (isSelfService) fetchAllStaffOutlets(selectedStaff.id);
       } else {
         alert("Failed to delete outlet.");
       }
@@ -618,6 +644,7 @@ function AddCounter() {
         alert("Outlet updated successfully!");
         setEditingOutletId(null);
         fetchSavedOutlets(selectedStaff.id, routeDay);
+        if (isSelfService) fetchAllStaffOutlets(selectedStaff.id);
       } else {
         const err = await response.json().catch(() => ({}));
         alert(err.error || "Failed to update outlet.");
@@ -1093,11 +1120,11 @@ function AddCounter() {
 
                                 <Divider sx={{ mb: 2.5 }} />
 
-                                <MDTypography sx={sectionLabelSx}>Visit Schedule</MDTypography>
+                                <MDTypography sx={sectionLabelSx}>Visit Schedule (Optional)</MDTypography>
                                 <Grid container spacing={2} mb={2.5}>
                                   <Grid item xs={12} sm={6} md={4}>
                                     <MDInput
-                                      label="Priority Number *"
+                                      label="Priority Number (Optional)"
                                       type="number"
                                       fullWidth
                                       inputProps={{ min: 1 }}
@@ -1108,9 +1135,9 @@ function AddCounter() {
                                   </Grid>
                                 </Grid>
 
-                                <MDTypography sx={sectionLabelSx}>Weekly Outlet Timings</MDTypography>
+                                <MDTypography sx={sectionLabelSx}>Weekly Outlet Timings (Optional)</MDTypography>
                                 <MDTypography variant="caption" color="text" display="block" mb={1.5}>
-                                  Set two opening periods for each day, or mark the day as off.
+                                  Leave this section blank, or set two opening periods for each day.
                                 </MDTypography>
                                 <MDBox
                                   mb={2}
@@ -1221,13 +1248,14 @@ function AddCounter() {
                   </MDBox>
                 )}
 
-                {displayedSavedOutlets.length > 0 && (
+                {outletsAvailableForEditing.length > 0 && (
                   <MDBox mt={5}>
                     <MDTypography variant="h6" mb={2}>
-                      Saved Outlets for {isCnfStaff ? "CNF" : selectedDay}
-                      {selectedLocation ? ` — ${selectedLocation}` : ""}
+                      {isSelfService
+                        ? `All My Outlets (${outletsAvailableForEditing.length})`
+                        : `Saved Outlets for ${isCnfStaff ? "CNF" : selectedDay}${selectedLocation ? ` — ${selectedLocation}` : ""}`}
                     </MDTypography>
-                    {displayedSavedOutlets.map((saved) => (
+                    {outletsAvailableForEditing.map((saved) => (
                       <MDBox
                         key={saved.id}
                         mb={2}
@@ -1252,7 +1280,7 @@ function AddCounter() {
                             </Grid>
                             <Grid item xs={12} sm={6} md={1}>
                               <MDInput
-                                label="Priority *"
+                                label="Priority (Optional)"
                                 fullWidth
                                 type="number"
                                 inputProps={{ min: 1 }}
@@ -1371,6 +1399,16 @@ function AddCounter() {
                           </Grid>
                         ) : (
                           <Grid container spacing={1.5} alignItems="center">
+                            {isSelfService && (
+                              <Grid item xs={12} sm={6} md={2}>
+                                <MDTypography variant="caption" color="text" display="block">
+                                  Day / Location
+                                </MDTypography>
+                                <MDTypography variant="body2" fontWeight="bold">
+                                  {saved.day || "—"} · {saved.location_name || "—"}
+                                </MDTypography>
+                              </Grid>
+                            )}
                             <Grid item xs={6} sm={4} md={1}>
                               <MDTypography variant="caption" color="text" display="block">
                                 Sr No
