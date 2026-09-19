@@ -120,7 +120,8 @@ class ReportModel {
                         COALESCE(SUM(CASE WHEN packaging_status = 'delivered' THEN COALESCE(pay.upi_amount, 0) ELSE 0 END), 0) AS total_delivered_upi,
                         COALESCE(SUM(CASE WHEN packaging_status = 'delivered' THEN COALESCE(pay.cheque_amount, 0) ELSE 0 END), 0) AS total_delivered_cheque,
                         COALESCE(SUM(CASE WHEN packaging_status = 'delivered' THEN COALESCE(pay.collection_amount, 0) ELSE 0 END), 0) AS total_delivered_collection,
-                        COALESCE(SUM(CASE WHEN packaging_status = 'delivered' THEN GREATEST(price - COALESCE(pay.collection_amount, 0), 0) ELSE 0 END), 0) AS total_delivered_credit,
+                        COALESCE(SUM(CASE WHEN packaging_status = 'delivered' THEN LEAST(GREATEST(price - COALESCE(pay.collection_amount, 0), 0), COALESCE(credit.credit_balance, 0)) ELSE 0 END), 0) AS total_delivered_credit,
+                        COALESCE(SUM(CASE WHEN packaging_status = 'delivered' THEN price - COALESCE(pay.collection_amount, 0) - LEAST(GREATEST(price - COALESCE(pay.collection_amount, 0), 0), COALESCE(credit.credit_balance, 0)) ELSE 0 END), 0) AS total_delivered_outstanding,
                         COALESCE(SUM(paid_amount), 0) AS total_paid,
                         COALESCE(SUM(balance_amount), 0) AS total_outstanding
                  FROM staff_sales ss
@@ -133,6 +134,20 @@ class ReportModel {
                      FROM sale_payments
                      GROUP BY sale_id
                  ) pay ON pay.sale_id = ss.id
+                 LEFT JOIN (
+                     SELECT cp.sale_id,
+                            SUM(GREATEST(cp.amount - COALESCE(repayments.paid_amount, 0), 0)) AS credit_balance
+                     FROM sale_payments cp
+                     LEFT JOIN (
+                         SELECT parent_credit_payment_id, SUM(amount) AS paid_amount
+                         FROM sale_payments
+                         WHERE parent_credit_payment_id IS NOT NULL
+                           AND payment_mode IN ('cash', 'upi', 'cheque')
+                         GROUP BY parent_credit_payment_id
+                     ) repayments ON repayments.parent_credit_payment_id = cp.id
+                     WHERE cp.payment_mode = 'credit'
+                     GROUP BY cp.sale_id
+                 ) credit ON credit.sale_id = ss.id
                  ${salesWhere.sql}`,
                 salesWhere.params
             ).then(([rows]) => rows),
@@ -152,6 +167,7 @@ class ReportModel {
             total_pending_sales: parseFloat(salesSummary.total_pending_sales) || 0,
             total_delivered_collection: parseFloat(salesSummary.total_delivered_collection) || 0,
             total_delivered_credit: parseFloat(salesSummary.total_delivered_credit) || 0,
+            total_delivered_outstanding: parseFloat(salesSummary.total_delivered_outstanding) || 0,
             total_delivered_cash: parseFloat(salesSummary.total_delivered_cash) || 0,
             total_delivered_upi: parseFloat(salesSummary.total_delivered_upi) || 0,
             total_delivered_cheque: parseFloat(salesSummary.total_delivered_cheque) || 0,

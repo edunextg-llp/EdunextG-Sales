@@ -57,6 +57,7 @@ const emptyReportData = {
     total_pending_sales: 0,
     total_delivered_collection: 0,
     total_delivered_credit: 0,
+    total_delivered_outstanding: 0,
     total_delivered_cash: 0,
     total_delivered_upi: 0,
     total_delivered_cheque: 0,
@@ -2142,7 +2143,7 @@ function Dashboard() {
                     percentage={{
                       color: "success",
                       amount: "",
-                      label: "Collection + Credit",
+                      label: "Collection + Credit + Outstanding",
                     }}
                   />
                 </MDBox>
@@ -2176,7 +2177,7 @@ function Dashboard() {
                     percentage={{
                       color: reportData.summary.total_delivered_credit > 0 ? "error" : "success",
                       amount: "",
-                      label: "Unpaid delivered amount",
+                      label: "Pending credit on delivered sales",
                     }}
                   />
                 </MDBox>
@@ -2187,11 +2188,11 @@ function Dashboard() {
                     color="warning"
                     icon="account_balance_wallet"
                     title="Outstanding"
-                    count={shortMoney(reportData.summary.total_outstanding)}
+                    count={shortMoney(reportData.summary.total_delivered_outstanding)}
                     percentage={{
                       color: "warning",
                       amount: "",
-                      label: "Unpaid invoice balance",
+                      label: "Delivered balance excluding credit",
                     }}
                   />
                 </MDBox>
