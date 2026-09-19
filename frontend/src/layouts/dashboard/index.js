@@ -883,6 +883,8 @@ function Dashboard() {
   const financialYearOptions = useMemo(() => getFinancialYearOptions(), []);
   const [selectedFinancialYear, setSelectedFinancialYear] = useState("");
   const [selectedMonth, setSelectedMonth] = useState("");
+  const [salesFromDate, setSalesFromDate] = useState("");
+  const [salesToDate, setSalesToDate] = useState("");
   const [salesCompanies, setSalesCompanies] = useState([]);
   const [selectedSalesCompanyId, setSelectedSalesCompanyId] = useState("");
   const [reportData, setReportData] = useState(emptyReportData);
@@ -924,14 +926,22 @@ function Dashboard() {
     (option) => option.value === selectedFinancialYear
   );
   const selectedMonthOption = monthOptions.find((option) => option.value === selectedMonth);
-  const reportStartDate = selectedMonthOption?.startDate || selectedFinancialYearOption?.startDate || null;
-  const reportEndDate = selectedMonthOption?.endDate || selectedFinancialYearOption?.endDate || null;
+  const standardReportStartDate = selectedMonthOption?.startDate || selectedFinancialYearOption?.startDate || null;
+  const standardReportEndDate = selectedMonthOption?.endDate || selectedFinancialYearOption?.endDate || null;
+  const hasValidSalesDateRange = Boolean(
+    salesFromDate && salesToDate && salesFromDate <= salesToDate
+  );
+  const reportStartDate = hasValidSalesDateRange ? salesFromDate : standardReportStartDate;
+  const reportEndDate = hasValidSalesDateRange ? salesToDate : standardReportEndDate;
 
   const reportPeriodLabel = useMemo(() => {
+    if (hasValidSalesDateRange) {
+      return `${formatDate(salesFromDate)} to ${formatDate(salesToDate)}`;
+    }
     if (selectedMonthOption) return selectedMonthOption.label;
     if (selectedFinancialYearOption) return selectedFinancialYearOption.label;
     return "All Records";
-  }, [selectedMonthOption, selectedFinancialYearOption]);
+  }, [hasValidSalesDateRange, salesFromDate, salesToDate, selectedMonthOption, selectedFinancialYearOption]);
 
   const selectedCollectionStaffName =
     collectionStaffOptions.find((staff) => staff.id === Number(selectedCollectionStaffId))?.name ||
@@ -1006,8 +1016,8 @@ function Dashboard() {
   const fetchPurchaseReports = async () => {
     try {
       const params = new URLSearchParams();
-      if (reportStartDate) params.set("startDate", reportStartDate);
-      if (reportEndDate) params.set("endDate", reportEndDate);
+      if (standardReportStartDate) params.set("startDate", standardReportStartDate);
+      if (standardReportEndDate) params.set("endDate", standardReportEndDate);
 
       const query = params.toString();
       const response = await fetch(`${API}/staff/purchase-reports${query ? `?${query}` : ""}`);
@@ -1128,9 +1138,13 @@ function Dashboard() {
 
   useEffect(() => {
     fetchReports();
-    fetchPurchaseReports();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [reportStartDate, reportEndDate, selectedSalesCompanyId]);
+
+  useEffect(() => {
+    fetchPurchaseReports();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [standardReportStartDate, standardReportEndDate]);
 
   useEffect(() => {
     let ignore = false;
@@ -1253,6 +1267,14 @@ function Dashboard() {
   const handleFinancialYearChange = (value) => {
     setSelectedFinancialYear(value);
     setSelectedMonth("");
+    setSalesFromDate("");
+    setSalesToDate("");
+  };
+
+  const handleMonthChange = (value) => {
+    setSelectedMonth(value);
+    setSalesFromDate("");
+    setSalesToDate("");
   };
 
   const todayCollectionTotal = useMemo(
@@ -1732,7 +1754,7 @@ function Dashboard() {
                   labelId="purchase-dashboard-month-label"
                   value={selectedMonth}
                   label="Month"
-                  onChange={(event) => setSelectedMonth(event.target.value)}
+                  onChange={(event) => handleMonthChange(event.target.value)}
                   sx={{ height: 44, backgroundColor: "#fff" }}
                 >
                   <MenuItem value="">All Months</MenuItem>
@@ -2014,7 +2036,7 @@ function Dashboard() {
                   labelId="dashboard-month-label"
                   value={selectedMonth}
                   label="Month"
-                  onChange={(event) => setSelectedMonth(event.target.value)}
+                  onChange={(event) => handleMonthChange(event.target.value)}
                   sx={{ height: 44, backgroundColor: "#fff" }}
                 >
                   <MenuItem value="">All Months</MenuItem>
@@ -2025,6 +2047,26 @@ function Dashboard() {
                   ))}
                 </Select>
               </FormControl>
+              <TextField
+                type="date"
+                size="small"
+                label="From Date"
+                value={salesFromDate}
+                onChange={(event) => setSalesFromDate(event.target.value)}
+                InputLabelProps={{ shrink: true }}
+                sx={{ ...compactDateFieldSx, width: 150 }}
+              />
+              <TextField
+                type="date"
+                size="small"
+                label="To Date"
+                value={salesToDate}
+                onChange={(event) => setSalesToDate(event.target.value)}
+                error={Boolean(salesFromDate && salesToDate && salesFromDate > salesToDate)}
+                InputLabelProps={{ shrink: true }}
+                inputProps={{ min: salesFromDate || undefined }}
+                sx={{ ...compactDateFieldSx, width: 150 }}
+              />
             </MDBox>
           </MDBox>
 
