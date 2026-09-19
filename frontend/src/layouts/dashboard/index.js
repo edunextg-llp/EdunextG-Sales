@@ -50,7 +50,20 @@ import ComplexStatisticsCard from "examples/Cards/StatisticsCards/ComplexStatist
 const API = "https://bawarchee.edunextg.co/api";
 
 const emptyReportData = {
-  summary: { total_sales: 0, total_paid: 0, total_collection: 0, total_outstanding: 0 },
+  summary: {
+    total_sales: 0,
+    total_delivered_sales: 0,
+    total_cancelled_sales: 0,
+    total_pending_sales: 0,
+    total_delivered_collection: 0,
+    total_delivered_credit: 0,
+    total_delivered_cash: 0,
+    total_delivered_upi: 0,
+    total_delivered_cheque: 0,
+    total_paid: 0,
+    total_collection: 0,
+    total_outstanding: 0,
+  },
   creditDuesSummary: { total_credit_dues: 0, credit_dues_count: 0 },
   collectionByMode: [],
   collectionDetails: [],
@@ -577,11 +590,6 @@ function salesChartValueFormatter(value) {
   return money(Number(value) || 0);
 }
 
-function getCollectionAmountByMode(apiRows, mode) {
-  const row = (apiRows || []).find((item) => item.payment_mode === mode);
-  return Number(row?.total_amount || 0);
-}
-
 function buildPaymentModePieData(apiRows) {
   const rows = defaultPaymentModes.map((def) => {
     const found = (apiRows || []).find((r) => r.payment_mode === def.payment_mode);
@@ -939,11 +947,11 @@ function Dashboard() {
 
   const paidCollectionBreakdown = useMemo(
     () => ({
-      cash: getCollectionAmountByMode(reportData.collectionByMode, "cash"),
-      upi: getCollectionAmountByMode(reportData.collectionByMode, "upi"),
-      cheque: getCollectionAmountByMode(reportData.collectionByMode, "cheque"),
+      cash: Number(reportData.summary.total_delivered_cash) || 0,
+      upi: Number(reportData.summary.total_delivered_upi) || 0,
+      cheque: Number(reportData.summary.total_delivered_cheque) || 0,
     }),
-    [reportData.collectionByMode]
+    [reportData.summary]
   );
 
   const paidCollectionTotal =
@@ -958,8 +966,6 @@ function Dashboard() {
     () => pendingCreditRows.reduce((total, credit) => total + (Number(credit.balance_amount) || 0), 0),
     [pendingCreditRows]
   );
-
-  const pendingCreditCount = pendingCreditRows.length;
 
   const fetchReports = async () => {
     try {
@@ -995,11 +1001,6 @@ function Dashboard() {
     } finally {
       setLoadingCompanyCredits(false);
     }
-  };
-
-  const openCompanyCreditDialog = async () => {
-    setCompanyCreditDialogOpen(true);
-    await fetchPendingCreditTracker();
   };
 
   const fetchPurchaseReports = async () => {
@@ -1659,9 +1660,6 @@ function Dashboard() {
     (row) => row.report_status === "missed" || row.report_status === "clearing_done"
   ).length;
 
-  const totalCreditDues = Number(reportData.creditDuesSummary?.total_credit_dues) || 0;
-  const totalPaidAmount = Number(reportData.summary.total_paid) || 0;
-  const netCollection = totalPaidAmount - totalCreditDues;
 
   return (
     <DashboardLayout>
@@ -2048,72 +2046,95 @@ function Dashboard() {
                 </MDBox>
               </Grid>
               <Grid item xs={12} md={6} lg={3}>
-                <MDBox mb={1.5} position="relative">
+                <MDBox mb={1.5}>
                   <ComplexStatisticsCard
                     color="success"
-                    icon="payments"
-                    title="Total Paid"
-                    count={shortMoney(reportData.summary.total_paid)}
+                    icon="local_shipping"
+                    title="Delivered Sales"
+                    count={shortMoney(reportData.summary.total_delivered_sales)}
                     percentage={{
                       color: "success",
                       amount: "",
-                      label: "Paid invoice amount",
+                      label: "Successfully delivered sales",
                     }}
                   />
-                  <MDBox
-                    position="absolute"
-                    bottom={14}
-                    right={16}
-                    display="flex"
-                    alignItems="center"
-                    onClick={() => setPaidCollectionDialogOpen(true)}
-                    sx={{ cursor: "pointer", color: "#7b809a", "&:hover": { color: "#344767" } }}
-                    title="View collection breakdown"
-                  >
-                    <Icon sx={{ fontSize: "1.1rem" }}>visibility</Icon>
-                  </MDBox>
-                </MDBox>
-              </Grid>
-
-
-              <Grid item xs={12} md={6} lg={3}>
-                <MDBox mb={1.5} position="relative">
-                  <ComplexStatisticsCard
-                    color="error"
-                    icon="credit_card"
-                    title="Total Credit Dues"
-                    count={shortMoney(pendingCreditTotal)}
-                    percentage={{
-                      color: pendingCreditCount > 0 ? "error" : "success",
-                      amount: pendingCreditCount,
-                      label: "open credit entries",
-                    }}
-                  />
-                  <MDBox
-                    position="absolute"
-                    bottom={14}
-                    right={16}
-                    display="flex"
-                    alignItems="center"
-                    onClick={openCompanyCreditDialog}
-                    sx={{ cursor: "pointer", color: "#7b809a", "&:hover": { color: "#344767" } }}
-                    title="View company-wise credit dues"
-                  >
-                    <Icon sx={{ fontSize: "1.1rem" }}>visibility</Icon>
-                  </MDBox>
                 </MDBox>
               </Grid>
               <Grid item xs={12} md={6} lg={3}>
                 <MDBox mb={1.5}>
                   <ComplexStatisticsCard
-                    color="primary"
-                    icon="savings"
-                    title="Collection"
-                    count={shortMoney(netCollection)}
+                    color="error"
+                    icon="cancel"
+                    title="Cancelled Sales"
+                    count={shortMoney(reportData.summary.total_cancelled_sales)}
                     percentage={{
-                      color: netCollection >= 0 ? "success" : "error",
+                      color: "error",
                       amount: "",
-                      label: "Total Paid - Credit Dues",
+                      label: "Cancelled sales",
+                    }}
+                  />
+                </MDBox>
+              </Grid>
+              <Grid item xs={12} md={6} lg={3}>
+                <MDBox mb={1.5}>
+                  <ComplexStatisticsCard
+                    color="warning"
+                    icon="pending_actions"
+                    title="Pending Sales"
+                    count={shortMoney(reportData.summary.total_pending_sales)}
+                    percentage={{
+                      color: "warning",
+                      amount: "",
+                      label: "Sales awaiting delivery",
+                    }}
+                  />
+                </MDBox>
+              </Grid>
+              <Grid item xs={12} md={6} lg={3}>
+                <MDBox mb={1.5}>
+                  <ComplexStatisticsCard
+                    color="success"
+                    icon="local_shipping"
+                    title="Total Delivered Amount"
+                    count={shortMoney(reportData.summary.total_delivered_sales)}
+                    percentage={{
+                      color: "success",
+                      amount: "",
+                      label: "Collection + Credit",
+                    }}
+                  />
+                </MDBox>
+              </Grid>
+              <Grid item xs={12} md={6} lg={3}>
+                <MDBox
+                  mb={1.5}
+                  onClick={() => setPaidCollectionDialogOpen(true)}
+                  sx={{ cursor: "pointer" }}
+                >
+                  <ComplexStatisticsCard
+                    color="success"
+                    icon="payments"
+                    title="Collection"
+                    count={shortMoney(reportData.summary.total_delivered_collection)}
+                    percentage={{
+                      color: "success",
+                      amount: "",
+                      label: "Cash + UPI + Cheque",
+                    }}
+                  />
+                </MDBox>
+              </Grid>
+              <Grid item xs={12} md={6} lg={3}>
+                <MDBox mb={1.5}>
+                  <ComplexStatisticsCard
+                    color="error"
+                    icon="credit_card"
+                    title="Credit"
+                    count={shortMoney(reportData.summary.total_delivered_credit)}
+                    percentage={{
+                      color: reportData.summary.total_delivered_credit > 0 ? "error" : "success",
+                      amount: "",
+                      label: "Unpaid delivered amount",
                     }}
                   />
                 </MDBox>
@@ -2477,7 +2498,7 @@ function Dashboard() {
         maxWidth="xs"
         fullWidth
       >
-        <DialogTitle>Collection Breakdown</DialogTitle>
+        <DialogTitle>Delivered Collection Breakdown</DialogTitle>
         <DialogContent dividers>
           <MDTypography variant="body2" color="text" mb={2}>
             Period: {reportPeriodLabel}
@@ -2520,37 +2541,6 @@ function Dashboard() {
               </MDTypography>
               <MDTypography variant="button" fontWeight="bold" color="dark">
                 {money(paidCollectionTotal)}
-              </MDTypography>
-            </MDBox>
-            <MDBox display="flex" justifyContent="space-between" alignItems="center">
-              <MDTypography variant="button" color="text">
-                Total Paid
-              </MDTypography>
-              <MDTypography variant="button" fontWeight="bold" color="success">
-                {money(totalPaidAmount)}
-              </MDTypography>
-            </MDBox>
-            <MDBox display="flex" justifyContent="space-between" alignItems="center">
-              <MDTypography variant="button" color="text">
-                Total Credit Dues
-              </MDTypography>
-              <MDTypography variant="button" fontWeight="bold" color="error">
-                {money(totalCreditDues)}
-              </MDTypography>
-            </MDBox>
-            <MDBox
-              mt={1}
-              pt={1.5}
-              display="flex"
-              justifyContent="space-between"
-              alignItems="center"
-              sx={{ borderTop: "1px solid #e5e7eb" }}
-            >
-              <MDTypography variant="button" fontWeight="medium" color="dark">
-                Collection (Paid - Credit Dues)
-              </MDTypography>
-              <MDTypography variant="button" fontWeight="bold" color="primary">
-                {money(netCollection)}
               </MDTypography>
             </MDBox>
           </MDBox>

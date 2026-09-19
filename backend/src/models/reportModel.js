@@ -2,6 +2,14 @@ import db from '../config/db.js';
 
 const moneyFields = [
     'total_sales',
+    'total_delivered_sales',
+    'total_cancelled_sales',
+    'total_pending_sales',
+    'total_delivered_collection',
+    'total_delivered_credit',
+    'total_delivered_cash',
+    'total_delivered_upi',
+    'total_delivered_cheque',
     'total_paid',
     'total_collection',
     'total_outstanding',
@@ -105,9 +113,26 @@ class ReportModel {
         const [[salesSummary], [collectionSummary]] = await Promise.all([
             db.execute(
                 `SELECT COALESCE(SUM(price), 0) AS total_sales,
+                        COALESCE(SUM(CASE WHEN packaging_status = 'delivered' THEN price ELSE 0 END), 0) AS total_delivered_sales,
+                        COALESCE(SUM(CASE WHEN packaging_status = 'cancelled' THEN price ELSE 0 END), 0) AS total_cancelled_sales,
+                        COALESCE(SUM(CASE WHEN packaging_status NOT IN ('delivered', 'cancelled') OR packaging_status IS NULL THEN price ELSE 0 END), 0) AS total_pending_sales,
+                        COALESCE(SUM(CASE WHEN packaging_status = 'delivered' THEN COALESCE(pay.cash_amount, 0) ELSE 0 END), 0) AS total_delivered_cash,
+                        COALESCE(SUM(CASE WHEN packaging_status = 'delivered' THEN COALESCE(pay.upi_amount, 0) ELSE 0 END), 0) AS total_delivered_upi,
+                        COALESCE(SUM(CASE WHEN packaging_status = 'delivered' THEN COALESCE(pay.cheque_amount, 0) ELSE 0 END), 0) AS total_delivered_cheque,
+                        COALESCE(SUM(CASE WHEN packaging_status = 'delivered' THEN COALESCE(pay.collection_amount, 0) ELSE 0 END), 0) AS total_delivered_collection,
+                        COALESCE(SUM(CASE WHEN packaging_status = 'delivered' THEN GREATEST(price - COALESCE(pay.collection_amount, 0), 0) ELSE 0 END), 0) AS total_delivered_credit,
                         COALESCE(SUM(paid_amount), 0) AS total_paid,
                         COALESCE(SUM(balance_amount), 0) AS total_outstanding
                  FROM staff_sales ss
+                 LEFT JOIN (
+                     SELECT sale_id,
+                            SUM(CASE WHEN payment_mode = 'cash' THEN amount ELSE 0 END) AS cash_amount,
+                            SUM(CASE WHEN payment_mode = 'upi' THEN amount ELSE 0 END) AS upi_amount,
+                            SUM(CASE WHEN payment_mode = 'cheque' THEN amount ELSE 0 END) AS cheque_amount,
+                            SUM(CASE WHEN payment_mode IN ('cash', 'upi', 'cheque') THEN amount ELSE 0 END) AS collection_amount
+                     FROM sale_payments
+                     GROUP BY sale_id
+                 ) pay ON pay.sale_id = ss.id
                  ${salesWhere.sql}`,
                 salesWhere.params
             ).then(([rows]) => rows),
@@ -122,6 +147,14 @@ class ReportModel {
 
         return {
             total_sales: parseFloat(salesSummary.total_sales) || 0,
+            total_delivered_sales: parseFloat(salesSummary.total_delivered_sales) || 0,
+            total_cancelled_sales: parseFloat(salesSummary.total_cancelled_sales) || 0,
+            total_pending_sales: parseFloat(salesSummary.total_pending_sales) || 0,
+            total_delivered_collection: parseFloat(salesSummary.total_delivered_collection) || 0,
+            total_delivered_credit: parseFloat(salesSummary.total_delivered_credit) || 0,
+            total_delivered_cash: parseFloat(salesSummary.total_delivered_cash) || 0,
+            total_delivered_upi: parseFloat(salesSummary.total_delivered_upi) || 0,
+            total_delivered_cheque: parseFloat(salesSummary.total_delivered_cheque) || 0,
             total_paid: parseFloat(salesSummary.total_paid) || 0,
             total_collection: parseFloat(collectionSummary.total_collection) || 0,
             total_outstanding: parseFloat(salesSummary.total_outstanding) || 0,
