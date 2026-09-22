@@ -955,14 +955,10 @@ function UpdatePayment() {
     setPaymentForm({
       ...buildDefaultPaymentForm(),
       paymentMode: "cash",
-      collectorStaffId: payment.collector_staff_id
-        ? String(payment.collector_staff_id)
-        : getOutletMarketingStaffId(),
-      collectorType: inferCollectorType(payment),
-      collectorDeliveryBoyId: inferCollectorType(payment) === "bawarchee_staff"
-        ? resolveDeliveryBoyIdFromName(payment.collector_name)
-        : getDefaultDeliveryBoyCollector().collectorDeliveryBoyId,
-      collectorName: payment.collector_name || getDefaultDeliveryBoyCollector().collectorName,
+      collectorType: "company_staff",
+      collectorStaffId: getOutletMarketingStaffId(),
+      collectorDeliveryBoyId: "",
+      collectorName: "",
     });
   };
 

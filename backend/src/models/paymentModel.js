@@ -199,7 +199,7 @@ class PaymentModel {
                 effectivePrice,
                 cancelledAmount: totalCancelled,
                 paid_amount: paidAmount,
-                balance_amount: Math.max(0, Math.round((price - paidAmount) * 100) / 100),
+                balance_amount: Math.max(0, Math.round((effectivePrice - paidAmount) * 100) / 100),
                 payment_mode: lastMode,
                 invoice_number: sale.invoice_number,
                 bp_sale_id: sale.bp_sale_id,

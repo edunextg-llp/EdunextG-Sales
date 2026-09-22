@@ -686,7 +686,19 @@ class StaffModel {
                     DATE_FORMAT(ss.delivery_date, '%Y-%m-%d') AS delivery_date,
                     DATE_FORMAT(ssh.status_updated_at, '%Y-%m-%d %H:%i:%s') AS status_updated_at,
                     DATE_FORMAT(ssh.packing_date, '%Y-%m-%d') AS packing_date,
-                    ss.paid_amount, ss.balance_amount, ss.payment_mode,
+                    CASE
+                        WHEN COALESCE(sp.payment_count, 0) > 0 THEN COALESCE(sp.paid_amount, 0)
+                        ELSE ss.paid_amount
+                    END AS paid_amount,
+                    CASE
+                        WHEN COALESCE(sp.payment_count, 0) > 0
+                            THEN GREATEST(
+                                0,
+                                ss.price - COALESCE(cancelled.total_amount, 0) - COALESCE(sp.paid_amount, 0)
+                            )
+                        ELSE ss.balance_amount
+                    END AS balance_amount,
+                    ss.payment_mode,
                     COALESCE(sp.payment_count, 0) AS payment_count,
                     sc.outlet_name, sc.outlet_erp_id, sc.location_name, sc.google_location, s.name as staff_name,
                     outlet_staff.id AS outlet_staff_id, outlet_staff.name AS outlet_staff_name,
@@ -711,10 +723,20 @@ class StaffModel {
                  GROUP BY sc_map.staff_id
              ) staff_company ON staff_company.staff_id = s.id
              LEFT JOIN (
-                 SELECT sale_id, COUNT(*) AS payment_count
+                 SELECT sale_id,
+                        COUNT(*) AS payment_count,
+                        SUM(CASE
+                            WHEN payment_mode IN ('cash', 'upi', 'cheque') THEN amount
+                            ELSE 0
+                        END) AS paid_amount
                  FROM sale_payments
                  GROUP BY sale_id
              ) sp ON sp.sale_id = ss.id
+             LEFT JOIN (
+                 SELECT sale_id, SUM(amount) AS total_amount
+                 FROM order_cancellations
+                 GROUP BY sale_id
+             ) cancelled ON cancelled.sale_id = ss.id
              LEFT JOIN (
                  SELECT sale_id,
                         MAX(changed_at) AS status_updated_at,
@@ -1326,9 +1348,15 @@ class StaffModel {
         const [rows] = await db.execute(
             `SELECT sp.id, sp.sale_id, ss.sticker_number,
                     sp.amount AS credit_amount,
-                    GREATEST(0, sp.amount - COALESCE(credit_paid.paid_amount, 0)) AS balance_amount,
+                    LEAST(
+                        GREATEST(0, sp.amount - COALESCE(credit_paid.paid_amount, 0)),
+                        GREATEST(0, ss.price - COALESCE(cancelled.total_amount, 0) - COALESCE(sale_paid.paid_amount, 0))
+                    ) AS balance_amount,
                     sp.payment_date AS sale_date, sp.credit_days,
-                    ss.balance_amount AS sale_balance_amount,
+                    GREATEST(
+                        0,
+                        ss.price - COALESCE(cancelled.total_amount, 0) - COALESCE(sale_paid.paid_amount, 0)
+                    ) AS sale_balance_amount,
                     COALESCE(cpr.latest_remarks, sp.remarks) AS remarks,
                     COALESCE(cpr.remarks_count, CASE WHEN sp.remarks IS NULL OR TRIM(sp.remarks) = '' THEN 0 ELSE 1 END) AS remarks_count,
                     DATE_FORMAT(cpr.latest_remark_date, '%Y-%m-%d') AS latest_remark_date,
@@ -1355,6 +1383,17 @@ class StaffModel {
                  GROUP BY parent_credit_payment_id
              ) credit_paid ON credit_paid.parent_credit_payment_id = sp.id
              LEFT JOIN (
+                 SELECT sale_id, SUM(amount) AS paid_amount
+                 FROM sale_payments
+                 WHERE payment_mode IN ('cash', 'upi', 'cheque')
+                 GROUP BY sale_id
+             ) sale_paid ON sale_paid.sale_id = ss.id
+             LEFT JOIN (
+                 SELECT sale_id, SUM(amount) AS total_amount
+                 FROM order_cancellations
+                 GROUP BY sale_id
+             ) cancelled ON cancelled.sale_id = ss.id
+             LEFT JOIN (
                  SELECT sc.staff_id,
                         GROUP_CONCAT(c2.name ORDER BY c2.name SEPARATOR ', ') AS company_names,
                         GROUP_CONCAT(c2.id ORDER BY c2.name) AS company_ids
@@ -1378,7 +1417,6 @@ class StaffModel {
              LEFT JOIN staff ts ON tb.staff_id = ts.id
              LEFT JOIN delivery_boys db ON tb.delivery_boy_id = db.id
              WHERE sp.payment_mode = 'credit'
-               AND ss.balance_amount > 0
              HAVING balance_amount > 0
              ORDER BY sp.payment_date ASC`
         );
