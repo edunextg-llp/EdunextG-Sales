@@ -400,8 +400,17 @@ function UpdatePayment() {
     page * rowsPerPage
   );
 
+  const getEffectiveInvoicePrice = (sale) => {
+    const explicitEffectivePrice = parseFloat(sale?.effectivePrice ?? sale?.effective_price);
+    if (!Number.isNaN(explicitEffectivePrice)) return Math.max(0, explicitEffectivePrice);
+
+    const originalPrice = parseFloat(sale?.price) || 0;
+    const cancelledAmount = parseFloat(sale?.cancelledAmount ?? sale?.cancelled_amount) || 0;
+    return Math.max(0, originalPrice - cancelledAmount);
+  };
+
   const getRemainingBalance = (sale) => {
-    const price = parseFloat(sale.price) || 0;
+    const price = getEffectiveInvoicePrice(sale);
     const paid = parseFloat(sale.paid_amount) || 0;
     const balance = parseFloat(sale.balance_amount);
 
@@ -417,12 +426,12 @@ function UpdatePayment() {
   const getPaidAmount = (sale) => {
     const paid = parseFloat(sale.paid_amount);
     if (!Number.isNaN(paid)) return paid;
-    const price = parseFloat(sale.price) || 0;
+    const price = getEffectiveInvoicePrice(sale);
     return Math.max(0, price - getRemainingBalance(sale));
   };
 
   const getPaymentRowSx = (sale) => {
-    const price = parseFloat(sale.price) || 0;
+    const price = getEffectiveInvoicePrice(sale);
     const balance = getRemainingBalance(sale);
     const paid = getPaidAmount(sale);
     const hasPaymentActivity = (Number(sale.payment_count) || 0) > 0 || paid > 0;
@@ -1501,6 +1510,9 @@ function UpdatePayment() {
                           paginatedSales.map((sale, index) => {
                             const balance = getRemainingBalance(sale);
                             const paid = getPaidAmount(sale);
+                            const originalPrice = Number(sale.price) || 0;
+                            const updatedPrice = getEffectiveInvoicePrice(sale);
+                            const hasCancellation = updatedPrice < originalPrice - 0.001;
                             return (
                               <TableRow key={sale.id} sx={getPaymentRowSx(sale)}>
                                 <TableCell align="center">{(page - 1) * rowsPerPage + index + 1}</TableCell>
@@ -1519,7 +1531,16 @@ function UpdatePayment() {
                                 <TableCell align="center">{sale.box_count || "N/A"}</TableCell>
                                 <TableCell align="center">{sale.packet_count || "N/A"}</TableCell>
                                 <TableCell align="center">
-                                  ₹{Number(sale.price).toFixed(2)}
+                                  {hasCancellation ? (
+                                    <>
+                                      <MDTypography variant="caption" display="block" color="text">
+                                        OrgP ₹{originalPrice.toFixed(2)}
+                                      </MDTypography>
+                                      <MDTypography variant="button" fontWeight="bold" color="info">
+                                        UP ₹{updatedPrice.toFixed(2)}
+                                      </MDTypography>
+                                    </>
+                                  ) : `₹${originalPrice.toFixed(2)}`}
                                 </TableCell>
                                 <TableCell align="center">₹{paid.toFixed(2)}</TableCell>
                                 <TableCell align="center">
@@ -1664,7 +1685,14 @@ function UpdatePayment() {
                 {[
                   { label: "Sale ID", value: paymentDialogSale.sticker_number || "N/A" },
                   { label: "Invoice", value: paymentDialogSale.invoice_number || "N/A" },
-                  { label: "Invoice Value", value: `₹${Number(paymentSummary?.price ?? paymentDialogSale.price).toFixed(2)}` },
+                  { label: "Original Price", value: `₹${Number(paymentSummary?.price ?? paymentDialogSale.price).toFixed(2)}` },
+                  ...(Number(paymentSummary?.cancelledAmount ?? paymentDialogSale.cancelled_amount) > 0
+                    ? [{
+                      label: "Updated Price",
+                      value: `₹${getEffectiveInvoicePrice(paymentSummary ?? paymentDialogSale).toFixed(2)}`,
+                      color: "#0288d1",
+                    }]
+                    : []),
                   { label: "Paid", value: `₹${Number(paymentSummary?.paidAmount ?? getPaidAmount(paymentDialogSale)).toFixed(2)}`, color: "#2e7d32" },
                   { label: "Balance", value: `₹${dialogRemaining.toFixed(2)}`, color: dialogRemaining > 0 ? "#d32f2f" : "#2e7d32" },
                 ].map((item) => (

@@ -22,6 +22,10 @@ const moneyFields = [
     'price',
     'paid_amount',
     'balance_amount',
+    'cancelled_amount',
+    'effective_price',
+    'collection_amount',
+    'outstanding_amount',
 ];
 
 function toNumberRows(rows) {
@@ -112,21 +116,24 @@ class ReportModel {
 
         const [[salesSummary], [collectionSummary]] = await Promise.all([
             db.execute(
-                `SELECT COALESCE(SUM(price), 0) AS total_sales,
-                        COALESCE(SUM(CASE WHEN packaging_status = 'delivered' THEN price ELSE 0 END), 0) AS total_delivered_sales,
+                `SELECT COALESCE(SUM(GREATEST(price - COALESCE(cancelled.total_amount, 0), 0)), 0) AS total_sales,
+                        COALESCE(SUM(CASE WHEN packaging_status = 'delivered' THEN GREATEST(price - COALESCE(cancelled.total_amount, 0), 0) ELSE 0 END), 0) AS total_delivered_sales,
+                        COALESCE(SUM(CASE WHEN packaging_status = 'delivered' AND COALESCE(pay.payment_count, 0) = 0 THEN GREATEST(price - COALESCE(cancelled.total_amount, 0), 0) ELSE 0 END), 0) AS total_delivered_no_payment,
+                        COALESCE(SUM(CASE WHEN packaging_status = 'delivered' AND COALESCE(pay.payment_count, 0) = 0 THEN 1 ELSE 0 END), 0) AS delivered_no_payment_count,
                         COALESCE(SUM(CASE WHEN packaging_status = 'cancelled' THEN price ELSE 0 END), 0) AS total_cancelled_sales,
-                        COALESCE(SUM(CASE WHEN packaging_status NOT IN ('delivered', 'cancelled') OR packaging_status IS NULL THEN price ELSE 0 END), 0) AS total_pending_sales,
+                        COALESCE(SUM(CASE WHEN packaging_status NOT IN ('delivered', 'cancelled') OR packaging_status IS NULL THEN GREATEST(price - COALESCE(cancelled.total_amount, 0), 0) ELSE 0 END), 0) AS total_pending_sales,
                         COALESCE(SUM(CASE WHEN packaging_status = 'delivered' THEN COALESCE(pay.cash_amount, 0) ELSE 0 END), 0) AS total_delivered_cash,
                         COALESCE(SUM(CASE WHEN packaging_status = 'delivered' THEN COALESCE(pay.upi_amount, 0) ELSE 0 END), 0) AS total_delivered_upi,
                         COALESCE(SUM(CASE WHEN packaging_status = 'delivered' THEN COALESCE(pay.cheque_amount, 0) ELSE 0 END), 0) AS total_delivered_cheque,
                         COALESCE(SUM(CASE WHEN packaging_status = 'delivered' THEN COALESCE(pay.collection_amount, 0) ELSE 0 END), 0) AS total_delivered_collection,
-                        COALESCE(SUM(CASE WHEN packaging_status = 'delivered' THEN LEAST(GREATEST(price - COALESCE(pay.collection_amount, 0), 0), COALESCE(credit.credit_balance, 0)) ELSE 0 END), 0) AS total_delivered_credit,
-                        COALESCE(SUM(CASE WHEN packaging_status = 'delivered' THEN price - COALESCE(pay.collection_amount, 0) - LEAST(GREATEST(price - COALESCE(pay.collection_amount, 0), 0), COALESCE(credit.credit_balance, 0)) ELSE 0 END), 0) AS total_delivered_outstanding,
+                        COALESCE(SUM(CASE WHEN packaging_status = 'delivered' THEN LEAST(GREATEST(price - COALESCE(cancelled.total_amount, 0) - COALESCE(pay.collection_amount, 0), 0), COALESCE(credit.credit_balance, 0)) ELSE 0 END), 0) AS total_delivered_credit,
+                        COALESCE(SUM(CASE WHEN packaging_status = 'delivered' THEN GREATEST(price - COALESCE(cancelled.total_amount, 0) - COALESCE(pay.collection_amount, 0) - LEAST(GREATEST(price - COALESCE(cancelled.total_amount, 0) - COALESCE(pay.collection_amount, 0), 0), COALESCE(credit.credit_balance, 0)), 0) ELSE 0 END), 0) AS total_delivered_outstanding,
                         COALESCE(SUM(paid_amount), 0) AS total_paid,
                         COALESCE(SUM(balance_amount), 0) AS total_outstanding
                  FROM staff_sales ss
                  LEFT JOIN (
                      SELECT sale_id,
+                            COUNT(*) AS payment_count,
                             SUM(CASE WHEN payment_mode = 'cash' THEN amount ELSE 0 END) AS cash_amount,
                             SUM(CASE WHEN payment_mode = 'upi' THEN amount ELSE 0 END) AS upi_amount,
                             SUM(CASE WHEN payment_mode = 'cheque' THEN amount ELSE 0 END) AS cheque_amount,
@@ -148,6 +155,11 @@ class ReportModel {
                      WHERE cp.payment_mode = 'credit'
                      GROUP BY cp.sale_id
                  ) credit ON credit.sale_id = ss.id
+                 LEFT JOIN (
+                     SELECT sale_id, SUM(amount) AS total_amount
+                     FROM order_cancellations
+                     GROUP BY sale_id
+                 ) cancelled ON cancelled.sale_id = ss.id
                  ${salesWhere.sql}`,
                 salesWhere.params
             ).then(([rows]) => rows),
@@ -163,6 +175,8 @@ class ReportModel {
         return {
             total_sales: parseFloat(salesSummary.total_sales) || 0,
             total_delivered_sales: parseFloat(salesSummary.total_delivered_sales) || 0,
+            total_delivered_no_payment: parseFloat(salesSummary.total_delivered_no_payment) || 0,
+            delivered_no_payment_count: Number(salesSummary.delivered_no_payment_count) || 0,
             total_cancelled_sales: parseFloat(salesSummary.total_cancelled_sales) || 0,
             total_pending_sales: parseFloat(salesSummary.total_pending_sales) || 0,
             total_delivered_collection: parseFloat(salesSummary.total_delivered_collection) || 0,
@@ -830,6 +844,84 @@ class ReportModel {
         return toNumberRows(rows);
     }
 
+    static async getDeliveredCancellationDetails(startDate, endDate, companyId = null, staffId = null) {
+        const salesWhere = ReportModel.buildSalesWhere('ss', startDate, endDate, companyId, staffId);
+        const statusClause = salesWhere.sql ? ' AND' : 'WHERE';
+        const [rows] = await db.execute(
+            `SELECT ss.id AS sale_id,
+                    ss.sticker_number,
+                    ss.invoice_number,
+                    ss.sale_date,
+                    ss.price,
+                    cancelled.cancelled_amount,
+                    GREATEST(ss.price - cancelled.cancelled_amount, 0) AS effective_price
+             FROM staff_sales ss
+             INNER JOIN (
+                 SELECT sale_id, SUM(amount) AS cancelled_amount
+                 FROM order_cancellations
+                 GROUP BY sale_id
+                 HAVING SUM(amount) > 0
+             ) cancelled ON cancelled.sale_id = ss.id
+             ${salesWhere.sql}${statusClause} ss.packaging_status = 'delivered'
+             ORDER BY ss.sale_date DESC, ss.id DESC`,
+            salesWhere.params
+        );
+        return toNumberRows(rows);
+    }
+
+    static async getDeliveredOutstandingDetails(startDate, endDate, companyId = null, staffId = null) {
+        const salesWhere = ReportModel.buildSalesWhere('ss', startDate, endDate, companyId, staffId);
+        const statusClause = salesWhere.sql ? ' AND' : 'WHERE';
+        const [rows] = await db.execute(
+            `SELECT ss.id AS sale_id, ss.sticker_number, ss.invoice_number, ss.sale_date,
+                    ss.price, COALESCE(cancelled.cancelled_amount, 0) AS cancelled_amount,
+                    GREATEST(ss.price - COALESCE(cancelled.cancelled_amount, 0), 0) AS effective_price,
+                    COALESCE(pay.collection_amount, 0) AS collection_amount,
+                    LEAST(
+                        GREATEST(ss.price - COALESCE(cancelled.cancelled_amount, 0) - COALESCE(pay.collection_amount, 0), 0),
+                        COALESCE(credit.credit_balance, 0)
+                    ) AS credit_amount,
+                    GREATEST(
+                        ss.price - COALESCE(cancelled.cancelled_amount, 0) - COALESCE(pay.collection_amount, 0)
+                        - LEAST(
+                            GREATEST(ss.price - COALESCE(cancelled.cancelled_amount, 0) - COALESCE(pay.collection_amount, 0), 0),
+                            COALESCE(credit.credit_balance, 0)
+                        ), 0
+                    ) AS outstanding_amount,
+                    CASE WHEN COALESCE(pay.payment_count, 0) = 0 THEN 'no_payment'
+                         ELSE 'payment_updated' END AS category
+             FROM staff_sales ss
+             LEFT JOIN (
+                 SELECT sale_id, COUNT(*) AS payment_count,
+                        SUM(CASE WHEN payment_mode IN ('cash', 'upi', 'cheque') THEN amount ELSE 0 END) AS collection_amount
+                 FROM sale_payments GROUP BY sale_id
+             ) pay ON pay.sale_id = ss.id
+             LEFT JOIN (
+                 SELECT cp.sale_id,
+                        SUM(GREATEST(cp.amount - COALESCE(repayments.paid_amount, 0), 0)) AS credit_balance
+                 FROM sale_payments cp
+                 LEFT JOIN (
+                     SELECT parent_credit_payment_id, SUM(amount) AS paid_amount
+                     FROM sale_payments
+                     WHERE parent_credit_payment_id IS NOT NULL
+                       AND payment_mode IN ('cash', 'upi', 'cheque')
+                     GROUP BY parent_credit_payment_id
+                 ) repayments ON repayments.parent_credit_payment_id = cp.id
+                 WHERE cp.payment_mode = 'credit'
+                 GROUP BY cp.sale_id
+             ) credit ON credit.sale_id = ss.id
+             LEFT JOIN (
+                 SELECT sale_id, SUM(amount) AS cancelled_amount
+                 FROM order_cancellations GROUP BY sale_id
+             ) cancelled ON cancelled.sale_id = ss.id
+             ${salesWhere.sql}${statusClause} ss.packaging_status = 'delivered'
+             HAVING outstanding_amount > 0
+             ORDER BY category, outstanding_amount DESC, ss.id DESC`,
+            salesWhere.params
+        );
+        return toNumberRows(rows);
+    }
+
     static async getReports(startDate, endDate, filters = {}) {
         const companyId = filters.companyId || null;
         const staffId = filters.staffId || null;
@@ -851,6 +943,8 @@ class ReportModel {
             companySalesSummary,
             companyMonthlySales,
             staffCollectionByDate,
+            deliveredCancellationDetails,
+            deliveredOutstandingDetails,
         ] = await Promise.all([
             ReportModel.getSummary(startDate, endDate, companyId, staffId),
             ReportModel.getCollectionByMode(startDate, endDate, staffId, companyId),
@@ -869,6 +963,8 @@ class ReportModel {
             ReportModel.getCompanySalesSummary(startDate, endDate, companyId, staffId),
             ReportModel.getCompanyMonthlySales(startDate, endDate, companyId, staffId),
             ReportModel.getStaffCollectionByDate(startDate, endDate, staffId),
+            ReportModel.getDeliveredCancellationDetails(startDate, endDate, companyId, staffId),
+            ReportModel.getDeliveredOutstandingDetails(startDate, endDate, companyId, staffId),
         ]);
 
         return {
@@ -889,6 +985,8 @@ class ReportModel {
             companySalesSummary,
             companyMonthlySales,
             staffCollectionByDate,
+            deliveredCancellationDetails,
+            deliveredOutstandingDetails,
         };
     }
 }

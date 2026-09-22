@@ -93,21 +93,18 @@ class PaymentModel {
 
     static async buildPaymentResponse(saleId) {
         const payments = await PaymentModel.getBySaleId(saleId);
-        const [saleRows] = await db.execute(
-            `SELECT id, CONCAT('BP', id) AS bp_sale_id,
-                    price, paid_amount, balance_amount
-             FROM staff_sales WHERE id = ?`,
-            [saleId]
-        );
+        const sale = await PaymentModel.getSaleSummary(saleId);
 
         return {
             payments,
             summary: {
-                price: parseFloat(saleRows[0].price),
-                paidAmount: parseFloat(saleRows[0].paid_amount),
-                balanceAmount: parseFloat(saleRows[0].balance_amount),
-                saleId: saleRows[0].id,
-                bpSaleId: saleRows[0].bp_sale_id,
+                price: sale.price,
+                effectivePrice: sale.effectivePrice,
+                cancelledAmount: sale.cancelledAmount,
+                paidAmount: sale.paid_amount,
+                balanceAmount: sale.balance_amount,
+                saleId: sale.id,
+                bpSaleId: sale.bp_sale_id,
             },
         };
     }
@@ -207,11 +204,7 @@ class PaymentModel {
         }
 
         const paidAmount = parseFloat(sale.paid_amount) || 0;
-        const storedBalance = sale.balance_amount != null ? parseFloat(sale.balance_amount) : null;
-        const balanceAmount =
-            storedBalance != null && !Number.isNaN(storedBalance)
-                ? Math.max(0, storedBalance)
-                : Math.max(0, price - paidAmount);
+        const balanceAmount = Math.max(0, Math.round((effectivePrice - paidAmount) * 100) / 100);
 
         return {
             id: sale.id,

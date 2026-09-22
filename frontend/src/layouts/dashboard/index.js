@@ -53,6 +53,8 @@ const emptyReportData = {
   summary: {
     total_sales: 0,
     total_delivered_sales: 0,
+    total_delivered_no_payment: 0,
+    delivered_no_payment_count: 0,
     total_cancelled_sales: 0,
     total_pending_sales: 0,
     total_delivered_collection: 0,
@@ -77,6 +79,8 @@ const emptyReportData = {
   pendingChequeReports: [],
   duesReport: [],
   staffCollectionByDate: [],
+  deliveredCancellationDetails: [],
+  deliveredOutstandingDetails: [],
 };
 
 const emptyPurchaseReportData = {
@@ -893,6 +897,8 @@ function Dashboard() {
   const [activeDashboardTab, setActiveDashboardTab] = useState("purchase");
   const [chequeDialogOpen, setChequeDialogOpen] = useState(false);
   const [paidCollectionDialogOpen, setPaidCollectionDialogOpen] = useState(false);
+  const [deliveredAmountDialogOpen, setDeliveredAmountDialogOpen] = useState(false);
+  const [outstandingDialogOpen, setOutstandingDialogOpen] = useState(false);
   const [companyCreditDialogOpen, setCompanyCreditDialogOpen] = useState(false);
   const [pendingCreditRows, setPendingCreditRows] = useState([]);
   const [loadingCompanyCredits, setLoadingCompanyCredits] = useState(false);
@@ -967,6 +973,18 @@ function Dashboard() {
 
   const paidCollectionTotal =
     paidCollectionBreakdown.cash + paidCollectionBreakdown.upi + paidCollectionBreakdown.cheque;
+
+  const deliveredCancellationTotal = useMemo(
+    () => sumRows(reportData.deliveredCancellationDetails || [], "cancelled_amount"),
+    [reportData.deliveredCancellationDetails]
+  );
+  const updatedDeliveredTotal = Number(reportData.summary.total_delivered_sales) || 0;
+  const originalDeliveredTotal = updatedDeliveredTotal + deliveredCancellationTotal;
+  const outstandingRows = reportData.deliveredOutstandingDetails || [];
+  const noPaymentOutstandingRows = outstandingRows.filter((row) => row.category === "no_payment");
+  const updatedPaymentOutstandingRows = outstandingRows.filter((row) => row.category === "payment_updated");
+  const noPaymentOutstandingTotal = sumRows(noPaymentOutstandingRows, "outstanding_amount");
+  const updatedPaymentOutstandingTotal = sumRows(updatedPaymentOutstandingRows, "outstanding_amount");
 
   const companyCreditTotals = useMemo(
     () => buildPendingCreditCompanyTotals(pendingCreditRows),
@@ -2134,7 +2152,11 @@ function Dashboard() {
                 </MDBox>
               </Grid>
               <Grid item xs={12} md={6} lg={3}>
-                <MDBox mb={1.5}>
+                <MDBox
+                  mb={1.5}
+                  onClick={() => setDeliveredAmountDialogOpen(true)}
+                  sx={{ cursor: "pointer" }}
+                >
                   <ComplexStatisticsCard
                     color="success"
                     icon="local_shipping"
@@ -2143,7 +2165,7 @@ function Dashboard() {
                     percentage={{
                       color: "success",
                       amount: "",
-                      label: "Collection + Credit + Outstanding",
+                      label: "Click for cancellation breakdown",
                     }}
                   />
                 </MDBox>
@@ -2183,7 +2205,7 @@ function Dashboard() {
                 </MDBox>
               </Grid>
               <Grid item xs={12} md={6} lg={3}>
-                <MDBox mb={1.5}>
+                <MDBox mb={1.5} onClick={() => setOutstandingDialogOpen(true)} sx={{ cursor: "pointer" }}>
                   <ComplexStatisticsCard
                     color="warning"
                     icon="account_balance_wallet"
@@ -2192,7 +2214,7 @@ function Dashboard() {
                     percentage={{
                       color: "warning",
                       amount: "",
-                      label: "Delivered balance excluding credit",
+                      label: "Click for invoice breakdown",
                     }}
                   />
                 </MDBox>
@@ -2534,6 +2556,174 @@ function Dashboard() {
           </Grid>
         </MDBox>
       )}
+
+      <Dialog
+        open={outstandingDialogOpen}
+        onClose={() => setOutstandingDialogOpen(false)}
+        maxWidth="lg"
+        fullWidth
+        PaperProps={{ sx: { width: "calc(100% - 24px)", maxWidth: 1000, m: 1.5 } }}
+      >
+        <DialogTitle sx={{ fontSize: "1rem", fontWeight: 600, px: 2, py: 1.5 }}>
+          Delivered Outstanding Breakdown
+        </DialogTitle>
+        <DialogContent dividers>
+          <MDTypography variant="caption" color="text" mb={1.5} display="block">
+            Period: {reportPeriodLabel} · Company: {selectedSalesCompanyName}
+          </MDTypography>
+          <Grid container spacing={1.5} mb={2}>
+            {[
+              { label: `No Payment Update (${noPaymentOutstandingRows.length} invoices)`, value: noPaymentOutstandingTotal },
+              { label: `Payment Updated, Balance Left (${updatedPaymentOutstandingRows.length} invoices)`, value: updatedPaymentOutstandingTotal },
+              { label: "Total Outstanding", value: reportData.summary.total_delivered_outstanding },
+            ].map((item) => (
+              <Grid item xs={12} sm={4} key={item.label}>
+                <MDBox p={1.5} sx={{ border: "1px solid #e5e7eb", borderRadius: 2 }}>
+                  <MDTypography variant="caption" color="text" sx={{ fontSize: "0.68rem" }}>{item.label}</MDTypography>
+                  <MDTypography display="block" variant="button" fontWeight="bold" sx={{ fontSize: "0.82rem" }}>
+                    {money(item.value)}
+                  </MDTypography>
+                </MDBox>
+              </Grid>
+            ))}
+          </Grid>
+          {outstandingRows.length > 0 ? (
+            <TableContainer component={Paper} sx={{ maxHeight: 440, boxShadow: "none", border: "1px solid #e5e7eb" }}>
+              <Table stickyHeader size="small" sx={{ width: "100%", tableLayout: "fixed", "& .MuiTableCell-root": { fontSize: "0.72rem", px: 1, py: 1 } }}>
+                <TableHead sx={{ display: "table-header-group", "& .MuiTableCell-root": { backgroundColor: "#f1f5f9", fontWeight: 700, whiteSpace: "nowrap" } }}>
+                  <TableRow>
+                    <TableCell sx={{ width: "27%" }}>Invoice Number</TableCell>
+                    <TableCell sx={{ width: "12%" }}>Sale ID</TableCell>
+                    <TableCell sx={{ width: "24%" }}>Category</TableCell>
+                    <TableCell align="right" sx={{ width: "18%" }}>Updated Amount</TableCell>
+                    <TableCell align="right" sx={{ width: "19%" }}>Outstanding</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {outstandingRows.map((row) => (
+                    <TableRow key={row.sale_id}>
+                      <TableCell sx={{ whiteSpace: "nowrap" }}>{row.invoice_number || "N/A"}</TableCell>
+                      <TableCell sx={{ whiteSpace: "nowrap" }}>{row.sticker_number || row.sale_id}</TableCell>
+                      <TableCell>{row.category === "no_payment" ? "No Payment Update" : "Payment Updated"}</TableCell>
+                      <TableCell align="right" sx={{ whiteSpace: "nowrap" }}>{money(row.effective_price)}</TableCell>
+                      <TableCell align="right" sx={{ whiteSpace: "nowrap", fontWeight: 700 }}>{money(row.outstanding_amount)}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </TableContainer>
+          ) : (
+            <MDBox py={4} textAlign="center">
+              <MDTypography variant="body2" color="text">No outstanding delivered invoices for this filter.</MDTypography>
+            </MDBox>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <MDButton color="dark" variant="outlined" onClick={() => setOutstandingDialogOpen(false)}>Close</MDButton>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog
+        open={deliveredAmountDialogOpen}
+        onClose={() => setDeliveredAmountDialogOpen(false)}
+        maxWidth="lg"
+        fullWidth
+        PaperProps={{
+          sx: {
+            width: "calc(100% - 24px)",
+            maxWidth: 1000,
+            m: 1.5,
+            "& .MuiTableCell-root": { fontSize: "0.75rem", px: 1.25, py: 1 },
+          },
+        }}
+      >
+        <DialogTitle sx={{ fontSize: "1rem", fontWeight: 600, px: 2, py: 1.5 }}>
+          Delivered Amount and Cancellation Breakdown
+        </DialogTitle>
+        <DialogContent dividers>
+          <MDTypography variant="caption" color="text" mb={1.5} display="block">
+            Period: {reportPeriodLabel} · Company: {selectedSalesCompanyName}
+          </MDTypography>
+          <Grid container spacing={1.5} mb={2}>
+            {[
+              { label: "Original Delivered Amount", value: originalDeliveredTotal, color: "dark" },
+              { label: "Cancelled Amount", value: deliveredCancellationTotal, color: "error" },
+              { label: "Updated Delivered Amount", value: updatedDeliveredTotal, color: "success" },
+              {
+                label: `No Payment Update (${reportData.summary.delivered_no_payment_count || 0} invoices)`,
+                value: reportData.summary.total_delivered_no_payment,
+                color: "warning",
+              },
+            ].map((item) => (
+              <Grid item xs={12} sm={6} md={3} key={item.label}>
+                <MDBox p={1.5} sx={{ border: "1px solid #e5e7eb", borderRadius: 2, backgroundColor: "#fff" }}>
+                  <MDTypography variant="caption" color="text" sx={{ fontSize: "0.68rem" }}>{item.label}</MDTypography>
+                  <MDTypography display="block" variant="button" color={item.color} fontWeight="bold" sx={{ fontSize: "0.82rem" }}>
+                    {money(item.value)}
+                  </MDTypography>
+                </MDBox>
+              </Grid>
+            ))}
+          </Grid>
+
+          {(reportData.deliveredCancellationDetails || []).length > 0 ? (
+            <TableContainer component={Paper} sx={{ maxHeight: 440, boxShadow: "none", border: "1px solid #e5e7eb" }}>
+              <Table stickyHeader size="small" sx={{ width: "100%", tableLayout: "fixed" }}>
+                <TableHead
+                  sx={{
+                    display: "table-header-group",
+                    "& .MuiTableCell-root": {
+                      backgroundColor: "#f1f5f9",
+                      fontWeight: 700,
+                      fontSize: "0.7rem",
+                      lineHeight: 1.25,
+                      whiteSpace: "nowrap",
+                    },
+                  }}
+                >
+                  <TableRow>
+                    <TableCell sx={{ width: "28%" }}>Invoice Number</TableCell>
+                    <TableCell sx={{ width: "14%" }}>Sale ID</TableCell>
+                    <TableCell align="right" sx={{ width: "19%" }}>Invoice Amount</TableCell>
+                    <TableCell align="right" sx={{ width: "20%" }}>Cancelled Amount</TableCell>
+                    <TableCell align="right" sx={{ width: "19%" }}>Updated Amount</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {reportData.deliveredCancellationDetails.map((row) => (
+                    <TableRow key={row.sale_id}>
+                      <TableCell sx={{ whiteSpace: "nowrap" }}>{row.invoice_number || "N/A"}</TableCell>
+                      <TableCell sx={{ whiteSpace: "nowrap" }}>{row.sticker_number || row.sale_id}</TableCell>
+                      <TableCell align="right" sx={{ whiteSpace: "nowrap" }}>{money(row.price)}</TableCell>
+                      <TableCell align="right">
+                        <MDTypography variant="caption" color="error" fontWeight="medium" sx={{ whiteSpace: "nowrap" }}>
+                          {money(row.cancelled_amount)}
+                        </MDTypography>
+                      </TableCell>
+                      <TableCell align="right">
+                        <MDTypography variant="caption" color="success" fontWeight="bold" sx={{ whiteSpace: "nowrap" }}>
+                          {money(row.effective_price)}
+                        </MDTypography>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </TableContainer>
+          ) : (
+            <MDBox py={4} textAlign="center">
+              <MDTypography variant="body2" color="text">
+                No delivered invoices with cancelled amounts for this filter.
+              </MDTypography>
+            </MDBox>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <MDButton color="dark" variant="outlined" onClick={() => setDeliveredAmountDialogOpen(false)}>
+            Close
+          </MDButton>
+        </DialogActions>
+      </Dialog>
 
       <Dialog
         open={paidCollectionDialogOpen}

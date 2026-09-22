@@ -681,7 +681,10 @@ class StaffModel {
     static async getAllSalesByDate(date, search = '', scope = '') {
         let query = `
             SELECT ss.id,
-                    ss.staff_id, ss.outlet_id, ss.sale_date, ss.item_count, ss.packed_item_count, ss.box_count, ss.packet_count, ss.price, ss.invoice_number, 
+                    ss.staff_id, ss.outlet_id, ss.sale_date, ss.item_count, ss.packed_item_count, ss.box_count, ss.packet_count, ss.price,
+                    COALESCE(cancelled.total_amount, 0) AS cancelled_amount,
+                    GREATEST(0, ss.price - COALESCE(cancelled.total_amount, 0)) AS effective_price,
+                    ss.invoice_number,
                     ss.sticker_number, ss.packaging_status, ss.delivery_boy_id, ss.packed_by_id, ss.vehicle_no,
                     DATE_FORMAT(ss.delivery_date, '%Y-%m-%d') AS delivery_date,
                     DATE_FORMAT(ssh.status_updated_at, '%Y-%m-%d %H:%i:%s') AS status_updated_at,

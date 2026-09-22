@@ -3175,6 +3175,8 @@ export const getSalePayments = async (req, res) => {
             payments,
             summary: {
                 price: parseFloat(sale.price),
+                effectivePrice: parseFloat(sale.effectivePrice),
+                cancelledAmount: parseFloat(sale.cancelledAmount),
                 paidAmount: parseFloat(sale.paid_amount),
                 balanceAmount: parseFloat(sale.balance_amount),
                 invoiceNumber: sale.invoice_number,
