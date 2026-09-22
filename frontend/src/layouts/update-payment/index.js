@@ -138,6 +138,7 @@ function UpdatePayment() {
   const { user } = useAuth();
   const isAdmin = user?.role === "admin";
   const [searchQuery, setSearchQuery] = useState("");
+  const [salesCompanyId, setSalesCompanyId] = useState("");
   const [collectionDate, setCollectionDate] = useState(getTodayLocalDate());
   const [collectionEndDate, setCollectionEndDate] = useState(getTodayLocalDate());
   const [paymentDetailRows, setPaymentDetailRows] = useState([]);
@@ -348,7 +349,7 @@ function UpdatePayment() {
 
   useEffect(() => {
     setPage(1);
-  }, [searchQuery, rowsPerPage]);
+  }, [searchQuery, salesCompanyId, rowsPerPage]);
 
   useEffect(() => {
     const fetchDeliveryBoys = async () => {
@@ -387,7 +388,12 @@ function UpdatePayment() {
     });
   }, [deliveryBoys, paymentDialogSale]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const filteredSales = salesData.filter((row) => row.packaging_status === "delivered");
+  const filteredSales = salesData.filter((row) => (
+    row.packaging_status === "delivered" &&
+    (!salesCompanyId || String(row.company_ids || "")
+      .split(",")
+      .some((id) => id.trim() === String(salesCompanyId)))
+  ));
   const totalPages = Math.max(1, Math.ceil(filteredSales.length / rowsPerPage));
   const paginatedSales = filteredSales.slice(
     (page - 1) * rowsPerPage,
@@ -1451,6 +1457,23 @@ function UpdatePayment() {
                       onChange={(e) => setSearchQuery(e.target.value)}
                     />
                   </Grid>
+                  <Grid item xs={12} sm={6} md={3}>
+                    <FormControl fullWidth>
+                      <InputLabel id="sales-company-filter-label">Company</InputLabel>
+                      <Select
+                        labelId="sales-company-filter-label"
+                        label="Company"
+                        value={salesCompanyId}
+                        sx={{ height: 43 }}
+                        onChange={(event) => setSalesCompanyId(event.target.value)}
+                      >
+                        <MenuItem value="">All Companies</MenuItem>
+                        {companyOptions.map((company) => (
+                          <MenuItem key={company.id} value={String(company.id)}>{company.name}</MenuItem>
+                        ))}
+                      </Select>
+                    </FormControl>
+                  </Grid>
                 </Grid>
 
                 <MDBox>
@@ -1561,7 +1584,7 @@ function UpdatePayment() {
                           <TableRow>
                             <TableCell colSpan={12} align="center" sx={{ py: 4 }}>
                               <MDTypography variant="body2" color="text">
-                                No delivered items found matching your search.
+                                No delivered items found matching your filters.
                               </MDTypography>
                             </TableCell>
                           </TableRow>
