@@ -1420,6 +1420,7 @@ class StaffModel {
              LEFT JOIN staff ts ON tb.staff_id = ts.id
              LEFT JOIN delivery_boys db ON tb.delivery_boy_id = db.id
              WHERE sp.payment_mode = 'credit'
+               AND ss.packaging_status = 'delivered'
              HAVING balance_amount > 0
              ORDER BY sp.payment_date ASC`
         );

@@ -35,12 +35,13 @@ import {
   navbarContainer,
   navbarRow,
   navbarIconButton,
-  // navbarMobileMenu,
+  navbarMobileMenu,
 } from "examples/Navbars/DashboardNavbar/styles";
 
 // Material Dashboard 2 React context
 import {
   useMaterialUIController,
+  setMiniSidenav,
   setTransparentNavbar,
 } from "context";
 import { useAuth } from "context/AuthContext";
@@ -48,7 +49,7 @@ import { useAuth } from "context/AuthContext";
 function DashboardNavbar({ absolute, light, isMini }) {
   const [navbarType, setNavbarType] = useState();
   const [controller, dispatch] = useMaterialUIController();
-  const { transparentNavbar, fixedNavbar, darkMode } = controller;
+  const { transparentNavbar, fixedNavbar, darkMode, miniSidenav } = controller;
   const { user, token } = useAuth();
   const [openMenu, setOpenMenu] = useState(false);
   const route = useLocation().pathname.split("/").slice(1);
@@ -118,7 +119,7 @@ function DashboardNavbar({ absolute, light, isMini }) {
     return () => window.removeEventListener("scroll", handleTransparentNavbar);
   }, [dispatch, fixedNavbar]);
 
-  // const handleMiniSidenav = () => setMiniSidenav(dispatch, !miniSidenav);
+  const handleMiniSidenav = () => setMiniSidenav(dispatch, !miniSidenav);
   // const handleConfiguratorOpen = () => setOpenConfigurator(dispatch, !openConfigurator);
   const handleOpenMenu = (event) => setOpenMenu(event.currentTarget);
   const handleCloseMenu = () => setOpenMenu(false);
@@ -269,17 +270,19 @@ function DashboardNavbar({ absolute, light, isMini }) {
                   <Icon sx={iconsStyle}>manage_accounts</Icon>
                 </IconButton>
               )}
-              {/* <IconButton
+              <IconButton
                 size="small"
                 disableRipple
                 color="inherit"
                 sx={navbarMobileMenu}
                 onClick={handleMiniSidenav}
+                aria-label={miniSidenav ? "Open navigation menu" : "Close navigation menu"}
+                title={miniSidenav ? "Open menu" : "Close menu"}
               >
                 <Icon sx={iconsStyle} fontSize="medium">
                   {miniSidenav ? "menu_open" : "menu"}
                 </Icon>
-              </IconButton> */}
+              </IconButton>
               {/* <IconButton
                 size="small"
                 disableRipple
