@@ -110,6 +110,7 @@ function AddCounter() {
   const [outlets, setOutlets] = useState([]);
   const [savedOutlets, setSavedOutlets] = useState([]);
   const [allStaffOutlets, setAllStaffOutlets] = useState([]);
+  const [outletSearchQuery, setOutletSearchQuery] = useState("");
   const [exportingOutlets, setExportingOutlets] = useState(false);
   const [downloadingTemplate, setDownloadingTemplate] = useState(false);
   const [uploadingOutlets, setUploadingOutlets] = useState(false);
@@ -151,6 +152,9 @@ function AddCounter() {
     : savedOutlets;
 
   const outletsAvailableForEditing = isSelfService ? allStaffOutlets : displayedSavedOutlets;
+  const filteredOutletsForEditing = outletsAvailableForEditing.filter((outlet) => (
+    normalizeText(outlet.outlet_name).includes(normalizeText(outletSearchQuery))
+  ));
 
   const locationSavedSerialMax = displayedSavedOutlets.reduce(
     (max, outlet) => Math.max(max, Number(outlet.serial_no) || 0),
@@ -1250,12 +1254,37 @@ function AddCounter() {
 
                 {outletsAvailableForEditing.length > 0 && (
                   <MDBox mt={5}>
-                    <MDTypography variant="h6" mb={2}>
-                      {isSelfService
-                        ? `All My Outlets (${outletsAvailableForEditing.length})`
-                        : `Saved Outlets for ${isCnfStaff ? "CNF" : selectedDay}${selectedLocation ? ` — ${selectedLocation}` : ""}`}
-                    </MDTypography>
-                    {outletsAvailableForEditing.map((saved) => (
+                    <MDBox
+                      display="flex"
+                      justifyContent="space-between"
+                      alignItems={{ xs: "stretch", sm: "center" }}
+                      flexDirection={{ xs: "column", sm: "row" }}
+                      gap={2}
+                      mb={2}
+                    >
+                      <MDTypography variant="h6">
+                        {isSelfService
+                          ? `All My Outlets (${filteredOutletsForEditing.length}/${outletsAvailableForEditing.length})`
+                          : `Saved Outlets for ${isCnfStaff ? "CNF" : selectedDay}${selectedLocation ? ` — ${selectedLocation}` : ""}`}
+                      </MDTypography>
+                      <MDInput
+                        label="Search Outlet Name"
+                        value={outletSearchQuery}
+                        onChange={(event) => setOutletSearchQuery(event.target.value)}
+                        sx={{ width: { xs: "100%", sm: 300 } }}
+                        InputProps={{
+                          endAdornment: <Icon sx={{ color: "#64748b" }}>search</Icon>,
+                        }}
+                      />
+                    </MDBox>
+                    {filteredOutletsForEditing.length === 0 && (
+                      <MDBox py={4} textAlign="center" sx={{ backgroundColor: "#f8fafc", borderRadius: 2 }}>
+                        <MDTypography variant="body2" color="text">
+                          No outlet name matches “{outletSearchQuery}”.
+                        </MDTypography>
+                      </MDBox>
+                    )}
+                    {filteredOutletsForEditing.map((saved) => (
                       <MDBox
                         key={saved.id}
                         mb={2}

@@ -608,6 +608,18 @@ function DmsStock() {
     });
   }, [erpSearch, items, productSearch]);
 
+  const currentPurchaseSummary = useMemo(() => filteredItems.reduce(
+    (summary, item) => {
+      const quantity = Number(item.total_current_stock_in_pcs) || 0;
+      const purchaseRate = Number(item.purchase_price ?? item.price_per_piece) || 0;
+      return {
+        quantity: summary.quantity + quantity,
+        value: summary.value + (quantity * purchaseRate),
+      };
+    },
+    { quantity: 0, value: 0 }
+  ), [filteredItems]);
+
   const handleFileChange = (event) => {
     const file = event.target.files?.[0] || null;
     setSelectedFile(file);
@@ -1146,6 +1158,20 @@ function DmsStock() {
                 </MDBox>
               </MDBox>
               <MDBox px={3} pb={3}>
+                <Grid container spacing={2} mb={2}>
+                  <Grid item xs={12} sm={6} md={3}>
+                    <Metric
+                      label="Displayed Current Stock Qty"
+                      value={unitFormat(currentPurchaseSummary.quantity)}
+                    />
+                  </Grid>
+                  <Grid item xs={12} sm={6} md={4}>
+                    <Metric
+                      label="Total Purchase Value (Purchase Price × Qty)"
+                      value={money(currentPurchaseSummary.value)}
+                    />
+                  </Grid>
+                </Grid>
                 <Grid container spacing={2} mb={2} alignItems="center">
                   <Grid item xs={12} md={3}>
                     <FormControl size="small" fullWidth>
@@ -1199,7 +1225,7 @@ function DmsStock() {
                   </Grid>
                 </Grid>
                 <TableContainer component={Paper} sx={stickyTableContainerSx}>
-                  <Table sx={stickyTableSx(2900)}>
+                  <Table sx={stickyTableSx(3150)}>
                     <TableHead sx={{ display: "table-header-group", backgroundColor: "#f9fafb" }}>
                       <TableRow>
                         <TableCell sx={stickyColumnSx(0, { isHead: true, baseSx: tableHeadSx })}>Sr No</TableCell>
@@ -1215,6 +1241,8 @@ function DmsStock() {
                         <TableCell align="right" sx={stickyHeadRowSx(tableHeadSx)}>No. of Boxes</TableCell>
                         <TableCell align="right" sx={stickyHeadRowSx(tableHeadSx)}>Current Stock In Pcs</TableCell>
                         <TableCell align="right" sx={stickyHeadRowSx(tableHeadSx)}>Total Current Stock In Pcs</TableCell>
+                        <TableCell align="right" sx={stickyHeadRowSx(tableHeadSx, "#ecfdf5")}>Purchase Price/Pcs</TableCell>
+                        <TableCell align="right" sx={stickyHeadRowSx(tableHeadSx, "#ecfdf5")}>Purchase Stock Value</TableCell>
                         <TableCell align="right" sx={stickyHeadRowSx(tableHeadSx)}>MRP</TableCell>
                         <TableCell align="right" sx={stickyHeadRowSx(tableHeadSx)}>Discount Price</TableCell>
                         <TableCell align="right" sx={stickyHeadRowSx(tableHeadSx)}>DP Price - Discount %</TableCell>
@@ -1233,7 +1261,7 @@ function DmsStock() {
                     <TableBody>
                       {items.length === 0 && (
                         <TableRow>
-                          <TableCell colSpan={26} align="center" sx={tableBodySx}>
+                          <TableCell colSpan={28} align="center" sx={tableBodySx}>
                             <MDTypography variant="button" color="text">
                               No DMS stock uploaded yet. Click &quot;Upload File&quot; or &quot;Manual Entry&quot; to add stock.
                             </MDTypography>
@@ -1242,7 +1270,7 @@ function DmsStock() {
                       )}
                       {items.length > 0 && filteredItems.length === 0 && (
                         <TableRow>
-                          <TableCell colSpan={26} align="center" sx={tableBodySx}>
+                          <TableCell colSpan={28} align="center" sx={tableBodySx}>
                             <MDTypography variant="button" color="text">
                               No stock rows match the selected filters.
                             </MDTypography>
@@ -1268,6 +1296,15 @@ function DmsStock() {
                           <TableCell align="right" sx={tableBodySx}>{unitFormat(item.current_stock_in_case)}</TableCell>
                           <TableCell align="right" sx={tableBodySx}>{unitFormat(item.current_stock_in_pcs)}</TableCell>
                           <TableCell align="right" sx={tableBodySx}>{unitFormat(item.total_current_stock_in_pcs)}</TableCell>
+                          <TableCell align="right" sx={{ ...tableBodySx, backgroundColor: "#ecfdf5" }}>
+                            {money(item.purchase_price ?? item.price_per_piece)}
+                          </TableCell>
+                          <TableCell align="right" sx={{ ...tableBodySx, backgroundColor: "#ecfdf5", fontWeight: 700 }}>
+                            {money(
+                              (Number(item.purchase_price ?? item.price_per_piece) || 0)
+                              * (Number(item.total_current_stock_in_pcs) || 0)
+                            )}
+                          </TableCell>
                           <TableCell align="right" sx={tableBodySx}>{money(item.mrp)}</TableCell>
                           <TableCell align="right" sx={tableBodySx}>
                             {money(
