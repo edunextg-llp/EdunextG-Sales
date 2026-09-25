@@ -77,6 +77,7 @@ export default function App() {
     }, []);
 
   const visibleRoutes = filterRoutesByRole(routes);
+  const isPrivacyPolicyPage = pathname === "/privacy-policy";
 
   // Cache for the rtl
   useMemo(() => {
@@ -167,7 +168,7 @@ export default function App() {
     <CacheProvider value={rtlCache}>
       <ThemeProvider theme={darkMode ? themeDarkRTL : themeRTL}>
         <CssBaseline />
-        {layout === "dashboard" && (
+        {layout === "dashboard" && !isPrivacyPolicyPage && (
           <>
             <Sidenav
               color={sidenavColor}
@@ -228,7 +229,7 @@ export default function App() {
   ) : (
     <ThemeProvider theme={darkMode ? themeDark : theme}>
       <CssBaseline />
-      {layout === "dashboard" && (
+      {layout === "dashboard" && !isPrivacyPolicyPage && (
         <>
           <Sidenav
             color={sidenavColor}
