@@ -22,6 +22,9 @@ import {
   Tooltip,
 } from "@mui/material";
 
+import SalesExcelButton from "components/SalesExcelButton";
+import CompanyFilter from "components/CompanyFilter";
+import { matchesSaleCompany } from "utils/companyFilter";
 import MDBox from "components/MDBox";
 import MDTypography from "components/MDTypography";
 import MDInput from "components/MDInput";
@@ -69,6 +72,7 @@ function Delivery() {
   const [salesData, setSalesData] = useState([]);
   const [deliveryBoys, setDeliveryBoys] = useState([]);
   const [searchQuery, setSearchQuery] = useState("");
+  const [companyFilter, setCompanyFilter] = useState("");
   const [detailsModalOpen, setDetailsModalOpen] = useState(false);
   const [activeRowId, setActiveRowId] = useState(null);
   const [historyDialog, setHistoryDialog] = useState({ open: false, sale: null, history: [] });
@@ -272,7 +276,7 @@ function Delivery() {
 
   useEffect(() => {
     setPage(1);
-  }, [activeTab, searchQuery, logStartDate, logEndDate, logStaffId, rowsPerPage]);
+  }, [activeTab, searchQuery, companyFilter, logStartDate, logEndDate, logStaffId, rowsPerPage]);
 
   useSalesPolling(fetchSales);
 
@@ -391,6 +395,7 @@ function Delivery() {
 
   // Filter 1: Pending Deliveries (status = packing_done)
   const filteredSales = salesData.filter((row) => {
+    if (!matchesSaleCompany(row, companyFilter)) return false;
     const status = row.original_packaging_status || row.packaging_status || "not_packing";
     if (status !== "packing_done") {
       return false;
@@ -417,6 +422,7 @@ function Delivery() {
 
   // Filter 2: Out for Delivery Log (status = out_for_delivery)
   const filteredLogSales = salesData.filter((row) => {
+    if (!matchesSaleCompany(row, companyFilter)) return false;
     const status = row.original_packaging_status || row.packaging_status || "not_packing";
     if (status !== "out_for_delivery") {
       return false;
@@ -485,13 +491,21 @@ function Delivery() {
               </MDBox>
               <MDBox pb={3} px={3}>
                 <Grid container spacing={3} mb={3}>
-                  <Grid item xs={12} md={activeTab === "pending" ? 12 : 3}>
+                  <Grid item xs={12} md={activeTab === "pending" ? 9 : 3}>
                     <MDInput
                       type="text"
                       label="Search by Outlet Name, Area, ID, Staff Name, Sale ID, or Invoice No."
                       fullWidth
                       value={searchQuery}
                       onChange={(e) => setSearchQuery(e.target.value)}
+                    />
+                  </Grid>
+                  <Grid item xs={12} md={3}>
+                    <CompanyFilter
+                      id="delivery-company-filter"
+                      rows={salesData}
+                      value={companyFilter}
+                      onChange={setCompanyFilter}
                     />
                   </Grid>
                   {activeTab === "out_for_delivery" && (
@@ -549,6 +563,9 @@ function Delivery() {
                       </Grid>
                     </>
                   )}
+                  <Grid item xs={12} display="flex" justifyContent="flex-end">
+                    <SalesExcelButton rows={activeList} filename={activeTab === "pending" ? "Delivery_Management" : "Out_for_Delivery_Log"} />
+                  </Grid>
                 </Grid>
 
                 <TableContainer component={Paper} sx={paginatedTableContainerSx}>

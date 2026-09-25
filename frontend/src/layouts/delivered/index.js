@@ -24,6 +24,9 @@ import {
   Tooltip,
 } from "@mui/material";
 
+import SalesExcelButton from "components/SalesExcelButton";
+import CompanyFilter from "components/CompanyFilter";
+import { matchesSaleCompany } from "utils/companyFilter";
 import MDBox from "components/MDBox";
 import MDTypography from "components/MDTypography";
 import MDInput from "components/MDInput";
@@ -67,6 +70,7 @@ function Delivered() {
   const [salesData, setSalesData] = useState([]);
   const [cancelledSalesData, setCancelledSalesData] = useState([]);
   const [searchQuery, setSearchQuery] = useState("");
+  const [companyFilter, setCompanyFilter] = useState("");
   const [selectedCompanyId, setSelectedCompanyId] = useState("");
   const [selectedStaffId, setSelectedStaffId] = useState("");
   const [selectedArea, setSelectedArea] = useState("");
@@ -170,6 +174,7 @@ function Delivered() {
   }, [
     activeTab,
     searchQuery,
+    companyFilter,
     selectedCompanyId,
     selectedStaffId,
     selectedArea,
@@ -247,6 +252,7 @@ function Delivered() {
   };
 
   const filteredSales = salesData.filter((row) => {
+    if (!matchesSaleCompany(row, companyFilter)) return false;
     const st = row.packaging_status;
     if (st !== 'out_for_delivery' && st !== 'delivered' && st !== 'returned') return false;
     if (!matchesDeliveryDateRange(row)) return false;
@@ -720,6 +726,16 @@ function Delivered() {
                     />
                   </Grid>
                   {activeTab !== "cancelled" && (
+                  <Grid item xs={12} md={3}>
+                    <CompanyFilter
+                      id="delivered-company-filter"
+                      rows={salesData}
+                      value={companyFilter}
+                      onChange={setCompanyFilter}
+                    />
+                  </Grid>
+                  )}
+                  {activeTab !== "cancelled" && (
                     <>
                       <Grid item xs={12} md={2}>
                         <MDInput
@@ -883,6 +899,9 @@ function Delivered() {
                         </MDTypography>
                       </MDBox>
                     </MDBox>
+                  </Grid>
+                  <Grid item xs={12} display="flex" justifyContent="flex-end">
+                    <SalesExcelButton rows={activeList} filename={activeTab === "pending" ? "Pending_Delivery" : activeTab === "cancelled" ? "Cancelled_Deliveries" : "Active_Deliveries"} />
                   </Grid>
                 </Grid>
 

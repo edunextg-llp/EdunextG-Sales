@@ -21,6 +21,9 @@ import {
   Tooltip,
 } from "@mui/material";
 
+import SalesExcelButton from "components/SalesExcelButton";
+import CompanyFilter from "components/CompanyFilter";
+import { matchesSaleCompany } from "utils/companyFilter";
 import MDBox from "components/MDBox";
 import MDTypography from "components/MDTypography";
 import MDInput from "components/MDInput";
@@ -128,6 +131,7 @@ function Packaging() {
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split("T")[0]);
   const [salesData, setSalesData] = useState([]);
   const [searchQuery, setSearchQuery] = useState("");
+  const [companyFilter, setCompanyFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [historyDialog, setHistoryDialog] = useState({ open: false, sale: null, history: [] });
   const [packerDialog, setPackerDialog] = useState({
@@ -224,7 +228,7 @@ function Packaging() {
 
   useEffect(() => {
     setPage(1);
-  }, [searchQuery, statusFilter, dateFilterMode, selectedDate, rowsPerPage]);
+  }, [searchQuery, companyFilter, statusFilter, dateFilterMode, selectedDate, rowsPerPage]);
 
   useSalesPolling(fetchSales);
 
@@ -607,6 +611,7 @@ function Packaging() {
   };
 
   const filteredSales = salesData.filter((row) => {
+    if (!matchesSaleCompany(row, companyFilter)) return false;
     const status = row.packaging_status || row.original_packaging_status || "not_packing";
     const isTerminalStatus =
       status === "packing_done" ||
@@ -673,6 +678,14 @@ function Packaging() {
                     />
                   </Grid>
                   <Grid item xs={12} md={3}>
+                    <CompanyFilter
+                      id="packaging-company-filter"
+                      rows={salesData}
+                      value={companyFilter}
+                      onChange={setCompanyFilter}
+                    />
+                  </Grid>
+                  <Grid item xs={12} md={3}>
                     <FormControl size="small" fullWidth>
                       <Select
                         value={statusFilter}
@@ -709,6 +722,9 @@ function Packaging() {
                       />
                     </Grid>
                   )}
+                  <Grid item xs={12} display="flex" justifyContent="flex-end">
+                    <SalesExcelButton rows={filteredSales} filename="Packaging_Daily_Sales" />
+                  </Grid>
                 </Grid>
 
                 <TableContainer component={Paper} sx={paginatedTableContainerSx}>
