@@ -1,6 +1,7 @@
 import mysql from 'mysql2/promise';
 import dotenv from 'dotenv';
 import bcrypt from 'bcryptjs';
+import { migrateDeliveryOutletLocation } from './migrations/migrateDeliveryOutletLocation.js';
 dotenv.config();
 
 async function initDB() {
@@ -147,6 +148,7 @@ async function initDB() {
             location_name VARCHAR(255) NULL,
             address TEXT NULL,
             google_location TEXT NULL,
+            delivery_google_location TEXT NULL,
             priority_number INT NULL,
             operating_hours JSON NULL,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -154,6 +156,7 @@ async function initDB() {
         );
     `);
     console.log('Staff Counters table created');
+    await migrateDeliveryOutletLocation(connection);
 
     try {
         await connection.query(`

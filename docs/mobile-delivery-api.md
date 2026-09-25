@@ -194,7 +194,132 @@ Success `200`:
 ]
 ```
 
-`google_location` is the delivery location saved against the outlet/counter.
+`google_location` is the freshly captured delivery location saved against the
+outlet/counter. After the location refresh rollout (requested September 25, 2026),
+all older links are treated as unverified: this field is `null` until a delivery
+person captures a new location for that outlet. Do not fall back to cached old
+links; replace the mobile cache with the value from this API, including `null`.
+
+## Save Outlet Location Once
+
+```http
+PUT /delivery-boy/mobile/items/:saleId/location
+Authorization: Bearer <token>
+Content-Type: application/json
+```
+
+Send the phone's current GPS coordinates while visiting the outlet:
+
+```json
+{ "latitude": 22.5726, "longitude": 88.3639 }
+```
+
+Success `200`:
+
+```json
+{
+  "message": "Outlet location saved successfully",
+  "sale": {
+    "id": 25,
+    "google_location": "https://www.google.com/maps/search/?api=1&query=22.5726,88.3639"
+  }
+}
+```
+
+The delivery must belong to the logged-in delivery boy and still be `out_for_delivery`.
+Every outlet can receive one fresh capture after rollout, even if it already has
+an old map link. After that capture, the new location cannot be overwritten through
+this API, including by another delivery boy. A freshly saved
+location, unavailable assignment, or inactive delivery returns `404`. Invalid or
+missing coordinates return `400`.
+
+Future deliveries to the same outlet receive the saved `google_location` in
+`GET /delivery-boy/mobile/items`. Open that URL to show the outlet on Google Maps.
+Show the save-location action only when `google_location` is empty, and capture
+location before submitting the final delivery status.
+
+Deployment: server startup automatically adds the nullable
+`staff_counters.delivery_google_location` column; it can also be added with
+`npm run update-schema` in the backend. Existing locations are not copied into
+this column. The reset happens once when this feature is deployed, not daily or
+on server restart. New captures update both the regular outlet map link and the
+delivery map link. Later edits/imports of the regular map link do not replace the
+delivery capture.
+
+## Update Outlet Contact Number
+
+```http
+PUT /delivery-boy/mobile/items/:saleId/contact
+Authorization: Bearer <token>
+Content-Type: application/json
+```
+
+```json
+{ "contactNumber": "9876543210" }
+```
+
+Success `200`:
+
+```json
+{
+  "message": "Outlet contact number updated successfully",
+  "sale": { "id": 25, "contact_number": "9876543210" }
+}
+```
+
+`contactNumber` must be a string containing 1 to 20 digits (surrounding spaces are
+trimmed). Missing, empty, or invalid values return `400`. Only the delivery boy
+assigned to an `out_for_delivery` item can update its outlet; otherwise the API
+returns `404`. Update the number before submitting the final delivery status.
+
+Unlike location, the contact number can be corrected more than once. The updated
+number is stored on the outlet and returned as `contact_number` for all future
+deliveries to that outlet. Updating the contact number does not change its location.
+
+## Cancel a Delivery
+
+Cancellation is supported by the existing status API:
+
+```http
+PUT /delivery-boy/mobile/items/:saleId/status
+Authorization: Bearer <token>
+Content-Type: application/json
+```
+
+```json
+{
+  "status": "cancelled",
+  "cancellationReason": "Outlet is closed"
+}
+```
+
+The reason is required; a missing or blank reason returns `400`. Only the
+assigned delivery boy can cancel a delivery while it is `out_for_delivery`.
+An unavailable assignment returns `404`; an already submitted delivery returns
+`409`.
+
+Success `200`:
+
+```json
+{
+  "message": "Delivery status updated successfully",
+  "sale": {
+    "id": 25,
+    "packaging_status": "cancelled",
+    "delivery_cancelled": true
+  }
+}
+```
+
+Cancellation retains the delivery person and delivery date so the item remains
+visible in `GET /delivery-boy/mobile/items?status=cancelled`, including with a
+`date` filter. Remove it from the active list after success and refresh the
+cancelled list. List responses include `cancellation_reason`. The saved outlet
+location and contact number remain available for future deliveries.
+
+Previously cancelled items whose assignment was cleared cannot be recovered in
+the delivery person's list automatically; their original assignee is no longer
+stored on the order.
 
 ## Update Delivery Status
 

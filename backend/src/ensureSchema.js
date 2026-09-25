@@ -2,6 +2,7 @@ import mysql from 'mysql2/promise';
 import dotenv from 'dotenv';
 import bcrypt from 'bcryptjs';
 import { migrateStaffSalesUniqueIndex } from './migrations/migrateStaffSalesUniqueIndex.js';
+import { migrateDeliveryOutletLocation } from './migrations/migrateDeliveryOutletLocation.js';
 
 dotenv.config();
 
@@ -173,6 +174,7 @@ export async function ensureSchema() {
             `ALTER TABLE staff_counters ADD COLUMN google_location TEXT NULL`,
             'google_location on staff_counters'
         );
+        await migrateDeliveryOutletLocation(connection);
         await tryQuery(
             connection,
             `ALTER TABLE staff_counters ADD COLUMN whatsapp_number VARCHAR(20) NULL`,

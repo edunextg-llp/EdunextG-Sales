@@ -367,8 +367,9 @@ class DeliveryBoyModel {
                     DATE_FORMAT(ss.sale_date, '%Y-%m-%d') AS sale_date,
                     DATE_FORMAT(ss.delivery_date, '%Y-%m-%d') AS delivery_date,
                     ss.item_count, ss.packed_item_count, ss.box_count, ss.packet_count, ss.price,
-                    ss.packaging_status, ss.vehicle_no,
-                    sc.outlet_name, sc.outlet_erp_id, sc.contact_number, sc.location_name, sc.google_location,
+                    ss.packaging_status, ss.vehicle_no, ss.cancellation_reason,
+                    sc.outlet_name, sc.outlet_erp_id, sc.contact_number, sc.location_name,
+                    sc.delivery_google_location AS google_location,
                     s.name AS staff_name, c.name AS company_name,
                     DATE_FORMAT(ssh.status_updated_at, '%Y-%m-%d %H:%i:%s') AS status_updated_at
              FROM staff_sales ss
@@ -426,13 +427,13 @@ class DeliveryBoyModel {
                 );
                 const resetPackedCount = itemRows[0]?.item_count ?? null;
 
+                // Keep the assignee and delivery date so cancelled items remain
+                // visible in that delivery person's mobile history and date filters.
                 await connection.execute(
                     `UPDATE staff_sales
                      SET packaging_status = 'cancelled',
                          cancellation_reason = ?,
-                         delivery_boy_id = NULL,
                          vehicle_no = NULL,
-                         delivery_date = NULL,
                          packed_item_count = ?,
                          box_count = NULL,
                          packet_count = NULL
@@ -491,16 +492,34 @@ class DeliveryBoyModel {
         return rows[0] || null;
     }
 
+    static async updateAssignedSaleContact(deliveryBoyId, saleId, contactNumber) {
+        const [result] = await db.execute(
+            `UPDATE staff_counters sc
+             INNER JOIN staff_sales ss ON ss.outlet_id = sc.id
+             SET sc.contact_number = ?
+             WHERE ss.id = ?
+               AND ss.delivery_boy_id = ?
+               AND ss.packaging_status = 'out_for_delivery'`,
+            [contactNumber, saleId, deliveryBoyId]
+        );
+
+        if (result.affectedRows === 0) {
+            return null;
+        }
+
+        return { id: saleId, contact_number: contactNumber };
+    }
+
     static async updateAssignedSaleLocation(deliveryBoyId, saleId, googleLocation) {
         const [result] = await db.execute(
             `UPDATE staff_counters sc
              INNER JOIN staff_sales ss ON ss.outlet_id = sc.id
-             SET sc.google_location = ?
+             SET sc.google_location = ?, sc.delivery_google_location = ?
              WHERE ss.id = ?
                AND ss.delivery_boy_id = ?
                AND ss.packaging_status = 'out_for_delivery'
-               AND (sc.google_location IS NULL OR TRIM(sc.google_location) = '')`,
-            [googleLocation, saleId, deliveryBoyId]
+               AND (sc.delivery_google_location IS NULL OR TRIM(sc.delivery_google_location) = '')`,
+            [googleLocation, googleLocation, saleId, deliveryBoyId]
         );
 
         if (result.affectedRows === 0) {

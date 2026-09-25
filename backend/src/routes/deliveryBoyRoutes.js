@@ -33,6 +33,7 @@ router.get('/mobile/profile', verifyDeliveryBoyToken, deliveryBoyController.getM
 router.get('/mobile/items', verifyDeliveryBoyToken, deliveryBoyController.getMobileAssignedItems);
 router.put('/mobile/items/:saleId/status', verifyDeliveryBoyToken, deliveryBoyController.updateMobileAssignedItemStatus);
 router.put('/mobile/items/:saleId/location', verifyDeliveryBoyToken, deliveryBoyController.updateMobileAssignedItemLocation);
+router.put('/mobile/items/:saleId/contact', verifyDeliveryBoyToken, deliveryBoyController.updateMobileAssignedItemContact);
 router.get('/mobile/collections', verifyDeliveryBoyToken, deliveryBoyController.getMobileCollections);
 router.get('/mobile/credit-dues', verifyDeliveryBoyToken, deliveryBoyController.getMobileCreditDues);
 router.post('/mobile/credit-dues/:saleId/payments', verifyDeliveryBoyToken, deliveryBoyController.collectMobileCreditDue);
