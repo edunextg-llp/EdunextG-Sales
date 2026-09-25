@@ -29,6 +29,7 @@ import routes from "routes";
 import ProtectedRoute from "components/ProtectedRoute";
 import SignIn from "layouts/authentication/sign-in";
 import LandingPage from "layouts/landing";
+import PrivacyPolicy from "layouts/privacy-policy";
 
 // Material Dashboard 2 React contexts
 import { useMaterialUIController, setMiniSidenav } from "context";
@@ -183,6 +184,7 @@ export default function App() {
         {layout === "vr" && <Configurator />}
         <Routes>
           <Route exact path="/" element={<LandingPage />} />
+          <Route exact path="/privacy-policy" element={<PrivacyPolicy />} />
           {getRoutes(visibleRoutes)}
           <Route exact path="/authentication/sign-in" element={<SignIn />} />
           <Route path="*" element={<Navigate to={
@@ -243,6 +245,7 @@ export default function App() {
       {layout === "vr" && <Configurator />}
       <Routes>
         <Route exact path="/" element={<LandingPage />} />
+        <Route exact path="/privacy-policy" element={<PrivacyPolicy />} />
         {getRoutes(visibleRoutes)}
         <Route exact path="/authentication/sign-in" element={<SignIn />} />
         <Route path="*" element={<Navigate to={
