@@ -1,4 +1,6 @@
 import { Fragment, useState, useEffect } from "react";
+import { downloadSalesExcel } from "utils/downloadSalesExcel";
+import { getUnupdatedPaymentSales, unupdatedPaymentColumns } from "utils/unupdatedPaymentExport";
 import Grid from "@mui/material/Grid";
 import Card from "@mui/material/Card";
 import Icon from "@mui/material/Icon";
@@ -139,6 +141,7 @@ function UpdatePayment() {
   const isAdmin = user?.role === "admin";
   const [searchQuery, setSearchQuery] = useState("");
   const [salesCompanyId, setSalesCompanyId] = useState("");
+  const [downloadingUnupdated, setDownloadingUnupdated] = useState(false);
   const [collectionDate, setCollectionDate] = useState(getTodayLocalDate());
   const [collectionEndDate, setCollectionEndDate] = useState(getTodayLocalDate());
   const [paymentDetailRows, setPaymentDetailRows] = useState([]);
@@ -249,6 +252,27 @@ function UpdatePayment() {
       }
     } catch (error) {
       console.error("Error fetching global sales:", error);
+    }
+  };
+
+  const downloadUnupdatedPayments = async () => {
+    if (!salesCompanyId || downloadingUnupdated) return;
+    setDownloadingUnupdated(true);
+    try {
+      // Fetch all invoices fresh so the export is independent of search and pagination.
+      const response = await fetch(`${API}/staff/sales/by-date`);
+      if (!response.ok) throw new Error("Unable to load invoices");
+      const rows = getUnupdatedPaymentSales(await response.json(), salesCompanyId);
+      if (!rows.length) {
+        alert("No delivered invoices without payment updates were found for this company.");
+        return;
+      }
+      await downloadSalesExcel(rows, `No_Payment_Updates_Company_${salesCompanyId}`, unupdatedPaymentColumns);
+    } catch (error) {
+      console.error("Unable to export invoices without payment updates:", error);
+      alert("Unable to download the Excel report. Please try again.");
+    } finally {
+      setDownloadingUnupdated(false);
     }
   };
 
@@ -1469,6 +1493,7 @@ function UpdatePayment() {
                         labelId="sales-company-filter-label"
                         label="Company"
                         value={salesCompanyId}
+                        disabled={downloadingUnupdated}
                         sx={{ height: 43 }}
                         onChange={(event) => setSalesCompanyId(event.target.value)}
                       >
@@ -1478,6 +1503,20 @@ function UpdatePayment() {
                         ))}
                       </Select>
                     </FormControl>
+                  </Grid>
+                  <Grid item xs={12} md={5}>
+                    <MDButton
+                      color="success"
+                      variant="gradient"
+                      onClick={downloadUnupdatedPayments}
+                      disabled={!salesCompanyId || downloadingUnupdated}
+                    >
+                      {downloadingUnupdated ? "Downloading..." : "Download Excel - No Payment Updates"}
+                    </MDButton>
+                    <MDTypography variant="caption" display="block" mt={1}>
+                      Select a company to download all delivered invoices with no payment entries,
+                      sorted by invoice number. Search does not limit this download.
+                    </MDTypography>
                   </Grid>
                 </Grid>
 

@@ -5,11 +5,11 @@ export const sortSalesByInvoice = (rows) => [...rows].sort((a, b) => {
   return left.localeCompare(right, "en", { numeric: true, sensitivity: "base" });
 });
 
-export async function createSalesWorkbook(rows) {
+export async function createSalesWorkbook(rows, columns) {
   const { default: ExcelJS } = await import("exceljs");
   const workbook = new ExcelJS.Workbook();
   const sheet = workbook.addWorksheet("Sales", { views: [{ state: "frozen", ySplit: 1 }] });
-  sheet.columns = [
+  sheet.columns = columns || [
     { header: "Staff Name", key: "staff_name", width: 25 },
     { header: "Company", key: "company_name", width: 30 },
     { header: "Outlet Name", key: "outlet_name", width: 35 },
@@ -36,12 +36,12 @@ export async function createSalesWorkbook(rows) {
   sheet.getColumn("price").numFmt = "#,##0.00";
   sheet.getRow(1).font = { bold: true, color: { argb: "FFFFFFFF" } };
   sheet.getRow(1).fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF166534" } };
-  sheet.autoFilter = { from: "A1", to: `G${sheet.rowCount}` };
+  sheet.autoFilter = { from: { row: 1, column: 1 }, to: { row: sheet.rowCount, column: sheet.columnCount } };
   return workbook;
 }
 
-export async function downloadSalesExcel(rows, filename) {
-  const workbook = await createSalesWorkbook(rows);
+export async function downloadSalesExcel(rows, filename, columns) {
+  const workbook = await createSalesWorkbook(rows, columns);
   const buffer = await workbook.xlsx.writeBuffer();
   const url = URL.createObjectURL(new Blob([buffer], {
     type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
