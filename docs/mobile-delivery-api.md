@@ -325,6 +325,8 @@ stored on the order.
 
 Delivery boy can update only items assigned to his own profile and only while the item is still `out_for_delivery`. Once marked `delivered`, `cancelled`, or `returned`, the mobile app cannot change the status again.
 
+The mobile app's **Return** action sets the order to `returned`. Returned orders appear in **Delivery Management → Pending Deliveries**, labeled **Returned**, where staff can assign delivery details and send them out again. The existing assignee and delivery date remain available for mobile history until reassignment.
+
 ```http
 PUT /delivery-boy/mobile/items/:saleId/status
 Authorization: Bearer <token>
@@ -392,3 +394,24 @@ Common errors:
   "packaging_status": "delivered"
 }
 ```
+
+
+## Bawarchee Collection
+
+Authenticated delivery users can open Collection to view two groups from GET /delivery-boy/mobile/credit-dues:
+
+- taken_bill: active, unreturned Out Bills assigned to this delivery boy with outstanding credit.
+- delivery: this delivery boy's orders marked delivered today, with an unpaid balance.
+
+Each record includes collection_source, credit_amount and balance_amount. Pending submissions are hidden until D.B. Collection settles them; returned bills and other collectors' assignments do not grant access. Balances account for cancellations and paid cash, UPI and cheque entries.
+
+POST /delivery-boy/mobile/credit-dues/:saleId/payments accepts paymentMode and amount:
+
+- cash: amount only (older clients may still send cashDetails).
+- upi: amount and referenceNo (UPI number).
+- cheque: amount and referenceNo (cheque number); referenceDate is optional.
+- credit: amount and creditDays, an integer from 1 to 14. Existing credit is extended for the full outstanding balance rather than duplicated.
+
+Positive amounts accept at most two decimal places. Submission locks the sale, rechecks eligibility and available balance, and inserts a pending D.B. Collection entry. It does not mark the balance paid until settlement. Credit remains unpaid; settlement updates existing credit terms and creates only any uncovered credit amount.
+
+GET /delivery-boy/mobile/collections returns only the authenticated user's collection history, including created_at and settled_at. The app can export a date-filtered PDF with payment references, separate cash/UPI/cheque totals, credit terms and settlement status. Native builds use expo-print and expo-sharing; web opens the browser print dialog for Save as PDF. Rebuild native apps after installing these modules.

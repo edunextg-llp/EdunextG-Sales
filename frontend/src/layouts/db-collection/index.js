@@ -78,11 +78,11 @@ function getPaymentDetails(row) {
         return `${label}: ${count} (${formatCurrency(count * amount)})`;
       })
       .filter(Boolean);
-    return parts.length ? parts.join(", ") : "Cash count not available";
+    return parts.length ? parts.join(", ") : `Cash: ${formatCurrency(row.amount)}`;
   }
 
   if (row.payment_mode === "cheque") {
-    return `Cheque No: ${row.reference_no || "N/A"} | Date: ${formatDate(row.reference_date)}`;
+    return `Cheque No: ${row.reference_no || "N/A"}${row.reference_date ? ` | Date: ${formatDate(row.reference_date)}` : ""}`;
   }
 
   if (row.payment_mode === "upi") {

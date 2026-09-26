@@ -24,6 +24,8 @@ import {
 } from "@mui/material";
 
 import MDBox from "components/MDBox";
+import CompanyFilter from "components/CompanyFilter";
+import { matchesSaleCompany } from "utils/companyFilter";
 import MDTypography from "components/MDTypography";
 import MDInput from "components/MDInput";
 import MDButton from "components/MDButton";
@@ -44,6 +46,8 @@ function OutBillPage() {
   const [credits, setCredits] = useState([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedStaffId, setSelectedStaffId] = useState("");
+  const [companyFilter, setCompanyFilter] = useState("");
+  const [reportCompanyFilter, setReportCompanyFilter] = useState("");
   const [selectedCreditIds, setSelectedCreditIds] = useState([]);
   const [selectedTakenBillIds, setSelectedTakenBillIds] = useState([]);
   const [returningBills, setReturningBills] = useState(false);
@@ -115,9 +119,6 @@ function OutBillPage() {
     if (!reportStartDate || !reportEndDate) return;
     try {
       let url = `${API}/staff/credits/taken?startDate=${reportStartDate}&endDate=${reportEndDate}`;
-      if (reportStaffId) {
-        url += `&staffId=${reportStaffId}`;
-      }
       const response = await fetch(url);
       if (response.ok) {
         const data = await response.json();
@@ -128,7 +129,7 @@ function OutBillPage() {
     } catch (error) {
       console.error("Error fetching taken bills:", error);
     }
-  }, [API, reportStartDate, reportEndDate, reportStaffId]);
+  }, [API, reportStartDate, reportEndDate]);
 
   useEffect(() => {
     fetchCredits();
@@ -147,7 +148,7 @@ function OutBillPage() {
         }
         if (deliveryBoyResponse.ok) {
           const deliveryBoyData = await deliveryBoyResponse.json();
-          setDeliveryBoys(deliveryBoyData);
+          setDeliveryBoys(deliveryBoyData.filter((boy) => boy.role === "delivery_boy" && Number(boy.is_active) === 1));
         }
       } catch (error) {
         console.error("Error fetching collector options:", error);
@@ -162,12 +163,13 @@ function OutBillPage() {
 
   useEffect(() => {
     setPage(1);
-  }, [activeTab, searchQuery, selectedStaffId, rowsPerPage]);
+    setSelectedCreditIds([]);
+  }, [activeTab, searchQuery, selectedStaffId, companyFilter, rowsPerPage]);
 
   useEffect(() => {
     setReportPage(1);
     setSelectedTakenBillIds([]);
-  }, [reportStaffId, reportStartDate, reportEndDate, reportRowsPerPage, takenBillSearch]);
+  }, [reportStaffId, reportCompanyFilter, reportStartDate, reportEndDate, reportRowsPerPage, takenBillSearch]);
 
   useEffect(() => {
     setSelectedCreditIds((prev) =>
@@ -215,7 +217,7 @@ function OutBillPage() {
 
   const formatTakerName = (bill) => {
     const name = bill.staff_name || "N/A";
-    const typeLabel = bill.collector_type === "bawarchee_staff" ? "db" : "staff";
+    const typeLabel = bill.collector_type === "bawarchee_staff" ? "Delivery Boy" : "Company Staff";
     return `${name} (${typeLabel})`;
   };
 
@@ -229,7 +231,7 @@ function OutBillPage() {
 
   const handlePrintPdf = () => {
     const staffLabel = reportStaffId
-      ? staffOptions.find((s) => s.id === Number(reportStaffId))?.name || "Selected Staff"
+      ? reportCollectorOptions.find((s) => s.id === reportStaffId)?.name || "Selected Collector"
       : "All Staff";
     const generatedOn = new Date().toLocaleString("en-GB");
     const rowsHtml = filteredTakenBills
@@ -329,6 +331,7 @@ function OutBillPage() {
   const staffOptions = React.useMemo(() => {
     const staff = new Map();
     credits.forEach((credit) => {
+      if (!matchesSaleCompany(credit, companyFilter)) return;
       if (!credit.staff_id) return;
       if (!staff.has(credit.staff_id)) {
         staff.set(credit.staff_id, credit.staff_name || `Staff ${credit.staff_id}`);
@@ -338,9 +341,33 @@ function OutBillPage() {
     return [...staff.entries()]
       .map(([id, name]) => ({ id, name }))
       .sort((a, b) => a.name.localeCompare(b.name));
-  }, [credits]);
+  }, [credits, companyFilter]);
+
+  const reportCollectorOptions = React.useMemo(() => {
+    const collectors = new Map();
+    takenBills.forEach((bill) => {
+      if (!matchesSaleCompany(bill, reportCompanyFilter)) return;
+      const id = `${bill.collector_type || "company_staff"}:${bill.staff_id}`;
+      if (bill.staff_id) collectors.set(id, formatTakerName(bill));
+    });
+    return [...collectors].map(([id, name]) => ({ id, name }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [takenBills, reportCompanyFilter]);
+
+  useEffect(() => {
+    if (selectedStaffId && !staffOptions.some((staff) => String(staff.id) === String(selectedStaffId))) {
+      setSelectedStaffId("");
+    }
+  }, [staffOptions, selectedStaffId]);
+
+  useEffect(() => {
+    if (reportStaffId && !reportCollectorOptions.some((collector) => collector.id === reportStaffId)) {
+      setReportStaffId("");
+    }
+  }, [reportCollectorOptions, reportStaffId]);
 
   const filteredCredits = credits.filter((credit) => {
+    if (!matchesSaleCompany(credit, companyFilter)) return false;
     const saleBalance = Number(credit.sale_balance_amount ?? credit.saleBalanceAmount);
     if (!Number.isNaN(saleBalance) && saleBalance <= 0) {
       return false;
@@ -522,6 +549,8 @@ function OutBillPage() {
   // Taken Bills Pagination & Filtered Totals
   const normalizedTakenBillSearch = takenBillSearch.trim().toLowerCase();
   const filteredTakenBills = takenBills.filter((bill) => {
+    if (!matchesSaleCompany(bill, reportCompanyFilter)) return false;
+    if (reportStaffId && `${bill.collector_type || "company_staff"}:${bill.staff_id}` !== reportStaffId) return false;
     if (!normalizedTakenBillSearch) return true;
     return [
       bill.outlet_name,
@@ -660,7 +689,10 @@ function OutBillPage() {
                   {activeTab === "pending" ? (
                     <>
 
-                      <Grid item xs={5} md={3}>
+                      <Grid item xs={12} md={3}>
+                        <CompanyFilter rows={credits} value={companyFilter} onChange={setCompanyFilter} id="out-bill-company" />
+                      </Grid>
+                      <Grid item xs={12} md={3}>
                         <FormControl size="small" fullWidth>
                           <InputLabel id="credit-staff-filter-label">Staff</InputLabel>
                           <Select
@@ -679,7 +711,7 @@ function OutBillPage() {
                           </Select>
                         </FormControl>
                       </Grid>
-                      <Grid item xs={4} md={3}>
+                      <Grid item xs={12} md={6}>
                         <MDInput
                           type="text"
                           label="Search Outlet, Contact, Invoice, Staff, or Sale ID..."
@@ -691,6 +723,9 @@ function OutBillPage() {
                     </>
                   ) : (
                     <>
+                      <Grid item xs={12} md={3}>
+                        <CompanyFilter rows={takenBills} value={reportCompanyFilter} onChange={setReportCompanyFilter} id="taken-bill-company" />
+                      </Grid>
                       <Grid item xs={12} md={2}>
                         <MDInput
                           type="date"
@@ -713,16 +748,16 @@ function OutBillPage() {
                       </Grid>
                       <Grid item xs={12} md={2}>
                         <FormControl size="small" fullWidth>
-                          <InputLabel id="report-staff-filter-label">Staff (Taker)</InputLabel>
+                          <InputLabel id="report-staff-filter-label">Collector (Taker)</InputLabel>
                           <Select
                             labelId="report-staff-filter-label"
                             value={reportStaffId}
-                            label="Staff (Taker)"
+                            label="Collector (Taker)"
                             onChange={(e) => setReportStaffId(e.target.value)}
                             sx={{ height: 44 }}
                           >
                             <MenuItem value="">All Staff</MenuItem>
-                            {staffOptions.map((staff) => (
+                            {reportCollectorOptions.map((staff) => (
                               <MenuItem key={staff.id} value={staff.id}>
                                 {staff.name}
                               </MenuItem>

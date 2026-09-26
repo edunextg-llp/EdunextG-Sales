@@ -98,12 +98,13 @@ class DeliveryCollectionModel {
         return rows.map(DeliveryCollectionModel.normalizeRow);
     }
 
-    static async getOutstandingSalesForDeliveryBoy(deliveryBoyId) {
-        const [rows] = await db.execute(
+    static async getOutstandingSalesForDeliveryBoy(deliveryBoyId, executor = db) {
+        const [rows] = await executor.execute(
             `SELECT ss.id AS sale_id, ss.price, ss.paid_amount,
-                    CASE WHEN ss.paid_amount = 0 AND ss.balance_amount = 0 AND ss.price > 0
-                         THEN ss.price ELSE ss.balance_amount END AS balance_amount,
+                    GREATEST(0, ss.price - COALESCE(cancelled.total, 0) - COALESCE(paid.total, 0)) AS balance_amount,
                     COALESCE(credit_due.credit_amount, 0) AS credit_amount,
+                    CASE WHEN assigned_bill.sale_id IS NOT NULL THEN 'taken_bill' ELSE 'delivery' END AS collection_source,
+                    DATE_FORMAT(ss.delivery_date, '%Y-%m-%d') AS delivery_date,
                     DATE_FORMAT(ss.sale_date, '%Y-%m-%d') AS sale_date,
                     ss.invoice_number, sc.outlet_name, sc.outlet_erp_id,
                     sc.location_name, COALESCE(c.name, 'Company not assigned') AS company_name
@@ -111,6 +112,20 @@ class DeliveryCollectionModel {
              INNER JOIN staff_counters sc ON sc.id = ss.outlet_id
              INNER JOIN staff s ON s.id = ss.staff_id
              LEFT JOIN companies c ON c.id = s.company_id
+             LEFT JOIN (
+                 SELECT DISTINCT sp.sale_id
+                 FROM taken_bills tb
+                 INNER JOIN sale_payments sp ON sp.id = tb.payment_id
+                 WHERE tb.delivery_boy_id = ? AND tb.collector_type = 'bawarchee_staff'
+                   AND tb.returned_at IS NULL
+                   AND sp.payment_mode = 'credit'
+                   AND sp.amount > COALESCE((SELECT SUM(child.amount) FROM sale_payments child
+                       WHERE child.parent_credit_payment_id = sp.id AND child.payment_mode IN ('cash','upi','cheque')), 0)
+             ) assigned_bill ON assigned_bill.sale_id = ss.id
+             LEFT JOIN (SELECT sale_id, SUM(amount) AS total FROM sale_payments
+                        WHERE payment_mode IN ('cash','upi','cheque') GROUP BY sale_id) paid ON paid.sale_id = ss.id
+             LEFT JOIN (SELECT sale_id, SUM(amount) AS total FROM order_cancellations
+                        GROUP BY sale_id) cancelled ON cancelled.sale_id = ss.id
              LEFT JOIN (
                  SELECT credit.sale_id,
                         SUM(GREATEST(0, credit.amount - COALESCE(child.paid, 0))) AS credit_amount
@@ -125,17 +140,18 @@ class DeliveryCollectionModel {
                  WHERE credit.payment_mode = 'credit'
                  GROUP BY credit.sale_id
              ) credit_due ON credit_due.sale_id = ss.id
-             WHERE ss.packaging_status = 'delivered'
-               AND (CASE WHEN ss.paid_amount = 0 AND ss.balance_amount = 0 AND ss.price > 0
-                         THEN ss.price ELSE ss.balance_amount END) > 0
+             WHERE (assigned_bill.sale_id IS NOT NULL OR ss.packaging_status = 'delivered')
+               AND GREATEST(0, ss.price - COALESCE(cancelled.total, 0) - COALESCE(paid.total, 0)) > 0
                AND NOT EXISTS (
                     SELECT 1 FROM delivery_boy_collections pending
                     WHERE pending.sale_id = ss.id AND pending.settled_at IS NULL
                )
-               AND (ss.delivery_boy_id = ? OR EXISTS (
-                    SELECT 1 FROM delivery_boy_companies dbc
-                    LEFT JOIN staff_companies stc ON stc.company_id = dbc.company_id AND stc.staff_id = s.id
-                    WHERE dbc.delivery_boy_id = ? AND (dbc.company_id = s.company_id OR stc.staff_id IS NOT NULL)))
+               AND (assigned_bill.sale_id IS NOT NULL OR (
+                    ss.delivery_boy_id = ? AND EXISTS (
+                        SELECT 1 FROM staff_sale_status_history history
+                        WHERE history.sale_id = ss.id AND history.status = 'delivered'
+                          AND DATE(history.changed_at) = CURDATE()
+                    )))
              ORDER BY ss.sale_date ASC, ss.id ASC`,
             [deliveryBoyId, deliveryBoyId]
         );
@@ -149,18 +165,36 @@ class DeliveryCollectionModel {
     }
 
     static async collectOutstandingPayment(deliveryBoyId, saleId, data) {
-        const due = (await this.getOutstandingSalesForDeliveryBoy(deliveryBoyId))
-            .find((row) => Number(row.sale_id) === Number(saleId));
-        if (!due) return null;
-        if (data.paymentMode === 'credit' && due.credit_amount > 0) {
-            throw new Error('EXISTING_CREDIT_DUE');
-        }
-        const collection = await this.upsertForDeliveryBoy(deliveryBoyId, saleId, {
-            ...data,
-            salePaymentId: null,
-            remarks: `Mobile payment for BP${saleId}`,
-        });
-        return { collection, remainingBalance: due.balance_amount };
+        const connection = await db.getConnection();
+        try {
+            await connection.beginTransaction();
+            await connection.execute('SELECT id FROM staff_sales WHERE id = ? FOR UPDATE', [saleId]);
+            const due = (await this.getOutstandingSalesForDeliveryBoy(deliveryBoyId, connection))
+                .find((row) => Number(row.sale_id) === Number(saleId));
+            if (!due) { await connection.rollback(); return null; }
+            const price = await PaymentModel.getEffectiveSalePrice(connection, saleId);
+            const paid = await PaymentModel.getTotalPaid(connection, saleId);
+            const remaining = Math.max(0, price - paid);
+            if (!Number.isFinite(data.amount) || data.amount <= 0 || data.amount > remaining + 0.001) {
+                throw Object.assign(new Error('EXCEEDS_BALANCE'), { remaining });
+            }
+            if (data.paymentMode === 'credit' && due.credit_amount > 0 && Math.abs(data.amount - remaining) > 0.001) {
+                throw new Error('FULL_CREDIT_BALANCE_REQUIRED');
+            }
+            const [result] = await connection.execute(
+                `INSERT INTO delivery_boy_collections
+                 (sale_id, delivery_boy_id, payment_mode, amount, cash_details, reference_no, reference_date, credit_days, remarks, settled_at)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)`,
+                [saleId, deliveryBoyId, data.paymentMode, data.amount,
+                 data.cashDetails ? JSON.stringify(data.cashDetails) : null,
+                 data.referenceNo, data.referenceDate, data.creditDays, `Mobile payment for BP${saleId}`]
+            );
+            await connection.commit();
+            return { collection: { id: result.insertId, sale_id: saleId, amount: data.amount }, remainingBalance: remaining };
+        } catch (error) {
+            await connection.rollback();
+            throw error;
+        } finally { connection.release(); }
     }
 
     static async settle(collectionId) {
@@ -179,12 +213,14 @@ class DeliveryCollectionModel {
             if (!collection) { await connection.rollback(); return false; }
 
             const amount = Number(collection.amount) || 0;
+            await connection.execute('SELECT id FROM staff_sales WHERE id = ? FOR UPDATE', [collection.sale_id]);
             const [paidRows] = await connection.execute(
                 `SELECT COALESCE(SUM(amount), 0) AS paid FROM sale_payments
                  WHERE sale_id = ? AND payment_mode IN ('cash','upi','cheque')`,
                 [collection.sale_id]
             );
-            const remainingSaleBalance = Math.max(0, Number(collection.price) - Number(paidRows[0].paid));
+            const effectivePrice = await PaymentModel.getEffectiveSalePrice(connection, collection.sale_id);
+            const remainingSaleBalance = Math.max(0, effectivePrice - Number(paidRows[0].paid));
             if (amount <= 0 || amount > remainingSaleBalance + 0.001) {
                 const error = new Error('COLLECTION_EXCEEDS_BALANCE');
                 error.remaining = remainingSaleBalance;
@@ -205,6 +241,28 @@ class DeliveryCollectionModel {
 
             let amountToApply = amount;
             let lastPaymentId = null;
+            if (collection.payment_mode === 'credit') {
+                const [existingCredits] = await connection.execute(
+                    `SELECT sp.id, GREATEST(0, sp.amount - COALESCE(child.paid, 0)) AS balance
+                     FROM sale_payments sp
+                     LEFT JOIN (SELECT parent_credit_payment_id, SUM(amount) AS paid FROM sale_payments
+                                WHERE parent_credit_payment_id IS NOT NULL AND payment_mode IN ('cash','upi','cheque')
+                                GROUP BY parent_credit_payment_id) child ON child.parent_credit_payment_id = sp.id
+                     WHERE sp.sale_id = ? AND sp.payment_mode = 'credit'
+                     HAVING balance > 0`, [collection.sale_id]
+                );
+                if (existingCredits.length && Math.abs(amount - remainingSaleBalance) > 0.001) {
+                    throw Object.assign(new Error('COLLECTION_EXCEEDS_BALANCE'), { remaining: remainingSaleBalance });
+                }
+                for (const credit of existingCredits) {
+                    await connection.execute(
+                        'UPDATE sale_payments SET credit_days = ?, payment_date = CURDATE() WHERE id = ?',
+                        [collection.credit_days, credit.id]
+                    );
+                    lastPaymentId = credit.id;
+                    amountToApply = Math.max(0, Math.round((amountToApply - Number(credit.balance)) * 100) / 100);
+                }
+            }
             if (collection.payment_mode !== 'credit') {
                 const [credits] = await connection.execute(
                     `SELECT sp.id, GREATEST(0, sp.amount - COALESCE(child.paid, 0)) AS balance
@@ -223,7 +281,7 @@ class DeliveryCollectionModel {
                     amountToApply = Math.round((amountToApply - allocation) * 100) / 100;
                 }
             }
-            if (amountToApply > 0.001 || collection.payment_mode === 'credit') {
+            if (amountToApply > 0.001) {
                 lastPaymentId = await insertPayment(amountToApply);
             }
 

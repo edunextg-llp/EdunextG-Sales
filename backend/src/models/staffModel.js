@@ -1572,7 +1572,8 @@ class StaffModel {
                    sc.outlet_name, sc.outlet_erp_id, sc.location_name, sc.contact_number,
                    COALESCE(s.name, db.name) AS staff_name,
                    COALESCE(tb.staff_id, tb.delivery_boy_id) AS staff_id,
-                   COALESCE(staff_company.company_names, sale_company.name) AS company_name
+                   COALESCE(staff_company.company_names, sale_company.name) AS company_name,
+                   COALESCE(staff_company.company_ids, sale_staff.company_id) AS company_ids
             FROM taken_bills tb
             JOIN sale_payments sp ON tb.payment_id = sp.id
             JOIN staff_sales ss ON sp.sale_id = ss.id
@@ -1583,6 +1584,7 @@ class StaffModel {
             LEFT JOIN companies sale_company ON sale_staff.company_id = sale_company.id
             LEFT JOIN (
                 SELECT sc_map.staff_id,
+                       GROUP_CONCAT(c2.id ORDER BY c2.name SEPARATOR ',') AS company_ids,
                        GROUP_CONCAT(c2.name ORDER BY c2.name SEPARATOR ', ') AS company_names
                 FROM staff_companies sc_map
                 INNER JOIN companies c2 ON c2.id = sc_map.company_id

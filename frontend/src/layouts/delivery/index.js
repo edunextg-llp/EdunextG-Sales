@@ -97,6 +97,7 @@ function Delivery() {
     out_for_delivery: "Out for Delivery",
     delivered: "Delivered",
     cancelled: "Cancelled",
+    returned: "Returned",
   };
 
   const formatDate = (value) => {
@@ -320,7 +321,7 @@ function Delivery() {
         const data = await response.json();
         const updated = enhanceDeliveryRow(data.sale);
         // Only remove if it is completely out of Delivery module (e.g. delivered, cancelled, not_packing)
-        if (updated.packaging_status !== "packing_done" && updated.packaging_status !== "out_for_delivery") {
+        if (!["packing_done", "out_for_delivery", "returned"].includes(updated.packaging_status)) {
           setSalesData((prev) => prev.filter((item) => item.id !== saleId));
         } else {
           setSalesData((prev) =>
@@ -368,12 +369,14 @@ function Delivery() {
   };
 
   const getRowColor = (status) => {
+    if (status === 'returned') return '#fff1d6';
     if (status === 'out_for_delivery') return '#dcfce7'; // green
     if (status === 'packing_done') return '#e0f2fe'; // light blue
     return '#ffebeb';
   };
 
   const getTextColor = (status) => {
+    if (status === 'returned') return '#92400e';
     if (status === 'out_for_delivery') return '#166534'; // dark green
     if (status === 'packing_done') return '#075985'; // dark blue
     return '#991b1b';
@@ -393,11 +396,11 @@ function Delivery() {
       .sort((a, b) => a.name.localeCompare(b.name));
   }, [salesData]);
 
-  // Filter 1: Pending Deliveries (status = packing_done)
+  // Returned orders await reassignment alongside newly packed orders.
   const filteredSales = salesData.filter((row) => {
     if (!matchesSaleCompany(row, companyFilter)) return false;
     const status = row.original_packaging_status || row.packaging_status || "not_packing";
-    if (status !== "packing_done") {
+    if (status !== "packing_done" && status !== "returned") {
       return false;
     }
 
@@ -679,6 +682,7 @@ function Delivery() {
                                       sx={{ height: "36px", fontSize: "0.875rem", backgroundColor: "#fff" }}
                                     >
                                       <MenuItem value="" disabled>Select Status</MenuItem>
+                                      <MenuItem value="returned" disabled>Returned</MenuItem>
                                       <MenuItem value="out_for_delivery">Out for Delivery</MenuItem>
                                     </Select>
                                   </FormControl>

@@ -425,7 +425,7 @@ export const updateMobileCollection = async (req, res) => {
         let creditDays = null;
         const remarks = String(req.body.remarks || '').trim() || null;
 
-        if (paymentMode === 'cash') {
+        if (paymentMode === 'cash' && req.body.amount == null) {
             const cashResult = normalizeCashCollectionDetails(req.body.cashDetails || {});
             if (cashResult.error) {
                 return res.status(400).json({ error: cashResult.error });
@@ -452,6 +452,7 @@ export const updateMobileCollection = async (req, res) => {
             if (!creditDaysValidation.valid) {
                 return res.status(400).json({ error: creditDaysValidation.error });
             }
+            if (creditDaysValidation.value > 14) return res.status(400).json({ error: 'Credit days must be between 1 and 14' });
             creditDays = creditDaysValidation.value;
         }
 
@@ -500,24 +501,25 @@ export const collectMobileCreditDue = async (req, res) => {
         if (!['cash', 'upi', 'cheque', 'credit'].includes(paymentMode)) return res.status(400).json({ error: 'Select cash, UPI, cheque, or credit' });
         let amount;
         let cashDetails = null;
-        if (paymentMode === 'cash') {
+        if (paymentMode === 'cash' && req.body.amount == null) {
             const cashResult = normalizeCashCollectionDetails(req.body.cashDetails || {});
             if (cashResult.error) return res.status(400).json({ error: cashResult.error });
             amount = cashResult.amount;
             cashDetails = cashResult.cashDetails;
         } else {
             const amountResult = validateNumeric(req.body.amount, 'Amount');
-            if (!amountResult.valid || amountResult.value <= 0) return res.status(400).json({ error: 'Amount must be greater than zero' });
+            if (!amountResult.valid || !Number.isFinite(amountResult.value) || amountResult.value <= 0 || Math.abs(amountResult.value * 100 - Math.round(amountResult.value * 100)) > 0.000001) return res.status(400).json({ error: 'Enter a positive amount with at most two decimal places' });
             amount = amountResult.value;
         }
         const referenceNo = String(req.body.referenceNo || '').trim() || null;
         const referenceDate = normalizeDateInput(req.body.referenceDate);
         if (paymentMode === 'upi' && !referenceNo) return res.status(400).json({ error: 'UPI number is required' });
-        if (paymentMode === 'cheque' && (!referenceNo || !referenceDate)) return res.status(400).json({ error: 'Cheque number and date are required' });
+        if (paymentMode === 'cheque' && !referenceNo) return res.status(400).json({ error: 'Cheque number is required' });
         let creditDays = null;
         if (paymentMode === 'credit') {
             const creditDaysResult = validatePositiveInteger(req.body.creditDays, 'Credit days');
             if (!creditDaysResult.valid) return res.status(400).json({ error: creditDaysResult.error });
+            if (creditDaysResult.value > 14) return res.status(400).json({ error: 'Credit days must be between 1 and 14' });
             creditDays = creditDaysResult.value;
         }
         const result = await DeliveryCollectionModel.collectOutstandingPayment(req.deliveryBoyId, saleId, {
@@ -525,8 +527,9 @@ export const collectMobileCreditDue = async (req, res) => {
             paymentMode, amount, cashDetails, referenceNo, referenceDate, creditDays,
         });
         if (!result) return res.status(404).json({ error: 'Outstanding payment not found or unavailable' });
-        res.status(200).json({ message: 'Payment submitted for admin settlement', ...result });
+        res.status(200).json({ message: 'Payment submitted to D.B. Collection for settlement', ...result });
     } catch (error) {
+        if (error.message === 'FULL_CREDIT_BALANCE_REQUIRED') return res.status(400).json({ error: 'Use the full outstanding balance when extending existing credit' });
         if (error.message === 'EXISTING_CREDIT_DUE') return res.status(400).json({ error: 'Credit is unavailable because this outlet already has a credit due' });
         if (['EXCEEDS_BALANCE', 'EXCEEDS_CREDIT_BALANCE'].includes(error.message)) return res.status(400).json({ error: `Amount exceeds remaining balance of ${error.remaining}` });
         console.error('Error updating mobile credit payment:', error);
