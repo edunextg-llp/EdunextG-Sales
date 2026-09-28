@@ -1,0 +1,146 @@
+import db from '../config/db.js';
+
+class BankDepositModel {
+    static async generateDepositRefNo(depositMode, connection = db) {
+        const prefix =
+            depositMode === 'cheque' ? 'BFPCQ' : depositMode === 'upi' ? 'BFPUP' : 'BFPCA';
+        const [rows] = await connection.execute(
+            `SELECT deposit_ref_no
+             FROM bank_deposits
+             WHERE deposit_mode = ? AND deposit_ref_no LIKE ?
+             ORDER BY CAST(SUBSTRING(deposit_ref_no, ?) AS UNSIGNED) DESC
+             LIMIT 1`,
+            [depositMode, `${prefix}%`, prefix.length + 1]
+        );
+        const lastNumber = rows[0]?.deposit_ref_no
+            ? parseInt(String(rows[0].deposit_ref_no).slice(prefix.length), 10)
+            : 0;
+        return `${prefix}${String((Number.isNaN(lastNumber) ? 0 : lastNumber) + 1).padStart(3, '0')}`;
+    }
+
+    static async create(data) {
+        const {
+            companyId,
+            depositDate,
+            bankName,
+            accountName,
+            branchName,
+            bankAccountNo,
+            ifscCode,
+            depositorName,
+            storeName,
+            depositMode,
+            amount,
+            chequeNo,
+            chequeDate,
+            cashDetails,
+        } = data;
+        const depositRefNo = await BankDepositModel.generateDepositRefNo(depositMode);
+
+        const [result] = await db.execute(
+            `INSERT INTO bank_deposits
+             (deposit_ref_no, company_id, deposit_date, bank_name, account_name, branch_name, bank_account_no, ifsc_code, depositor_name, store_name, deposit_mode, amount, cheque_no, cheque_date, cash_details)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            [
+                depositRefNo,
+                companyId,
+                depositDate,
+                bankName,
+                accountName || null,
+                branchName,
+                bankAccountNo,
+                ifscCode || null,
+                depositorName || null,
+                storeName,
+                depositMode,
+                amount,
+                chequeNo || null,
+                chequeDate || null,
+                cashDetails ? JSON.stringify(cashDetails) : null,
+            ]
+        );
+
+        return BankDepositModel.getById(result.insertId);
+    }
+
+    static async getById(id) {
+        const [rows] = await db.execute(
+            `SELECT bd.id, bd.company_id, c.name AS company_name, DATE_FORMAT(bd.deposit_date, '%Y-%m-%d') AS deposit_date,
+                    deposit_ref_no, bank_name, account_name, branch_name, bank_account_no, ifsc_code, depositor_name, store_name,
+                    deposit_mode, amount, cheque_no, DATE_FORMAT(cheque_date, '%Y-%m-%d') AS cheque_date, cash_details,
+                    DATE_FORMAT(bd.created_at, '%Y-%m-%d %H:%i:%s') AS created_at
+             FROM bank_deposits bd
+             LEFT JOIN companies c ON c.id = bd.company_id
+             WHERE bd.id = ?`,
+            [id]
+        );
+        return rows[0] || null;
+    }
+
+    static async getRecent() {
+        const [rows] = await db.execute(
+            `SELECT bd.id, bd.company_id, c.name AS company_name, DATE_FORMAT(bd.deposit_date, '%Y-%m-%d') AS deposit_date,
+                    deposit_ref_no, bank_name, account_name, branch_name, bank_account_no, ifsc_code, depositor_name, store_name,
+                    deposit_mode, amount, cheque_no, DATE_FORMAT(cheque_date, '%Y-%m-%d') AS cheque_date, cash_details,
+                    DATE_FORMAT(bd.created_at, '%Y-%m-%d %H:%i:%s') AS created_at
+             FROM bank_deposits bd
+             LEFT JOIN companies c ON c.id = bd.company_id
+             ORDER BY bd.deposit_date DESC, bd.id DESC
+             LIMIT 200`
+        );
+        return rows;
+    }
+
+    static async update(id, data) {
+        const {
+            companyId,
+            depositDate,
+            bankName,
+            accountName,
+            branchName,
+            bankAccountNo,
+            ifscCode,
+            depositorName,
+            storeName,
+            depositMode,
+            amount,
+            chequeNo,
+            chequeDate,
+            cashDetails,
+        } = data;
+
+        const [result] = await db.execute(
+            `UPDATE bank_deposits
+             SET company_id = ?, deposit_date = ?, bank_name = ?, account_name = ?, branch_name = ?,
+                 bank_account_no = ?, ifsc_code = ?, depositor_name = ?, store_name = ?, deposit_mode = ?,
+                 amount = ?, cheque_no = ?, cheque_date = ?, cash_details = ?
+             WHERE id = ?`,
+            [
+                companyId,
+                depositDate,
+                bankName,
+                accountName || null,
+                branchName,
+                bankAccountNo,
+                ifscCode || null,
+                depositorName || null,
+                storeName,
+                depositMode,
+                amount,
+                chequeNo || null,
+                chequeDate || null,
+                cashDetails ? JSON.stringify(cashDetails) : null,
+                id,
+            ]
+        );
+
+        return result.affectedRows > 0 ? BankDepositModel.getById(id) : null;
+    }
+
+    static async delete(id) {
+        const [result] = await db.execute('DELETE FROM bank_deposits WHERE id = ?', [id]);
+        return result.affectedRows > 0;
+    }
+}
+
+export default BankDepositModel;

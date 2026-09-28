@@ -1,0 +1,2842 @@
+import { Fragment, useState, useEffect, useRef, useCallback } from "react";
+import { notifySalesUpdated, useSalesPolling } from "utils/salesSync";
+import { downloadSalesExcel } from "utils/downloadSalesExcel";
+import { getUnupdatedPaymentSales, unupdatedPaymentColumns } from "utils/unupdatedPaymentExport";
+import Grid from "@mui/material/Grid";
+import Card from "@mui/material/Card";
+import Icon from "@mui/material/Icon";
+import {
+  FormControl,
+  Select,
+  MenuItem,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
+  Paper,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  InputLabel,
+  Tooltip,
+  CircularProgress,
+  Checkbox,
+  Snackbar,
+  Alert,
+} from "@mui/material";
+
+import MDBox from "components/MDBox";
+import MDTypography from "components/MDTypography";
+import MDInput from "components/MDInput";
+import MDButton from "components/MDButton";
+
+import DashboardLayout from "examples/LayoutContainers/DashboardLayout";
+import DashboardNavbar from "examples/Navbars/DashboardNavbar";
+import Footer from "examples/Footer";
+import { useAuth } from "context/AuthContext";
+import {
+  ROWS_PER_PAGE,
+  TablePaginationFooter,
+  compactTableTextSx,
+  paginatedTableContainerSx,
+  paginatedTableHeadCellSx,
+  paginatedTableHeadSx,
+} from "utils/tablePagination";
+
+const PAYMENT_MODE_LABELS = {
+  cash: "Cash",
+  upi: "UPI",
+  credit: "Credit",
+  cheque: "Cheque",
+};
+
+const CASH_NOTE_DENOMINATIONS = [500, 200, 100, 50, 20, 10];
+const CASH_COIN_DENOMINATIONS = [20, 10, 5, 2, 1];
+const CASH_DENOMINATIONS = [
+  ...CASH_NOTE_DENOMINATIONS.map((denomination) => ({ key: `note_${denomination}`, denomination })),
+  ...CASH_COIN_DENOMINATIONS.map((denomination) => ({ key: `coin_${denomination}`, denomination })),
+];
+
+const emptyCashNotes = () =>
+  CASH_DENOMINATIONS.reduce((notes, item) => {
+    notes[item.key] = "";
+    return notes;
+  }, { paise: "" });
+
+const parseCashDetails = (value) => {
+  if (!value) return emptyCashNotes();
+  try {
+    return { ...emptyCashNotes(), ...(typeof value === "string" ? JSON.parse(value) : value) };
+  } catch (error) {
+    return emptyCashNotes();
+  }
+};
+
+const tableHeadSx = {
+  color: "#6b7280",
+  fontSize: "0.75rem",
+  fontWeight: 600,
+  textTransform: "none",
+  borderBottom: "1px solid #e5e7eb",
+  px: 2,
+  py: 1.5,
+  whiteSpace: "nowrap",
+  verticalAlign: "middle",
+};
+
+const tableBodySx = {
+  px: 2,
+  verticalAlign: "middle",
+  py: 1.5,
+};
+
+const getTodayLocalDate = () => {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, "0");
+  const day = String(now.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+};
+
+const emptyPaymentForm = () => ({
+  paymentDate: getTodayLocalDate(),
+  paymentMode: "cash",
+  amount: "",
+  collectorType: "company_staff",
+  collectorStaffId: "",
+  collectorDeliveryBoyId: "",
+  collectorName: "",
+  cashNotes: emptyCashNotes(),
+  referenceNo: "",
+  referenceDate: "",
+  creditDays: "",
+});
+
+
+const toInputDate = (value) => {
+  if (!value) return "";
+  const dateValue = String(value);
+
+  if (dateValue.includes("T")) {
+    return dateValue.split("T")[0];
+  }
+
+  const ddmmyyyy = dateValue.match(/^(\d{2})-(\d{2})-(\d{4})$/);
+  if (ddmmyyyy) {
+    return `${ddmmyyyy[3]}-${ddmmyyyy[2]}-${ddmmyyyy[1]}`;
+  }
+
+  const yyyymmdd = dateValue.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (yyyymmdd) {
+    return dateValue;
+  }
+
+  return "";
+};
+
+
+function UpdatePayment() {
+  const { user } = useAuth();
+  const isAdmin = user?.role === "admin";
+  const [searchQuery, setSearchQuery] = useState("");
+  const [salesCompanyId, setSalesCompanyId] = useState("");
+  const [paymentUpdateFilter, setPaymentUpdateFilter] = useState("all");
+  const [selectedDeliveryIds, setSelectedDeliveryIds] = useState([]);
+  const [movingToDelivery, setMovingToDelivery] = useState(false);
+  const [moveDeliveryMessage, setMoveDeliveryMessage] = useState("");
+  const moveInProgress = useRef(false);
+  const [downloadingUnupdated, setDownloadingUnupdated] = useState(false);
+  const [collectionDate, setCollectionDate] = useState(getTodayLocalDate());
+  const [collectionEndDate, setCollectionEndDate] = useState(getTodayLocalDate());
+  const [paymentDetailRows, setPaymentDetailRows] = useState([]);
+  const [collectionCompanyStaffId, setCollectionCompanyStaffId] = useState("");
+  const [collectionCompanyId, setCollectionCompanyId] = useState("");
+  const [companyOptions, setCompanyOptions] = useState([]);
+  const [companyStaff, setCompanyStaff] = useState([]);
+  const [salesData, setSalesData] = useState([]);
+  const [paymentDialogSale, setPaymentDialogSale] = useState(null);
+  const [payments, setPayments] = useState([]);
+  const [paymentSummary, setPaymentSummary] = useState(null);
+  const [paymentForm, setPaymentForm] = useState(emptyPaymentForm());
+  const [loadingPayments, setLoadingPayments] = useState(false);
+  const [addingPayment, setAddingPayment] = useState(false);
+  const [paymentSuccessMessage, setPaymentSuccessMessage] = useState("");
+  const [deletingPaymentId, setDeletingPaymentId] = useState(null);
+  const [editingPaymentId, setEditingPaymentId] = useState(null);
+  const [activeCreditPayment, setActiveCreditPayment] = useState(null);
+  const [deliveryBoys, setDeliveryBoys] = useState([]);
+  const [cancelDialogSale, setCancelDialogSale] = useState(null);
+  const [cancellingFullBillId, setCancellingFullBillId] = useState(null);
+  const [cancelForm, setCancelForm] = useState({
+    selectedItemId: "",
+    productName: "",
+    productQtyToCancel: "",
+    amount: "",
+    reason: "",
+    remarks: "",
+  });
+  const [cancelSaleItems, setCancelSaleItems] = useState([]);
+  const [loadingCancelItems, setLoadingCancelItems] = useState(false);
+  const [loggingCancel, setLoggingCancel] = useState(false);
+  const [addCancelDialogOpen, setAddCancelDialogOpen] = useState(false);
+  const [cancellationHistory, setCancellationHistory] = useState([]);
+  const [loadingCancellations, setLoadingCancellations] = useState(false);
+  const [page, setPage] = useState(1);
+  const [rowsPerPage, setRowsPerPage] = useState(ROWS_PER_PAGE);
+
+  const API = "https://bawarchee.edunextg.co/api";
+
+  const getStaffCompanyIds = (staff) =>
+    String(staff?.company_ids || staff?.company_id || "")
+      .split(",")
+      .map((id) => Number(id))
+      .filter((id) => Number.isInteger(id) && id > 0);
+
+  const getDeliveryBoyById = (boyId) =>
+    deliveryBoys.find((boy) => String(boy.id) === String(boyId));
+
+  const getDefaultDeliveryBoyCollector = (sale = paymentDialogSale) => {
+    const boyId = sale?.delivery_boy_id != null ? String(sale.delivery_boy_id) : "";
+    const boy = getDeliveryBoyById(boyId);
+    return {
+      collectorDeliveryBoyId: boyId,
+      collectorName: boy?.name || sale?.delivery_boy_name || "",
+    };
+  };
+
+  const resolveDeliveryBoyIdFromName = (name) => {
+    const boy = deliveryBoys.find((item) => item.name === name);
+    return boy ? String(boy.id) : "";
+  };
+
+  const getOutletMarketingStaffId = (sale = paymentDialogSale) => {
+    if (sale?.outlet_staff_id != null) return String(sale.outlet_staff_id);
+    if (sale?.staff_id != null) return String(sale.staff_id);
+    return "";
+  };
+
+  const getOutletMarketingStaffName = (sale = paymentDialogSale) =>
+    sale?.outlet_staff_name || sale?.staff_name || "N/A";
+
+  const buildDefaultPaymentForm = (sale = paymentDialogSale) => ({
+    ...emptyPaymentForm(),
+    collectorType: "company_staff",
+    collectorStaffId: getOutletMarketingStaffId(sale),
+    collectorName: "",
+  });
+
+  const getCollectorName = (payment) =>
+    payment.collector_staff_name || payment.collector_name || getOutletMarketingStaffName() || "N/A";
+
+  const getPaymentUpdatedBy = (payment) => {
+    const roleName = payment.updated_by_role === "admin" ? "Admin" : "Staff";
+    const updaterName = payment.updated_by_name || roleName;
+    const employeeCode = payment.updated_by_employee_code || "Not recorded";
+    return `${updaterName} · ${employeeCode}`;
+  };
+
+  const inferCollectorType = (payment) =>
+    payment.collector_name && !payment.collector_staff_id ? "bawarchee_staff" : "company_staff";
+
+  const fetchSales = useCallback(async (search = searchQuery) => {
+    try {
+      const params = new URLSearchParams();
+      const normalizedSearch = String(search || "").trim();
+      if (normalizedSearch) {
+        params.set("search", normalizedSearch);
+      }
+
+      const queryString = params.toString();
+      const response = await fetch(
+        `${API}/staff/sales/by-date${queryString ? `?${queryString}` : ""}`
+      );
+      if (response.ok) {
+        const data = await response.json();
+        setSalesData(data);
+      }
+    } catch (error) {
+      console.error("Error fetching global sales:", error);
+    }
+  }, [API, searchQuery]);
+
+  useSalesPolling(useCallback(() => fetchSales(searchQuery), [fetchSales, searchQuery]));
+
+  const downloadUnupdatedPayments = async () => {
+    if (!salesCompanyId || downloadingUnupdated) return;
+    setDownloadingUnupdated(true);
+    try {
+      // Fetch all invoices fresh so the export is independent of search and pagination.
+      const response = await fetch(`${API}/staff/sales/by-date`);
+      if (!response.ok) throw new Error("Unable to load invoices");
+      const rows = getUnupdatedPaymentSales(await response.json(), salesCompanyId);
+      if (!rows.length) {
+        alert("No delivered invoices without payment updates were found for this company.");
+        return;
+      }
+      await downloadSalesExcel(rows, `No_Payment_Updates_Company_${salesCompanyId}`, unupdatedPaymentColumns);
+    } catch (error) {
+      console.error("Unable to export invoices without payment updates:", error);
+      alert("Unable to download the Excel report. Please try again.");
+    } finally {
+      setDownloadingUnupdated(false);
+    }
+  };
+
+  const fetchCollectionReport = async () => {
+    try {
+      const params = new URLSearchParams();
+      if (collectionDate) {
+        params.set("startDate", collectionDate);
+      }
+      if (collectionEndDate) {
+        params.set("endDate", collectionEndDate);
+      }
+      if (collectionCompanyId) {
+        params.set("companyId", collectionCompanyId);
+      }
+      const response = await fetch(`${API}/staff/reports/payments?${params.toString()}`);
+      if (!response.ok) throw new Error("Unable to load payment update history");
+      setPaymentDetailRows(await response.json());
+    } catch (error) {
+      console.error("Error fetching payment update history:", error);
+      setPaymentDetailRows([]);
+    }
+  };
+
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      fetchSales(searchQuery);
+    }, 300);
+
+    return () => clearTimeout(timer);
+  }, [searchQuery]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    setCollectionCompanyStaffId("");
+    fetchCollectionReport();
+  }, [collectionDate, collectionEndDate, collectionCompanyId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    const fetchCompanyStaff = async () => {
+      try {
+        const response = await fetch(`${API}/staff`);
+        if (response.ok) {
+          setCompanyStaff(await response.json());
+        }
+      } catch (error) {
+        console.error("Error fetching company staff:", error);
+      }
+    };
+
+    const fetchCompanyOptions = async () => {
+      try {
+        const response = await fetch(`${API}/staff/companies`);
+        if (response.ok) {
+          setCompanyOptions(await response.json());
+        }
+      } catch (error) {
+        console.error("Error fetching companies:", error);
+      }
+    };
+
+    fetchCompanyStaff();
+    fetchCompanyOptions();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const filteredCompanyStaffOptions = companyStaff.filter((staff) => {
+    if (!collectionCompanyId) return false;
+    return getStaffCompanyIds(staff).includes(Number(collectionCompanyId));
+  });
+
+  const filteredPaymentDetailRows = paymentDetailRows.filter((row) => (
+    !collectionCompanyStaffId || String(row.staff_id) === String(collectionCompanyStaffId)
+  ));
+
+  const downloadPaymentExcel = async () => {
+    const params = new URLSearchParams();
+    if (collectionDate) params.set("startDate", collectionDate);
+    if (collectionEndDate) params.set("endDate", collectionEndDate);
+    if (collectionCompanyId) params.set("companyId", collectionCompanyId);
+    if (collectionCompanyStaffId) params.set("staffId", collectionCompanyStaffId);
+    try {
+      const response = await fetch(`${API}/staff/reports/payments/export?${params.toString()}`);
+      if (!response.ok) throw new Error("Unable to download payment report");
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `Payment_Details_${collectionDate || "all"}_to_${collectionEndDate || "all"}.xlsx`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error("Payment report download failed:", error);
+      alert("Unable to download the Excel report. Please try again.");
+    }
+  };
+
+  useEffect(() => {
+    setPage(1);
+  }, [searchQuery, salesCompanyId, paymentUpdateFilter, rowsPerPage]);
+
+  useEffect(() => {
+    setSelectedDeliveryIds([]);
+    setMoveDeliveryMessage("");
+  }, [searchQuery, salesCompanyId, paymentUpdateFilter]);
+
+  useEffect(() => {
+    const fetchDeliveryBoys = async () => {
+      try {
+        const response = await fetch(`${API}/delivery-boy`);
+        if (response.ok) {
+          setDeliveryBoys(await response.json());
+        }
+      } catch (error) {
+        console.error("Error fetching delivery boys:", error);
+      }
+    };
+
+    fetchDeliveryBoys();
+  }, []);
+
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (!paymentDialogSale || deliveryBoys.length === 0) return;
+
+    setPaymentForm((prev) => {
+      if (prev.collectorType !== "bawarchee_staff" || prev.collectorDeliveryBoyId) {
+        return prev;
+      }
+
+      const defaultDeliveryBoy = getDefaultDeliveryBoyCollector(paymentDialogSale);
+      if (!defaultDeliveryBoy.collectorDeliveryBoyId) {
+        return prev;
+      }
+
+      return {
+        ...prev,
+        collectorDeliveryBoyId: defaultDeliveryBoy.collectorDeliveryBoyId,
+        collectorName: defaultDeliveryBoy.collectorName,
+      };
+    });
+  }, [deliveryBoys, paymentDialogSale]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const filteredSales = salesData.filter((row) => (
+    row.packaging_status === "delivered" &&
+    (paymentUpdateFilter === "all" ||
+      (Number(row.payment_count) === 0 && Number(row.paid_amount || 0) === 0)) &&
+    (!salesCompanyId || String(row.company_ids || "")
+      .split(",")
+      .some((id) => id.trim() === String(salesCompanyId)))
+  ));
+  const totalPages = Math.max(1, Math.ceil(filteredSales.length / rowsPerPage));
+  const selectedMoveIds = paymentUpdateFilter === "none"
+    ? filteredSales.filter((sale) => selectedDeliveryIds.includes(Number(sale.id))).map((sale) => Number(sale.id))
+    : [];
+  const allMoveSelected = filteredSales.length > 0 && selectedMoveIds.length === filteredSales.length;
+  const toggleAllMoveBills = () => setSelectedDeliveryIds(
+    allMoveSelected ? [] : filteredSales.map((sale) => Number(sale.id))
+  );
+  const moveSelectedToDelivery = async () => {
+    if (!selectedMoveIds.length || moveInProgress.current) return;
+    moveInProgress.current = true;
+    setMovingToDelivery(true);
+    setMoveDeliveryMessage("");
+    try {
+      const response = await fetch(`${API}/staff/sales/move-to-delivery`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ saleIds: selectedMoveIds }),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || "Unable to move selected bills.");
+      notifySalesUpdated();
+      setSalesData((current) => current.filter((sale) => !result.movedIds.includes(Number(sale.id))));
+      setSelectedDeliveryIds([]);
+      setPage(1);
+      setMoveDeliveryMessage(`${result.movedIds.length} bill(s) moved to Delivery Management → Pending Deliveries.${result.skippedIds.length ? ` ${result.skippedIds.length} skipped because their status or payment activity changed.` : ""}`);
+      await fetchSales();
+    } catch (error) {
+      setMoveDeliveryMessage(error.message || "Unable to move selected bills.");
+    } finally {
+      moveInProgress.current = false;
+      setMovingToDelivery(false);
+    }
+  };
+  const paginatedSales = filteredSales.slice(
+    (page - 1) * rowsPerPage,
+    page * rowsPerPage
+  );
+
+  const getEffectiveInvoicePrice = (sale) => {
+    const explicitEffectivePrice = parseFloat(sale?.effectivePrice ?? sale?.effective_price);
+    if (!Number.isNaN(explicitEffectivePrice)) return Math.max(0, explicitEffectivePrice);
+
+    const originalPrice = parseFloat(sale?.price) || 0;
+    const cancelledAmount = parseFloat(sale?.cancelledAmount ?? sale?.cancelled_amount) || 0;
+    return Math.max(0, originalPrice - cancelledAmount);
+  };
+
+  const getRemainingBalance = (sale) => {
+    const price = getEffectiveInvoicePrice(sale);
+    const paid = parseFloat(sale.paid_amount) || 0;
+    const balance = parseFloat(sale.balance_amount);
+
+    if (!Number.isNaN(balance)) {
+      if (paid === 0 && balance === 0 && price > 0) {
+        return price;
+      }
+      return Math.max(0, balance);
+    }
+    return Math.max(0, price - paid);
+  };
+
+  const getPaidAmount = (sale) => {
+    const paid = parseFloat(sale.paid_amount);
+    if (!Number.isNaN(paid)) return paid;
+    const price = getEffectiveInvoicePrice(sale);
+    return Math.max(0, price - getRemainingBalance(sale));
+  };
+
+  const getPaymentRowSx = (sale) => {
+    const price = getEffectiveInvoicePrice(sale);
+    const balance = getRemainingBalance(sale);
+    const paid = getPaidAmount(sale);
+    const hasPaymentActivity = (Number(sale.payment_count) || 0) > 0 || paid > 0;
+
+    if (!hasPaymentActivity) {
+      return {
+        backgroundColor: "#fff",
+        "&:hover": { backgroundColor: "#f8fafc" },
+      };
+    }
+
+    if (balance <= 0.001) {
+      return {
+        backgroundColor: "#dcfce7",
+        "&:hover": { backgroundColor: "#bbf7d0" },
+      };
+    }
+
+    if (Math.abs(balance - price) <= 0.001) {
+      return {
+        backgroundColor: "#fee2e2",
+        "&:hover": { backgroundColor: "#fecaca" },
+      };
+    }
+
+    if (balance < price) {
+      return {
+        backgroundColor: "#fef3c7",
+        "&:hover": { backgroundColor: "#fde68a" },
+      };
+    }
+
+    return {};
+  };
+
+  const fetchPaymentsForSale = async (saleId) => {
+    setLoadingPayments(true);
+    try {
+      const response = await fetch(`${API}/staff/sales/${saleId}/payments`);
+      if (response.ok) {
+        const data = await response.json();
+        setPayments(data.payments);
+        setPaymentSummary(data.summary);
+        setSalesData((prev) =>
+          prev.map((sale) =>
+            sale.id === saleId
+              ? {
+                ...sale,
+                paid_amount: data.summary.paidAmount,
+                balance_amount: data.summary.balanceAmount,
+                payment_count: data.payments?.length || 0,
+              }
+              : sale
+          )
+        );
+      }
+    } catch (error) {
+      console.error("Error fetching payments:", error);
+    } finally {
+      setLoadingPayments(false);
+    }
+  };
+
+  const openPaymentDialog = async (sale) => {
+    setPaymentDialogSale(sale);
+    setPaymentForm(buildDefaultPaymentForm(sale));
+    await fetchPaymentsForSale(sale.id);
+  };
+
+  const closePaymentDialog = () => {
+    setPaymentDialogSale(null);
+    setPayments([]);
+    setPaymentSummary(null);
+    setPaymentForm(emptyPaymentForm());
+    setEditingPaymentId(null);
+    setActiveCreditPayment(null);
+    setDeletingPaymentId(null);
+  };
+
+  const fetchCancellationHistory = async (saleId) => {
+    setLoadingCancellations(true);
+    try {
+      const response = await fetch(`${API}/staff/sales/${saleId}/cancel-log`);
+      if (response.ok) {
+        const data = await response.json();
+        setCancellationHistory(data);
+      }
+    } catch (error) {
+      console.error("Error fetching cancellation history:", error);
+    } finally {
+      setLoadingCancellations(false);
+    }
+  };
+
+  const fetchCancelSaleItems = async (saleId) => {
+    setLoadingCancelItems(true);
+    try {
+      const response = await fetch(`${API}/staff/sales/${saleId}/items`);
+      if (response.ok) {
+        const data = await response.json();
+        setCancelSaleItems(Array.isArray(data) ? data : []);
+      } else {
+        setCancelSaleItems([]);
+      }
+    } catch (error) {
+      console.error("Error fetching sale items:", error);
+      setCancelSaleItems([]);
+    } finally {
+      setLoadingCancelItems(false);
+    }
+  };
+
+  const handleCancelFullBill = async (sale) => {
+    if (!sale?.id || cancellingFullBillId) return;
+
+    const invoiceLabel = sale.invoice_number || sale.sticker_number || sale.id;
+    const confirmed = window.confirm(
+      `Cancel the complete bill ${invoiceLabel} for ${sale.outlet_name || "this outlet"}?\n\n` +
+      "Click OK to move this bill to Delivered → Cancelled Items. This action cancels the full invoice."
+    );
+    if (!confirmed) return;
+
+    setCancellingFullBillId(sale.id);
+    try {
+      const response = await fetch(`${API}/staff/sales/${sale.id}/packaging`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          packagingStatus: "cancelled",
+          expectedStatus: sale.packaging_status || "delivered",
+          statusDate: getTodayLocalDate(),
+        }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || "Failed to cancel the full bill.");
+
+      setSalesData((current) => current.filter((entry) => entry.id !== sale.id));
+      if (paymentDialogSale?.id === sale.id) closePaymentDialog();
+      window.alert(`Bill ${invoiceLabel} was cancelled, its items were restored to stock, and it was moved to Delivered → Cancelled Items.`);
+    } catch (cancelError) {
+      window.alert(cancelError.message);
+      fetchSales();
+    } finally {
+      setCancellingFullBillId(null);
+    }
+  };
+
+  const calculateCancelAmount = (item, cancelQty) => {
+    const orderedQty = Number(item?.qty) || 0;
+    const rate = Number(item?.rate) || 0;
+    const lineTotal = Number(item?.line_total) || 0;
+    const parsedCancelQty = Number(cancelQty) || 0;
+    if (parsedCancelQty <= 0) return 0;
+    if (rate > 0) return parsedCancelQty * rate;
+    if (orderedQty > 0) return (parsedCancelQty / orderedQty) * lineTotal;
+    return 0;
+  };
+
+  const formatCancelQtyDisplay = (cancellation) => {
+    if (cancellation?.product_qty != null && cancellation.product_qty !== "") {
+      return Number(cancellation.product_qty);
+    }
+    const legacyValue = String(cancellation?.product_size ?? "").trim();
+    if (legacyValue && !Number.isNaN(Number(legacyValue))) {
+      return Number(legacyValue);
+    }
+    return "—";
+  };
+
+  const formatItemQtyDisplay = (qty) => {
+    const parsed = Number(qty);
+    return Number.isFinite(parsed) ? parsed : "";
+  };
+
+  const resetCancelForm = () => {
+    setCancelForm({
+      selectedItemId: "",
+      productName: "",
+      productQtyToCancel: "",
+      amount: "",
+      reason: "",
+      remarks: "",
+    });
+  };
+
+  const openCancelDialog = async (sale) => {
+    setCancelDialogSale(sale);
+    setAddCancelDialogOpen(false);
+    resetCancelForm();
+    setCancelSaleItems([]);
+    setCancellationHistory([]);
+    await fetchCancellationHistory(sale.id);
+  };
+
+  const openAddCancelDialog = async () => {
+    if (!cancelDialogSale) return;
+    resetCancelForm();
+    setCancelSaleItems([]);
+    setAddCancelDialogOpen(true);
+    await fetchCancelSaleItems(cancelDialogSale.id);
+  };
+
+  const closeAddCancelDialog = () => {
+    setAddCancelDialogOpen(false);
+    resetCancelForm();
+    setCancelSaleItems([]);
+  };
+
+  const closeCancelDialog = () => {
+    setCancelDialogSale(null);
+    setAddCancelDialogOpen(false);
+    resetCancelForm();
+    setCancelSaleItems([]);
+    setCancellationHistory([]);
+  };
+
+  const handleCancelFormChange = (field, value) => {
+    setCancelForm((prev) => ({ ...prev, [field]: value }));
+  };
+
+  const handleCancelProductSelect = (itemId) => {
+    if (String(itemId) === "manual") {
+      setCancelForm((prev) => ({
+        ...prev,
+        selectedItemId: "manual",
+        productName: "",
+        productQtyToCancel: "",
+        amount: "",
+      }));
+      return;
+    }
+
+    const selectedItem = cancelSaleItems.find((item) => String(item.id) === String(itemId));
+    if (!selectedItem) {
+      setCancelForm((prev) => ({
+        ...prev,
+        selectedItemId: "",
+        productName: "",
+        productQtyToCancel: "",
+        amount: "",
+      }));
+      return;
+    }
+
+    const orderedQty = formatItemQtyDisplay(selectedItem.qty);
+    const cancelAmount = calculateCancelAmount(selectedItem, orderedQty);
+    setCancelForm((prev) => ({
+      ...prev,
+      selectedItemId: String(itemId),
+      productName: selectedItem.product_name || "",
+      productQtyToCancel: orderedQty === "" ? "" : String(orderedQty),
+      amount: cancelAmount > 0 ? cancelAmount.toFixed(2) : "",
+    }));
+  };
+
+  const handleCancelQtyChange = (value) => {
+    const selectedItem = cancelSaleItems.find(
+      (item) => String(item.id) === String(cancelForm.selectedItemId)
+    );
+    if (!selectedItem) {
+      setCancelForm((prev) => ({ ...prev, productQtyToCancel: value, amount: "" }));
+      return;
+    }
+
+    const cancelAmount = calculateCancelAmount(selectedItem, value);
+    setCancelForm((prev) => ({
+      ...prev,
+      productQtyToCancel: value,
+      amount: cancelAmount > 0 ? cancelAmount.toFixed(2) : "",
+    }));
+  };
+
+  const selectedCancelItem =
+    cancelForm.selectedItemId && cancelForm.selectedItemId !== "manual"
+      ? cancelSaleItems.find((item) => String(item.id) === String(cancelForm.selectedItemId))
+      : null;
+
+  const isManualCancelEntry =
+    cancelForm.selectedItemId === "manual" || cancelSaleItems.length === 0;
+
+  const handleSaveCancellation = async () => {
+    if (!cancelDialogSale) return;
+
+    const { productName, productQtyToCancel, amount, reason, remarks } = cancelForm;
+
+    if (!productName.trim()) {
+      alert("Please enter product name.");
+      return;
+    }
+    const parsedQty = parseFloat(productQtyToCancel);
+    if (!productQtyToCancel || Number.isNaN(parsedQty) || parsedQty <= 0) {
+      alert("Please enter a valid product qty to cancel.");
+      return;
+    }
+    if (selectedCancelItem) {
+      const orderedQty = Number(selectedCancelItem.qty) || 0;
+      if (orderedQty > 0 && parsedQty > orderedQty) {
+        alert(`Qty to cancel cannot exceed ordered qty (${orderedQty}).`);
+        return;
+      }
+    }
+    if (!reason) {
+      alert("Please select a cancellation reason.");
+      return;
+    }
+    const parsedAmount = parseFloat(amount);
+    if (!amount || Number.isNaN(parsedAmount) || parsedAmount <= 0) {
+      alert("Please enter a valid amount.");
+      return;
+    }
+
+    setLoggingCancel(true);
+    try {
+      const response = await fetch(
+        `${API}/staff/sales/${cancelDialogSale.id}/cancel-log`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            outletName: cancelDialogSale.outlet_name,
+            invoiceNumber: cancelDialogSale.invoice_number,
+            productName: productName.trim(),
+            saleItemId: selectedCancelItem?.id || null,
+            productErpId: selectedCancelItem?.product_erp_id || "",
+            productQty: parsedQty,
+            amount: parsedAmount,
+            reason,
+            remarks: remarks.trim(),
+          }),
+        }
+      );
+
+      if (response.ok) {
+        const data = await response.json().catch(() => ({}));
+        alert("Order cancellation logged, balance reduced, and stock restored successfully.");
+        closeAddCancelDialog();
+        if (data.summary) {
+          setSalesData((prev) =>
+            prev.map((sale) =>
+              sale.id === cancelDialogSale.id
+                ? {
+                    ...sale,
+                    balance_amount: data.summary.balanceAmount,
+                    paid_amount: data.summary.paidAmount,
+                  }
+                : sale
+            )
+          );
+          setCancelDialogSale((prev) =>
+            prev
+              ? {
+                  ...prev,
+                  balance_amount: data.summary.balanceAmount,
+                  paid_amount: data.summary.paidAmount,
+                }
+              : prev
+          );
+        } else {
+          await fetchSales();
+        }
+        await fetchCancellationHistory(cancelDialogSale.id);
+      } else {
+        const err = await response.json().catch(() => ({}));
+        alert(err.error || "Failed to log cancellation.");
+      }
+    } catch (error) {
+      console.error("Error logging cancellation:", error);
+      alert("Error logging cancellation.");
+    } finally {
+      setLoggingCancel(false);
+    }
+  };
+
+  const handlePrintCancellation = (cancellation) => {
+    const printWindow = window.open("", "_blank");
+    printWindow.document.write(`
+      <html>
+        <head>
+          <title>Order Cancellation Slip</title>
+          <style>
+            body { font-family: 'Courier New', Courier, monospace; padding: 20px; color: #000; }
+            .ticket { max-width: 300px; margin: 0 auto; text-align: center; }
+            .header { font-size: 16px; font-weight: bold; margin-bottom: 10px; text-transform: uppercase; }
+            .divider { border-top: 1px dashed #000; margin: 10px 0; }
+            .details { text-align: left; font-size: 12px; line-height: 1.6; }
+            .row { display: flex; justify-content: space-between; }
+            .footer { margin-top: 20px; font-size: 10px; }
+            @media print {
+              body { padding: 0; margin: 0; }
+              @page { margin: 0; }
+            }
+          </style>
+        </head>
+        <body>
+          <div class="ticket">
+            <div class="header">Cancellation Slip</div>
+            <div class="divider"></div>
+            <div class="details">
+              <div class="row"><strong>Date:</strong> <span>${cancellation.created_at}</span></div>
+              <div class="row"><strong>Outlet:</strong> <span>${cancellation.outlet_name}</span></div>
+              <div class="row"><strong>Invoice No:</strong> <span>${cancellation.invoice_number}</span></div>
+              <div class="divider"></div>
+              <div class="row"><strong>Product:</strong> <span>${cancellation.product_name}</span></div>
+              <div class="row"><strong>Qty to Cancel:</strong> <span>${formatCancelQtyDisplay(cancellation)}</span></div>
+              <div class="row"><strong>Amount:</strong> <span>₹${Number(cancellation.amount).toFixed(2)}</span></div>
+              <div class="row"><strong>Reason:</strong> <span>${cancellation.reason || "—"}</span></div>
+              <div class="row"><strong>Remarks:</strong> <span>${cancellation.remarks || "—"}</span></div>
+            </div>
+            <div class="divider"></div>
+            <div class="footer">
+              Thank you
+            </div>
+          </div>
+          <script>
+            window.onload = function() {
+              window.print();
+              setTimeout(function() { window.close(); }, 500);
+            };
+          </script>
+        </body>
+      </html>
+    `);
+    printWindow.document.close();
+  };
+
+  const handlePrintAllCancellations = () => {
+    if (cancellationHistory.length === 0) return;
+    const printWindow = window.open("", "_blank");
+
+    let rowsHtml = "";
+    cancellationHistory.forEach((c) => {
+      rowsHtml += `
+        <tr>
+          <td>${c.created_at}</td>
+          <td>${c.product_name}</td>
+          <td>${formatCancelQtyDisplay(c)}</td>
+          <td>${c.reason || "—"}</td>
+          <td>${c.remarks || "—"}</td>
+          <td align="right">₹${Number(c.amount).toFixed(2)}</td>
+        </tr>
+      `;
+    });
+
+    printWindow.document.write(`
+      <html>
+        <head>
+          <title>Cancellation History Report</title>
+          <style>
+            body { font-family: Arial, sans-serif; padding: 20px; color: #000; }
+            .header { text-align: center; margin-bottom: 20px; }
+            .header h2 { margin: 0; font-size: 18px; text-transform: uppercase; }
+            .header p { margin: 5px 0 0 0; font-size: 12px; color: #555; }
+            table { width: 100%; border-collapse: collapse; margin-top: 15px; font-size: 12px; }
+            th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+            th { background-color: #f2f2f2; }
+            .total { font-weight: bold; }
+            @media print {
+              body { padding: 0; }
+            }
+          </style>
+        </head>
+        <body>
+          <div class="header">
+            <h2>Cancellation History Report</h2>
+            <p><strong>Outlet:</strong> ${cancelDialogSale.outlet_name}</p>
+            <p><strong>Invoice No:</strong> ${cancelDialogSale.invoice_number}</p>
+          </div>
+          <table>
+            <thead>
+              <tr>
+                <th>Date</th>
+                <th>Product Name</th>
+                <th>Qty to Cancel</th>
+                <th>Reason</th>
+                <th>Remarks</th>
+                <th style="text-align: right">Amount</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${rowsHtml}
+            </tbody>
+          </table>
+          <script>
+            window.onload = function() {
+              window.print();
+              setTimeout(function() { window.close(); }, 500);
+            };
+          </script>
+        </body>
+      </html>
+    `);
+    printWindow.document.close();
+  };
+
+
+  const startEditPayment = (payment) => {
+    setEditingPaymentId(payment.id);
+    setActiveCreditPayment(null);
+    const formattedDate = toInputDate(payment.reference_date);
+    const paymentDt = toInputDate(payment.payment_date);
+
+    setPaymentForm({
+      paymentDate: paymentDt || getTodayLocalDate(),
+      paymentMode: payment.payment_mode,
+      amount: String(payment.amount),
+      collectorType: inferCollectorType(payment),
+      collectorStaffId: payment.collector_staff_id
+        ? String(payment.collector_staff_id)
+        : getOutletMarketingStaffId(),
+      collectorDeliveryBoyId: inferCollectorType(payment) === "bawarchee_staff"
+        ? resolveDeliveryBoyIdFromName(payment.collector_name)
+        : "",
+      collectorName: payment.collector_name || "",
+      cashNotes: payment.payment_mode === "cash" ? parseCashDetails(payment.cash_details) : emptyCashNotes(),
+      referenceNo: payment.reference_no || "",
+      referenceDate: formattedDate,
+      creditDays: payment.credit_days ? String(payment.credit_days) : "",
+    });
+  };
+
+  const cancelEditPayment = () => {
+    setEditingPaymentId(null);
+    setActiveCreditPayment(null);
+    setPaymentForm(buildDefaultPaymentForm());
+  };
+
+  const startAddAgainstCredit = (payment) => {
+    setEditingPaymentId(null);
+    setActiveCreditPayment(payment);
+    setPaymentForm({
+      ...buildDefaultPaymentForm(),
+      paymentMode: "cash",
+      collectorType: "company_staff",
+      collectorStaffId: getOutletMarketingStaffId(),
+      collectorDeliveryBoyId: "",
+      collectorName: "",
+    });
+  };
+
+  const handlePaymentFormChange = (field, value) => {
+    setPaymentForm((prev) => {
+      if (field === "paymentMode") {
+        return {
+          ...prev,
+          paymentMode: value,
+          amount: value === "cash" ? "" : prev.amount,
+          cashNotes: value === "cash" ? emptyCashNotes() : prev.cashNotes,
+          referenceNo: "",
+          referenceDate: "",
+          creditDays: "",
+        };
+      }
+
+      if (field === "collectorType") {
+        if (value === "company_staff") {
+          return {
+            ...prev,
+            collectorType: value,
+            collectorStaffId: getOutletMarketingStaffId(),
+            collectorDeliveryBoyId: "",
+            collectorName: "",
+          };
+        }
+        const defaultDeliveryBoy = getDefaultDeliveryBoyCollector();
+        return {
+          ...prev,
+          collectorType: value,
+          collectorStaffId: "",
+          collectorDeliveryBoyId: defaultDeliveryBoy.collectorDeliveryBoyId,
+          collectorName: defaultDeliveryBoy.collectorName,
+        };
+      }
+
+      if (field === "collectorDeliveryBoyId") {
+        const boy = getDeliveryBoyById(value);
+        return {
+          ...prev,
+          collectorDeliveryBoyId: value,
+          collectorName: boy?.name || "",
+        };
+      }
+
+      return { ...prev, [field]: value };
+    });
+  };
+
+  const calculateCashAmount = (cashNotes = paymentForm.cashNotes) =>
+    CASH_DENOMINATIONS.reduce(
+      (total, item) => total + item.denomination * (parseInt(cashNotes[item.key], 10) || 0),
+      0
+    ) + (parseInt(cashNotes.paise, 10) || 0) / 100;
+
+  const handleCashNoteChange = (denomination, value) => {
+    const maximum = denomination === "paise" ? 99 : Number.MAX_SAFE_INTEGER;
+    const count = value === "" ? "" : Math.min(maximum, Math.max(0, parseInt(value, 10) || 0));
+
+    setPaymentForm((prev) => {
+      const cashNotes = {
+        ...prev.cashNotes,
+        [denomination]: count,
+      };
+      return {
+        ...prev,
+        cashNotes,
+        amount: String(calculateCashAmount(cashNotes) || ""),
+      };
+    });
+  };
+
+  const formatPaymentDetails = (payment) => {
+    if (payment.payment_mode === "cash") {
+      const cashDetails = parseCashDetails(payment.cash_details);
+      const parts = CASH_DENOMINATIONS
+        .filter((item) => (parseInt(cashDetails[item.key], 10) || 0) > 0)
+        .map((item) => {
+          return `₹${item.denomination} × ${parseInt(cashDetails[item.key], 10)}`;
+        });
+      const paise = parseInt(cashDetails.paise, 10) || 0;
+      if (paise > 0) parts.push(`${paise} paise`);
+      return parts.join(", ") || "—";
+    }
+    if (payment.payment_mode === "upi" && payment.reference_no) {
+      return `UPI: ${payment.reference_no}`;
+    }
+    if (payment.payment_mode === "cheque") {
+      const parts = [];
+      if (payment.reference_no) parts.push(`Cheque #${payment.reference_no}`);
+      if (payment.reference_date) parts.push(`Date: ${toInputDate(payment.reference_date)}`);
+      return parts.join(" · ") || "—";
+    }
+    if (payment.payment_mode === "credit" && payment.credit_days) {
+      return `${payment.credit_days} days credit`;
+    }
+    return "—";
+  };
+
+  const getCreditChildPayments = (creditPayment) =>
+    payments.filter((payment) => Number(payment.parent_credit_payment_id) === Number(creditPayment.id));
+
+  const getCreditRemainingAmount = (creditPayment) => {
+    const creditAmount = parseFloat(creditPayment?.amount) || 0;
+    const paidAgainstCredit = getCreditChildPayments(creditPayment).reduce(
+      (sum, payment) => sum + (parseFloat(payment.amount) || 0),
+      0
+    );
+    return Math.max(0, Math.round((creditAmount - paidAgainstCredit) * 100) / 100);
+  };
+
+  const validatePaymentForm = () => {
+    const amount = parseFloat(paymentForm.amount);
+
+    if (paymentForm.paymentMode === "cash") {
+      const hasCashCount = CASH_DENOMINATIONS.some(
+        (item) => (parseInt(paymentForm.cashNotes[item.key], 10) || 0) > 0
+      ) || (parseInt(paymentForm.cashNotes.paise, 10) || 0) > 0;
+      if (!hasCashCount) {
+        alert("Please enter cash note count.");
+        return null;
+      }
+    }
+
+    if (!paymentForm.paymentDate || !paymentForm.amount || Number.isNaN(amount) || amount <= 0) {
+      alert("Please enter a valid date and amount.");
+
+      return;
+    }
+
+    if (paymentForm.collectorType === "company_staff") {
+      if (!paymentForm.collectorStaffId) {
+        alert("No marketing person is assigned to this outlet.");
+        return null;
+      }
+    } else if (!paymentForm.collectorDeliveryBoyId) {
+      alert("Please choose a delivery boy.");
+      return null;
+    }
+
+    let remaining = paymentSummary?.balanceAmount ?? getRemainingBalance(paymentDialogSale);
+
+    // If editing, add back the old amount of the payment we're editing so we don't overestimate
+    if (editingPaymentId && ["cash", "upi", "cheque"].includes(paymentForm.paymentMode)) {
+      const oldPayment = payments.find(p => p.id === editingPaymentId);
+      if (oldPayment && ["cash", "upi", "cheque"].includes(oldPayment.payment_mode)) {
+        remaining += parseFloat(oldPayment.amount) || 0;
+      }
+    }
+
+    if (amount > remaining + 0.001 && ["cash", "upi", "cheque"].includes(paymentForm.paymentMode)) {
+      alert(`Amount cannot exceed remaining balance (₹${remaining.toFixed(2)}).`);
+      return;
+
+    }
+
+    if (activeCreditPayment && ["cash", "upi", "cheque"].includes(paymentForm.paymentMode)) {
+      const creditRemaining = getCreditRemainingAmount(activeCreditPayment);
+      if (amount > creditRemaining + 0.001) {
+        alert(`Amount cannot exceed remaining credit amount (Rs. ${creditRemaining.toFixed(2)}).`);
+        return null;
+      }
+    }
+
+    if (paymentForm.paymentMode === "credit" && !paymentForm.creditDays) {
+      alert("Please enter credit days.");
+      return null;
+    }
+
+    if (paymentForm.paymentMode === "cheque" && !paymentForm.referenceNo.trim()) {
+      alert("Please enter cheque number.");
+      return null;
+    }
+
+    if (!editingPaymentId) {
+      const remaining = paymentSummary?.balanceAmount ?? getRemainingBalance(paymentDialogSale);
+      if (
+        ["cash", "upi", "cheque"].includes(paymentForm.paymentMode) &&
+        amount > remaining + 0.001
+      ) {
+        alert(`Amount cannot exceed remaining balance (₹${remaining.toFixed(2)}).`);
+        return null;
+      }
+    }
+
+    return {
+      paymentDate: paymentForm.paymentDate,
+      paymentMode: paymentForm.paymentMode,
+      amount,
+      collectorType: paymentForm.collectorType,
+      collectorStaffId:
+        paymentForm.collectorType === "company_staff"
+          ? Number(paymentForm.collectorStaffId)
+          : null,
+      collectorName:
+        paymentForm.collectorType === "bawarchee_staff"
+          ? String(getDeliveryBoyById(paymentForm.collectorDeliveryBoyId)?.name || paymentForm.collectorName || "").trim()
+          : null,
+      referenceNo: paymentForm.referenceNo.trim() || null,
+      referenceDate: paymentForm.referenceDate || null,
+      creditDays:
+        paymentForm.paymentMode === "credit" ? parseInt(paymentForm.creditDays, 10) : null,
+      parentCreditPaymentId: activeCreditPayment?.id || null,
+      cashDetails: paymentForm.paymentMode === "cash" ? paymentForm.cashNotes : null,
+    };
+  };
+
+  const handleSavePayment = async () => {
+    if (!paymentDialogSale) return;
+
+    const payload = validatePaymentForm();
+    if (!payload) return;
+
+    setAddingPayment(true);
+    try {
+
+      const isEditing = !!editingPaymentId;
+      const url = isEditing
+        ? `${API}/staff/sales/${paymentDialogSale.id}/payments/${editingPaymentId}`
+        : `${API}/staff/sales/${paymentDialogSale.id}/payments`;
+
+      const response = await fetch(url, {
+        method: isEditing ? "PUT" : "POST",
+
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        const outletName = paymentDialogSale.outlet_name || "the selected outlet";
+
+        setPayments(data.payments);
+        setPaymentSummary(data.summary);
+        setEditingPaymentId(null);
+        setActiveCreditPayment(null);
+        setPaymentForm(buildDefaultPaymentForm());
+        setSalesData((prev) =>
+          prev.map((sale) =>
+            sale.id === paymentDialogSale.id
+              ? {
+                ...sale,
+                paid_amount: data.summary.paidAmount,
+                balance_amount: data.summary.balanceAmount,
+                payment_count: data.payments?.length || 0,
+              }
+              : sale
+          )
+        );
+        setPaymentSuccessMessage(
+          `${isEditing ? "Payment updated" : "Payment added"} successfully for ${outletName}.`
+        );
+
+      } else {
+        const err = await response.json().catch(() => ({}));
+        alert(err.error || `Failed to ${editingPaymentId ? "update" : "add"} payment.`);
+      }
+    } catch (error) {
+      console.error("Error saving payment:", error);
+      alert("Error saving payment.");
+    } finally {
+      setAddingPayment(false);
+    }
+  };
+
+  const handleDeletePayment = async (payment) => {
+    if (!paymentDialogSale || deletingPaymentId) return;
+
+    const creditChildren =
+      payment.payment_mode === "credit" ? getCreditChildPayments(payment) : [];
+    const confirmMessage =
+      payment.payment_mode === "credit" && creditChildren.length > 0
+        ? `Delete this credit payment and ${creditChildren.length} linked payment(s)? This cannot be undone.`
+        : "Delete this payment? This cannot be undone.";
+
+    if (!window.confirm(confirmMessage)) return;
+
+    setDeletingPaymentId(payment.id);
+    try {
+      const response = await fetch(
+        `${API}/staff/sales/${paymentDialogSale.id}/payments/${payment.id}`,
+        { method: "DELETE" }
+      );
+
+      if (response.ok) {
+        const data = await response.json();
+        setPayments(data.payments);
+        setPaymentSummary(data.summary);
+        if (editingPaymentId === payment.id) {
+          cancelEditPayment();
+        }
+        if (activeCreditPayment?.id === payment.id) {
+          setActiveCreditPayment(null);
+          setPaymentForm(emptyPaymentForm());
+        }
+        setSalesData((prev) =>
+          prev.map((sale) =>
+            sale.id === paymentDialogSale.id
+              ? {
+                ...sale,
+                paid_amount: data.summary.paidAmount,
+                balance_amount: data.summary.balanceAmount,
+                payment_count: data.payments?.length || 0,
+              }
+              : sale
+          )
+        );
+      } else {
+        const err = await response.json().catch(() => ({}));
+        alert(err.error || "Failed to delete payment.");
+      }
+    } catch (error) {
+      console.error("Error deleting payment:", error);
+      alert("Error deleting payment.");
+    } finally {
+      setDeletingPaymentId(null);
+    }
+  };
+
+  const dialogRemaining =
+    paymentSummary?.balanceAmount ??
+    (paymentDialogSale ? getRemainingBalance(paymentDialogSale) : 0);
+
+  const paymentProgressPercentage = (() => {
+    const invoiceValue = Number(paymentSummary?.price ?? paymentDialogSale?.price) || 0;
+    const paidAmount = Number(paymentSummary?.paidAmount ?? (paymentDialogSale ? getPaidAmount(paymentDialogSale) : 0)) || 0;
+    return invoiceValue > 0 ? Math.min(100, Math.max(0, (paidAmount / invoiceValue) * 100)) : 0;
+  })();
+
+  const maxPayableOnEdit = (() => {
+    if (!editingPaymentId || !paymentSummary) return dialogRemaining;
+    const price = parseFloat(paymentSummary.price) || 0;
+    const paidExcludingEdit = payments.reduce((sum, p) => {
+      if (p.id === editingPaymentId) return sum;
+      if (["cash", "upi", "cheque"].includes(p.payment_mode)) {
+        return sum + (parseFloat(p.amount) || 0);
+      }
+      return sum;
+    }, 0);
+    return Math.max(0, Math.round((price - paidExcludingEdit) * 100) / 100);
+  })();
+
+  const topLevelPayments = payments.filter((payment) => !payment.parent_credit_payment_id);
+
+  const hasCreditEntry = topLevelPayments.some((payment) => payment.payment_mode === "credit");
+
+  const showPaymentForm =
+    !!editingPaymentId ||
+    !!activeCreditPayment ||
+    (dialogRemaining > 0 && !hasCreditEntry);
+
+  const totalCreditOnAccount = payments
+    .filter((p) => p.payment_mode === "credit")
+    .reduce((sum, p) => sum + (parseFloat(p.amount) || 0), 0);
+  const totalPaidAgainstCredit = payments
+    .filter((p) => p.parent_credit_payment_id && ["cash", "upi", "cheque"].includes(p.payment_mode))
+    .reduce((sum, p) => sum + (parseFloat(p.amount) || 0), 0);
+  const remainingCreditOnAccount = Math.max(0, totalCreditOnAccount - totalPaidAgainstCredit);
+  const activeCreditRemaining = activeCreditPayment
+    ? getCreditRemainingAmount(activeCreditPayment)
+    : dialogRemaining;
+
+  return (
+    <DashboardLayout>
+      <DashboardNavbar />
+      <MDBox pt={6} pb={3}>
+        <Grid container spacing={3} justifyContent="center">
+          <Grid item xs={12}>
+            <Card>
+              <MDBox p={3}>
+                <MDBox
+                  display="flex"
+                  justifyContent="space-between"
+                  alignItems={{ xs: "flex-start", md: "center" }}
+                  flexDirection={{ xs: "column", md: "row" }}
+                  gap={2}
+                  mb={2}
+                >
+                  <MDBox>
+                    <MDTypography variant="h5" fontWeight="medium">
+                      Payment Update History
+                    </MDTypography>
+                    <MDTypography variant="button" color="text">
+                      Download every payment update with its payment date, filtered by company and staff.
+                    </MDTypography>
+                  </MDBox>
+                  <MDButton
+                    variant="gradient"
+                    color="success"
+                    size="small"
+                    onClick={downloadPaymentExcel}
+                    disabled={!filteredPaymentDetailRows.length}
+                  >
+                    <Icon sx={{ mr: 1 }}>download</Icon>
+                    Download Excel
+                  </MDButton>
+                </MDBox>
+
+                <Grid container spacing={2} alignItems="center">
+                  <Grid item xs={12} sm={6} md={3}>
+                    <MDInput
+                      type="date"
+                      label="From Date"
+                      fullWidth
+                      InputLabelProps={{ shrink: true }}
+                      value={collectionDate}
+                      onChange={(event) => setCollectionDate(event.target.value)}
+                    />
+                  </Grid>
+                  <Grid item xs={12} sm={6} md={3}>
+                    <MDInput
+                      type="date"
+                      label="To Date"
+                      fullWidth
+                      InputLabelProps={{ shrink: true }}
+                      value={collectionEndDate}
+                      inputProps={{ min: collectionDate || undefined }}
+                      onChange={(event) => setCollectionEndDate(event.target.value)}
+                    />
+                  </Grid>
+                  <Grid item xs={12} sm={6} md={3}>
+                    <FormControl fullWidth>
+                      <InputLabel id="collection-company-filter-label">Company</InputLabel>
+                      <Select
+                        labelId="collection-company-filter-label"
+                        label="Company"
+                        value={collectionCompanyId}
+                        sx={{ height: 43 }}
+                        onChange={(event) => {
+                          setCollectionCompanyId(event.target.value);
+                          setCollectionCompanyStaffId("");
+                        }}
+                      >
+                        <MenuItem value="">All Companies</MenuItem>
+                        {companyOptions.map((company) => (
+                          <MenuItem key={company.id} value={String(company.id)}>{company.name}</MenuItem>
+                        ))}
+                      </Select>
+                    </FormControl>
+                  </Grid>
+                  <Grid item xs={12} sm={6} md={3}>
+                    <FormControl fullWidth>
+                      <InputLabel id="collection-company-staff-filter-label">Company Staff</InputLabel>
+                      <Select
+                        labelId="collection-company-staff-filter-label"
+                        label="Company Staff"
+                        value={collectionCompanyStaffId}
+                        sx={{ height: 43 }}
+                        disabled={!collectionCompanyId}
+                        onChange={(event) => setCollectionCompanyStaffId(event.target.value)}
+                      >
+                        <MenuItem value="">
+                          {collectionCompanyId ? "All Company Staff" : "Choose company first"}
+                        </MenuItem>
+                        {filteredCompanyStaffOptions.map((staff) => (
+                          <MenuItem key={staff.id} value={String(staff.id)}>{staff.name}</MenuItem>
+                        ))}
+                      </Select>
+                    </FormControl>
+                  </Grid>
+                </Grid>
+
+              </MDBox>
+            </Card>
+          </Grid>
+          <Grid item xs={12}>
+            <Card>
+              <MDBox
+                variant="gradient"
+                bgColor="info"
+                borderRadius="lg"
+                coloredShadow="info"
+                mx={2}
+                mt={-3}
+                p={3}
+                mb={1}
+                textAlign="center"
+              >
+                <MDTypography variant="h4" fontWeight="medium" color="white" mt={1}>
+                  Update Payment Details
+                </MDTypography>
+              </MDBox>
+              <MDBox pt={4} pb={3} px={3}>
+                <Grid container spacing={3} mb={3}>
+                  <Grid item xs={12} md={4}>
+                    <MDInput
+                      type="text"
+                      label="Search by Outlet Name, Area, ID, Staff Name, Sale ID, or Invoice No"
+                      fullWidth
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                    />
+                  </Grid>
+                  <Grid item xs={12} sm={6} md={3}>
+                    <FormControl fullWidth>
+                      <InputLabel id="sales-company-filter-label">Company</InputLabel>
+                      <Select
+                        labelId="sales-company-filter-label"
+                        label="Company"
+                        value={salesCompanyId}
+                        disabled={downloadingUnupdated}
+                        sx={{ height: 43 }}
+                        onChange={(event) => setSalesCompanyId(event.target.value)}
+                      >
+                        <MenuItem value="">All Companies</MenuItem>
+                        {companyOptions.map((company) => (
+                          <MenuItem key={company.id} value={String(company.id)}>{company.name}</MenuItem>
+                        ))}
+                      </Select>
+                    </FormControl>
+                  </Grid>
+                  <Grid item xs={12} sm={6} md={3}>
+                    <FormControl fullWidth>
+                      <InputLabel id="payment-update-filter-label">Payment Updates</InputLabel>
+                      <Select
+                        labelId="payment-update-filter-label"
+                        label="Payment Updates"
+                        value={paymentUpdateFilter}
+                        onChange={(event) => setPaymentUpdateFilter(event.target.value)}
+                        sx={{ height: 43 }}
+                      >
+                        <MenuItem value="all">All Bills</MenuItem>
+                        <MenuItem value="none">No Payment Updates</MenuItem>
+                      </Select>
+                    </FormControl>
+                  </Grid>
+                  <Grid item xs={12}>
+                    <MDButton
+                      color="success"
+                      variant="gradient"
+                      onClick={downloadUnupdatedPayments}
+                      disabled={!salesCompanyId || downloadingUnupdated}
+                    >
+                      {downloadingUnupdated ? "Downloading..." : "Download Excel - No Payment Updates"}
+                    </MDButton>
+                    <MDTypography variant="caption" display="block" mt={1}>
+                      Select a company to download all delivered invoices with no payment entries,
+                      sorted by invoice number. Search does not limit this download.
+                    </MDTypography>
+                  </Grid>
+                </Grid>
+
+                {paymentUpdateFilter === "none" && (
+                  <MDBox mb={2} display="flex" alignItems="center" gap={2} flexWrap="wrap">
+                    <MDButton variant="outlined" color="info" onClick={toggleAllMoveBills} disabled={movingToDelivery || !filteredSales.length}>
+                      {allMoveSelected ? "Clear Selection" : `Select All (${filteredSales.length})`}
+                    </MDButton>
+                    <MDButton variant="gradient" color="info" onClick={moveSelectedToDelivery} disabled={movingToDelivery || !selectedMoveIds.length}>
+                      {movingToDelivery ? "Moving..." : `Move to Delivery (${selectedMoveIds.length})`}
+                    </MDButton>
+                    <MDTypography variant="caption">Select All includes all matching bills across pages.</MDTypography>
+                  </MDBox>
+                )}
+                {moveDeliveryMessage && <MDTypography variant="body2" mb={2} role="status">{moveDeliveryMessage}</MDTypography>}
+                <MDBox>
+                  <TableContainer
+                    component={Paper}
+                    sx={{ ...paginatedTableContainerSx, backgroundColor: "transparent" }}
+                  >
+                    <Table stickyHeader size="small" sx={compactTableTextSx}>
+                      <TableHead sx={paginatedTableHeadSx()}>
+                        <TableRow>
+                          {paymentUpdateFilter === "none" && (
+                            <TableCell align="center" sx={paginatedTableHeadCellSx}>
+                              <Checkbox checked={allMoveSelected} indeterminate={selectedMoveIds.length > 0 && !allMoveSelected} onChange={toggleAllMoveBills} disabled={movingToDelivery || !filteredSales.length} inputProps={{ "aria-label": "Select all matching bills" }} />
+                            </TableCell>
+                          )}
+                          <TableCell align="center" sx={{ ...paginatedTableHeadCellSx, width: 56 }}>
+                            Sr No
+                          </TableCell>
+                          <TableCell align="left" sx={paginatedTableHeadCellSx}>Outlet Name</TableCell>
+                          <TableCell align="left" sx={paginatedTableHeadCellSx}>Company</TableCell>
+                          <TableCell align="left" sx={paginatedTableHeadCellSx}>Area</TableCell>
+                          <TableCell align="center" sx={paginatedTableHeadCellSx}>Sale ID</TableCell>
+                          <TableCell align="center" sx={paginatedTableHeadCellSx}>Invoice No</TableCell>
+                          <TableCell align="center" sx={paginatedTableHeadCellSx}>No. of Box</TableCell>
+                          <TableCell align="center" sx={paginatedTableHeadCellSx}>No. of Packet</TableCell>
+                          <TableCell align="center" sx={paginatedTableHeadCellSx}>Invoice Price</TableCell>
+                          <TableCell align="center" sx={paginatedTableHeadCellSx}>Paid Amount</TableCell>
+                          <TableCell align="center" sx={paginatedTableHeadCellSx}>Balance Amount</TableCell>
+                          <TableCell align="center" sx={paginatedTableHeadCellSx}>Action</TableCell>
+                        </TableRow>
+                      </TableHead>
+                      <TableBody>
+                        {paginatedSales.length > 0 ? (
+                          paginatedSales.map((sale, index) => {
+                            const balance = getRemainingBalance(sale);
+                            const paid = getPaidAmount(sale);
+                            const originalPrice = Number(sale.price) || 0;
+                            const updatedPrice = getEffectiveInvoicePrice(sale);
+                            const hasCancellation = updatedPrice < originalPrice - 0.001;
+                            return (
+                              <TableRow key={sale.id} sx={getPaymentRowSx(sale)}>
+                                {paymentUpdateFilter === "none" && (
+                                  <TableCell align="center">
+                                    <Checkbox checked={selectedMoveIds.includes(Number(sale.id))} disabled={movingToDelivery} inputProps={{ "aria-label": `Select invoice ${sale.invoice_number || sale.id}` }} onChange={() => setSelectedDeliveryIds((current) => current.includes(Number(sale.id)) ? current.filter((id) => id !== Number(sale.id)) : [...current, Number(sale.id)])} />
+                                  </TableCell>
+                                )}
+                                <TableCell align="center">{(page - 1) * rowsPerPage + index + 1}</TableCell>
+                                <TableCell align="left">
+                                  <MDTypography variant="button" fontWeight="medium" color="dark">
+                                    {sale.outlet_name}
+                                  </MDTypography>
+                                  <MDTypography display="block" variant="caption" color="text">
+                                    Staff: {sale.staff_name || "N/A"}
+                                  </MDTypography>
+                                </TableCell>
+                                <TableCell align="left">{sale.company_name || "N/A"}</TableCell>
+                                <TableCell align="left">{sale.location_name || "N/A"}</TableCell>
+                                <TableCell align="center">{sale.sticker_number}</TableCell>
+                                <TableCell align="center">{sale.invoice_number}</TableCell>
+                                <TableCell align="center">{sale.box_count || "N/A"}</TableCell>
+                                <TableCell align="center">{sale.packet_count || "N/A"}</TableCell>
+                                <TableCell align="center">
+                                  {hasCancellation ? (
+                                    <>
+                                      <MDTypography variant="caption" display="block" color="text">
+                                        OrgP ₹{originalPrice.toFixed(2)}
+                                      </MDTypography>
+                                      <MDTypography variant="button" fontWeight="bold" color="info">
+                                        UP ₹{updatedPrice.toFixed(2)}
+                                      </MDTypography>
+                                    </>
+                                  ) : `₹${originalPrice.toFixed(2)}`}
+                                </TableCell>
+                                <TableCell align="center">₹{paid.toFixed(2)}</TableCell>
+                                <TableCell align="center">
+                                  <MDTypography
+                                    variant="button"
+                                    fontWeight="medium"
+                                    color={balance > 0 ? "error" : "success"}
+                                  >
+                                    ₹{balance.toFixed(2)}
+                                  </MDTypography>
+                                </TableCell>
+                                <TableCell align="center">
+                                  <MDBox display="flex" justifyContent="center" alignItems="center" gap={1}>
+                                    <Tooltip title="Manage Payments">
+                                      <MDButton
+                                        variant="outlined"
+                                        color="info"
+                                        size="small"
+                                        iconOnly
+                                        onClick={() => openPaymentDialog(sale)}
+                                      >
+                                        <Icon fontSize="small">payments</Icon>
+                                      </MDButton>
+                                    </Tooltip>
+                                    <Tooltip title="Order Cancel">
+                                      <MDButton
+                                        variant="outlined"
+                                        color="error"
+                                        size="small"
+                                        iconOnly
+                                        onClick={() => openCancelDialog(sale)}
+                                      >
+                                        <Icon fontSize="small">cancel</Icon>
+                                      </MDButton>
+                                    </Tooltip>
+                                    {Number(sale.payment_count || 0) === 0 && (
+                                      <Tooltip title="Cancel Full Bill">
+                                        <MDButton
+                                          variant="outlined"
+                                          color="error"
+                                          size="small"
+                                          iconOnly
+                                          onClick={() => handleCancelFullBill(sale)}
+                                          disabled={cancellingFullBillId === sale.id}
+                                        >
+                                          {cancellingFullBillId === sale.id
+                                            ? <CircularProgress size={16} color="inherit" />
+                                            : <Icon fontSize="small">cancel_presentation</Icon>}
+                                        </MDButton>
+                                      </Tooltip>
+                                    )}
+                                  </MDBox>
+                                </TableCell>
+                              </TableRow>
+                            );
+                          })
+                        ) : (
+                          <TableRow>
+                            <TableCell colSpan={paymentUpdateFilter === "none" ? 13 : 12} align="center" sx={{ py: 4 }}>
+                              <MDTypography variant="body2" color="text">
+                                No delivered items found matching your filters.
+                              </MDTypography>
+                            </TableCell>
+                          </TableRow>
+                        )}
+                      </TableBody>
+                    </Table>
+                  </TableContainer>
+                  <TablePaginationFooter
+                    page={page}
+                    totalPages={totalPages}
+                    total={filteredSales.length}
+                    onPageChange={setPage}
+                    limit={rowsPerPage}
+                    onLimitChange={setRowsPerPage}
+                  />
+                </MDBox>
+              </MDBox>
+            </Card>
+          </Grid>
+        </Grid>
+      </MDBox>
+
+      <Dialog
+        open={!!paymentDialogSale}
+        onClose={closePaymentDialog}
+        maxWidth="lg"
+        fullWidth
+        PaperProps={{ sx: { borderRadius: 3, overflow: "hidden" } }}
+      >
+        <DialogTitle sx={{ p: 0 }}>
+          <MDBox
+            px={{ xs: 2, sm: 3 }}
+            py={2.25}
+            display="flex"
+            justifyContent="space-between"
+            alignItems="center"
+            sx={{ background: "linear-gradient(135deg, #1f2937 0%, #344767 100%)", color: "white" }}
+          >
+            <MDBox display="flex" alignItems="center" gap={1.25}>
+              <MDBox
+                width="2.5rem"
+                height="2.5rem"
+                display="flex"
+                justifyContent="center"
+                alignItems="center"
+                borderRadius="lg"
+                sx={{ backgroundColor: "rgba(255,255,255,0.16)" }}
+              >
+                <Icon>account_balance_wallet</Icon>
+              </MDBox>
+              <MDBox>
+                <MDTypography variant="h6" color="white" fontWeight="medium">
+                  Payment Ledger
+                </MDTypography>
+                <MDTypography variant="caption" color="white" sx={{ opacity: 0.78 }}>
+                  {paymentDialogSale?.outlet_name || "Outlet"} · Invoice {paymentDialogSale?.invoice_number || "N/A"}
+                </MDTypography>
+              </MDBox>
+            </MDBox>
+            <MDBox display="flex" alignItems="center" gap={1}>
+              <MDBox
+                px={1.25}
+                py={0.5}
+                borderRadius="lg"
+                sx={{ backgroundColor: dialogRemaining > 0 ? "rgba(255,193,7,0.18)" : "rgba(76,175,80,0.22)" }}
+              >
+                <MDTypography variant="caption" color="white" fontWeight="medium">
+                  {dialogRemaining > 0 ? "Payment Pending" : "Fully Paid"}
+                </MDTypography>
+              </MDBox>
+              <MDButton variant="text" color="white" iconOnly onClick={closePaymentDialog}>
+                <Icon>close</Icon>
+              </MDButton>
+            </MDBox>
+          </MDBox>
+        </DialogTitle>
+        <DialogContent dividers sx={{ p: { xs: 2, sm: 3 }, backgroundColor: "#f8fafc" }}>
+          {paymentDialogSale && (
+            <MDBox>
+              <Grid container spacing={1.25} mb={3}>
+                {[
+                  { label: "Sale ID", value: paymentDialogSale.sticker_number || "N/A" },
+                  { label: "Invoice", value: paymentDialogSale.invoice_number || "N/A" },
+                  { label: "Original Price", value: `₹${Number(paymentSummary?.price ?? paymentDialogSale.price).toFixed(2)}` },
+                  ...(Number(paymentSummary?.cancelledAmount ?? paymentDialogSale.cancelled_amount) > 0
+                    ? [{
+                      label: "Updated Price",
+                      value: `₹${getEffectiveInvoicePrice(paymentSummary ?? paymentDialogSale).toFixed(2)}`,
+                      color: "#0288d1",
+                    }]
+                    : []),
+                  { label: "Paid", value: `₹${Number(paymentSummary?.paidAmount ?? getPaidAmount(paymentDialogSale)).toFixed(2)}`, color: "#2e7d32" },
+                  { label: "Balance", value: `₹${dialogRemaining.toFixed(2)}`, color: dialogRemaining > 0 ? "#d32f2f" : "#2e7d32" },
+                ].map((item) => (
+                  <Grid item xs={6} sm={4} md key={item.label}>
+                    <MDBox p={1.5} height="100%" sx={{ backgroundColor: "#fff", border: "1px solid #e5e7eb", borderRadius: 2 }}>
+                      <MDTypography variant="caption" color="text" display="block">{item.label}</MDTypography>
+                      <MDTypography variant="button" fontWeight="bold" sx={{ color: item.color || "#344767" }}>
+                        {item.value}
+                      </MDTypography>
+                    </MDBox>
+                  </Grid>
+                ))}
+                {totalCreditOnAccount > 0 && (
+                  <Grid item xs={12}>
+                    <MDBox px={1.5} py={1} sx={{ backgroundColor: "#fff8e1", border: "1px solid #ffe0a3", borderRadius: 2 }}>
+                      <MDTypography variant="caption" color="text">
+                        Credit remaining: ₹{remainingCreditOnAccount.toFixed(2)} of ₹{totalCreditOnAccount.toFixed(2)}
+                      </MDTypography>
+                    </MDBox>
+                  </Grid>
+                )}
+              </Grid>
+
+              <MDBox
+                p={1.5}
+                mb={3}
+                sx={{ backgroundColor: "#fff", border: "1px solid #e5e7eb", borderRadius: 2 }}
+              >
+                <MDBox display="flex" justifyContent="space-between" alignItems="center">
+                  <MDTypography variant="button" fontWeight="medium" color="dark">
+                    Payment progress
+                  </MDTypography>
+                  <MDTypography variant="caption" color="text" fontWeight="medium">
+                    {paymentProgressPercentage.toFixed(0)}% paid
+                  </MDTypography>
+                </MDBox>
+                <MDBox mt={1} height="8px" borderRadius="lg" overflow="hidden" sx={{ backgroundColor: "#e5e7eb" }}>
+                  <MDBox
+                    height="100%"
+                    borderRadius="lg"
+                    sx={{
+                      width: `${paymentProgressPercentage}%`,
+                      transition: "width 0.3s ease",
+                      background: dialogRemaining > 0
+                        ? "linear-gradient(90deg, #1a73e8 0%, #42a5f5 100%)"
+                        : "linear-gradient(90deg, #2e7d32 0%, #66bb6a 100%)",
+                    }}
+                  />
+                </MDBox>
+              </MDBox>
+
+              <MDBox display="flex" alignItems="center" justifyContent="space-between" mb={1.5}>
+                <MDBox display="flex" alignItems="center" gap={0.75}>
+                  <Icon color="info">history</Icon>
+                  <MDTypography variant="h6" fontWeight="medium">Payment History</MDTypography>
+                </MDBox>
+                <MDTypography variant="caption" color="text">{payments.length} entries</MDTypography>
+              </MDBox>
+
+              {loadingPayments ? (
+                <MDTypography variant="body2" color="text" mb={3}>
+                  Loading payments...
+                </MDTypography>
+              ) : payments.length === 0 ? (
+                <MDTypography variant="body2" color="text" mb={3}>
+                  No payments recorded yet. Add cash/UPI/cheque until balance is ₹0. Credit is recorded separately and does not reduce balance.
+                </MDTypography>
+              ) : (
+                <TableContainer
+                  sx={{
+                    boxShadow: "none",
+                    border: "1px solid #e5e7eb",
+                    borderRadius: 2,
+                    backgroundColor: "#fff",
+                    mb: 3,
+                    overflowX: "auto",
+                  }}
+                >
+                  <Table
+                    size="small"
+                    sx={{
+                      tableLayout: "fixed",
+                      width: "100%",
+                      minWidth: 760,
+                      "& .MuiTableCell-root": { overflow: "hidden" },
+                    }}
+                  >
+                    <colgroup>
+                      <col style={{ width: "12%" }} />
+                      <col style={{ width: "11%" }} />
+                      <col style={{ width: "12%" }} />
+                      <col style={{ width: "14%" }} />
+                      <col style={{ width: "25%" }} />
+                      <col style={{ width: "14%" }} />
+                    </colgroup>
+                    <TableHead
+                      sx={{
+                        display: "table-header-group",
+                        backgroundColor: "#f9fafb",
+                        "& .MuiTableCell-root": { backgroundColor: "#f9fafb" },
+                      }}
+                    >
+                      <TableRow>
+                        <TableCell align="left" sx={tableHeadSx}>
+                          Date
+                        </TableCell>
+                        <TableCell align="left" sx={tableHeadSx}>
+                          Mode
+                        </TableCell>
+                        <TableCell align="right" sx={tableHeadSx}>
+                          Amount
+                        </TableCell>
+                        <TableCell align="left" sx={tableHeadSx}>
+                          Collector
+                        </TableCell>
+                        <TableCell align="left" sx={tableHeadSx}>
+                          Details
+                        </TableCell>
+                        <TableCell align="center" sx={tableHeadSx}>
+                          Action
+                        </TableCell>
+                      </TableRow>
+                    </TableHead>
+                    <TableBody>
+                      {topLevelPayments.map((payment) => {
+                        const creditChildren = payment.payment_mode === "credit" ? getCreditChildPayments(payment) : [];
+                        const creditRemaining = payment.payment_mode === "credit" ? getCreditRemainingAmount(payment) : 0;
+
+                        return (
+                          <Fragment key={payment.id}>
+                            <TableRow
+                              sx={{
+                                backgroundColor: editingPaymentId === payment.id ? "#fff9c4" : "inherit",
+                                "&:hover": { backgroundColor: editingPaymentId === payment.id ? "#fff9c4" : "#f8fafc" },
+                              }}
+                            >
+                              <TableCell
+                                align="left"
+                                sx={{ ...tableBodySx, borderBottom: "1px solid #e5e7eb", fontSize: "0.875rem", color: "#374151" }}
+                              >
+                                {toInputDate(payment.payment_date)}
+                              </TableCell>
+                              <TableCell
+                                align="left"
+                                sx={{ ...tableBodySx, borderBottom: "1px solid #e5e7eb", fontSize: "0.875rem", color: "#374151" }}
+                              >
+                                <MDBox
+                                  display="inline-flex"
+                                  px={1}
+                                  py={0.35}
+                                  borderRadius="lg"
+                                  sx={{
+                                    backgroundColor: payment.payment_mode === "cash" ? "#e8f5e9" : payment.payment_mode === "upi" ? "#e3f2fd" : payment.payment_mode === "cheque" ? "#fff3e0" : "#f3e5f5",
+                                    color: payment.payment_mode === "cash" ? "#2e7d32" : payment.payment_mode === "upi" ? "#1976d2" : payment.payment_mode === "cheque" ? "#e65100" : "#7b1fa2",
+                                  }}
+                                >
+                                  <MDTypography variant="caption" fontWeight="medium">
+                                    {PAYMENT_MODE_LABELS[payment.payment_mode] || payment.payment_mode}
+                                  </MDTypography>
+                                </MDBox>
+                              </TableCell>
+                              <TableCell
+                                align="right"
+                                sx={{
+                                  ...tableBodySx,
+                                  borderBottom: "1px solid #e5e7eb",
+                                  fontSize: "0.875rem",
+                                  fontWeight: 500,
+                                  color: "#111827",
+                                }}
+                              >
+                                ₹{Number(payment.amount).toFixed(2)}
+                              </TableCell>
+                              <TableCell
+                                align="left"
+                                sx={{ ...tableBodySx, borderBottom: "1px solid #e5e7eb", fontSize: "0.875rem", color: "#374151" }}
+                              >
+                                {getCollectorName(payment)}
+                              </TableCell>
+                              <TableCell
+                                align="left"
+                                sx={{
+                                  ...tableBodySx,
+                                  borderBottom: "1px solid #e5e7eb",
+                                  fontSize: "0.875rem",
+                                  color: "#374151",
+                                  overflow: "hidden",
+                                  textOverflow: "ellipsis",
+                                }}
+                              >
+                                <MDTypography variant="caption" color="text" display="block" noWrap>
+                                  {payment.payment_mode === "credit"
+                                    ? `${formatPaymentDetails(payment)} - Remaining: ₹${creditRemaining.toFixed(2)}`
+                                    : formatPaymentDetails(payment)}
+                                </MDTypography>
+                                {isAdmin && (
+                                  <MDBox display="flex" alignItems="center" gap={0.4} mt={0.35}>
+                                    <Icon fontSize="small" color="secondary">manage_accounts</Icon>
+                                    <MDTypography variant="caption" color="text" noWrap>
+                                      Updated by: {getPaymentUpdatedBy(payment)}
+                                    </MDTypography>
+                                  </MDBox>
+                                )}
+                              </TableCell>
+                              <TableCell align="center" sx={{ ...tableBodySx, borderBottom: "1px solid #e5e7eb" }}>
+                                <MDBox display="flex" justifyContent="center" alignItems="center" gap={0.75}>
+                                  {payment.payment_mode === "credit" && (
+                                    <MDButton
+                                      variant="gradient"
+                                      color="success"
+                                      size="small"
+                                      disabled={creditRemaining <= 0 || dialogRemaining <= 0}
+                                      onClick={() => startAddAgainstCredit(payment)}
+                                    >
+                                      Add
+                                    </MDButton>
+                                  )}
+                                  <MDButton
+                                    variant="outlined"
+                                    color="info"
+                                    size="small"
+                                    onClick={() => startEditPayment(payment)}
+                                  >
+                                    <Icon fontSize="small">edit</Icon>
+                                  </MDButton>
+                                  <MDButton
+                                    variant="outlined"
+                                    color="error"
+                                    size="small"
+                                    disabled={deletingPaymentId === payment.id || addingPayment}
+                                    onClick={() => handleDeletePayment(payment)}
+                                  >
+                                    <Icon fontSize="small">delete</Icon>
+                                  </MDButton>
+                                </MDBox>
+                              </TableCell>
+                            </TableRow>
+                            {creditChildren.map((childPayment) => (
+                              <TableRow
+                                key={childPayment.id}
+                                sx={{
+                                  backgroundColor: editingPaymentId === childPayment.id ? "#fff9c4" : "#f8fafc",
+                                  "&:hover": { backgroundColor: editingPaymentId === childPayment.id ? "#fff9c4" : "#f1f5f9" },
+                                }}
+                              >
+                                <TableCell align="left" sx={{ ...tableBodySx, pl: 4, borderBottom: "1px solid #e5e7eb", fontSize: "0.8125rem", color: "#475569" }}>
+                                  {toInputDate(childPayment.payment_date)}
+                                </TableCell>
+                                <TableCell align="left" sx={{ ...tableBodySx, borderBottom: "1px solid #e5e7eb", fontSize: "0.8125rem", color: "#475569" }}>
+                                  <MDBox
+                                    display="inline-flex"
+                                    px={1}
+                                    py={0.35}
+                                    borderRadius="lg"
+                                    sx={{
+                                      backgroundColor: childPayment.payment_mode === "cash" ? "#e8f5e9" : childPayment.payment_mode === "upi" ? "#e3f2fd" : childPayment.payment_mode === "cheque" ? "#fff3e0" : "#f3e5f5",
+                                      color: childPayment.payment_mode === "cash" ? "#2e7d32" : childPayment.payment_mode === "upi" ? "#1976d2" : childPayment.payment_mode === "cheque" ? "#e65100" : "#7b1fa2",
+                                    }}
+                                  >
+                                    <MDTypography variant="caption" fontWeight="medium">
+                                      {PAYMENT_MODE_LABELS[childPayment.payment_mode] || childPayment.payment_mode}
+                                    </MDTypography>
+                                  </MDBox>
+                                </TableCell>
+                                <TableCell align="right" sx={{ ...tableBodySx, borderBottom: "1px solid #e5e7eb", fontSize: "0.8125rem", fontWeight: 500, color: "#111827" }}>
+                                  ₹{Number(childPayment.amount).toFixed(2)}
+                                </TableCell>
+                                <TableCell align="left" sx={{ ...tableBodySx, borderBottom: "1px solid #e5e7eb", fontSize: "0.8125rem", color: "#475569" }}>
+                                  {getCollectorName(childPayment)}
+                                </TableCell>
+                                <TableCell align="left" sx={{ ...tableBodySx, borderBottom: "1px solid #e5e7eb", fontSize: "0.8125rem", color: "#475569", overflow: "hidden", textOverflow: "ellipsis" }}>
+                                  <MDTypography variant="caption" color="text" display="block" noWrap>
+                                    Against credit #{payment.id} - {formatPaymentDetails(childPayment)}
+                                  </MDTypography>
+                                  {isAdmin && (
+                                    <MDBox display="flex" alignItems="center" gap={0.4} mt={0.35}>
+                                      <Icon fontSize="small" color="secondary">manage_accounts</Icon>
+                                      <MDTypography variant="caption" color="text" noWrap>
+                                        Updated by: {getPaymentUpdatedBy(childPayment)}
+                                      </MDTypography>
+                                    </MDBox>
+                                  )}
+                                </TableCell>
+                                <TableCell align="center" sx={{ ...tableBodySx, borderBottom: "1px solid #e5e7eb" }}>
+                                  <MDBox display="flex" justifyContent="center" alignItems="center" gap={0.75}>
+                                    <MDButton
+                                      variant="outlined"
+                                      color="info"
+                                      size="small"
+                                      onClick={() => startEditPayment(childPayment)}
+                                    >
+                                      <Icon fontSize="small">edit</Icon>
+                                    </MDButton>
+                                    <MDButton
+                                      variant="outlined"
+                                      color="error"
+                                      size="small"
+                                      disabled={deletingPaymentId === childPayment.id || addingPayment}
+                                      onClick={() => handleDeletePayment(childPayment)}
+                                    >
+                                      <Icon fontSize="small">delete</Icon>
+                                    </MDButton>
+                                  </MDBox>
+                                </TableCell>
+                              </TableRow>
+                            ))}
+                          </Fragment>
+                        );
+                      })}
+                    </TableBody>
+                  </Table>
+                </TableContainer>
+              )}
+
+
+              {showPaymentForm && (
+                <MDBox p={{ xs: 1.5, sm: 2.5 }} sx={{ backgroundColor: "#fff", border: "1px solid #e5e7eb", borderRadius: 2 }}>
+                  <MDBox display="flex" alignItems="center" gap={0.75} mb={2}>
+                    <Icon color="info">{editingPaymentId ? "edit" : "add_circle"}</Icon>
+                    <MDTypography variant="h6" fontWeight="medium">
+                    {editingPaymentId
+                      ? "Edit Payment"
+                      : activeCreditPayment
+                        ? `Add Payment Against Credit - ${activeCreditPayment.credit_days || ""} Days`
+                        : "Add Payment"}
+                    </MDTypography>
+                  </MDBox>
+                  <MDTypography variant="caption" color="text" display="block" mt={-1} mb={2}>
+                    Record the payment details below. The balance updates automatically after saving.
+                  </MDTypography>
+
+                  <Grid container spacing={2}>
+                    <Grid item xs={12} sm={6} md={3}>
+                      <MDInput
+                        type="date"
+                        label="Date"
+                        fullWidth
+                        InputLabelProps={{ shrink: true }}
+                        value={paymentForm.paymentDate}
+                        onChange={(e) => handlePaymentFormChange("paymentDate", e.target.value)}
+                      />
+                    </Grid>
+                    <Grid item xs={12} sm={6} md={3}>
+                      <FormControl fullWidth size="small">
+                        <InputLabel>Payment Mode</InputLabel>
+                        <Select
+                          value={paymentForm.paymentMode}
+                          label="Payment Mode"
+                          onChange={(e) => handlePaymentFormChange("paymentMode", e.target.value)}
+                          sx={{ height: "45px" }}
+                        >
+                          <MenuItem value="cash">Cash</MenuItem>
+                          <MenuItem value="upi">UPI</MenuItem>
+                          <MenuItem value="cheque">Cheque</MenuItem>
+                          {!activeCreditPayment && <MenuItem value="credit">Credit</MenuItem>}
+                        </Select>
+                      </FormControl>
+                    </Grid>
+                    <Grid item xs={12} sm={6} md={3}>
+                      <FormControl fullWidth size="small">
+                        <InputLabel>Collector Type</InputLabel>
+                        <Select
+                          value={paymentForm.collectorType}
+                          label="Collector Type"
+                          onChange={(e) => handlePaymentFormChange("collectorType", e.target.value)}
+                          sx={{ height: "45px" }}
+                        >
+                          <MenuItem value="company_staff">Company Staff</MenuItem>
+                          <MenuItem value="bawarchee_staff">Bawarchee Staff</MenuItem>
+                        </Select>
+                      </FormControl>
+                    </Grid>
+                    <Grid item xs={12} sm={6} md={3}>
+                      {paymentForm.collectorType === "company_staff" ? (
+                        <MDInput
+                          label="Marketing Person (Outlet)"
+                          fullWidth
+                          value={getOutletMarketingStaffName()}
+                          InputProps={{ readOnly: true }}
+                        />
+                      ) : (
+                        <FormControl fullWidth size="small">
+                          <InputLabel>Delivery Boy</InputLabel>
+                          <Select
+                            value={paymentForm.collectorDeliveryBoyId}
+                            label="Delivery Boy"
+                            onChange={(e) => handlePaymentFormChange("collectorDeliveryBoyId", e.target.value)}
+                            sx={{ height: "45px" }}
+                          >
+                            {paymentDialogSale?.delivery_boy_id && (
+                              <MenuItem value={String(paymentDialogSale.delivery_boy_id)}>
+                                {paymentDialogSale.delivery_boy_name || "Assigned Delivery Boy"} (Assigned)
+                              </MenuItem>
+                            )}
+                            {deliveryBoys
+                              .filter((boy) => String(boy.id) !== String(paymentDialogSale?.delivery_boy_id || ""))
+                              .map((boy) => (
+                                <MenuItem key={boy.id} value={String(boy.id)}>
+                                  {boy.name}
+                                </MenuItem>
+                              ))}
+                          </Select>
+                        </FormControl>
+                      )}
+                    </Grid>
+                    <Grid item xs={12} sm={6} md={3}>
+                      <MDInput
+                        type="number"
+                        label={
+                          editingPaymentId
+                            ? `Amount (max ₹${maxPayableOnEdit.toFixed(2)})`
+                            : `Amount (max ₹${activeCreditRemaining.toFixed(2)})`
+                        }
+                        fullWidth
+                        value={paymentForm.amount}
+                        disabled={paymentForm.paymentMode === "cash"}
+                        onChange={(e) => handlePaymentFormChange("amount", e.target.value)}
+                      />
+                    </Grid>
+                    {paymentForm.paymentMode === "cash" && (
+                      <Grid item xs={12}>
+                        <MDTypography variant="button" fontWeight="medium" color="dark" display="block" mb={1}>
+                          Notes
+                        </MDTypography>
+                        <MDBox
+                          display="grid"
+                          sx={{
+                            gridTemplateColumns: {
+                              xs: "repeat(2, minmax(0, 1fr))",
+                              sm: "repeat(3, minmax(0, 1fr))",
+                              md: "repeat(6, minmax(0, 1fr))",
+                            },
+                          }}
+                          gap={1.5}
+                        >
+                          {CASH_NOTE_DENOMINATIONS.map((denomination) => (
+                            <MDInput
+                              key={`note-${denomination}`}
+                              type="number"
+                              label={`₹${denomination} Note`}
+                              value={paymentForm.cashNotes[`note_${denomination}`] || ""}
+                              onChange={(e) => handleCashNoteChange(`note_${denomination}`, e.target.value)}
+                              inputProps={{ min: 0, step: 1 }}
+                              fullWidth
+                            />
+                          ))}
+                        </MDBox>
+                        <MDTypography variant="button" fontWeight="medium" color="dark" display="block" mt={2} mb={1}>
+                          Coins
+                        </MDTypography>
+                        <MDBox
+                          display="grid"
+                          sx={{
+                            gridTemplateColumns: {
+                              xs: "repeat(2, minmax(0, 1fr))",
+                              sm: "repeat(3, minmax(0, 1fr))",
+                              md: "repeat(5, minmax(0, 1fr))",
+                            },
+                          }}
+                          gap={1.5}
+                        >
+                          {CASH_COIN_DENOMINATIONS.map((denomination) => (
+                            <MDInput
+                              key={`coin-${denomination}`}
+                              type="number"
+                              label={`₹${denomination} Coin`}
+                              value={paymentForm.cashNotes[`coin_${denomination}`] || ""}
+                              onChange={(e) => handleCashNoteChange(`coin_${denomination}`, e.target.value)}
+                              inputProps={{ min: 0, step: 1 }}
+                              fullWidth
+                            />
+                          ))}
+                          <MDInput
+                            type="number"
+                            label="Paise (0–99)"
+                            value={paymentForm.cashNotes.paise || ""}
+                            onChange={(e) => handleCashNoteChange("paise", e.target.value)}
+                            inputProps={{ min: 0, max: 99, step: 1 }}
+                            fullWidth
+                          />
+                        </MDBox>
+                        <MDTypography variant="caption" color="text" display="block" mt={1}>
+                          Cash amount auto-calculates from note and coin count.
+                        </MDTypography>
+                      </Grid>
+                    )}
+                    {paymentForm.paymentMode === "upi" && (
+                      <Grid item xs={12} sm={6} md={3}>
+                        <MDInput
+                          type="text"
+                          label="UPI Reference (optional)"
+                          fullWidth
+                          value={paymentForm.referenceNo}
+                          onChange={(e) => handlePaymentFormChange("referenceNo", e.target.value)}
+                        />
+                      </Grid>
+                    )}
+                    {paymentForm.paymentMode === "cheque" && (
+                      <>
+                        <Grid item xs={12} sm={6} md={3}>
+                          <MDInput
+                            type="text"
+                            label="Cheque No"
+                            fullWidth
+                            value={paymentForm.referenceNo}
+                            onChange={(e) => handlePaymentFormChange("referenceNo", e.target.value)}
+                          />
+                        </Grid>
+                        <Grid item xs={12} sm={6} md={3}>
+                          <MDInput
+                            type="date"
+                            label="Cheque Date"
+                            fullWidth
+                            InputLabelProps={{ shrink: true }}
+                            value={paymentForm.referenceDate}
+                            onChange={(e) =>
+                              handlePaymentFormChange("referenceDate", e.target.value)
+                            }
+                          />
+                        </Grid>
+                      </>
+                    )}
+                    {paymentForm.paymentMode === "credit" && (
+                      <Grid item xs={12} sm={6} md={3}>
+                        <MDInput
+                          type="number"
+                          label="Credit Days"
+                          fullWidth
+                          value={paymentForm.creditDays}
+                          onChange={(e) => handlePaymentFormChange("creditDays", e.target.value)}
+                        />
+                      </Grid>
+                    )}
+                  </Grid>
+                  {paymentForm.paymentMode === "credit" && (
+                    <MDTypography variant="caption" color="text" display="block" mt={1}>
+                      Credit is logged for tracking only. Balance stays the same until paid by cash, UPI, or cheque.
+                    </MDTypography>
+                  )}
+                  <MDBox mt={2} display="flex" gap={1} flexWrap="wrap">
+                    <MDButton
+                      variant="gradient"
+                      color="info"
+                      onClick={handleSavePayment}
+                      disabled={addingPayment}
+                    >
+                      <Icon sx={{ mr: 1 }}>{editingPaymentId ? "save" : "add"}</Icon>
+                      {addingPayment
+                        ? "Saving..."
+                        : editingPaymentId
+                          ? "Update Payment"
+                          : "Add Payment"}
+                    </MDButton>
+                    {editingPaymentId && (
+                      <MDButton
+                        variant="outlined"
+                        color="dark"
+                        onClick={cancelEditPayment}
+                        disabled={addingPayment}
+                      >
+                        Cancel
+                      </MDButton>
+                    )}
+                    {activeCreditPayment && (
+                      <MDButton
+                        variant="outlined"
+                        color="dark"
+                        onClick={cancelEditPayment}
+                        disabled={addingPayment}
+                      >
+                        Cancel
+                      </MDButton>
+                    )}
+                  </MDBox>
+                </MDBox>
+              )}
+
+              {dialogRemaining === 0 && payments.length > 0 && (
+                <MDBox
+                  mt={2}
+                  p={2}
+                  display="flex"
+                  alignItems="center"
+                  gap={1}
+                  sx={{
+                    backgroundColor: "#ecfdf3",
+                    borderRadius: "10px",
+                    border: "1px solid #c8e6c9",
+                  }}
+                >
+                  <Icon color="success">verified</Icon>
+                  <MDBox>
+                    <MDTypography variant="button" color="success" fontWeight="medium" display="block">
+                      Invoice fully paid
+                    </MDTypography>
+                    <MDTypography variant="caption" color="text">
+                      No balance remaining on this invoice.
+                    </MDTypography>
+                  </MDBox>
+                </MDBox>
+              )}
+            </MDBox>
+          )}
+        </DialogContent>
+        <DialogActions sx={{ px: 3, py: 1.5, borderTop: "1px solid #e5e7eb", backgroundColor: "#fff" }}>
+          <MDButton variant="outlined" color="dark" onClick={closePaymentDialog}>
+            Close Ledger
+          </MDButton>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog
+        open={!!cancelDialogSale}
+        onClose={closeCancelDialog}
+        maxWidth="md"
+        fullWidth
+        PaperProps={{
+          sx: {
+            width: "100%",
+            maxWidth: 760,
+            mx: 2,
+          },
+        }}
+      >
+        <DialogTitle sx={{ fontWeight: "bold", color: "#344767" }}>
+          Log Cancelled Order
+        </DialogTitle>
+        <DialogContent>
+          {cancelDialogSale && (
+            <MDBox pt={1}>
+              <MDBox
+                display="flex"
+                flexWrap="wrap"
+                gap={2}
+                mb={3}
+                p={2}
+                sx={{ backgroundColor: "#f8f9fa", borderRadius: "10px", border: "1px solid #e9ecef" }}
+              >
+                <MDTypography variant="body2">
+                  <strong>Outlet:</strong> {cancelDialogSale.outlet_name || "—"}
+                </MDTypography>
+                <MDTypography variant="body2">
+                  <strong>Invoice:</strong> {cancelDialogSale.invoice_number || "—"}
+                </MDTypography>
+              </MDBox>
+
+              <MDBox display="flex" justifyContent="space-between" alignItems="center" mb={2}>
+                <MDTypography variant="h6" fontWeight="medium">
+                  Cancellation History
+                </MDTypography>
+                <MDBox display="flex" gap={1}>
+                  {cancellationHistory.length > 0 && (
+                    <Tooltip title="Print All">
+                      <MDButton
+                        variant="outlined"
+                        color="info"
+                        size="small"
+                        iconOnly
+                        onClick={handlePrintAllCancellations}
+                      >
+                        <Icon fontSize="small">print</Icon>
+                      </MDButton>
+                    </Tooltip>
+                  )}
+                </MDBox>
+              </MDBox>
+
+              {loadingCancellations ? (
+                <MDTypography variant="body2" color="text">
+                  Loading history...
+                </MDTypography>
+              ) : cancellationHistory.length === 0 ? (
+                <MDTypography variant="body2" color="text">
+                  No cancellations logged for this invoice.
+                </MDTypography>
+              ) : (
+                <TableContainer
+                  sx={{
+                    boxShadow: "none",
+                    border: "1px solid #e5e7eb",
+                    borderRadius: "8px",
+                    backgroundColor: "#fff",
+                    overflowX: "auto",
+                  }}
+                >
+                  <Table
+                    size="small"
+                    sx={{
+                      tableLayout: "fixed",
+                      width: "100%",
+                      minWidth: 900,
+                      "& .MuiTableCell-root": { overflow: "hidden", textOverflow: "ellipsis" },
+                    }}
+                  >
+                    <colgroup>
+                      <col style={{ width: "17%" }} />
+                      <col style={{ width: "19%" }} />
+                      <col style={{ width: "11%" }} />
+                      <col style={{ width: "15%" }} />
+                      <col style={{ width: "18%" }} />
+                      <col style={{ width: "10%" }} />
+                      <col style={{ width: "10%" }} />
+                    </colgroup>
+                    <TableHead
+                      sx={{
+                        display: "table-header-group",
+                        backgroundColor: "#f9fafb",
+                        "& .MuiTableCell-root": { backgroundColor: "#f9fafb" },
+                      }}
+                    >
+                      <TableRow>
+                        <TableCell align="left" sx={tableHeadSx}>
+                          Date
+                        </TableCell>
+                        <TableCell align="left" sx={tableHeadSx}>
+                          Product Name
+                        </TableCell>
+                        <TableCell align="left" sx={tableHeadSx}>
+                          Qty to Cancel
+                        </TableCell>
+                        <TableCell align="left" sx={tableHeadSx}>
+                          Reason
+                        </TableCell>
+                        <TableCell align="left" sx={tableHeadSx}>
+                          Remarks
+                        </TableCell>
+                        <TableCell align="right" sx={tableHeadSx}>
+                          Amount
+                        </TableCell>
+                        <TableCell align="center" sx={tableHeadSx}>
+                          Action
+                        </TableCell>
+                      </TableRow>
+                    </TableHead>
+                    <TableBody>
+                      {cancellationHistory.map((c) => (
+                        <TableRow key={c.id}>
+                          <TableCell
+                            align="left"
+                            sx={{ ...tableBodySx, borderBottom: "1px solid #e5e7eb", fontSize: "0.875rem", color: "#374151" }}
+                          >
+                            {c.created_at}
+                          </TableCell>
+                          <TableCell
+                            align="left"
+                            sx={{ ...tableBodySx, borderBottom: "1px solid #e5e7eb", fontSize: "0.875rem", color: "#374151" }}
+                          >
+                            {c.product_name}
+                          </TableCell>
+                          <TableCell
+                            align="left"
+                            sx={{ ...tableBodySx, borderBottom: "1px solid #e5e7eb", fontSize: "0.875rem", color: "#374151" }}
+                          >
+                            {formatCancelQtyDisplay(c)}
+                          </TableCell>
+                          <TableCell
+                            align="left"
+                            sx={{ ...tableBodySx, borderBottom: "1px solid #e5e7eb", fontSize: "0.875rem", color: "#374151" }}
+                          >
+                            {c.reason || "—"}
+                          </TableCell>
+                          <TableCell
+                            align="left"
+                            title={c.remarks || ""}
+                            sx={{ ...tableBodySx, borderBottom: "1px solid #e5e7eb", fontSize: "0.875rem", color: "#374151" }}
+                          >
+                            {c.remarks || "—"}
+                          </TableCell>
+                          <TableCell
+                            align="right"
+                            sx={{ ...tableBodySx, borderBottom: "1px solid #e5e7eb", fontSize: "0.875rem", fontWeight: 500, color: "#111827" }}
+                          >
+                            ₹{Number(c.amount).toFixed(2)}
+                          </TableCell>
+                          <TableCell align="center" sx={{ ...tableBodySx, borderBottom: "1px solid #e5e7eb" }}>
+                            <Tooltip title="Print">
+                              <MDButton
+                                variant="outlined"
+                                color="info"
+                                size="small"
+                                iconOnly
+                                onClick={() => handlePrintCancellation(c)}
+                              >
+                                <Icon fontSize="small">print</Icon>
+                              </MDButton>
+                            </Tooltip>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </TableContainer>
+              )}
+            </MDBox>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Tooltip title="Close">
+            <MDButton variant="outlined" color="dark" iconOnly onClick={closeCancelDialog}>
+              <Icon fontSize="small">close</Icon>
+            </MDButton>
+          </Tooltip>
+          <Tooltip title="Add Cancellation">
+            <MDButton variant="gradient" color="error" iconOnly onClick={openAddCancelDialog}>
+              <Icon fontSize="small">add</Icon>
+            </MDButton>
+          </Tooltip>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog
+        open={addCancelDialogOpen}
+        onClose={closeAddCancelDialog}
+        maxWidth="md"
+        fullWidth
+        PaperProps={{
+          sx: {
+            width: "100%",
+            maxWidth: 760,
+            mx: 2,
+          },
+        }}
+      >
+        <DialogTitle sx={{ fontWeight: "bold", color: "#344767" }}>
+          Add Cancellation
+        </DialogTitle>
+        <DialogContent>
+          {cancelDialogSale && (
+            <MDBox pt={1}>
+              <Grid container spacing={2}>
+                <Grid item xs={12} sm={6}>
+                  <MDInput
+                    label="Outlet Name"
+                    fullWidth
+                    value={cancelDialogSale.outlet_name || ""}
+                    InputProps={{ readOnly: true }}
+                    disabled
+                  />
+                </Grid>
+                <Grid item xs={12} sm={6}>
+                  <MDInput
+                    label="Invoice Number"
+                    fullWidth
+                    value={cancelDialogSale.invoice_number || ""}
+                    InputProps={{ readOnly: true }}
+                    disabled
+                  />
+                </Grid>
+                <Grid item xs={12} sm={6}>
+                  <FormControl fullWidth>
+                    <InputLabel id="cancellation-reason-label">Cancellation Reason *</InputLabel>
+                    <Select
+                      labelId="cancellation-reason-label"
+                      label="Cancellation Reason *"
+                      value={cancelForm.reason}
+                      sx={{ height: 43 }}
+                      onChange={(e) => handleCancelFormChange("reason", e.target.value)}
+                    >
+                      <MenuItem value="">Select reason</MenuItem>
+                      <MenuItem value="Customer request">Customer request</MenuItem>
+                      <MenuItem value="Product unavailable">Product unavailable</MenuItem>
+                      <MenuItem value="Incorrect order">Incorrect order</MenuItem>
+                      <MenuItem value="Duplicate order">Duplicate order</MenuItem>
+                      <MenuItem value="Payment issue">Payment issue</MenuItem>
+                      <MenuItem value="Delivery issue">Delivery issue</MenuItem>
+                      <MenuItem value="Wrong packing">Wrong packing</MenuItem>
+                      <MenuItem value="Other">Other</MenuItem>
+                    </Select>
+                  </FormControl>
+                </Grid>
+                <Grid item xs={12} sm={6}>
+                  {loadingCancelItems ? (
+                    <MDTypography variant="body2" color="text" sx={{ pt: 1.5 }}>
+                      Loading invoice products...
+                    </MDTypography>
+                  ) : cancelSaleItems.length > 0 ? (
+                    <>
+                      <FormControl fullWidth>
+                        <InputLabel id="cancel-product-label">Product Name *</InputLabel>
+                        <Select
+                          labelId="cancel-product-label"
+                          label="Product Name *"
+                          value={cancelForm.selectedItemId}
+                          sx={{ height: 43 }}
+                          onChange={(e) => handleCancelProductSelect(e.target.value)}
+                        >
+                          <MenuItem value="">Select product</MenuItem>
+                          <MenuItem value="manual">Manual entry</MenuItem>
+                          {cancelSaleItems.map((item) => (
+                            <MenuItem key={item.id} value={String(item.id)}>
+                              {item.product_name} — Qty: {formatItemQtyDisplay(item.qty)}
+                            </MenuItem>
+                          ))}
+                        </Select>
+                      </FormControl>
+                      {isManualCancelEntry && cancelForm.selectedItemId === "manual" && (
+                        <MDBox mt={2}>
+                          <MDInput
+                            label="Product Name *"
+                            fullWidth
+                            value={cancelForm.productName}
+                            onChange={(e) => handleCancelFormChange("productName", e.target.value)}
+                          />
+                        </MDBox>
+                      )}
+                    </>
+                  ) : (
+                    <MDInput
+                      label="Product Name *"
+                      fullWidth
+                      value={cancelForm.productName}
+                      onChange={(e) => handleCancelFormChange("productName", e.target.value)}
+                    />
+                  )}
+                </Grid>
+                <Grid item xs={12} sm={6}>
+                  <MDInput
+                    type="number"
+                    label="Qty to Cancel"
+                    fullWidth
+                    value={cancelForm.productQtyToCancel}
+                    onChange={(e) =>
+                      selectedCancelItem
+                        ? handleCancelQtyChange(e.target.value)
+                        : handleCancelFormChange("productQtyToCancel", e.target.value)
+                    }
+                    inputProps={
+                      selectedCancelItem
+                        ? { min: 0, max: Number(selectedCancelItem.qty) || undefined, step: "any" }
+                        : { min: 0, step: "any" }
+                    }
+                    helperText={
+                      selectedCancelItem
+                        ? `Ordered qty: ${formatItemQtyDisplay(selectedCancelItem.qty)}`
+                        : undefined
+                    }
+                  />
+                </Grid>
+                <Grid item xs={12} sm={6}>
+                  <MDInput
+                    type="number"
+                    label="Amount"
+                    fullWidth
+                    value={cancelForm.amount}
+                    onChange={(e) => handleCancelFormChange("amount", e.target.value)}
+                    inputProps={{ min: 0, step: "0.01" }}
+                    helperText={
+                      selectedCancelItem
+                        ? "Auto-filled from qty; you can edit manually"
+                        : "Enter cancel amount manually"
+                    }
+                  />
+                </Grid>
+                <Grid item xs={12}>
+                  <MDInput
+                    label="Remarks"
+                    fullWidth
+                    multiline
+                    rows={3}
+                    value={cancelForm.remarks}
+                    onChange={(e) => handleCancelFormChange("remarks", e.target.value)}
+                    inputProps={{ maxLength: 2000 }}
+                  />
+                </Grid>
+              </Grid>
+            </MDBox>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Tooltip title="Close">
+            <span>
+              <MDButton
+                variant="outlined"
+                color="dark"
+                iconOnly
+                onClick={closeAddCancelDialog}
+                disabled={loggingCancel}
+              >
+                <Icon fontSize="small">close</Icon>
+              </MDButton>
+            </span>
+          </Tooltip>
+          <Tooltip title={loggingCancel ? "Saving..." : "Create Cancel"}>
+            <span>
+              <MDButton
+                variant="gradient"
+                color="error"
+                iconOnly
+                onClick={handleSaveCancellation}
+                disabled={loggingCancel}
+              >
+                {loggingCancel ? (
+                  <CircularProgress size={18} color="inherit" />
+                ) : (
+                  <Icon fontSize="small">check</Icon>
+                )}
+              </MDButton>
+            </span>
+          </Tooltip>
+        </DialogActions>
+      </Dialog>
+      <Snackbar
+        open={Boolean(paymentSuccessMessage)}
+        autoHideDuration={4000}
+        onClose={() => setPaymentSuccessMessage("")}
+        anchorOrigin={{ vertical: "top", horizontal: "right" }}
+      >
+        <Alert
+          severity="success"
+          variant="filled"
+          onClose={() => setPaymentSuccessMessage("")}
+          sx={{ width: "100%" }}
+        >
+          {paymentSuccessMessage}
+        </Alert>
+      </Snackbar>
+      <Footer />
+    </DashboardLayout>
+  );
+}
+
+export default UpdatePayment;

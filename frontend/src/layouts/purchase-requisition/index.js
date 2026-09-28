@@ -1,0 +1,741 @@
+import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  Autocomplete, Card, Checkbox, FormControl, Grid, Icon, MenuItem, Select,
+  Table, TableBody, TableCell, TableContainer, TableHead, TableRow,
+} from "@mui/material";
+
+import MDBox from "components/MDBox";
+import MDButton from "components/MDButton";
+import MDInput from "components/MDInput";
+import MDTypography from "components/MDTypography";
+import DashboardLayout from "examples/LayoutContainers/DashboardLayout";
+import DashboardNavbar from "examples/Navbars/DashboardNavbar";
+import Footer from "examples/Footer";
+import {
+  printPurchaseRequisitionPdf,
+  printPurchaseRequisitionsPdf,
+} from "utils/printPurchaseRequisitionPdf";
+import { useAuth } from "context/AuthContext";
+
+const API = "https://bawarchee.edunextg.co/api";
+const auth = () => {
+  const token = localStorage.getItem("auth_token") || sessionStorage.getItem("auth_token");
+  return token ? { Authorization: `Bearer ${token}` } : {};
+};
+const days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday", "CNF"];
+
+const formatDateLabel = (value) => {
+  if (!value) return "—";
+  const dt = new Date(value);
+  if (Number.isNaN(dt.getTime())) return String(value);
+  return dt.toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
+};
+
+const formatDateTime = (value) => {
+  if (!value) return "—";
+  const dt = new Date(value);
+  if (Number.isNaN(dt.getTime())) return String(value);
+  return dt.toLocaleString("en-IN", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+  });
+};
+
+const deliveryStatusLabel = (status) => ({
+  pending: "Pending Invoice",
+  not_packing: "Pending at Packaging",
+  packing: "Packaging in Progress",
+  packing_done: "Packed — Ready for Delivery",
+  out_for_delivery: "Out for Delivery",
+  delivered: "Delivered",
+  cancelled: "Cancelled",
+  returned: "Returned",
+}[String(status || "pending").toLowerCase()] || String(status || "Pending"));
+
+const toDateInputValue = (value) => {
+  if (!value) return "";
+  const dt = new Date(value);
+  if (Number.isNaN(dt.getTime())) return "";
+  return dt.toISOString().slice(0, 10);
+};
+
+const getRequisitionTotalPayable = (requisition) => {
+  const requisitionItems = Array.isArray(requisition?.items) ? requisition.items : [];
+  if (!requisitionItems.length) {
+    return Number(requisition?.total_amount || 0) * 1.05;
+  }
+
+  return requisitionItems.reduce((total, item) => {
+    const quantity = Number(item.quantity) || 0;
+    const rate = Number(item.rate) || 0;
+    const gstPercent = Number(item.gst_percent) || 5;
+    const taxableValue = quantity * rate;
+    return total + taxableValue + ((taxableValue * gstPercent) / 100);
+  }, 0);
+};
+
+function PurchaseRequisition() {
+  const { user } = useAuth();
+  const isStaff = user?.role === "staff";
+  const canApproveRequisitions = user?.role === "admin"
+    || user?.permissions?.includes("requisition_approval");
+  const [sellerType, setSellerType] = useState("");
+  const [companies, setCompanies] = useState([]);
+  const [staff, setStaff] = useState([]);
+  const [companyId, setCompanyId] = useState("");
+  const [staffId, setStaffId] = useState("");
+  const [day, setDay] = useState("");
+  const [outlets, setOutlets] = useState([]);
+  const [outletId, setOutletId] = useState("");
+  const [stock, setStock] = useState([]);
+  const [selectedItem, setSelectedItem] = useState(null);
+  const [quantity, setQuantity] = useState("");
+  const [priceType, setPriceType] = useState("retail");
+  const [items, setItems] = useState([]);
+  const [result, setResult] = useState("");
+  const [savedRequisitions, setSavedRequisitions] = useState([]);
+  const [historyCompanyId, setHistoryCompanyId] = useState("");
+  const [historyStaffId, setHistoryStaffId] = useState("");
+  const [historyDateFilter, setHistoryDateFilter] = useState("");
+  const [loadingHistory, setLoadingHistory] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [selectedRequisitionIds, setSelectedRequisitionIds] = useState([]);
+
+  useEffect(() => {
+    if (isStaff) {
+      const assignedCompanies = Array.isArray(user?.companies) ? user.companies : [];
+      setCompanies(assignedCompanies);
+      setStaff([{
+        id: user.staffId,
+        name: user.username,
+        staff_type: user.staffType,
+        company_ids: assignedCompanies.map((company) => company.id).join(","),
+      }]);
+      setSellerType(user.staffType || "distributor");
+      setStaffId(String(user.staffId || ""));
+      if (assignedCompanies[0]) {
+        setCompanyId(String(assignedCompanies[0].id));
+        fetch(`${API}/staff/current-stock?companyName=${encodeURIComponent(assignedCompanies[0].name)}`)
+          .then((response) => response.json())
+          .then((data) => setStock((data.items || []).filter((item) => Number(item.total_current_stock_in_pcs) > 0)))
+          .catch(() => setStock([]));
+      }
+      return;
+    }
+    // Approvers only need the review queue. Keeping its filters admin-only avoids
+    // exposing the staff and company management APIs to managed users.
+    if (user?.role !== "admin") return;
+    Promise.all([
+      fetch(`${API}/staff/companies`, { headers: auth() }).then((r) => r.json()),
+      fetch(`${API}/staff`, { headers: auth() }).then((r) => r.json()),
+    ]).then(([companyRows, staffRows]) => {
+      setCompanies(Array.isArray(companyRows) ? companyRows : []);
+      setStaff(Array.isArray(staffRows) ? staffRows : []);
+    });
+  }, [isStaff, user, canApproveRequisitions]);
+
+  const filteredStaff = staff.filter((row) => {
+    const ids = String(row.company_ids || row.company_id || "").split(",").map((id) => id.trim());
+    return (row.staff_type || "distributor") === sellerType && ids.includes(String(companyId));
+  });
+
+  const historyStaff = staff.filter((row) => {
+    if (!historyCompanyId) return true;
+    const companyIds = String(row.company_ids || row.company_id || "").split(",").map((id) => id.trim());
+    return companyIds.includes(String(historyCompanyId));
+  });
+
+  const availableStock = useMemo(
+    () => stock.filter((item) => Number(item.total_current_stock_in_pcs) > 0),
+    [stock]
+  );
+
+  const fetchHistory = useCallback(async (selectedStaffId, selectedCompanyId, dateFilter = "") => {
+    if (!selectedStaffId && isStaff) {
+      setSavedRequisitions([]);
+      return;
+    }
+
+    setLoadingHistory(true);
+    try {
+      const params = new URLSearchParams();
+      if (selectedStaffId) params.set("staffId", String(selectedStaffId));
+      if (selectedCompanyId) params.set("companyId", String(selectedCompanyId));
+      if (dateFilter) params.set("date", dateFilter);
+      const response = await fetch(`${API}/staff/purchase-requisitions?${params.toString()}`, {
+        headers: auth(),
+      });
+      const data = await response.json();
+      setSavedRequisitions(response.ok && Array.isArray(data.requisitions) ? data.requisitions : []);
+    } catch {
+      setSavedRequisitions([]);
+    } finally {
+      setLoadingHistory(false);
+    }
+  }, [isStaff]);
+
+  useEffect(() => {
+    fetchHistory(isStaff ? staffId : historyStaffId, historyCompanyId, historyDateFilter);
+  }, [staffId, historyCompanyId, historyStaffId, historyDateFilter, fetchHistory, isStaff]);
+
+  const groupedHistory = useMemo(() => {
+    const groups = new Map();
+    savedRequisitions.forEach((row) => {
+      const key = toDateInputValue(row.created_at) || "unknown";
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key).push(row);
+    });
+    return [...groups.entries()].sort((a, b) => b[0].localeCompare(a[0]));
+  }, [savedRequisitions]);
+
+  const visibleRequisitionIds = useMemo(
+    () => savedRequisitions.map((row) => String(row.id || row.requisition_number)),
+    [savedRequisitions]
+  );
+  const allVisibleSelected = visibleRequisitionIds.length > 0
+    && visibleRequisitionIds.every((id) => selectedRequisitionIds.includes(id));
+  const someVisibleSelected = visibleRequisitionIds.some((id) => selectedRequisitionIds.includes(id));
+
+  useEffect(() => {
+    setSelectedRequisitionIds((current) => current.filter((id) => visibleRequisitionIds.includes(id)));
+  }, [visibleRequisitionIds]);
+
+  const toggleRequisition = (id) => {
+    const key = String(id);
+    setSelectedRequisitionIds((current) => (
+      current.includes(key) ? current.filter((value) => value !== key) : [...current, key]
+    ));
+  };
+
+  const toggleAllVisible = () => {
+    setSelectedRequisitionIds(allVisibleSelected ? [] : visibleRequisitionIds);
+  };
+
+  const printSelectedRequisitions = () => {
+    const selected = savedRequisitions.filter((row) => (
+      selectedRequisitionIds.includes(String(row.id || row.requisition_number))
+    ));
+    printPurchaseRequisitionsPdf(selected);
+  };
+
+  const chooseCompany = async (value) => {
+    setCompanyId(value);
+    if (!isStaff) setStaffId("");
+    setOutletId("");
+    setItems([]);
+    setSelectedItem(null);
+    setQuantity("");
+    setSavedRequisitions([]);
+    const selected = companies.find((row) => String(row.id) === String(value));
+    if (!selected) return setStock([]);
+    const response = await fetch(`${API}/staff/current-stock?companyName=${encodeURIComponent(selected.name)}`);
+    const data = await response.json();
+    setStock((data.items || []).filter((item) => Number(item.total_current_stock_in_pcs) > 0));
+  };
+
+  const loadOutlets = async (selectedStaffId, selectedDay) => {
+    if (!selectedStaffId || !selectedDay) return setOutlets([]);
+    const response = await fetch(`${API}/staff/${selectedStaffId}/outlets-by-day?day=${encodeURIComponent(selectedDay)}`);
+    setOutlets(response.ok ? await response.json() : []);
+  };
+
+  const addItem = () => {
+    if (!selectedItem) return alert("Select an available item.");
+    const qty = Number(quantity);
+    if (!qty || qty > Number(selectedItem.total_current_stock_in_pcs)) {
+      return alert(`Quantity cannot exceed current stock (${selectedItem.total_current_stock_in_pcs}).`);
+    }
+    const rate = priceType === "wholesale" ? selectedItem.wholesale_price : selectedItem.retail_price;
+    setItems((prev) => [...prev.filter((row) => row.productErpId !== selectedItem.product_erp_id), {
+      productErpId: selectedItem.product_erp_id,
+      productName: selectedItem.product_name,
+      variantName: selectedItem.variant_name,
+      hsnCode: selectedItem.hsn_code,
+      mrp: selectedItem.mrp,
+      gstPercent: selectedItem.gst_percent || 5,
+      available: selectedItem.total_current_stock_in_pcs,
+      quantity: qty,
+      priceType,
+      rate: Number(rate || 0),
+    }]);
+    setSelectedItem(null);
+    setQuantity("");
+  };
+
+  const save = async () => {
+    if (!sellerType || !companyId || !staffId || !outletId || !items.length) {
+      return alert("Choose seller type, company, staff, outlet, and items.");
+    }
+
+    setSaving(true);
+    try {
+      const response = await fetch(`${API}/staff/purchase-requisitions`, {
+        method: "POST",
+        headers: { ...auth(), "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sellerType,
+          companyId,
+          staffId,
+          outletId,
+          outletDay: day,
+          items: items.map((item) => ({
+            productErpId: item.productErpId,
+            quantity: item.quantity,
+            priceType: item.priceType,
+          })),
+        }),
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        alert(data.error || "Unable to create requisition.");
+        return;
+      }
+
+      const requisition = data.requisition;
+      setResult(requisition.requisition_number);
+      setItems([]);
+      setSelectedItem(null);
+      setQuantity("");
+      await fetchHistory(isStaff ? staffId : historyStaffId, historyCompanyId, historyDateFilter);
+      // Printing used to start automatically here. Browsers treat the print dialog as
+      // modal, leaving the staff portal unusable until it is closed. The saved
+      // requisition is immediately available in the list below via its View button.
+    } catch (error) {
+      console.error("Unable to create purchase requisition:", error);
+      alert(error.message || "Unable to create requisition. Please try again.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const reviewRequisition = async (requisitionId, status) => {
+    const action = status === "approved" ? "approve" : "cancel";
+    if (!window.confirm(`Are you sure you want to ${action} this requisition?`)) return;
+    const response = await fetch(`${API}/staff/purchase-requisitions/${requisitionId}/status`, {
+      method: "PUT",
+      headers: { ...auth(), "Content-Type": "application/json" },
+      body: JSON.stringify({ status }),
+    });
+    const data = await response.json();
+    if (!response.ok) return alert(data.error || `Unable to ${action} requisition.`);
+    await fetchHistory(isStaff ? staffId : historyStaffId, historyCompanyId, historyDateFilter);
+  };
+
+  const deletePendingRequisition = async (row) => {
+    if (row.status !== "pending") return;
+    if (!window.confirm(`Delete pending requisition ${row.requisition_number}? This cannot be undone.`)) return;
+
+    const response = await fetch(`${API}/staff/purchase-requisitions/${row.id}`, {
+      method: "DELETE",
+      headers: auth(),
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) return alert(data.error || "Unable to delete requisition.");
+
+    setSelectedRequisitionIds((current) => current.filter((id) => id !== String(row.id)));
+    await fetchHistory(isStaff ? staffId : historyStaffId, historyCompanyId, historyDateFilter);
+  };
+
+  return (
+    <DashboardLayout>
+      <DashboardNavbar />
+      <MDBox py={3}>
+        {isStaff && <Card>
+          <MDBox p={3}>
+            <MDTypography variant="h5" fontWeight="bold">Purchase Requisition</MDTypography>
+            <Grid container spacing={2} mt={0.5}>
+              {[
+                ["Seller Type", sellerType, (v) => { setSellerType(v); setCompanyId(""); }, [
+                  { id: "distributor", name: "Distributor" }, { id: "cnf", name: "CNF" },
+                ]],
+                ["Company", companyId, chooseCompany, companies.filter((c) => !sellerType || c.type === sellerType)],
+                ["Staff", staffId, (v) => { setStaffId(v); setOutletId(""); loadOutlets(v, day); }, filteredStaff.map((s) => ({ id: s.id, name: s.name }))],
+                ["Day", day, (v) => { setDay(v); setOutletId(""); loadOutlets(staffId, v); }, days.map((name) => ({ id: name, name }))],
+                ["Outlet", outletId, setOutletId, outlets.map((o) => ({ id: o.id, name: o.outlet_name }))],
+              ].map(([label, value, change, options]) => (
+                <Grid item xs={12} md={2.4} key={label}>
+                  <MDTypography variant="caption" fontWeight="bold">{label}</MDTypography>
+                  <FormControl fullWidth>
+                    <Select
+                      value={value}
+                      displayEmpty
+                      disabled={isStaff && ["Seller Type", "Staff"].includes(label)}
+                      onChange={(e) => change(e.target.value)}
+                      sx={{ height: 48 }}
+                    >
+                      <MenuItem value="">Select {label}</MenuItem>
+                      {options.map((o) => <MenuItem key={o.id} value={String(o.id)}>{o.name}</MenuItem>)}
+                    </Select>
+                  </FormControl>
+                </Grid>
+              ))}
+            </Grid>
+
+            <Grid container spacing={2} mt={1} alignItems="flex-end">
+              <Grid item xs={12} md={2}>
+                <MDTypography variant="caption" fontWeight="bold">Product</MDTypography>
+                <Autocomplete
+                  options={availableStock}
+                  value={selectedItem}
+                  onChange={(_, value) => {
+                    setSelectedItem(value);
+                    setQuantity("");
+                  }}
+                  getOptionLabel={(o) => o.product_name || ""}
+                  renderOption={(props, option) => (
+                    <li {...props}>
+                      {option.product_name}{option.variant_name ? ` | Variant: ${option.variant_name}` : ""}{option.product_erp_id ? ` | ERP: ${option.product_erp_id}` : ""}
+                    </li>
+                  )}
+                  renderInput={(params) => <MDInput {...params} placeholder="Search product" />}
+                />
+              </Grid>
+              <Grid item xs={12} md={2}>
+                <MDInput
+                  label="Variant"
+                  value={selectedItem?.variant_name || ""}
+                  InputProps={{ readOnly: true }}
+                />
+              </Grid>
+              <Grid item xs={12} md={2}>
+                <MDInput
+                  label="Product ERP ID"
+                  value={selectedItem?.product_erp_id || ""}
+                  InputProps={{ readOnly: true }}
+                />
+              </Grid>
+              <Grid item xs={6} md={2}>
+                <MDInput
+                  label="Available Stock"
+                  value={selectedItem ? selectedItem.total_current_stock_in_pcs : ""}
+                  InputProps={{ readOnly: true }}
+                />
+              </Grid>
+              <Grid item xs={6} md={1}>
+                <MDInput
+                  label="MRP"
+                  value={selectedItem ? selectedItem.mrp : ""}
+                  InputProps={{ readOnly: true }}
+                />
+              </Grid>
+              <Grid item xs={6} md={1}>
+                <MDInput label="Quantity" type="number" value={quantity} onChange={(e) => setQuantity(e.target.value)} />
+              </Grid>
+              <Grid item xs={6} md={1}>
+                <FormControl fullWidth>
+                  <Select value={priceType} onChange={(e) => setPriceType(e.target.value)} sx={{ height: 44 }}>
+                    <MenuItem value="retail">Retail Price</MenuItem>
+                    <MenuItem value="wholesale">Wholesale Price</MenuItem>
+                  </Select>
+                </FormControl>
+              </Grid>
+              <Grid item xs={12} md={1}>
+                <MDButton
+                  color="info"
+                  variant="gradient"
+                  title="Add item"
+                  aria-label="Add item"
+                  onClick={addItem}
+                >
+                  <Icon fontSize="small">add</Icon>
+                </MDButton>
+              </Grid>
+            </Grid>
+
+            <TableContainer sx={{ mt: 3 }}>
+              <Table>
+                <TableHead sx={{ display: "table-header-group" }}>
+                  <TableRow>
+                    {["Sr", "ERP ID", "Item Name", "Variant", "HSN", "MRP", "Available", "Qty", "Price Type", "Rate", "Amount", "Action"].map((h) => (
+                      <TableCell key={h} sx={{ fontWeight: 700 }}>{h}</TableCell>
+                    ))}
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {items.map((item, i) => (
+                    <TableRow key={item.productErpId}>
+                      <TableCell>{i + 1}</TableCell>
+                      <TableCell>{item.productErpId}</TableCell>
+                      <TableCell>{item.productName}</TableCell>
+                      <TableCell>{item.variantName}</TableCell>
+                      <TableCell>{item.hsnCode}</TableCell>
+                      <TableCell>{item.mrp}</TableCell>
+                      <TableCell>{item.available}</TableCell>
+                      <TableCell>{item.quantity}</TableCell>
+                      <TableCell>{item.priceType}</TableCell>
+                      <TableCell>{item.rate}</TableCell>
+                      <TableCell>{(item.quantity * item.rate).toFixed(2)}</TableCell>
+                      <TableCell>
+                        <MDButton
+                          color="error"
+                          variant="text"
+                          title="Delete item"
+                          aria-label={`Delete ${item.productName}`}
+                          onClick={() => setItems((p) => p.filter((_, x) => x !== i))}
+                        >
+                          <Icon fontSize="small">delete</Icon>
+                        </MDButton>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </TableContainer>
+
+            <MDBox display="flex" justifyContent="space-between" mt={3}>
+              <MDTypography color="success" fontWeight="bold">
+                {result ? `Requisition Number: ${result}` : ""}
+              </MDTypography>
+              <MDButton
+                color="info"
+                variant="gradient"
+                title={saving ? "Submitting requisition" : "Create requisition"}
+                aria-label={saving ? "Submitting requisition" : "Create requisition"}
+                onClick={save}
+                disabled={saving}
+              >
+                <Icon fontSize="small">{saving ? "hourglass_top" : "send"}</Icon>
+              </MDButton>
+            </MDBox>
+          </MDBox>
+        </Card>}
+
+        {(staffId || !isStaff) && (
+          <Card sx={{ mt: 3 }}>
+            <MDBox p={3}>
+              <MDBox display="flex" justifyContent="space-between" alignItems="center" flexWrap="wrap" gap={2} mb={2}>
+                <MDBox>
+                  <MDTypography variant="h6" fontWeight="bold">Submitted Requisitions</MDTypography>
+                  <MDTypography variant="caption" color="text">
+                    {isStaff
+                      ? "Your submitted requisitions, grouped by date."
+                      : staffId
+                        ? "Showing requisitions for selected staff, grouped by date."
+                        : "Review queue for all staff requisitions."}
+                  </MDTypography>
+                </MDBox>
+                <MDButton
+                  color="info"
+                  variant="gradient"
+                  disabled={!selectedRequisitionIds.length}
+                  onClick={printSelectedRequisitions}
+                >
+                  <Icon sx={{ mr: 0.5 }}>print</Icon>
+                  Print Selected ({selectedRequisitionIds.length})
+                </MDButton>
+                {!isStaff && user?.role === "admin" && <MDBox minWidth={200}>
+                  <MDTypography variant="caption" fontWeight="bold">Company</MDTypography>
+                  <FormControl fullWidth>
+                    <Select
+                      value={historyCompanyId}
+                      displayEmpty
+                      onChange={(e) => {
+                        setHistoryCompanyId(e.target.value);
+                        setHistoryStaffId("");
+                      }}
+                      sx={{ height: 44 }}
+                    >
+                      <MenuItem value="">All Companies</MenuItem>
+                      {companies.map((company) => (
+                        <MenuItem key={company.id} value={String(company.id)}>{company.name}</MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
+                </MDBox>}
+                {!isStaff && user?.role === "admin" && <MDBox minWidth={200}>
+                  <MDTypography variant="caption" fontWeight="bold">Staff</MDTypography>
+                  <FormControl fullWidth>
+                    <Select value={historyStaffId} displayEmpty onChange={(e) => setHistoryStaffId(e.target.value)} sx={{ height: 44 }}>
+                      <MenuItem value="">All Staff</MenuItem>
+                      {historyStaff.map((member) => (
+                        <MenuItem key={member.id} value={String(member.id)}>{member.name}</MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
+                </MDBox>}
+                <MDBox minWidth={220}>
+                  <MDInput
+                    type="date"
+                    label="Filter by Date"
+                    fullWidth
+                    value={historyDateFilter}
+                    onChange={(e) => setHistoryDateFilter(e.target.value)}
+                    InputLabelProps={{ shrink: true }}
+                  />
+                </MDBox>
+              </MDBox>
+
+              {loadingHistory ? (
+                <MDTypography variant="body2" color="text">Loading requisitions...</MDTypography>
+              ) : groupedHistory.length === 0 ? (
+                <MDTypography variant="body2" color="text">
+                  No requisitions found{historyDateFilter ? " on the selected date" : ""}.
+                </MDTypography>
+              ) : (
+                groupedHistory.map(([dateKey, rows]) => (
+                  <MDBox key={dateKey} mb={3}>
+                    <MDTypography variant="button" fontWeight="bold" color="dark" mb={1} display="block">
+                      {formatDateLabel(dateKey)}
+                    </MDTypography>
+                    <TableContainer>
+                      <Table size="small">
+                        <TableHead sx={{ display: "table-header-group" }}>
+                          <TableRow>
+                            {[
+                              "Select", "Sr. No.", "Requisition No", ...(!isStaff ? ["Staff", "Company"] : []),
+                              "Outlet", "Items", "Total Qty", "Value", "Total Payable", "Status", "Invoice No.",
+                              ...(isStaff ? ["Delivery Status", "Status Date", "Cancellation Reason"] : []),
+                              "View",
+                              ...(isStaff ? ["Delete"] : []),
+                              ...(!isStaff && canApproveRequisitions ? ["Approval Action"] : []),
+                            ].map((h) => (
+                              <TableCell
+                                key={h}
+                                sx={{ fontWeight: 700 }}
+                                padding={h === "Select" ? "checkbox" : "normal"}
+                              >
+                                {h === "Select" ? (
+                                  <Checkbox
+                                    checked={allVisibleSelected}
+                                    indeterminate={!allVisibleSelected && someVisibleSelected}
+                                    onChange={toggleAllVisible}
+                                    inputProps={{ "aria-label": "Select all visible requisitions" }}
+                                  />
+                                ) : h}
+                              </TableCell>
+                            ))}
+                          </TableRow>
+                        </TableHead>
+                        <TableBody>
+                          {rows.map((row, index) => (
+                            <TableRow
+                              key={row.id || row.requisition_number}
+                              sx={
+                                isStaff && row.delivery_status === "cancelled"
+                                  ? { backgroundColor: "#fee2e2" }
+                                  : isStaff && row.delivery_status === "delivered"
+                                  ? { backgroundColor: "#86b887" }
+                                  : row.status === "invoiced"
+                                  ? { backgroundColor: "#86b887" }
+                                  : row.status === "approved"
+                                  ? { backgroundColor: "#dcfce7" }
+                                  : row.status === "cancelled"
+                                    ? { backgroundColor: "#fee2e2" }
+                                    : {}
+                              }
+                            >
+                              <TableCell padding="checkbox">
+                                <Checkbox
+                                  checked={selectedRequisitionIds.includes(String(row.id || row.requisition_number))}
+                                  onChange={() => toggleRequisition(row.id || row.requisition_number)}
+                                  inputProps={{ "aria-label": `Select requisition ${row.requisition_number}` }}
+                                />
+                              </TableCell>
+                              <TableCell>{index + 1}</TableCell>
+                              <TableCell>{row.requisition_number}</TableCell>
+                              {!isStaff && <TableCell>{row.staff_name}</TableCell>}
+                              {!isStaff && <TableCell>{row.company_name}</TableCell>}
+                              <TableCell>{row.outlet_name}</TableCell>
+                              <TableCell>{row.item_count}</TableCell>
+                              <TableCell>{Number(row.total_quantity || 0).toFixed(2)}</TableCell>
+                              <TableCell>{Number(row.total_amount || 0).toFixed(2)}</TableCell>
+                              <TableCell>{getRequisitionTotalPayable(row).toFixed(2)}</TableCell>
+                              <TableCell>{row.status || "open"}</TableCell>
+                              <TableCell>{row.invoiced_invoice_number || "—"}</TableCell>
+                              {isStaff && (
+                                <TableCell sx={{ fontWeight: 700 }}>
+                                  {deliveryStatusLabel(row.delivery_status)}
+                                </TableCell>
+                              )}
+                              {isStaff && (
+                                <TableCell>
+                                  {row.delivery_status_at ? formatDateLabel(row.delivery_status_at) : "—"}
+                                </TableCell>
+                              )}
+                              {isStaff && (
+                                <TableCell sx={{ minWidth: 180 }}>
+                                  {row.cancellation_reason || "—"}
+                                </TableCell>
+                              )}
+                              <TableCell>
+                                <MDButton
+                                  color="info"
+                                  variant="text"
+                                  size="small"
+                                  title={`View requisition\nSubmitted: ${formatDateTime(row.created_at)}`}
+                                  aria-label={`View requisition ${row.requisition_number}`}
+                                  onClick={() => printPurchaseRequisitionPdf(row)}
+                                >
+                                  <Icon fontSize="small">visibility</Icon>
+                                </MDButton>
+                              </TableCell>
+                              {isStaff && (
+                                <TableCell>
+                                  {row.status === "pending" ? (
+                                    <MDButton
+                                      color="error"
+                                      variant="outlined"
+                                      size="small"
+                                      title="Delete pending requisition"
+                                      aria-label={`Delete requisition ${row.requisition_number}`}
+                                      onClick={() => deletePendingRequisition(row)}
+                                    >
+                                      <Icon fontSize="small">delete</Icon>
+                                    </MDButton>
+                                  ) : (
+                                    <MDTypography variant="caption" color="text">—</MDTypography>
+                                  )}
+                                </TableCell>
+                              )}
+                              {!isStaff && canApproveRequisitions && (
+                                <TableCell>
+                                  {["open", "pending"].includes(row.status || "pending") ? (
+                                    <MDBox display="flex" gap={1}>
+                                      <MDButton
+                                        color="success"
+                                        variant="gradient"
+                                        size="small"
+                                        title="Approve requisition"
+                                        aria-label="Approve requisition"
+                                        onClick={() => reviewRequisition(row.id, "approved")}
+                                      >
+                                        <Icon fontSize="small">check</Icon>
+                                      </MDButton>
+                                      <MDButton
+                                        color="error"
+                                        variant="outlined"
+                                        size="small"
+                                        title="Cancel requisition"
+                                        aria-label="Cancel requisition"
+                                        onClick={() => reviewRequisition(row.id, "cancelled")}
+                                      >
+                                        <Icon fontSize="small">close</Icon>
+                                      </MDButton>
+                                    </MDBox>
+                                  ) : (
+                                    <Icon fontSize="small" title="Reviewed" color="success">task_alt</Icon>
+                                  )}
+                                </TableCell>
+                              )}
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </TableContainer>
+                  </MDBox>
+                ))
+              )}
+            </MDBox>
+          </Card>
+        )}
+      </MDBox>
+      <Footer />
+    </DashboardLayout>
+  );
+}
+
+export default PurchaseRequisition;
