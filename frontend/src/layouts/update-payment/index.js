@@ -1,4 +1,5 @@
-import { Fragment, useState, useEffect } from "react";
+import { Fragment, useState, useEffect, useRef, useCallback } from "react";
+import { notifySalesUpdated, useSalesPolling } from "utils/salesSync";
 import { downloadSalesExcel } from "utils/downloadSalesExcel";
 import { getUnupdatedPaymentSales, unupdatedPaymentColumns } from "utils/unupdatedPaymentExport";
 import Grid from "@mui/material/Grid";
@@ -22,6 +23,7 @@ import {
   InputLabel,
   Tooltip,
   CircularProgress,
+  Checkbox,
   Snackbar,
   Alert,
 } from "@mui/material";
@@ -141,6 +143,11 @@ function UpdatePayment() {
   const isAdmin = user?.role === "admin";
   const [searchQuery, setSearchQuery] = useState("");
   const [salesCompanyId, setSalesCompanyId] = useState("");
+  const [paymentUpdateFilter, setPaymentUpdateFilter] = useState("all");
+  const [selectedDeliveryIds, setSelectedDeliveryIds] = useState([]);
+  const [movingToDelivery, setMovingToDelivery] = useState(false);
+  const [moveDeliveryMessage, setMoveDeliveryMessage] = useState("");
+  const moveInProgress = useRef(false);
   const [downloadingUnupdated, setDownloadingUnupdated] = useState(false);
   const [collectionDate, setCollectionDate] = useState(getTodayLocalDate());
   const [collectionEndDate, setCollectionEndDate] = useState(getTodayLocalDate());
@@ -234,7 +241,7 @@ function UpdatePayment() {
   const inferCollectorType = (payment) =>
     payment.collector_name && !payment.collector_staff_id ? "bawarchee_staff" : "company_staff";
 
-  const fetchSales = async (search = searchQuery) => {
+  const fetchSales = useCallback(async (search = searchQuery) => {
     try {
       const params = new URLSearchParams();
       const normalizedSearch = String(search || "").trim();
@@ -253,7 +260,9 @@ function UpdatePayment() {
     } catch (error) {
       console.error("Error fetching global sales:", error);
     }
-  };
+  }, [API, searchQuery]);
+
+  useSalesPolling(useCallback(() => fetchSales(searchQuery), [fetchSales, searchQuery]));
 
   const downloadUnupdatedPayments = async () => {
     if (!salesCompanyId || downloadingUnupdated) return;
@@ -373,7 +382,12 @@ function UpdatePayment() {
 
   useEffect(() => {
     setPage(1);
-  }, [searchQuery, salesCompanyId, rowsPerPage]);
+  }, [searchQuery, salesCompanyId, paymentUpdateFilter, rowsPerPage]);
+
+  useEffect(() => {
+    setSelectedDeliveryIds([]);
+    setMoveDeliveryMessage("");
+  }, [searchQuery, salesCompanyId, paymentUpdateFilter]);
 
   useEffect(() => {
     const fetchDeliveryBoys = async () => {
@@ -414,11 +428,46 @@ function UpdatePayment() {
 
   const filteredSales = salesData.filter((row) => (
     row.packaging_status === "delivered" &&
+    (paymentUpdateFilter === "all" ||
+      (Number(row.payment_count) === 0 && Number(row.paid_amount || 0) === 0)) &&
     (!salesCompanyId || String(row.company_ids || "")
       .split(",")
       .some((id) => id.trim() === String(salesCompanyId)))
   ));
   const totalPages = Math.max(1, Math.ceil(filteredSales.length / rowsPerPage));
+  const selectedMoveIds = paymentUpdateFilter === "none"
+    ? filteredSales.filter((sale) => selectedDeliveryIds.includes(Number(sale.id))).map((sale) => Number(sale.id))
+    : [];
+  const allMoveSelected = filteredSales.length > 0 && selectedMoveIds.length === filteredSales.length;
+  const toggleAllMoveBills = () => setSelectedDeliveryIds(
+    allMoveSelected ? [] : filteredSales.map((sale) => Number(sale.id))
+  );
+  const moveSelectedToDelivery = async () => {
+    if (!selectedMoveIds.length || moveInProgress.current) return;
+    moveInProgress.current = true;
+    setMovingToDelivery(true);
+    setMoveDeliveryMessage("");
+    try {
+      const response = await fetch(`${API}/staff/sales/move-to-delivery`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ saleIds: selectedMoveIds }),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || "Unable to move selected bills.");
+      notifySalesUpdated();
+      setSalesData((current) => current.filter((sale) => !result.movedIds.includes(Number(sale.id))));
+      setSelectedDeliveryIds([]);
+      setPage(1);
+      setMoveDeliveryMessage(`${result.movedIds.length} bill(s) moved to Delivery Management → Pending Deliveries.${result.skippedIds.length ? ` ${result.skippedIds.length} skipped because their status or payment activity changed.` : ""}`);
+      await fetchSales();
+    } catch (error) {
+      setMoveDeliveryMessage(error.message || "Unable to move selected bills.");
+    } finally {
+      moveInProgress.current = false;
+      setMovingToDelivery(false);
+    }
+  };
   const paginatedSales = filteredSales.slice(
     (page - 1) * rowsPerPage,
     page * rowsPerPage
@@ -1504,7 +1553,22 @@ function UpdatePayment() {
                       </Select>
                     </FormControl>
                   </Grid>
-                  <Grid item xs={12} md={5}>
+                  <Grid item xs={12} sm={6} md={3}>
+                    <FormControl fullWidth>
+                      <InputLabel id="payment-update-filter-label">Payment Updates</InputLabel>
+                      <Select
+                        labelId="payment-update-filter-label"
+                        label="Payment Updates"
+                        value={paymentUpdateFilter}
+                        onChange={(event) => setPaymentUpdateFilter(event.target.value)}
+                        sx={{ height: 43 }}
+                      >
+                        <MenuItem value="all">All Bills</MenuItem>
+                        <MenuItem value="none">No Payment Updates</MenuItem>
+                      </Select>
+                    </FormControl>
+                  </Grid>
+                  <Grid item xs={12}>
                     <MDButton
                       color="success"
                       variant="gradient"
@@ -1520,6 +1584,18 @@ function UpdatePayment() {
                   </Grid>
                 </Grid>
 
+                {paymentUpdateFilter === "none" && (
+                  <MDBox mb={2} display="flex" alignItems="center" gap={2} flexWrap="wrap">
+                    <MDButton variant="outlined" color="info" onClick={toggleAllMoveBills} disabled={movingToDelivery || !filteredSales.length}>
+                      {allMoveSelected ? "Clear Selection" : `Select All (${filteredSales.length})`}
+                    </MDButton>
+                    <MDButton variant="gradient" color="info" onClick={moveSelectedToDelivery} disabled={movingToDelivery || !selectedMoveIds.length}>
+                      {movingToDelivery ? "Moving..." : `Move to Delivery (${selectedMoveIds.length})`}
+                    </MDButton>
+                    <MDTypography variant="caption">Select All includes all matching bills across pages.</MDTypography>
+                  </MDBox>
+                )}
+                {moveDeliveryMessage && <MDTypography variant="body2" mb={2} role="status">{moveDeliveryMessage}</MDTypography>}
                 <MDBox>
                   <TableContainer
                     component={Paper}
@@ -1528,6 +1604,11 @@ function UpdatePayment() {
                     <Table stickyHeader size="small" sx={compactTableTextSx}>
                       <TableHead sx={paginatedTableHeadSx()}>
                         <TableRow>
+                          {paymentUpdateFilter === "none" && (
+                            <TableCell align="center" sx={paginatedTableHeadCellSx}>
+                              <Checkbox checked={allMoveSelected} indeterminate={selectedMoveIds.length > 0 && !allMoveSelected} onChange={toggleAllMoveBills} disabled={movingToDelivery || !filteredSales.length} inputProps={{ "aria-label": "Select all matching bills" }} />
+                            </TableCell>
+                          )}
                           <TableCell align="center" sx={{ ...paginatedTableHeadCellSx, width: 56 }}>
                             Sr No
                           </TableCell>
@@ -1554,6 +1635,11 @@ function UpdatePayment() {
                             const hasCancellation = updatedPrice < originalPrice - 0.001;
                             return (
                               <TableRow key={sale.id} sx={getPaymentRowSx(sale)}>
+                                {paymentUpdateFilter === "none" && (
+                                  <TableCell align="center">
+                                    <Checkbox checked={selectedMoveIds.includes(Number(sale.id))} disabled={movingToDelivery} inputProps={{ "aria-label": `Select invoice ${sale.invoice_number || sale.id}` }} onChange={() => setSelectedDeliveryIds((current) => current.includes(Number(sale.id)) ? current.filter((id) => id !== Number(sale.id)) : [...current, Number(sale.id)])} />
+                                  </TableCell>
+                                )}
                                 <TableCell align="center">{(page - 1) * rowsPerPage + index + 1}</TableCell>
                                 <TableCell align="left">
                                   <MDTypography variant="button" fontWeight="medium" color="dark">
@@ -1638,7 +1724,7 @@ function UpdatePayment() {
                           })
                         ) : (
                           <TableRow>
-                            <TableCell colSpan={12} align="center" sx={{ py: 4 }}>
+                            <TableCell colSpan={paymentUpdateFilter === "none" ? 13 : 12} align="center" sx={{ py: 4 }}>
                               <MDTypography variant="body2" color="text">
                                 No delivered items found matching your filters.
                               </MDTypography>

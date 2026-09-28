@@ -1,6 +1,12 @@
 import { useEffect } from "react";
 
 export const SALES_POLL_INTERVAL_MS = 8000;
+const SALES_UPDATED_KEY = "sales-updated-at";
+
+export const notifySalesUpdated = () => {
+  window.dispatchEvent(new Event("sales-updated"));
+  try { localStorage.setItem(SALES_UPDATED_KEY, String(Date.now())); } catch (_error) { /* Polling still refreshes other tabs. */ }
+};
 
 export const toDateInputValue = (value) => {
   if (!value) return "";
@@ -89,10 +95,19 @@ export const useSalesPolling = (fetchSales, intervalMs = SALES_POLL_INTERVAL_MS)
     };
 
     document.addEventListener("visibilitychange", handleVisibility);
+    window.addEventListener("focus", handleVisibility);
+    window.addEventListener("sales-updated", handleVisibility);
+    const handleStorage = (event) => {
+      if (event.key === SALES_UPDATED_KEY) handleVisibility();
+    };
+    window.addEventListener("storage", handleStorage);
 
     return () => {
       clearInterval(intervalId);
       document.removeEventListener("visibilitychange", handleVisibility);
+      window.removeEventListener("focus", handleVisibility);
+      window.removeEventListener("sales-updated", handleVisibility);
+      window.removeEventListener("storage", handleStorage);
     };
   }, [fetchSales, intervalMs]);
 };

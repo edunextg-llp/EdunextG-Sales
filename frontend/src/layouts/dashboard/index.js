@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useSalesPolling } from "utils/salesSync";
 import PropTypes from "prop-types";
 import {
   BarChart,
@@ -899,6 +900,9 @@ function Dashboard() {
   const [paidCollectionDialogOpen, setPaidCollectionDialogOpen] = useState(false);
   const [deliveredAmountDialogOpen, setDeliveredAmountDialogOpen] = useState(false);
   const [outstandingDialogOpen, setOutstandingDialogOpen] = useState(false);
+  const [outstandingLoading, setOutstandingLoading] = useState(false);
+  const [outstandingError, setOutstandingError] = useState("");
+  const reportRequestId = useRef(0);
   const [companyCreditDialogOpen, setCompanyCreditDialogOpen] = useState(false);
   const [pendingCreditRows, setPendingCreditRows] = useState([]);
   const [loadingCompanyCredits, setLoadingCompanyCredits] = useState(false);
@@ -996,7 +1000,8 @@ function Dashboard() {
     [pendingCreditRows]
   );
 
-  const fetchReports = async () => {
+  const fetchReports = useCallback(async () => {
+    const requestId = ++reportRequestId.current;
     try {
       const params = new URLSearchParams();
       if (reportStartDate) params.set("startDate", reportStartDate);
@@ -1004,18 +1009,31 @@ function Dashboard() {
       if (selectedSalesCompanyId) params.set("companyId", selectedSalesCompanyId);
 
       const query = params.toString();
-      const response = await fetch(`${API}/staff/reports${query ? `?${query}` : ""}`);
+      const response = await fetch(`${API}/staff/reports${query ? `?${query}` : ""}`, { cache: "no-store" });
       if (response.ok) {
         const data = await response.json();
+        if (requestId !== reportRequestId.current) return;
         setReportData({ ...emptyReportData, ...data });
+        setOutstandingError("");
       } else {
-        setReportData(emptyReportData);
+        throw new Error("Unable to refresh outstanding invoices. Please retry.");
       }
     } catch (error) {
+      if (requestId !== reportRequestId.current) return;
       console.error("Error fetching dashboard reports:", error);
-      setReportData(emptyReportData);
+      setOutstandingError("Unable to refresh outstanding invoices. Please retry.");
+    } finally {
+      if (requestId === reportRequestId.current) setOutstandingLoading(false);
     }
+  }, [API, reportStartDate, reportEndDate, selectedSalesCompanyId]);
+
+  const refreshOutstanding = () => {
+    setOutstandingLoading(true);
+    setOutstandingError("");
+    void fetchReports();
   };
+
+  useSalesPolling(fetchReports);
 
   const fetchPendingCreditTracker = async () => {
     setLoadingCompanyCredits(true);
@@ -1157,8 +1175,7 @@ function Dashboard() {
 
   useEffect(() => {
     fetchReports();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [reportStartDate, reportEndDate, selectedSalesCompanyId]);
+  }, [fetchReports]);
 
   useEffect(() => {
     fetchPurchaseReports();
@@ -2205,7 +2222,7 @@ function Dashboard() {
                 </MDBox>
               </Grid>
               <Grid item xs={12} md={6} lg={3}>
-                <MDBox mb={1.5} onClick={() => setOutstandingDialogOpen(true)} sx={{ cursor: "pointer" }}>
+                <MDBox mb={1.5} onClick={() => { setOutstandingDialogOpen(true); refreshOutstanding(); }} sx={{ cursor: "pointer" }}>
                   <ComplexStatisticsCard
                     color="warning"
                     icon="account_balance_wallet"
@@ -2571,11 +2588,16 @@ function Dashboard() {
           <MDTypography variant="caption" color="text" mb={1.5} display="block">
             Period: {reportPeriodLabel} · Company: {selectedSalesCompanyName}
           </MDTypography>
+          {outstandingLoading ? (
+            <MDTypography role="status" variant="body2" py={3}>Refreshing current delivered invoices…</MDTypography>
+          ) : outstandingError ? (
+            <MDTypography role="alert" variant="body2" color="error" py={3}>{outstandingError}</MDTypography>
+          ) : <>
           <Grid container spacing={1.5} mb={2}>
             {[
               { label: `No Payment Update (${noPaymentOutstandingRows.length} invoices)`, value: noPaymentOutstandingTotal },
               { label: `Payment Updated, Balance Left (${updatedPaymentOutstandingRows.length} invoices)`, value: updatedPaymentOutstandingTotal },
-              { label: "Total Outstanding", value: reportData.summary.total_delivered_outstanding },
+              { label: "Total Outstanding", value: noPaymentOutstandingTotal + updatedPaymentOutstandingTotal },
             ].map((item) => (
               <Grid item xs={12} sm={4} key={item.label}>
                 <MDBox p={1.5} sx={{ border: "1px solid #e5e7eb", borderRadius: 2 }}>
@@ -2617,8 +2639,10 @@ function Dashboard() {
               <MDTypography variant="body2" color="text">No outstanding delivered invoices for this filter.</MDTypography>
             </MDBox>
           )}
+          </>}
         </DialogContent>
         <DialogActions>
+          <MDButton color="info" variant="outlined" disabled={outstandingLoading} onClick={refreshOutstanding}>Refresh</MDButton>
           <MDButton color="dark" variant="outlined" onClick={() => setOutstandingDialogOpen(false)}>Close</MDButton>
         </DialogActions>
       </Dialog>
