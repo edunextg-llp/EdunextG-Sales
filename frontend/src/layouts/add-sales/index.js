@@ -63,6 +63,39 @@ const tableHeadRowSx = {
   "& .MuiTableCell-root": { backgroundColor: "#f9fafb" },
 };
 
+// Shared sizing for the two side-by-side filter boxes so they look identical
+const filterBoxInputSx = {
+  "& .MuiInputBase-root": {
+    height: 48,
+  },
+  "& .MuiInputBase-input": {
+    height: "48px",
+    boxSizing: "border-box",
+    padding: "0 14px",
+    display: "flex",
+    alignItems: "center",
+  },
+};
+
+const filterBoxAutocompleteSx = {
+  "& .MuiInputBase-root": {
+    height: 48,
+    padding: "0 14px",
+  },
+  "& .MuiInputBase-input": {
+    height: "48px",
+    boxSizing: "border-box",
+    padding: "0 !important",
+    display: "flex",
+    alignItems: "center",
+  },
+  "& .MuiAutocomplete-endAdornment": {
+    top: "50%",
+    transform: "translateY(-50%)",
+    right: 8,
+  },
+};
+
 function AddSales() {
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split("T")[0]);
   const [staffOptions, setStaffOptions] = useState([]);
@@ -114,7 +147,7 @@ function AddSales() {
     price: "",
   });
 
-  const API = "https://bawarchee.edunextg.co/api";
+  const API = "http://localhost:2002/api";
   const isCnfStaff = selectedStaff?.staff_type === "cnf";
   const emptySaleRow = { itemCount: "", invoiceNumber: "", price: "", deliveryBoyId: "", vehicleNo: "" };
 
@@ -1091,23 +1124,6 @@ function AddSales() {
                       />
                     </MDBox>
                   </Grid>
-                  {/* <Grid item xs={12} md={4}>
-                    <MDBox mb={2}>
-                      <MDInput
-                        type="text"
-                        label="Search Outlet (any weekday)"
-                        fullWidth
-                        value={outletSearch}
-                        onChange={(e) => setOutletSearch(e.target.value)}
-                        disabled={!selectedStaff}
-                        helperText={
-                          selectedStaff
-                            ? "Finds outlets from Mon–Sat routes; sale is saved for the selected date."
-                            : ""
-                        }
-                      />
-                    </MDBox>
-                  </Grid> */}
                 </Grid>
 
                 {showEntryTable && (
@@ -1154,51 +1170,61 @@ function AddSales() {
                       </MDBox>
                     </MDBox>
 
-                    <MDBox mb={2} maxWidth={400}>
-                      <MDInput
-                        type="text"
-                        label="Search Outlet Name or ERP ID"
-                        fullWidth
-                        value={outletSearch}
-                        onChange={(e) => setOutletSearch(e.target.value)}
-                        disabled={!selectedStaff}
-                        helperText={
-                          selectedStaff
-                            ? "Search by outlet name, ERP ID, or area across all route days."
-                            : ""
-                        }
-                      />
-                    </MDBox>
-                    {!isCnfStaff && (
-                      <MDBox mb={2} maxWidth={400}>
-                        <Autocomplete
-                          options={["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"]}
-                          onChange={(event, newValue) => {
-                            if (newValue) {
-                              const outletsToAdd = allOutlets.filter(
-                                o => o.day === newValue && !outlets.some(existing => existing.id === o.id)
-                              );
+                    {/* Search Outlet & Load Outlets by Day side by side */}
+                    <Grid container spacing={2} mb={2} alignItems="flex-start">
+                      <Grid item xs={12} md={6}>
+                        <MDBox>
+                          <MDInput
+                            type="text"
+                            label="Search Outlet Name or ERP ID"
+                            fullWidth
+                            value={outletSearch}
+                            onChange={(e) => setOutletSearch(e.target.value)}
+                            disabled={!selectedStaff}
+                            InputLabelProps={{ shrink: true }}
+                            sx={filterBoxInputSx}
+                          />
+                        </MDBox>
+                      </Grid>
+                      {!isCnfStaff && (
+                        <Grid item xs={12} md={6}>
+                          <MDBox>
+                            <Autocomplete
+                              options={["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"]}
+                              onChange={(event, newValue) => {
+                                if (newValue) {
+                                  const outletsToAdd = allOutlets.filter(
+                                    (o) => o.day === newValue && !outlets.some((existing) => existing.id === o.id)
+                                  );
 
-                              if (outletsToAdd.length > 0) {
-                                setOutlets([...outlets, ...outletsToAdd]);
-                                setSalesData((prev) => {
-                                  const newData = { ...prev };
-                                  outletsToAdd.forEach((o) => {
-                                    newData[outletKey(o.id)] = [{ ...emptySaleRow }];
-                                  });
-                                  return newData;
-                                });
-                              }
-                            }
-                          }}
-                          renderInput={(params) => (
-                            <MDInput {...params} label="Load Outlets by Day" fullWidth />
-                          )}
-                          clearOnBlur
-                          blurOnSelect
-                        />
-                      </MDBox>
-                    )}
+                                  if (outletsToAdd.length > 0) {
+                                    setOutlets([...outlets, ...outletsToAdd]);
+                                    setSalesData((prev) => {
+                                      const newData = { ...prev };
+                                      outletsToAdd.forEach((o) => {
+                                        newData[outletKey(o.id)] = [{ ...emptySaleRow }];
+                                      });
+                                      return newData;
+                                    });
+                                  }
+                                }
+                              }}
+                              renderInput={(params) => (
+                                <MDInput
+                                  {...params}
+                                  label="Load Outlets by Day"
+                                  fullWidth
+                                  InputLabelProps={{ ...params.InputLabelProps, shrink: true }}
+                                  sx={filterBoxAutocompleteSx}
+                                />
+                              )}
+                              clearOnBlur
+                              blurOnSelect
+                            />
+                          </MDBox>
+                        </Grid>
+                      )}
+                    </Grid>
 
                     <TableContainer
                       sx={{

@@ -118,7 +118,7 @@ function AddCounter() {
   const [editingOutletId, setEditingOutletId] = useState(null);
   const [editFormData, setEditFormData] = useState(createEmptyEditForm());
 
-  const API = "https://bawarchee.edunextg.co/api";
+  const API = "http://localhost:2002/api";
   const isCnfStaff = selectedStaff?.staff_type === "cnf";
   const routeDay = isCnfStaff ? cnfRouteDay : selectedDay;
 

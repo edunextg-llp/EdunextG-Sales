@@ -13,7 +13,7 @@ import DashboardNavbar from "examples/Navbars/DashboardNavbar";
 import Footer from "examples/Footer";
 import { useAuth } from "context/AuthContext";
 
-const API = "https://bawarchee.edunextg.co/api";
+const API = "http://localhost:2002/api";
 const routeDays = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 
 const emptyAssignments = () => ({

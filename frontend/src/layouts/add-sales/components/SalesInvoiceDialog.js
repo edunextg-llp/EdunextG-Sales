@@ -26,19 +26,21 @@ import MDInput from "components/MDInput";
 import MDButton from "components/MDButton";
 
 /* ─────────────────────────────────────────────────────────────
-   THEME TOKENS  (matches the reference screenshot precisely)
+   THEME TOKENS  (black / blue / white palette)
 ───────────────────────────────────────────────────────────── */
-const PURPLE = "#6b3fa0";       // header / footer bar
-const PURPLE_DARK = "#5a3285";       // right-panel sidebar
-const GOLD_BAR = "#c9a252";       // product-entry bar
-const GOLD_LIGHT = "#e8d49e";       // table header row
+const PRIMARY = "#1976d2";        // main blue
+const PRIMARY_DARK = "#0d47a1";   // darker blue (header / sidebar)
+const HEADER_BAR = "#1e293b";     // slate/near-black header
+const ACCENT_BAR = "#e2e8f0";     // light gray accent bar (product entry)
+const TABLE_HEAD = "#f1f5f9";     // very light gray table header
 const WHITE = "#ffffff";
-const FIELD_BG = "#f5f0fa";       // table-area background
+const FIELD_BG = "#f8fafc";       // table-area background
+const BORDER = "#e2e8f0";
+const TEXT_DARK = "#0f172a";
+const TEXT_MUTED = "#64748b";
 
 /* ─────────────────────────────────────────────────────────────
    SHARED INPUT STYLES
-   All inputs look like the on-screen fields: white bg, purple
-   label/border, small font.
 ───────────────────────────────────────────────────────────── */
 const mkInput = (bgColor = WHITE) => ({
   "& .MuiInputBase-root": {
@@ -48,7 +50,7 @@ const mkInput = (bgColor = WHITE) => ({
     height: 26,
   },
   "& .MuiInputBase-input": {
-    color: "#1a1a2e !important",
+    color: TEXT_DARK + " !important",
     fontSize: "0.78rem",
     padding: "2px 6px !important",
   },
@@ -57,17 +59,17 @@ const mkInput = (bgColor = WHITE) => ({
     WebkitTextFillColor: "#444 !important",
   },
   "& .MuiInputBase-root.Mui-disabled": {
-    backgroundColor: "#ede8f5 !important",
+    backgroundColor: "#eef2f7 !important",
   },
   "& .MuiOutlinedInput-notchedOutline": {
-    borderColor: "#b39ddb !important",
+    borderColor: "#cbd5e1 !important",
     borderWidth: "1px !important",
   },
   "& .MuiInputBase-root.Mui-focused .MuiOutlinedInput-notchedOutline": {
-    borderColor: PURPLE + " !important",
+    borderColor: PRIMARY + " !important",
   },
   "& .MuiInputLabel-root": {
-    color: "#7c4dab !important",
+    color: PRIMARY_DARK + " !important",
     fontSize: "0.72rem !important",
     top: "-4px",
     fontWeight: 600,
@@ -84,11 +86,11 @@ const headerInput = mkInput(WHITE);
 const goldInput = mkInput(WHITE);
 const sidebarInput = mkInput(WHITE);
 
-/* small bold label used above each input column in gold bar */
+/* small bold label used above each input column */
 const colLabelSx = {
   fontSize: "0.65rem",
   fontWeight: 700,
-  color: PURPLE_DARK,
+  color: TEXT_MUTED,
   textTransform: "uppercase",
   letterSpacing: "0.04em",
   mb: 0.3,
@@ -97,11 +99,11 @@ const colLabelSx = {
 
 /* table header cell */
 const TH = {
-  backgroundColor: `${GOLD_LIGHT} !important`,
+  backgroundColor: `${TABLE_HEAD} !important`,
   fontWeight: 700,
   fontSize: "0.68rem",
-  color: "#4a2d7a",
-  borderBottom: `2px solid ${GOLD_BAR}`,
+  color: TEXT_DARK,
+  borderBottom: `2px solid ${BORDER}`,
   py: 0.8,
   px: 1,
   whiteSpace: "nowrap",
@@ -110,8 +112,8 @@ const TH = {
 /* table body cell */
 const TD = {
   fontSize: "0.73rem",
-  color: "#1a1a2e",
-  borderBottom: "1px solid #e8e0f5",
+  color: TEXT_DARK,
+  borderBottom: "1px solid " + BORDER,
   py: 0.6,
   px: 1,
   overflow: "hidden",
@@ -122,8 +124,8 @@ const lineItemTableColWidths = ["4%", "22%", "6%", "6%", "6%", "8%", "8%", "6%",
 
 const lineItemTableHeadRowSx = {
   display: "table-header-group",
-  backgroundColor: GOLD_LIGHT,
-  "& .MuiTableCell-root": { backgroundColor: GOLD_LIGHT },
+  backgroundColor: TABLE_HEAD,
+  "& .MuiTableCell-root": { backgroundColor: TABLE_HEAD },
 };
 
 const LINE_ITEM_COLUMNS = [
@@ -160,7 +162,7 @@ function SummaryRow({ label, value, highlight }) {
     >
       <MDTypography
         variant="caption"
-        sx={{ color: "#e8d5f5", fontSize: "0.7rem", fontWeight: 600 }}
+        sx={{ color: "#cbd5e1", fontSize: "0.7rem", fontWeight: 600 }}
       >
         {label}
       </MDTypography>
@@ -213,7 +215,7 @@ function calcLine(item) {
   return { qty, rate, total, disc: 0, taxable, cgst, sgst, gst, netTotal };
 }
 
-const API = "https://bawarchee.edunextg.co/api";
+const API = "http://localhost:2002/api";
 
 export default function SalesInvoiceDialog({
   open,
@@ -330,7 +332,6 @@ export default function SalesInvoiceDialog({
   }, [open, fetchCurrentStock]);
 
   /* ── derived strings ── */
-  // const saleTo  = outlet ? `${outlet.outlet_name || ""}${outlet.outlet_erp_id ? `, Class: 0 Section: 0 Adm. No. : ${outlet.outlet_erp_id}` : ""}` : "";
   const address = outlet
     ? `${outlet.address || outlet.location_name || ""}${outlet.contact_number ? ` Mobile:-${outlet.contact_number}` : ""}`
     : "";
@@ -565,7 +566,6 @@ export default function SalesInvoiceDialog({
     if (open && !editMode && initialRequisitionNumber) {
       loadRequisition(initialRequisitionNumber);
     }
-    // The request is intentionally triggered only when this dialog opens with a new requisition.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, editMode, initialRequisitionNumber]);
 
@@ -631,9 +631,9 @@ export default function SalesInvoiceDialog({
       }}
     >
       {/* ══════════════════════════════════════════════
-          ROW 1 — PURPLE HEADER  (Bill No, Sale To, Date)
+          ROW 1 — HEADER  (Bill No, Sale To, Date)
       ══════════════════════════════════════════════ */}
-      <MDBox sx={{ backgroundColor: PURPLE, px: 2, py: 1.2, position: "relative" }}>
+      <MDBox sx={{ backgroundColor: HEADER_BAR, px: 2, py: 1.2, position: "relative" }}>
         <IconButton
           aria-label="Close"
           onClick={onClose}
@@ -656,7 +656,7 @@ export default function SalesInvoiceDialog({
           <Grid item xs={12} md={2.5}>
             <Grid container spacing={1}>
               <Grid item xs={12}>
-                <MDTypography sx={{ ...colLabelSx, color: "#e2c9ff" }}>Bill No.</MDTypography>
+                <MDTypography sx={{ ...colLabelSx, color: "#cbd5e1" }}>Bill No.</MDTypography>
                 <MDInput
                   fullWidth
                   value={billNo}
@@ -665,16 +665,12 @@ export default function SalesInvoiceDialog({
                   sx={headerInput}
                 />
               </Grid>
-              {/* <Grid item xs={12}>
-                <MDTypography sx={{ ...colLabelSx, color: "#e2c9ff" }}>Prev. Sold Bill No.</MDTypography>
-                <MDInput fullWidth value={prevBillNo} disabled sx={headerInput} />
-              </Grid> */}
             </Grid>
           </Grid>
 
-          {/* Sale To + Address */}
+          {/* Requisition No */}
           <Grid item xs={12} md={3}>
-            <MDTypography sx={{ ...colLabelSx, color: "#e2c9ff" }}>Requisition No. (Optional)</MDTypography>
+            <MDTypography sx={{ ...colLabelSx, color: "#cbd5e1" }}>Requisition No. (Optional)</MDTypography>
             <MDBox display="flex" gap={0.5}>
               <MDInput fullWidth value={requisitionNumber} onChange={(e) => setRequisitionNumber(e.target.value)}
                 placeholder="PRQ000001" sx={headerInput} />
@@ -682,15 +678,11 @@ export default function SalesInvoiceDialog({
             </MDBox>
           </Grid>
 
-          {/* Sale To + Address */}
+          {/* Address */}
           <Grid item xs={12} md={3.5}>
             <Grid container spacing={1}>
-              {/* <Grid item xs={12}>
-                <MDTypography sx={{ ...colLabelSx, color: "#e2c9ff" }}>Sale To</MDTypography>
-                <MDInput fullWidth value={saleTo} disabled sx={headerInput} />
-              </Grid> */}
               <Grid item xs={12}>
-                <MDTypography sx={{ ...colLabelSx, color: "#e2c9ff" }}>Address</MDTypography>
+                <MDTypography sx={{ ...colLabelSx, color: "#cbd5e1" }}>Address</MDTypography>
                 <MDInput fullWidth value={address} disabled sx={headerInput} />
               </Grid>
             </Grid>
@@ -698,7 +690,7 @@ export default function SalesInvoiceDialog({
 
           {/* Date */}
           <Grid item xs={12} md={3}>
-            <MDTypography sx={{ ...colLabelSx, color: "#e2c9ff" }}>Date</MDTypography>
+            <MDTypography sx={{ ...colLabelSx, color: "#cbd5e1" }}>Date</MDTypography>
             <MDInput
               fullWidth
               value={formatDisplayDate(selectedDate)}
@@ -711,9 +703,9 @@ export default function SalesInvoiceDialog({
       </MDBox>
 
       {/* ══════════════════════════════════════════════
-          ROW 2 — GOLD PRODUCT ENTRY BAR
+          ROW 2 — PRODUCT ENTRY BAR
       ══════════════════════════════════════════════ */}
-      <MDBox sx={{ backgroundColor: GOLD_BAR, px: 2, py: 1 }}>
+      <MDBox sx={{ backgroundColor: ACCENT_BAR, px: 2, py: 1, borderBottom: "1px solid " + BORDER }}>
         {stockError && (
           <MDTypography variant="caption" color="error" fontWeight="medium" display="block" mb={0.5}>
             {stockError}
@@ -747,7 +739,7 @@ export default function SalesInvoiceDialog({
             />
           </Grid>
 
-          {/* Selected Item (product name display) */}
+          {/* Selected Item */}
           <Grid item xs={12} md={2}>
             <MDTypography sx={colLabelSx}>Selected Item</MDTypography>
             <MDInput fullWidth value={draft.productName} disabled sx={goldInput} />
@@ -772,13 +764,13 @@ export default function SalesInvoiceDialog({
             />
           </Grid>
 
-          {/* Unit (static) */}
+          {/* Unit */}
           <Grid item xs={6} md={0.7}>
             <MDTypography sx={colLabelSx}>Unit</MDTypography>
             <MDInput fullWidth value="PCS" disabled sx={goldInput} />
           </Grid>
 
-          {/* Price type from Item List */}
+          {/* Price Type */}
           <Grid item xs={6} md={1.2}>
             <MDTypography sx={colLabelSx}>Price Type</MDTypography>
             <Select
@@ -862,7 +854,7 @@ export default function SalesInvoiceDialog({
       </MDBox>
 
       {/* ══════════════════════════════════════════════
-          ROW 3 — TABLE  (left) + SUMMARY PANEL (right)
+          ROW 3 — TABLE (left) + SUMMARY PANEL (right)
       ══════════════════════════════════════════════ */}
       <MDBox display="flex" sx={{ minHeight: 420 }}>
 
@@ -874,7 +866,7 @@ export default function SalesInvoiceDialog({
               backgroundColor: WHITE,
               borderRadius: "3px",
               boxShadow: "none",
-              borderTop: "1px solid #e8e0f5",
+              borderTop: "1px solid " + BORDER,
               overflowX: "auto",
               overflowY: "auto",
             }}
@@ -914,8 +906,8 @@ export default function SalesInvoiceDialog({
                     <TableRow
                       key={`${item.productErpId}-${i}`}
                       sx={{
-                        backgroundColor: i % 2 === 0 ? WHITE : "#faf7ff",
-                        "&:hover": { backgroundColor: "#f3eeff" },
+                        backgroundColor: i % 2 === 0 ? WHITE : "#f8fafc",
+                        "&:hover": { backgroundColor: "#eef2f7" },
                       }}
                     >
                       <TableCell align="center" sx={{ ...TD, width: "4%", whiteSpace: "nowrap" }}>
@@ -970,7 +962,7 @@ export default function SalesInvoiceDialog({
                   );
                 }) : (
                   <TableRow>
-                    <TableCell colSpan={LINE_ITEM_COLUMNS.length} align="center" sx={{ py: 5, color: "#94a3b8", fontSize: "0.78rem" }}>
+                    <TableCell colSpan={LINE_ITEM_COLUMNS.length} align="center" sx={{ py: 5, color: TEXT_MUTED, fontSize: "0.78rem" }}>
                       No items added yet.
                     </TableCell>
                   </TableRow>
@@ -985,7 +977,7 @@ export default function SalesInvoiceDialog({
           sx={{
             width: 220,
             flexShrink: 0,
-            backgroundColor: PURPLE_DARK,
+            backgroundColor: PRIMARY_DARK,
             display: "flex",
             flexDirection: "column",
             p: 1.5,
@@ -1004,7 +996,7 @@ export default function SalesInvoiceDialog({
 
           {/* Flat Discount input */}
           <MDBox mt={0.5}>
-            <MDTypography sx={{ ...colLabelSx, color: "#d8bfff", mb: 0.4 }}>Flat Discount (%)</MDTypography>
+            <MDTypography sx={{ ...colLabelSx, color: "#cbd5e1", mb: 0.4 }}>Flat Discount (%)</MDTypography>
             <MDInput
               fullWidth
               type="number"
@@ -1017,7 +1009,7 @@ export default function SalesInvoiceDialog({
 
           {/* Round Off input */}
           <MDBox>
-            <MDTypography sx={{ ...colLabelSx, color: "#d8bfff", mb: 0.4 }}>Round of</MDTypography>
+            <MDTypography sx={{ ...colLabelSx, color: "#cbd5e1", mb: 0.4 }}>Round of</MDTypography>
             <MDInput
               fullWidth
               type="number"
@@ -1029,7 +1021,7 @@ export default function SalesInvoiceDialog({
 
           {/* Net Payable */}
           <MDBox>
-            <MDTypography sx={{ ...colLabelSx, color: "#d8bfff", mb: 0.4 }}>Net Paybale</MDTypography>
+            <MDTypography sx={{ ...colLabelSx, color: "#cbd5e1", mb: 0.4 }}>Net Paybale</MDTypography>
             <MDInput
               fullWidth
               value={fmt(totals.netPayable)}
@@ -1037,7 +1029,7 @@ export default function SalesInvoiceDialog({
               sx={{
                 ...sidebarInput,
                 "& .MuiInputBase-root.Mui-disabled": {
-                  backgroundColor: "#3b1f6e !important",
+                  backgroundColor: "#0a2e5c !important",
                 },
                 "& .MuiInputBase-input.Mui-disabled": {
                   color: "#fff !important",
@@ -1048,7 +1040,7 @@ export default function SalesInvoiceDialog({
             />
           </MDBox>
 
-          {/* ── Buttons — always visible, not pushed off with mt=auto ── */}
+          {/* ── Buttons ── */}
           <MDBox display="flex" flexDirection="column" gap={1} pt={1}>
             <MDButton
               variant="contained"
@@ -1098,11 +1090,11 @@ export default function SalesInvoiceDialog({
       </MDBox>
 
       {/* ══════════════════════════════════════════════
-          ROW 4 — PURPLE FOOTER  (totals + remarks)
+          ROW 4 — FOOTER  (totals + remarks)
       ══════════════════════════════════════════════ */}
       <MDBox
         sx={{
-          backgroundColor: PURPLE,
+          backgroundColor: HEADER_BAR,
           px: 2,
           py: 1,
           display: "flex",
@@ -1111,7 +1103,7 @@ export default function SalesInvoiceDialog({
         }}
       >
         <MDBox sx={{ display: "flex", alignItems: "center", gap: 0.8, whiteSpace: "nowrap" }}>
-          <MDTypography sx={{ color: "#e2c9ff", fontSize: "0.7rem", fontWeight: 700 }}>
+          <MDTypography sx={{ color: "#cbd5e1", fontSize: "0.7rem", fontWeight: 700 }}>
             Total Items
           </MDTypography>
           <MDTypography sx={{ color: WHITE, fontSize: "0.75rem", fontWeight: 900 }}>
@@ -1120,7 +1112,7 @@ export default function SalesInvoiceDialog({
         </MDBox>
 
         <MDBox sx={{ display: "flex", alignItems: "center", gap: 0.8, whiteSpace: "nowrap" }}>
-          <MDTypography sx={{ color: "#e2c9ff", fontSize: "0.7rem", fontWeight: 700 }}>
+          <MDTypography sx={{ color: "#cbd5e1", fontSize: "0.7rem", fontWeight: 700 }}>
             Total Quantity
           </MDTypography>
           <MDTypography sx={{ color: WHITE, fontSize: "0.75rem", fontWeight: 900 }}>
@@ -1129,7 +1121,7 @@ export default function SalesInvoiceDialog({
         </MDBox>
 
         <MDBox sx={{ display: "flex", alignItems: "center", gap: 1, flex: 1 }}>
-          <MDTypography sx={{ color: "#e2c9ff", fontSize: "0.7rem", fontWeight: 700, whiteSpace: "nowrap" }}>
+          <MDTypography sx={{ color: "#cbd5e1", fontSize: "0.7rem", fontWeight: 700, whiteSpace: "nowrap" }}>
             Remarks
           </MDTypography>
           <MDInput
@@ -1156,7 +1148,7 @@ export default function SalesInvoiceDialog({
         fullWidth
         PaperProps={{ sx: { borderRadius: "6px" } }}
       >
-        <DialogTitle sx={{ fontWeight: 700, color: PURPLE_DARK, pb: 1 }}>
+        <DialogTitle sx={{ fontWeight: 700, color: TEXT_DARK, pb: 1 }}>
           Edit Item
         </DialogTitle>
         <DialogContent dividers>

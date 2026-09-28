@@ -187,7 +187,7 @@ function UpdatePayment() {
   const [page, setPage] = useState(1);
   const [rowsPerPage, setRowsPerPage] = useState(ROWS_PER_PAGE);
 
-  const API = "https://bawarchee.edunextg.co/api";
+  const API = "http://localhost:2002/api";
 
   const getStaffCompanyIds = (staff) =>
     String(staff?.company_ids || staff?.company_id || "")
@@ -1525,7 +1525,7 @@ function UpdatePayment() {
                 </MDTypography>
               </MDBox>
               <MDBox pt={4} pb={3} px={3}>
-                <Grid container spacing={3} mb={3}>
+                <Grid container spacing={3} mb={3} alignItems="flex-start">
                   <Grid item xs={12} md={4}>
                     <MDInput
                       type="text"
@@ -1535,7 +1535,7 @@ function UpdatePayment() {
                       onChange={(e) => setSearchQuery(e.target.value)}
                     />
                   </Grid>
-                  <Grid item xs={12} sm={6} md={3}>
+                  <Grid item xs={12} sm={6} md={2}>
                     <FormControl fullWidth>
                       <InputLabel id="sales-company-filter-label">Company</InputLabel>
                       <Select
@@ -1553,7 +1553,7 @@ function UpdatePayment() {
                       </Select>
                     </FormControl>
                   </Grid>
-                  <Grid item xs={12} sm={6} md={3}>
+                  <Grid item xs={12} sm={6} md={2}>
                     <FormControl fullWidth>
                       <InputLabel id="payment-update-filter-label">Payment Updates</InputLabel>
                       <Select
@@ -1568,7 +1568,7 @@ function UpdatePayment() {
                       </Select>
                     </FormControl>
                   </Grid>
-                  <Grid item xs={12}>
+                  <Grid item xs={12} md={4}>
                     <MDButton
                       color="success"
                       variant="gradient"

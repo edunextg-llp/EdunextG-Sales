@@ -17,7 +17,7 @@ import {
 } from "utils/printPurchaseRequisitionPdf";
 import { useAuth } from "context/AuthContext";
 
-const API = "https://bawarchee.edunextg.co/api";
+const API = "http://localhost:2002/api";
 const auth = () => {
   const token = localStorage.getItem("auth_token") || sessionStorage.getItem("auth_token");
   return token ? { Authorization: `Bearer ${token}` } : {};

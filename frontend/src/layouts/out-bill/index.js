@@ -76,7 +76,7 @@ function OutBillPage() {
   const [reportPage, setReportPage] = useState(1);
   const [reportRowsPerPage, setReportRowsPerPage] = useState(ROWS_PER_PAGE);
 
-  const API = "https://bawarchee.edunextg.co/api";
+  const API = "http://localhost:2002/api";
 
   const isCreditTaken = (credit) => Number(credit?.is_taken) === 1;
 
@@ -825,90 +825,92 @@ function OutBillPage() {
 
                 {/* Table rendering based on Active Tab */}
                 {activeTab === "pending" ? (
-                  <TableContainer
-                    component={Paper}
-                    sx={{ ...paginatedTableContainerSx, backgroundColor: "transparent" }}
-                  >
-                    <Table stickyHeader size="small" sx={compactTableTextSx}>
-                      <TableHead sx={paginatedTableHeadSx()}>
-                        <TableRow>
-                          <TableCell align="center" sx={{ ...paginatedTableHeadCellSx, width: 56 }}>
-                            <Checkbox
-                              checked={isAllSelected}
-                              indeterminate={isSomeSelected}
-                              onChange={handleSelectAllToggle}
-                            />
-                          </TableCell>
-                          <TableCell align="center" sx={{ ...paginatedTableHeadCellSx, width: 56 }}>
-                            Sr No
-                          </TableCell>
-                          <TableCell align="left" sx={paginatedTableHeadCellSx}>Outlet Name</TableCell>
-                          <TableCell align="center" sx={paginatedTableHeadCellSx}>Area</TableCell>
-                          <TableCell align="center" sx={paginatedTableHeadCellSx}>ERP ID</TableCell>
-                          <TableCell align="center" sx={paginatedTableHeadCellSx}>Contact No</TableCell>
-                          <TableCell align="center" sx={paginatedTableHeadCellSx}>Sale ID</TableCell>
-                          <TableCell align="center" sx={paginatedTableHeadCellSx}>Invoice No</TableCell>
-                          <TableCell align="center" sx={paginatedTableHeadCellSx}>Staff</TableCell>
-                          <TableCell align="center" sx={paginatedTableHeadCellSx}>Company</TableCell>
-                          <TableCell align="center" sx={paginatedTableHeadCellSx}>Outstanding Balance</TableCell>
-                          <TableCell align="center" sx={paginatedTableHeadCellSx}>Issue Date</TableCell>
-                          <TableCell align="center" sx={paginatedTableHeadCellSx}>Due Date</TableCell>
-                          <TableCell align="center" sx={paginatedTableHeadCellSx}>Status</TableCell>
-                        </TableRow>
-                      </TableHead>
-                      <TableBody>
-                        {paginatedCredits.map((credit, index) => (
-                          <TableRow key={credit.id} sx={getCreditRowSx(credit)}>
-                            <TableCell align="center">
+                  <MDBox>
+                    <TableContainer
+                      component={Paper}
+                      sx={{ ...paginatedTableContainerSx, backgroundColor: "transparent" }}
+                    >
+                      <Table stickyHeader size="small" sx={compactTableTextSx}>
+                        <TableHead sx={paginatedTableHeadSx()}>
+                          <TableRow>
+                            <TableCell align="center" sx={{ ...paginatedTableHeadCellSx, width: 56 }}>
                               <Checkbox
-                                checked={selectedCreditIds.includes(credit.id)}
-                                disabled={isCreditTaken(credit)}
-                                onChange={() => handleCheckboxToggle(credit)}
+                                checked={isAllSelected}
+                                indeterminate={isSomeSelected}
+                                onChange={handleSelectAllToggle}
                               />
                             </TableCell>
-                            <TableCell align="center">{(page - 1) * rowsPerPage + index + 1}</TableCell>
-                            <TableCell align="left">
-                              {credit.outlet_name}
-                              {isCreditTaken(credit) && (
-                                <Chip
-                                  label={`Taken${credit.taker_name ? ` by ${credit.taker_name}` : ""}`}
-                                  size="small"
-                                  color="default"
-                                  sx={{ ml: 1, height: 20, fontSize: "0.7rem" }}
-                                />
-                              )}
+                            <TableCell align="center" sx={{ ...paginatedTableHeadCellSx, width: 56 }}>
+                              Sr No
                             </TableCell>
-                            <TableCell align="center">{credit.location_name || "N/A"}</TableCell>
-                            <TableCell align="center">{credit.outlet_erp_id || "N/A"}</TableCell>
-                            <TableCell align="center">{credit.contact_number || "N/A"}</TableCell>
-                            <TableCell align="center">{credit.sticker_number}</TableCell>
-                            <TableCell align="center">{credit.invoice_number}</TableCell>
-                            <TableCell align="center">{credit.staff_name}</TableCell>
-                            <TableCell align="center">{credit.company_name || "N/A"}</TableCell>
-                            <TableCell
-                              align="center"
-                              sx={{ color: "error.main", fontWeight: "bold" }}
-                            >
-                              ₹{Number(credit.balance_amount).toFixed(2)}
-                            </TableCell>
-                            <TableCell align="center">{formatDate(credit.sale_date)}</TableCell>
-                            <TableCell align="center">
-                              {calcDueDate(credit.sale_date, credit.credit_days)}
-                            </TableCell>
-                            <TableCell align="center">
-                              {getStatus(credit.sale_date, credit.credit_days)}
-                            </TableCell>
+                            <TableCell align="left" sx={paginatedTableHeadCellSx}>Outlet Name</TableCell>
+                            <TableCell align="center" sx={paginatedTableHeadCellSx}>Area</TableCell>
+                            <TableCell align="center" sx={paginatedTableHeadCellSx}>ERP ID</TableCell>
+                            <TableCell align="center" sx={paginatedTableHeadCellSx}>Contact No</TableCell>
+                            <TableCell align="center" sx={paginatedTableHeadCellSx}>Sale ID</TableCell>
+                            <TableCell align="center" sx={paginatedTableHeadCellSx}>Invoice No</TableCell>
+                            <TableCell align="center" sx={paginatedTableHeadCellSx}>Staff</TableCell>
+                            <TableCell align="center" sx={paginatedTableHeadCellSx}>Company</TableCell>
+                            <TableCell align="center" sx={paginatedTableHeadCellSx}>Outstanding Balance</TableCell>
+                            <TableCell align="center" sx={paginatedTableHeadCellSx}>Issue Date</TableCell>
+                            <TableCell align="center" sx={paginatedTableHeadCellSx}>Due Date</TableCell>
+                            <TableCell align="center" sx={paginatedTableHeadCellSx}>Status</TableCell>
                           </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
-                    {filteredCredits.length === 0 && (
-                      <MDBox mt={4} textAlign="center">
-                        <MDTypography variant="body2" color="text">
-                          No outstanding credits found in the system!
-                        </MDTypography>
-                      </MDBox>
-                    )}
+                        </TableHead>
+                        <TableBody>
+                          {paginatedCredits.map((credit, index) => (
+                            <TableRow key={credit.id} sx={getCreditRowSx(credit)}>
+                              <TableCell align="center">
+                                <Checkbox
+                                  checked={selectedCreditIds.includes(credit.id)}
+                                  disabled={isCreditTaken(credit)}
+                                  onChange={() => handleCheckboxToggle(credit)}
+                                />
+                              </TableCell>
+                              <TableCell align="center">{(page - 1) * rowsPerPage + index + 1}</TableCell>
+                              <TableCell align="left">
+                                {credit.outlet_name}
+                                {isCreditTaken(credit) && (
+                                  <Chip
+                                    label={`Taken${credit.taker_name ? ` by ${credit.taker_name}` : ""}`}
+                                    size="small"
+                                    color="default"
+                                    sx={{ ml: 1, height: 20, fontSize: "0.7rem" }}
+                                  />
+                                )}
+                              </TableCell>
+                              <TableCell align="center">{credit.location_name || "N/A"}</TableCell>
+                              <TableCell align="center">{credit.outlet_erp_id || "N/A"}</TableCell>
+                              <TableCell align="center">{credit.contact_number || "N/A"}</TableCell>
+                              <TableCell align="center">{credit.sticker_number}</TableCell>
+                              <TableCell align="center">{credit.invoice_number}</TableCell>
+                              <TableCell align="center">{credit.staff_name}</TableCell>
+                              <TableCell align="center">{credit.company_name || "N/A"}</TableCell>
+                              <TableCell
+                                align="center"
+                                sx={{ color: "error.main", fontWeight: "bold" }}
+                              >
+                                ₹{Number(credit.balance_amount).toFixed(2)}
+                              </TableCell>
+                              <TableCell align="center">{formatDate(credit.sale_date)}</TableCell>
+                              <TableCell align="center">
+                                {calcDueDate(credit.sale_date, credit.credit_days)}
+                              </TableCell>
+                              <TableCell align="center">
+                                {getStatus(credit.sale_date, credit.credit_days)}
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                      {filteredCredits.length === 0 && (
+                        <MDBox mt={4} textAlign="center">
+                          <MDTypography variant="body2" color="text">
+                            No outstanding credits found in the system!
+                          </MDTypography>
+                        </MDBox>
+                      )}
+                    </TableContainer>
                     <TablePaginationFooter
                       page={page}
                       totalPages={totalPages}
@@ -917,83 +919,85 @@ function OutBillPage() {
                       limit={rowsPerPage}
                       onLimitChange={setRowsPerPage}
                     />
-                  </TableContainer>
+                  </MDBox>
                 ) : (
-                  <TableContainer
-                    component={Paper}
-                    sx={{ ...paginatedTableContainerSx, backgroundColor: "transparent" }}
-                  >
-                    <Table stickyHeader size="small" sx={compactTableTextSx}>
-                      <TableHead sx={paginatedTableHeadSx()}>
-                        <TableRow>
-                          <TableCell align="center" sx={{ ...paginatedTableHeadCellSx, width: 56 }}>
-                            <Checkbox
-                              checked={isAllTakenSelected}
-                              indeterminate={isSomeTakenSelected}
-                              onChange={handleSelectAllTakenToggle}
-                            />
-                          </TableCell>
-                          <TableCell align="center" sx={{ ...paginatedTableHeadCellSx, width: 56 }}>
-                            Sr No
-                          </TableCell>
-                          <TableCell align="left" sx={paginatedTableHeadCellSx}>Outlet Name</TableCell>
-                          <TableCell align="center" sx={paginatedTableHeadCellSx}>Area</TableCell>
-                          <TableCell align="center" sx={paginatedTableHeadCellSx}>ERP ID</TableCell>
-                          <TableCell align="center" sx={paginatedTableHeadCellSx}>Contact No</TableCell>
-                          <TableCell align="center" sx={paginatedTableHeadCellSx}>Sale ID</TableCell>
-                          <TableCell align="center" sx={paginatedTableHeadCellSx}>Invoice No</TableCell>
-                          <TableCell align="center" sx={paginatedTableHeadCellSx}>Staff (Taker)</TableCell>
-                          <TableCell align="center" sx={paginatedTableHeadCellSx}>Company</TableCell>
-                          <TableCell align="center" sx={paginatedTableHeadCellSx}>Outstanding Balance</TableCell>
-                          <TableCell align="center" sx={paginatedTableHeadCellSx}>Issue Date</TableCell>
-                          <TableCell align="center" sx={paginatedTableHeadCellSx}>Due Date</TableCell>
-                          <TableCell align="center" sx={paginatedTableHeadCellSx}>Taken Date</TableCell>
-                        </TableRow>
-                      </TableHead>
-                      <TableBody>
-                        {paginatedTakenBills.map((bill, index) => (
-                          <TableRow key={bill.id}>
-                            <TableCell align="center">
+                  <MDBox>
+                    <TableContainer
+                      component={Paper}
+                      sx={{ ...paginatedTableContainerSx, backgroundColor: "transparent" }}
+                    >
+                      <Table stickyHeader size="small" sx={compactTableTextSx}>
+                        <TableHead sx={paginatedTableHeadSx()}>
+                          <TableRow>
+                            <TableCell align="center" sx={{ ...paginatedTableHeadCellSx, width: 56 }}>
                               <Checkbox
-                                checked={selectedTakenBillIds.includes(bill.id)}
-                                onChange={() => handleTakenBillCheckboxToggle(bill.id)}
+                                checked={isAllTakenSelected}
+                                indeterminate={isSomeTakenSelected}
+                                onChange={handleSelectAllTakenToggle}
                               />
                             </TableCell>
-                            <TableCell align="center">{(reportPage - 1) * reportRowsPerPage + index + 1}</TableCell>
-                            <TableCell align="left">{bill.outlet_name}</TableCell>
-                            <TableCell align="center">{bill.location_name || "N/A"}</TableCell>
-                            <TableCell align="center">{bill.outlet_erp_id || "N/A"}</TableCell>
-                            <TableCell align="center">{bill.contact_number || "N/A"}</TableCell>
-                            <TableCell align="center">{bill.sticker_number}</TableCell>
-                            <TableCell align="center">{bill.invoice_number}</TableCell>
-                            <TableCell align="center">{formatTakerName(bill)}</TableCell>
-                            <TableCell align="center">{bill.company_name || "N/A"}</TableCell>
-                            <TableCell
-                              align="center"
-                              sx={{ color: "error.main", fontWeight: "bold" }}
-                            >
-                              ₹{Number(bill.balance_amount).toFixed(2)}
+                            <TableCell align="center" sx={{ ...paginatedTableHeadCellSx, width: 56 }}>
+                              Sr No
                             </TableCell>
-                            <TableCell align="center">{formatDate(bill.sale_date)}</TableCell>
-                            <TableCell align="center">
-                              {calcDueDate(bill.sale_date, bill.credit_days)}
-                            </TableCell>
-                            <TableCell align="center">
-                              {formatDate(bill.taken_date)}
-                            </TableCell>
+                            <TableCell align="left" sx={paginatedTableHeadCellSx}>Outlet Name</TableCell>
+                            <TableCell align="center" sx={paginatedTableHeadCellSx}>Area</TableCell>
+                            <TableCell align="center" sx={paginatedTableHeadCellSx}>ERP ID</TableCell>
+                            <TableCell align="center" sx={paginatedTableHeadCellSx}>Contact No</TableCell>
+                            <TableCell align="center" sx={paginatedTableHeadCellSx}>Sale ID</TableCell>
+                            <TableCell align="center" sx={paginatedTableHeadCellSx}>Invoice No</TableCell>
+                            <TableCell align="center" sx={paginatedTableHeadCellSx}>Staff (Taker)</TableCell>
+                            <TableCell align="center" sx={paginatedTableHeadCellSx}>Company</TableCell>
+                            <TableCell align="center" sx={paginatedTableHeadCellSx}>Outstanding Balance</TableCell>
+                            <TableCell align="center" sx={paginatedTableHeadCellSx}>Issue Date</TableCell>
+                            <TableCell align="center" sx={paginatedTableHeadCellSx}>Due Date</TableCell>
+                            <TableCell align="center" sx={paginatedTableHeadCellSx}>Taken Date</TableCell>
                           </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
-                    {filteredTakenBills.length === 0 && (
-                      <MDBox mt={4} textAlign="center">
-                        <MDTypography variant="body2" color="text">
-                          {takenBillSearch.trim()
-                            ? "No taken bills match your search."
-                            : "No taken bills recorded in this period!"}
-                        </MDTypography>
-                      </MDBox>
-                    )}
+                        </TableHead>
+                        <TableBody>
+                          {paginatedTakenBills.map((bill, index) => (
+                            <TableRow key={bill.id}>
+                              <TableCell align="center">
+                                <Checkbox
+                                  checked={selectedTakenBillIds.includes(bill.id)}
+                                  onChange={() => handleTakenBillCheckboxToggle(bill.id)}
+                                />
+                              </TableCell>
+                              <TableCell align="center">{(reportPage - 1) * reportRowsPerPage + index + 1}</TableCell>
+                              <TableCell align="left">{bill.outlet_name}</TableCell>
+                              <TableCell align="center">{bill.location_name || "N/A"}</TableCell>
+                              <TableCell align="center">{bill.outlet_erp_id || "N/A"}</TableCell>
+                              <TableCell align="center">{bill.contact_number || "N/A"}</TableCell>
+                              <TableCell align="center">{bill.sticker_number}</TableCell>
+                              <TableCell align="center">{bill.invoice_number}</TableCell>
+                              <TableCell align="center">{formatTakerName(bill)}</TableCell>
+                              <TableCell align="center">{bill.company_name || "N/A"}</TableCell>
+                              <TableCell
+                                align="center"
+                                sx={{ color: "error.main", fontWeight: "bold" }}
+                              >
+                                ₹{Number(bill.balance_amount).toFixed(2)}
+                              </TableCell>
+                              <TableCell align="center">{formatDate(bill.sale_date)}</TableCell>
+                              <TableCell align="center">
+                                {calcDueDate(bill.sale_date, bill.credit_days)}
+                              </TableCell>
+                              <TableCell align="center">
+                                {formatDate(bill.taken_date)}
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                      {filteredTakenBills.length === 0 && (
+                        <MDBox mt={4} textAlign="center">
+                          <MDTypography variant="body2" color="text">
+                            {takenBillSearch.trim()
+                              ? "No taken bills match your search."
+                              : "No taken bills recorded in this period!"}
+                          </MDTypography>
+                        </MDBox>
+                      )}
+                    </TableContainer>
                     <TablePaginationFooter
                       page={reportPage}
                       totalPages={reportTotalPages}
@@ -1002,7 +1006,7 @@ function OutBillPage() {
                       limit={reportRowsPerPage}
                       onLimitChange={setReportRowsPerPage}
                     />
-                  </TableContainer>
+                  </MDBox>
                 )}
               </MDBox>
             </Card>

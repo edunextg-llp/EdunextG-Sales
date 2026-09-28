@@ -59,7 +59,7 @@ function CreditsPage() {
   const [savingRemarks, setSavingRemarks] = useState(false);
   const [page, setPage] = useState(1);
   const [rowsPerPage, setRowsPerPage] = useState(ROWS_PER_PAGE);
-  const API = "https://bawarchee.edunextg.co/api";
+  const API = "http://localhost:2002/api";
   const authHeaders = token ? { Authorization: `Bearer ${token}` } : {};
 
   const getTodayLocalDate = () => {
@@ -1365,91 +1365,93 @@ function CreditsPage() {
               </MDBox>
 
               <MDBox pb={4} px={3}>
-                <TableContainer
-                  component={Paper}
-                  sx={{ ...paginatedTableContainerSx, backgroundColor: "transparent" }}
-                >
-                  <Table stickyHeader size="small" sx={compactTableTextSx}>
-                    <TableHead sx={paginatedTableHeadSx()}>
-                      <TableRow>
-                        <TableCell align="center" sx={{ ...paginatedTableHeadCellSx, width: 56 }}>
-                          Sr No
-                        </TableCell>
-                        <TableCell align="left" sx={paginatedTableHeadCellSx}>Outlet Name</TableCell>
-                        <TableCell align="center" sx={paginatedTableHeadCellSx}>Area</TableCell>
-                        <TableCell align="center" sx={paginatedTableHeadCellSx}>ERP ID</TableCell>
-                        <TableCell align="center" sx={paginatedTableHeadCellSx}>Contact No</TableCell>
-                        <TableCell align="center" sx={paginatedTableHeadCellSx}>Sale ID</TableCell>
-                        <TableCell align="center" sx={paginatedTableHeadCellSx}>Invoice No</TableCell>
-                        <TableCell align="center" sx={paginatedTableHeadCellSx}>Staff</TableCell>
-                        <TableCell align="center" sx={paginatedTableHeadCellSx}>Company</TableCell>
-                        <TableCell align="center" sx={paginatedTableHeadCellSx}>Outstanding Balance</TableCell>
-                        <TableCell align="center" sx={paginatedTableHeadCellSx}>Issue Date</TableCell>
-                        <TableCell align="center" sx={paginatedTableHeadCellSx}>Due Date</TableCell>
-                        <TableCell align="center" sx={paginatedTableHeadCellSx}>Status</TableCell>
-                        <TableCell align="center" sx={paginatedTableHeadCellSx}>Action</TableCell>
-                      </TableRow>
-                    </TableHead>
-                    <TableBody>
-                      {paginatedCredits.map((credit, index) => (
-                        <TableRow key={credit.id} sx={getCreditRowSx(credit)}>
-                          <TableCell align="center">{(page - 1) * rowsPerPage + index + 1}</TableCell>
-                          <TableCell align="left">{credit.outlet_name}</TableCell>
-                          <TableCell align="center">{credit.location_name || "N/A"}</TableCell>
-                          <TableCell align="center">{credit.outlet_erp_id || "N/A"}</TableCell>
-                          <TableCell align="center">{credit.contact_number || "N/A"}</TableCell>
-                          <TableCell align="center">{credit.sticker_number}</TableCell>
-                          <TableCell align="center">{credit.invoice_number}</TableCell>
-                          <TableCell align="center">{credit.staff_name}</TableCell>
-                          <TableCell align="center">{credit.company_name || "N/A"}</TableCell>
-                          <TableCell
-                            align="center"
-                            sx={{ color: "error.main", fontWeight: "bold" }}
-                          >
-                            ₹{Number(credit.balance_amount).toFixed(2)}
+                <MDBox>
+                  <TableContainer
+                    component={Paper}
+                    sx={{ ...paginatedTableContainerSx, backgroundColor: "transparent" }}
+                  >
+                    <Table stickyHeader size="small" sx={compactTableTextSx}>
+                      <TableHead sx={paginatedTableHeadSx()}>
+                        <TableRow>
+                          <TableCell align="center" sx={{ ...paginatedTableHeadCellSx, width: 56 }}>
+                            Sr No
                           </TableCell>
-                          <TableCell align="center">{formatDate(credit.sale_date)}</TableCell>
-                          <TableCell align="center">
-                            {calcDueDate(credit.sale_date, credit.credit_days)}
-                          </TableCell>
-                          <TableCell align="center">
-                            {getStatus(credit.sale_date, credit.credit_days)}
-                          </TableCell>
-                          <TableCell align="center">
-                            <MDBox display="flex" gap={0.5} justifyContent="center" alignItems="center">
-                              <MDButton
-                                color="info"
-                                variant="outlined"
-                                size="small"
-                                onClick={() => openEditRemarks(credit)}
-                              >
-                                Remarks
-                              </MDButton>
-                              <Tooltip title={(Number(credit.remarks_count) || 0) > 0 ? "View remarks" : "No remarks yet"}>
-                                <span>
-                                  <IconButton
-                                    size="small"
-                                    color={(Number(credit.remarks_count) || 0) > 0 ? "info" : "default"}
-                                    disabled={(Number(credit.remarks_count) || 0) === 0}
-                                    onClick={() => openViewRemarks(credit)}
-                                  >
-                                    <Icon fontSize="small">visibility</Icon>
-                                  </IconButton>
-                                </span>
-                              </Tooltip>
-                            </MDBox>
-                          </TableCell>
+                          <TableCell align="left" sx={paginatedTableHeadCellSx}>Outlet Name</TableCell>
+                          <TableCell align="center" sx={paginatedTableHeadCellSx}>Area</TableCell>
+                          <TableCell align="center" sx={paginatedTableHeadCellSx}>ERP ID</TableCell>
+                          <TableCell align="center" sx={paginatedTableHeadCellSx}>Contact No</TableCell>
+                          <TableCell align="center" sx={paginatedTableHeadCellSx}>Sale ID</TableCell>
+                          <TableCell align="center" sx={paginatedTableHeadCellSx}>Invoice No</TableCell>
+                          <TableCell align="center" sx={paginatedTableHeadCellSx}>Staff</TableCell>
+                          <TableCell align="center" sx={paginatedTableHeadCellSx}>Company</TableCell>
+                          <TableCell align="center" sx={paginatedTableHeadCellSx}>Outstanding Balance</TableCell>
+                          <TableCell align="center" sx={paginatedTableHeadCellSx}>Issue Date</TableCell>
+                          <TableCell align="center" sx={paginatedTableHeadCellSx}>Due Date</TableCell>
+                          <TableCell align="center" sx={paginatedTableHeadCellSx}>Status</TableCell>
+                          <TableCell align="center" sx={paginatedTableHeadCellSx}>Action</TableCell>
                         </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                  {filteredCredits.length === 0 && (
-                    <MDBox mt={4} textAlign="center">
-                      <MDTypography variant="body2" color="text">
-                        No outstanding credits found in the system!
-                      </MDTypography>
-                    </MDBox>
-                  )}
+                      </TableHead>
+                      <TableBody>
+                        {paginatedCredits.map((credit, index) => (
+                          <TableRow key={credit.id} sx={getCreditRowSx(credit)}>
+                            <TableCell align="center">{(page - 1) * rowsPerPage + index + 1}</TableCell>
+                            <TableCell align="left">{credit.outlet_name}</TableCell>
+                            <TableCell align="center">{credit.location_name || "N/A"}</TableCell>
+                            <TableCell align="center">{credit.outlet_erp_id || "N/A"}</TableCell>
+                            <TableCell align="center">{credit.contact_number || "N/A"}</TableCell>
+                            <TableCell align="center">{credit.sticker_number}</TableCell>
+                            <TableCell align="center">{credit.invoice_number}</TableCell>
+                            <TableCell align="center">{credit.staff_name}</TableCell>
+                            <TableCell align="center">{credit.company_name || "N/A"}</TableCell>
+                            <TableCell
+                              align="center"
+                              sx={{ color: "error.main", fontWeight: "bold" }}
+                            >
+                              ₹{Number(credit.balance_amount).toFixed(2)}
+                            </TableCell>
+                            <TableCell align="center">{formatDate(credit.sale_date)}</TableCell>
+                            <TableCell align="center">
+                              {calcDueDate(credit.sale_date, credit.credit_days)}
+                            </TableCell>
+                            <TableCell align="center">
+                              {getStatus(credit.sale_date, credit.credit_days)}
+                            </TableCell>
+                            <TableCell align="center">
+                              <MDBox display="flex" gap={0.5} justifyContent="center" alignItems="center">
+                                <MDButton
+                                  color="info"
+                                  variant="outlined"
+                                  size="small"
+                                  onClick={() => openEditRemarks(credit)}
+                                >
+                                  Remarks
+                                </MDButton>
+                                <Tooltip title={(Number(credit.remarks_count) || 0) > 0 ? "View remarks" : "No remarks yet"}>
+                                  <span>
+                                    <IconButton
+                                      size="small"
+                                      color={(Number(credit.remarks_count) || 0) > 0 ? "info" : "default"}
+                                      disabled={(Number(credit.remarks_count) || 0) === 0}
+                                      onClick={() => openViewRemarks(credit)}
+                                    >
+                                      <Icon fontSize="small">visibility</Icon>
+                                    </IconButton>
+                                  </span>
+                                </Tooltip>
+                              </MDBox>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                    {filteredCredits.length === 0 && (
+                      <MDBox mt={4} textAlign="center">
+                        <MDTypography variant="body2" color="text">
+                          No outstanding credits found in the system!
+                        </MDTypography>
+                      </MDBox>
+                    )}
+                  </TableContainer>
                   <TablePaginationFooter
                     page={page}
                     totalPages={totalPages}
@@ -1458,7 +1460,7 @@ function CreditsPage() {
                     limit={rowsPerPage}
                     onLimitChange={setRowsPerPage}
                   />
-                </TableContainer>
+                </MDBox>
               </MDBox>
             </Card>
           </Grid>

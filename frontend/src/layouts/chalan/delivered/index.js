@@ -44,7 +44,7 @@ function ChalanDelivered() {
   const [updatingSaleIds, setUpdatingSaleIds] = useState(new Set());
   const [page, setPage] = useState(1);
   const [rowsPerPage, setRowsPerPage] = useState(ROWS_PER_PAGE);
-  const API = "https://bawarchee.edunextg.co/api";
+  const API = "http://localhost:2002/api";
 
   const getTodayLocalDate = () => {
     const now = new Date();

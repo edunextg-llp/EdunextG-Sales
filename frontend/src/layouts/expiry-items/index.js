@@ -21,7 +21,7 @@ import DashboardLayout from "examples/LayoutContainers/DashboardLayout";
 import DashboardNavbar from "examples/Navbars/DashboardNavbar";
 import Footer from "examples/Footer";
 
-const API = "https://bawarchee.edunextg.co/api";
+const API = "http://localhost:2002/api";
 const dayMs = 86400000;
 const cellSx = { px: 1.5, py: 1, whiteSpace: "nowrap", fontSize: "0.75rem" };
 const headSx = { ...cellSx, fontWeight: 700, backgroundColor: "#dbeafe", color: "#334155" };

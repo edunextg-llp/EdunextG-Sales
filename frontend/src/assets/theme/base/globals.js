@@ -26,6 +26,9 @@ const globals = {
   body: {
     overflowX: "hidden",
   },
+  ".MuiPopover-paper": {
+    overscrollBehavior: "contain",
+  },
   "*, *::before, *::after": {
     margin: 0,
     padding: 0,

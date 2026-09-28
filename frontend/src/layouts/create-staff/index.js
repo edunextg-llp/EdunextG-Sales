@@ -188,7 +188,7 @@ function CreateStaff() {
 
   const [formData, setFormData] = useState(createEmptyFormData());
 
-  const API = "https://bawarchee.edunextg.co/api";
+  const API = "http://localhost:2002/api";
 
   // Fetch Staff List
   const fetchStaffList = async (includeInactive = false) => {

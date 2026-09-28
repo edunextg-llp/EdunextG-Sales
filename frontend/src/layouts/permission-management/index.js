@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
 import {
-  Alert, Card, Checkbox, Chip, CircularProgress, Collapse, FormControlLabel, Grid, IconButton,
-  MenuItem, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Tooltip,
+  Alert, Card, Checkbox, Chip, CircularProgress, Collapse, FormControl,
+  FormControlLabel, Grid, IconButton, InputLabel, MenuItem, Select, Table,
+  TableBody, TableCell, TableContainer, TableHead, TableRow, Tooltip,
 } from "@mui/material";
 import Icon from "@mui/material/Icon";
 import DashboardLayout from "examples/LayoutContainers/DashboardLayout";
@@ -9,10 +10,9 @@ import DashboardNavbar from "examples/Navbars/DashboardNavbar";
 import Footer from "examples/Footer";
 import MDBox from "components/MDBox";
 import MDButton from "components/MDButton";
-import MDInput from "components/MDInput";
 import MDTypography from "components/MDTypography";
 
-const API = "https://bawarchee.edunextg.co/api";
+const API = "http://localhost:2002/api";
 const PERMISSIONS = [
   ["dashboard", "Dashboard", "View the dashboard, reports, and business summary."],
   ["dms", "DMS", "Open the DMS section. This is required for DMS-related permissions."],
@@ -173,28 +173,35 @@ function PermissionManagement() {
             ) : (
               <Grid container spacing={3}>
                 <Grid item xs={12} md={5}>
-                  <MDInput
-                    select
-                    fullWidth
-                    label="Packaging Staff / Delivery Boy"
-                    value={selectedId}
-                    onChange={(event) => setSelectedId(event.target.value)}
-                    sx={{
-                      "& .MuiInputBase-root": { minHeight: 58 },
-                      "& .MuiSelect-select": {
-                        minHeight: "unset !important",
-                        display: "flex",
-                        alignItems: "center",
-                        py: "16px !important",
-                      },
-                    }}
-                  >
-                    {users.map((user) => (
-                      <MenuItem key={user.id} value={String(user.id)}>
-                        {user.name} — {user.role === "packaging_staff" ? "Packaging Staff" : "Delivery Boy"}
-                      </MenuItem>
-                    ))}
-                  </MDInput>
+                  <FormControl fullWidth>
+                    <InputLabel id="packaging-user-select-label" shrink>
+                      Packaging Staff / Delivery Boy
+                    </InputLabel>
+                    <Select
+                      labelId="packaging-user-select-label"
+                      label="Packaging Staff / Delivery Boy"
+                      notched
+                      value={selectedId}
+                      onChange={(event) => setSelectedId(event.target.value)}
+                      MenuProps={{
+                        sx: { maxHeight: 360 },
+                      }}
+                      sx={{
+                        minHeight: 58,
+                        "& .MuiSelect-select": {
+                          display: "flex",
+                          alignItems: "center",
+                          py: "16px",
+                        },
+                      }}
+                    >
+                      {users.map((user) => (
+                        <MenuItem key={user.id} value={String(user.id)}>
+                          {user.name} — {user.role === "packaging_staff" ? "Packaging Staff" : "Delivery Boy"}
+                        </MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
                   {selectedUser && (
                     <MDBox mt={2} p={2} sx={{ border: "1px solid #e2e8f0", borderRadius: 2 }}>
                       <MDTypography variant="button" fontWeight="bold">{selectedUser.name}</MDTypography>

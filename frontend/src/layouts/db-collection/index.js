@@ -107,7 +107,7 @@ function DBCollection() {
   const [loading, setLoading] = useState(false);
   const [settlingId, setSettlingId] = useState(null);
   const [page, setPage] = useState(1);
-  const API = "https://bawarchee.edunextg.co/api";
+  const API = "http://localhost:2002/api";
 
   const fetchCollections = async (search = searchQuery) => {
     setLoading(true);

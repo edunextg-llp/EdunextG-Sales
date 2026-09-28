@@ -116,6 +116,49 @@ export default function App() {
     document.scrollingElement.scrollTop = 0;
   }, [pathname]);
 
+  // MUI renders Select menus in a portal. Keep the document stationary while
+  // one is open, and stop wheel/touch gestures at the menu boundary from
+  // chaining through to the page behind it.
+  useEffect(() => {
+    const isDropdownOpen = () => Array.from(document.querySelectorAll(".MuiPopover-root"))
+      .some((popover) => !popover.classList.contains("MuiModal-hidden"));
+    let locked = false;
+    let previousHtmlOverflow = "";
+
+    const syncScrollLock = () => {
+      const shouldLock = isDropdownOpen();
+      if (shouldLock === locked) return;
+      const html = document.documentElement;
+      if (shouldLock) {
+        previousHtmlOverflow = html.style.overflow;
+        html.style.overflow = "hidden";
+      } else {
+        html.style.overflow = previousHtmlOverflow;
+      }
+      locked = shouldLock;
+    };
+
+    const preventPageScroll = (event) => {
+      if (!locked) return;
+      const popover = event.target.closest?.(".MuiPopover-root:not(.MuiModal-hidden)");
+      if (!popover) event.preventDefault();
+    };
+    const observer = new MutationObserver(syncScrollLock);
+    observer.observe(document.body, { childList: true, subtree: true });
+    document.addEventListener("wheel", preventPageScroll, { capture: true, passive: false });
+    document.addEventListener("touchmove", preventPageScroll, { capture: true, passive: false });
+    syncScrollLock();
+
+    return () => {
+      observer.disconnect();
+      document.removeEventListener("wheel", preventPageScroll, true);
+      document.removeEventListener("touchmove", preventPageScroll, true);
+      if (locked) {
+        document.documentElement.style.overflow = previousHtmlOverflow;
+      }
+    };
+  }, []);
+
   const getRoutes = (allRoutes) =>
     allRoutes.map((route) => {
       if (route.collapse) {
