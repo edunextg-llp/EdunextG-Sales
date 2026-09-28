@@ -150,7 +150,8 @@ class DeliveryCollectionModel {
                     ss.delivery_boy_id = ? AND EXISTS (
                         SELECT 1 FROM staff_sale_status_history history
                         WHERE history.sale_id = ss.id AND history.status = 'delivered'
-                          AND DATE(history.changed_at) = CURDATE()
+                          AND history.changed_at > NOW() - INTERVAL 1 DAY
+                          AND history.changed_at <= NOW()
                     )))
              ORDER BY ss.sale_date ASC, ss.id ASC`,
             [deliveryBoyId, deliveryBoyId]

@@ -23,6 +23,7 @@ import {
 } from "@mui/material";
 
 import SalesExcelButton from "components/SalesExcelButton";
+import DeliveryLogDialog from "./DeliveryLogDialog";
 import CompanyFilter from "components/CompanyFilter";
 import { matchesSaleCompany } from "utils/companyFilter";
 import MDBox from "components/MDBox";
@@ -69,6 +70,7 @@ const getTodayLocalDate = () => {
 };
 
 function Delivery() {
+  const [deliveryLogOpen, setDeliveryLogOpen] = useState(false);
   const [salesData, setSalesData] = useState([]);
   const [deliveryBoys, setDeliveryBoys] = useState([]);
   const [searchQuery, setSearchQuery] = useState("");
@@ -472,6 +474,7 @@ function Delivery() {
   return (
     <DashboardLayout>
       <DashboardNavbar />
+      <DeliveryLogDialog open={deliveryLogOpen} onClose={() => setDeliveryLogOpen(false)} sales={salesData} />
       <MDBox pt={6} pb={3}>
         <Grid container spacing={3} justifyContent="center">
           <Grid item xs={12}>
@@ -480,6 +483,9 @@ function Delivery() {
                 <MDTypography variant="h5" fontWeight="medium" color="dark" mb={2}>
                   Delivery Management
                 </MDTypography>
+                <MDButton color="info" variant="gradient" onClick={() => setDeliveryLogOpen(true)} sx={{ mb: 2 }}>
+                  See Delivery Log
+                </MDButton>
                 <Tabs
                   value={activeTab}
                   onChange={(_, value) => setActiveTab(value)}

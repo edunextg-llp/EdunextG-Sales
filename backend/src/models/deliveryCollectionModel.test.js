@@ -4,13 +4,14 @@ import db from '../config/db.js';
 import DeliveryCollectionModel from './deliveryCollectionModel.js';
 import PaymentModel from './paymentModel.js';
 
-test('outstanding query scopes to active taken bills or own deliveries completed today', async (t) => {
+test('outstanding query scopes to active taken bills or own deliveries completed within 24 hours', async (t) => {
     t.mock.method(db, 'execute', async (sql, params) => {
         assert.deepEqual(params, [7, 7]);
         assert.match(sql, /tb.delivery_boy_id = \?/);
         assert.match(sql, /tb.returned_at IS NULL/);
         assert.match(sql, /history.status = 'delivered'/);
-        assert.match(sql, /DATE\(history.changed_at\) = CURDATE\(\)/);
+        assert.match(sql, /history.changed_at > NOW\(\) - INTERVAL 1 DAY/);
+        assert.match(sql, /history.changed_at <= NOW\(\)/);
         assert.match(sql, /pending.settled_at IS NULL/);
         assert.doesNotMatch(sql, /delivery_boy_companies/);
         assert.match(sql, /order_cancellations/);

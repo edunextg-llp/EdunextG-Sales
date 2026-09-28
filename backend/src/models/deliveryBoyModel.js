@@ -371,13 +371,18 @@ class DeliveryBoyModel {
                     sc.outlet_name, sc.outlet_erp_id, sc.contact_number, sc.location_name,
                     sc.delivery_google_location AS google_location,
                     s.name AS staff_name, c.name AS company_name,
-                    DATE_FORMAT(ssh.status_updated_at, '%Y-%m-%d %H:%i:%s') AS status_updated_at
+                    DATE_FORMAT(ssh.status_updated_at, '%Y-%m-%d %H:%i:%s') AS status_updated_at,
+                    CASE WHEN ss.packaging_status = 'delivered'
+                         AND ssh.delivered_at > NOW() - INTERVAL 1 DAY
+                         AND ssh.delivered_at <= NOW()
+                         THEN 1 ELSE 0 END AS can_update_payment
              FROM staff_sales ss
              LEFT JOIN staff_counters sc ON ss.outlet_id = sc.id
              LEFT JOIN staff s ON ss.staff_id = s.id
              LEFT JOIN companies c ON s.company_id = c.id
              LEFT JOIN (
-                 SELECT sale_id, MAX(changed_at) AS status_updated_at
+                 SELECT sale_id, MAX(changed_at) AS status_updated_at,
+                        MAX(CASE WHEN status = 'delivered' THEN changed_at END) AS delivered_at
                  FROM staff_sale_status_history
                  GROUP BY sale_id
              ) ssh ON ssh.sale_id = ss.id

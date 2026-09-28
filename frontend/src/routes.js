@@ -24,6 +24,7 @@ import OutBill from "layouts/out-bill";
 import BankDeposit from "layouts/bank-deposit";
 import Packaging from "layouts/packaging";
 import Delivery from "layouts/delivery";
+import DeliveryReport from "layouts/delivery-report";
 import Delivered from "layouts/delivered";
 import DBCollection from "layouts/db-collection";
 import ChalanAddSales from "layouts/chalan/add-sales";
@@ -322,6 +323,16 @@ const routes = [
         icon: <Icon fontSize="small">local_shipping</Icon>,
         route: "/delivery",
         component: <Delivery />,
+        allowedRoles: ["admin", "packaging_staff", "delivery_boy"],
+        requiredPermission: "delivery",
+      },
+      {
+        type: "collapse",
+        name: "Report",
+        key: "delivery-report",
+        icon: <Icon fontSize="small">summarize</Icon>,
+        route: "/delivery-report",
+        component: <DeliveryReport />,
         allowedRoles: ["admin", "packaging_staff", "delivery_boy"],
         requiredPermission: "delivery",
       },

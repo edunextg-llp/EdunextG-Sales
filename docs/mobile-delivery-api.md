@@ -401,7 +401,7 @@ Common errors:
 Authenticated delivery users can open Collection to view two groups from GET /delivery-boy/mobile/credit-dues:
 
 - taken_bill: active, unreturned Out Bills assigned to this delivery boy with outstanding credit.
-- delivery: this delivery boy's orders marked delivered today, with an unpaid balance.
+- delivery: this delivery boy's orders completed less than 24 hours ago, with an unpaid balance. At 24 hours, delivery payment submissions are rejected and the app hides Update payment on its next automatic refresh. Assigned Out Bills remain available separately. Mobile item responses include `can_update_payment` (1 or 0) using the server's delivery-completion time.
 
 Each record includes collection_source, credit_amount and balance_amount. Pending submissions are hidden until D.B. Collection settles them; returned bills and other collectors' assignments do not grant access. Balances account for cancellations and paid cash, UPI and cheque entries.
 
