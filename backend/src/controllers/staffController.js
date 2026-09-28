@@ -1690,6 +1690,21 @@ export const deleteSale = async (req, res) => {
     }
 };
 
+export const moveUnupdatedSalesToDelivery = async (req, res) => {
+    const { saleIds } = req.body;
+    if (!Array.isArray(saleIds) || !saleIds.length || saleIds.length > 10000 ||
+        saleIds.some((id) => !Number.isSafeInteger(id) || id <= 0)) {
+        return res.status(400).json({ error: 'Select valid bills to move (up to 10,000 at a time).' });
+    }
+    try {
+        const result = await StaffModel.moveUnupdatedSalesToDelivery([...new Set(saleIds)]);
+        return res.status(200).json(result);
+    } catch (error) {
+        console.error('Error moving bills to delivery:', error);
+        return res.status(500).json({ error: 'Unable to move bills to Delivery Management.' });
+    }
+};
+
 export const updatePackagingStatus = async (req, res) => {
     try {
         const { saleId } = req.params;
@@ -1752,8 +1767,10 @@ export const updatePackagingStatus = async (req, res) => {
             normalizedPacketCount = packetValidation.value;
         }
 
-        let normalizedPackedById = null;
-        if (packagingStatus === 'packing_done') {
+        const alreadyPacked = ['packing_done', 'out_for_delivery', 'delivered', 'returned'].includes(currentStatus);
+        const hasPackedById = Object.prototype.hasOwnProperty.call(req.body, 'packedById');
+        let normalizedPackedById = alreadyPacked ? existingSale?.packed_by_id ?? null : null;
+        if (packagingStatus === 'packing_done' && (!alreadyPacked || hasPackedById)) {
             const packedByValidation = validatePositiveInteger(packedById, 'Packaging staff');
             if (!packedByValidation.valid) {
                 return res.status(400).json({ error: 'Please select who completed the packing.' });
@@ -2824,6 +2841,7 @@ export const getReports = async (req, res) => {
             companyId: parsedCompanyId,
             staffId: parsedStaffId,
         });
+        res.set('Cache-Control', 'no-store');
         res.status(200).json(reports);
     } catch (error) {
         console.error('Error fetching reports:', error);

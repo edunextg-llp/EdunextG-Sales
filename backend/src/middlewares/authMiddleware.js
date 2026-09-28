@@ -127,6 +127,8 @@ export const enforceManagedUserApiScope = (req, res, next) => {
     } else if (path === '/sales/by-date' || path === '/sales/lookup' || /^\/\d+\/sales-by-date$/.test(path)) {
         allowed = permissions.has('add_sales') || permissions.has('update_payment')
             || permissions.has('packaging') || permissions.has('delivery') || permissions.has('delivered');
+    } else if (path === '/sales/move-to-delivery') {
+        allowed = method === 'POST' && permissions.has('update_payment');
     } else if (path === '/sales/cancelled') {
         allowed = method === 'GET' && permissions.has('delivered');
     } else if (/^\/sales\/\d+\/packaging$/.test(path)) {

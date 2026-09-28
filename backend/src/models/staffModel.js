@@ -4,6 +4,43 @@ import { getCompanyBillPrefix, normalizeInvoiceNumber } from '../utils/invoiceNu
 import PhysicalStockModel from './physicalStockModel.js';
 
 class StaffModel {
+    static async moveUnupdatedSalesToDelivery(saleIds) {
+        const connection = await db.getConnection();
+        try {
+            await connection.beginTransaction();
+            const placeholders = saleIds.map(() => '?').join(',');
+            const [sales] = await connection.execute(
+                `SELECT id, packaging_status, paid_amount FROM staff_sales
+                 WHERE id IN (${placeholders}) ORDER BY id FOR UPDATE`, saleIds
+            );
+            const movedIds = [];
+            for (const sale of sales) {
+                if (sale.packaging_status !== 'delivered' || Number(sale.paid_amount) > 0) continue;
+                const [payments] = await connection.execute(
+                    'SELECT id FROM sale_payments WHERE sale_id = ? LIMIT 1', [sale.id]
+                );
+                const [collections] = await connection.execute(
+                    'SELECT id FROM delivery_boy_collections WHERE sale_id = ? LIMIT 1', [sale.id]
+                );
+                if (payments.length || collections.length) continue;
+                await connection.execute(
+                    `UPDATE staff_sales SET packaging_status = 'packing_done',
+                     delivery_boy_id = NULL, vehicle_no = NULL, delivery_date = NULL WHERE id = ?`, [sale.id]
+                );
+                await connection.execute(
+                    `INSERT INTO staff_sale_status_history (sale_id, status, changed_at)
+                     VALUES (?, 'packing_done', NOW())`, [sale.id]
+                );
+                movedIds.push(Number(sale.id));
+            }
+            await connection.commit();
+            return { movedIds, skippedIds: saleIds.filter((id) => !movedIds.includes(id)) };
+        } catch (error) {
+            await connection.rollback();
+            throw error;
+        } finally { connection.release(); }
+    }
+
     static async create(name, contactNo, companyId = null, staffType = 'distributor', profile = {}) {
         const {
             dob = null,
