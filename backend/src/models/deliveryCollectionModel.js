@@ -147,7 +147,10 @@ class DeliveryCollectionModel {
                     WHERE pending.sale_id = ss.id AND pending.settled_at IS NULL
                )
                AND (assigned_bill.sale_id IS NOT NULL OR (
-                    ss.delivery_boy_id = ? AND EXISTS (
+                    ss.delivery_boy_id = ? AND NOT EXISTS (
+                        SELECT 1 FROM delivery_boy_collections submitted
+                        WHERE submitted.sale_id = ss.id
+                    ) AND EXISTS (
                         SELECT 1 FROM staff_sale_status_history history
                         WHERE history.sale_id = ss.id AND history.status = 'delivered'
                           AND history.changed_at > NOW() - INTERVAL 1 DAY
@@ -184,11 +187,11 @@ class DeliveryCollectionModel {
             }
             const [result] = await connection.execute(
                 `INSERT INTO delivery_boy_collections
-                 (sale_id, delivery_boy_id, payment_mode, amount, cash_details, reference_no, reference_date, credit_days, remarks, settled_at)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)`,
+                 (sale_id, delivery_boy_id, payment_mode, amount, cash_details, reference_no, reference_date, credit_days, remarks, collection_source, settled_at)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)`,
                 [saleId, deliveryBoyId, data.paymentMode, data.amount,
                  data.cashDetails ? JSON.stringify(data.cashDetails) : null,
-                 data.referenceNo, data.referenceDate, data.creditDays, `Mobile payment for BP${saleId}`]
+                 data.referenceNo, data.referenceDate, data.creditDays, `Mobile payment for BP${saleId}`, due.collection_source]
             );
             await connection.commit();
             return { collection: { id: result.insertId, sale_id: saleId, amount: data.amount }, remainingBalance: remaining };
@@ -198,7 +201,7 @@ class DeliveryCollectionModel {
         } finally { connection.release(); }
     }
 
-    static async settle(collectionId) {
+    static async settle(collectionId, chequeDate, details = {}) {
         const connection = await db.getConnection();
         try {
             await connection.beginTransaction();
@@ -212,6 +215,42 @@ class DeliveryCollectionModel {
             );
             const collection = rows[0];
             if (!collection) { await connection.rollback(); return false; }
+            if (collection.payment_mode === 'cash') {
+                const denominations = { note_500: 500, note_200: 200, note_100: 100, note_50: 50, note_20: 20, note_10: 10, coin_20: 20, coin_10: 10, coin_5: 5, coin_2: 2, coin_1: 1, paisa: 0.01 };
+                const counts = {};
+                let total = 0;
+                for (const [key, value] of Object.entries(denominations)) {
+                    const raw = details.cashDetails?.[key] ?? 0;
+                    const count = Number(raw);
+                    if (!['number', 'string'].includes(typeof raw) || !Number.isSafeInteger(count) || count < 0) {
+                        throw new Error('INVALID_CASH_COUNTS');
+                    }
+                    counts[key] = count;
+                    total += count * Math.round(value * 100);
+                }
+                if (!Number.isSafeInteger(total) || total <= 0 || total !== Math.round(Number(collection.amount) * 100)) {
+                    throw new Error('CASH_TOTAL_MISMATCH');
+                }
+                await connection.execute('UPDATE delivery_boy_collections SET cash_details = ? WHERE id = ?', [JSON.stringify(counts), collectionId]);
+            }
+            if (collection.payment_mode === 'upi') {
+                const referenceNo = typeof details.referenceNo === 'string' ? details.referenceNo.trim() : '';
+                if (!referenceNo || referenceNo.length > 255) throw new Error('UPI_REFERENCE_REQUIRED');
+                collection.reference_no = referenceNo;
+                await connection.execute('UPDATE delivery_boy_collections SET reference_no = ? WHERE id = ?', [referenceNo, collectionId]);
+            }
+            if (collection.payment_mode === 'cheque') {
+                const parsed = typeof chequeDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(chequeDate)
+                    ? new Date(`${chequeDate}T00:00:00Z`) : new Date(NaN);
+                if (!Number.isFinite(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== chequeDate || chequeDate < '1000-01-01') {
+                    throw new Error('CHEQUE_DATE_REQUIRED');
+                }
+                collection.reference_date = chequeDate;
+                await connection.execute(
+                    'UPDATE delivery_boy_collections SET reference_date = ? WHERE id = ?',
+                    [chequeDate, collectionId]
+                );
+            }
 
             const amount = Number(collection.amount) || 0;
             await connection.execute('SELECT id FROM staff_sales WHERE id = ? FOR UPDATE', [collection.sale_id]);
@@ -323,19 +362,27 @@ class DeliveryCollectionModel {
         return rows.map(DeliveryCollectionModel.normalizeRow);
     }
 
-    static async getAll({ search = '' } = {}) {
+    static async getAll({ search = '', fromDate = '', toDate = '' } = {}) {
         const params = [];
         let where = '';
         const normalizedSearch = String(search || '').trim();
 
         if (normalizedSearch) {
             const term = `%${normalizedSearch}%`;
-            where = `WHERE sc.outlet_name LIKE ?
+            where = `WHERE (sc.outlet_name LIKE ?
                 OR ss.invoice_number LIKE ?
                 OR dboy.name LIKE ?
                 OR dbc.payment_mode LIKE ?
-                OR CAST(dbc.sale_id AS CHAR) LIKE ?`;
+                OR CAST(dbc.sale_id AS CHAR) LIKE ?)`;
             params.push(term, term, term, term, term);
+        }
+        if (fromDate) {
+            where += `${where ? ' AND' : 'WHERE'} dbc.created_at >= ?`;
+            params.push(`${fromDate} 00:00:00`);
+        }
+        if (toDate) {
+            where += `${where ? ' AND' : 'WHERE'} dbc.created_at < DATE_ADD(?, INTERVAL 1 DAY)`;
+            params.push(toDate);
         }
 
         const [rows] = await db.execute(
@@ -345,6 +392,7 @@ class DeliveryCollectionModel {
                     dbc.credit_days, dbc.remarks,
                     DATE_FORMAT(dbc.created_at, '%Y-%m-%d %H:%i:%s') AS created_at,
                     DATE_FORMAT(dbc.updated_at, '%Y-%m-%d %H:%i:%s') AS updated_at,
+                    dbc.collection_source,
                     ss.invoice_number, ss.price, ss.paid_amount, ss.balance_amount,
                     ss.packaging_status,
                     sc.outlet_name,

@@ -379,6 +379,10 @@ class DeliveryBoyModel {
                     CASE WHEN ss.packaging_status = 'delivered'
                          AND ssh.delivered_at > NOW() - INTERVAL 1 DAY
                          AND ssh.delivered_at <= NOW()
+                         AND NOT EXISTS (
+                             SELECT 1 FROM delivery_boy_collections submitted
+                             WHERE submitted.sale_id = ss.id
+                         )
                          THEN 1 ELSE 0 END AS can_update_payment
              FROM staff_sales ss
              LEFT JOIN staff_counters sc ON ss.outlet_id = sc.id

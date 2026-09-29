@@ -513,7 +513,6 @@ export const collectMobileCreditDue = async (req, res) => {
         }
         const referenceNo = String(req.body.referenceNo || '').trim() || null;
         const referenceDate = normalizeDateInput(req.body.referenceDate);
-        if (paymentMode === 'upi' && !referenceNo) return res.status(400).json({ error: 'UPI number is required' });
         if (paymentMode === 'cheque' && !referenceNo) return res.status(400).json({ error: 'Cheque number is required' });
         let creditDays = null;
         if (paymentMode === 'credit') {
@@ -540,7 +539,18 @@ export const collectMobileCreditDue = async (req, res) => {
 export const getDeliveryBoyCollections = async (req, res) => {
     try {
         const search = String(req.query.search || '').trim();
-        const collections = await DeliveryCollectionModel.getAll({ search });
+        const fromDate = String(req.query.fromDate || '');
+        const toDate = String(req.query.toDate || '');
+        const isValidDate = (value) => {
+            if (!value) return true;
+            if (!/^\d{4}-\d{2}-\d{2}$/.test(value) || value < '1000-01-01') return false;
+            const date = new Date(`${value}T00:00:00Z`);
+            return Number.isFinite(date.getTime()) && date.toISOString().slice(0, 10) === value;
+        };
+        if (!isValidDate(fromDate) || !isValidDate(toDate) || (fromDate && toDate && fromDate > toDate)) {
+            return res.status(400).json({ error: 'Enter a valid submission date range' });
+        }
+        const collections = await DeliveryCollectionModel.getAll({ search, fromDate, toDate });
         res.status(200).json(collections);
     } catch (error) {
         console.error('Error fetching delivery boy collections:', error);
@@ -596,12 +606,21 @@ export const settleDeliveryBoyCollection = async (req, res) => {
     try {
         const collectionId = Number(req.params.collectionId);
         if (!Number.isInteger(collectionId) || collectionId <= 0) return res.status(400).json({ error: 'Invalid collection' });
-        if (!await DeliveryCollectionModel.settle(collectionId)) return res.status(404).json({ error: 'Collection not found or already settled' });
+        if (!await DeliveryCollectionModel.settle(collectionId, req.body?.chequeDate, req.body || {})) return res.status(404).json({ error: 'Collection not found or already settled' });
         res.status(200).json({ message: 'Collection settled successfully' });
     } catch (error) {
         if (error.message === 'COLLECTION_EXCEEDS_BALANCE') {
             return res.status(400).json({ error: `Collection exceeds current balance of ${Number(error.remaining).toFixed(2)}` });
         }
+        if (error.message === 'CHEQUE_DATE_REQUIRED') {
+            return res.status(400).json({ error: 'Enter a valid cheque date before settling this collection' });
+        }
+        const settlementErrors = {
+            INVALID_CASH_COUNTS: 'Enter non-negative whole numbers for cash counts',
+            CASH_TOTAL_MISMATCH: 'Cash denomination total must equal the collection amount',
+            UPI_REFERENCE_REQUIRED: 'Enter a UPI number (up to 255 characters) before settlement',
+        };
+        if (settlementErrors[error.message]) return res.status(400).json({ error: settlementErrors[error.message] });
         console.error('Error settling collection:', error);
         res.status(500).json({ error: 'Unable to settle collection' });
     }

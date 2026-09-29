@@ -3,6 +3,13 @@ import Card from "@mui/material/Card";
 import Icon from "@mui/material/Icon";
 import {
   Chip,
+  Alert,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  IconButton,
+  Tooltip,
   Paper,
   Table,
   TableBody,
@@ -54,6 +61,7 @@ const CASH_DENOMINATIONS = [
   ["5 Coin", "coin_5", 5],
   ["2 Coin", "coin_2", 2],
   ["1 Coin", "coin_1", 1],
+  ["Paisa", "paisa", 0.01],
 ];
 
 function formatCurrency(value) {
@@ -104,12 +112,28 @@ function authHeaders() {
 function DBCollection() {
   const [collections, setCollections] = useState([]);
   const [searchQuery, setSearchQuery] = useState("");
+  const [fromDate, setFromDate] = useState("");
+  const [toDate, setToDate] = useState("");
+  const [filterError, setFilterError] = useState("");
   const [loading, setLoading] = useState(false);
   const [settlingId, setSettlingId] = useState(null);
+  const [settlementCollection, setSettlementCollection] = useState(null);
+  const [chequeDate, setChequeDate] = useState("");
+  const [cashCounts, setCashCounts] = useState({});
+  const [viewCollection, setViewCollection] = useState(null);
+  const [upiNumber, setUpiNumber] = useState("");
+  const cashTotal = CASH_DENOMINATIONS.reduce((total, [, key, value]) => total + (Number(cashCounts[key]) || 0) * Math.round(value * 100), 0) / 100;
+  const [settlementError, setSettlementError] = useState("");
   const [page, setPage] = useState(1);
   const API = "https://bawarchee.edunextg.co/api";
 
   const fetchCollections = async (search = searchQuery) => {
+    if (fromDate && toDate && fromDate > toDate) {
+      setFilterError("From date must be on or before To date.");
+      setCollections([]);
+      return;
+    }
+    setFilterError("");
     setLoading(true);
     try {
       const params = new URLSearchParams();
@@ -117,30 +141,56 @@ function DBCollection() {
       if (normalizedSearch) {
         params.set("search", normalizedSearch);
       }
+      if (fromDate) params.set("fromDate", fromDate);
+      if (toDate) params.set("toDate", toDate);
       const query = params.toString();
       const response = await fetch(`${API}/delivery-boy/collections${query ? `?${query}` : ""}`, { headers: authHeaders() });
       if (response.ok) {
         setCollections(await response.json());
       } else {
         setCollections([]);
+        const data = await response.json();
+        setFilterError(data.error || "Unable to load collections");
       }
     } catch (error) {
       console.error("Error fetching delivery boy collections:", error);
       setCollections([]);
+      setFilterError("Unable to load collections");
     } finally {
       setLoading(false);
     }
   };
 
-  const settleCollection = async (id) => {
+  const settleCollection = async (id, details = {}) => {
     setSettlingId(id);
+    setSettlementError("");
     try {
-      const response = await fetch(`${API}/delivery-boy/collections/${id}/settle`, { headers: authHeaders(), method: "PUT" });
+      const response = await fetch(`${API}/delivery-boy/collections/${id}/settle`, {
+        headers: { ...authHeaders(), "Content-Type": "application/json" },
+        method: "PUT",
+        body: JSON.stringify(details),
+      });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "Unable to settle collection");
+      setSettlementCollection(null);
       await fetchCollections();
-    } catch (error) { alert(error.message || "Unable to settle collection"); }
+    } catch (error) {
+      if (settlementCollection) setSettlementError(error.message || "Unable to settle collection");
+      else alert(error.message || "Unable to settle collection");
+    }
     finally { setSettlingId(null); }
+  };
+
+  const requestSettlement = (row) => {
+    if (["cheque", "cash", "upi"].includes(row.payment_mode)) {
+      setSettlementCollection(row);
+      setChequeDate(row.reference_date || "");
+      setCashCounts(row.cash_details || {});
+      setUpiNumber(row.reference_no || "");
+      setSettlementError("");
+    } else {
+      settleCollection(row.id);
+    }
   };
 
   useEffect(() => {
@@ -149,11 +199,11 @@ function DBCollection() {
     }, 300);
 
     return () => clearTimeout(timer);
-  }, [searchQuery]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [searchQuery, fromDate, toDate]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     setPage(1);
-  }, [searchQuery]);
+  }, [searchQuery, fromDate, toDate]);
 
   const totalAmount = useMemo(
     () => collections.reduce((sum, row) => sum + (Number(row.amount) || 0), 0),
@@ -208,8 +258,33 @@ function DBCollection() {
               />
             </MDBox>
 
+            <MDBox mb={2} display="flex" gap={2} flexWrap="wrap" alignItems="center">
+              <MDInput label="From submission date" type="date" value={fromDate}
+                onChange={(event) => setFromDate(event.target.value)} InputLabelProps={{ shrink: true }}
+                inputProps={{ min: "1000-01-01", max: toDate || "9999-12-31" }} />
+              <MDInput label="To submission date" type="date" value={toDate}
+                onChange={(event) => setToDate(event.target.value)} InputLabelProps={{ shrink: true }}
+                inputProps={{ min: fromDate || "1000-01-01", max: "9999-12-31" }} />
+              <MDButton color="secondary" variant="outlined" size="small" disabled={!fromDate && !toDate}
+                onClick={() => { setFromDate(""); setToDate(""); }}>Clear dates</MDButton>
+            </MDBox>
+            {filterError && <Alert severity="error" sx={{ mb: 2 }}>{filterError}</Alert>}
             <TableContainer component={Paper} sx={paginatedTableContainerSx}>
-              <Table stickyHeader size="small">
+              <Table
+                stickyHeader
+                size="small"
+                sx={{
+                  "& .MuiTableCell-root": {
+                    fontSize: "0.75rem",
+                    whiteSpace: "nowrap",
+                    px: 1.25,
+                    py: 1,
+                  },
+                  "& .MuiChip-root, & .MuiButton-root": {
+                    fontSize: "0.75rem",
+                  },
+                }}
+              >
                 <TableHead sx={paginatedTableHeadSx()}>
                   <TableRow>
                     <TableCell align="center" sx={{ ...paginatedTableHeadCellSx, width: 56 }}>
@@ -219,6 +294,7 @@ function DBCollection() {
                     <TableCell align="center" sx={paginatedTableHeadCellSx}>Invoice No</TableCell>
                     <TableCell align="center" sx={paginatedTableHeadCellSx}>Sale ID</TableCell>
                     <TableCell align="left" sx={paginatedTableHeadCellSx}>Delivery Boy</TableCell>
+                    <TableCell align="left" sx={paginatedTableHeadCellSx}>Payment Source</TableCell>
                     <TableCell align="center" sx={paginatedTableHeadCellSx}>Payment Status</TableCell>
                     <TableCell align="right" sx={paginatedTableHeadCellSx}>Amount</TableCell>
                     <TableCell align="left" sx={paginatedTableHeadCellSx}>Details</TableCell>
@@ -229,7 +305,7 @@ function DBCollection() {
                 <TableBody>
                   {loading ? (
                     <TableRow>
-                      <TableCell colSpan={10} align="center">
+                      <TableCell colSpan={11} align="center">
                         <MDTypography variant="button" color="text">Loading...</MDTypography>
                       </TableCell>
                     </TableRow>
@@ -241,6 +317,14 @@ function DBCollection() {
                         <TableCell align="center">{row.invoice_number || "N/A"}</TableCell>
                         <TableCell align="center">BP{row.sale_id}</TableCell>
                         <TableCell>{row.delivery_boy_name || "N/A"}</TableCell>
+                        <TableCell>
+                          <Chip
+                            label={row.collection_source === "taken_bill" ? "Out Bill" : row.collection_source === "delivery" ? "Same-day Delivery" : "Not recorded"}
+                            color={row.collection_source === "taken_bill" ? "info" : row.collection_source === "delivery" ? "success" : "default"}
+                            size="small"
+                            variant="outlined"
+                          />
+                        </TableCell>
                         <TableCell align="center">
                           <Chip
                             label={PAYMENT_LABELS[row.payment_mode] || row.payment_mode || "N/A"}
@@ -250,14 +334,23 @@ function DBCollection() {
                           />
                         </TableCell>
                         <TableCell align="right">{formatCurrency(row.amount)}</TableCell>
-                        <TableCell sx={{ minWidth: 260 }}>{getPaymentDetails(row)}</TableCell>
+                        <TableCell>
+                          {row.payment_mode === "cash" ? (
+                            <Tooltip title="View cash details">
+                              <IconButton size="small" color="info" aria-label={`View cash details for ${row.outlet_name || `BP${row.sale_id}`}`}
+                                onClick={() => setViewCollection(row)}>
+                                <Icon fontSize="small">visibility</Icon>
+                              </IconButton>
+                            </Tooltip>
+                          ) : getPaymentDetails(row)}
+                        </TableCell>
                         <TableCell align="center">{formatDate(row.updated_at)}</TableCell>
-                        <TableCell align="center">{row.settled_at ? <Chip label="Settled" color="success" size="small" variant="outlined" /> : <MDButton color="success" size="small" variant="gradient" disabled={settlingId === row.id} onClick={() => settleCollection(row.id)}>{settlingId === row.id ? "Settling..." : "Settle"}</MDButton>}</TableCell>
+                        <TableCell align="center">{row.settled_at ? <Chip label="Settled" color="success" size="small" variant="outlined" /> : <MDButton color="success" size="small" variant="gradient" disabled={settlingId !== null} onClick={() => requestSettlement(row)}>{settlingId === row.id ? "Settling..." : "Settle"}</MDButton>}</TableCell>
                       </TableRow>
                     ))
                   ) : (
                     <TableRow>
-                      <TableCell colSpan={10} align="center">
+                      <TableCell colSpan={11} align="center">
                         <MDTypography variant="button" color="text">
                           No delivery-boy collection updates found.
                         </MDTypography>
@@ -277,6 +370,76 @@ function DBCollection() {
           </MDBox>
         </Card>
       </MDBox>
+      <Dialog open={Boolean(settlementCollection)} onClose={() => { if (settlingId === null) setSettlementCollection(null); }} fullWidth maxWidth="xs">
+        <DialogTitle>Settle {PAYMENT_LABELS[settlementCollection?.payment_mode]} collection</DialogTitle>
+        <form onSubmit={(event) => {
+          event.preventDefault();
+          if (!settlementCollection || settlingId !== null) return;
+          if (settlementCollection.payment_mode === "cash" && Math.round(cashTotal * 100) !== Math.round(Number(settlementCollection.amount) * 100)) {
+            setSettlementError("Cash denomination total must equal the collection amount.");
+            return;
+          }
+          const details = settlementCollection.payment_mode === "cash" ? { cashDetails: cashCounts }
+            : settlementCollection.payment_mode === "upi" ? { referenceNo: upiNumber.trim() } : { chequeDate };
+          settleCollection(settlementCollection.id, details);
+        }}>
+          <DialogContent>
+            <MDTypography variant="button" display="block" mb={2}>
+              {settlementCollection?.outlet_name} — {formatCurrency(settlementCollection?.amount)}
+            </MDTypography>
+            {settlementCollection?.payment_mode === "cheque" && <>
+            <MDTypography variant="button" display="block" mb={2}>Cheque No: {settlementCollection.reference_no || "N/A"}</MDTypography>
+            <MDInput label="Cheque date" type="date" required fullWidth
+              value={chequeDate} onChange={(event) => setChequeDate(event.target.value)}
+              disabled={settlingId !== null} InputLabelProps={{ shrink: true }}
+              inputProps={{ min: "1000-01-01", max: "9999-12-31" }} />
+            </>}
+            {settlementCollection?.payment_mode === "upi" && <MDInput label="UPI number" required fullWidth
+              value={upiNumber} onChange={(event) => setUpiNumber(event.target.value)} disabled={settlingId !== null}
+              inputProps={{ maxLength: 255 }} />}
+            {settlementCollection?.payment_mode === "cash" && <>
+              <MDBox display="grid" gridTemplateColumns="1fr 1fr" gap={2} mt={1}>
+                {CASH_DENOMINATIONS.map(([label, key, value]) => <MDInput key={key} label={key === "paisa" ? "Paisa (100 = ₹1)" : `${label} × count`}
+                  type="number" value={cashCounts[key] ?? ""} disabled={settlingId !== null}
+                  onChange={(event) => setCashCounts((previous) => ({ ...previous, [key]: event.target.value }))}
+                  inputProps={{ min: 0, step: 1 }} helperText={formatCurrency((Number(cashCounts[key]) || 0) * value)} />)}
+              </MDBox>
+              <MDTypography variant="button" display="block" mt={2}>Counted total: {formatCurrency(cashTotal)}</MDTypography>
+              <MDTypography variant="caption">The counted total must match the collection amount.</MDTypography>
+            </>}
+            {settlementError && <Alert severity="error" sx={{ mt: 2 }}>{settlementError}</Alert>}
+          </DialogContent>
+          <DialogActions>
+            <MDButton color="secondary" disabled={settlingId !== null} onClick={() => setSettlementCollection(null)}>Cancel</MDButton>
+            <MDButton type="submit" color="success" variant="gradient" disabled={settlingId !== null
+              || (settlementCollection?.payment_mode === "cheque" && !chequeDate)
+              || (settlementCollection?.payment_mode === "upi" && !upiNumber.trim())
+              || (settlementCollection?.payment_mode === "cash" && (cashTotal <= 0 || Math.round(cashTotal * 100) !== Math.round(Number(settlementCollection.amount) * 100)))}>
+              {settlingId !== null ? "Settling..." : "Settle"}
+            </MDButton>
+          </DialogActions>
+        </form>
+      </Dialog>
+      <Dialog open={Boolean(viewCollection)} onClose={() => setViewCollection(null)} fullWidth maxWidth="xs">
+        <DialogTitle>Cash details</DialogTitle>
+        <DialogContent>
+          <MDTypography variant="button" display="block" mb={2}>
+            {viewCollection?.outlet_name} — {formatCurrency(viewCollection?.amount)}
+          </MDTypography>
+          {CASH_DENOMINATIONS.filter(([, key]) => Number(viewCollection?.cash_details?.[key]) > 0)
+            .map(([label, key, value]) => (
+              <MDTypography key={key} variant="button" display="block" mb={1}>
+                {label}: {viewCollection.cash_details[key]} ({formatCurrency(Number(viewCollection.cash_details[key]) * value)})
+              </MDTypography>
+            ))}
+          {!CASH_DENOMINATIONS.some(([, key]) => Number(viewCollection?.cash_details?.[key]) > 0) && (
+            <MDTypography variant="button">Cash denomination counts have not been recorded yet.</MDTypography>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <MDButton color="secondary" onClick={() => setViewCollection(null)}>Close</MDButton>
+        </DialogActions>
+      </Dialog>
       <Footer />
     </DashboardLayout>
   );
