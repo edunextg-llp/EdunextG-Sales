@@ -249,20 +249,18 @@ function DBCollection() {
               </MDBox>
             </MDBox>
 
-            <MDBox mb={2}>
+            <MDBox mb={2} display="flex" gap={1.5} flexWrap="wrap" alignItems="center">
               <MDInput
-                label="Search outlet, invoice, delivery boy, payment mode, or sale id"
-                fullWidth
+                label="Search collections"
+                placeholder="Outlet, invoice, delivery boy, payment mode, or sale ID"
+                sx={{ width: { xs: "100%", md: 340 }, flexShrink: 1 }}
                 value={searchQuery}
                 onChange={(event) => setSearchQuery(event.target.value)}
               />
-            </MDBox>
-
-            <MDBox mb={2} display="flex" gap={2} flexWrap="wrap" alignItems="center">
-              <MDInput label="From submission date" type="date" value={fromDate}
+              <MDInput label="From date" type="date" value={fromDate} sx={{ width: 160 }}
                 onChange={(event) => setFromDate(event.target.value)} InputLabelProps={{ shrink: true }}
                 inputProps={{ min: "1000-01-01", max: toDate || "9999-12-31" }} />
-              <MDInput label="To submission date" type="date" value={toDate}
+              <MDInput label="To date" type="date" value={toDate} sx={{ width: 160 }}
                 onChange={(event) => setToDate(event.target.value)} InputLabelProps={{ shrink: true }}
                 inputProps={{ min: fromDate || "1000-01-01", max: "9999-12-31" }} />
               <MDButton color="secondary" variant="outlined" size="small" disabled={!fromDate && !toDate}
