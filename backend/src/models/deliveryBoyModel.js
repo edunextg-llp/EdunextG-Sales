@@ -372,7 +372,7 @@ class DeliveryBoyModel {
                     DATE_FORMAT(ss.delivery_date, '%Y-%m-%d') AS delivery_date,
                     ss.item_count, ss.packed_item_count, ss.box_count, ss.packet_count, ss.price,
                     ss.packaging_status, ss.vehicle_no, ss.cancellation_reason,
-                    sc.outlet_name, sc.outlet_erp_id, sc.contact_number, sc.location_name,
+                    ss.outlet_id, sc.outlet_name, sc.outlet_erp_id, sc.contact_number, sc.location_name,
                     sc.delivery_google_location AS google_location,
                     s.name AS staff_name, c.name AS company_name,
                     DATE_FORMAT(ssh.status_updated_at, '%Y-%m-%d %H:%i:%s') AS status_updated_at,

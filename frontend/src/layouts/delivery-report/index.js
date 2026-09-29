@@ -4,7 +4,7 @@ import DashboardNavbar from "examples/Navbars/DashboardNavbar";
 import Footer from "examples/Footer";
 import MDInput from "components/MDInput";
 import { notifySalesUpdated, useSalesPolling } from "utils/salesSync";
-import { Dialog, DialogTitle, DialogContent, DialogActions, TableContainer, Table, TableBody, TableRow, TableCell, Checkbox, FormControl, InputLabel, Select, MenuItem } from "@mui/material";
+import { Dialog, DialogTitle, DialogContent, DialogActions, TableContainer, Table, TableHead, TableBody, TableRow, TableCell, Checkbox, FormControl, InputLabel, Select, MenuItem } from "@mui/material";
 import MDBox from "components/MDBox";
 import MDTypography from "components/MDTypography";
 import MDButton from "components/MDButton";
@@ -27,6 +27,7 @@ export default function DeliveryReport() {
   const [drafts, setDrafts] = useState([]);
   const [removeIds, setRemoveIds] = useState([]);
   const [viewBill, setViewBill] = useState(null);
+  const [viewGroup, setViewGroup] = useState(null);
   const [boy, setBoy] = useState("");
   const [date, setDate] = useState(today);
   const [vehicle, setVehicle] = useState("");
@@ -105,6 +106,8 @@ export default function DeliveryReport() {
     notifySalesUpdated(); await load(); busy.current = false; setSaving(false);
   };
   const report = useMemo(() => buildDeliveryLog(availableSales, { hideEmptyAreas: true }), [availableSales]);
+  const groupBills = viewGroup ? pending.filter((row) => viewGroup.ids.includes(String(row.id))) : [];
+  const groupSelectedCount = groupBills.filter((row) => selected.includes(String(row.id))).length;
   const [error, setError] = useState("");
   return (
     <DashboardLayout><DashboardNavbar /><MDBox py={3} sx={{ backgroundColor: "#fff" }}>
@@ -133,18 +136,34 @@ export default function DeliveryReport() {
               <TableBody>
                 {report.rows.slice(0, report.rows.findIndex((row) => row.type === "spacer")).map(({ type, cells }, index) => (
                   <TableRow key={index}>
-                    {(type === "section" || type === "spacer" ? [cells[0] || ""] : cells).map((value, column) => (
-                      <TableCell key={column} colSpan={type === "section" ? 2 : type === "spacer" ? report.width : 1} sx={{
+                    {(type === "section" || type === "spacer" ? [cells[0] || ""] : cells).map((value, column) => {
+                      const bills = typeof value === "number" ? cellBills(type, cells, column) : [];
+                      const selectedCount = bills.filter((row) => selected.includes(String(row.id))).length;
+                      return <TableCell key={column} colSpan={type === "section" ? 2 : type === "spacer" ? report.width : 1} sx={{
                         px: 0.5, py: type === "spacer" ? 0.25 : 0.35, fontSize: "0.75rem", lineHeight: 1.2, color: "#172033",
                         border: type === "spacer" ? 0 : "1px solid #cbd5e1",
-                        backgroundColor: `#${deliveryLogColors[type]}`,
+                        backgroundColor: selectedCount > 0 ? "#dcfce7" : `#${deliveryLogColors[type]}`,
                         fontWeight: ["section", "header", "total"].includes(type) ? 700 : 400,
                         textAlign: column === 0 ? "left" : "center", overflowWrap: "anywhere",
                         ...(column === 0 && !["section", "spacer"].includes(type) ? { position: "sticky", left: 0, zIndex: 1, width: 160 } : {}),
-                      }}>{typeof value === "number" ? <MDBox display="flex" alignItems="center" justifyContent="center" gap={0.25}>
+                      }}>{typeof value === "number" ? <MDBox><MDBox display="flex" alignItems="center" justifyContent="center" gap={0.25}>
                         <Checkbox size="small" sx={{ p: 0, "& .MuiSvgIcon-root": { fontSize: 15 } }} disabled={saving || value === 0} checked={value > 0 && cellBills(type, cells, column).every((row) => selected.includes(String(row.id)))} indeterminate={cellBills(type, cells, column).some((row) => selected.includes(String(row.id))) && !cellBills(type, cells, column).every((row) => selected.includes(String(row.id)))} onChange={() => toggle(cellBills(type, cells, column))} inputProps={{ "aria-label": "Select bills: " + cells[0] + " / " + (report.rows[0].cells[column] || "Total") }} />{value}
-                      </MDBox> : value}</TableCell>
-                    ))}
+                        <Tooltip title="View and select bills"><span>
+                          <IconButton size="small" disabled={saving || value === 0}
+                            sx={{ p: 0.25 }} aria-label={`View bills: ${cells[0]} / ${report.rows[0].cells[column] || "Total"}`}
+                            onClick={() => setViewGroup({
+                              title: `${cells[0]} / ${report.rows[0].cells[column] || "Total"}`,
+                              ids: cellBills(type, cells, column).map((row) => String(row.id)),
+                            })}>
+                            <VisibilityIcon sx={{ fontSize: 16 }} />
+                          </IconButton>
+                        </span></Tooltip>
+                      </MDBox>
+                        {selectedCount > 0 && <MDTypography component="span" sx={{ display: "block", color: "#166534", fontSize: "0.65rem", fontWeight: 700, whiteSpace: "nowrap", mt: 0.25 }}>
+                          {selectedCount}/{bills.length} selected
+                        </MDTypography>}
+                      </MDBox> : value}</TableCell>;
+                    })}
                   </TableRow>
                 ))}
               </TableBody>
@@ -152,6 +171,39 @@ export default function DeliveryReport() {
           </TableContainer>
         )}
       </DialogContent>
+      <Dialog open={Boolean(viewGroup)} onClose={() => setViewGroup(null)} fullWidth maxWidth="md">
+        <DialogTitle>{viewGroup?.title} — Pending bills</DialogTitle>
+        <DialogContent dividers>
+          <MDTypography variant="caption" display="block" mb={1}>Select bills, then click Done to choose more from another area or company. When finished, use the Assign button at the top of the report.</MDTypography>
+          <TableContainer sx={{ maxHeight: "55vh" }}>
+            <Table size="small" stickyHeader sx={{ "& .MuiTableCell-root": { fontSize: "0.8125rem" } }}>
+              <TableHead sx={{ display: "table-header-group" }}><TableRow>
+                <TableCell padding="checkbox"><Checkbox size="small" disabled={saving || !groupBills.length}
+                  checked={groupBills.length > 0 && groupSelectedCount === groupBills.length}
+                  indeterminate={groupSelectedCount > 0 && groupSelectedCount < groupBills.length}
+                  onChange={() => toggle(groupBills)} inputProps={{ "aria-label": "Select all bills in this group" }} /></TableCell>
+                <TableCell>Invoice number</TableCell><TableCell>Outlet name</TableCell><TableCell>Area</TableCell><TableCell align="right">Price</TableCell>
+              </TableRow></TableHead>
+              <TableBody>
+                {groupBills.map((row) => <TableRow key={row.id} selected={selected.includes(String(row.id))} hover>
+                  <TableCell padding="checkbox"><Checkbox size="small" disabled={saving}
+                    checked={selected.includes(String(row.id))} onChange={() => toggle([row])}
+                    inputProps={{ "aria-label": `Select invoice ${row.invoice_number || row.id}` }} /></TableCell>
+                  <TableCell>{row.invoice_number || "N/A"}</TableCell>
+                  <TableCell>{row.outlet_name || "Outlet not assigned"}</TableCell>
+                  <TableCell>{row.location_name || "Area not assigned"}</TableCell>
+                  <TableCell align="right" sx={{ whiteSpace: "nowrap" }}>Rs. {Number(row.price || 0).toFixed(2)}</TableCell>
+                </TableRow>)}
+                {!groupBills.length && <TableRow><TableCell colSpan={5}>No pending bills remain in this group.</TableCell></TableRow>}
+              </TableBody>
+            </Table>
+          </TableContainer>
+        </DialogContent>
+        <DialogActions sx={{ flexWrap: "wrap", gap: 1 }}>
+          <MDTypography variant="caption" sx={{ mr: "auto", pl: 1 }}>Selected here: {groupSelectedCount} / {groupBills.length} · Total selected: {chosen.length}</MDTypography>
+          <MDButton color="secondary" onClick={() => setViewGroup(null)}>Done</MDButton>
+        </DialogActions>
+      </Dialog>
       <Dialog open={open} onClose={() => { if (!saving) setOpen(false); }} fullWidth maxWidth="sm">
         <DialogTitle>Assign {chosen.length} bills</DialogTitle>
         <DialogContent dividers><MDBox display="flex" flexDirection="column" gap={2}>
