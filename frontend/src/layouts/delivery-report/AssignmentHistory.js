@@ -29,8 +29,13 @@ export default function AssignmentHistory({ api, onViewBill }) {
     setLoading(true);
     fetch(`${api}/staff/sales/by-date?scope=assignments&date=${encodeURIComponent(date)}`, { signal: controller.signal })
       .then(async (response) => { if (!response.ok) throw new Error('Unable to load assignments. Please retry.'); return response.json(); })
-      .then((rows) => { if (!Array.isArray(rows)) throw new Error('Invalid assignment response.'); if (!controller.signal.aborted) setResult({ date, rows }); })
-      .catch((err) => { if (!controller.signal.aborted) { setError(err.message); setResult({ date, rows: [] }); } })
+      .then((rows) => {
+        if (!Array.isArray(rows)) throw new Error('Invalid assignment response.');
+        if (!controller.signal.aborted) setResult((previous) =>
+          previous.date === date && JSON.stringify(previous.rows) === JSON.stringify(rows)
+            ? previous : { date, rows });
+      })
+      .catch((err) => { if (!controller.signal.aborted) setError(`${err.message} Previously loaded data, if shown, may be out of date.`); })
       .finally(() => { if (!controller.signal.aborted) setLoading(false); });
     return () => controller.abort();
   }, [api, date, refresh]);
@@ -50,7 +55,7 @@ export default function AssignmentHistory({ api, onViewBill }) {
     </MDBox>
     <MDTypography variant="caption">Shows saved employee assignments for the selected date, including previous dates.</MDTypography>
     {error && <MDTypography color="error" variant="body2" role="alert">{error}</MDTypography>}
-    {loading ? <MDTypography variant="body2" role="status">Loading assignments…</MDTypography> : <>
+    {loading && result.date !== date ? <MDTypography variant="body2" role="status">Loading assignments…</MDTypography> : <>
       <TableContainer><Table size="small"><TableHead sx={{ display: 'table-header-group' }}><TableRow>
         {['Date', 'Employee', 'Assigned Orders', 'Invoice Value', 'Action'].map((label) => <TableCell key={label}>{label}</TableCell>)}
       </TableRow></TableHead><TableBody>
@@ -62,7 +67,7 @@ export default function AssignmentHistory({ api, onViewBill }) {
     <Dialog open={Boolean(employee)} onClose={() => setEmployee(null)} fullWidth maxWidth="lg">
       <DialogTitle><MDBox display="flex" justifyContent="space-between" alignItems="center" gap={2} flexWrap="wrap">
         <MDTypography variant="h6">{selected?.name || 'Employee'} — {date}</MDTypography>
-        <MDButton color="success" variant="gradient" onClick={download} disabled={downloading || loading || !selected}>{downloading ? 'Downloading…' : 'Download Sheet'}</MDButton>
+        <MDButton color="success" variant="gradient" onClick={download} disabled={downloading || !selected}>{downloading ? 'Downloading…' : 'Download Sheet'}</MDButton>
       </MDBox></DialogTitle>
       <DialogContent dividers>
         <MDInput select label="BIT column" value={bitField} onChange={(event) => setBitField(event.target.value)} fullWidth sx={{ mb: 2 }}>
