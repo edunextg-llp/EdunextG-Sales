@@ -10,6 +10,11 @@ import MDTypography from "components/MDTypography";
 import MDButton from "components/MDButton";
 import { buildDeliveryLog, deliveryLogColors } from "utils/deliveryLog";
 import { printDeliveryAssignmentsPdf } from "utils/printDeliveryAssignmentsPdf";
+import { IconButton, Tooltip, FormControlLabel } from "@mui/material";
+import VisibilityIcon from "@mui/icons-material/Visibility";
+import BillDetailsDialog from "./BillDetailsDialog";
+import AssignmentHistory from "./AssignmentHistory";
+import { selectedAssignments, remainingAssignments, toggleAssignmentSelection } from "utils/deliveryAssignmentSelection";
 
 const API = "https://bawarchee.edunextg.co/api";
 const today = () => { const d = new Date(); return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0"); };
@@ -21,6 +26,7 @@ export default function DeliveryReport() {
   const [viewOpen, setViewOpen] = useState(false);
   const [drafts, setDrafts] = useState([]);
   const [removeIds, setRemoveIds] = useState([]);
+  const [viewBill, setViewBill] = useState(null);
   const [boy, setBoy] = useState("");
   const [date, setDate] = useState(today);
   const [vehicle, setVehicle] = useState("");
@@ -42,6 +48,8 @@ export default function DeliveryReport() {
   const pending = useMemo(() => [...new Map(availableSales.filter((row) => ["packing_done", "returned"].includes(row.packaging_status)).map((row) => [String(row.id), row])).values()], [availableSales]);
   const draftBoys = [...new Set(drafts.map((draft) => draft.boy))];
   const chosen = pending.filter((row) => selected.includes(String(row.id)));
+  const selectedDrafts = selectedAssignments(drafts, removeIds);
+  const selectedBillCount = selectedDrafts.reduce((sum, draft) => sum + draft.rows.length, 0);
   const cellBills = (type, cells, column) => {
     if (!column || !["counts", "summary", "total"].includes(type)) return [];
     const company = type === "counts" || type === "summary" ? cells[0] : null;
@@ -58,8 +66,7 @@ export default function DeliveryReport() {
   };
   const toggleDraftArea = (ids) => {
     if (busy.current) return;
-    setRemoveIds((prev) => ids.every((id) => prev.includes(id))
-      ? prev.filter((id) => !ids.includes(id)) : [...new Set([...prev, ...ids])]);
+    setRemoveIds((prev) => toggleAssignmentSelection(prev, ids));
   };
   const removeSelectedAreas = (draftId) => {
     if (busy.current) return;
@@ -74,11 +81,10 @@ export default function DeliveryReport() {
     setMessage(ids.length + " bills removed from this draft and returned to Report for reassignment.");
   };
   const submit = async () => {
-    if (busy.current || !drafts.length) return;
+    if (busy.current || !selectedBillCount) return;
     busy.current = true; setSaving(true); setError(""); setMessage("");
-    setRemoveIds([]);
     const moved = []; const failed = [];
-    for (const draft of drafts) {
+    for (const draft of selectedDrafts) {
     for (const row of draft.rows) {
       try {
         const response = await fetch(API + "/staff/sales/" + row.id + "/packaging", {
@@ -92,7 +98,8 @@ export default function DeliveryReport() {
     }
     // Hide successful bills immediately, even if the refresh fails.
     setSales((prev) => prev.filter((row) => !moved.includes(String(row.id))));
-    setDrafts((prev) => prev.map((draft) => ({ ...draft, rows: draft.rows.filter((row) => !moved.includes(String(row.id))) })).filter((draft) => draft.rows.length));
+    setDrafts((prev) => remainingAssignments(prev, moved, removeIds));
+    setRemoveIds([]);
     setMessage(moved.length + " bills assigned and sent to the delivery boys’ apps.");
     if (failed.length) setError(failed.join("; "));
     notifySalesUpdated(); await load(); busy.current = false; setSaving(false);
@@ -161,7 +168,13 @@ export default function DeliveryReport() {
         <DialogContent dividers>
           {message && <MDTypography variant="body2" color="success">{message}</MDTypography>}
           {error && <MDTypography variant="body2" color="error">{error}</MDTypography>}
-          <MDTypography variant="caption">Select area rows and click Remove selected areas to return those bills to Report. Submit sends all remaining bills below to their apps.</MDTypography>
+          <MDTypography variant="caption">All bills are selected by default. Unselect any bill you do not want to assign. Submit assigns only selected bills and returns unselected bills to Report. Use the eye icon to view bill details and items.</MDTypography>
+          <FormControlLabel label={`Select All (${selectedBillCount}/${stagedIds.size})`} control={<Checkbox
+            disabled={saving || !stagedIds.size}
+            checked={stagedIds.size > 0 && selectedBillCount === stagedIds.size}
+            indeterminate={selectedBillCount > 0 && selectedBillCount < stagedIds.size}
+            onChange={(_, checked) => setRemoveIds(checked ? [] : [...stagedIds])}
+          />} />
           {!drafts.length && <MDTypography variant="body2" py={2}>No draft assignments. Select bills in Report and click Assign.</MDTypography>}
           <MDBox display="flex" sx={{ overflowX: "auto", mt: 1, alignItems: "stretch" }}>
             {draftBoys.map((boyId) => {
@@ -174,38 +187,52 @@ export default function DeliveryReport() {
                     const company = String(row.company_name || "Company not assigned").trim();
                     const area = String(row.location_name || "Area not assigned").trim();
                     const key = JSON.stringify([company, area]);
-                    const group = groups.get(key) || { company, area, count: 0, ids: [] };
-                    group.count += 1; group.ids.push(String(row.id)); groups.set(key, group);
+                    const group = groups.get(key) || { company, area, count: 0, ids: [], rows: [] };
+                    group.count += 1; group.ids.push(String(row.id)); group.rows.push(row); groups.set(key, group);
                   });
                   return <MDBox key={draft.id} p={1} sx={{ borderBottom: "1px solid #cbd5e1" }}>
                     <MDTypography variant="caption" display="block">Date: {draft.date} · Vehicle: {draft.vehicle}</MDTypography>
-                    {[...groups.entries()].map(([key, group]) => <MDBox key={key} display="flex" justifyContent="space-between" gap={1} py={0.5}>
+                    {[...groups.entries()].map(([key, group]) => <MDBox key={key} py={0.5}>
+                      <MDBox display="flex" justifyContent="space-between" gap={1}>
                       <Checkbox size="small" disabled={saving}
-                        checked={group.ids.every((id) => removeIds.includes(id))}
+                        checked={group.ids.every((id) => !removeIds.includes(id))}
                         indeterminate={group.ids.some((id) => removeIds.includes(id)) && !group.ids.every((id) => removeIds.includes(id))}
                         onChange={() => toggleDraftArea(group.ids)}
                         inputProps={{ "aria-label": "Select " + group.area + " / " + group.company + " for " + draft.name + " on " + draft.date }} />
                       <MDBox><MDTypography variant="button" display="block">{group.area}</MDTypography><MDTypography variant="caption">{group.company}</MDTypography></MDBox>
-                      <MDTypography variant="button" sx={{ whiteSpace: "nowrap" }}>{group.count} bills</MDTypography>
+                      <MDTypography variant="button" sx={{ whiteSpace: "nowrap" }}>{group.ids.filter((id) => !removeIds.includes(id)).length}/{group.count} bills</MDTypography>
+                      </MDBox>
+                      {group.rows.map((row) => <MDBox key={row.id} display="flex" alignItems="center" gap={0.5} pl={2} py={0.25}>
+                        <Checkbox size="small" disabled={saving} checked={!removeIds.includes(String(row.id))}
+                          onChange={() => toggleDraftArea([String(row.id)])}
+                          inputProps={{ "aria-label": "Assign bill " + (row.invoice_number || row.id) }} />
+                        <MDBox sx={{ flex: 1 }}>
+                          <MDTypography variant="caption" display="block">Bill: {row.invoice_number || row.id}</MDTypography>
+                          <MDTypography variant="caption" display="block">{row.outlet_name || "Outlet not assigned"}</MDTypography>
+                        </MDBox>
+                        <Tooltip title="View bill details"><IconButton size="small" aria-label={"View bill " + (row.invoice_number || row.id)} onClick={() => setViewBill({ row, draft })}><VisibilityIcon fontSize="small" /></IconButton></Tooltip>
+                      </MDBox>)}
                     </MDBox>)}
-                    <MDButton size="small" color="error" disabled={saving || !draft.rows.some((row) => removeIds.includes(String(row.id)))} onClick={() => removeSelectedAreas(draft.id)}>Remove selected areas</MDButton>
+                    <MDButton size="small" color="error" disabled={saving || !draft.rows.some((row) => removeIds.includes(String(row.id)))} onClick={() => removeSelectedAreas(draft.id)}>Remove unselected bills</MDButton>
                   </MDBox>;
                 })}
-                <MDTypography variant="button" sx={{ mt: "auto", p: 1, backgroundColor: "#fef3c7", fontWeight: 700 }}>Total: {batches.reduce((total, draft) => total + draft.rows.length, 0)} bills</MDTypography>
+                <MDTypography variant="button" sx={{ mt: "auto", p: 1, backgroundColor: "#fef3c7", fontWeight: 700 }}>Selected: {batches.reduce((total, draft) => total + draft.rows.filter((row) => !removeIds.includes(String(row.id))).length, 0)} bills</MDTypography>
               </MDBox>;
             })}
           </MDBox>
         </DialogContent>
         <DialogActions>
-          <MDTypography variant="button" sx={{ mr: "auto", pl: 1 }}>Total: {stagedIds.size} bills</MDTypography>
-          <MDButton color="info" variant="outlined" disabled={saving || !drafts.length} onClick={() => {
-            try { setError(""); printDeliveryAssignmentsPdf(drafts); }
+          <MDTypography variant="button" sx={{ mr: "auto", pl: 1 }}>Selected: {selectedBillCount} of {stagedIds.size} bills</MDTypography>
+          <MDButton color="info" variant="outlined" disabled={saving || !selectedBillCount} onClick={() => {
+            try { setError(""); printDeliveryAssignmentsPdf(selectedDrafts); }
             catch (err) { setError(err.message); }
           }}>Download PDF</MDButton>
           <MDButton color="secondary" disabled={saving} onClick={() => setViewOpen(false)}>Back</MDButton>
-          <MDButton color="info" variant="gradient" disabled={saving || !drafts.length} onClick={submit}>{saving ? "Submitting…" : "Submit"}</MDButton>
+          <MDButton color="info" variant="gradient" disabled={saving || !selectedBillCount} onClick={submit}>{saving ? "Submitting…" : `Submit (${selectedBillCount})`}</MDButton>
         </DialogActions>
       </Dialog>
+      <AssignmentHistory api={API} onViewBill={setViewBill} />
+      <BillDetailsDialog bill={viewBill} onClose={() => setViewBill(null)} api={API} />
     </MDBox><Footer /></DashboardLayout>
   );
 }

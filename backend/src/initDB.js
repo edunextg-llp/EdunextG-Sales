@@ -1349,6 +1349,7 @@ async function initDB() {
             can_create_staff TINYINT(1) NOT NULL DEFAULT 0,
             can_add_outlet TINYINT(1) NOT NULL DEFAULT 0,
             can_location_assignments TINYINT(1) NOT NULL DEFAULT 0,
+                can_invoice_lookup TINYINT(1) NOT NULL DEFAULT 0,
             can_add_sales TINYINT(1) NOT NULL DEFAULT 0,
             can_packaging TINYINT(1) NOT NULL DEFAULT 0,
             can_delivery TINYINT(1) NOT NULL DEFAULT 0,

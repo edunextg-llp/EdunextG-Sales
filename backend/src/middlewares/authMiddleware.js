@@ -124,7 +124,9 @@ export const enforceManagedUserApiScope = (req, res, next) => {
         allowed = permissions.has('create_staff');
     } else if (/^\/\d+\/sales$/.test(path)) {
         allowed = permissions.has('add_sales');
-    } else if (path === '/sales/by-date' || path === '/sales/lookup' || /^\/\d+\/sales-by-date$/.test(path)) {
+    } else if (path === '/sales/lookup') {
+        allowed = method === 'GET' && permissions.has('invoice_lookup');
+    } else if (path === '/sales/by-date' || /^\/\d+\/sales-by-date$/.test(path)) {
         allowed = permissions.has('add_sales') || permissions.has('update_payment')
             || permissions.has('packaging') || permissions.has('delivery') || permissions.has('delivered');
     } else if (path === '/sales/move-to-delivery') {

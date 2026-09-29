@@ -25,6 +25,7 @@ const PERMISSIONS = [
   ["location_assignments", "Add Location", "Add and update day-wise locations for staff."],
   ["add_outlet", "Add Outlet", "Create, edit, import, export, or delete customer outlets."],
   ["add_sales", "Add Sales", "Create and manage sales invoices for outlets or customers."],
+  ["invoice_lookup", "Invoice Lookup", "Search invoices and view complete invoice details."],
   ["packaging", "Packaging", "View orders awaiting packaging and update packaging status."],
   ["delivery", "Delivery", "View packaged orders, assign delivery staff, and update delivery status."],
   ["delivered", "Delivered", "View delivered or cancelled orders and their delivery details."],

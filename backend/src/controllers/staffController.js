@@ -2963,7 +2963,10 @@ export const getOutletsByStaffAndDayName = async (req, res) => {
 export const getAllSalesByDate = async (req, res) => {
     try {
         const { date, search, scope } = req.query;
-        const salesScope = scope === 'packaging' ? 'packaging' : '';
+        const salesScope = ['packaging', 'assignments'].includes(scope) ? scope : '';
+        if (salesScope === 'assignments' && (!/^\d{4}-\d{2}-\d{2}$/.test(date || '') || Number.isNaN(Date.parse(date)))) {
+            return res.status(400).json({ error: 'A valid assignment date is required.' });
+        }
 
         const sales = await StaffModel.getAllSalesByDate(date, search, salesScope);
         res.status(200).json(sales);

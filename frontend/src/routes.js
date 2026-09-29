@@ -414,6 +414,8 @@ const routes = [
     icon: <Icon fontSize="small">manage_search</Icon>,
     route: "/invoice-lookup",
     component: <InvoiceLookup />,
+    allowedRoles: ["admin", "packaging_staff", "delivery_boy"],
+    requiredPermission: "invoice_lookup",
   },
   {
     type: "collapse",

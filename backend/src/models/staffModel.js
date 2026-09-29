@@ -789,7 +789,7 @@ class StaffModel {
         const conditions = [];
 
         if (date) {
-            conditions.push('ss.sale_date = ?');
+            conditions.push(scope === 'assignments' ? 'ss.delivery_date = ?' : 'ss.sale_date = ?');
             params.push(date);
         }
 
@@ -821,7 +821,7 @@ class StaffModel {
 
         query += ` ORDER BY ss.sale_date DESC, ss.id DESC`;
 
-        if (scope !== 'packaging') {
+        if (scope !== 'packaging' && scope !== 'assignments') {
             query += ` LIMIT 10000`;
         }
 
