@@ -252,7 +252,7 @@ function DBCollection() {
             <MDBox mb={2} display="flex" gap={1.5} flexWrap="wrap" alignItems="center">
               <MDInput
                 label="Search collections"
-                placeholder="Outlet, invoice, delivery boy, payment mode, or sale ID"
+                placeholder="Outlet, invoice, collector, payment mode, or sale ID"
                 sx={{ width: { xs: "100%", md: 340 }, flexShrink: 1 }}
                 value={searchQuery}
                 onChange={(event) => setSearchQuery(event.target.value)}
@@ -291,7 +291,7 @@ function DBCollection() {
                     <TableCell align="left" sx={paginatedTableHeadCellSx}>Outlet Name</TableCell>
                     <TableCell align="center" sx={paginatedTableHeadCellSx}>Invoice No</TableCell>
                     <TableCell align="center" sx={paginatedTableHeadCellSx}>Sale ID</TableCell>
-                    <TableCell align="left" sx={paginatedTableHeadCellSx}>Delivery Boy</TableCell>
+                    <TableCell align="left" sx={paginatedTableHeadCellSx}>Collected By</TableCell>
                     <TableCell align="left" sx={paginatedTableHeadCellSx}>Payment Source</TableCell>
                     <TableCell align="center" sx={paginatedTableHeadCellSx}>Payment Status</TableCell>
                     <TableCell align="right" sx={paginatedTableHeadCellSx}>Amount</TableCell>
@@ -314,7 +314,12 @@ function DBCollection() {
                         <TableCell>{row.outlet_name || "N/A"}</TableCell>
                         <TableCell align="center">{row.invoice_number || "N/A"}</TableCell>
                         <TableCell align="center">BP{row.sale_id}</TableCell>
-                        <TableCell>{row.delivery_boy_name || "N/A"}</TableCell>
+                        <TableCell>
+                          {row.delivery_boy_name || "N/A"}
+                          <MDTypography display="block" variant="caption" color="text">
+                            {row.collector_type === "company_staff" ? "Company Staff" : "Delivery Boy"}
+                          </MDTypography>
+                        </TableCell>
                         <TableCell>
                           <Chip
                             label={row.collection_source === "taken_bill" ? "Out Bill" : row.collection_source === "delivery" ? "Same-day Delivery" : "Not recorded"}

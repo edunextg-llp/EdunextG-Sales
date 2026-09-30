@@ -206,9 +206,10 @@ class DeliveryCollectionModel {
         try {
             await connection.beginTransaction();
             const [rows] = await connection.execute(
-                `SELECT dbc.*, dboy.name AS delivery_boy_name, ss.price
+                `SELECT dbc.*, COALESCE(dboy.name, collector_staff.name) AS delivery_boy_name, ss.price
                  FROM delivery_boy_collections dbc
-                 INNER JOIN delivery_boys dboy ON dboy.id = dbc.delivery_boy_id
+                 LEFT JOIN delivery_boys dboy ON dboy.id = dbc.delivery_boy_id
+                 LEFT JOIN staff collector_staff ON collector_staff.id = dbc.staff_id
                  INNER JOIN staff_sales ss ON ss.id = dbc.sale_id
                  WHERE dbc.id = ? AND dbc.settled_at IS NULL FOR UPDATE`,
                 [collectionId]
@@ -270,11 +271,12 @@ class DeliveryCollectionModel {
             const insertPayment = async (paymentAmount, parentCreditPaymentId = null) => {
                 const [result] = await connection.execute(
                     `INSERT INTO sale_payments
-                     (sale_id, payment_date, payment_mode, amount, collector_staff_id, collector_name,
-                      parent_credit_payment_id, reference_no, reference_date, credit_days)
-                     VALUES (?, CURDATE(), ?, ?, NULL, ?, ?, ?, ?, ?)`,
+                     (sale_id, payment_date, payment_mode, amount, collector_name,
+                      parent_credit_payment_id, reference_no, reference_date, credit_days, collector_staff_id)
+                     VALUES (?, CURDATE(), ?, ?, ?, ?, ?, ?, ?, ?)`,
                     [collection.sale_id, collection.payment_mode, paymentAmount, collection.delivery_boy_name,
-                     parentCreditPaymentId, collection.reference_no, collection.reference_date, collection.credit_days]
+                     parentCreditPaymentId, collection.reference_no, collection.reference_date, collection.credit_days,
+                     collection.staff_id ?? null]
                 );
                 return result.insertId;
             };
@@ -350,11 +352,13 @@ class DeliveryCollectionModel {
                     DATE_FORMAT(dbc.updated_at, '%Y-%m-%d %H:%i:%s') AS updated_at,
                     ss.invoice_number, ss.price, ss.packaging_status,
                     sc.outlet_name,
-                    dboy.name AS delivery_boy_name
+                    COALESCE(dboy.name, collector_staff.name) AS delivery_boy_name,
+                    COALESCE(dbc.collector_type, 'delivery_boy') AS collector_type
              FROM delivery_boy_collections dbc
              INNER JOIN staff_sales ss ON ss.id = dbc.sale_id
              LEFT JOIN staff_counters sc ON sc.id = ss.outlet_id
              LEFT JOIN delivery_boys dboy ON dboy.id = dbc.delivery_boy_id
+             LEFT JOIN staff collector_staff ON collector_staff.id = dbc.staff_id
              WHERE dbc.sale_id = ?
              ORDER BY dbc.updated_at DESC, dbc.id DESC`,
             [saleId]
@@ -371,7 +375,7 @@ class DeliveryCollectionModel {
             const term = `%${normalizedSearch}%`;
             where = `WHERE (sc.outlet_name LIKE ?
                 OR ss.invoice_number LIKE ?
-                OR dboy.name LIKE ?
+                OR COALESCE(dboy.name, collector_staff.name) LIKE ?
                 OR dbc.payment_mode LIKE ?
                 OR CAST(dbc.sale_id AS CHAR) LIKE ?)`;
             params.push(term, term, term, term, term);
@@ -393,14 +397,16 @@ class DeliveryCollectionModel {
                     DATE_FORMAT(dbc.created_at, '%Y-%m-%d %H:%i:%s') AS created_at,
                     DATE_FORMAT(dbc.updated_at, '%Y-%m-%d %H:%i:%s') AS updated_at,
                     dbc.collection_source,
+                    COALESCE(dbc.collector_type, 'delivery_boy') AS collector_type, dbc.staff_id,
                     ss.invoice_number, ss.price, ss.paid_amount, ss.balance_amount,
                     ss.packaging_status,
                     sc.outlet_name,
-                    dboy.name AS delivery_boy_name
+                    COALESCE(dboy.name, collector_staff.name) AS delivery_boy_name
              FROM delivery_boy_collections dbc
              INNER JOIN staff_sales ss ON ss.id = dbc.sale_id
              LEFT JOIN staff_counters sc ON sc.id = ss.outlet_id
              LEFT JOIN delivery_boys dboy ON dboy.id = dbc.delivery_boy_id
+             LEFT JOIN staff collector_staff ON collector_staff.id = dbc.staff_id
              ${where}
              ORDER BY dbc.updated_at DESC, dbc.id DESC
              LIMIT 10000`,

@@ -452,6 +452,30 @@ export async function ensureSchema() {
         await tryQuery(connection, `ALTER TABLE delivery_boy_collections ADD COLUMN collection_source VARCHAR(20) NULL`, 'collection source on delivery collections');
         await tryQuery(connection, `ALTER TABLE delivery_boy_collections DROP INDEX uq_delivery_boy_collections_sale_delivery`, 'allow delivery collection history');
         await tryQuery(connection, `ALTER TABLE delivery_boy_collections ADD INDEX idx_delivery_boy_collections_sale_delivery (sale_id, delivery_boy_id)`, 'delivery collection sale lookup');
+        // Company staff collect Out Bill payments through the same D.B. Collection settlement queue.
+        await tryQuery(connection, `ALTER TABLE delivery_boy_collections MODIFY delivery_boy_id INT NULL`, 'nullable delivery_boy_id on delivery collections');
+        await tryQuery(connection, `ALTER TABLE delivery_boy_collections ADD COLUMN staff_id INT NULL`, 'staff_id on delivery collections');
+        await tryQuery(
+            connection,
+            `ALTER TABLE delivery_boy_collections ADD COLUMN collector_type VARCHAR(20) NOT NULL DEFAULT 'delivery_boy'`,
+            'collector_type on delivery collections'
+        );
+        await tryQuery(connection, `ALTER TABLE delivery_boy_collections ADD INDEX idx_delivery_boy_collections_staff (staff_id)`, 'staff lookup on delivery collections');
+        const [staffCollectionFk] = await connection.query(
+            `SELECT 1 FROM information_schema.TABLE_CONSTRAINTS
+             WHERE CONSTRAINT_SCHEMA = DATABASE()
+               AND TABLE_NAME = 'delivery_boy_collections'
+               AND CONSTRAINT_NAME = 'fk_delivery_boy_collections_staff'
+             LIMIT 1`
+        );
+        if (!staffCollectionFk.length) {
+            await tryQuery(
+                connection,
+                `ALTER TABLE delivery_boy_collections
+                 ADD CONSTRAINT fk_delivery_boy_collections_staff FOREIGN KEY (staff_id) REFERENCES staff(id) ON DELETE CASCADE`,
+                'fk_delivery_boy_collections_staff'
+            );
+        }
 
         await tryQuery(
             connection,
@@ -975,6 +999,8 @@ export async function ensureSchema() {
             'purchase requisition approval statuses'
         );
         await tryQuery(connection, `ALTER TABLE purchase_requisitions ADD COLUMN reviewed_by INT NULL`, 'reviewed_by on purchase requisitions');
+        // Requisitions are created without a seller; strict SQL mode rejects the insert unless this is nullable.
+        await tryQuery(connection, `ALTER TABLE purchase_requisitions MODIFY seller_id INT NULL`, 'nullable seller_id on purchase requisitions');
         await tryQuery(connection, `ALTER TABLE purchase_requisitions ADD COLUMN reviewed_at DATETIME NULL`, 'reviewed_at on purchase requisitions');
         await tryQuery(connection, `ALTER TABLE purchase_requisitions ADD COLUMN review_note VARCHAR(500) NULL`, 'review_note on purchase requisitions');
         await tryQuery(connection, `ALTER TABLE purchase_requisitions ADD COLUMN invoiced_sale_id INT NULL`, 'invoiced_sale_id on purchase requisitions');

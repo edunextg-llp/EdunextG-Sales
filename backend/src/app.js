@@ -3,6 +3,7 @@ import cors from 'cors';
 import bodyParser from 'body-parser';
 import staffRoutes from './routes/staffRoutes.js';
 import deliveryBoyRoutes from './routes/deliveryBoyRoutes.js';
+import staffMobileRoutes from './routes/staffMobileRoutes.js';
 import chalanRoutes from './routes/chalanRoutes.js';
 import authRoutes from './routes/authRoutes.js';
 import auditRoutes from './routes/auditRoutes.js';
@@ -36,6 +37,7 @@ app.use(
 );
 app.use('/api/audit-logs', verifyTokenMiddleware, requireRole('admin'), auditRoutes);
 app.use('/api/delivery-boy', deliveryBoyRoutes);
+app.use('/api/staff-mobile', staffMobileRoutes);
 app.use('/api/chalan', verifyTokenMiddleware, requireAnyPermission(
     'chalan_add_sales', 'chalan_packaging', 'chalan_delivery', 'chalan_delivered', 'chalan_return'
 ), chalanRoutes);
