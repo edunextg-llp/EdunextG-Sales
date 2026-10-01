@@ -780,7 +780,8 @@ class DmsStockModel {
                  WHERE i.id = ?`,
                 [importId]
             ).then(([rows]) => rows),
-            DmsStockModel.getItems(importId, 200),
+            // Item List filters locally, so it needs every row in the selected upload.
+            DmsStockModel.getItems(importId, null),
         ]);
 
         if (!headerRows[0]) {
@@ -821,7 +822,7 @@ class DmsStockModel {
                   AND LOWER(TRIM(si.product_erp_id)) = LOWER(TRIM(dsi.product_erp_id))
              WHERE dsi.import_id = ?
              ORDER BY dsi.id ASC
-             LIMIT ${numericLimit}`,
+             ${limit === null ? '' : `LIMIT ${numericLimit}`}`,
             [importId]
         );
 

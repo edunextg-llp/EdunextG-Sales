@@ -1050,11 +1050,11 @@ function UpdatePayment() {
         return {
           ...prev,
           paymentMode: value,
-          amount: value === "cash" ? "" : prev.amount,
+          amount: value === "credit" ? String(dialogRemaining) : value === "cash" ? "" : prev.amount,
           cashNotes: value === "cash" ? emptyCashNotes() : prev.cashNotes,
           referenceNo: "",
           referenceDate: "",
-          creditDays: "",
+          creditDays: value === "credit" ? "14" : "",
         };
       }
 
@@ -1206,8 +1206,8 @@ function UpdatePayment() {
       }
     }
 
-    if (paymentForm.paymentMode === "credit" && !paymentForm.creditDays) {
-      alert("Please enter credit days.");
+    if (paymentForm.paymentMode === "credit" && (!Number.isInteger(Number(paymentForm.creditDays)) || Number(paymentForm.creditDays) < 1 || Number(paymentForm.creditDays) > 14)) {
+      alert("Credit days must be between 1 and 14.");
       return null;
     }
 
@@ -1292,7 +1292,10 @@ function UpdatePayment() {
           )
         );
         setPaymentSuccessMessage(
-          `${isEditing ? "Payment updated" : "Payment added"} successfully for ${outletName}.`
+          `${isEditing ? "Payment updated" : "Payment added"} successfully for ${outletName}.` +
+          (data.autoCreditAmount > 0
+            ? ` Remaining ₹${Number(data.autoCreditAmount).toFixed(2)} placed on 14-day credit from the payment date.`
+            : "")
         );
 
       } else {
@@ -1366,7 +1369,7 @@ function UpdatePayment() {
     (paymentDialogSale ? getRemainingBalance(paymentDialogSale) : 0);
 
   const paymentProgressPercentage = (() => {
-    const invoiceValue = Number(paymentSummary?.price ?? paymentDialogSale?.price) || 0;
+    const invoiceValue = getEffectiveInvoicePrice(paymentSummary ?? paymentDialogSale);
     const paidAmount = Number(paymentSummary?.paidAmount ?? (paymentDialogSale ? getPaidAmount(paymentDialogSale) : 0)) || 0;
     return invoiceValue > 0 ? Math.min(100, Math.max(0, (paidAmount / invoiceValue) * 100)) : 0;
   })();
@@ -1883,7 +1886,7 @@ function UpdatePayment() {
                 </MDTypography>
               ) : payments.length === 0 ? (
                 <MDTypography variant="body2" color="text" mb={3}>
-                  No payments recorded yet. Add cash/UPI/cheque until balance is ₹0. Credit is recorded separately and does not reduce balance.
+                  No payments recorded yet. After the first cash, UPI or cheque payment on a delivered invoice, any remaining balance is automatically placed on 14-day credit from the payment date. Credit does not count as paid.
                 </MDTypography>
               ) : (
                 <TableContainer
@@ -2233,7 +2236,8 @@ function UpdatePayment() {
                         }
                         fullWidth
                         value={paymentForm.amount}
-                        disabled={paymentForm.paymentMode === "cash"}
+                        disabled={paymentForm.paymentMode === "cash" || paymentForm.paymentMode === "credit"}
+                        InputProps={{ readOnly: paymentForm.paymentMode === "cash" || paymentForm.paymentMode === "credit" }}
                         onChange={(e) => handlePaymentFormChange("amount", e.target.value)}
                       />
                     </Grid>
@@ -2344,7 +2348,8 @@ function UpdatePayment() {
                       <Grid item xs={12} sm={6} md={3}>
                         <MDInput
                           type="number"
-                          label="Credit Days"
+                          label="Credit Days (maximum 14)"
+                          inputProps={{ min: 1, max: 14, step: 1 }}
                           fullWidth
                           value={paymentForm.creditDays}
                           onChange={(e) => handlePaymentFormChange("creditDays", e.target.value)}
@@ -2354,7 +2359,7 @@ function UpdatePayment() {
                   </Grid>
                   {paymentForm.paymentMode === "credit" && (
                     <MDTypography variant="caption" color="text" display="block" mt={1}>
-                      Credit is logged for tracking only. Balance stays the same until paid by cash, UPI, or cheque.
+                      The full remaining balance is placed on credit for up to 14 days. Balance stays the same until paid by cash, UPI, or cheque.
                     </MDTypography>
                   )}
                   <MDBox mt={2} display="flex" gap={1} flexWrap="wrap">

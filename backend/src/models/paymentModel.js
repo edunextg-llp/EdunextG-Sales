@@ -2,6 +2,12 @@ import db from '../config/db.js';
 import OrderCancellationModel from './orderCancellationModel.js';
 
 class PaymentModel {
+    static validateCreditDays(paymentMode, creditDays) {
+        if (paymentMode === 'credit' && (!Number.isInteger(Number(creditDays)) || Number(creditDays) < 1 || Number(creditDays) > 14)) {
+            throw Object.assign(new Error('Credit period must be between 1 and 14 days.'), { statusCode: 400 });
+        }
+    }
+
     static async getBySaleId(saleId) {
         const [rows] = await db.execute(
             `SELECT sp.id, sp.sale_id, sp.parent_credit_payment_id,
@@ -220,10 +226,22 @@ class PaymentModel {
 
     static async addPayment(saleId, data) {
         const { paymentDate, paymentMode, amount, collectorStaffId, collectorName, referenceNo, referenceDate, creditDays, parentCreditPaymentId, cashDetails, updatedBy } = data;
+        PaymentModel.validateCreditDays(paymentMode, creditDays);
         const connection = await db.getConnection();
 
         try {
             await connection.beginTransaction();
+
+            // Serialize first payments so concurrent requests cannot create duplicate credit.
+            const [saleRows] = await connection.execute(
+                'SELECT packaging_status FROM staff_sales WHERE id = ? FOR UPDATE',
+                [saleId]
+            );
+            if (!saleRows.length) throw new Error('SALE_NOT_FOUND');
+            const [existingPayments] = await connection.execute(
+                'SELECT id FROM sale_payments WHERE sale_id = ? LIMIT 1',
+                [saleId]
+            );
 
             const price = await PaymentModel.getEffectiveSalePrice(connection, saleId);
             if (price === null) {
@@ -233,6 +251,17 @@ class PaymentModel {
 
             const totalPaid = await PaymentModel.getTotalPaid(connection, saleId);
             const remaining = Math.round((price - totalPaid) * 100) / 100;
+
+            if (paymentMode === 'credit') {
+                const [credits] = await connection.execute(
+                    "SELECT id FROM sale_payments WHERE sale_id = ? AND payment_mode = 'credit' LIMIT 1",
+                    [saleId]
+                );
+                if (credits.length) throw Object.assign(new Error('This invoice already has a credit entry.'), { statusCode: 400 });
+                if (Math.abs(Number(amount) - remaining) > 0.001) {
+                    throw Object.assign(new Error('Credit must cover the full remaining invoice balance.'), { statusCode: 400 });
+                }
+            }
 
             if (amount > remaining + 0.001) {
                 const err = new Error('EXCEEDS_BALANCE');
@@ -283,10 +312,30 @@ class PaymentModel {
                 ]
             );
 
+            const creditBalance = Math.round((remaining - amount) * 100) / 100;
+            const autoCreditAmount = saleRows[0].packaging_status === 'delivered'
+                && existingPayments.length === 0
+                && !parentCreditId
+                && ['cash', 'upi', 'cheque'].includes(paymentMode)
+                && creditBalance > 0 ? creditBalance : 0;
+
+            if (autoCreditAmount > 0) {
+                await connection.execute(
+                    `INSERT INTO sale_payments
+                     (sale_id, payment_date, payment_mode, amount, credit_days, remarks,
+                      updated_by_id, updated_by_role, updated_by_name, updated_by_employee_code)
+                     VALUES (?, ?, 'credit', ?, 14, ?, ?, ?, ?, ?)`,
+                    [saleId, paymentDate, autoCreditAmount,
+                        'Remaining balance automatically placed on 14-day credit after first payment.',
+                        updatedBy?.id || null, updatedBy?.role || null,
+                        updatedBy?.name || null, updatedBy?.employeeCode || null]
+                );
+            }
+
             await PaymentModel.recalculateSaleTotals(connection, saleId);
             await connection.commit();
 
-            return PaymentModel.buildPaymentResponse(saleId);
+            return { ...await PaymentModel.buildPaymentResponse(saleId), autoCreditAmount };
         } catch (error) {
             await connection.rollback();
             throw error;
@@ -362,6 +411,7 @@ class PaymentModel {
 
     static async updatePayment(paymentId, saleId, data) {
         const { paymentDate, paymentMode, amount, collectorStaffId, collectorName, referenceNo, referenceDate, creditDays, cashDetails, updatedBy } = data;
+        PaymentModel.validateCreditDays(paymentMode, creditDays);
         const connection = await db.getConnection();
 
         try {

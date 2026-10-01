@@ -1119,7 +1119,7 @@ function DmsStock() {
                     Item List
                   </MDTypography>
                   <MDTypography variant="caption" color="text" display="block" mt={0.5}>
-                    Showing up to 200 saved rows per upload. Use the date filter to view a specific upload.
+                    Search all saved rows in the selected upload. Use the date filter to view a specific upload.
                   </MDTypography>
                   {stockImport && (
                     <MDTypography variant="caption" color="text" display="block" mt={0.5}>

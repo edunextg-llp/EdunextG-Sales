@@ -3320,7 +3320,7 @@ export const addSalePayment = async (req, res) => {
             return res.status(400).json({ error: 'Cannot add credit payment inside another credit entry.' });
         }
         console.error('Error adding sale payment:', error);
-        res.status(500).json({ error: 'Internal server error' });
+        res.status(error.statusCode || 500).json({ error: error.statusCode === 400 ? error.message : 'Internal server error' });
     }
 };
 
@@ -3427,7 +3427,7 @@ export const editSalePayment = async (req, res) => {
             return res.status(400).json({ error: 'Cannot change this credit payment entry into credit.' });
         }
         console.error('Error updating sale payment:', error);
-        res.status(500).json({ error: 'Internal server error' });
+        res.status(error.statusCode || 500).json({ error: error.statusCode === 400 ? error.message : 'Internal server error' });
     }
 };
 

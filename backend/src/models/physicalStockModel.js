@@ -521,8 +521,17 @@ class PhysicalStockModel {
         return rows.map((row) => PhysicalStockModel.normalizeImport(row));
     }
 
-    static async getMergedItemsByDmsImportId(dmsImportId, limit = 2000) {
+    static async getCurrentItemsByDmsImportId(dmsImportId, limit = 2000) {
+        return PhysicalStockModel.getMergedItemsByDmsImportId(dmsImportId, limit, true);
+    }
+
+    static async getMergedItemsByDmsImportId(dmsImportId, limit = 2000, companyWide = false) {
         const numericLimit = Math.min(Math.max(parseInt(limit, 10) || 2000, 1), 2000);
+        // A partial upload must not hide products saved in earlier uploads of this company.
+        const importScope = companyWide
+            ? `IN (SELECT id FROM dms_stock_imports WHERE company_id =
+                (SELECT company_id FROM dms_stock_imports WHERE id = ?))`
+            : '= ?';
         const [rows] = await db.execute(
             `SELECT psi.id, psi.import_id, psi.product_erp_id, psi.product_name, psi.product_division,
                     psi.variant_name, psi.pcs_per_box, psi.physical_stock_in_case, psi.physical_stock_in_pcs,
@@ -544,10 +553,10 @@ class PhysicalStockModel {
                  SELECT LOWER(TRIM(psi2.product_erp_id)) AS erp_key, MAX(psi2.id) AS max_item_id
                  FROM physical_stock_items psi2
                  INNER JOIN physical_stock_imports p2 ON p2.id = psi2.import_id
-                 WHERE p2.dms_import_id = ?
+                 WHERE p2.dms_import_id ${importScope}
                  GROUP BY LOWER(TRIM(psi2.product_erp_id))
              ) latest ON psi.id = latest.max_item_id
-             WHERE p.dms_import_id = ?
+             WHERE p.dms_import_id ${importScope}
              ORDER BY psi.product_erp_id ASC, psi.id ASC
              LIMIT ${numericLimit}`,
             [dmsImportId, dmsImportId]
@@ -651,8 +660,8 @@ class PhysicalStockModel {
 
         const dmsImportId = dmsImport.id;
         const [physicalItems, dmsItems] = await Promise.all([
-            PhysicalStockModel.getMergedItemsByDmsImportId(dmsImportId, 2000),
-            DmsStockModel.getItems(dmsImportId, 2000),
+            PhysicalStockModel.getCurrentItemsByDmsImportId(dmsImportId, 2000),
+            DmsStockModel.getLatestItemsByCompanyId(dmsImport.company_id, 2000),
         ]);
 
         if (!physicalItems.length) {
@@ -800,7 +809,7 @@ class PhysicalStockModel {
             throw new Error(`No DMS stock upload found for company "${name}".`);
         }
 
-        const physicalItems = await PhysicalStockModel.getMergedItemsByDmsImportId(dmsImport.id, 2000);
+        const physicalItems = await PhysicalStockModel.getCurrentItemsByDmsImportId(dmsImport.id, 2000);
         const physicalByErp = new Map(physicalItems.map((item) => [
             String(item.product_erp_id || '').trim().toLowerCase(),
             item,

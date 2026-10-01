@@ -28,7 +28,7 @@ export const create = async (req, res) => {
         const dmsImport = await DmsStockModel.getLatestImportByCompanyName(company.name);
         if (!dmsImport) return res.status(400).json({ error: 'No Item List stock found for this company.' });
         const dms = await DmsStockModel.getLatestItemsByCompanyId(companyId, 2000);
-        const physical = await PhysicalStockModel.getMergedItemsByDmsImportId(dmsImport.id);
+        const physical = await PhysicalStockModel.getCurrentItemsByDmsImportId(dmsImport.id);
         const stock = buildCurrentStockDiff(physical, dms);
         const items = requested.map((entry) => {
             const product = stock.find((row) =>

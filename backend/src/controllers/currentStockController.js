@@ -187,7 +187,7 @@ export const getCurrentStock = async (req, res) => {
         }
 
         const [physicalItems, physicalImports, dmsItems] = await Promise.all([
-            PhysicalStockModel.getMergedItemsByDmsImportId(dmsImportId, 2000),
+            PhysicalStockModel.getCurrentItemsByDmsImportId(dmsImportId, 2000),
             PhysicalStockModel.getImportsByDmsImportId(dmsImportId),
             DmsStockModel.getLatestItemsByCompanyId(dmsResult.import.company_id, 2000),
         ]);
