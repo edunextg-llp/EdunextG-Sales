@@ -12,6 +12,7 @@ import StaffModel from '../models/staffModel.js';
 const TIME_ZONE = 'Asia/Kolkata';
 const COMPANY_NAME = 'BAWARCHEE FOOD PACKING PVT. LTD.';
 const MAIL_SUBJECT = 'TODAY’S BIT – OVERDUE AND CREDIT BILL DUE STATEMENT';
+const NO_REPLY_NOTE = 'This is a system-generated mail. Kindly do not reply to this mail.';
 const WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
 let runInProgress = false;
@@ -76,6 +77,7 @@ export function buildMailBody({ bitName, dateKey, companyNames }) {
     }
 
     lines.push('', 'Regards,', COMPANY_NAME);
+    lines.push('', NO_REPLY_NOTE);
     return lines.join('\n');
 }
 
@@ -91,6 +93,11 @@ const textToHtml = (text) =>
         .split('\n')
         .map((line) => (line ? escapeHtml(line) : '&nbsp;'))
         .map((line) => (line.startsWith('SUBJECT:') ? `<strong>${line}</strong>` : line))
+        .map((line) =>
+            line === escapeHtml(NO_REPLY_NOTE)
+                ? `<span style="color: #6b7280; font-size: 12px; font-style: italic;">${line}</span>`
+                : line
+        )
         .join('<br>')}</div>`;
 
 // ---------- PDF attachment ----------
