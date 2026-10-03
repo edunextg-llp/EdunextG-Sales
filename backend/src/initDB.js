@@ -2,6 +2,7 @@ import mysql from 'mysql2/promise';
 import dotenv from 'dotenv';
 import bcrypt from 'bcryptjs';
 import { migrateDeliveryOutletLocation } from './migrations/migrateDeliveryOutletLocation.js';
+import { migrateAreas } from './migrations/migrateAreas.js';
 dotenv.config();
 
 async function initDB() {
@@ -157,6 +158,7 @@ async function initDB() {
     `);
     console.log('Staff Counters table created');
     await migrateDeliveryOutletLocation(connection);
+    await migrateAreas(connection);
 
     try {
         await connection.query(`

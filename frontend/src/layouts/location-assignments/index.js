@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import Card from "@mui/material/Card";
 import Grid from "@mui/material/Grid";
 import Icon from "@mui/material/Icon";
-import { Autocomplete, FormControl, InputLabel, MenuItem, Select, Tab, Tabs } from "@mui/material";
+import { Alert, Autocomplete, FormControl, InputLabel, MenuItem, Select, Tab, Tabs } from "@mui/material";
 
 import MDBox from "components/MDBox";
 import MDButton from "components/MDButton";
@@ -13,7 +13,8 @@ import DashboardNavbar from "examples/Navbars/DashboardNavbar";
 import Footer from "examples/Footer";
 import { useAuth } from "context/AuthContext";
 
-const API = "https://bawarchee.edunextg.co/api";
+const API = process.env.REACT_APP_API_URL || "https://bawarchee.edunextg.co/api";
+const normalizeAreaName = (name) => String(name || "").trim().replace(/\s+/g, " ").toUpperCase();
 const routeDays = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 
 const emptyAssignments = () => ({
@@ -32,6 +33,33 @@ function LocationAssignments() {
   const [activeTab, setActiveTab] = useState(0);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [areas, setAreas] = useState([]);
+  const [areasLoading, setAreasLoading] = useState(true);
+  const [areasError, setAreasError] = useState("");
+
+  useEffect(() => {
+    const controller = new AbortController();
+    const loadAreas = async () => {
+      setAreasLoading(true);
+      try {
+        const response = await fetch(`${API}/staff/areas/options`, {
+          signal: controller.signal,
+          headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
+        });
+        const data = await response.json();
+        if (!response.ok || !Array.isArray(data)) throw new Error(data.error || "Unable to load areas.");
+        setAreas(data);
+        setAreasError("");
+      } catch (error) {
+        if (!controller.signal.aborted) setAreasError(error.message);
+      } finally {
+        if (!controller.signal.aborted) setAreasLoading(false);
+      }
+    };
+    void loadAreas();
+    window.addEventListener("focus", loadAreas);
+    return () => { controller.abort(); window.removeEventListener("focus", loadAreas); };
+  }, []);
 
   useEffect(() => {
     if (!isSelfService || !user?.staffId) return;
@@ -136,11 +164,15 @@ function LocationAssignments() {
 
   const saveAssignments = async () => {
     if (!selectedStaff) return;
+    if (days.some((day) => (assignments[day] || []).some((location) => !areas.includes(normalizeAreaName(location.locationName))))) {
+      alert("Select an area for every row, or remove empty rows.");
+      return;
+    }
     setSaving(true);
     try {
       const response = await fetch(`${API}/staff/${selectedStaff.id}/locations`, {
         method: "PUT",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${localStorage.getItem("token")}` },
         body: JSON.stringify({ assignments }),
       });
       const data = await response.json().catch(() => ({}));
@@ -166,9 +198,10 @@ function LocationAssignments() {
                 </MDTypography>
                 <MDTypography variant="body2" color="text" mb={3}>
                   {isSelfService
-                    ? "Add and manage your own working locations for each day."
-                    : "Choose the staff type, company, and staff member, then manage day-wise locations."}
+                    ? "Search and select saved areas for each working day."
+                    : "Choose a staff member, then search and select areas from Create Area for each day."}
                 </MDTypography>
+                {areasError && <Alert severity="error">{areasError} Refresh the page to retry.</Alert>}
 
                 {!isSelfService && <Grid container spacing={2}>
                   <Grid item xs={12} md={4}>
@@ -225,8 +258,8 @@ function LocationAssignments() {
                       <MDBox key={day} hidden={activeTab !== dayIndex} py={3}>
                         <MDBox display="flex" justifyContent="space-between" alignItems="center" mb={2}>
                           <MDTypography variant="subtitle2">Assigned Locations for {day}</MDTypography>
-                          <MDButton size="small" color="dark" variant="gradient" onClick={() => addLocation(day)}>
-                            <Icon sx={{ mr: 1 }}>add</Icon>Add Location
+                          <MDButton size="small" color="dark" variant="gradient" disabled={areasLoading || Boolean(areasError) || saving} onClick={() => addLocation(day)}>
+                            <Icon sx={{ mr: 1 }}>add</Icon>Assign Area
                           </MDButton>
                         </MDBox>
 
@@ -235,11 +268,16 @@ function LocationAssignments() {
                         )}
                         {(assignments[day] || []).map((location, index) => (
                           <MDBox key={`${day}-${index}`} display="flex" gap={2} alignItems="center" mb={2}>
-                            <MDInput
-                              label="Location Name"
+                            <Autocomplete
                               fullWidth
-                              value={location.locationName}
-                              onChange={(event) => updateLocation(day, index, event.target.value)}
+                              options={areas}
+                              loading={areasLoading}
+                              disabled={areasLoading || saving || Boolean(areasError)}
+                              value={normalizeAreaName(location.locationName) || null}
+                              onChange={(_, value) => updateLocation(day, index, value || "")}
+                              getOptionDisabled={(option) => (assignments[day] || []).some((entry, entryIndex) => entryIndex !== index && normalizeAreaName(entry.locationName) === option)}
+                              noOptionsText="No matching areas. Add new areas in Create Area."
+                              renderInput={(params) => <MDInput {...params} label="Search and select area" />}
                             />
                             <MDButton color="error" variant="text" onClick={() => removeLocation(day, index)}>
                               <Icon>delete</Icon>
@@ -250,7 +288,7 @@ function LocationAssignments() {
                     ))}
 
                     <MDBox display="flex" justifyContent="flex-end" mt={2}>
-                      <MDButton color="info" variant="gradient" disabled={loading || saving} onClick={saveAssignments}>
+                      <MDButton color="info" variant="gradient" disabled={loading || saving || areasLoading || Boolean(areasError)} onClick={saveAssignments}>
                         {saving ? "Saving..." : "Save Assignments"}
                       </MDButton>
                     </MDBox>

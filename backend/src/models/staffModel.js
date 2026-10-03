@@ -1,4 +1,5 @@
 import db from '../config/db.js';
+import { normalizeAreaName } from '../migrations/migrateAreas.js';
 import { formatStickerNumber } from '../utils/stickerNumber.js';
 import { getCompanyBillPrefix, normalizeInvoiceNumber } from '../utils/invoiceNumber.js';
 import PhysicalStockModel from './physicalStockModel.js';
@@ -448,6 +449,25 @@ class StaffModel {
         return rows;
     }
 
+    static async getAreaDirectory() {
+        const [rows] = await db.execute(`
+            SELECT location_name, 'outlet' AS source FROM staff_counters
+            WHERE location_name IS NOT NULL AND TRIM(location_name) <> ''
+            UNION ALL
+            SELECT location_name, 'assignment' AS source FROM staff_locations
+            WHERE location_name IS NOT NULL AND TRIM(location_name) <> ''
+            UNION ALL
+            SELECT name AS location_name, 'area' AS source FROM areas
+        `);
+        const areas = new Map();
+        for (const row of rows) {
+            const name = normalizeAreaName(row.location_name);
+            if (!areas.has(name)) areas.set(name, { name, outlet_count: 0, assignment_count: 0 });
+            if (row.source !== 'area') areas.get(name)[row.source === 'outlet' ? 'outlet_count' : 'assignment_count'] += 1;
+        }
+        return [...areas.values()].sort((a, b) => a.name.localeCompare(b.name));
+    }
+
     static async getAllAssignedLocationNames() {
         const [rows] = await db.execute(
             `SELECT DISTINCT location_name
@@ -456,6 +476,18 @@ class StaffModel {
              ORDER BY location_name`
         );
         return rows.map((row) => row.location_name);
+    }
+
+    static async createArea(name) {
+        const normalized = normalizeAreaName(name);
+        const existing = await this.getAreaDirectory();
+        if (existing.some(area => area.name === normalized)) {
+            const error = new Error('This area already exists. Use a different name, such as DUMDUM-1.');
+            error.code = 'ER_DUP_ENTRY';
+            throw error;
+        }
+        const [result] = await db.execute('INSERT INTO areas (name) VALUES (?)', [normalized]);
+        return { id: result.insertId, name: normalized };
     }
 
     static async getAll(includeInactive = false, companyId = null) {

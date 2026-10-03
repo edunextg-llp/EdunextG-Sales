@@ -3,6 +3,7 @@ import dotenv from 'dotenv';
 import bcrypt from 'bcryptjs';
 import { migrateStaffSalesUniqueIndex } from './migrations/migrateStaffSalesUniqueIndex.js';
 import { migrateDeliveryOutletLocation } from './migrations/migrateDeliveryOutletLocation.js';
+import { migrateAreas } from './migrations/migrateAreas.js';
 
 dotenv.config();
 
@@ -175,6 +176,7 @@ export async function ensureSchema() {
             'google_location on staff_counters'
         );
         await migrateDeliveryOutletLocation(connection);
+        await migrateAreas(connection);
         await tryQuery(
             connection,
             `ALTER TABLE staff_counters ADD COLUMN whatsapp_number VARCHAR(20) NULL`,

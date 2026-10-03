@@ -1,4 +1,60 @@
 import StaffModel from '../models/staffModel.js';
+import { normalizeAreaName } from '../migrations/migrateAreas.js';
+
+export const createArea = async (req, res) => {
+    const name = typeof req.body?.name === 'string' ? normalizeAreaName(req.body.name) : '';
+    if (!name || name.length > 255) return res.status(400).json({ error: 'Enter an area name between 1 and 255 characters.' });
+    try {
+        return res.status(201).json(await StaffModel.createArea(name));
+    } catch (error) {
+        if (error.code === 'ER_DUP_ENTRY') return res.status(409).json({ error: 'This area already exists. Use a different name, such as DUMDUM-1.' });
+        console.error('Error creating area:', error);
+        return res.status(500).json({ error: 'Unable to create area.' });
+    }
+};
+
+export const getAreaDirectory = async (req, res) => {
+    try {
+        return res.json(await StaffModel.getAreaDirectory());
+    } catch (error) {
+        console.error('Error loading areas:', error);
+        return res.status(500).json({ error: 'Unable to load areas.' });
+    }
+};
+
+export const getAreaOptions = async (req, res) => {
+    try {
+        const areas = await StaffModel.getAreaDirectory();
+        return res.json(areas.map(area => area.name));
+    } catch (error) {
+        console.error('Error loading area options:', error);
+        return res.status(500).json({ error: 'Unable to load areas.' });
+    }
+};
+
+export const exportAreaDirectory = async (req, res) => {
+    try {
+        const areas = await StaffModel.getAreaDirectory();
+        const workbook = new ExcelJS.Workbook();
+        const sheet = workbook.addWorksheet('Areas');
+        sheet.columns = [
+            { header: 'Area name', key: 'name', width: 38 },
+            { header: 'Outlets', key: 'outlet_count', width: 14 },
+            { header: 'Staff assignments', key: 'assignment_count', width: 22 },
+        ];
+        sheet.addRows(areas);
+        sheet.getRow(1).font = { bold: true };
+        sheet.views = [{ state: 'frozen', ySplit: 1 }];
+        sheet.autoFilter = 'A1:C1';
+        const buffer = await workbook.xlsx.writeBuffer();
+        res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        res.setHeader('Content-Disposition', 'attachment; filename="areas.xlsx"');
+        return res.send(buffer);
+    } catch (error) {
+        console.error('Error exporting areas:', error);
+        return res.status(500).json({ error: 'Unable to download areas.' });
+    }
+};
 import PaymentModel from '../models/paymentModel.js';
 import CompanyModel from '../models/companyModel.js';
 import DeliveryBoyModel from '../models/deliveryBoyModel.js';
@@ -2185,14 +2241,19 @@ export const updateStaffLocations = async (req, res) => {
         }
 
         const assignments = {};
+        const areaNames = new Set((await StaffModel.getAreaDirectory()).map(area => area.name));
         for (const day of allowedDays) {
             const locations = submitted[day] || [];
             if (!Array.isArray(locations)) {
                 return res.status(400).json({ error: `Locations for ${day} must be a list.` });
             }
             assignments[day] = locations
-                .map((location) => ({ locationName: String(location?.locationName || '').trim() }))
+                .map((location) => ({ locationName: normalizeAreaName(location?.locationName) }))
                 .filter((location) => location.locationName);
+            if (assignments[day].some(location => !areaNames.has(location.locationName))) {
+                return res.status(400).json({ error: 'Select an existing area. New areas must be added in Create Area.' });
+            }
+            assignments[day] = [...new Map(assignments[day].map(location => [location.locationName, location])).values()];
         }
 
         await StaffModel.replaceLocations(staffId, assignments);

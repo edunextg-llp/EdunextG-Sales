@@ -1,5 +1,6 @@
 // Material Dashboard 2 React layouts
 import Dashboard from "layouts/dashboard";
+import Area from "./layouts/area/index.js";
 import PermissionManagement from "layouts/permission-management";
 import Welcome from "layouts/welcome";
 // import Tables from "layouts/tables";
@@ -221,6 +222,15 @@ const routes = [
     icon: <Icon fontSize="small">people</Icon>,
     allowedRoles: ["admin", "packaging_staff", "delivery_boy", "staff"],
     collapse: [
+      {
+        type: "collapse",
+        name: "Create Area",
+        key: "area",
+        icon: <Icon fontSize="small">place</Icon>,
+        route: "/area",
+        component: <Area />,
+        allowedRoles: ["admin"],
+      },
       {
         type: "collapse",
         name: "Add Company",
