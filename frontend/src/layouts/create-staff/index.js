@@ -88,6 +88,7 @@ const createEmptyFormData = () => ({
   contactNo: "",
   whatsappNumber: "",
   whatsappSameAsContact: false,
+  email: "",
   dob: "",
   aadharNo: "",
   aadharDocumentUrl: "",
@@ -308,7 +309,7 @@ function CreateStaff() {
       const searchText = employeeSearchInput.trim().toLowerCase();
       const matchesSearch =
         !searchText ||
-        [staff.name, staff.company_name, staff.contact_no]
+        [staff.name, staff.company_name, staff.contact_no, staff.email]
           .filter(Boolean)
           .some((value) => String(value).toLowerCase().includes(searchText));
 
@@ -419,6 +420,7 @@ function CreateStaff() {
         whatsappSameAsContact:
           Boolean(data.contact_no) &&
           String(data.whatsapp_number || data.contact_no) === String(data.contact_no),
+        email: data.email || "",
         dob: data.dob ? String(data.dob).slice(0, 10) : "",
         aadharNo: data.aadhar_no || "",
         aadharDocumentUrl: data.aadhar_document_url || "",
@@ -479,6 +481,12 @@ function CreateStaff() {
       return;
     }
 
+    const trimmedEmail = formData.email.trim();
+    if (trimmedEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedEmail)) {
+      alert("Please enter a valid email address.");
+      return;
+    }
+
     if (formData.aadharNo && formData.aadharNo.length !== 12) {
       alert("Aadhar number must be 12 digits.");
       return;
@@ -502,6 +510,7 @@ function CreateStaff() {
           whatsappNumber: formData.whatsappSameAsContact
             ? formData.contactNo
             : formData.whatsappNumber,
+          email: formData.email.trim() || null,
           dob: formData.dob || null,
           aadharNo: formData.aadharNo || null,
           aadharDocumentUrl: formData.aadharNo ? formData.aadharDocumentUrl || null : null,
@@ -629,40 +638,44 @@ function CreateStaff() {
                       sx={{
                         tableLayout: "fixed",
                         width: "100%",
-                        minWidth: 720,
+                        minWidth: 900,
                         "& .MuiTableCell-root": { overflow: "hidden" },
                       }}
                     >
                       <colgroup>
                         <col style={{ width: "6%" }} />
-                        <col style={{ width: "22%" }} />
-                        <col style={{ width: "20%" }} />
-                        <col style={{ width: "10%" }} />
-                        <col style={{ width: "14%" }} />
-                        <col style={{ width: "14%" }} />
-                        <col style={{ width: "14%" }} />
+                        <col style={{ width: "17%" }} />
+                        <col style={{ width: "15%" }} />
+                        <col style={{ width: "8%" }} />
+                        <col style={{ width: "12%" }} />
+                        <col style={{ width: "18%" }} />
+                        <col style={{ width: "12%" }} />
+                        <col style={{ width: "12%" }} />
                       </colgroup>
                       <TableHead sx={tableHeadRowSx}>
                         <TableRow>
                           <TableCell align="center" sx={{ ...tableHeadSx, width: "6%" }}>
                             Sr No
                           </TableCell>
-                          <TableCell align="left" sx={{ ...tableHeadSx, width: "22%" }}>
+                          <TableCell align="left" sx={{ ...tableHeadSx, width: "17%" }}>
                             Company Name
                           </TableCell>
-                          <TableCell align="left" sx={{ ...tableHeadSx, width: "20%" }}>
+                          <TableCell align="left" sx={{ ...tableHeadSx, width: "15%" }}>
                             Staff Name
                           </TableCell>
-                          <TableCell align="center" sx={{ ...tableHeadSx, width: "10%" }}>
+                          <TableCell align="center" sx={{ ...tableHeadSx, width: "8%" }}>
                             Type
                           </TableCell>
-                          <TableCell align="center" sx={{ ...tableHeadSx, width: "14%" }}>
+                          <TableCell align="center" sx={{ ...tableHeadSx, width: "12%" }}>
                             Phone Number
                           </TableCell>
-                          <TableCell align="center" sx={{ ...tableHeadSx, width: "14%" }}>
+                          <TableCell align="left" sx={{ ...tableHeadSx, width: "18%" }}>
+                            Email ID
+                          </TableCell>
+                          <TableCell align="center" sx={{ ...tableHeadSx, width: "12%" }}>
                             Status
                           </TableCell>
-                          <TableCell align="center" sx={{ ...tableHeadSx, width: "14%" }}>
+                          <TableCell align="center" sx={{ ...tableHeadSx, width: "12%" }}>
                             Action
                           </TableCell>
                         </TableRow>
@@ -701,6 +714,20 @@ function CreateStaff() {
                               sx={{ ...tableBodySx, borderBottom: "1px solid #e5e7eb", fontSize: "0.875rem", color: "#374151" }}
                             >
                               {staff.contact_no}
+                            </TableCell>
+                            <TableCell
+                              align="left"
+                              title={staff.email || ""}
+                              sx={{
+                                ...tableBodySx,
+                                borderBottom: "1px solid #e5e7eb",
+                                fontSize: "0.875rem",
+                                color: "#374151",
+                                whiteSpace: "nowrap",
+                                textOverflow: "ellipsis",
+                              }}
+                            >
+                              {staff.email || "—"}
                             </TableCell>
                             <TableCell align="center" sx={{ ...tableBodySx, borderBottom: "1px solid #e5e7eb" }}>
                               <MDBox display="flex" alignItems="center" justifyContent="center" gap={0.5}>
@@ -927,6 +954,18 @@ function CreateStaff() {
                   }
                 />
               </Grid>
+              <Grid item xs={12} md={4}>
+                <MDInput
+                  type="email"
+                  label="Email ID"
+                  name="email"
+                  fullWidth
+                  value={formData.email}
+                  onChange={handleInputChange}
+                  inputProps={{ maxLength: 255, autoComplete: "email" }}
+                  helperText="Optional"
+                />
+              </Grid>
             </Grid>
 
             <Divider sx={{ mb: 3 }} />
@@ -1099,6 +1138,12 @@ function CreateStaff() {
                   <MDTypography variant="caption" color="text">WhatsApp No</MDTypography>
                   <MDTypography variant="body2" fontWeight="medium">
                     {selectedStaffDetails.whatsapp_number || selectedStaffDetails.contact_no || "—"}
+                  </MDTypography>
+                </Grid>
+                <Grid item xs={12} sm={6}>
+                  <MDTypography variant="caption" color="text">Email ID</MDTypography>
+                  <MDTypography variant="body2" fontWeight="medium" sx={{ wordBreak: "break-all" }}>
+                    {selectedStaffDetails.email || "—"}
                   </MDTypography>
                 </Grid>
                 <Grid item xs={12} sm={6}>

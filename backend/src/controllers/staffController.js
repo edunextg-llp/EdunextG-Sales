@@ -32,6 +32,19 @@ export const getAreaOptions = async (req, res) => {
     }
 };
 
+export const deleteArea = async (req, res) => {
+    const name = typeof req.body?.name === 'string' ? normalizeAreaName(req.body.name) : '';
+    if (!name || name.length > 255) return res.status(400).json({ error: 'A valid area name is required.' });
+    try {
+        if (!await StaffModel.deleteArea(name)) return res.status(404).json({ error: 'Area not found.' });
+        return res.json({ message: 'Area deleted successfully.' });
+    } catch (error) {
+        if (error.code === 'AREA_IN_USE') return res.status(409).json({ error: error.message });
+        console.error('Error deleting area:', error);
+        return res.status(500).json({ error: 'Unable to delete area.' });
+    }
+};
+
 export const exportAreaDirectory = async (req, res) => {
     try {
         const areas = await StaffModel.getAreaDirectory();
@@ -208,12 +221,24 @@ export const updateDamageListItem = async (req, res) => {
     } catch (error) { res.status(400).json({ error: error.message || 'Unable to update damage item' }); }
 };
 
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+function validateOptionalEmail(email) {
+    const value = String(email || '').trim();
+    if (!value) return { valid: true, value: null };
+    if (value.length > 255 || !EMAIL_PATTERN.test(value)) {
+        return { valid: false, error: 'Please enter a valid email address.' };
+    }
+    return { valid: true, value: value.toLowerCase() };
+}
+
 function buildStaffProfile(body = {}) {
     const whatsappSource = String(body.whatsappNumber || '').trim() || String(body.contactNo || '').trim();
 
     return {
         dob: normalizeDateInput(body.dob),
         whatsappNumber: whatsappSource || null,
+        email: body.email ? String(body.email).trim().toLowerCase() : null,
         aadharNo: body.aadharNo ? String(body.aadharNo).replace(/\D/g, '') : null,
         aadharDocumentUrl: body.aadharDocumentUrl ? String(body.aadharDocumentUrl).trim() : null,
         pccCertificateUrl: body.pccCertificateUrl ? String(body.pccCertificateUrl).trim() : null,
@@ -494,6 +519,7 @@ export const createStaff = async (req, res) => {
             assignments = {},
             dob,
             whatsappNumber,
+            email,
             aadharNo,
             aadharDocumentUrl,
             pccCertificateUrl,
@@ -511,6 +537,11 @@ export const createStaff = async (req, res) => {
         const whatsappValidation = validateDigitsOnly(whatsappSource, 'WhatsApp number');
         if (!whatsappValidation.valid) {
             return res.status(400).json({ error: whatsappValidation.error });
+        }
+
+        const emailValidation = validateOptionalEmail(email);
+        if (!emailValidation.valid) {
+            return res.status(400).json({ error: emailValidation.error });
         }
 
         const normalizedAadharNo = aadharNo ? String(aadharNo).replace(/\D/g, '') : '';
@@ -533,6 +564,7 @@ export const createStaff = async (req, res) => {
         const profile = buildStaffProfile({
             dob,
             whatsappNumber: whatsappValidation.value,
+            email: emailValidation.value,
             aadharNo: normalizedAadharNo,
             aadharDocumentUrl,
             pccCertificateUrl,
@@ -905,6 +937,7 @@ export const updateStaff = async (req, res) => {
             assignments = {},
             dob,
             whatsappNumber,
+            email,
             aadharNo,
             aadharDocumentUrl,
             pccCertificateUrl,
@@ -922,6 +955,11 @@ export const updateStaff = async (req, res) => {
         const whatsappValidation = validateDigitsOnly(whatsappSource, 'WhatsApp number');
         if (!whatsappValidation.valid) {
             return res.status(400).json({ error: whatsappValidation.error });
+        }
+
+        const emailValidation = validateOptionalEmail(email);
+        if (!emailValidation.valid) {
+            return res.status(400).json({ error: emailValidation.error });
         }
 
         const normalizedAadharNo = aadharNo ? String(aadharNo).replace(/\D/g, '') : '';
@@ -944,6 +982,7 @@ export const updateStaff = async (req, res) => {
         const profile = buildStaffProfile({
             dob,
             whatsappNumber: whatsappValidation.value,
+            email: emailValidation.value,
             aadharNo: normalizedAadharNo,
             aadharDocumentUrl,
             pccCertificateUrl,
@@ -3920,6 +3959,26 @@ export const getTakenBillsReport = async (req, res) => {
     }
 };
 
+const MAX_COMPANY_EMAILS = 20;
+
+function normalizeCompanyEmails(rawEmails) {
+    if (rawEmails === undefined || rawEmails === null) return { valid: true, value: [] };
+    const list = Array.isArray(rawEmails) ? rawEmails : String(rawEmails).split(/[,;\s]+/);
+    const unique = [];
+    for (const item of list) {
+        const email = String(item || '').trim().toLowerCase();
+        if (!email) continue;
+        if (email.length > 255 || !EMAIL_PATTERN.test(email)) {
+            return { valid: false, error: `Invalid email address: ${email}` };
+        }
+        if (!unique.includes(email)) unique.push(email);
+    }
+    if (unique.length > MAX_COMPANY_EMAILS) {
+        return { valid: false, error: `A company can have at most ${MAX_COMPANY_EMAILS} email IDs.` };
+    }
+    return { valid: true, value: unique };
+}
+
 export const createCompany = async (req, res) => {
     try {
         const name = String(req.body.name || '').trim();
@@ -3941,8 +4000,13 @@ export const createCompany = async (req, res) => {
             }
         }
 
-        const { id, code } = await CompanyModel.create(name, type, about || null);
-        res.status(201).json({ id, code, name, type, about });
+        const emailsValidation = normalizeCompanyEmails(req.body.emails);
+        if (!emailsValidation.valid) {
+            return res.status(400).json({ error: emailsValidation.error });
+        }
+
+        const { id, code } = await CompanyModel.create(name, type, about || null, emailsValidation.value);
+        res.status(201).json({ id, code, name, type, about, emails: emailsValidation.value });
     } catch (error) {
         if (error.code === 'ER_DUP_ENTRY') {
             return res.status(409).json({ error: 'A company with this name already exists.' });
@@ -3977,15 +4041,23 @@ export const updateCompany = async (req, res) => {
             }
         }
 
+        const emailsProvided = Object.prototype.hasOwnProperty.call(req.body, 'emails');
+        const emailsValidation = normalizeCompanyEmails(req.body.emails);
+        if (!emailsValidation.valid) {
+            return res.status(400).json({ error: emailsValidation.error });
+        }
+
         const existing = await CompanyModel.getById(idValidation.value);
         if (!existing) {
             return res.status(404).json({ error: 'Company not found.' });
         }
 
+        const emails = emailsProvided ? emailsValidation.value : existing.emails;
         const affectedRows = await CompanyModel.updateById(idValidation.value, {
             name,
             type,
             about: about || null,
+            emails: emailsProvided ? emails : undefined,
         });
         if (affectedRows === 0) {
             return res.status(404).json({ error: 'Company not found.' });
@@ -3997,6 +4069,7 @@ export const updateCompany = async (req, res) => {
             name,
             type,
             about: about || null,
+            emails,
         });
     } catch (error) {
         if (error.code === 'ER_DUP_ENTRY') {

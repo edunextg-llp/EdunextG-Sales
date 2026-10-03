@@ -1,7 +1,30 @@
 import db from '../config/db.js';
 import { formatCompanyCode } from '../utils/companyCode.js';
 
+const EMAILS_SUBQUERY = `
+    LEFT JOIN (
+        SELECT company_id, GROUP_CONCAT(email ORDER BY id SEPARATOR ',') AS emails
+        FROM company_emails
+        GROUP BY company_id
+    ) ce ON ce.company_id = c.id`;
+
+const withEmailList = (row) => {
+    if (!row) return row;
+    const { emails, ...rest } = row;
+    return { ...rest, emails: emails ? String(emails).split(',') : [] };
+};
+
 class CompanyModel {
+    static async setEmails(companyId, emails = [], connection = db) {
+        await connection.execute('DELETE FROM company_emails WHERE company_id = ?', [companyId]);
+        for (const email of emails) {
+            await connection.execute(
+                'INSERT IGNORE INTO company_emails (company_id, email) VALUES (?, ?)',
+                [companyId, email]
+            );
+        }
+    }
+
     static async getNextCompanyCode(connection) {
         await connection.execute(
             'INSERT IGNORE INTO company_sequence (id, seq_value) VALUES (1, 0)'
@@ -48,28 +71,27 @@ class CompanyModel {
     }
 
     static async getAll(type = null) {
+        const baseSql = `SELECT c.id, c.code, c.name, c.type, c.about, c.created_at, ce.emails
+             FROM companies c ${EMAILS_SUBQUERY}`;
         if (type) {
-            const [rows] = await db.execute(
-                'SELECT id, code, name, type, about, created_at FROM companies WHERE type = ? ORDER BY name',
-                [type]
-            );
-            return rows;
+            const [rows] = await db.execute(`${baseSql} WHERE c.type = ? ORDER BY c.name`, [type]);
+            return rows.map(withEmailList);
         }
-        const [rows] = await db.execute(
-            'SELECT id, code, name, type, about, created_at FROM companies ORDER BY name'
-        );
-        return rows;
+        const [rows] = await db.execute(`${baseSql} ORDER BY c.name`);
+        return rows.map(withEmailList);
     }
 
     static async getById(id) {
         const [rows] = await db.execute(
-            'SELECT id, code, name, type, about, created_at FROM companies WHERE id = ?',
+            `SELECT c.id, c.code, c.name, c.type, c.about, c.created_at, ce.emails
+             FROM companies c ${EMAILS_SUBQUERY}
+             WHERE c.id = ?`,
             [id]
         );
-        return rows[0] || null;
+        return withEmailList(rows[0]) || null;
     }
 
-    static async create(name, type, about) {
+    static async create(name, type, about, emails = []) {
         const connection = await db.getConnection();
         try {
             await connection.beginTransaction();
@@ -78,6 +100,7 @@ class CompanyModel {
                 'INSERT INTO companies (name, type, about, code) VALUES (?, ?, ?, ?)',
                 [name, type || null, about || null, code]
             );
+            await CompanyModel.setEmails(result.insertId, emails, connection);
             await connection.commit();
             return { id: result.insertId, code };
         } catch (error) {
@@ -88,12 +111,26 @@ class CompanyModel {
         }
     }
 
-    static async updateById(id, { name, type, about }) {
-        const [result] = await db.execute(
-            'UPDATE companies SET name = ?, type = ?, about = ? WHERE id = ?',
-            [name, type || null, about || null, id]
-        );
-        return result.affectedRows;
+    static async updateById(id, { name, type, about, emails }) {
+        const connection = await db.getConnection();
+        try {
+            await connection.beginTransaction();
+            const [result] = await connection.execute(
+                'UPDATE companies SET name = ?, type = ?, about = ? WHERE id = ?',
+                [name, type || null, about || null, id]
+            );
+            // Only replace emails when the caller sent them
+            if (result.affectedRows > 0 && Array.isArray(emails)) {
+                await CompanyModel.setEmails(id, emails, connection);
+            }
+            await connection.commit();
+            return result.affectedRows;
+        } catch (error) {
+            await connection.rollback();
+            throw error;
+        } finally {
+            connection.release();
+        }
     }
 
     static async deleteById(id) {

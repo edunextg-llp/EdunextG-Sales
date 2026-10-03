@@ -1,10 +1,11 @@
 import ejs from "ejs/ejs.min.js";
+import { reportAreaName } from "./areaName";
 
 export function printDeliveryAssignmentsPdf(drafts) {
   const groups = new Map();
   drafts.forEach((draft) => {
     draft.rows.forEach((row) => {
-      const area = String(row.location_name || "Area not assigned").trim();
+      const area = reportAreaName(row.location_name);
       const key = JSON.stringify([draft.date, draft.boy, area]);
       const group = groups.get(key) || {
         date: draft.date, name: draft.name, area, count: 0,

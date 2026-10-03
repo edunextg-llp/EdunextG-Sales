@@ -46,6 +46,7 @@ class StaffModel {
         const {
             dob = null,
             whatsappNumber = null,
+            email = null,
             aadharNo = null,
             aadharDocumentUrl = null,
             pccCertificateUrl = null,
@@ -55,8 +56,8 @@ class StaffModel {
         const [result] = await db.execute(
             `INSERT INTO staff (
                 name, contact_no, company_id, staff_type, staff_category, dob, whatsapp_number,
-                aadhar_no, aadhar_document_url, pcc_certificate_url
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                email, aadhar_no, aadhar_document_url, pcc_certificate_url
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
             [
                 name,
                 contactNo,
@@ -65,6 +66,7 @@ class StaffModel {
                 staffCategory,
                 dob,
                 whatsappNumber,
+                email,
                 aadharNo,
                 aadharDocumentUrl,
                 pccCertificateUrl,
@@ -158,7 +160,7 @@ class StaffModel {
     static async getDetails(id) {
         const [rows] = await db.execute(
             `SELECT s.id, s.name, s.contact_no, s.company_id, s.staff_type, s.staff_category, s.login_id, s.is_active,
-                    s.dob, s.whatsapp_number, s.aadhar_no, s.aadhar_document_url, s.pcc_certificate_url,
+                    s.dob, s.whatsapp_number, s.email, s.aadhar_no, s.aadhar_document_url, s.pcc_certificate_url,
                     COALESCE(sc.company_names, c.name) AS company_name,
                     sc.company_ids
              FROM staff s
@@ -383,6 +385,7 @@ class StaffModel {
         const {
             dob = null,
             whatsappNumber = null,
+            email = null,
             aadharNo = null,
             aadharDocumentUrl = null,
             pccCertificateUrl = null,
@@ -392,7 +395,7 @@ class StaffModel {
         await db.execute(
             `UPDATE staff
              SET name = ?, contact_no = ?, company_id = ?, staff_type = ?, staff_category = ?,
-                 dob = ?, whatsapp_number = ?, aadhar_no = ?, aadhar_document_url = ?, pcc_certificate_url = ?
+                 dob = ?, whatsapp_number = ?, email = ?, aadhar_no = ?, aadhar_document_url = ?, pcc_certificate_url = ?
              WHERE id = ?`,
             [
                 name,
@@ -402,6 +405,7 @@ class StaffModel {
                 staffCategory,
                 dob,
                 whatsappNumber,
+                email,
                 aadharNo,
                 aadharDocumentUrl,
                 pccCertificateUrl,
@@ -490,6 +494,19 @@ class StaffModel {
         return { id: result.insertId, name: normalized };
     }
 
+    static async deleteArea(name) {
+        const normalized = normalizeAreaName(name);
+        const area = (await this.getAreaDirectory()).find(entry => entry.name === normalized);
+        if (!area) return false;
+        if (area.outlet_count > 0 || area.assignment_count > 0) {
+            const error = new Error('This area is used by outlets or staff assignments. Reassign them before deleting it.');
+            error.code = 'AREA_IN_USE';
+            throw error;
+        }
+        const [result] = await db.execute('DELETE FROM areas WHERE name = ?', [normalized]);
+        return result.affectedRows > 0;
+    }
+
     static async getAll(includeInactive = false, companyId = null) {
         const filters = [];
         const params = [];
@@ -508,7 +525,7 @@ class StaffModel {
         }
         const whereClause = filters.length ? `WHERE ${filters.join(' AND ')}` : '';
         const [rows] = await db.execute(
-            `SELECT s.id, s.name, s.contact_no, s.company_id, s.staff_type, s.staff_category, s.login_id, s.is_active,
+            `SELECT s.id, s.name, s.contact_no, s.email, s.company_id, s.staff_type, s.staff_category, s.login_id, s.is_active,
                     COALESCE(sc.company_names, c.name) AS company_name,
                     sc.company_ids
              FROM staff s

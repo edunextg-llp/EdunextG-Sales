@@ -66,6 +66,36 @@ export async function ensureSchema() {
         );
 
         await connection.query(`
+            CREATE TABLE IF NOT EXISTS company_emails (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                company_id INT NOT NULL,
+                email VARCHAR(255) NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE KEY uq_company_email (company_id, email),
+                FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE CASCADE
+            );
+        `);
+
+        // Daily "Today's Bit" mail send log (prevents duplicate mails)
+        await connection.query(`
+            CREATE TABLE IF NOT EXISTS bit_mail_log (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                mail_date DATE NOT NULL,
+                staff_id INT NOT NULL,
+                bit_name VARCHAR(255) NOT NULL,
+                to_email VARCHAR(255) NULL,
+                cc_emails TEXT NULL,
+                status ENUM('sent', 'failed', 'skipped') NOT NULL,
+                message TEXT NULL,
+                credits_count INT NOT NULL DEFAULT 0,
+                total_balance DECIMAL(14, 2) NOT NULL DEFAULT 0,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                UNIQUE KEY uq_bit_mail (mail_date, staff_id, bit_name)
+            );
+        `);
+
+        await connection.query(`
             CREATE TABLE IF NOT EXISTS company_sequence (
                 id INT PRIMARY KEY,
                 seq_value INT NOT NULL DEFAULT 0
@@ -131,6 +161,11 @@ export async function ensureSchema() {
             connection,
             `ALTER TABLE staff ADD COLUMN whatsapp_number VARCHAR(20) NULL`,
             'whatsapp_number on staff'
+        );
+        await tryQuery(
+            connection,
+            `ALTER TABLE staff ADD COLUMN email VARCHAR(255) NULL`,
+            'email on staff'
         );
         await tryQuery(
             connection,

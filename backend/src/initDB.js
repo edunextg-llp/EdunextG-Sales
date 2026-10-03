@@ -41,6 +41,39 @@ async function initDB() {
     `);
     console.log('Companies table created');
 
+    // Company emails (a company can have multiple email IDs)
+    await connection.query(`
+        CREATE TABLE IF NOT EXISTS company_emails (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            company_id INT NOT NULL,
+            email VARCHAR(255) NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE KEY uq_company_email (company_id, email),
+            FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE CASCADE
+        );
+    `);
+    console.log('Company emails table created');
+
+    // Daily "Today's Bit" mail send log (prevents duplicate mails)
+    await connection.query(`
+        CREATE TABLE IF NOT EXISTS bit_mail_log (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            mail_date DATE NOT NULL,
+            staff_id INT NOT NULL,
+            bit_name VARCHAR(255) NOT NULL,
+            to_email VARCHAR(255) NULL,
+            cc_emails TEXT NULL,
+            status ENUM('sent', 'failed', 'skipped') NOT NULL,
+            message TEXT NULL,
+            credits_count INT NOT NULL DEFAULT 0,
+            total_balance DECIMAL(14, 2) NOT NULL DEFAULT 0,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            UNIQUE KEY uq_bit_mail (mail_date, staff_id, bit_name)
+        );
+    `);
+    console.log('Bit mail log table created');
+
     // Create Staff table
     await connection.query(`
         CREATE TABLE IF NOT EXISTS staff (
@@ -51,6 +84,7 @@ async function initDB() {
             company_id INT NULL,
             dob DATE NULL,
             whatsapp_number VARCHAR(20) NULL,
+            email VARCHAR(255) NULL,
             aadhar_no VARCHAR(20) NULL,
             aadhar_document_url TEXT NULL,
             pcc_certificate_url TEXT NULL,
@@ -107,6 +141,7 @@ async function initDB() {
     const staffProfileColumns = [
         { sql: 'ALTER TABLE staff ADD COLUMN dob DATE NULL', label: 'dob' },
         { sql: 'ALTER TABLE staff ADD COLUMN whatsapp_number VARCHAR(20) NULL', label: 'whatsapp_number' },
+        { sql: 'ALTER TABLE staff ADD COLUMN email VARCHAR(255) NULL', label: 'email' },
         { sql: 'ALTER TABLE staff ADD COLUMN aadhar_no VARCHAR(20) NULL', label: 'aadhar_no' },
         { sql: 'ALTER TABLE staff ADD COLUMN aadhar_document_url TEXT NULL', label: 'aadhar_document_url' },
         { sql: 'ALTER TABLE staff ADD COLUMN pcc_certificate_url TEXT NULL', label: 'pcc_certificate_url' },

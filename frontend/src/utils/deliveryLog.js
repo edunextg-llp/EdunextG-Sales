@@ -1,10 +1,11 @@
+import { reportAreaName } from "./areaName";
 // A single report layout drives both the dialog and its Excel export.
 export function buildDeliveryLog(sales, { hideEmptyAreas = false } = {}) {
   const companies = new Map();
   const seen = new Set();
   sales.forEach((sale) => {
     const company = String(sale.company_name || "Company not assigned").trim();
-    const area = String(sale.location_name || "Area not assigned").trim();
+    const area = reportAreaName(sale.location_name);
     if (!companies.has(company)) companies.set(company, new Map());
     const areas = companies.get(company);
     if (!areas.has(area)) areas.set(area, 0);

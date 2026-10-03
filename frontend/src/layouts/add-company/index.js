@@ -19,6 +19,7 @@ import {
   TableHead,
   TableRow,
   Chip,
+  Autocomplete,
 } from "@mui/material";
 
 import MDBox from "components/MDBox";
@@ -52,13 +53,96 @@ const tableBodySx = {
 };
 
 const MAX_WORDS = 200;
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+// Chip input: type an email and press Enter / comma / Tab (or click away) to add it.
+function EmailChipsInput({ value, onChange, onError }) {
+  const [inputValue, setInputValue] = useState("");
+
+  const commit = (rawItems) => {
+    const next = [...value];
+    const invalid = [];
+    rawItems
+      .flatMap((item) => String(item || "").split(/[,;\s]+/))
+      .map((item) => item.trim().toLowerCase())
+      .filter(Boolean)
+      .forEach((email) => {
+        if (!EMAIL_PATTERN.test(email)) invalid.push(email);
+        else if (!next.includes(email)) next.push(email);
+      });
+    onError(invalid.length ? `Invalid email: ${invalid.join(", ")}` : "");
+    onChange(next);
+    setInputValue(invalid.join(", "));
+  };
+
+  return (
+    <Autocomplete
+      multiple
+      freeSolo
+      autoSelect
+      options={[]}
+      value={value}
+      inputValue={inputValue}
+      onInputChange={(event, newInput, reason) => {
+        if (reason === "reset") return;
+        if (/[,;\s]$/.test(newInput)) {
+          commit([newInput]);
+          return;
+        }
+        setInputValue(newInput);
+      }}
+      onChange={(event, newValue, reason) => {
+        if (reason === "createOption" || reason === "blur") {
+          commit([newValue[newValue.length - 1]]);
+        } else {
+          onError("");
+          onChange(newValue);
+        }
+      }}
+      renderTags={(tags, getTagProps) =>
+        tags.map((email, index) => (
+          <Chip {...getTagProps({ index })} key={email} label={email} size="small" />
+        ))
+      }
+      renderInput={(params) => (
+        <MDInput
+          {...params}
+          type="email"
+          label="Email IDs (optional)"
+          placeholder={value.length ? "Add another email" : "Type email and press Enter"}
+          helperText="Add as many email IDs as needed — press Enter or comma after each."
+        />
+      )}
+    />
+  );
+}
+
+function EmailList({ emails }) {
+  if (!emails || emails.length === 0) {
+    return <span style={{ fontStyle: "italic", color: "#d1d5db" }}>—</span>;
+  }
+  return (
+    <MDBox display="flex" flexDirection="column" gap={0.25}>
+      {emails.map((email) => (
+        <MDBox
+          key={email}
+          component="a"
+          href={`mailto:${email}`}
+          sx={{ color: "#374151", fontSize: "0.8rem", wordBreak: "break-all", textDecoration: "none", "&:hover": { textDecoration: "underline" } }}
+        >
+          {email}
+        </MDBox>
+      ))}
+    </MDBox>
+  );
+}
 
 function countWords(text) {
   return text.trim() ? text.trim().split(/\s+/).length : 0;
 }
 
 function AddCompany() {
-  const [form, setForm] = useState({ type: "", name: "", about: "" });
+  const [form, setForm] = useState({ type: "", name: "", about: "", emails: [] });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
@@ -70,7 +154,7 @@ function AddCompany() {
 
   const [editModalOpen, setEditModalOpen] = useState(false);
   const [editingId, setEditingId] = useState(null);
-  const [editForm, setEditForm] = useState({ type: "", name: "", about: "", code: "" });
+  const [editForm, setEditForm] = useState({ type: "", name: "", about: "", code: "", emails: [] });
   const [editError, setEditError] = useState("");
   const [savingEdit, setSavingEdit] = useState(false);
 
@@ -127,6 +211,7 @@ function AddCompany() {
       name: company.name || "",
       about: company.about || "",
       code: company.code || "",
+      emails: Array.isArray(company.emails) ? company.emails : [],
     });
     setEditError("");
     setEditModalOpen(true);
@@ -135,7 +220,7 @@ function AddCompany() {
   const closeEditModal = () => {
     setEditModalOpen(false);
     setEditingId(null);
-    setEditForm({ type: "", name: "", about: "", code: "" });
+    setEditForm({ type: "", name: "", about: "", code: "", emails: [] });
     setEditError("");
   };
 
@@ -157,6 +242,7 @@ function AddCompany() {
           type: form.type,
           name: form.name.trim(),
           about: form.about.trim(),
+          emails: form.emails,
         }),
       });
       const data = await res.json();
@@ -165,7 +251,7 @@ function AddCompany() {
       } else {
         const codeLabel = data.code ? ` (Code: ${data.code})` : "";
         setSuccess(`Company "${form.name.trim()}" added successfully${codeLabel}.`);
-        setForm({ type: "", name: "", about: "" });
+        setForm({ type: "", name: "", about: "", emails: [] });
         fetchCompanies();
       }
     } catch {
@@ -192,6 +278,7 @@ function AddCompany() {
           type: editForm.type,
           name: editForm.name.trim(),
           about: editForm.about.trim(),
+          emails: editForm.emails,
         }),
       });
       const data = await res.json();
@@ -310,6 +397,17 @@ function AddCompany() {
                       fullWidth
                       value={form.name}
                       onChange={(e) => handleChange("name", e.target.value)}
+                    />
+                  </Grid>
+
+                  <Grid item xs={12}>
+                    <EmailChipsInput
+                      value={form.emails}
+                      onChange={(emails) => {
+                        setSuccess("");
+                        setForm((prev) => ({ ...prev, emails }));
+                      }}
+                      onError={setError}
                     />
                   </Grid>
 
@@ -436,7 +534,8 @@ function AddCompany() {
                           <TableCell sx={{ ...tableHeadSx, width: "4%" }}>#</TableCell>
                           <TableCell sx={{ ...tableHeadSx, width: "12%" }}>Code</TableCell>
                           <TableCell sx={{ ...tableHeadSx, width: "14%" }}>Type</TableCell>
-                          <TableCell sx={{ ...tableHeadSx, width: "22%" }}>Company Name</TableCell>
+                          <TableCell sx={{ ...tableHeadSx, width: "20%" }}>Company Name</TableCell>
+                          <TableCell sx={{ ...tableHeadSx, width: "22%" }}>Email IDs</TableCell>
                           <TableCell sx={{ ...tableHeadSx }}>About</TableCell>
                           <TableCell sx={{ ...tableHeadSx, width: "12%", textAlign: "center" }}>Action</TableCell>
                         </TableRow>
@@ -458,6 +557,9 @@ function AddCompany() {
                             </TableCell>
                             <TableCell sx={{ ...tableBodySx, borderBottom: "1px solid #e5e7eb", fontWeight: 500 }}>
                               {company.name}
+                            </TableCell>
+                            <TableCell sx={{ ...tableBodySx, borderBottom: "1px solid #e5e7eb", maxWidth: 220 }}>
+                              <EmailList emails={company.emails} />
                             </TableCell>
                             <TableCell
                               sx={{
@@ -551,6 +653,14 @@ function AddCompany() {
                   fullWidth
                   value={editForm.name}
                   onChange={(e) => handleEditChange("name", e.target.value)}
+                />
+              </Grid>
+
+              <Grid item xs={12}>
+                <EmailChipsInput
+                  value={editForm.emails}
+                  onChange={(emails) => setEditForm((prev) => ({ ...prev, emails }))}
+                  onError={setEditError}
                 />
               </Grid>
 

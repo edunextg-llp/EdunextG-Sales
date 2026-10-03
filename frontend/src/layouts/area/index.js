@@ -23,6 +23,30 @@ export default function Area() {
   const [name, setName] = useState("");
   const [createError, setCreateError] = useState("");
   const [success, setSuccess] = useState("");
+  const [deleting, setDeleting] = useState("");
+  const [deleteError, setDeleteError] = useState("");
+
+  const deleteArea = async (area) => {
+    if (!window.confirm(`Delete area "${area.name}"?`)) return;
+    setDeleting(area.name);
+    setDeleteError("");
+    setSuccess("");
+    try {
+      const response = await fetch(`${API}/staff/areas`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${localStorage.getItem("token")}` },
+        body: JSON.stringify({ name: area.name }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "Unable to delete area.");
+      setSuccess(`${area.name} deleted successfully.`);
+      setRefresh((value) => value + 1);
+    } catch (requestError) {
+      setDeleteError(requestError.message);
+    } finally {
+      setDeleting("");
+    }
+  };
 
   const createArea = async (event) => {
     event.preventDefault();
@@ -125,6 +149,7 @@ export default function Area() {
             </MDBox>}
             <MDInput label="Search areas" value={search} onChange={(event) => setSearch(event.target.value)} fullWidth />
             {downloadError && <MDBox mt={2}><Alert severity="error">{downloadError}</Alert></MDBox>}
+            {deleteError && <MDBox mt={2}><Alert severity="error">{deleteError}</Alert></MDBox>}
             {loading ? <MDBox py={4} textAlign="center"><CircularProgress size={28} aria-label="Loading areas" /></MDBox> : error ? (
               <MDBox mt={2}><Alert severity="error">{error}</Alert></MDBox>
             ) : (
@@ -134,14 +159,21 @@ export default function Area() {
                   <Table aria-label="All areas">
                     <TableHead sx={{ display: "table-header-group" }}><TableRow>
                       <TableCell>Area name</TableCell><TableCell align="right">Outlets</TableCell><TableCell align="right">Staff assignments</TableCell>
+                      <TableCell>Action</TableCell>
                     </TableRow></TableHead>
                     <TableBody>
                       {visibleAreas.map((area) => <TableRow key={area.name}>
                         <TableCell sx={{ whiteSpace: "pre-wrap" }}>{area.name}</TableCell>
                         <TableCell align="right">{area.outlet_count}</TableCell>
                         <TableCell align="right">{area.assignment_count}</TableCell>
+                        <TableCell>
+                          <MDButton color="error" variant="text" size="small" disabled={Boolean(deleting) || area.outlet_count > 0 || area.assignment_count > 0} onClick={() => deleteArea(area)}>
+                            {deleting === area.name ? "Deleting…" : "Delete"}
+                          </MDButton>
+                          {(area.outlet_count > 0 || area.assignment_count > 0) && <MDTypography variant="caption" display="block">In use — reassign first</MDTypography>}
+                        </TableCell>
                       </TableRow>)}
-                      {!visibleAreas.length && <TableRow><TableCell colSpan={3}>No areas found.</TableCell></TableRow>}
+                      {!visibleAreas.length && <TableRow><TableCell colSpan={4}>No areas found.</TableCell></TableRow>}
                     </TableBody>
                   </Table>
                 </TableContainer>

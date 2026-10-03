@@ -1,3 +1,4 @@
+import { reportAreaName } from "utils/areaName";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import DashboardLayout from "examples/LayoutContainers/DashboardLayout";
 import DashboardNavbar from "examples/Navbars/DashboardNavbar";
@@ -55,7 +56,7 @@ export default function DeliveryReport() {
     if (!column || !["counts", "summary", "total"].includes(type)) return [];
     const company = type === "counts" || type === "summary" ? cells[0] : null;
     const area = (type === "counts" || cells[0] === "Area totals") && column < report.width - 1 ? report.rows[0].cells[column] : null;
-    return pending.filter((row) => (!company || String(row.company_name || "Company not assigned").trim() === company) && (!area || String(row.location_name || "Area not assigned").trim() === area));
+    return pending.filter((row) => (!company || String(row.company_name || "Company not assigned").trim() === company) && (!area || reportAreaName(row.location_name) === area));
   };
   const toggle = (rows) => { const ids = rows.map((row) => String(row.id)); setSelected((prev) => ids.every((id) => prev.includes(id)) ? prev.filter((id) => !ids.includes(id)) : [...new Set([...prev, ...ids])]); };
   const stage = () => {
@@ -191,7 +192,7 @@ export default function DeliveryReport() {
                     inputProps={{ "aria-label": `Select invoice ${row.invoice_number || row.id}` }} /></TableCell>
                   <TableCell>{row.invoice_number || "N/A"}</TableCell>
                   <TableCell>{row.outlet_name || "Outlet not assigned"}</TableCell>
-                  <TableCell>{row.location_name || "Area not assigned"}</TableCell>
+                  <TableCell>{reportAreaName(row.location_name)}</TableCell>
                   <TableCell align="right" sx={{ whiteSpace: "nowrap" }}>Rs. {Number(row.price || 0).toFixed(2)}</TableCell>
                 </TableRow>)}
                 {!groupBills.length && <TableRow><TableCell colSpan={5}>No pending bills remain in this group.</TableCell></TableRow>}
@@ -237,7 +238,7 @@ export default function DeliveryReport() {
                   const groups = new Map();
                   draft.rows.forEach((row) => {
                     const company = String(row.company_name || "Company not assigned").trim();
-                    const area = String(row.location_name || "Area not assigned").trim();
+                    const area = reportAreaName(row.location_name);
                     const key = JSON.stringify([company, area]);
                     const group = groups.get(key) || { company, area, count: 0, ids: [], rows: [] };
                     group.count += 1; group.ids.push(String(row.id)); group.rows.push(row); groups.set(key, group);
@@ -288,3 +289,4 @@ export default function DeliveryReport() {
     </MDBox><Footer /></DashboardLayout>
   );
 }
+
