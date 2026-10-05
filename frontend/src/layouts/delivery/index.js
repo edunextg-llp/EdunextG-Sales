@@ -20,6 +20,7 @@ import {
   Tab,
   InputLabel,
   Tooltip,
+  Checkbox,
 } from "@mui/material";
 
 import SalesExcelButton from "components/SalesExcelButton";
@@ -81,6 +82,8 @@ function Delivery() {
   const [savingSaleIds, setSavingSaleIds] = useState(new Set());
   const [page, setPage] = useState(1);
   const [rowsPerPage, setRowsPerPage] = useState(ROWS_PER_PAGE);
+  const [selectedIds, setSelectedIds] = useState(new Set());
+  const [suspenseBusy, setSuspenseBusy] = useState(false);
 
   // Tab State
   const [activeTab, setActiveTab] = useState("pending");
@@ -260,8 +263,15 @@ function Delivery() {
       const response = await fetch(`${API}/staff/sales/by-date`);
       if (response.ok) {
         const data = await response.json();
+        const serverById = new Map(data.map((row) => [row.id, row]));
         setSalesData((prev) =>
-          mergeSalesRows(data, prev, enhanceDeliveryRow, isDeliveryRowDirty)
+          // Suspense is always taken from the server, even for rows being edited.
+          mergeSalesRows(data, prev, enhanceDeliveryRow, isDeliveryRowDirty).map((row) => {
+            const serverRow = serverById.get(row.id);
+            return serverRow
+              ? { ...row, in_suspense: serverRow.in_suspense, suspense_at: serverRow.suspense_at }
+              : row;
+          })
         );
       } else if (!silent) {
         setSalesData([]);
@@ -280,6 +290,59 @@ function Delivery() {
   useEffect(() => {
     setPage(1);
   }, [activeTab, searchQuery, companyFilter, logStartDate, logEndDate, logStaffId, rowsPerPage]);
+
+  useEffect(() => {
+    setSelectedIds(new Set());
+  }, [activeTab]);
+
+  const toggleSelected = (saleId) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(saleId)) next.delete(saleId);
+      else next.add(saleId);
+      return next;
+    });
+  };
+
+  // Move selected bills into Suspense (suspense = true) or return them to
+  // Pending Deliveries (suspense = false).
+  const updateSuspense = async (saleIds, suspense) => {
+    if (!saleIds.length || suspenseBusy) return;
+    const label = suspense ? "Move" : "Return";
+    if (!window.confirm(`${label} ${saleIds.length} bill(s) ${suspense ? "to Suspense" : "to Pending Deliveries"}?`)) return;
+
+    setSuspenseBusy(true);
+    try {
+      const response = await fetch(`${API}/staff/sales/suspense`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ saleIds, suspense }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || "Unable to update Suspense.");
+      const moved = new Set(data.movedIds || []);
+      setSalesData((prev) =>
+        prev.map((row) =>
+          moved.has(row.id)
+            ? { ...row, in_suspense: suspense ? 1 : 0, suspense_at: suspense ? new Date().toISOString() : null }
+            : row
+        )
+      );
+      setSelectedIds((prev) => {
+        const next = new Set(prev);
+        moved.forEach((id) => next.delete(id));
+        return next;
+      });
+      if (data.skippedIds?.length) {
+        alert(`${moved.size} bill(s) updated. ${data.skippedIds.length} skipped because their status changed. The list has been refreshed.`);
+      }
+      fetchSales({ silent: true });
+    } catch (error) {
+      alert(error.message || "Unable to update Suspense.");
+    } finally {
+      setSuspenseBusy(false);
+    }
+  };
 
   useSalesPolling(fetchSales);
 
@@ -405,7 +468,21 @@ function Delivery() {
     if (status !== "packing_done" && status !== "returned") {
       return false;
     }
+    if (Number(row.in_suspense) === 1) return false;
 
+    return matchesSearch(row);
+  });
+
+  // Suspense: bills parked from Pending Deliveries
+  const filteredSuspenseSales = salesData.filter((row) => {
+    if (!matchesSaleCompany(row, companyFilter)) return false;
+    const status = row.original_packaging_status || row.packaging_status || "not_packing";
+    if (status !== "packing_done" && status !== "returned") return false;
+    if (Number(row.in_suspense) !== 1) return false;
+    return matchesSearch(row);
+  });
+
+  function matchesSearch(row) {
     const search = searchQuery.toLowerCase();
     const outletName = row.outlet_name ? row.outlet_name.toLowerCase() : "";
     const outletArea = row.location_name ? row.location_name.toLowerCase() : "";
@@ -423,7 +500,7 @@ function Delivery() {
       saleId.includes(search) ||
       invoiceNumber.includes(search)
     );
-  });
+  }
 
   // Filter 2: Out for Delivery Log (status = out_for_delivery)
   const filteredLogSales = salesData.filter((row) => {
@@ -464,7 +541,9 @@ function Delivery() {
     );
   });
 
-  const activeList = activeTab === "pending" ? filteredSales : filteredLogSales;
+  const activeList =
+    activeTab === "pending" ? filteredSales : activeTab === "suspense" ? filteredSuspenseSales : filteredLogSales;
+  const selectable = activeTab === "pending" || activeTab === "suspense";
   const totalPages = Math.max(1, Math.ceil(activeList.length / rowsPerPage));
   const paginatedSales = activeList.slice(
     (page - 1) * rowsPerPage,
@@ -474,7 +553,7 @@ function Delivery() {
   return (
     <DashboardLayout>
       <DashboardNavbar />
-      <DeliveryLogDialog open={deliveryLogOpen} onClose={() => setDeliveryLogOpen(false)} sales={salesData} />
+      <DeliveryLogDialog open={deliveryLogOpen} onClose={() => setDeliveryLogOpen(false)} sales={salesData.filter((row) => Number(row.in_suspense) !== 1)} />
       <MDBox pt={6} pb={3}>
         <Grid container spacing={3} justifyContent="center">
           <Grid item xs={12}>
@@ -495,12 +574,13 @@ function Delivery() {
                   }}
                 >
                   <Tab label={`Pending Deliveries (${filteredSales.length})`} value="pending" />
+                  <Tab label={`Suspense (${filteredSuspenseSales.length})`} value="suspense" />
                   <Tab label={`Out for Delivery Log (${filteredLogSales.length})`} value="out_for_delivery" />
                 </Tabs>
               </MDBox>
               <MDBox pb={3} px={3}>
                 <Grid container spacing={3} mb={3}>
-                  <Grid item xs={12} md={activeTab === "pending" ? 9 : 3}>
+                  <Grid item xs={12} md={activeTab === "out_for_delivery" ? 3 : 9}>
                     <MDInput
                       type="text"
                       label="Search by Outlet Name, Area, ID, Staff Name, Sale ID, or Invoice No."
@@ -572,8 +652,31 @@ function Delivery() {
                       </Grid>
                     </>
                   )}
-                  <Grid item xs={12} display="flex" justifyContent="flex-end">
-                    <SalesExcelButton rows={activeList} filename={activeTab === "pending" ? "Delivery_Management" : "Out_for_Delivery_Log"} />
+                  <Grid item xs={12} display="flex" justifyContent="flex-end" alignItems="center" gap={1} flexWrap="wrap">
+                    {activeTab === "pending" && (
+                      <MDButton
+                        color="warning"
+                        variant="gradient"
+                        disabled={!selectedIds.size || suspenseBusy}
+                        onClick={() => updateSuspense([...selectedIds], true)}
+                      >
+                        {suspenseBusy ? "Moving..." : `Move to Suspense${selectedIds.size ? ` (${selectedIds.size})` : ""}`}
+                      </MDButton>
+                    )}
+                    {activeTab === "suspense" && (
+                      <MDButton
+                        color="success"
+                        variant="gradient"
+                        disabled={!selectedIds.size || suspenseBusy}
+                        onClick={() => updateSuspense([...selectedIds], false)}
+                      >
+                        {suspenseBusy ? "Returning..." : `Return Selected${selectedIds.size ? ` (${selectedIds.size})` : ""}`}
+                      </MDButton>
+                    )}
+                    <SalesExcelButton
+                      rows={activeList}
+                      filename={activeTab === "pending" ? "Delivery_Management" : activeTab === "suspense" ? "Delivery_Suspense" : "Out_for_Delivery_Log"}
+                    />
                   </Grid>
                 </Grid>
 
@@ -581,6 +684,27 @@ function Delivery() {
                   <Table stickyHeader sx={{ minWidth: 650, ...compactTableTextSx }}>
                     <TableHead sx={paginatedTableHeadSx()}>
                       <TableRow>
+                        {selectable && (
+                          <TableCell padding="checkbox" sx={paginatedTableHeadCellSx}>
+                            <Checkbox
+                              size="small"
+                              checked={paginatedSales.length > 0 && paginatedSales.every((row) => selectedIds.has(row.id))}
+                              indeterminate={
+                                paginatedSales.some((row) => selectedIds.has(row.id)) &&
+                                !paginatedSales.every((row) => selectedIds.has(row.id))
+                              }
+                              onChange={(event) => {
+                                const checked = event.target.checked;
+                                setSelectedIds((prev) => {
+                                  const next = new Set(prev);
+                                  paginatedSales.forEach((row) => (checked ? next.add(row.id) : next.delete(row.id)));
+                                  return next;
+                                });
+                              }}
+                              inputProps={{ "aria-label": "Select all bills on this page" }}
+                            />
+                          </TableCell>
+                        )}
                         <TableCell align="center" sx={{ ...paginatedTableHeadCellSx, width: 56 }}>
                           Sr No
                         </TableCell>
@@ -611,6 +735,12 @@ function Delivery() {
                             <TableCell align="center" sx={paginatedTableHeadCellSx}>Action</TableCell>
                           </>
                         )}
+                        {activeTab === "suspense" && (
+                          <>
+                            <TableCell align="center" sx={paginatedTableHeadCellSx}>In Suspense Since</TableCell>
+                            <TableCell align="center" sx={paginatedTableHeadCellSx}>Action</TableCell>
+                          </>
+                        )}
                       </TableRow>
                     </TableHead>
                     <TableBody>
@@ -627,6 +757,16 @@ function Delivery() {
                                 "&:last-child td, &:last-child th": { border: 0 }
                               }}
                             >
+                              {selectable && (
+                                <TableCell padding="checkbox" sx={{ borderBottom: borderCol }}>
+                                  <Checkbox
+                                    size="small"
+                                    checked={selectedIds.has(row.id)}
+                                    onChange={() => toggleSelected(row.id)}
+                                    inputProps={{ "aria-label": `Select bill ${row.invoice_number || row.id}` }}
+                                  />
+                                </TableCell>
+                              )}
                               <TableCell align="center" sx={{ borderBottom: borderCol, py: 2, color: txColor }}>
                                 {(page - 1) * rowsPerPage + index + 1}
                               </TableCell>
@@ -732,14 +872,32 @@ function Delivery() {
                                   </TableCell>
                                 </>
                               )}
+                              {activeTab === "suspense" && (
+                                <>
+                                  <TableCell align="center" sx={{ borderBottom: borderCol, py: 2, color: txColor }}>
+                                    {formatDateTime(row.suspense_at)}
+                                  </TableCell>
+                                  <TableCell align="center" sx={{ borderBottom: borderCol, py: 2 }}>
+                                    <MDButton
+                                      color="success"
+                                      variant="outlined"
+                                      size="small"
+                                      disabled={suspenseBusy}
+                                      onClick={() => updateSuspense([row.id], false)}
+                                    >
+                                      Return
+                                    </MDButton>
+                                  </TableCell>
+                                </>
+                              )}
                             </TableRow>
                           )
                         })
                       ) : (
                         <TableRow>
-                          <TableCell colSpan={17} align="center" sx={{ py: 3, borderBottom: 0 }}>
+                          <TableCell colSpan={19} align="center" sx={{ py: 3, borderBottom: 0 }}>
                             <MDTypography variant="body2" color="text">
-                              No deliveries found.
+                              {activeTab === "suspense" ? "No bills in Suspense." : "No deliveries found."}
                             </MDTypography>
                           </TableCell>
                         </TableRow>

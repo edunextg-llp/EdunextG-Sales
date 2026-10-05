@@ -40,7 +40,7 @@ export default function DeliveryReport() {
       const responses = await Promise.all([fetch(API + "/staff/sales/by-date"), fetch(API + "/delivery-boy")]);
       if (responses.some((r) => !r.ok)) throw new Error("Unable to load delivery report");
       const [rows, staff] = await Promise.all(responses.map((r) => r.json()));
-      setSales(rows); setBoys(staff.filter((b) => b.role === "delivery_boy" && Number(b.is_active) === 1));
+      setSales(rows.filter((row) => Number(row.in_suspense) !== 1)); setBoys(staff.filter((b) => b.role === "delivery_boy" && Number(b.is_active) === 1));
     } catch (err) { setError(err.message); }
   }, []);
   useEffect(() => { void load(); }, [load]);

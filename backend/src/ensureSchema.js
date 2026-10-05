@@ -4,6 +4,7 @@ import bcrypt from 'bcryptjs';
 import { migrateStaffSalesUniqueIndex } from './migrations/migrateStaffSalesUniqueIndex.js';
 import { migrateDeliveryOutletLocation } from './migrations/migrateDeliveryOutletLocation.js';
 import { migrateAreas } from './migrations/migrateAreas.js';
+import { migrateRoutes } from './migrations/migrateRoutes.js';
 
 dotenv.config();
 
@@ -219,6 +220,7 @@ export async function ensureSchema() {
         );
         await migrateDeliveryOutletLocation(connection);
         await migrateAreas(connection);
+        await migrateRoutes(connection);
         await tryQuery(
             connection,
             `ALTER TABLE staff_counters ADD COLUMN whatsapp_number VARCHAR(20) NULL`,
@@ -582,6 +584,18 @@ export async function ensureSchema() {
             connection,
             `ALTER TABLE staff_sales ADD COLUMN packet_count INT NULL`,
             'packet_count on staff_sales'
+        );
+
+        // Delivery "Suspense": bills parked out of Pending Deliveries
+        await tryQuery(
+            connection,
+            `ALTER TABLE staff_sales ADD COLUMN in_suspense TINYINT(1) NOT NULL DEFAULT 0`,
+            'in_suspense on staff_sales'
+        );
+        await tryQuery(
+            connection,
+            `ALTER TABLE staff_sales ADD COLUMN suspense_at DATETIME NULL`,
+            'suspense_at on staff_sales'
         );
 
         await tryQuery(

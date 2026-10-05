@@ -1785,6 +1785,21 @@ export const deleteSale = async (req, res) => {
     }
 };
 
+export const setSalesSuspense = async (req, res) => {
+    const { saleIds, suspense } = req.body;
+    if (!Array.isArray(saleIds) || !saleIds.length || saleIds.length > 10000 ||
+        saleIds.some((id) => !Number.isSafeInteger(id) || id <= 0) || typeof suspense !== 'boolean') {
+        return res.status(400).json({ error: 'Select valid bills (up to 10,000 at a time).' });
+    }
+    try {
+        const result = await StaffModel.setSalesSuspense([...new Set(saleIds)], suspense);
+        return res.status(200).json(result);
+    } catch (error) {
+        console.error('Error updating suspense bills:', error);
+        return res.status(500).json({ error: suspense ? 'Unable to move bills to Suspense.' : 'Unable to return bills from Suspense.' });
+    }
+};
+
 export const moveUnupdatedSalesToDelivery = async (req, res) => {
     const { saleIds } = req.body;
     if (!Array.isArray(saleIds) || !saleIds.length || saleIds.length > 10000 ||
@@ -1825,6 +1840,15 @@ export const updatePackagingStatus = async (req, res) => {
         }
 
         const existingSale = await StaffModel.getSaleById(saleId);
+        // Bills parked in Delivery Suspense cannot be assigned for delivery
+        // until they are returned to Pending Deliveries.
+        if (packagingStatus === 'out_for_delivery' && currentStatus !== 'out_for_delivery'
+            && await StaffModel.isSaleInSuspense(saleId)) {
+            return res.status(409).json({
+                error: 'This bill is in Suspense. Return it to Pending Deliveries before assigning delivery.',
+                currentStatus,
+            });
+        }
         const normalizedStatusDate = normalizeDateInput(statusDate);
         const hasPackedItemCount = Object.prototype.hasOwnProperty.call(req.body, 'packedItemCount');
         const hasBoxCount = Object.prototype.hasOwnProperty.call(req.body, 'boxCount');

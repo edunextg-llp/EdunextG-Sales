@@ -1,6 +1,7 @@
 // Material Dashboard 2 React layouts
 import Dashboard from "layouts/dashboard";
 import Area from "./layouts/area/index.js";
+import CreateRoute from "./layouts/create-route/index.js";
 import PermissionManagement from "layouts/permission-management";
 import Welcome from "layouts/welcome";
 // import Tables from "layouts/tables";
@@ -229,6 +230,15 @@ const routes = [
         icon: <Icon fontSize="small">place</Icon>,
         route: "/area",
         component: <Area />,
+        allowedRoles: ["admin"],
+      },
+      {
+        type: "collapse",
+        name: "Create Route",
+        key: "create-route",
+        icon: <Icon fontSize="small">alt_route</Icon>,
+        route: "/create-route",
+        component: <CreateRoute />,
         allowedRoles: ["admin"],
       },
       {

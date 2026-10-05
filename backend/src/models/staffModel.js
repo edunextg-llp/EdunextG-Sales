@@ -5,6 +5,35 @@ import { getCompanyBillPrefix, normalizeInvoiceNumber } from '../utils/invoiceNu
 import PhysicalStockModel from './physicalStockModel.js';
 
 class StaffModel {
+    // Park bills from Pending Deliveries in Suspense (inSuspense = true) or
+    // return them (false). Only bills still waiting for delivery
+    // (packing_done / returned) can be moved into suspense.
+    static async setSalesSuspense(saleIds, inSuspense) {
+        const placeholders = saleIds.map(() => '?').join(',');
+        const [result] = inSuspense
+            ? await db.execute(
+                `UPDATE staff_sales SET in_suspense = 1, suspense_at = NOW()
+                 WHERE id IN (${placeholders}) AND in_suspense = 0
+                   AND packaging_status IN ('packing_done', 'returned')`,
+                saleIds
+            )
+            : await db.execute(
+                `UPDATE staff_sales SET in_suspense = 0, suspense_at = NULL
+                 WHERE id IN (${placeholders}) AND in_suspense = 1`,
+                saleIds
+            );
+        const [rows] = await db.execute(
+            `SELECT id FROM staff_sales WHERE id IN (${placeholders}) AND in_suspense = ?`,
+            [...saleIds, inSuspense ? 1 : 0]
+        );
+        const movedIds = rows.map((row) => Number(row.id));
+        return {
+            updated: result.affectedRows,
+            movedIds,
+            skippedIds: saleIds.filter((id) => !movedIds.includes(id)),
+        };
+    }
+
     static async moveUnupdatedSalesToDelivery(saleIds) {
         const connection = await db.getConnection();
         try {
@@ -25,7 +54,7 @@ class StaffModel {
                 );
                 if (payments.length || collections.length) continue;
                 await connection.execute(
-                    `UPDATE staff_sales SET packaging_status = 'packing_done',
+                    `UPDATE staff_sales SET packaging_status = 'packing_done', in_suspense = 0, suspense_at = NULL,
                      delivery_boy_id = NULL, vehicle_no = NULL, delivery_date = NULL WHERE id = ?`, [sale.id]
                 );
                 await connection.execute(
@@ -503,6 +532,7 @@ class StaffModel {
             error.code = 'AREA_IN_USE';
             throw error;
         }
+        await db.execute('DELETE FROM route_areas WHERE area_name = ?', [normalized]);
         const [result] = await db.execute('DELETE FROM areas WHERE name = ?', [normalized]);
         return result.affectedRows > 0;
     }
@@ -772,6 +802,7 @@ class StaffModel {
                     GREATEST(0, ss.price - COALESCE(cancelled.total_amount, 0)) AS effective_price,
                     ss.invoice_number,
                     ss.sticker_number, ss.packaging_status, ss.delivery_boy_id, ss.packed_by_id, ss.vehicle_no,
+                    ss.in_suspense, DATE_FORMAT(ss.suspense_at, '%Y-%m-%d %H:%i:%s') AS suspense_at,
                     DATE_FORMAT(ss.delivery_date, '%Y-%m-%d') AS delivery_date,
                     DATE_FORMAT(ssh.status_updated_at, '%Y-%m-%d %H:%i:%s') AS status_updated_at,
                     DATE_FORMAT(ssh.packing_date, '%Y-%m-%d') AS packing_date,
@@ -1305,6 +1336,8 @@ class StaffModel {
                 await connection.execute(
                     `UPDATE staff_sales
                      SET packaging_status = 'cancelled',
+                         in_suspense = 0,
+                         suspense_at = NULL,
                          cancellation_reason = ?,
                          delivery_boy_id = NULL,
                          vehicle_no = NULL,
@@ -1322,7 +1355,8 @@ class StaffModel {
             if (status === 'out_for_delivery' || status === 'delivered' || status === 'returned') {
                 await connection.execute(
                     `UPDATE staff_sales 
-                     SET packaging_status = ?, delivery_boy_id = ?, vehicle_no = ?, delivery_date = ?
+                     SET packaging_status = ?, delivery_boy_id = ?, vehicle_no = ?, delivery_date = ?,
+                         in_suspense = 0, suspense_at = NULL
                      WHERE id = ?`,
                     [status, deliveryBoyId, vehicleNo, deliveryDate, saleId]
                 );
@@ -1330,6 +1364,7 @@ class StaffModel {
                 await connection.execute(
                     `UPDATE staff_sales 
                      SET packaging_status = ?, delivery_boy_id = NULL, vehicle_no = NULL, delivery_date = NULL,
+                         in_suspense = 0, suspense_at = NULL,
                          packed_item_count = COALESCE(?, packed_item_count),
                          box_count = COALESCE(?, box_count),
                          packet_count = COALESCE(?, packet_count),
