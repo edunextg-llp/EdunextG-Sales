@@ -14,6 +14,12 @@ export async function migrateRoutes(connection) {
         KEY idx_route_areas_area (area_name),
         FOREIGN KEY (route_id) REFERENCES routes(id) ON DELETE CASCADE
     )`);
+    // Delivery priority of the area inside its route (1 = deliver first).
+    try {
+        await connection.query('ALTER TABLE route_areas ADD COLUMN priority INT NOT NULL DEFAULT 0');
+    } catch (error) {
+        if (error.code !== 'ER_DUP_FIELDNAME') throw error;
+    }
     // One area can belong to only one route.
     try {
         await connection.query('ALTER TABLE route_areas ADD UNIQUE KEY uq_route_areas_area (area_name)');

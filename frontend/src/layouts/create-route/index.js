@@ -10,6 +10,8 @@ import {
   DialogContent,
   DialogTitle,
   Grid,
+  Icon,
+  IconButton,
   Table,
   TableBody,
   TableCell,
@@ -117,12 +119,24 @@ export default function CreateRoute() {
     );
   };
 
+  // selected is kept in delivery priority order (1 = deliver first).
+  const moveArea = (index, delta) => {
+    setSelected((current) => {
+      const target = index + delta;
+      if (target < 0 || target >= current.length) return current;
+      const next = [...current];
+      [next[index], next[target]] = [next[target], next[index]];
+      return next;
+    });
+  };
+
   const clearSelection = () => {
     setSelected([]);
     setEditingRoute(null);
   };
 
   const openCreateDialog = () => {
+    // keep chosen order; areas ticked later are added at the end
     setRouteName(editingRoute ? editingRoute.name : suggestRouteName(routes));
     setSaveError("");
     setDialogOpen(true);
@@ -233,6 +247,7 @@ export default function CreateRoute() {
                               />
                             </TableCell>
                             <TableCell>Area name</TableCell>
+                            <TableCell align="center">Priority</TableCell>
                             <TableCell align="right">Outlets</TableCell>
                             <TableCell>Route</TableCell>
                           </TableRow>
@@ -247,6 +262,9 @@ export default function CreateRoute() {
                                   <Checkbox checked={selectedSet.has(area.name)} disabled={locked} inputProps={{ "aria-label": `Select ${area.name}` }} />
                                 </TableCell>
                                 <TableCell>{area.name}</TableCell>
+                                <TableCell align="center">
+                                  {selectedSet.has(area.name) ? <Chip label={selected.indexOf(area.name) + 1} size="small" color="info" /> : ""}
+                                </TableCell>
                                 <TableCell align="right">{area.outlet_count}</TableCell>
                                 <TableCell>
                                   {inRoutes.map((route) => (
@@ -257,7 +275,7 @@ export default function CreateRoute() {
                             );
                           })}
                           {!visibleAreas.length && (
-                            <TableRow><TableCell colSpan={4}>No areas found. Add areas in Create Area first.</TableCell></TableRow>
+                            <TableRow><TableCell colSpan={5}>No areas found. Add areas in Create Area first.</TableCell></TableRow>
                           )}
                         </TableBody>
                       </Table>
@@ -306,8 +324,8 @@ export default function CreateRoute() {
                       {route.areas.length} area{route.areas.length === 1 ? "" : "s"}
                     </MDTypography>
                     <MDBox display="flex" flexWrap="wrap" gap={0.5}>
-                      {route.areas.map((areaName) => (
-                        <Chip key={areaName} label={areaName} size="small" variant="outlined" />
+                      {route.areas.map((areaName, index) => (
+                        <Chip key={areaName} label={`${index + 1}. ${areaName}`} size="small" variant="outlined" />
                       ))}
                     </MDBox>
                   </MDBox>
@@ -333,12 +351,25 @@ export default function CreateRoute() {
               inputProps={{ maxLength: 100 }}
               helperText="For example R 1 or ROUTE 1. Saved in uppercase."
             />
-            <MDTypography variant="caption" display="block" mt={2} mb={0.75} fontWeight="bold">
-              {selected.length} area{selected.length === 1 ? "" : "s"}
+            <MDTypography variant="caption" display="block" mt={2} fontWeight="bold">
+              Area priority ({selected.length} area{selected.length === 1 ? "" : "s"})
             </MDTypography>
-            <MDBox display="flex" flexWrap="wrap" gap={0.5}>
-              {selected.map((areaName) => (
-                <Chip key={areaName} label={areaName} size="small" />
+            <MDTypography variant="caption" display="block" mb={0.75} color="text">
+              1 is delivered first. Use the arrows to change the order. Bills from higher-priority areas come first in Report — Pending Deliveries.
+            </MDTypography>
+            <MDBox sx={{ border: "1px solid #e2e8f0", borderRadius: "8px", maxHeight: 320, overflowY: "auto" }}>
+              {selected.map((areaName, index) => (
+                <MDBox key={areaName} display="flex" alignItems="center" gap={1} px={1} py={0.5}
+                  sx={{ borderBottom: index < selected.length - 1 ? "1px solid #e2e8f0" : 0 }}>
+                  <Chip label={index + 1} size="small" color="info" sx={{ minWidth: 34 }} />
+                  <MDTypography variant="button" sx={{ flex: 1 }}>{areaName}</MDTypography>
+                  <IconButton size="small" disabled={saving || index === 0} onClick={() => moveArea(index, -1)} aria-label={`Move ${areaName} up`}>
+                    <Icon fontSize="small">arrow_upward</Icon>
+                  </IconButton>
+                  <IconButton size="small" disabled={saving || index === selected.length - 1} onClick={() => moveArea(index, 1)} aria-label={`Move ${areaName} down`}>
+                    <Icon fontSize="small">arrow_downward</Icon>
+                  </IconButton>
+                </MDBox>
               ))}
             </MDBox>
             {saveError && <MDBox mt={2}><Alert severity="error">{saveError}</Alert></MDBox>}

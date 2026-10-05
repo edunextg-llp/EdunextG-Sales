@@ -1,6 +1,9 @@
 import { reportAreaName } from "./areaName";
 // A single report layout drives both the dialog and its Excel export.
-export function buildDeliveryLog(sales, { hideEmptyAreas = false } = {}) {
+// areaOrder: optional list of area names (route priority) shown first, in that order.
+export function buildDeliveryLog(sales, { hideEmptyAreas = false, areaOrder = [] } = {}) {
+  const rank = new Map(areaOrder.map((name, index) => [reportAreaName(name), index]));
+  const rankOf = (area) => (rank.has(area) ? rank.get(area) : Number.MAX_SAFE_INTEGER);
   const companies = new Map();
   const seen = new Set();
   sales.forEach((sale) => {
@@ -26,7 +29,8 @@ export function buildDeliveryLog(sales, { hideEmptyAreas = false } = {}) {
   }));
   const areaNames = [...areaTotals.keys()]
     .filter((area) => !hideEmptyAreas || areaTotals.get(area) > 0)
-    .sort((a, b) => Number(areaTotals.get(a) === 0) - Number(areaTotals.get(b) === 0) || a.localeCompare(b));
+    .sort((a, b) => Number(areaTotals.get(a) === 0) - Number(areaTotals.get(b) === 0)
+      || rankOf(a) - rankOf(b) || a.localeCompare(b));
   const width = areaNames.length + 2;
   const rows = [{ type: "header", cells: ["Company / Area", ...areaNames, "Total pending"] }];
   groups.forEach((company) => {

@@ -8,14 +8,14 @@ export function printDeliveryAssignmentsPdf(drafts) {
       const area = reportAreaName(row.location_name);
       const key = JSON.stringify([draft.date, draft.boy, area]);
       const group = groups.get(key) || {
-        date: draft.date, name: draft.name, area, count: 0,
+        date: draft.date, name: draft.name, area, count: 0, order: groups.size,
       };
       group.count += 1;
       groups.set(key, group);
     });
   });
   const rows = [...groups.values()].sort((a, b) =>
-    a.date.localeCompare(b.date) || a.name.localeCompare(b.name) || a.area.localeCompare(b.area)
+    a.date.localeCompare(b.date) || a.name.localeCompare(b.name) || a.order - b.order
   );
   if (!rows.length) return;
   const html = ejs.render(`<!doctype html>

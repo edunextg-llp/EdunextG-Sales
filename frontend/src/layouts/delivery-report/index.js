@@ -48,16 +48,39 @@ export default function DeliveryReport() {
     } catch (err) { setError(err.message); }
   }, []);
   useEffect(() => { void load(); }, [load]);
+  const [routeError, setRouteError] = useState("");
   useEffect(() => {
-    fetch(API + "/staff/routes")
-      .then((response) => (response.ok ? response.json() : []))
-      .then((rows) => setRoutes(Array.isArray(rows) ? rows : []))
-      .catch(() => setRoutes([]));
+    // Send the login token explicitly: this page may call a server other than
+    // the one the global fetch interceptor adds tokens for.
+    const token = localStorage.getItem("auth_token") || sessionStorage.getItem("auth_token");
+    fetch(API + "/staff/routes", { headers: token ? { Authorization: "Bearer " + token } : {} })
+      .then(async (response) => {
+        const rows = await response.json().catch(() => null);
+        if (!response.ok) throw new Error((rows && rows.error) || "server returned " + response.status);
+        const list = Array.isArray(rows) ? rows : [];
+        setRoutes(list);
+        setRouteError(list.length ? "" : "No routes yet. Create them in Staff Management → Create Route.");
+      })
+      .catch((err) => { setRoutes([]); setRouteError("Routes could not be loaded: " + err.message); });
   }, []);
   useSalesPolling(load);
   const stagedIds = useMemo(() => new Set(drafts.flatMap((draft) => draft.rows.map((row) => String(row.id)))), [drafts]);
   const availableSales = useMemo(() => sales.filter((row) => !stagedIds.has(String(row.id))), [sales, stagedIds]);
-  const pending = useMemo(() => [...new Map(availableSales.filter((row) => ["packing_done", "returned"].includes(row.packaging_status)).map((row) => [String(row.id), row])).values()], [availableSales]);
+  // Area delivery priority from routes: the selected route first, then the
+  // other routes (R 1, R 2 ...), each in its area priority order.
+  const areaOrder = useMemo(() => {
+    const ordered = [...routes].sort((a, b) =>
+      Number(String(b.id) === String(routeId)) - Number(String(a.id) === String(routeId))
+      || String(a.name).localeCompare(String(b.name), undefined, { numeric: true }));
+    return [...new Set(ordered.flatMap((route) => (route.areas || []).map((area) => reportAreaName(area))))];
+  }, [routes, routeId]);
+  const areaRank = useMemo(() => new Map(areaOrder.map((area, index) => [area, index])), [areaOrder]);
+  const byPriority = useCallback((a, b) => {
+    const rankA = areaRank.has(reportAreaName(a.location_name)) ? areaRank.get(reportAreaName(a.location_name)) : Number.MAX_SAFE_INTEGER;
+    const rankB = areaRank.has(reportAreaName(b.location_name)) ? areaRank.get(reportAreaName(b.location_name)) : Number.MAX_SAFE_INTEGER;
+    return rankA - rankB || reportAreaName(a.location_name).localeCompare(reportAreaName(b.location_name));
+  }, [areaRank]);
+  const pending = useMemo(() => [...new Map(availableSales.filter((row) => ["packing_done", "returned"].includes(row.packaging_status)).map((row) => [String(row.id), row])).values()].sort(byPriority), [availableSales, byPriority]);
   const draftBoys = [...new Set(drafts.map((draft) => draft.boy))];
   const billsForRoute = (route) => {
     const areas = new Set((route?.areas || []).map((area) => reportAreaName(area)));
@@ -133,7 +156,7 @@ export default function DeliveryReport() {
     if (failed.length) setError(failed.join("; "));
     notifySalesUpdated(); await load(); busy.current = false; setSaving(false);
   };
-  const report = useMemo(() => buildDeliveryLog(availableSales, { hideEmptyAreas: true }), [availableSales]);
+  const report = useMemo(() => buildDeliveryLog(availableSales, { hideEmptyAreas: true, areaOrder }), [availableSales, areaOrder]);
   const groupBills = viewGroup ? pending.filter((row) => viewGroup.ids.includes(String(row.id))) : [];
   const groupSelectedCount = groupBills.filter((row) => selected.includes(String(row.id))).length;
   const moveGroupToSuspense = async () => {
@@ -189,6 +212,7 @@ export default function DeliveryReport() {
       <DialogContent dividers sx={{ p: 0 }}>
         <MDBox px={1} py={0.5} bgColor="#eff6ff">
           <MDTypography variant="caption">All companies • Packed and returned bills awaiting delivery • {report.total} pending bills</MDTypography>
+          {routeError && <MDTypography variant="caption" display="block" color="warning">{routeError}</MDTypography>}
           {message && <MDTypography variant="caption" display="block" color="success">{message}</MDTypography>}
           {error && <MDTypography variant="caption" display="block" color="error">{error}</MDTypography>}
         </MDBox>
