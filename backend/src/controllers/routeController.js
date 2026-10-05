@@ -35,6 +35,8 @@ export const createRoute = async (req, res) => {
         if (input.error) return res.status(400).json({ error: input.error });
         return res.status(201).json(await RouteModel.save(input));
     } catch (error) {
+        if (error.code === 'AREA_IN_OTHER_ROUTE') return res.status(409).json({ error: error.message });
+        if (error.code === 'ER_DUP_ENTRY' && /uq_route_areas_area/.test(error.message)) return res.status(409).json({ error: 'One of these areas is already in another route. Remove it from that route first.' });
         if (error.code === 'ER_DUP_ENTRY') return res.status(409).json({ error: 'A route with this name already exists. Use a different name, such as R 2.' });
         console.error('Error creating route:', error);
         return res.status(500).json({ error: 'Unable to create route.' });
@@ -51,6 +53,8 @@ export const updateRoute = async (req, res) => {
         if (!route) return res.status(404).json({ error: 'Route not found.' });
         return res.json(route);
     } catch (error) {
+        if (error.code === 'AREA_IN_OTHER_ROUTE') return res.status(409).json({ error: error.message });
+        if (error.code === 'ER_DUP_ENTRY' && /uq_route_areas_area/.test(error.message)) return res.status(409).json({ error: 'One of these areas is already in another route. Remove it from that route first.' });
         if (error.code === 'ER_DUP_ENTRY') return res.status(409).json({ error: 'A route with this name already exists. Use a different name, such as R 2.' });
         console.error('Error updating route:', error);
         return res.status(500).json({ error: 'Unable to update route.' });

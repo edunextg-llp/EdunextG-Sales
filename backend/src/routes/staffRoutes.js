@@ -24,7 +24,7 @@ router.get('/areas/options', verifyTokenMiddleware, requireRole('admin', 'packag
 router.post('/areas', verifyTokenMiddleware, requireRole('admin'), staffController.createArea);
 router.delete('/areas', verifyTokenMiddleware, requireRole('admin'), staffController.deleteArea);
 router.get('/areas/export', verifyTokenMiddleware, requireRole('admin'), staffController.exportAreaDirectory);
-router.get('/routes', verifyTokenMiddleware, requireRole('admin'), routeController.getRoutes);
+router.get('/routes', verifyTokenMiddleware, requireRole('admin', 'packaging_staff', 'delivery_boy'), routeController.getRoutes);
 router.post('/routes', verifyTokenMiddleware, requireRole('admin'), routeController.createRoute);
 router.put('/routes/:id', verifyTokenMiddleware, requireRole('admin'), routeController.updateRoute);
 router.delete('/routes/:id', verifyTokenMiddleware, requireRole('admin'), routeController.deleteRoute);

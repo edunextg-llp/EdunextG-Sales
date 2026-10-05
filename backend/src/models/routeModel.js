@@ -21,6 +21,23 @@ class RouteModel {
         const connection = await db.getConnection();
         try {
             await connection.beginTransaction();
+            // An area may belong to only one route.
+            const placeholders = areaNames.map(() => '?').join(',');
+            const [taken] = await connection.execute(
+                `SELECT ra.area_name, r.name AS route_name
+                 FROM route_areas ra INNER JOIN routes r ON r.id = ra.route_id
+                 WHERE ra.area_name IN (${placeholders}) AND ra.route_id <> ?
+                 FOR UPDATE`,
+                [...areaNames, id || 0]
+            );
+            if (taken.length) {
+                await connection.rollback();
+                const error = new Error('These areas are already in another route: '
+                    + taken.map((row) => `${row.area_name} (${row.route_name})`).join(', ')
+                    + '. Remove them from that route first.');
+                error.code = 'AREA_IN_OTHER_ROUTE';
+                throw error;
+            }
             let routeId = id;
             if (routeId) {
                 const [result] = await connection.execute('UPDATE routes SET name = ? WHERE id = ?', [name, routeId]);
@@ -39,7 +56,7 @@ class RouteModel {
             await connection.commit();
             return { id: routeId, name, areas: areaNames };
         } catch (error) {
-            await connection.rollback();
+            if (error.code !== 'AREA_IN_OTHER_ROUTE') await connection.rollback();
             throw error;
         } finally {
             connection.release();

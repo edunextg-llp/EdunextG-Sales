@@ -14,4 +14,13 @@ export async function migrateRoutes(connection) {
         KEY idx_route_areas_area (area_name),
         FOREIGN KEY (route_id) REFERENCES routes(id) ON DELETE CASCADE
     )`);
+    // One area can belong to only one route.
+    try {
+        await connection.query('ALTER TABLE route_areas ADD UNIQUE KEY uq_route_areas_area (area_name)');
+    } catch (error) {
+        if (error.code !== 'ER_DUP_KEYNAME') {
+            console.warn('Could not enforce one route per area yet (some areas are in more than one route). '
+                + 'Remove the duplicates in Create Route and restart:', error.message);
+        }
+    }
 }

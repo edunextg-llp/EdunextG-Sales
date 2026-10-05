@@ -95,16 +95,21 @@ export default function CreateRoute() {
     area.name.toLowerCase().includes(search.trim().toLowerCase())
   );
   const selectedSet = new Set(selected);
-  const allVisibleSelected = visibleAreas.length > 0 && visibleAreas.every((area) => selectedSet.has(area.name));
+  // Areas already used by another route cannot be picked (one route per area).
+  const otherRouteOf = (areaName) =>
+    (routesByArea.get(areaName) || []).find((route) => route.id !== editingRoute?.id) || null;
+  const selectableVisible = visibleAreas.filter((area) => !otherRouteOf(area.name));
+  const allVisibleSelected = selectableVisible.length > 0 && selectableVisible.every((area) => selectedSet.has(area.name));
 
   const toggleArea = (areaName) => {
+    if (otherRouteOf(areaName)) return;
     setSelected((current) =>
       current.includes(areaName) ? current.filter((name) => name !== areaName) : [...current, areaName]
     );
   };
 
   const toggleAllVisible = () => {
-    const visibleNames = visibleAreas.map((area) => area.name);
+    const visibleNames = selectableVisible.map((area) => area.name);
     setSelected((current) =>
       allVisibleSelected
         ? current.filter((name) => !visibleNames.includes(name))
@@ -202,7 +207,7 @@ export default function CreateRoute() {
                   </MDBox>
                 </MDBox>
                 <MDTypography variant="body2" color="text" mb={2}>
-                  Select the areas for this route, then click {editingRoute ? "Save Route" : "Create Route"} and give it a name such as R 1.
+                  An area can belong to only one route; areas already in another route are greyed out. Select the areas for this route, then click {editingRoute ? "Save Route" : "Create Route"} and give it a name such as R 1.
                 </MDTypography>
                 {success && <MDBox mb={2}><Alert severity="success">{success}</Alert></MDBox>}
                 {error && <MDBox mb={2}><Alert severity="error">{error}</Alert></MDBox>}
@@ -221,23 +226,25 @@ export default function CreateRoute() {
                             <TableCell padding="checkbox">
                               <Checkbox
                                 checked={allVisibleSelected}
-                                indeterminate={!allVisibleSelected && visibleAreas.some((area) => selectedSet.has(area.name))}
+                                indeterminate={!allVisibleSelected && selectableVisible.some((area) => selectedSet.has(area.name))}
+                                disabled={!selectableVisible.length}
                                 onChange={toggleAllVisible}
                                 inputProps={{ "aria-label": "Select all visible areas" }}
                               />
                             </TableCell>
                             <TableCell>Area name</TableCell>
                             <TableCell align="right">Outlets</TableCell>
-                            <TableCell>Already in route</TableCell>
+                            <TableCell>Route</TableCell>
                           </TableRow>
                         </TableHead>
                         <TableBody>
                           {visibleAreas.map((area) => {
                             const inRoutes = (routesByArea.get(area.name) || []).filter((route) => route.id !== editingRoute?.id);
+                            const locked = inRoutes.length > 0;
                             return (
-                              <TableRow key={area.name} hover onClick={() => toggleArea(area.name)} sx={{ cursor: "pointer" }} selected={selectedSet.has(area.name)}>
+                              <TableRow key={area.name} hover={!locked} onClick={() => toggleArea(area.name)} sx={{ cursor: locked ? "not-allowed" : "pointer", opacity: locked ? 0.55 : 1 }} selected={selectedSet.has(area.name)}>
                                 <TableCell padding="checkbox">
-                                  <Checkbox checked={selectedSet.has(area.name)} inputProps={{ "aria-label": `Select ${area.name}` }} />
+                                  <Checkbox checked={selectedSet.has(area.name)} disabled={locked} inputProps={{ "aria-label": `Select ${area.name}` }} />
                                 </TableCell>
                                 <TableCell>{area.name}</TableCell>
                                 <TableCell align="right">{area.outlet_count}</TableCell>

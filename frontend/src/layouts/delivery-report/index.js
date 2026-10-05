@@ -34,6 +34,8 @@ export default function DeliveryReport() {
   const [vehicle, setVehicle] = useState("");
   const [saving, setSaving] = useState(false);
   const [suspenseBusy, setSuspenseBusy] = useState(false);
+  const [routes, setRoutes] = useState([]);
+  const [routeId, setRouteId] = useState("");
   const [suspenseFeedback, setSuspenseFeedback] = useState("");
   const [message, setMessage] = useState("");
   const busy = useRef(false);
@@ -46,11 +48,34 @@ export default function DeliveryReport() {
     } catch (err) { setError(err.message); }
   }, []);
   useEffect(() => { void load(); }, [load]);
+  useEffect(() => {
+    fetch(API + "/staff/routes")
+      .then((response) => (response.ok ? response.json() : []))
+      .then((rows) => setRoutes(Array.isArray(rows) ? rows : []))
+      .catch(() => setRoutes([]));
+  }, []);
   useSalesPolling(load);
   const stagedIds = useMemo(() => new Set(drafts.flatMap((draft) => draft.rows.map((row) => String(row.id)))), [drafts]);
   const availableSales = useMemo(() => sales.filter((row) => !stagedIds.has(String(row.id))), [sales, stagedIds]);
   const pending = useMemo(() => [...new Map(availableSales.filter((row) => ["packing_done", "returned"].includes(row.packaging_status)).map((row) => [String(row.id), row])).values()], [availableSales]);
   const draftBoys = [...new Set(drafts.map((draft) => draft.boy))];
+  const billsForRoute = (route) => {
+    const areas = new Set((route?.areas || []).map((area) => reportAreaName(area)));
+    return pending.filter((row) => areas.has(reportAreaName(row.location_name)));
+  };
+  // Choosing a route selects all its pending bills; then use Assign as usual.
+  // To send one bill to another delivery boy, untick it (eye icon) before Assign.
+  const selectRoute = (value) => {
+    setRouteId(value);
+    const route = routes.find((item) => String(item.id) === String(value));
+    if (!route) return;
+    const ids = billsForRoute(route).map((row) => String(row.id));
+    setSelected(ids);
+    setError("");
+    setMessage(ids.length
+      ? route.name + ": " + ids.length + " bills selected. Click Assign to choose the delivery boy."
+      : route.name + " has no pending bills.");
+  };
   const chosen = pending.filter((row) => selected.includes(String(row.id)));
   const selectedDrafts = selectedAssignments(drafts, removeIds);
   const selectedBillCount = selectedDrafts.reduce((sum, draft) => sum + draft.rows.length, 0);
@@ -65,7 +90,7 @@ export default function DeliveryReport() {
     if (busy.current || !chosen.length) return;
     if (!boy || !date || !vehicle.trim()) { setError("Select delivery boy, date and vehicle number."); return; }
     setDrafts((prev) => [...prev, { id: Date.now(), boy, name: boys.find((person) => String(person.id) === boy)?.name || "Delivery Boy", date, vehicle: vehicle.trim(), rows: chosen }]);
-    setSelected([]); setOpen(false); setError("");
+    setSelected([]); setRouteId(""); setOpen(false); setError("");
     setMessage(chosen.length + " bills added to View. Use Submit in View to send assignments.");
   };
   const toggleDraftArea = (ids) => {
@@ -148,7 +173,14 @@ export default function DeliveryReport() {
       <DialogTitle id="delivery-log-title" sx={{ py: 0.5, px: 1, backgroundColor: "#dbeafe", borderBottom: "1px solid #93c5fd" }}>
         <MDBox display="flex" justifyContent="space-between" alignItems="center" gap={1} flexWrap="wrap">
           <MDTypography variant="h6" color="dark">Report — Pending Deliveries</MDTypography>
-          <MDBox display="flex" gap={1}>
+          <MDBox display="flex" gap={1} alignItems="center" flexWrap="wrap">
+            <FormControl size="small" sx={{ minWidth: 190 }}>
+              <InputLabel id="report-route-label">Select Route</InputLabel>
+              <Select labelId="report-route-label" label="Select Route" value={routeId} disabled={saving || !routes.length}
+                onChange={(event) => selectRoute(event.target.value)} sx={{ height: 34, backgroundColor: "#fff" }}>
+                {routes.map((route) => <MenuItem key={route.id} value={String(route.id)}>{route.name} ({billsForRoute(route).length} bills)</MenuItem>)}
+              </Select>
+            </FormControl>
             <MDButton size="small" color="info" variant="outlined" onClick={() => setViewOpen(true)}>View ({stagedIds.size})</MDButton>
             <MDButton size="small" color="info" variant="gradient" disabled={saving || !chosen.length} onClick={() => { setError(""); setOpen(true); }}>Assign ({chosen.length})</MDButton>
           </MDBox>
