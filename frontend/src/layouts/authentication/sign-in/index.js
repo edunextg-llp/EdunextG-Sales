@@ -28,6 +28,10 @@ function Basic() {
   const [captchaAnswer, setCaptchaAnswer] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [otpStep, setOtpStep] = useState(null); // { otpSessionId, email, expiresAt, resendAt }
+  const [otp, setOtp] = useState("");
+  const [otpInfo, setOtpInfo] = useState("");
+  const [now, setNow] = useState(Date.now());
   const navigate = useNavigate();
   const { login } = useAuth();
 
@@ -55,6 +59,139 @@ function Basic() {
     fetchCaptcha();
   }, [fetchCaptcha]);
 
+  // Tick once a second while the OTP screen is open (expiry + resend timers).
+  useEffect(() => {
+    if (!otpStep) return undefined;
+    const timer = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, [otpStep]);
+
+  const otpSecondsLeft = otpStep ? Math.max(0, Math.ceil((otpStep.expiresAt - now) / 1000)) : 0;
+  const resendSecondsLeft = otpStep ? Math.max(0, Math.ceil((otpStep.resendAt - now) / 1000)) : 0;
+  const formatTimer = (seconds) =>
+    `${String(Math.floor(seconds / 60)).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}`;
+
+  const startOtpStep = (data) => {
+    const startedAt = Date.now();
+    setOtpStep({
+      otpSessionId: data.otpSessionId || otpStep?.otpSessionId,
+      email: data.email,
+      expiresAt: startedAt + (data.expiresInSeconds || 600) * 1000,
+      resendAt: startedAt + (data.resendAfterSeconds || 60) * 1000,
+    });
+    setNow(startedAt);
+    setOtp("");
+  };
+
+  const leaveOtpStep = () => {
+    setOtpStep(null);
+    setOtp("");
+    setOtpInfo("");
+    setError("");
+    setPassword("");
+    fetchCaptcha();
+  };
+
+  const finishLogin = (data) => {
+    login(data.user, data.token, data.refreshToken, rememberMe);
+    const permissions = Array.isArray(data.user?.permissions) ? data.user.permissions : [];
+    const destination =
+      data.user?.role === "staff"
+        ? "/purchase-requisition"
+        : data.user?.role === "admin" || permissions.includes("dashboard")
+          ? "/dashboard"
+          : permissions.includes("dms") && permissions.includes("add_seller")
+            ? "/add-seller"
+            : permissions.includes("dms") && permissions.includes("add_item")
+              ? "/add-item"
+              : permissions.includes("dms") && permissions.includes("item_list")
+                ? "/dms-stock"
+                : permissions.includes("update_payment")
+                  ? "/update-payment"
+                  : permissions.includes("bank_deposit")
+                    ? "/bank-deposit"
+                    : permissions.includes("out_bill")
+                      ? "/out-bill"
+                      : permissions.includes("requisition_approval")
+                        ? "/requisition-approvals"
+                      : permissions.includes("add_outlet")
+                        ? "/add-outlet"
+                        : permissions.includes("add_sales")
+                          ? "/add-sales"
+                          : "/welcome";
+    navigate(destination, { replace: true });
+  };
+
+  const handleVerifyOtp = async (e) => {
+    e.preventDefault();
+    setError("");
+    setOtpInfo("");
+    if (!/^\d{6}$/.test(otp.trim())) {
+      setError("Enter the 6-digit OTP sent to your email.");
+      return;
+    }
+    if (otpSecondsLeft <= 0) {
+      setError("OTP has expired. Request a new one.");
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const response = await fetch(`${API}/login/verify-otp`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ otpSessionId: otpStep.otpSessionId, otp: otp.trim() }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (response.ok) {
+        finishLogin(data);
+        return;
+      }
+      setError(data.error || "Invalid OTP");
+      if (/sign in again/i.test(data.error || "")) {
+        setOtpStep(null);
+        setPassword("");
+        fetchCaptcha();
+      }
+    } catch (err) {
+      console.error(err);
+      setError("Unable to connect to the server.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleResendOtp = async () => {
+    if (!otpStep || resendSecondsLeft > 0) return;
+    setError("");
+    setOtpInfo("");
+    setLoading(true);
+    try {
+      const response = await fetch(`${API}/login/resend-otp`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ otpSessionId: otpStep.otpSessionId }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (response.ok) {
+        startOtpStep(data);
+        setOtpInfo(`A new OTP has been sent to ${data.email}.`);
+      } else {
+        setError(data.error || "Could not resend OTP.");
+        if (/sign in again/i.test(data.error || "")) {
+          setOtpStep(null);
+          setPassword("");
+          fetchCaptcha();
+        }
+      }
+    } catch (err) {
+      console.error(err);
+      setError("Unable to connect to the server.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError("");
@@ -81,33 +218,12 @@ function Basic() {
 
       if (response.ok) {
         const data = await response.json();
-        login(data.user, data.token, data.refreshToken, rememberMe);
-        const permissions = Array.isArray(data.user?.permissions) ? data.user.permissions : [];
-        const destination =
-          data.user?.role === "staff"
-            ? "/purchase-requisition"
-            : data.user?.role === "admin" || permissions.includes("dashboard")
-              ? "/dashboard"
-              : permissions.includes("dms") && permissions.includes("add_seller")
-                ? "/add-seller"
-                : permissions.includes("dms") && permissions.includes("add_item")
-                  ? "/add-item"
-                  : permissions.includes("dms") && permissions.includes("item_list")
-                    ? "/dms-stock"
-                    : permissions.includes("update_payment")
-                      ? "/update-payment"
-                      : permissions.includes("bank_deposit")
-                        ? "/bank-deposit"
-                        : permissions.includes("out_bill")
-                          ? "/out-bill"
-                          : permissions.includes("requisition_approval")
-                            ? "/requisition-approvals"
-                          : permissions.includes("add_outlet")
-                            ? "/add-outlet"
-                            : permissions.includes("add_sales")
-                              ? "/add-sales"
-                              : "/welcome";
-        navigate(destination, { replace: true });
+        if (data.otpRequired) {
+          startOtpStep(data);
+          setOtpInfo(`We sent a 6-digit OTP to ${data.email}.`);
+          return;
+        }
+        finishLogin(data);
       } else {
         const err = await response.json().catch(() => ({}));
         setError(err.error || "Invalid login credentials");
@@ -247,6 +363,85 @@ function Basic() {
               </MDTypography> */}
             </MDBox>
 
+            {otpStep ? (
+            <MDBox component="form" role="form" onSubmit={handleVerifyOtp}>
+              <MDBox
+                mb={1.5}
+                p={1.5}
+                sx={{ border: "1px solid #dbe4f0", borderRadius: "12px", backgroundColor: "#f8fafc" }}
+              >
+                <MDBox display="flex" alignItems="center" gap={0.75} mb={0.75}>
+                  <Icon sx={{ color: "#2563eb", fontSize: "17px !important" }}>mark_email_read</Icon>
+                  <MDTypography variant="caption" color="dark" fontWeight="bold">
+                    Email verification
+                  </MDTypography>
+                </MDBox>
+                <MDTypography variant="caption" color="text" display="block">
+                  Enter the 6-digit code sent to <strong>{otpStep.email}</strong>.
+                </MDTypography>
+              </MDBox>
+
+              <MDBox mb={1}>
+                <MDTypography variant="caption" fontWeight="bold" color="dark" display="block" mb={0.75}>
+                  One-time password
+                </MDTypography>
+                <MDInput
+                  type="text"
+                  placeholder="------"
+                  fullWidth
+                  autoFocus
+                  value={otp}
+                  onChange={(e) => setOtp(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                  autoComplete="one-time-code"
+                  inputProps={{ inputMode: "numeric", maxLength: 6, style: { letterSpacing: "0.5em", textAlign: "center", fontSize: "1.2rem" } }}
+                  required
+                  sx={{ "& .MuiInputBase-root": { minHeight: 48, borderRadius: "10px" } }}
+                />
+              </MDBox>
+
+              <MDBox display="flex" alignItems="center" justifyContent="space-between" mb={1.5}>
+                <MDTypography variant="caption" color={otpSecondsLeft > 0 ? "text" : "error"} fontWeight="medium">
+                  {otpSecondsLeft > 0 ? `Expires in ${formatTimer(otpSecondsLeft)}` : "OTP expired"}
+                </MDTypography>
+                <MDButton
+                  variant="text"
+                  color="info"
+                  size="small"
+                  type="button"
+                  onClick={handleResendOtp}
+                  disabled={loading || resendSecondsLeft > 0}
+                  sx={{ p: 0, minWidth: 0 }}
+                >
+                  {resendSecondsLeft > 0 ? `Resend in ${resendSecondsLeft}s` : "Resend OTP"}
+                </MDButton>
+              </MDBox>
+
+              {otpInfo && !error && (
+                <Alert severity="success" sx={{ mb: 2, borderRadius: "10px", py: 0.5 }}>
+                  {otpInfo}
+                </Alert>
+              )}
+              {error && (
+                <Alert severity="error" sx={{ mb: 2, borderRadius: "10px", py: 0.5 }}>
+                  {error}
+                </Alert>
+              )}
+
+              <MDButton
+                variant="gradient" color="info" fullWidth type="submit" disabled={loading || otpSecondsLeft <= 0} size="large"
+                sx={{ minHeight: 44, borderRadius: "10px", fontSize: "0.82rem", boxShadow: "0 10px 24px rgba(37,99,235,0.22)" }}
+              >
+                {loading ? "Verifying..." : "Verify & sign in"}
+              </MDButton>
+
+              <MDBox mt={1.25} textAlign="center">
+                <MDButton variant="text" color="dark" size="small" type="button" onClick={leaveOtpStep} disabled={loading}>
+                  <Icon fontSize="small" sx={{ mr: 0.5 }}>arrow_back</Icon>
+                  Back to sign in
+                </MDButton>
+              </MDBox>
+            </MDBox>
+            ) : (
             <MDBox component="form" role="form" onSubmit={handleSubmit}>
               <MDBox mb={1.5}>
                 <MDTypography variant="caption" fontWeight="bold" color="dark" display="block" mb={0.75}>
@@ -393,6 +588,7 @@ function Basic() {
                 </MDTypography>
               </MDBox>
             </MDBox>
+            )}
           </MDBox>
         </Grid>
       </Grid>

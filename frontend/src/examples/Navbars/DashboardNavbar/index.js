@@ -50,7 +50,7 @@ function DashboardNavbar({ absolute, light, isMini }) {
   const [navbarType, setNavbarType] = useState();
   const [controller, dispatch] = useMaterialUIController();
   const { transparentNavbar, fixedNavbar, darkMode, miniSidenav } = controller;
-  const { user, token } = useAuth();
+  const { user, token, logout } = useAuth();
   const [openMenu, setOpenMenu] = useState(false);
   const route = useLocation().pathname.split("/").slice(1);
   const [notifications, setNotifications] = useState([]);
@@ -60,6 +60,7 @@ function DashboardNavbar({ absolute, light, isMini }) {
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [savingCredentials, setSavingCredentials] = useState(false);
+  const [loggingOutAll, setLoggingOutAll] = useState(false);
 
   useEffect(() => {
     // Credit notifications are an admin-only feature. Avoid making this
@@ -173,6 +174,33 @@ function DashboardNavbar({ absolute, light, isMini }) {
     }
   };
 
+  const handleLogoutAllDevices = async () => {
+    if (loggingOutAll) return;
+    const confirmed = window.confirm(
+      "Log out the admin account from all devices? You will also be signed out here."
+    );
+    if (!confirmed) return;
+
+    setLoggingOutAll(true);
+    try {
+      const authToken = token || sessionStorage.getItem("auth_token") || localStorage.getItem("auth_token");
+      if (!authToken) throw new Error("Your session has expired. Please sign in again.");
+      const response = await fetch("https://bawarchee.edunextg.co/api/auth/admin/logout-all", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${authToken}` },
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok && response.status !== 401) {
+        throw new Error(data.error || "Unable to log out from all devices.");
+      }
+      logout();
+      window.location.href = "/authentication/sign-in";
+    } catch (error) {
+      alert(error.message || "Unable to log out from all devices.");
+      setLoggingOutAll(false);
+    }
+  };
+
   const renderMenu = () => (
     <Menu
       anchorEl={openMenu}
@@ -268,6 +296,20 @@ function DashboardNavbar({ absolute, light, isMini }) {
                   onClick={openCredentialsDialog}
                 >
                   <Icon sx={iconsStyle}>manage_accounts</Icon>
+                </IconButton>
+              )}
+              {user?.role === "admin" && (
+                <IconButton
+                  size="small"
+                  disableRipple
+                  color="inherit"
+                  sx={navbarIconButton}
+                  aria-label="Logout from all devices"
+                  title="Logout from all devices"
+                  onClick={handleLogoutAllDevices}
+                  disabled={loggingOutAll}
+                >
+                  <Icon sx={iconsStyle}>devices_off</Icon>
                 </IconButton>
               )}
               <IconButton

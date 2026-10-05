@@ -4,6 +4,14 @@ import crypto from 'crypto';
 import UserModel from '../models/userModel.js';
 import StaffModel from '../models/staffModel.js';
 import DeliveryBoyModel from '../models/deliveryBoyModel.js';
+import {
+    OTP_RESEND_COOLDOWN_MS,
+    OTP_TTL_MS,
+    createAdminOtp,
+    maskEmail,
+    resendAdminOtp,
+    verifyAdminOtp,
+} from '../services/adminLoginOtp.js';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'super_secret_key_12345';
 const JWT_REFRESH_SECRET = process.env.JWT_REFRESH_SECRET || `${JWT_SECRET}_refresh`;
@@ -64,6 +72,33 @@ function verifyCaptcha(captchaId, captchaAnswer) {
     return String(captchaAnswer).trim() === captcha.answer;
 }
 
+function adminSession(admin) {
+    return {
+        tokenPayload: { id: admin.id, email: admin.email, role: 'admin', tv: Number(admin.token_version) || 0 },
+        user: {
+            id: admin.id,
+            username: admin.username,
+            email: admin.email,
+            role: 'admin',
+        },
+    };
+}
+
+function sendLoginTokens(res, tokenPayload, user, rememberMe) {
+    const token = jwt.sign(tokenPayload, JWT_SECRET, { expiresIn: ACCESS_TOKEN_EXPIRES_IN });
+    const refreshExpiresIn = rememberMe ? REMEMBER_REFRESH_TOKEN_EXPIRES_IN : SESSION_REFRESH_TOKEN_EXPIRES_IN;
+    const refreshToken = jwt.sign(tokenPayload, JWT_REFRESH_SECRET, { expiresIn: refreshExpiresIn });
+
+    return res.status(200).json({
+        message: 'Login successful',
+        token,
+        refreshToken,
+        expiresIn: ACCESS_TOKEN_EXPIRES_IN,
+        refreshExpiresIn,
+        user,
+    });
+}
+
 export const getCaptcha = (req, res) => {
     res.status(200).json(createCaptchaChallenge());
 };
@@ -86,13 +121,23 @@ export const login = async (req, res) => {
         let user;
 
         if (admin && await bcrypt.compare(password, admin.password)) {
-            tokenPayload = { id: admin.id, email: admin.email, role: 'admin' };
-            user = {
-                id: admin.id,
-                username: admin.username,
-                email: admin.email,
-                role: 'admin',
-            };
+            // Admins must confirm a one-time password sent to their email
+            // before any token is issued.
+            let otpSessionId;
+            let otpEmail;
+            try {
+                ({ otpSessionId, email: otpEmail } = await createAdminOtp({ adminId: admin.id, email: admin.email, rememberMe }));
+            } catch (mailError) {
+                console.error('Failed to send admin login OTP:', mailError);
+                return res.status(502).json({ error: 'Could not send the OTP email. Please try again later.' });
+            }
+            return res.status(200).json({
+                otpRequired: true,
+                otpSessionId,
+                email: maskEmail(otpEmail),
+                expiresInSeconds: OTP_TTL_MS / 1000,
+                resendAfterSeconds: OTP_RESEND_COOLDOWN_MS / 1000,
+            });
         } else {
             const staff = await StaffModel.findByLoginId(identifier);
             const validStaff = staff
@@ -164,28 +209,58 @@ export const login = async (req, res) => {
                 };
             }
         }
-        const token = jwt.sign(
-            tokenPayload,
-            JWT_SECRET,
-            { expiresIn: ACCESS_TOKEN_EXPIRES_IN }
-        );
-        const refreshToken = jwt.sign(
-            tokenPayload,
-            JWT_REFRESH_SECRET,
-            { expiresIn: rememberMe ? REMEMBER_REFRESH_TOKEN_EXPIRES_IN : SESSION_REFRESH_TOKEN_EXPIRES_IN }
-        );
-
-        res.status(200).json({
-            message: 'Login successful',
-            token,
-            refreshToken,
-            expiresIn: ACCESS_TOKEN_EXPIRES_IN,
-            refreshExpiresIn: rememberMe ? REMEMBER_REFRESH_TOKEN_EXPIRES_IN : SESSION_REFRESH_TOKEN_EXPIRES_IN,
-            user,
-        });
+        return sendLoginTokens(res, tokenPayload, user, rememberMe);
     } catch (error) {
         console.error('Login error:', error);
         res.status(500).json({ error: 'Internal server error' });
+    }
+};
+
+export const verifyLoginOtp = async (req, res) => {
+    try {
+        const { otpSessionId, otp } = req.body;
+        if (!otpSessionId || !otp) {
+            return res.status(400).json({ error: 'OTP is required.' });
+        }
+
+        const result = verifyAdminOtp(otpSessionId, otp);
+        if (!result.ok) {
+            return res.status(401).json({ error: result.error });
+        }
+
+        const admin = await UserModel.findById(result.adminId);
+        if (!admin) {
+            return res.status(401).json({ error: 'Admin account not found. Please sign in again.' });
+        }
+
+        const { tokenPayload, user } = adminSession(admin);
+        return sendLoginTokens(res, tokenPayload, user, result.rememberMe);
+    } catch (error) {
+        console.error('OTP verification error:', error);
+        return res.status(500).json({ error: 'Internal server error' });
+    }
+};
+
+export const resendLoginOtp = async (req, res) => {
+    try {
+        const { otpSessionId } = req.body;
+        if (!otpSessionId) {
+            return res.status(400).json({ error: 'OTP session is required.' });
+        }
+
+        const result = await resendAdminOtp(otpSessionId);
+        if (!result.ok) {
+            return res.status(result.status).json({ error: result.error });
+        }
+        return res.json({
+            message: 'A new OTP has been sent.',
+            email: maskEmail(result.email),
+            expiresInSeconds: OTP_TTL_MS / 1000,
+            resendAfterSeconds: OTP_RESEND_COOLDOWN_MS / 1000,
+        });
+    } catch (error) {
+        console.error('Failed to resend admin login OTP:', error);
+        return res.status(502).json({ error: 'Could not send the OTP email. Please try again later.' });
     }
 };
 
@@ -198,6 +273,16 @@ export const refreshToken = async (req, res) => {
         }
 
         const decoded = jwt.verify(providedRefreshToken, JWT_REFRESH_SECRET);
+
+        let tv;
+        if (decoded.role === 'admin') {
+            const currentVersion = await UserModel.getTokenVersion(decoded.id);
+            if (currentVersion === null || Number(decoded.tv ?? 0) !== currentVersion) {
+                return res.status(401).json({ error: 'Session has been logged out. Please sign in again.' });
+            }
+            tv = currentVersion;
+        }
+
         const token = jwt.sign(
             {
                 id: decoded.id,
@@ -209,6 +294,7 @@ export const refreshToken = async (req, res) => {
                 companyIds: decoded.companyIds,
                 deliveryBoyId: decoded.deliveryBoyId,
                 permissions: decoded.permissions,
+                tv,
             },
             JWT_SECRET,
             { expiresIn: ACCESS_TOKEN_EXPIRES_IN }
@@ -266,6 +352,21 @@ export const updateAdminCredentials = async (req, res) => {
         return res.json({ message: 'Admin Login ID and password updated successfully.' });
     } catch (error) {
         console.error('Error updating admin credentials:', error);
+        return res.status(500).json({ error: 'Internal server error' });
+    }
+};
+
+export const logoutAllDevices = async (req, res) => {
+    try {
+        const adminId = Number(req.user?.id);
+        if (!Number.isInteger(adminId) || adminId <= 0) {
+            return res.status(401).json({ error: 'Invalid admin session.' });
+        }
+
+        await UserModel.incrementTokenVersion(adminId);
+        return res.json({ message: 'Logged out from all devices.' });
+    } catch (error) {
+        console.error('Error logging out admin from all devices:', error);
         return res.status(500).json({ error: 'Internal server error' });
     }
 };

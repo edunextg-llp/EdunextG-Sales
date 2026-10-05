@@ -1,21 +1,39 @@
 import jwt from 'jsonwebtoken';
+import UserModel from '../models/userModel.js';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'super_secret_key_12345';
 
-export const verifyTokenMiddleware = (req, res, next) => {
+export const verifyTokenMiddleware = async (req, res, next) => {
     const token = req.headers['authorization'];
 
     if (!token) {
         return res.status(403).json({ error: 'Access denied. No token provided.' });
     }
 
+    let decoded;
     try {
-        const decoded = jwt.verify(token.split(' ')[1], JWT_SECRET);
-        req.user = decoded;
-        next();
+        decoded = jwt.verify(token.split(' ')[1], JWT_SECRET);
     } catch (error) {
         return res.status(401).json({ error: 'Invalid or expired token.' });
     }
+
+    // Admin tokens carry a session version (tv). If the admin used
+    // "Logout from all devices", the stored version has moved on and
+    // every older token is rejected.
+    if (decoded.role === 'admin') {
+        try {
+            const currentVersion = await UserModel.getTokenVersion(decoded.id);
+            if (currentVersion === null || Number(decoded.tv ?? 0) !== currentVersion) {
+                return res.status(401).json({ error: 'Session has been logged out. Please sign in again.' });
+            }
+        } catch (error) {
+            console.error('Admin session check failed:', error);
+            return res.status(500).json({ error: 'Internal server error' });
+        }
+    }
+
+    req.user = decoded;
+    return next();
 };
 
 export const requireRole = (...roles) => (req, res, next) => {

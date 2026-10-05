@@ -45,6 +45,13 @@ export async function ensureSchema() {
             INSERT IGNORE INTO sticker_sequence (id, seq_value) VALUES (1, 0)
         `);
 
+        // Session version for admins: bumped by "Logout from all devices"
+        await tryQuery(
+            connection,
+            `ALTER TABLE admins ADD COLUMN token_version INT NOT NULL DEFAULT 0`,
+            'token_version on admins'
+        );
+
         await connection.query(`
             CREATE TABLE IF NOT EXISTS companies (
                 id INT AUTO_INCREMENT PRIMARY KEY,
