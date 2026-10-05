@@ -249,6 +249,32 @@ class ReportModel {
         return toNumberRows(rows);
     }
 
+    // Splits the collection into payments for new bills (received on or before
+    // the bill's delivery date, or bill date when not delivered yet) and
+    // payments against old credit bills (received after that day).
+    static async getTodayCollectionSplit(startDate, endDate, companyId = null) {
+        const dateWhere = ReportModel.buildDateWhere('payment_date', startDate, endDate);
+        const companyFilter = ReportModel.buildSalesCompanyFilter(companyId);
+        const [rows] = await db.execute(
+            `SELECT
+                COALESCE(SUM(CASE WHEN sp.payment_date <= COALESCE(ss.delivery_date, ss.sale_date) THEN sp.amount ELSE 0 END), 0) AS new_bill_amount,
+                COUNT(DISTINCT CASE WHEN sp.payment_date <= COALESCE(ss.delivery_date, ss.sale_date) THEN ss.id END) AS new_bill_count,
+                COALESCE(SUM(CASE WHEN sp.payment_date > COALESCE(ss.delivery_date, ss.sale_date) THEN sp.amount ELSE 0 END), 0) AS old_credit_amount,
+                COUNT(DISTINCT CASE WHEN sp.payment_date > COALESCE(ss.delivery_date, ss.sale_date) THEN ss.id END) AS old_credit_count
+             FROM sale_payments sp
+             JOIN staff_sales ss ON ss.id = sp.sale_id
+             ${dateWhere.sql ? `${dateWhere.sql.replace('payment_date', 'sp.payment_date')} AND` : 'WHERE sp.payment_date = CURDATE() AND'} sp.payment_mode IN ('cash', 'upi', 'cheque')${companyFilter.sql}`,
+            [...dateWhere.params, ...companyFilter.params]
+        );
+        const row = rows[0] || {};
+        return {
+            new_bill_amount: Number(row.new_bill_amount) || 0,
+            new_bill_count: Number(row.new_bill_count) || 0,
+            old_credit_amount: Number(row.old_credit_amount) || 0,
+            old_credit_count: Number(row.old_credit_count) || 0,
+        };
+    }
+
     static async getTodayCollectionDetails(startDate, endDate, companyId = null) {
         const dateWhere = ReportModel.buildDateWhere('sp.payment_date', startDate, endDate);
         const companyFilter = ReportModel.buildCompanyFilter(companyId);
@@ -945,6 +971,7 @@ class ReportModel {
             staffCollectionByDate,
             deliveredCancellationDetails,
             deliveredOutstandingDetails,
+            todayCollectionSplit,
         ] = await Promise.all([
             ReportModel.getSummary(startDate, endDate, companyId, staffId),
             ReportModel.getCollectionByMode(startDate, endDate, staffId, companyId),
@@ -965,6 +992,7 @@ class ReportModel {
             ReportModel.getStaffCollectionByDate(startDate, endDate, staffId),
             ReportModel.getDeliveredCancellationDetails(startDate, endDate, companyId, staffId),
             ReportModel.getDeliveredOutstandingDetails(startDate, endDate, companyId, staffId),
+            ReportModel.getTodayCollectionSplit(startDate, endDate, companyId),
         ]);
 
         return {
@@ -987,6 +1015,7 @@ class ReportModel {
             staffCollectionByDate,
             deliveredCancellationDetails,
             deliveredOutstandingDetails,
+            todayCollectionSplit,
         };
     }
 }

@@ -73,6 +73,7 @@ const emptyReportData = {
   collectionDetails: [],
   todayCollection: [],
   todayCollectionDetails: [],
+  todayCollectionSplit: { new_bill_amount: 0, new_bill_count: 0, old_credit_amount: 0, old_credit_count: 0 },
   monthlyCollection: [],
   yearlyCollection: [],
   salesByPeriod: { weekly: [], monthly: [], quarterly: [], yearly: [] },
@@ -172,6 +173,50 @@ function money(value) {
 function shortMoney(value) {
   return money(value);
 }
+
+// New bill collection vs collection against old credit bills.
+function CollectionSplit({ split, compact }) {
+  const data = split || {};
+  const items = [
+    { label: "New bill collection", amount: data.new_bill_amount, count: data.new_bill_count, color: "#166534", bg: "#dcfce7" },
+    { label: "Old credit bill collection", amount: data.old_credit_amount, count: data.old_credit_count, color: "#9a3412", bg: "#ffedd5" },
+  ];
+  return (
+    <MDBox display="flex" gap={1} mt={compact ? 0 : 1} mb={compact ? 1 : 0} flexWrap="wrap">
+      {items.map((item) => (
+        <MDBox
+          key={item.label}
+          flex="1 1 140px"
+          px={1.25}
+          py={0.75}
+          sx={{ backgroundColor: item.bg, borderRadius: "8px", border: `1px solid ${item.color}33` }}
+        >
+          <MDTypography variant="caption" display="block" sx={{ color: item.color, fontWeight: 600 }}>
+            {item.label}
+          </MDTypography>
+          <MDTypography variant={compact ? "button" : "h6"} sx={{ color: item.color, fontWeight: 700 }}>
+            {money(item.amount)}
+          </MDTypography>
+          <MDTypography variant="caption" display="block" sx={{ color: item.color }}>
+            {Number(item.count || 0)} bill{Number(item.count) === 1 ? "" : "s"}
+          </MDTypography>
+        </MDBox>
+      ))}
+    </MDBox>
+  );
+}
+
+CollectionSplit.propTypes = {
+  split: PropTypes.shape({
+    new_bill_amount: PropTypes.number,
+    new_bill_count: PropTypes.number,
+    old_credit_amount: PropTypes.number,
+    old_credit_count: PropTypes.number,
+  }),
+  compact: PropTypes.bool,
+};
+
+CollectionSplit.defaultProps = { split: null, compact: false };
 
 function formatDate(value) {
   if (!value) return "N/A";
@@ -912,6 +957,7 @@ function Dashboard() {
   const [collectionDateReportData, setCollectionDateReportData] = useState({
     todayCollection: [],
     todayCollectionDetails: [],
+    todayCollectionSplit: { new_bill_amount: 0, new_bill_count: 0, old_credit_amount: 0, old_credit_count: 0 },
   });
   const [totalCollectionReportData, setTotalCollectionReportData] = useState({
     collectionByMode: [],
@@ -1072,7 +1118,7 @@ function Dashboard() {
 
   const fetchCollectionDateReport = async (date) => {
     if (!date) {
-      return { todayCollection: [], todayCollectionDetails: [] };
+      return { todayCollection: [], todayCollectionDetails: [], todayCollectionSplit: { new_bill_amount: 0, new_bill_count: 0, old_credit_amount: 0, old_credit_count: 0 } };
     }
 
     const params = new URLSearchParams({
@@ -1089,6 +1135,7 @@ function Dashboard() {
     return {
       todayCollection: data.todayCollection || [],
       todayCollectionDetails: data.todayCollectionDetails || [],
+      todayCollectionSplit: data.todayCollectionSplit || { new_bill_amount: 0, new_bill_count: 0, old_credit_amount: 0, old_credit_count: 0 },
     };
   };
 
@@ -1195,7 +1242,7 @@ function Dashboard() {
       } catch (error) {
         console.error("Error fetching collection date report:", error);
         if (!ignore) {
-          setCollectionDateReportData({ todayCollection: [], todayCollectionDetails: [] });
+          setCollectionDateReportData({ todayCollection: [], todayCollectionDetails: [], todayCollectionSplit: { new_bill_amount: 0, new_bill_count: 0, old_credit_amount: 0, old_credit_count: 0 } });
         }
       } finally {
         if (!ignore) {
@@ -2244,6 +2291,7 @@ function Dashboard() {
                     title="Today Collection"
                     count={shortMoney(todayCollectionTotal)}
                   />
+                  <CollectionSplit split={reportData.todayCollectionSplit} />
                 </MDBox>
               </Grid>
               <Grid item xs={12} md={6} lg={3}>
@@ -2478,6 +2526,7 @@ function Dashboard() {
                             Loading collection for selected date...
                           </MDTypography>
                         )}
+                        <CollectionSplit split={collectionDateReportData.todayCollectionSplit} compact />
                         <MDBox display="flex" gap={0.75} alignItems="center" flexWrap="wrap">
                           <FormControl size="small" sx={{ minWidth: 155 }}>
                             <InputLabel id="today-collection-company-label">Company</InputLabel>
