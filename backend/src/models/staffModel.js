@@ -5,6 +5,14 @@ import { getCompanyBillPrefix, normalizeInvoiceNumber } from '../utils/invoiceNu
 import PhysicalStockModel from './physicalStockModel.js';
 
 class StaffModel {
+    static async isSaleInSuspense(saleId) {
+        const [rows] = await db.execute(
+            'SELECT in_suspense FROM staff_sales WHERE id = ? LIMIT 1',
+            [saleId]
+        );
+        return Number(rows[0]?.in_suspense) === 1;
+    }
+
     // Park bills from Pending Deliveries in Suspense (inSuspense = true) or
     // return them (false). Only bills still waiting for delivery
     // (packing_done / returned) can be moved into suspense.
