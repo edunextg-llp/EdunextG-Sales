@@ -33,6 +33,8 @@ export default function DeliveryReport() {
   const [date, setDate] = useState(today);
   const [vehicle, setVehicle] = useState("");
   const [saving, setSaving] = useState(false);
+  const [suspenseBusy, setSuspenseBusy] = useState(false);
+  const [suspenseFeedback, setSuspenseFeedback] = useState("");
   const [message, setMessage] = useState("");
   const busy = useRef(false);
   const load = useCallback(async () => {
@@ -109,6 +111,37 @@ export default function DeliveryReport() {
   const report = useMemo(() => buildDeliveryLog(availableSales, { hideEmptyAreas: true }), [availableSales]);
   const groupBills = viewGroup ? pending.filter((row) => viewGroup.ids.includes(String(row.id))) : [];
   const groupSelectedCount = groupBills.filter((row) => selected.includes(String(row.id))).length;
+  const moveGroupToSuspense = async () => {
+    const saleIds = groupBills.filter((row) => selected.includes(String(row.id))).map((row) => row.id);
+    if (busy.current || !saleIds.length) return;
+    busy.current = true;
+    setSaving(true);
+    setSuspenseBusy(true);
+    setSuspenseFeedback("");
+    try {
+      const response = await fetch(`${API}/staff/sales/suspense`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${localStorage.getItem("token")}` },
+        body: JSON.stringify({ saleIds, suspense: true }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "Unable to move bills to Suspense.");
+      const moved = new Set((data.movedIds || []).map(String));
+      setSales((current) => current.filter((row) => !moved.has(String(row.id))));
+      setSelected((current) => current.filter((id) => !moved.has(String(id))));
+      const feedback = `${moved.size} bill(s) moved to Suspense.${data.skippedIds?.length ? ` ${data.skippedIds.length} skipped because their status changed.` : ""}`;
+      setSuspenseFeedback(feedback);
+      setMessage(feedback);
+      notifySalesUpdated();
+      await load();
+    } catch (requestError) {
+      setSuspenseFeedback(requestError.message || "Unable to move bills to Suspense.");
+    } finally {
+      busy.current = false;
+      setSaving(false);
+      setSuspenseBusy(false);
+    }
+  };
   const [error, setError] = useState("");
   return (
     <DashboardLayout><DashboardNavbar /><MDBox py={3} sx={{ backgroundColor: "#fff" }}>
@@ -172,10 +205,12 @@ export default function DeliveryReport() {
           </TableContainer>
         )}
       </DialogContent>
-      <Dialog open={Boolean(viewGroup)} onClose={() => setViewGroup(null)} fullWidth maxWidth="md">
+      <Dialog open={Boolean(viewGroup)} onClose={() => { if (!saving) { setViewGroup(null); setSuspenseFeedback(""); } }} fullWidth maxWidth="md">
         <DialogTitle>{viewGroup?.title} — Pending bills</DialogTitle>
         <DialogContent dividers>
           <MDTypography variant="caption" display="block" mb={1}>Select bills, then click Done to choose more from another area or company. When finished, use the Assign button at the top of the report.</MDTypography>
+          <MDTypography variant="caption" display="block" mb={1}>Suspense moves only the selected bills in this window out of Pending Deliveries.</MDTypography>
+          {suspenseFeedback && <MDTypography role="status" variant="body2" mb={1}>{suspenseFeedback}</MDTypography>}
           <TableContainer sx={{ maxHeight: "55vh" }}>
             <Table size="small" stickyHeader sx={{ "& .MuiTableCell-root": { fontSize: "0.8125rem" } }}>
               <TableHead sx={{ display: "table-header-group" }}><TableRow>
@@ -202,7 +237,10 @@ export default function DeliveryReport() {
         </DialogContent>
         <DialogActions sx={{ flexWrap: "wrap", gap: 1 }}>
           <MDTypography variant="caption" sx={{ mr: "auto", pl: 1 }}>Selected here: {groupSelectedCount} / {groupBills.length} · Total selected: {chosen.length}</MDTypography>
-          <MDButton color="secondary" onClick={() => setViewGroup(null)}>Done</MDButton>
+          <MDButton color="warning" disabled={saving || !groupSelectedCount} onClick={moveGroupToSuspense}>
+            {suspenseBusy ? "Moving…" : `Suspense (${groupSelectedCount})`}
+          </MDButton>
+          <MDButton color="secondary" disabled={saving} onClick={() => { setViewGroup(null); setSuspenseFeedback(""); }}>Done</MDButton>
         </DialogActions>
       </Dialog>
       <Dialog open={open} onClose={() => { if (!saving) setOpen(false); }} fullWidth maxWidth="sm">
@@ -289,4 +327,3 @@ export default function DeliveryReport() {
     </MDBox><Footer /></DashboardLayout>
   );
 }
-
