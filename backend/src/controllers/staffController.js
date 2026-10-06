@@ -263,7 +263,7 @@ function buildStaffCompanies(staff) {
 }
 
 function normalizeStaffCategory(value) {
-    return value === 'bawarchee_staff' ? 'bawarchee_staff' : 'company_staff';
+    return ['bawarchee_staff', 'operator'].includes(value) ? value : 'company_staff';
 }
 
 function managedCompanyScopeError(req, staffCategory, companyIds) {

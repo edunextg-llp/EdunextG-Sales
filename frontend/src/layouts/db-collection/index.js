@@ -104,6 +104,18 @@ function getPaymentDetails(row) {
   return "N/A";
 }
 
+// Credit is a promise to pay later, not money in hand, so it stays out of the collected totals.
+function collectedAmount(row) {
+  return row.payment_mode === "credit" ? 0 : Number(row.amount) || 0;
+}
+
+function getBalanceAfter(row) {
+  // staff_sales.balance_amount only counts settled payments, so subtract this collection while it is still pending.
+  const balance = Number(row.balance_amount) || 0;
+  const pending = row.settled_at ? 0 : Number(row.amount) || 0;
+  return Math.max(0, Math.round((balance - pending) * 100) / 100);
+}
+
 function authHeaders() {
   const token = localStorage.getItem("auth_token") || sessionStorage.getItem("auth_token") || localStorage.getItem("token");
   return token ? { Authorization: `Bearer ${token}` } : {};
@@ -121,6 +133,7 @@ function DBCollection() {
   const [chequeDate, setChequeDate] = useState("");
   const [cashCounts, setCashCounts] = useState({});
   const [viewCollection, setViewCollection] = useState(null);
+  const [viewGroupKey, setViewGroupKey] = useState(null);
   const [upiNumber, setUpiNumber] = useState("");
   const cashTotal = CASH_DENOMINATIONS.reduce((total, [, key, value]) => total + (Number(cashCounts[key]) || 0) * Math.round(value * 100), 0) / 100;
   const [settlementError, setSettlementError] = useState("");
@@ -206,15 +219,74 @@ function DBCollection() {
   }, [searchQuery, fromDate, toDate]);
 
   const totalAmount = useMemo(
-    () => collections.reduce((sum, row) => sum + (Number(row.amount) || 0), 0),
+    () => collections.reduce((sum, row) => sum + collectedAmount(row), 0),
     [collections]
   );
 
-  const totalPages = Math.max(1, Math.ceil(collections.length / ROWS_PER_PAGE));
-  const paginatedCollections = collections.slice(
+  // One row per employee per day: delivery boys show BAWARCHEE, company staff show their own company.
+  const groups = useMemo(() => {
+    const map = new Map();
+    collections.forEach((row) => {
+      const isStaff = row.collector_type === "company_staff";
+      const collectorId = isStaff ? row.staff_id : row.delivery_boy_id;
+      const date = row.collection_date || String(row.created_at || "").split(" ")[0];
+      const key = `${date}|${row.collector_type}|${collectorId}`;
+      if (!map.has(key)) {
+        map.set(key, {
+          key,
+          date,
+          collectorType: row.collector_type,
+          companyName: row.collector_company_name || (isStaff ? "Company not assigned" : "BAWARCHEE"),
+          employeeName: row.delivery_boy_name || "N/A",
+          rows: [],
+          total: 0,
+          pending: 0,
+        });
+      }
+      const group = map.get(key);
+      group.rows.push(row);
+      group.total += collectedAmount(row);
+      if (!row.settled_at) group.pending += 1;
+    });
+    return [...map.values()].sort((a, b) => (b.date || "").localeCompare(a.date || "")
+      || a.employeeName.localeCompare(b.employeeName));
+  }, [collections]);
+
+  const viewGroup = useMemo(
+    () => groups.find((group) => group.key === viewGroupKey) || null,
+    [groups, viewGroupKey]
+  );
+
+  // Inside the popup, split the employee's collections by the invoice's company (Everest, SIL, ...).
+  const companySections = useMemo(() => {
+    if (!viewGroup) return [];
+    const map = new Map();
+    viewGroup.rows.forEach((row) => {
+      const name = row.sale_company_name || "Company not assigned";
+      if (!map.has(name)) map.set(name, []);
+      map.get(name).push(row);
+    });
+    return [...map.entries()]
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([name, rows]) => ({
+        name,
+        rows: [...rows].sort((a, b) => String(a.created_at).localeCompare(String(b.created_at))),
+        invoiceTotal: rows.reduce((sum, row) => sum + (Number(row.price) || 0), 0),
+        collectedTotal: rows.reduce((sum, row) => sum + collectedAmount(row), 0),
+        balanceTotal: rows.reduce((sum, row) => sum + getBalanceAfter(row), 0),
+      }));
+  }, [viewGroup]);
+
+  const totalPages = Math.max(1, Math.ceil(groups.length / ROWS_PER_PAGE));
+  const paginatedGroups = groups.slice(
     (page - 1) * ROWS_PER_PAGE,
     page * ROWS_PER_PAGE
   );
+
+  const detailTableSx = {
+    "& .MuiTableCell-root": { fontSize: "0.75rem", whiteSpace: "nowrap", px: 1.25, py: 1 },
+    "& .MuiChip-root, & .MuiButton-root": { fontSize: "0.75rem" },
+  };
 
   return (
     <DashboardLayout>
@@ -235,7 +307,7 @@ function DBCollection() {
                   D.B. Collection
                 </MDTypography>
                 <MDTypography variant="button" color="text">
-                  Payments submitted from delivery-boy mobile accounts. Settle after reconciliation.
+                  Payments submitted by delivery boys and company staff, grouped by employee and day. Open a row to settle.
                 </MDTypography>
               </MDBox>
               <MDBox display="flex" gap={1.5} alignItems="center" flexWrap="wrap">
@@ -252,7 +324,7 @@ function DBCollection() {
             <MDBox mb={2} display="flex" gap={1.5} flexWrap="wrap" alignItems="center">
               <MDInput
                 label="Search collections"
-                placeholder="Outlet, invoice, collector, payment mode, or sale ID"
+                placeholder="Employee, company, outlet, invoice or sale ID"
                 sx={{ width: { xs: "100%", md: 340 }, flexShrink: 1 }}
                 value={searchQuery}
                 onChange={(event) => setSearchQuery(event.target.value)}
@@ -268,94 +340,59 @@ function DBCollection() {
             </MDBox>
             {filterError && <Alert severity="error" sx={{ mb: 2 }}>{filterError}</Alert>}
             <TableContainer component={Paper} sx={paginatedTableContainerSx}>
-              <Table
-                stickyHeader
-                size="small"
-                sx={{
-                  "& .MuiTableCell-root": {
-                    fontSize: "0.75rem",
-                    whiteSpace: "nowrap",
-                    px: 1.25,
-                    py: 1,
-                  },
-                  "& .MuiChip-root, & .MuiButton-root": {
-                    fontSize: "0.75rem",
-                  },
-                }}
-              >
+              <Table stickyHeader size="small" sx={detailTableSx}>
                 <TableHead sx={paginatedTableHeadSx()}>
                   <TableRow>
-                    <TableCell align="center" sx={{ ...paginatedTableHeadCellSx, width: 56 }}>
-                      Sr No
-                    </TableCell>
-                    <TableCell align="left" sx={paginatedTableHeadCellSx}>Outlet Name</TableCell>
-                    <TableCell align="center" sx={paginatedTableHeadCellSx}>Invoice No</TableCell>
-                    <TableCell align="center" sx={paginatedTableHeadCellSx}>Sale ID</TableCell>
-                    <TableCell align="left" sx={paginatedTableHeadCellSx}>Collected By</TableCell>
-                    <TableCell align="left" sx={paginatedTableHeadCellSx}>Payment Source</TableCell>
-                    <TableCell align="center" sx={paginatedTableHeadCellSx}>Payment Status</TableCell>
-                    <TableCell align="right" sx={paginatedTableHeadCellSx}>Amount</TableCell>
-                    <TableCell align="left" sx={paginatedTableHeadCellSx}>Details</TableCell>
-                    <TableCell align="center" sx={paginatedTableHeadCellSx}>Updated</TableCell>
-                    <TableCell align="center" sx={paginatedTableHeadCellSx}>Settlement</TableCell>
+                    <TableCell align="center" sx={{ ...paginatedTableHeadCellSx, width: 56 }}>Sr No</TableCell>
+                    <TableCell align="center" sx={paginatedTableHeadCellSx}>Date</TableCell>
+                    <TableCell align="left" sx={paginatedTableHeadCellSx}>Company Name</TableCell>
+                    <TableCell align="left" sx={paginatedTableHeadCellSx}>Employee Name</TableCell>
+                    <TableCell align="center" sx={{ ...paginatedTableHeadCellSx, width: 80 }}>View</TableCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>
                   {loading ? (
                     <TableRow>
-                      <TableCell colSpan={11} align="center">
+                      <TableCell colSpan={5} align="center">
                         <MDTypography variant="button" color="text">Loading...</MDTypography>
                       </TableCell>
                     </TableRow>
-                  ) : paginatedCollections.length > 0 ? (
-                    paginatedCollections.map((row, index) => (
-                      <TableRow key={row.id}>
+                  ) : paginatedGroups.length > 0 ? (
+                    paginatedGroups.map((group, index) => (
+                      <TableRow key={group.key} hover>
                         <TableCell align="center">{(page - 1) * ROWS_PER_PAGE + index + 1}</TableCell>
-                        <TableCell>{row.outlet_name || "N/A"}</TableCell>
-                        <TableCell align="center">{row.invoice_number || "N/A"}</TableCell>
-                        <TableCell align="center">BP{row.sale_id}</TableCell>
+                        <TableCell align="center">{formatDate(group.date)}</TableCell>
                         <TableCell>
-                          {row.delivery_boy_name || "N/A"}
+                          <Chip
+                            label={group.companyName}
+                            size="small"
+                            variant="outlined"
+                            color={group.collectorType === "company_staff" ? "info" : "warning"}
+                          />
+                        </TableCell>
+                        <TableCell>
+                          {group.employeeName}
                           <MDTypography display="block" variant="caption" color="text">
-                            {row.collector_type === "company_staff" ? "Company Staff" : "Delivery Boy"}
+                            {group.collectorType === "company_staff" ? "Company Staff" : "Delivery Boy"}
+                            {" · "}{group.rows.length} bill{group.rows.length === 1 ? "" : "s"}
+                            {group.pending > 0 ? ` · ${group.pending} to settle` : " · all settled"}
                           </MDTypography>
                         </TableCell>
-                        <TableCell>
-                          <Chip
-                            label={row.collection_source === "taken_bill" ? "Out Bill" : row.collection_source === "delivery" ? "Same-day Delivery" : "Not recorded"}
-                            color={row.collection_source === "taken_bill" ? "info" : row.collection_source === "delivery" ? "success" : "default"}
-                            size="small"
-                            variant="outlined"
-                          />
-                        </TableCell>
                         <TableCell align="center">
-                          <Chip
-                            label={PAYMENT_LABELS[row.payment_mode] || row.payment_mode || "N/A"}
-                            color={PAYMENT_COLORS[row.payment_mode] || "default"}
-                            size="small"
-                            variant="outlined"
-                          />
+                          <Tooltip title="View collections">
+                            <IconButton size="small" color="info" aria-label={`View collections of ${group.employeeName} on ${formatDate(group.date)}`}
+                              onClick={() => setViewGroupKey(group.key)}>
+                              <Icon fontSize="small">visibility</Icon>
+                            </IconButton>
+                          </Tooltip>
                         </TableCell>
-                        <TableCell align="right">{formatCurrency(row.amount)}</TableCell>
-                        <TableCell>
-                          {row.payment_mode === "cash" ? (
-                            <Tooltip title="View cash details">
-                              <IconButton size="small" color="info" aria-label={`View cash details for ${row.outlet_name || `BP${row.sale_id}`}`}
-                                onClick={() => setViewCollection(row)}>
-                                <Icon fontSize="small">visibility</Icon>
-                              </IconButton>
-                            </Tooltip>
-                          ) : getPaymentDetails(row)}
-                        </TableCell>
-                        <TableCell align="center">{formatDate(row.updated_at)}</TableCell>
-                        <TableCell align="center">{row.settled_at ? <Chip label="Settled" color="success" size="small" variant="outlined" /> : <MDButton color="success" size="small" variant="gradient" disabled={settlingId !== null} onClick={() => requestSettlement(row)}>{settlingId === row.id ? "Settling..." : "Settle"}</MDButton>}</TableCell>
                       </TableRow>
                     ))
                   ) : (
                     <TableRow>
-                      <TableCell colSpan={11} align="center">
+                      <TableCell colSpan={5} align="center">
                         <MDTypography variant="button" color="text">
-                          No delivery-boy collection updates found.
+                          No collection updates found.
                         </MDTypography>
                       </TableCell>
                     </TableRow>
@@ -367,12 +404,124 @@ function DBCollection() {
             <TablePaginationFooter
               page={page}
               totalPages={totalPages}
-              total={collections.length}
+              total={groups.length}
               onPageChange={setPage}
             />
           </MDBox>
         </Card>
       </MDBox>
+      <Dialog open={Boolean(viewGroup)} onClose={() => setViewGroupKey(null)} fullWidth maxWidth="lg">
+        <DialogTitle>
+          {viewGroup?.employeeName}
+          <MDTypography display="block" variant="button" color="text" fontWeight="regular">
+            {viewGroup?.companyName} · {viewGroup?.collectorType === "company_staff" ? "Company Staff" : "Delivery Boy"} · {formatDate(viewGroup?.date)}
+          </MDTypography>
+        </DialogTitle>
+        <DialogContent dividers>
+          {companySections.map((section) => (
+            <MDBox key={section.name} mb={3}>
+              <MDTypography variant="h6" fontWeight="medium" mb={1}>
+                Company Name - {section.name}
+              </MDTypography>
+              <TableContainer component={Paper} sx={{ boxShadow: "none", border: "1px solid", borderColor: "grey.300" }}>
+                <Table size="small" sx={detailTableSx}>
+                  <TableHead sx={{ display: "table-header-group" }}>
+                    <TableRow>
+                      <TableCell align="center" sx={{ fontWeight: 600 }}>SR</TableCell>
+                      <TableCell align="center" sx={{ fontWeight: 600 }}>Date</TableCell>
+                      <TableCell align="center" sx={{ fontWeight: 600 }}>Invoice No</TableCell>
+                      <TableCell align="center" sx={{ fontWeight: 600 }}>Payment Mode</TableCell>
+                      <TableCell align="center" sx={{ fontWeight: 600 }}>Invoice Type</TableCell>
+                      <TableCell align="left" sx={{ fontWeight: 600 }}>Outlet Name</TableCell>
+                      <TableCell align="right" sx={{ fontWeight: 600 }}>Invoice Amt</TableCell>
+                      <TableCell align="right" sx={{ fontWeight: 600 }}>Collected Amt</TableCell>
+                      <TableCell align="right" sx={{ fontWeight: 600 }}>Balance Amt</TableCell>
+                      <TableCell align="center" sx={{ fontWeight: 600 }}>Settle</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {section.rows.map((row, index) => (
+                      <TableRow key={row.id}>
+                        <TableCell align="center">{String(index + 1).padStart(2, "0")}</TableCell>
+                        <TableCell align="center">{formatDate(row.created_at)}</TableCell>
+                        <TableCell align="center">
+                          {row.invoice_number || "N/A"}
+                          <MDTypography display="block" variant="caption" color="text">BP{row.sale_id}</MDTypography>
+                        </TableCell>
+                        <TableCell align="center">
+                          <MDBox display="flex" alignItems="center" justifyContent="center" gap={0.5}>
+                            <Chip
+                              label={PAYMENT_LABELS[row.payment_mode] || row.payment_mode || "N/A"}
+                              color={PAYMENT_COLORS[row.payment_mode] || "default"}
+                              size="small"
+                              variant="outlined"
+                            />
+                            {row.payment_mode === "cash" && (
+                              <Tooltip title="View cash details">
+                                <IconButton size="small" color="info" aria-label={`View cash details for ${row.outlet_name || `BP${row.sale_id}`}`}
+                                  onClick={() => setViewCollection(row)}>
+                                  <Icon fontSize="small">payments</Icon>
+                                </IconButton>
+                              </Tooltip>
+                            )}
+                          </MDBox>
+                          {!["cash", "credit"].includes(row.payment_mode) && (
+                            <MDTypography display="block" variant="caption" color="text">{getPaymentDetails(row)}</MDTypography>
+                          )}
+                        </TableCell>
+                        <TableCell align="center">
+                          <Chip
+                            label={row.collection_source === "taken_bill" ? "Out Bill" : row.collection_source === "delivery" ? "Same Day" : "Not recorded"}
+                            color={row.collection_source === "taken_bill" ? "info" : row.collection_source === "delivery" ? "success" : "default"}
+                            size="small"
+                            variant="outlined"
+                          />
+                        </TableCell>
+                        <TableCell>{row.outlet_name || "N/A"}</TableCell>
+                        <TableCell align="right">
+                          {formatCurrency(row.price)}
+                          {!row.settled_at && (Number(row.price) || 0) - (Number(row.balance_amount) || 0) > 0.009 && (
+                            <MDTypography display="block" variant="caption" color="text">
+                              Earlier paid: {formatCurrency((Number(row.price) || 0) - (Number(row.balance_amount) || 0))}
+                            </MDTypography>
+                          )}
+                        </TableCell>
+                        <TableCell align="right">{formatCurrency(row.amount)}</TableCell>
+                        <TableCell align="right">{formatCurrency(getBalanceAfter(row))}</TableCell>
+                        <TableCell align="center">
+                          {row.settled_at ? (
+                            <Chip label="Settled" color="success" size="small" variant="outlined" />
+                          ) : (
+                            <MDButton color="success" size="small" variant="gradient" disabled={settlingId !== null}
+                              onClick={() => requestSettlement(row)}>
+                              {settlingId === row.id ? "Settling..." : "Settle"}
+                            </MDButton>
+                          )}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                    <TableRow sx={{ "& .MuiTableCell-root": { fontWeight: 700, borderTop: "2px solid", borderColor: "grey.400" } }}>
+                      <TableCell colSpan={6} align="right">Total</TableCell>
+                      <TableCell align="right">{formatCurrency(section.invoiceTotal)}</TableCell>
+                      <TableCell align="right">{formatCurrency(section.collectedTotal)}</TableCell>
+                      <TableCell align="right">{formatCurrency(section.balanceTotal)}</TableCell>
+                      <TableCell />
+                    </TableRow>
+                  </TableBody>
+                </Table>
+              </TableContainer>
+            </MDBox>
+          ))}
+          {viewGroup && (
+            <MDTypography variant="button" fontWeight="bold" display="block" textAlign="right">
+              Grand total collected: {formatCurrency(viewGroup.total)}
+            </MDTypography>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <MDButton color="secondary" onClick={() => setViewGroupKey(null)}>Close</MDButton>
+        </DialogActions>
+      </Dialog>
       <Dialog open={Boolean(settlementCollection)} onClose={() => { if (settlingId === null) setSettlementCollection(null); }} fullWidth maxWidth="xs">
         <DialogTitle>Settle {PAYMENT_LABELS[settlementCollection?.payment_mode]} collection</DialogTitle>
         <form onSubmit={(event) => {

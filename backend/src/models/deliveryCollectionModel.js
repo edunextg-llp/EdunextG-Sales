@@ -377,8 +377,10 @@ class DeliveryCollectionModel {
                 OR ss.invoice_number LIKE ?
                 OR COALESCE(dboy.name, collector_staff.name) LIKE ?
                 OR dbc.payment_mode LIKE ?
-                OR CAST(dbc.sale_id AS CHAR) LIKE ?)`;
-            params.push(term, term, term, term, term);
+                OR CAST(dbc.sale_id AS CHAR) LIKE ?
+                OR sale_company.name LIKE ?
+                OR collector_company.name LIKE ?)`;
+            params.push(term, term, term, term, term, term, term);
         }
         if (fromDate) {
             where += `${where ? ' AND' : 'WHERE'} dbc.created_at >= ?`;
@@ -401,12 +403,27 @@ class DeliveryCollectionModel {
                     ss.invoice_number, ss.price, ss.paid_amount, ss.balance_amount,
                     ss.packaging_status,
                     sc.outlet_name,
-                    COALESCE(dboy.name, collector_staff.name) AS delivery_boy_name
+                    COALESCE(dboy.name, collector_staff.name) AS delivery_boy_name,
+                    DATE_FORMAT(dbc.created_at, '%Y-%m-%d') AS collection_date,
+                    COALESCE(sale_company.name, 'Company not assigned') AS sale_company_name,
+                    CASE
+                        WHEN COALESCE(dbc.collector_type, 'delivery_boy') = 'company_staff' THEN COALESCE(
+                            collector_company.name,
+                            (SELECT GROUP_CONCAT(c2.name ORDER BY c2.name SEPARATOR ', ')
+                             FROM staff_companies stc2
+                             INNER JOIN companies c2 ON c2.id = stc2.company_id
+                             WHERE stc2.staff_id = dbc.staff_id),
+                            'Company not assigned')
+                        ELSE 'BAWARCHEE'
+                    END AS collector_company_name
              FROM delivery_boy_collections dbc
              INNER JOIN staff_sales ss ON ss.id = dbc.sale_id
              LEFT JOIN staff_counters sc ON sc.id = ss.outlet_id
+             LEFT JOIN staff seller ON seller.id = ss.staff_id
+             LEFT JOIN companies sale_company ON sale_company.id = seller.company_id
              LEFT JOIN delivery_boys dboy ON dboy.id = dbc.delivery_boy_id
              LEFT JOIN staff collector_staff ON collector_staff.id = dbc.staff_id
+             LEFT JOIN companies collector_company ON collector_company.id = collector_staff.company_id
              ${where}
              ORDER BY dbc.updated_at DESC, dbc.id DESC
              LIMIT 10000`,

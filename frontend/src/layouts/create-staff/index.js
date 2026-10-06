@@ -695,7 +695,9 @@ function CreateStaff() {
                             >
                               {staff.staff_category === "bawarchee_staff"
                                 ? "Bawarchee Staff"
-                                : staff.company_name || "—"}
+                                : staff.staff_category === "operator"
+                                  ? "Operator"
+                                  : staff.company_name || "—"}
                             </TableCell>
                             <TableCell
                               align="left"
@@ -843,6 +845,11 @@ function CreateStaff() {
                       value="bawarchee_staff"
                       control={<Radio size="small" />}
                       label={<MDTypography variant="body2">Bawarchee Staff</MDTypography>}
+                    />
+                    <FormControlLabel
+                      value="operator"
+                      control={<Radio size="small" />}
+                      label={<MDTypography variant="body2">Operator</MDTypography>}
                     />
                   </RadioGroup>
                 </FormControl>
@@ -1105,15 +1112,17 @@ function CreateStaff() {
                 <Grid item xs={12} sm={6}>
                   <MDTypography variant="caption" color="text">Staff Category</MDTypography>
                   <MDTypography variant="body2" fontWeight="medium">
-                    {(selectedStaffDetails.staff_category || "company_staff") === "bawarchee_staff"
+                    {selectedStaffDetails.staff_category === "bawarchee_staff"
                       ? "Bawarchee Staff"
-                      : "Company Staff"}
+                      : selectedStaffDetails.staff_category === "operator"
+                        ? "Operator"
+                        : "Company Staff"}
                   </MDTypography>
                 </Grid>
                 <Grid item xs={12} sm={6}>
                   <MDTypography variant="caption" color="text">Company</MDTypography>
                   <MDTypography variant="body2" fontWeight="medium">
-                    {(selectedStaffDetails.staff_category || "company_staff") === "bawarchee_staff"
+                    {["bawarchee_staff", "operator"].includes(selectedStaffDetails.staff_category)
                       ? "—"
                       : selectedStaffDetails.company_name || "—"}
                   </MDTypography>

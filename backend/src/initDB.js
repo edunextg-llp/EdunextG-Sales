@@ -89,7 +89,7 @@ async function initDB() {
             aadhar_no VARCHAR(20) NULL,
             aadhar_document_url TEXT NULL,
             pcc_certificate_url TEXT NULL,
-            staff_category ENUM('company_staff', 'bawarchee_staff') NOT NULL DEFAULT 'company_staff',
+            staff_category ENUM('company_staff', 'bawarchee_staff', 'operator') NOT NULL DEFAULT 'company_staff',
             login_id VARCHAR(100) NULL UNIQUE,
             password_hash VARCHAR(255) NULL,
             is_active TINYINT(1) NOT NULL DEFAULT 1,
@@ -146,7 +146,7 @@ async function initDB() {
         { sql: 'ALTER TABLE staff ADD COLUMN aadhar_no VARCHAR(20) NULL', label: 'aadhar_no' },
         { sql: 'ALTER TABLE staff ADD COLUMN aadhar_document_url TEXT NULL', label: 'aadhar_document_url' },
         { sql: 'ALTER TABLE staff ADD COLUMN pcc_certificate_url TEXT NULL', label: 'pcc_certificate_url' },
-        { sql: "ALTER TABLE staff ADD COLUMN staff_category ENUM('company_staff', 'bawarchee_staff') NOT NULL DEFAULT 'company_staff'", label: 'staff_category' },
+        { sql: "ALTER TABLE staff ADD COLUMN staff_category ENUM('company_staff', 'bawarchee_staff', 'operator') NOT NULL DEFAULT 'company_staff'", label: 'staff_category' },
         { sql: 'ALTER TABLE staff ADD COLUMN is_active TINYINT(1) NOT NULL DEFAULT 1', label: 'is_active' },
     ];
 

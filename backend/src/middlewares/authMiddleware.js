@@ -107,7 +107,15 @@ export const enforceManagedUserApiScope = (req, res, next) => {
             || (hasDms && permissions.has('item_list'))
         )) || (path === '/' && method === 'POST' && permissions.has('create_staff'));
     } else if (path === '/companies') {
-        allowed = method === 'GET' && (hasDms || permissions.has('update_payment') || permissions.has('create_staff') || permissions.has('location_assignments'));
+        // Company dropdowns appear on the Dashboard and Bank Deposit screens too.
+        allowed = method === 'GET' && (
+            hasDms
+            || permissions.has('dashboard')
+            || permissions.has('bank_deposit')
+            || permissions.has('update_payment')
+            || permissions.has('create_staff')
+            || permissions.has('location_assignments')
+        );
     } else if (path.startsWith('/dms-stock')) {
         allowed = hasDms && permissions.has('item_list');
     } else if (path.startsWith('/expiry-list')) {

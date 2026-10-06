@@ -197,6 +197,11 @@ export async function ensureSchema() {
         );
         await tryQuery(
             connection,
+            `ALTER TABLE staff MODIFY staff_category ENUM('company_staff', 'bawarchee_staff', 'operator') NOT NULL DEFAULT 'company_staff'`,
+            'operator option on staff_category'
+        );
+        await tryQuery(
+            connection,
             `ALTER TABLE staff ADD COLUMN is_active TINYINT(1) NOT NULL DEFAULT 1`,
             'is_active on staff'
         );
