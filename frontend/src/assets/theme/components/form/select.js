@@ -22,11 +22,20 @@ import pxToRem from "assets/theme/functions/pxToRem";
 const { transparent } = colors;
 
 const select = {
+  defaultProps: {
+    // Open every dropdown list directly under its field, left-aligned, with a small gap.
+    MenuProps: {
+      anchorOrigin: { vertical: "bottom", horizontal: "left" },
+      transformOrigin: { vertical: "top", horizontal: "left" },
+      PaperProps: { sx: { mt: 0.5 } },
+    },
+  },
+
   styleOverrides: {
     select: {
       display: "grid",
       alignItems: "center",
-      padding: `0 ${pxToRem(12)} !important`,
+      padding: `0 ${pxToRem(32)} 0 ${pxToRem(12)} !important`,
 
       "& .Mui-selected": {
         backgroundColor: transparent.main,
@@ -41,7 +50,7 @@ const select = {
     },
 
     icon: {
-      display: "none",
+      right: pxToRem(8),
     },
   },
 };

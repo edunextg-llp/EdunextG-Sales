@@ -2291,7 +2291,6 @@ function Dashboard() {
                     title="Today Collection"
                     count={shortMoney(todayCollectionTotal)}
                   />
-                  <CollectionSplit split={reportData.todayCollectionSplit} />
                 </MDBox>
               </Grid>
               <Grid item xs={12} md={6} lg={3}>

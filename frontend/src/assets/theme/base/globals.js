@@ -26,6 +26,12 @@ const globals = {
   body: {
     overflowX: "hidden",
   },
+  // While a dropdown/dialog is open MUI locks scrolling on <body>, but the page actually
+  // scrolls on <html> (because of overflowX above). Lock <html> too so open menus stay
+  // attached to their field instead of floating while the page scrolls.
+  'html:has(> body[style*="overflow: hidden"])': {
+    overflow: "hidden",
+  },
   "*, *::before, *::after": {
     margin: 0,
     padding: 0,
