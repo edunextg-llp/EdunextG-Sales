@@ -200,6 +200,7 @@ class DeliveryBoyModel {
                     COALESCE(p.can_chalan_return, 0) AS can_chalan_return
              FROM delivery_boys db
              LEFT JOIN delivery_user_permissions p ON p.delivery_boy_id = db.id
+             WHERE db.is_active = 1
              ORDER BY db.role, db.name`
         );
         return Promise.all(rows.map(async (row) => {

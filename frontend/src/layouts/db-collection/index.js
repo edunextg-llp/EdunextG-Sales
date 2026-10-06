@@ -19,6 +19,7 @@ import {
   TableRow,
 } from "@mui/material";
 
+import ejs from "ejs/ejs.min.js";
 import MDBox from "components/MDBox";
 import MDTypography from "components/MDTypography";
 import MDInput from "components/MDInput";
@@ -104,6 +105,18 @@ function getPaymentDetails(row) {
   return "N/A";
 }
 
+// Display order of payment modes in the View popup, and the per-mode totals.
+const MODE_ORDER = ["cash", "credit", "upi", "cheque"];
+const modeRank = (mode) => {
+  const index = MODE_ORDER.indexOf(mode);
+  return index === -1 ? MODE_ORDER.length : index;
+};
+const getModeTotals = (rows) => MODE_ORDER.map((mode) => ({
+  mode,
+  count: rows.filter((row) => row.payment_mode === mode).length,
+  amount: rows.filter((row) => row.payment_mode === mode).reduce((sum, row) => sum + (Number(row.amount) || 0), 0),
+}));
+
 // Credit is a promise to pay later, not money in hand, so it stays out of the collected totals.
 function collectedAmount(row) {
   return row.payment_mode === "credit" ? 0 : Number(row.amount) || 0;
@@ -114,6 +127,156 @@ function getBalanceAfter(row) {
   const balance = Number(row.balance_amount) || 0;
   const pending = row.settled_at ? 0 : Number(row.amount) || 0;
   return Math.max(0, Math.round((balance - pending) * 100) / 100);
+}
+
+// Settled vs still-to-settle amounts (credit is left out, like the other collected totals).
+function getSettlementTotals(rows) {
+  return rows.reduce((totals, row) => {
+    if (row.payment_mode === "credit") return totals;
+    const key = row.settled_at ? "settled" : "pending";
+    totals[key] += collectedAmount(row);
+    totals[`${key}Count`] += 1;
+    return totals;
+  }, { settled: 0, settledCount: 0, pending: 0, pendingCount: 0 });
+}
+
+const INVOICE_TYPE_LABELS = { taken_bill: "Out Bill", delivery: "Same Day" };
+
+// Opens a printable report of the given collection rows; "Save as PDF" in the print dialog downloads it.
+function downloadCollectionReport(rows, filename, title) {
+  const sorted = [...rows].sort((a, b) => String(a.sale_company_name || "").localeCompare(String(b.sale_company_name || ""))
+    || (a.settled_at ? 1 : 0) - (b.settled_at ? 1 : 0)
+    || modeRank(a.payment_mode) - modeRank(b.payment_mode)
+    || String(a.created_at || "").localeCompare(String(b.created_at || "")));
+  const companies = [];
+  sorted.forEach((row) => {
+    const name = row.sale_company_name || "Company not assigned";
+    let company = companies.find((item) => item.name === name);
+    if (!company) {
+      company = { name, rows: [] };
+      companies.push(company);
+    }
+    company.rows.push({
+      date: formatDate(row.collection_date || row.created_at),
+      employee: row.delivery_boy_name || "",
+      invoice: row.invoice_number || "N/A",
+      saleId: `BP${row.sale_id}`,
+      mode: PAYMENT_LABELS[row.payment_mode] || row.payment_mode || "",
+      modeKey: row.payment_mode,
+      type: INVOICE_TYPE_LABELS[row.collection_source] || "",
+      outlet: row.outlet_name || "N/A",
+      invoiceAmt: formatCurrency(row.price),
+      collected: formatCurrency(row.amount),
+      balance: formatCurrency(getBalanceAfter(row)),
+      settled: Boolean(row.settled_at),
+      raw: row,
+    });
+  });
+  companies.forEach((company) => {
+    const companyRows = company.rows.map((item) => item.raw);
+    company.invoiceTotal = formatCurrency(companyRows.reduce((sum, row) => sum + (Number(row.price) || 0), 0));
+    company.collectedTotal = formatCurrency(companyRows.reduce((sum, row) => sum + collectedAmount(row), 0));
+    company.balanceTotal = formatCurrency(companyRows.reduce((sum, row) => sum + getBalanceAfter(row), 0));
+    company.modes = getModeTotals(companyRows).map(({ mode, amount, count }) => ({ label: PAYMENT_LABELS[mode], amount: formatCurrency(amount), count }));
+    const settlement = getSettlementTotals(companyRows);
+    company.settled = formatCurrency(settlement.settled);
+    company.pending = formatCurrency(settlement.pending);
+  });
+  const settlement = getSettlementTotals(sorted);
+  const summary = [
+    ...getModeTotals(sorted).map(({ mode, amount, count }) => ({ label: `${PAYMENT_LABELS[mode]} (${count})`, value: formatCurrency(amount) })),
+    { label: `Settled (${settlement.settledCount})`, value: formatCurrency(settlement.settled), tone: "good" },
+    { label: `Pending (${settlement.pendingCount})`, value: formatCurrency(settlement.pending), tone: "warn" },
+    { label: "Total collected (excl. credit)", value: formatCurrency(sorted.reduce((sum, row) => sum + collectedAmount(row), 0)), tone: "total" },
+  ];
+  const generatedAt = new Date().toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" });
+
+  const html = ejs.render(`<!doctype html>
+    <html><head><meta charset="utf-8"><title><%= filename %></title>
+    <style>
+      @page { size: A4 landscape; margin: 10mm; }
+      * { box-sizing: border-box; }
+      body { font-family: Arial, sans-serif; color: #172033; font-size: 11px; margin: 0; padding: 12px; }
+      h1 { font-size: 18px; margin: 0 0 4px; }
+      .meta { color: #64748b; margin: 0 0 12px; }
+      .summary { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; }
+      .box { border: 1px solid #cbd5e1; border-radius: 6px; padding: 6px 10px; min-width: 120px; }
+      .box span { display: block; color: #64748b; font-size: 10px; }
+      .box strong { font-size: 13px; }
+      .box.good { border-color: #86efac; background: #f0fdf4; }
+      .box.warn { border-color: #fcd34d; background: #fffbeb; }
+      .box.total { border-color: #93c5fd; background: #eff6ff; }
+      h2 { font-size: 14px; margin: 18px 0 6px; }
+      table { width: 100%; border-collapse: collapse; }
+      th, td { border: 1px solid #cbd5e1; padding: 5px 6px; text-align: left; vertical-align: top; }
+      th { background: #dbeafe; font-size: 10px; }
+      td.num, th.num { text-align: right; white-space: nowrap; }
+      .sub { color: #64748b; font-size: 9px; display: block; }
+      thead { display: table-header-group; }
+      tr { break-inside: avoid; }
+      .total-row td { font-weight: bold; background: #f8fafc; }
+      .status { font-size: 10px; font-weight: bold; }
+      .status.settled { color: #15803d; }
+      .status.pending { color: #b45309; }
+      .modes { margin-top: 4px; color: #475569; font-size: 10px; text-align: right; }
+      button { padding: 8px 14px; margin-bottom: 12px; cursor: pointer; }
+      @media print { button, .hint { display: none; } body { padding: 0; } }
+    </style></head><body>
+      <button onclick="window.print()">Print / Save as PDF</button>
+      <span class="hint">Choose "Save as PDF" in the print dialog to download.</span>
+      <h1><%= title %></h1>
+      <p class="meta">Generated <%= generatedAt %> · <%= total %> bill<%= total === 1 ? "" : "s" %></p>
+      <div class="summary">
+        <% summary.forEach(function(item) { %>
+          <div class="box <%= item.tone || "" %>"><span><%= item.label %></span><strong><%= item.value %></strong></div>
+        <% }); %>
+      </div>
+      <% companies.forEach(function(company) { %>
+        <h2>Company Name - <%= company.name %></h2>
+        <table>
+          <thead><tr>
+            <th>SR</th><th>Date</th><th>Employee</th><th>Invoice No</th><th>Payment Mode</th><th>Invoice Type</th>
+            <th>Outlet Name</th><th class="num">Invoice Amt</th><th class="num">Collected Amt</th><th class="num">Balance Amt</th><th>Status</th>
+          </tr></thead>
+          <tbody>
+            <% company.rows.forEach(function(row, index) { %>
+              <tr>
+                <td><%= String(index + 1).padStart(2, "0") %></td>
+                <td><%= row.date %></td>
+                <td><%= row.employee %></td>
+                <td><%= row.invoice %><span class="sub"><%= row.saleId %></span></td>
+                <td><%= row.mode %></td>
+                <td><%= row.type %></td>
+                <td><%= row.outlet %></td>
+                <td class="num"><%= row.invoiceAmt %></td>
+                <td class="num"><%= row.collected %></td>
+                <td class="num"><%= row.balance %></td>
+                <td><span class="status <%= row.settled ? "settled" : "pending" %>"><%= row.settled ? "Settled" : "Pending" %></span></td>
+              </tr>
+            <% }); %>
+            <tr class="total-row">
+              <td colspan="7" style="text-align:right">Total</td>
+              <td class="num"><%= company.invoiceTotal %></td>
+              <td class="num"><%= company.collectedTotal %></td>
+              <td class="num"><%= company.balanceTotal %></td>
+              <td></td>
+            </tr>
+          </tbody>
+        </table>
+        <div class="modes">
+          Settled: <b><%= company.settled %></b> · Pending: <b><%= company.pending %></b>
+          <% company.modes.forEach(function(mode) { %> · <%= mode.label %>: <b><%= mode.amount %></b> (<%= mode.count %>)<% }); %>
+        </div>
+      <% }); %>
+    </body></html>`, { title, filename, generatedAt, total: sorted.length, summary, companies });
+
+  const printWindow = window.open("", "_blank", "width=1100,height=900");
+  if (!printWindow) throw new Error("Please allow popups to download the PDF report.");
+  printWindow.document.open();
+  printWindow.document.write(html);
+  printWindow.document.close();
+  printWindow.focus();
+  setTimeout(() => { if (!printWindow.closed) printWindow.print(); }, 300);
 }
 
 function authHeaders() {
@@ -134,6 +297,7 @@ function DBCollection() {
   const [cashCounts, setCashCounts] = useState({});
   const [viewCollection, setViewCollection] = useState(null);
   const [viewGroupKey, setViewGroupKey] = useState(null);
+  const [confirmSettle, setConfirmSettle] = useState(null);
   const [upiNumber, setUpiNumber] = useState("");
   const cashTotal = CASH_DENOMINATIONS.reduce((total, [, key, value]) => total + (Number(cashCounts[key]) || 0) * Math.round(value * 100), 0) / 100;
   const [settlementError, setSettlementError] = useState("");
@@ -202,7 +366,7 @@ function DBCollection() {
       setUpiNumber(row.reference_no || "");
       setSettlementError("");
     } else {
-      settleCollection(row.id);
+      setConfirmSettle({ row, details: {} });
     }
   };
 
@@ -218,10 +382,14 @@ function DBCollection() {
     setPage(1);
   }, [searchQuery, fromDate, toDate]);
 
-  const totalAmount = useMemo(
-    () => collections.reduce((sum, row) => sum + collectedAmount(row), 0),
-    [collections]
-  );
+  const runDownload = (rows, filename, title) => {
+    try {
+      downloadCollectionReport(rows, filename, title);
+    } catch (error) {
+      console.error("Report download failed:", error);
+      alert(error.message || "Unable to create the report. Please try again.");
+    }
+  };
 
   // One row per employee per day: delivery boys show BAWARCHEE, company staff show their own company.
   const groups = useMemo(() => {
@@ -248,7 +416,9 @@ function DBCollection() {
       group.total += collectedAmount(row);
       if (!row.settled_at) group.pending += 1;
     });
-    return [...map.values()].sort((a, b) => (b.date || "").localeCompare(a.date || "")
+    // Groups with bills still to settle come first; fully settled groups drop to the bottom.
+    return [...map.values()].sort((a, b) => (a.pending > 0 ? 0 : 1) - (b.pending > 0 ? 0 : 1)
+      || (b.date || "").localeCompare(a.date || "")
       || a.employeeName.localeCompare(b.employeeName));
   }, [collections]);
 
@@ -270,7 +440,13 @@ function DBCollection() {
       .sort(([a], [b]) => a.localeCompare(b))
       .map(([name, rows]) => ({
         name,
-        rows: [...rows].sort((a, b) => String(a.created_at).localeCompare(String(b.created_at))),
+        // Unsettled bills on top, settled ones at the bottom.
+        // Unsettled first; within that Cash, Credit, UPI, Cheque; then oldest first.
+        rows: [...rows].sort((a, b) => (a.settled_at ? 1 : 0) - (b.settled_at ? 1 : 0)
+          || modeRank(a.payment_mode) - modeRank(b.payment_mode)
+          || String(a.created_at).localeCompare(String(b.created_at))),
+        modeTotals: getModeTotals(rows),
+        settlement: getSettlementTotals(rows),
         invoiceTotal: rows.reduce((sum, row) => sum + (Number(row.price) || 0), 0),
         collectedTotal: rows.reduce((sum, row) => sum + collectedAmount(row), 0),
         balanceTotal: rows.reduce((sum, row) => sum + getBalanceAfter(row), 0),
@@ -311,9 +487,6 @@ function DBCollection() {
                 </MDTypography>
               </MDBox>
               <MDBox display="flex" gap={1.5} alignItems="center" flexWrap="wrap">
-                <MDTypography variant="button" fontWeight="medium" color="dark">
-                  Total: {formatCurrency(totalAmount)}
-                </MDTypography>
                 <MDButton variant="outlined" color="info" size="small" onClick={() => fetchCollections()}>
                   <Icon sx={{ mr: 1 }}>refresh</Icon>
                   Refresh
@@ -507,18 +680,58 @@ function DBCollection() {
                       <TableCell align="right">{formatCurrency(section.balanceTotal)}</TableCell>
                       <TableCell />
                     </TableRow>
+                    <TableRow>
+                      <TableCell colSpan={10} sx={{ backgroundColor: "#f8fafc" }}>
+                        <MDBox display="flex" gap={1} flexWrap="wrap" justifyContent="flex-end">
+                          <Chip size="small" color="success" label={`Settled: ${formatCurrency(section.settlement.settled)} (${section.settlement.settledCount})`} sx={{ fontWeight: 600 }} />
+                          <Chip size="small" color="warning" label={`Pending: ${formatCurrency(section.settlement.pending)} (${section.settlement.pendingCount})`} sx={{ fontWeight: 600 }} />
+                          {section.modeTotals.map(({ mode, count, amount }) => (
+                            <Chip
+                              key={mode}
+                              size="small"
+                              variant="outlined"
+                              color={count ? PAYMENT_COLORS[mode] : "default"}
+                              label={`${PAYMENT_LABELS[mode]}: ${formatCurrency(amount)} (${count})`}
+                              sx={{ fontWeight: 600, opacity: count ? 1 : 0.6 }}
+                            />
+                          ))}
+                        </MDBox>
+                      </TableCell>
+                    </TableRow>
                   </TableBody>
                 </Table>
               </TableContainer>
             </MDBox>
           ))}
           {viewGroup && (
-            <MDTypography variant="button" fontWeight="bold" display="block" textAlign="right">
-              Grand total collected: {formatCurrency(viewGroup.total)}
-            </MDTypography>
+            <MDBox textAlign="right">
+              <MDBox display="flex" gap={2} flexWrap="wrap" justifyContent="flex-end" mb={0.5}>
+                {getModeTotals(viewGroup.rows).map(({ mode, amount }) => (
+                  <MDTypography key={mode} variant="button" color="text">
+                    {PAYMENT_LABELS[mode]}: <strong>{formatCurrency(amount)}</strong>
+                  </MDTypography>
+                ))}
+              </MDBox>
+              <MDBox display="flex" gap={2} flexWrap="wrap" justifyContent="flex-end" mb={0.5}>
+                <MDTypography variant="button" sx={{ color: "#15803d" }}>
+                  Settled: <strong>{formatCurrency(getSettlementTotals(viewGroup.rows).settled)}</strong>
+                </MDTypography>
+                <MDTypography variant="button" sx={{ color: "#b45309" }}>
+                  Pending: <strong>{formatCurrency(getSettlementTotals(viewGroup.rows).pending)}</strong>
+                </MDTypography>
+              </MDBox>
+              <MDTypography variant="button" fontWeight="bold" display="block">
+                Grand total collected: {formatCurrency(viewGroup.total)}
+              </MDTypography>
+            </MDBox>
           )}
         </DialogContent>
         <DialogActions>
+          <MDButton variant="outlined" color="info" disabled={!viewGroup}
+            onClick={() => runDownload(viewGroup.rows, `DB_Collection_${viewGroup.employeeName}_${viewGroup.date}`,
+              `D.B. Collection — ${viewGroup.employeeName} (${viewGroup.companyName}) — ${formatDate(viewGroup.date)}`)}>
+            <Icon sx={{ mr: 0.5 }}>download</Icon>Download PDF
+          </MDButton>
           <MDButton color="secondary" onClick={() => setViewGroupKey(null)}>Close</MDButton>
         </DialogActions>
       </Dialog>
@@ -533,7 +746,7 @@ function DBCollection() {
           }
           const details = settlementCollection.payment_mode === "cash" ? { cashDetails: cashCounts }
             : settlementCollection.payment_mode === "upi" ? { referenceNo: upiNumber.trim() } : { chequeDate };
-          settleCollection(settlementCollection.id, details);
+          setConfirmSettle({ row: settlementCollection, details });
         }}>
           <DialogContent>
             <MDTypography variant="button" display="block" mb={2}>
@@ -590,6 +803,30 @@ function DBCollection() {
         </DialogContent>
         <DialogActions>
           <MDButton color="secondary" onClick={() => setViewCollection(null)}>Close</MDButton>
+        </DialogActions>
+      </Dialog>
+      <Dialog open={Boolean(confirmSettle)} onClose={() => setConfirmSettle(null)} fullWidth maxWidth="xs">
+        <DialogTitle>Are you sure you want to submit?</DialogTitle>
+        <DialogContent>
+          <MDTypography variant="button" display="block" mb={1}>
+            {confirmSettle?.row?.outlet_name || "N/A"} — {formatCurrency(confirmSettle?.row?.amount)}
+          </MDTypography>
+          <MDTypography variant="button" color="text" display="block">
+            {PAYMENT_LABELS[confirmSettle?.row?.payment_mode] || confirmSettle?.row?.payment_mode} · {confirmSettle?.row?.invoice_number || `BP${confirmSettle?.row?.sale_id}`}
+          </MDTypography>
+          <MDTypography variant="caption" color="text" display="block" mt={1}>
+            This settlement will be recorded as a payment and cannot be undone here.
+          </MDTypography>
+        </DialogContent>
+        <DialogActions>
+          <MDButton color="secondary" onClick={() => setConfirmSettle(null)}>No</MDButton>
+          <MDButton color="success" variant="gradient" disabled={settlingId !== null} onClick={() => {
+            const { row, details } = confirmSettle;
+            setConfirmSettle(null);
+            settleCollection(row.id, details);
+          }}>
+            Yes, Settle
+          </MDButton>
         </DialogActions>
       </Dialog>
       <Footer />

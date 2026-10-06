@@ -461,7 +461,7 @@ function MonthlyCollectionChart({ rows }) {
     slotProps: {
       legend: {
         direction: "row",
-        position: { vertical: "top", horizontal: "center" },
+        position: { vertical: "top", horizontal: "middle" },
         padding: 16,
       },
     },
@@ -579,7 +579,7 @@ function YearlyCollectionChart({ rows }) {
           slotProps={{
             legend: {
               direction: "row",
-              position: { vertical: "top", horizontal: "center" },
+              position: { vertical: "top", horizontal: "middle" },
               padding: 16,
             },
           }}

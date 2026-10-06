@@ -18,6 +18,19 @@ const getStorage = () => {
 
 const getStoredValue = (key) => localStorage.getItem(key) || sessionStorage.getItem(key);
 
+// Read the expiry time (ms) from a JWT without verifying it. Returns 0 if unreadable.
+const getTokenExpiry = (jwtToken) => {
+  try {
+    const payload = jwtToken.split(".")[1].replace(/-/g, "+").replace(/_/g, "/");
+    return (JSON.parse(atob(payload)).exp || 0) * 1000;
+  } catch (error) {
+    return 0;
+  }
+};
+
+// Renew the access token this long before it expires, so requests never hit a 401.
+const REFRESH_BEFORE_EXPIRY_MS = 60 * 1000;
+
 const clearAuthStorage = () => {
   [localStorage, sessionStorage].forEach((storage) => {
     storage.removeItem(AUTH_KEYS.token);
@@ -43,11 +56,49 @@ export const AuthProvider = ({ children }) => {
 
     // Setup Global Fetch Interceptor
     const originalFetch = window.fetch;
+
+    // One shared refresh at a time: when many requests start together they all
+    // wait for the same new token instead of each calling /auth/refresh.
+    let refreshInFlight = null;
+    const refreshAccessToken = () => {
+      if (!refreshInFlight) {
+        refreshInFlight = (async () => {
+          const storedRefreshToken = getStoredValue(AUTH_KEYS.refreshToken);
+          if (!storedRefreshToken) return null;
+          const refreshResponse = await originalFetch(`${API_BASE}/auth/refresh`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ refreshToken: storedRefreshToken }),
+          });
+          if (!refreshResponse.ok) return null;
+          const refreshData = await refreshResponse.json();
+          getStorage().setItem(AUTH_KEYS.token, refreshData.token);
+          setToken(refreshData.token);
+          return refreshData.token;
+        })()
+          .catch(() => null)
+          .finally(() => {
+            refreshInFlight = null;
+          });
+      }
+      return refreshInFlight;
+    };
+
     window.fetch = async function (...args) {
       let [resource, config] = args;
       const url = typeof resource === "string" ? resource : resource?.url || "";
 
-      const currentToken = getStoredValue(AUTH_KEYS.token);
+      let currentToken = getStoredValue(AUTH_KEYS.token);
+      const isApiCall = url.includes(API_BASE) && !url.includes("/api/auth/");
+
+      // Renew the token shortly before it expires instead of waiting for a 401.
+      if (isApiCall && currentToken) {
+        const expiresAt = getTokenExpiry(currentToken);
+        if (expiresAt && expiresAt - Date.now() < REFRESH_BEFORE_EXPIRY_MS) {
+          const freshToken = await refreshAccessToken();
+          if (freshToken) currentToken = freshToken;
+        }
+      }
       if (url.includes(API_BASE) && !url.includes("/api/auth/")) {
         config = config || {};
         config.headers = config.headers || {};
@@ -58,30 +109,17 @@ export const AuthProvider = ({ children }) => {
 
       const response = await originalFetch(resource, config);
 
-      if (response.status === 401 && currentToken && url.includes(API_BASE) && !url.includes("/api/auth/")) {
-        const storedRefreshToken = getStoredValue(AUTH_KEYS.refreshToken);
-        if (storedRefreshToken) {
-          const refreshResponse = await originalFetch(`${API_BASE}/auth/refresh`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ refreshToken: storedRefreshToken }),
-          });
-
-          if (refreshResponse.ok) {
-            const refreshData = await refreshResponse.json();
-            const storage = getStorage();
-            storage.setItem(AUTH_KEYS.token, refreshData.token);
-            setToken(refreshData.token);
-
-            const retryConfig = {
-              ...(config || {}),
-              headers: {
-                ...((config && config.headers) || {}),
-                Authorization: `Bearer ${refreshData.token}`,
-              },
-            };
-            return originalFetch(resource, retryConfig);
-          }
+      if (response.status === 401 && currentToken && isApiCall) {
+        const freshToken = await refreshAccessToken();
+        if (freshToken) {
+          const retryConfig = {
+            ...(config || {}),
+            headers: {
+              ...((config && config.headers) || {}),
+              Authorization: `Bearer ${freshToken}`,
+            },
+          };
+          return originalFetch(resource, retryConfig);
         }
       }
 

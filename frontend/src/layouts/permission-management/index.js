@@ -1,7 +1,7 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  Alert, Card, Checkbox, Chip, CircularProgress, Collapse, FormControlLabel, Grid, IconButton,
-  MenuItem, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Tooltip,
+  Alert, Avatar, Card, Checkbox, Chip, CircularProgress, Dialog, DialogActions, DialogContent,
+  DialogTitle, Divider, Grid, InputAdornment, Switch,
 } from "@mui/material";
 import Icon from "@mui/material/Icon";
 import DashboardLayout from "examples/LayoutContainers/DashboardLayout";
@@ -41,17 +41,34 @@ const PERMISSIONS = [
   ["chalan_return", "Chalan Return", "Process and manage Chalan returns."],
 ];
 const PERMISSION_FOLDERS = [
-  { key: "dms", label: "DMS", description: "Grant every DMS submenu.", children: ["add_seller", "add_item", "item_list"] },
-  { key: "delivery_manager", label: "Delivery Manager", description: "Grant every Delivery Manager submenu.", children: ["packaging", "delivery", "delivered"] },
-  { key: "staff_management", label: "Staff Management", description: "Grant Create Staff, Add Location, and Add Outlet in workflow order.", children: ["create_staff", "location_assignments", "add_outlet"] },
-  { key: "chalan", label: "Chalan", description: "Grant every Chalan submenu.", children: ["chalan_add_sales", "chalan_packaging", "chalan_delivery", "chalan_delivered", "chalan_return"] },
+  { key: "dms", label: "DMS", icon: "inventory_2", description: "Sellers, items and stock list.", children: ["add_seller", "add_item", "item_list"] },
+  { key: "delivery_manager", label: "Delivery Manager", icon: "local_shipping", description: "Packaging, delivery and delivered orders.", children: ["packaging", "delivery", "delivered"] },
+  { key: "staff_management", label: "Staff Management", icon: "badge", description: "Create staff, locations and outlets.", children: ["create_staff", "location_assignments", "add_outlet"] },
+  { key: "chalan", label: "Chalan", icon: "receipt_long", description: "The full Chalan workflow.", children: ["chalan_add_sales", "chalan_packaging", "chalan_delivery", "chalan_delivered", "chalan_return"] },
 ];
 const FOLDER_KEYS = PERMISSION_FOLDERS.flatMap((folder) => [folder.key, ...folder.children]);
-const OTHER_PERMISSIONS = PERMISSIONS.filter(([key]) => !FOLDER_KEYS.includes(key));
+const GENERAL_GROUP = {
+  key: "general",
+  label: "General Pages",
+  icon: "dashboard",
+  description: "Individual pages outside a section.",
+  children: PERMISSIONS.filter(([key]) => !FOLDER_KEYS.includes(key)).map(([key]) => key),
+};
 const DISPLAY_ONLY_FOLDER_KEYS = ["delivery_manager", "staff_management", "chalan"];
-// Retained for the legacy, hidden DMS block below while the folder UI is rendered above it.
-const DMS_PERMISSION = ["dms", "DMS", "Grant every DMS submenu."];
-const DMS_CHILD_PERMISSIONS = PERMISSIONS.filter(([key]) => PERMISSION_FOLDERS[0].children.includes(key));
+// The pages a user can actually be granted (folder keys are just groupings).
+const PAGE_KEYS = [...GENERAL_GROUP.children, ...PERMISSION_FOLDERS.flatMap((folder) => folder.children)];
+const PERMISSION_MAP = Object.fromEntries(PERMISSIONS.map(([key, label, description]) => [key, { label, description }]));
+const ROLE_LABELS = { packaging_staff: "Packaging Staff", delivery_boy: "Delivery Boy" };
+const ROLE_FILTERS = [["all", "All"], ["packaging_staff", "Packaging"], ["delivery_boy", "Delivery"]];
+
+const roleLabel = (role) => ROLE_LABELS[role] || "Delivery Boy";
+const initials = (name = "") => name.trim().split(/\s+/).slice(0, 2).map((part) => part[0]).join("").toUpperCase() || "?";
+const pageCount = (list = []) => PAGE_KEYS.filter((key) => list.includes(key)).length;
+const sameSet = (a, b) => {
+  const left = a.filter((key) => !DISPLAY_ONLY_FOLDER_KEYS.includes(key));
+  const right = b.filter((key) => !DISPLAY_ONLY_FOLDER_KEYS.includes(key));
+  return left.length === right.length && left.every((key) => right.includes(key));
+};
 
 function PermissionManagement() {
   const [users, setUsers] = useState([]);
@@ -61,8 +78,10 @@ function PermissionManagement() {
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
-  const [expandedFolders, setExpandedFolders] = useState({ dms: true, delivery_manager: true, staff_management: true, chalan: true });
-  const [dmsExpanded, setDmsExpanded] = useState(true);
+  const [search, setSearch] = useState("");
+  const [roleFilter, setRoleFilter] = useState("all");
+  const [confirmSaveOpen, setConfirmSaveOpen] = useState(false);
+  const [pendingUserId, setPendingUserId] = useState(null);
 
   const loadUsers = useCallback(async () => {
     setLoading(true);
@@ -81,57 +100,60 @@ function PermissionManagement() {
 
   useEffect(() => { loadUsers(); }, [loadUsers]);
 
-  useEffect(() => {
-    const selected = users.find((user) => String(user.id) === String(selectedId));
-    setPermissions(selected?.permissions || []);
-    setMessage("");
-  }, [selectedId, users]);
-
   const selectedUser = users.find((user) => String(user.id) === String(selectedId));
+
+  useEffect(() => {
+    setPermissions(selectedUser?.permissions || []);
+    setMessage("");
+  }, [selectedId, users]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const dirty = Boolean(selectedUser) && !sameSet(permissions, selectedUser.permissions || []);
+
+  const filteredUsers = useMemo(() => {
+    const term = search.trim().toLowerCase();
+    return users.filter((user) => (roleFilter === "all" || user.role === roleFilter)
+      && (!term || `${user.name} ${user.loginId || ""}`.toLowerCase().includes(term)));
+  }, [users, search, roleFilter]);
+
+  const selectUser = (id) => {
+    if (String(id) === String(selectedId)) return;
+    if (dirty) {
+      setPendingUserId(String(id));
+      return;
+    }
+    setSelectedId(String(id));
+  };
+
   const togglePermission = (key) => setPermissions((current) => {
     const folder = PERMISSION_FOLDERS.find((item) => item.children.includes(key));
     if (current.includes(key)) {
-      if (folder) {
-        const next = current.filter((item) => item !== key);
-        return folder.children.some((permission) => next.includes(permission))
-          ? next
-          : next.filter((item) => item !== folder.key);
+      const next = current.filter((item) => item !== key);
+      if (folder && !folder.children.some((permission) => next.includes(permission))) {
+        return next.filter((item) => item !== folder.key);
       }
-      return current.filter((item) => item !== key);
+      return next;
     }
-    if (folder) {
-      return [...new Set([...current, folder.key, key])];
-    }
-    return [...current, key];
+    return folder ? [...new Set([...current, folder.key, key])] : [...current, key];
   });
 
-  const toggleFolder = (folder) => setPermissions((current) => {
-    const allFolderPermissions = [folder.key, ...folder.children];
-    const allSelected = folder.children.every((key) => current.includes(key));
+  const toggleGroup = (group) => setPermissions((current) => {
+    const groupKeys = group.key === "general" ? group.children : [group.key, ...group.children];
+    const allSelected = group.children.every((key) => current.includes(key));
     return allSelected
-      ? current.filter((key) => !allFolderPermissions.includes(key))
-      : [...new Set([...current, ...allFolderPermissions])];
+      ? current.filter((key) => !groupKeys.includes(key))
+      : [...new Set([...current, ...groupKeys])];
   });
-  const selectedDmsCount = PERMISSION_FOLDERS[0].children.filter((key) => permissions.includes(key)).length;
-  const allDmsSelected = selectedDmsCount === PERMISSION_FOLDERS[0].children.length;
-  const toggleDmsFolder = () => toggleFolder(PERMISSION_FOLDERS[0]);
+
+  const grantAll = () => setPermissions([...GENERAL_GROUP.children, ...FOLDER_KEYS]);
+  const clearAll = () => setPermissions([]);
+  const resetChanges = () => setPermissions(selectedUser?.permissions || []);
 
   const savePermissions = async () => {
     if (!selectedUser) return;
+    setConfirmSaveOpen(false);
     // Folder keys are UI grouping keys. The child menu permissions are what the
     // server persists and enforces, so older assigned permissions remain valid.
     const savedPermissions = permissions.filter((key) => !DISPLAY_ONLY_FOLDER_KEYS.includes(key));
-    const permissionLabels = PERMISSIONS
-      .filter(([key]) => permissions.includes(key))
-      .map(([, label]) => label);
-    const confirmed = window.confirm(
-      `Save permissions for ${selectedUser.name}?\n\n${permissionLabels.length > 0
-        ? `Permissions: ${permissionLabels.join(", ")}`
-        : "No page permissions selected"
-      }`
-    );
-    if (!confirmed) return;
-
     setSaving(true);
     setError("");
     try {
@@ -145,7 +167,7 @@ function PermissionManagement() {
       setUsers((current) => current.map((user) => (
         user.id === selectedUser.id ? { ...user, permissions: savedPermissions } : user
       )));
-      setMessage(data.message || "Permissions updated successfully.");
+      setMessage(`${selectedUser.name}'s permissions were saved. They apply the next time ${selectedUser.name} signs in.`);
     } catch (saveError) {
       setError(saveError.message);
     } finally {
@@ -153,209 +175,216 @@ function PermissionManagement() {
     }
   };
 
+  const groups = [GENERAL_GROUP, ...PERMISSION_FOLDERS];
+  const grantedLabels = PAGE_KEYS.filter((key) => permissions.includes(key)).map((key) => PERMISSION_MAP[key].label);
+
+  const renderGroup = (group) => {
+    const selectedCount = group.children.filter((key) => permissions.includes(key)).length;
+    const allSelected = selectedCount === group.children.length;
+    return (
+      <Card key={group.key} sx={{ height: "100%", boxShadow: "none", border: "1px solid #e2e8f0" }}>
+        <MDBox display="flex" alignItems="center" gap={1.25} px={2} py={1.5}
+          sx={{ backgroundColor: selectedCount ? "#eff6ff" : "#f8fafc", borderBottom: "1px solid #e2e8f0", borderRadius: "12px 12px 0 0" }}>
+          <MDBox display="flex" alignItems="center" justifyContent="center"
+            sx={{ width: 34, height: 34, borderRadius: "10px", backgroundColor: selectedCount ? "#1A73E8" : "#cbd5e1", color: "#fff", flexShrink: 0 }}>
+            <Icon fontSize="small">{group.icon}</Icon>
+          </MDBox>
+          <MDBox flexGrow={1} minWidth={0}>
+            <MDTypography variant="button" fontWeight="bold" display="block">{group.label}</MDTypography>
+            <MDTypography variant="caption" color="text" display="block">{group.description}</MDTypography>
+          </MDBox>
+          <Chip size="small" label={`${selectedCount}/${group.children.length}`}
+            sx={{ fontWeight: 600, backgroundColor: selectedCount ? "#dbeafe" : "#e2e8f0", color: selectedCount ? "#1d4ed8" : "#475569" }} />
+          <Checkbox size="small" checked={allSelected} indeterminate={selectedCount > 0 && !allSelected}
+            onChange={() => toggleGroup(group)} inputProps={{ "aria-label": `Grant all ${group.label}` }} />
+        </MDBox>
+        <MDBox px={1} py={0.5}>
+          {group.children.map((key, index) => (
+            <MDBox key={key}>
+              {index > 0 && <Divider sx={{ my: 0 }} />}
+              <MDBox component="label" display="flex" alignItems="center" gap={1} px={1} py={1}
+                sx={{ cursor: "pointer", borderRadius: "8px", "&:hover": { backgroundColor: "#f8fafc" } }}>
+                <MDBox flexGrow={1} minWidth={0}>
+                  <MDTypography variant="button" fontWeight="medium" display="block">{PERMISSION_MAP[key].label}</MDTypography>
+                  <MDTypography variant="caption" color="text" display="block" sx={{ lineHeight: 1.35 }}>
+                    {PERMISSION_MAP[key].description}
+                  </MDTypography>
+                </MDBox>
+                <Switch checked={permissions.includes(key)} onChange={() => togglePermission(key)}
+                  inputProps={{ "aria-label": PERMISSION_MAP[key].label }} />
+              </MDBox>
+            </MDBox>
+          ))}
+        </MDBox>
+      </Card>
+    );
+  };
+
   return (
     <DashboardLayout>
       <DashboardNavbar />
-      <MDBox pt={6} pb={3}>
-        <Card>
-          <MDBox variant="gradient" bgColor="info" borderRadius="lg" coloredShadow="info" mx={2} mt={-3} p={3}>
-            <MDTypography variant="h4" color="white">Permission Management</MDTypography>
-            <MDTypography variant="body2" color="white">
-              Assign page access for Packaging Staff or Delivery Boys.
-            </MDTypography>
-          </MDBox>
-          <MDBox p={3}>
-            {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
-            {message && <Alert severity="success" sx={{ mb: 2 }}>{message}</Alert>}
-            {loading ? (
-              <MDBox py={6} textAlign="center"><CircularProgress /></MDBox>
-            ) : users.length === 0 ? (
-              <Alert severity="info">Create Packaging Staff or a Delivery Boy first.</Alert>
-            ) : (
-              <Grid container spacing={3}>
-                <Grid item xs={12} md={5}>
-                  <MDInput
-                    select
-                    fullWidth
-                    label="Packaging Staff / Delivery Boy"
-                    value={selectedId}
-                    onChange={(event) => setSelectedId(event.target.value)}
-                    sx={{
-                      "& .MuiInputBase-root": { minHeight: 58 },
-                      "& .MuiSelect-select": {
-                        minHeight: "unset !important",
-                        display: "flex",
-                        alignItems: "center",
-                        py: "16px !important",
-                      },
-                    }}
-                  >
-                    {users.map((user) => (
-                      <MenuItem key={user.id} value={String(user.id)}>
-                        {user.name} — {user.role === "packaging_staff" ? "Packaging Staff" : "Delivery Boy"}
-                      </MenuItem>
+      <MDBox py={3}>
+        <MDBox mb={3}>
+          <MDTypography variant="h4" fontWeight="bold">Permission Management</MDTypography>
+          <MDTypography variant="button" color="text" fontWeight="regular">
+            Choose a staff member, switch on the pages they can open, then save.
+          </MDTypography>
+        </MDBox>
+
+        {error && <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError("")}>{error}</Alert>}
+        {message && <Alert severity="success" sx={{ mb: 2 }} onClose={() => setMessage("")}>{message}</Alert>}
+
+        {loading ? (
+          <MDBox py={8} textAlign="center"><CircularProgress /></MDBox>
+        ) : users.length === 0 ? (
+          <Alert severity="info">Create Packaging Staff or a Delivery Boy first.</Alert>
+        ) : (
+          <Grid container spacing={3}>
+            {/* Staff list */}
+            <Grid item xs={12} md={4} lg={3.5}>
+              <Card sx={{ position: { md: "sticky" }, top: { md: 90 } }}>
+                <MDBox p={2} pb={1}>
+                  <MDTypography variant="h6" mb={1.5}>Staff ({users.length})</MDTypography>
+                  <MDInput fullWidth placeholder="Search name or login ID" value={search}
+                    onChange={(event) => setSearch(event.target.value)}
+                    InputProps={{ startAdornment: <InputAdornment position="start"><Icon fontSize="small">search</Icon></InputAdornment> }} />
+                  <MDBox display="flex" gap={0.75} mt={1.5} flexWrap="wrap">
+                    {ROLE_FILTERS.map(([value, label]) => (
+                      <Chip key={value} label={label} size="small" clickable onClick={() => setRoleFilter(value)}
+                        color={roleFilter === value ? "info" : "default"} variant={roleFilter === value ? "filled" : "outlined"} />
                     ))}
-                  </MDInput>
-                  {selectedUser && (
-                    <MDBox mt={2} p={2} sx={{ border: "1px solid #e2e8f0", borderRadius: 2 }}>
-                      <MDTypography variant="button" fontWeight="bold">{selectedUser.name}</MDTypography>
-                      <MDBox mt={1} display="flex" gap={1} flexWrap="wrap">
-                        <Chip size="small" color={selectedUser.isActive ? "success" : "default"}
-                          label={selectedUser.isActive ? "Active" : "Inactive"} />
-                        <Chip size="small"
-                          label={selectedUser.role === "packaging_staff" ? "Packaging Staff" : "Delivery Boy"} />
-                      </MDBox>
-                      <MDTypography variant="caption" display="block" mt={1.5}>
-                        Login ID: {selectedUser.loginId || "Not generated"}
-                      </MDTypography>
-                    </MDBox>
+                  </MDBox>
+                </MDBox>
+                <Divider sx={{ my: 1 }} />
+                <MDBox px={1} pb={1} sx={{ maxHeight: { md: "calc(100vh - 290px)" }, overflowY: "auto" }}>
+                  {filteredUsers.length === 0 && (
+                    <MDTypography variant="caption" color="text" display="block" textAlign="center" py={3}>No staff match your search.</MDTypography>
                   )}
-                </Grid>
-                <Grid item xs={12} md={7}>
-                  <MDTypography variant="h6" mb={1}>Page Permissions</MDTypography>
-                  {PERMISSION_FOLDERS.map((folder) => {
-                    const childPermissions = PERMISSIONS.filter(([key]) => folder.children.includes(key));
-                    const selectedCount = folder.children.filter((key) => permissions.includes(key)).length;
-                    const allSelected = selectedCount === folder.children.length;
-                    const expanded = expandedFolders[folder.key];
-                    return <MDBox key={folder.key} sx={{ border: "1px solid #cbd5e1", borderRadius: 2, overflow: "hidden", mb: 1.5 }}>
-                      <MDBox display="flex" alignItems="center" px={1} py={0.5} sx={{ backgroundColor: "#f8fafc" }}>
-                        <Checkbox checked={allSelected} indeterminate={selectedCount > 0 && !allSelected} onChange={() => toggleFolder(folder)} />
-                        <MDTypography variant="button" fontWeight="bold" sx={{ flexGrow: 1 }}>{folder.label} - all menus</MDTypography>
-                        <Tooltip title={folder.description} arrow><IconButton size="small"><Icon fontSize="small">info_outline</Icon></IconButton></Tooltip>
-                        <IconButton size="small" onClick={() => setExpandedFolders((current) => ({ ...current, [folder.key]: !expanded }))}>
-                          <Icon fontSize="small">{expanded ? "expand_less" : "expand_more"}</Icon>
-                        </IconButton>
+                  {filteredUsers.map((user) => {
+                    const active = String(user.id) === String(selectedId);
+                    const count = pageCount(user.permissions);
+                    return (
+                      <MDBox key={user.id} role="button" tabIndex={0} onClick={() => selectUser(user.id)}
+                        onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") selectUser(user.id); }}
+                        display="flex" alignItems="center" gap={1.25} px={1.25} py={1} mb={0.5}
+                        sx={{
+                          cursor: "pointer", borderRadius: "10px",
+                          backgroundColor: active ? "#eff6ff" : "transparent",
+                          border: `1px solid ${active ? "#93c5fd" : "transparent"}`,
+                          "&:hover": { backgroundColor: active ? "#eff6ff" : "#f8fafc" },
+                        }}>
+                        <Avatar sx={{ width: 36, height: 36, fontSize: "0.8rem", bgcolor: user.role === "packaging_staff" ? "#7c3aed" : "#0891b2" }}>
+                          {initials(user.name)}
+                        </Avatar>
+                        <MDBox flexGrow={1} minWidth={0}>
+                          <MDTypography variant="button" fontWeight={active ? "bold" : "medium"} display="block" noWrap>{user.name}</MDTypography>
+                          <MDTypography variant="caption" color="text" display="block" noWrap>{roleLabel(user.role)}</MDTypography>
+                        </MDBox>
+                        <Chip size="small" label={count ? `${count} page${count === 1 ? "" : "s"}` : "None"}
+                          sx={{ fontSize: "0.7rem", backgroundColor: count ? "#dcfce7" : "#f1f5f9", color: count ? "#166534" : "#64748b" }} />
                       </MDBox>
-                      <Collapse in={expanded}><MDBox pl={3} pr={1} py={0.75}>
-                        {childPermissions.map(([key, label, description]) => <MDBox key={key} display="flex" alignItems="center">
-                          <FormControlLabel sx={{ mr: 0 }} control={<Checkbox checked={permissions.includes(key)} onChange={() => togglePermission(key)} />} label={label} />
-                          <Tooltip title={description} arrow><IconButton size="small"><Icon fontSize="small">info_outline</Icon></IconButton></Tooltip>
-                        </MDBox>)}
-                      </MDBox></Collapse>
-                    </MDBox>;
+                    );
                   })}
-                  {false && <MDBox sx={{ border: "1px solid #cbd5e1", borderRadius: 2, overflow: "hidden", mb: 1.5 }}>
-                    <MDBox display="flex" alignItems="center" px={1} py={0.5} sx={{ backgroundColor: "#f8fafc" }}>
-                      <Checkbox
-                        checked={allDmsSelected}
-                        indeterminate={selectedDmsCount > 0 && !allDmsSelected}
-                        onChange={toggleDmsFolder}
-                        inputProps={{ "aria-label": "Grant all DMS permissions" }}
-                      />
-                      <MDTypography variant="button" fontWeight="bold" sx={{ flexGrow: 1 }}>
-                        {DMS_PERMISSION[1]} — all DMS menus
-                      </MDTypography>
-                      <Tooltip title={DMS_PERMISSION[2]} arrow>
-                        <IconButton size="small" aria-label="About DMS permissions">
-                          <Icon fontSize="small">info_outline</Icon>
-                        </IconButton>
-                      </Tooltip>
-                      <IconButton
-                        size="small"
-                        onClick={() => setDmsExpanded((expanded) => !expanded)}
-                        aria-label={dmsExpanded ? "Collapse DMS permissions" : "Expand DMS permissions"}
-                      >
-                        <Icon fontSize="small">{dmsExpanded ? "expand_less" : "expand_more"}</Icon>
-                      </IconButton>
+                </MDBox>
+              </Card>
+            </Grid>
+
+            {/* Permissions editor */}
+            <Grid item xs={12} md={8} lg={8.5}>
+              {selectedUser && (
+                <>
+                  <Card sx={{ mb: 3 }}>
+                    <MDBox p={2.5} display="flex" alignItems="center" gap={2} flexWrap="wrap">
+                      <Avatar sx={{ width: 52, height: 52, bgcolor: selectedUser.role === "packaging_staff" ? "#7c3aed" : "#0891b2" }}>
+                        {initials(selectedUser.name)}
+                      </Avatar>
+                      <MDBox flexGrow={1} minWidth={200}>
+                        <MDTypography variant="h5" fontWeight="bold">{selectedUser.name}</MDTypography>
+                        <MDBox display="flex" gap={1} mt={0.5} flexWrap="wrap" alignItems="center">
+                          <Chip size="small" label={roleLabel(selectedUser.role)} variant="outlined" />
+                          <MDTypography variant="caption" color="text">
+                            Login ID: <strong>{selectedUser.loginId || "Not generated"}</strong>
+                          </MDTypography>
+                        </MDBox>
+                      </MDBox>
+                      <MDBox textAlign="right">
+                        <MDTypography variant="h4" fontWeight="bold" color="info">
+                          {pageCount(permissions)}<MDTypography component="span" variant="button" color="text"> / {PAGE_KEYS.length}</MDTypography>
+                        </MDTypography>
+                        <MDTypography variant="caption" color="text">pages allowed</MDTypography>
+                      </MDBox>
                     </MDBox>
-                    <Collapse in={dmsExpanded}>
-                      <MDBox pl={3} pr={1} py={0.75}>
-                        {DMS_CHILD_PERMISSIONS.map(([key, label, description]) => (
-                          <MDBox key={key} display="flex" alignItems="center">
-                            <FormControlLabel
-                              sx={{ mr: 0 }}
-                              control={<Checkbox checked={permissions.includes(key)} onChange={() => togglePermission(key)} />}
-                              label={label}
-                            />
-                            <Tooltip title={description} arrow>
-                              <IconButton size="small" aria-label={`About ${label} permission`}>
-                                <Icon fontSize="small">info_outline</Icon>
-                              </IconButton>
-                            </Tooltip>
-                          </MDBox>
-                        ))}
-                      </MDBox>
-                    </Collapse>
-                  </MDBox>}
-                  <MDBox display="grid" sx={{ gridTemplateColumns: { xs: "1fr", sm: "1fr 1fr" }, gap: 1 }}>
-                    {OTHER_PERMISSIONS.map(([key, label, description]) => (
-                      <MDBox key={key} display="flex" alignItems="center">
-                        <FormControlLabel
-                          sx={{ mr: 0 }}
-                          control={<Checkbox checked={permissions.includes(key)} onChange={() => togglePermission(key)} />}
-                          label={label}
-                        />
-                        <Tooltip title={description} arrow>
-                          <IconButton size="small" aria-label={`About ${label} permission`}>
-                            <Icon fontSize="small">info_outline</Icon>
-                          </IconButton>
-                        </Tooltip>
-                      </MDBox>
+                    <Divider sx={{ my: 0 }} />
+                    <MDBox px={2.5} py={1.5} display="flex" gap={1} flexWrap="wrap">
+                      <MDButton size="small" variant="outlined" color="info" onClick={grantAll}>
+                        <Icon sx={{ mr: 0.5 }}>done_all</Icon>Allow all pages
+                      </MDButton>
+                      <MDButton size="small" variant="outlined" color="secondary" onClick={clearAll}>
+                        <Icon sx={{ mr: 0.5 }}>block</Icon>Remove all
+                      </MDButton>
+                    </MDBox>
+                  </Card>
+
+                  <Grid container spacing={2.5}>
+                    {groups.map((group) => (
+                      <Grid item xs={12} xl={6} key={group.key}>{renderGroup(group)}</Grid>
                     ))}
-                  </MDBox>
-                  <Alert severity="info" sx={{ mt: 2 }}>
-                    Select DMS to grant every DMS submenu, or expand DMS and choose individual submenu permissions.
-                  </Alert>
-                </Grid>
-                <Grid item xs={12}>
-                  <MDBox display="flex" gap={1.5} flexWrap="wrap" justifyContent="flex-end">
-                    <MDButton color="info" variant="gradient" onClick={savePermissions}
-                      disabled={!selectedUser || saving} startIcon={<Icon>save</Icon>}>
-                      {saving ? "Saving..." : "Save Permissions"}
-                    </MDButton>
-                  </MDBox>
-                </Grid>
-                <Grid item xs={12}>
-                  <MDBox mt={2}>
-                    <MDTypography variant="h6" mb={1.5}>
-                      Staff Permission Summary
-                    </MDTypography>
-                    <TableContainer sx={{ border: "1px solid #e2e8f0", borderRadius: 2 }}>
-                      <Table size="small">
-                        <TableHead sx={{ display: "table-header-group" }}>
-                          <TableRow sx={{ backgroundColor: "#f8fafc" }}>
-                            <TableCell><strong>Staff Name</strong></TableCell>
-                            <TableCell><strong>Role</strong></TableCell>
-                            <TableCell><strong>Login ID</strong></TableCell>
-                            <TableCell><strong>Permissions</strong></TableCell>
-                          </TableRow>
-                        </TableHead>
-                        <TableBody>
-                          {users.map((user) => (
-                            <TableRow key={user.id} hover>
-                              <TableCell>{user.name}</TableCell>
-                              <TableCell>
-                                {user.role === "packaging_staff" ? "Packaging Staff" : "Delivery Boy"}
-                              </TableCell>
-                              <TableCell>{user.loginId || "Not generated"}</TableCell>
-                              <TableCell>
-                                <MDBox display="flex" gap={0.75} flexWrap="wrap">
-                                  {user.permissions.length > 0 ? (
-                                    PERMISSIONS
-                                      .filter(([key]) => user.permissions.includes(key))
-                                      .map(([key, label]) => (
-                                        <Chip key={key} label={label} size="small" color="info" variant="outlined" />
-                                      ))
-                                  ) : (
-                                    <MDTypography variant="caption" color="text">
-                                      No permissions
-                                    </MDTypography>
-                                  )}
-                                </MDBox>
-                              </TableCell>
-                            </TableRow>
-                          ))}
-                        </TableBody>
-                      </Table>
-                    </TableContainer>
-                  </MDBox>
-                </Grid>
-              </Grid>
-            )}
-          </MDBox>
-        </Card>
+                  </Grid>
+
+                  {/* Save bar */}
+                  <Card sx={{ position: "sticky", bottom: 16, mt: 3, zIndex: 2, border: dirty ? "1px solid #fbbf24" : "1px solid #e2e8f0" }}>
+                    <MDBox px={2.5} py={1.5} display="flex" alignItems="center" gap={1.5} flexWrap="wrap">
+                      <Icon sx={{ color: dirty ? "#d97706" : "#16a34a" }}>{dirty ? "edit_note" : "check_circle"}</Icon>
+                      <MDTypography variant="button" fontWeight="medium" sx={{ flexGrow: 1 }}>
+                        {dirty ? "You have unsaved changes" : "All changes saved"}
+                      </MDTypography>
+                      <MDButton variant="text" color="secondary" disabled={!dirty || saving} onClick={resetChanges}>Discard</MDButton>
+                      <MDButton color="info" variant="gradient" disabled={!dirty || saving} onClick={() => setConfirmSaveOpen(true)}>
+                        <Icon sx={{ mr: 0.5 }}>save</Icon>{saving ? "Saving..." : "Save Permissions"}
+                      </MDButton>
+                    </MDBox>
+                  </Card>
+                </>
+              )}
+            </Grid>
+          </Grid>
+        )}
       </MDBox>
+
+      <Dialog open={confirmSaveOpen} onClose={() => setConfirmSaveOpen(false)} fullWidth maxWidth="xs">
+        <DialogTitle>Save permissions for {selectedUser?.name}?</DialogTitle>
+        <DialogContent>
+          {grantedLabels.length ? (
+            <MDBox display="flex" gap={0.75} flexWrap="wrap">
+              {grantedLabels.map((label) => <Chip key={label} label={label} size="small" color="info" variant="outlined" />)}
+            </MDBox>
+          ) : (
+            <MDTypography variant="button" color="text">No pages selected — this user will not be able to open any page.</MDTypography>
+          )}
+          <MDTypography variant="caption" color="text" display="block" mt={2}>
+            Changes apply the next time this user signs in.
+          </MDTypography>
+        </DialogContent>
+        <DialogActions>
+          <MDButton color="secondary" onClick={() => setConfirmSaveOpen(false)}>Cancel</MDButton>
+          <MDButton color="info" variant="gradient" onClick={savePermissions}>Yes, Save</MDButton>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={Boolean(pendingUserId)} onClose={() => setPendingUserId(null)} fullWidth maxWidth="xs">
+        <DialogTitle>Discard unsaved changes?</DialogTitle>
+        <DialogContent>
+          <MDTypography variant="button" color="text">
+            You changed {selectedUser?.name}&apos;s permissions but didn&apos;t save them.
+          </MDTypography>
+        </DialogContent>
+        <DialogActions>
+          <MDButton color="secondary" onClick={() => setPendingUserId(null)}>Keep editing</MDButton>
+          <MDButton color="error" variant="gradient" onClick={() => { setSelectedId(pendingUserId); setPendingUserId(null); }}>
+            Discard
+          </MDButton>
+        </DialogActions>
+      </Dialog>
       <Footer />
     </DashboardLayout>
   );
