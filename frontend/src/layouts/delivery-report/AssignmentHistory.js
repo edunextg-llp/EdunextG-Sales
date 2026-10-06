@@ -6,18 +6,17 @@ import MDTypography from 'components/MDTypography';
 import MDInput from 'components/MDInput';
 import MDButton from 'components/MDButton';
 import { useSalesPolling } from 'utils/salesSync';
-import { groupAssignments, invoiceValue, downloadAssignmentSheet } from 'utils/assignmentReport';
+import { groupAssignments, invoiceValue, printAssignmentSheetPdf } from 'utils/assignmentReport';
 
 const money = (value) => Number(value).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const today = () => { const date = new Date(); return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`; };
-export default function AssignmentHistory({ api, onViewBill }) {
+export default function AssignmentHistory({ api, onViewBill, areaOrder }) {
   const [date, setDate] = useState(today);
   const [result, setResult] = useState({ date: '', rows: [] });
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [employee, setEmployee] = useState(null);
   const [bitField, setBitField] = useState('location_name');
-  const [downloading, setDownloading] = useState(false);
   const [downloadError, setDownloadError] = useState('');
   const [refresh, setRefresh] = useState(0);
   const reload = useCallback(() => setRefresh((value) => value + 1), []);
@@ -39,13 +38,12 @@ export default function AssignmentHistory({ api, onViewBill }) {
       .finally(() => { if (!controller.signal.aborted) setLoading(false); });
     return () => controller.abort();
   }, [api, date, refresh]);
-  const groups = useMemo(() => groupAssignments(result.date === date ? result.rows : []), [result, date]);
+  const groups = useMemo(() => groupAssignments(result.date === date ? result.rows : [], areaOrder), [result, date, areaOrder]);
   const selected = groups.find((group) => group.id === employee);
-  const download = async () => {
-    setDownloading(true); setDownloadError('');
-    try { await downloadAssignmentSheet(selected, date, bitField); }
-    catch (_err) { setDownloadError('Unable to download sheet. Please try again.'); }
-    finally { setDownloading(false); }
+  const download = () => {
+    setDownloadError('');
+    try { printAssignmentSheetPdf(selected, date, bitField); }
+    catch (err) { setDownloadError(err?.message || 'Unable to download PDF. Please try again.'); }
   };
   return <MDBox mt={3} p={2} sx={{ border: '1px solid #cbd5e1' }}>
     <MDTypography variant="h6">Date-wise Assigned Orders</MDTypography>
@@ -67,7 +65,7 @@ export default function AssignmentHistory({ api, onViewBill }) {
     <Dialog open={Boolean(employee)} onClose={() => setEmployee(null)} fullWidth maxWidth="lg">
       <DialogTitle><MDBox display="flex" justifyContent="space-between" alignItems="center" gap={2} flexWrap="wrap">
         <MDTypography variant="h6">{selected?.name || 'Employee'} — {date}</MDTypography>
-        <MDButton color="success" variant="gradient" onClick={download} disabled={downloading || !selected}>{downloading ? 'Downloading…' : 'Download Sheet'}</MDButton>
+        <MDButton color="success" variant="gradient" onClick={download} disabled={!selected}>Download PDF</MDButton>
       </MDBox></DialogTitle>
       <DialogContent dividers>
         <MDInput select label="BIT column" value={bitField} onChange={(event) => setBitField(event.target.value)} fullWidth sx={{ mb: 2 }}>
@@ -85,4 +83,5 @@ export default function AssignmentHistory({ api, onViewBill }) {
     </Dialog>
   </MDBox>;
 }
-AssignmentHistory.propTypes = { api: PropTypes.string.isRequired, onViewBill: PropTypes.func.isRequired };
+AssignmentHistory.propTypes = { api: PropTypes.string.isRequired, onViewBill: PropTypes.func.isRequired, areaOrder: PropTypes.arrayOf(PropTypes.string) };
+AssignmentHistory.defaultProps = { areaOrder: [] };

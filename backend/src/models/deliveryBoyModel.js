@@ -400,7 +400,37 @@ class DeliveryBoyModel {
              ORDER BY ss.delivery_date DESC, ss.id DESC`,
             params
         );
-        return rows;
+        return DeliveryBoyModel.sortByRoutePriority(rows);
+    }
+
+    // Within each delivery date, bills in route areas come first, in the
+    // area priority set in Create Route (R 1, R 2 ... each in its own order).
+    // Bills outside any route keep the previous order after them.
+    static async sortByRoutePriority(rows) {
+        if (rows.length < 2) return rows;
+        let links;
+        try {
+            [links] = await db.execute(
+                `SELECT ra.area_name, ra.priority, r.name AS route_name
+                 FROM route_areas ra INNER JOIN routes r ON r.id = ra.route_id`
+            );
+        } catch (_error) {
+            return rows; // Routes not set up yet.
+        }
+        const normalize = (name) => String(name || '').trim().replace(/\s+/g, ' ').toUpperCase();
+        const ordered = [...links].sort((a, b) =>
+            String(a.route_name).localeCompare(String(b.route_name), undefined, { numeric: true })
+            || Number(a.priority) - Number(b.priority)
+            || String(a.area_name).localeCompare(String(b.area_name)));
+        const rank = new Map();
+        ordered.forEach((link) => { const area = normalize(link.area_name); if (!rank.has(area)) rank.set(area, rank.size); });
+        const rankOf = (row) => (rank.has(normalize(row.location_name)) ? rank.get(normalize(row.location_name)) : Number.MAX_SAFE_INTEGER);
+        return rows
+            .map((row, index) => ({ row, index }))
+            .sort((a, b) => String(b.row.delivery_date || '').localeCompare(String(a.row.delivery_date || ''))
+                || rankOf(a.row) - rankOf(b.row)
+                || a.index - b.index)
+            .map(({ row }) => row);
     }
 
     static async updateAssignedSaleStatus(deliveryBoyId, saleId, status, cancellationReason = null) {

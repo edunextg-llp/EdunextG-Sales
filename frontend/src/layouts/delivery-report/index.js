@@ -75,6 +75,10 @@ export default function DeliveryReport() {
     return [...new Set(ordered.flatMap((route) => (route.areas || []).map((area) => reportAreaName(area))))];
   }, [routes, routeId]);
   const areaRank = useMemo(() => new Map(areaOrder.map((area, index) => [area, index])), [areaOrder]);
+  // Same priority without a selected route (R 1, R 2 ...) for saved assignments.
+  const routeAreaOrder = useMemo(() => [...new Set([...routes]
+    .sort((a, b) => String(a.name).localeCompare(String(b.name), undefined, { numeric: true }))
+    .flatMap((route) => (route.areas || []).map((area) => reportAreaName(area))))], [routes]);
   const byPriority = useCallback((a, b) => {
     const rankA = areaRank.has(reportAreaName(a.location_name)) ? areaRank.get(reportAreaName(a.location_name)) : Number.MAX_SAFE_INTEGER;
     const rankB = areaRank.has(reportAreaName(b.location_name)) ? areaRank.get(reportAreaName(b.location_name)) : Number.MAX_SAFE_INTEGER;
@@ -378,7 +382,7 @@ export default function DeliveryReport() {
           <MDButton color="info" variant="gradient" disabled={saving || !selectedBillCount} onClick={submit}>{saving ? "Submitting…" : `Submit (${selectedBillCount})`}</MDButton>
         </DialogActions>
       </Dialog>
-      <AssignmentHistory api={API} onViewBill={setViewBill} />
+      <AssignmentHistory api={API} onViewBill={setViewBill} areaOrder={routeAreaOrder} />
       <BillDetailsDialog bill={viewBill} onClose={() => setViewBill(null)} api={API} />
     </MDBox><Footer /></DashboardLayout>
   );

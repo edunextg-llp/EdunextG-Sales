@@ -298,6 +298,8 @@ function DBCollection() {
   const [viewCollection, setViewCollection] = useState(null);
   const [viewGroupKey, setViewGroupKey] = useState(null);
   const [confirmSettle, setConfirmSettle] = useState(null);
+  // "Settle as" override: e.g. the app recorded UPI but the money actually came in cash.
+  const [settleMode, setSettleMode] = useState("");
   const [upiNumber, setUpiNumber] = useState("");
   const cashTotal = CASH_DENOMINATIONS.reduce((total, [, key, value]) => total + (Number(cashCounts[key]) || 0) * Math.round(value * 100), 0) / 100;
   const [settlementError, setSettlementError] = useState("");
@@ -365,6 +367,7 @@ function DBCollection() {
       setChequeDate(row.reference_date || "");
       setCashCounts(row.cash_details || {});
       setUpiNumber(row.reference_no || "");
+      setSettleMode(row.payment_mode);
       setSettlementError("");
     } else {
       setConfirmSettle({ row, details: {} });
@@ -741,29 +744,44 @@ function DBCollection() {
         <form onSubmit={(event) => {
           event.preventDefault();
           if (!settlementCollection || settlingId !== null) return;
-          if (settlementCollection.payment_mode === "cash" && Math.round(cashTotal * 100) !== Math.round(Number(settlementCollection.amount) * 100)) {
-            setSettlementError("Cash denomination total must equal the collection amount.");
-            return;
-          }
-          const details = settlementCollection.payment_mode === "cash" ? { cashDetails: cashCounts }
-            : settlementCollection.payment_mode === "upi" ? { referenceNo: upiNumber.trim() } : { chequeDate };
+          const details = settleMode === "cash" ? { settleMode: "cash" }
+            : settleMode === "upi" ? { referenceNo: upiNumber.trim() } : { chequeDate };
           setConfirmSettle({ row: settlementCollection, details });
         }}>
           <DialogContent>
             <MDTypography variant="button" display="block" mb={2}>
               {settlementCollection?.outlet_name} — {formatCurrency(settlementCollection?.amount)}
             </MDTypography>
-            {settlementCollection?.payment_mode === "cheque" && <>
+            <MDTypography variant="caption" color="text" display="block" mb={0.75}>Settle as</MDTypography>
+            <MDBox display="flex" gap={1} mb={2} flexWrap="wrap">
+              {[settlementCollection?.payment_mode, "cash"].filter(Boolean).map((mode) => (
+                <Chip
+                  key={mode}
+                  clickable
+                  disabled={settlingId !== null}
+                  onClick={() => { setSettleMode(mode); setSettlementError(""); }}
+                  color={settleMode === mode ? PAYMENT_COLORS[mode] : "default"}
+                  variant={settleMode === mode ? "filled" : "outlined"}
+                  label={mode === settlementCollection?.payment_mode ? `${PAYMENT_LABELS[mode]} (as recorded)` : PAYMENT_LABELS[mode]}
+                />
+              ))}
+            </MDBox>
+            {settleMode === "cash" && (
+              <Alert severity="info" sx={{ mb: 1 }}>
+                This will be settled as a cash payment of {formatCurrency(settlementCollection?.amount)} instead of {PAYMENT_LABELS[settlementCollection?.payment_mode]}.
+              </Alert>
+            )}
+            {settleMode === "cheque" && <>
             <MDTypography variant="button" display="block" mb={2}>Cheque No: {settlementCollection.reference_no || "N/A"}</MDTypography>
             <MDInput label="Cheque date" type="date" required fullWidth
               value={chequeDate} onChange={(event) => setChequeDate(event.target.value)}
               disabled={settlingId !== null} InputLabelProps={{ shrink: true }}
               inputProps={{ min: "1000-01-01", max: "9999-12-31" }} />
             </>}
-            {settlementCollection?.payment_mode === "upi" && <MDInput label="UPI number" required fullWidth
+            {settleMode === "upi" && <MDInput label="UPI number" required fullWidth
               value={upiNumber} onChange={(event) => setUpiNumber(event.target.value)} disabled={settlingId !== null}
               inputProps={{ maxLength: 255 }} />}
-            {settlementCollection?.payment_mode === "cash" && <>
+            {false && <>
               <MDBox display="grid" gridTemplateColumns="1fr 1fr" gap={2} mt={1}>
                 {CASH_DENOMINATIONS.map(([label, key, value]) => <MDInput key={key} label={key === "paisa" ? "Paisa (100 = ₹1)" : `${label} × count`}
                   type="number" value={cashCounts[key] ?? ""} disabled={settlingId !== null}
@@ -778,9 +796,8 @@ function DBCollection() {
           <DialogActions>
             <MDButton color="secondary" disabled={settlingId !== null} onClick={() => setSettlementCollection(null)}>Cancel</MDButton>
             <MDButton type="submit" color="success" variant="gradient" disabled={settlingId !== null
-              || (settlementCollection?.payment_mode === "cheque" && !chequeDate)
-              || (settlementCollection?.payment_mode === "upi" && !upiNumber.trim())
-              || (settlementCollection?.payment_mode === "cash" && (cashTotal <= 0 || Math.round(cashTotal * 100) !== Math.round(Number(settlementCollection.amount) * 100)))}>
+              || (settleMode === "cheque" && !chequeDate)
+              || (settleMode === "upi" && !upiNumber.trim())}>
               {settlingId !== null ? "Settling..." : "Settle"}
             </MDButton>
           </DialogActions>
@@ -813,7 +830,9 @@ function DBCollection() {
             {confirmSettle?.row?.outlet_name || "N/A"} — {formatCurrency(confirmSettle?.row?.amount)}
           </MDTypography>
           <MDTypography variant="button" color="text" display="block">
-            {PAYMENT_LABELS[confirmSettle?.row?.payment_mode] || confirmSettle?.row?.payment_mode} · {confirmSettle?.row?.invoice_number || `BP${confirmSettle?.row?.sale_id}`}
+            {confirmSettle?.details?.settleMode && confirmSettle.details.settleMode !== confirmSettle?.row?.payment_mode
+              ? `Settle as ${PAYMENT_LABELS[confirmSettle.details.settleMode]} (recorded as ${PAYMENT_LABELS[confirmSettle.row.payment_mode]})`
+              : PAYMENT_LABELS[confirmSettle?.row?.payment_mode] || confirmSettle?.row?.payment_mode} · {confirmSettle?.row?.invoice_number || `BP${confirmSettle?.row?.sale_id}`}
           </MDTypography>
           <MDTypography variant="caption" color="text" display="block" mt={1}>
             This settlement will be recorded as a payment and cannot be undone here.

@@ -37,6 +37,8 @@ router.put('/mobile/items/:saleId/contact', verifyDeliveryBoyToken, deliveryBoyC
 router.get('/mobile/collections', verifyDeliveryBoyToken, deliveryBoyController.getMobileCollections);
 router.get('/mobile/credit-dues', verifyDeliveryBoyToken, deliveryBoyController.getMobileCreditDues);
 router.post('/mobile/credit-dues/:saleId/payments', verifyDeliveryBoyToken, deliveryBoyController.collectMobileCreditDue);
+router.get('/mobile/pending-collections', verifyDeliveryBoyToken, deliveryBoyController.getMobilePendingCollections);
+router.put('/mobile/pending-collections/:collectionId', verifyDeliveryBoyToken, deliveryBoyController.editMobilePendingCollection);
 router.put('/mobile/items/:saleId/collection', verifyDeliveryBoyToken, deliveryBoyController.updateMobileCollection);
 router.get('/permissions', verifyTokenMiddleware, requireRole('admin'), deliveryBoyController.getPermissionUsers);
 router.put('/:id/permissions', verifyTokenMiddleware, requireRole('admin'), deliveryBoyController.updatePermissionUser);

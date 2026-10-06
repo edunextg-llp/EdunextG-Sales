@@ -201,6 +201,107 @@ class DeliveryCollectionModel {
         } finally { connection.release(); }
     }
 
+    // Payments this delivery boy submitted from the app that the office has not settled yet.
+    // These stay visible in the app so the mode or amount can still be corrected.
+    static async getPendingCollectionsForDeliveryBoy(deliveryBoyId, executor = db) {
+        const [rows] = await executor.execute(
+            `SELECT dbc.id AS collection_id, dbc.sale_id, dbc.payment_mode, dbc.amount,
+                    dbc.reference_no, DATE_FORMAT(dbc.reference_date, '%Y-%m-%d') AS reference_date,
+                    dbc.credit_days, COALESCE(dbc.collection_source, 'delivery') AS collection_source,
+                    DATE_FORMAT(dbc.created_at, '%Y-%m-%d %H:%i:%s') AS created_at,
+                    DATE_FORMAT(dbc.updated_at, '%Y-%m-%d %H:%i:%s') AS updated_at,
+                    DATE_FORMAT(ss.sale_date, '%Y-%m-%d') AS sale_date,
+                    ss.invoice_number, sc.outlet_name, sc.outlet_erp_id,
+                    COALESCE(c.name, 'Company not assigned') AS company_name,
+                    GREATEST(0, ss.price - COALESCE(cancelled.total, 0) - COALESCE(paid.total, 0)) AS max_amount,
+                    COALESCE(credit_due.credit_amount, 0) AS credit_amount
+             FROM delivery_boy_collections dbc
+             INNER JOIN staff_sales ss ON ss.id = dbc.sale_id
+             LEFT JOIN staff_counters sc ON sc.id = ss.outlet_id
+             LEFT JOIN staff s ON s.id = ss.staff_id
+             LEFT JOIN companies c ON c.id = s.company_id
+             LEFT JOIN (SELECT sale_id, SUM(amount) AS total FROM sale_payments
+                        WHERE payment_mode IN ('cash','upi','cheque') GROUP BY sale_id) paid ON paid.sale_id = ss.id
+             LEFT JOIN (SELECT sale_id, SUM(amount) AS total FROM order_cancellations
+                        GROUP BY sale_id) cancelled ON cancelled.sale_id = ss.id
+             LEFT JOIN (
+                 SELECT credit.sale_id,
+                        SUM(GREATEST(0, credit.amount - COALESCE(child.paid, 0))) AS credit_amount
+                 FROM sale_payments credit
+                 LEFT JOIN (
+                     SELECT parent_credit_payment_id, SUM(amount) AS paid
+                     FROM sale_payments
+                     WHERE parent_credit_payment_id IS NOT NULL
+                       AND payment_mode IN ('cash','upi','cheque')
+                     GROUP BY parent_credit_payment_id
+                 ) child ON child.parent_credit_payment_id = credit.id
+                 WHERE credit.payment_mode = 'credit'
+                 GROUP BY credit.sale_id
+             ) credit_due ON credit_due.sale_id = ss.id
+             WHERE dbc.delivery_boy_id = ? AND dbc.settled_at IS NULL
+               AND COALESCE(dbc.collector_type, 'delivery_boy') = 'delivery_boy'
+             ORDER BY dbc.created_at DESC, dbc.id DESC`,
+            [deliveryBoyId]
+        );
+        return rows.map((row) => ({
+            ...row,
+            amount: Number(row.amount) || 0,
+            max_amount: Number(row.max_amount) || 0,
+            credit_amount: Number(row.credit_amount) || 0,
+        }));
+    }
+
+    // Lets the delivery boy correct the mode/amount of a payment until the office settles it.
+    static async updatePendingCollection(deliveryBoyId, collectionId, data) {
+        const connection = await db.getConnection();
+        try {
+            await connection.beginTransaction();
+            const [rows] = await connection.execute(
+                `SELECT id, sale_id FROM delivery_boy_collections
+                 WHERE id = ? AND delivery_boy_id = ? AND settled_at IS NULL
+                   AND COALESCE(collector_type, 'delivery_boy') = 'delivery_boy'
+                 FOR UPDATE`,
+                [collectionId, deliveryBoyId]
+            );
+            const collection = rows[0];
+            if (!collection) { await connection.rollback(); return null; }
+            await connection.execute('SELECT id FROM staff_sales WHERE id = ? FOR UPDATE', [collection.sale_id]);
+            const price = await PaymentModel.getEffectiveSalePrice(connection, collection.sale_id);
+            const paid = await PaymentModel.getTotalPaid(connection, collection.sale_id);
+            const remaining = Math.max(0, price - paid);
+            if (!Number.isFinite(data.amount) || data.amount <= 0 || data.amount > remaining + 0.001) {
+                throw Object.assign(new Error('EXCEEDS_BALANCE'), { remaining });
+            }
+            if (data.paymentMode === 'credit') {
+                const [creditRows] = await connection.execute(
+                    `SELECT COALESCE(SUM(GREATEST(0, sp.amount - COALESCE(child.paid, 0))), 0) AS credit_amount
+                     FROM sale_payments sp
+                     LEFT JOIN (SELECT parent_credit_payment_id, SUM(amount) AS paid FROM sale_payments
+                                WHERE parent_credit_payment_id IS NOT NULL AND payment_mode IN ('cash','upi','cheque')
+                                GROUP BY parent_credit_payment_id) child ON child.parent_credit_payment_id = sp.id
+                     WHERE sp.sale_id = ? AND sp.payment_mode = 'credit'`,
+                    [collection.sale_id]
+                );
+                if (Number(creditRows[0]?.credit_amount) > 0 && Math.abs(data.amount - remaining) > 0.001) {
+                    throw new Error('FULL_CREDIT_BALANCE_REQUIRED');
+                }
+            }
+            await connection.execute(
+                `UPDATE delivery_boy_collections
+                 SET payment_mode = ?, amount = ?, cash_details = ?, reference_no = ?, reference_date = ?, credit_days = ?
+                 WHERE id = ?`,
+                [data.paymentMode, data.amount,
+                 data.cashDetails ? JSON.stringify(data.cashDetails) : null,
+                 data.referenceNo ?? null, data.referenceDate ?? null, data.creditDays ?? null, collectionId]
+            );
+            await connection.commit();
+            return { collection: { id: collectionId, sale_id: collection.sale_id, amount: data.amount, payment_mode: data.paymentMode }, remainingBalance: remaining };
+        } catch (error) {
+            await connection.rollback();
+            throw error;
+        } finally { connection.release(); }
+    }
+
     static async settle(collectionId, chequeDate, details = {}) {
         const connection = await db.getConnection();
         try {
@@ -216,6 +317,23 @@ class DeliveryCollectionModel {
             );
             const collection = rows[0];
             if (!collection) { await connection.rollback(); return false; }
+            // Admin may settle a UPI/cheque collection as cash (the app recorded the wrong mode).
+            if (details.settleMode != null && details.settleMode !== collection.payment_mode) {
+                if (details.settleMode !== 'cash' || !['upi', 'cheque'].includes(collection.payment_mode)) {
+                    throw new Error('INVALID_SETTLE_MODE');
+                }
+                const note = `Settled as cash (recorded as ${collection.payment_mode}${collection.reference_no ? ` ${collection.reference_no}` : ''})`;
+                await connection.execute(
+                    `UPDATE delivery_boy_collections
+                     SET payment_mode = 'cash', reference_no = NULL, reference_date = NULL,
+                         remarks = TRIM(CONCAT(COALESCE(remarks, ''), ' ', ?))
+                     WHERE id = ?`,
+                    [note, collectionId]
+                );
+                collection.payment_mode = 'cash';
+                collection.reference_no = null;
+                collection.reference_date = null;
+            }
             // Note counts are optional for cash: when the admin settles without them,
             // keep whatever was recorded with the collection.
             if (collection.payment_mode === 'cash' && details.cashDetails != null) {
