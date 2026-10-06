@@ -1,6 +1,7 @@
 import React from "react";
 import { Navigate, useLocation } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
+import { extraLandingRoute } from "../../utils/landingRoutes";
 
 const ProtectedRoute = ({ children, allowedRoles, requiredPermission }) => {
   const { token, user, isReady } = useAuth();
@@ -59,7 +60,7 @@ const ProtectedRoute = ({ children, allowedRoles, requiredPermission }) => {
                   ? "/add-outlet"
                   : user.permissions.includes("add_sales")
                     ? "/add-sales"
-                    : "/welcome";
+                    : extraLandingRoute(user.permissions);
     return <Navigate to={firstAllowedRoute} replace />;
   }
 

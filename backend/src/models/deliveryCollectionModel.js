@@ -334,6 +334,28 @@ class DeliveryCollectionModel {
                 collection.reference_no = null;
                 collection.reference_date = null;
             }
+            // The office can correct a wrong amount while settling (e.g. the app
+            // recorded 2304 but the outlet actually paid 2340). The new amount is
+            // still checked against the bill balance below.
+            if (details.amount != null && details.amount !== '') {
+                const corrected = Number(details.amount);
+                if (!Number.isFinite(corrected) || corrected <= 0
+                    || Math.abs(corrected * 100 - Math.round(corrected * 100)) > 0.000001) {
+                    throw new Error('INVALID_AMOUNT');
+                }
+                const recorded = Number(collection.amount) || 0;
+                if (Math.abs(corrected - recorded) > 0.001) {
+                    const note = `Amount corrected from ${recorded.toFixed(2)} to ${corrected.toFixed(2)} at settlement`;
+                    await connection.execute(
+                        `UPDATE delivery_boy_collections
+                         SET amount = ?, cash_details = NULL,
+                             remarks = TRIM(CONCAT(COALESCE(remarks, ''), ' ', ?))
+                         WHERE id = ?`,
+                        [corrected, note, collectionId]
+                    );
+                    collection.amount = corrected;
+                }
+            }
             // Note counts are optional for cash: when the admin settles without them,
             // keep whatever was recorded with the collection.
             if (collection.payment_mode === 'cash' && details.cashDetails != null) {

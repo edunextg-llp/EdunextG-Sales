@@ -109,3 +109,29 @@ export function printAssignmentSheetPdf(group, date, bitField) {
   printWindow.focus();
   setTimeout(() => { if (!printWindow.closed) printWindow.print(); }, 250);
 }
+
+// Only bills still out for delivery can be reassigned or removed.
+export const isEditableAssignment = (row) => String(row.packaging_status || '').trim().toLowerCase() === 'out_for_delivery';
+
+// Builds the packaging-status updates for an edited assignment: unticked bills
+// go back to the report (packing done); kept bills move to the new delivery
+// boy, date and vehicle. Unchanged bills are skipped.
+export function assignmentEditRequests(rows, { boy, date, vehicle, keepIds }) {
+  const keep = new Set([...keepIds].map(String));
+  return rows.filter(isEditableAssignment).flatMap((row) => {
+    if (!keep.has(String(row.id))) {
+      return [{ row, body: { packagingStatus: 'packing_done', expectedStatus: 'out_for_delivery' } }];
+    }
+    const unchanged = String(row.delivery_boy_id) === String(boy)
+      && String(row.delivery_date || '') === String(date)
+      && String(row.vehicle_no || '').trim() === String(vehicle).trim();
+    if (unchanged) return [];
+    return [{
+      row,
+      body: {
+        packagingStatus: 'out_for_delivery', expectedStatus: 'out_for_delivery',
+        deliveryBoyId: Number(boy), deliveryDate: date, vehicleNo: String(vehicle).trim(),
+      },
+    }];
+  });
+}

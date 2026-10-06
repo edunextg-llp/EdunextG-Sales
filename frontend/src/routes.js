@@ -131,6 +131,8 @@ const routes = [
         icon: <Icon fontSize="small">history</Icon>,
         route: "/dms-purchase-history",
         component: <DmsPurchaseHistory />,
+        allowedRoles: ["admin", "packaging_staff", "delivery_boy"],
+        requiredPermission: "purchase_history",
       },
 
     
@@ -142,6 +144,8 @@ const routes = [
         icon: <Icon fontSize="small">warehouse</Icon>,
         route: "/physical-stock",
         component: <PhysicalStock />,
+        allowedRoles: ["admin", "packaging_staff", "delivery_boy"],
+        requiredPermission: "physical_stock",
       },
       {
         type: "collapse",
@@ -150,6 +154,8 @@ const routes = [
         icon: <Icon fontSize="small">fact_check</Icon>,
         route: "/current-stock",
         component: <CurrentStock />,
+        allowedRoles: ["admin", "packaging_staff", "delivery_boy"],
+        requiredPermission: "current_stock",
       },
       {
         type: "collapse",
@@ -159,7 +165,7 @@ const routes = [
         route: "/expiry-items",
         component: <ExpiryItems />,
         allowedRoles: ["admin", "packaging_staff", "delivery_boy"],
-        requiredPermission: "item_list",
+        requiredPermission: "expiry_items",
       },
       {
         type: "collapse",
@@ -169,7 +175,7 @@ const routes = [
         route: "/expiry-list",
         component: <ExpiryList />,
         allowedRoles: ["admin", "packaging_staff", "delivery_boy"],
-        requiredPermission: "item_list",
+        requiredPermission: "expiry_list",
       },
       {
         type: "collapse",
@@ -179,7 +185,7 @@ const routes = [
         route: "/damage-list",
         component: <ExpiryList mode="damage" />,
         allowedRoles: ["admin", "packaging_staff", "delivery_boy"],
-        requiredPermission: "item_list",
+        requiredPermission: "damage_list",
       },
       {
         type: "collapse",
@@ -188,6 +194,8 @@ const routes = [
         icon: <Icon fontSize="small">receipt_long</Icon>,
         route: "/purchase",
         component: <Purchase />,
+        allowedRoles: ["admin", "packaging_staff", "delivery_boy"],
+        requiredPermission: "purchase",
       },
 
       // {
@@ -354,7 +362,7 @@ const routes = [
         route: "/delivery-report",
         component: <DeliveryReport />,
         allowedRoles: ["admin", "packaging_staff", "delivery_boy"],
-        requiredPermission: "delivery",
+        requiredPermission: "delivery_report",
       },
       {
         type: "collapse",
@@ -454,6 +462,8 @@ const routes = [
     icon: <Icon fontSize="small">payments</Icon>,
     route: "/db-collection",
     component: <DBCollection />,
+    allowedRoles: ["admin", "packaging_staff", "delivery_boy"],
+    requiredPermission: "db_collection",
   },
 
   {

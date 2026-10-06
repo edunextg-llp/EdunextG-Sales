@@ -382,7 +382,7 @@ export default function DeliveryReport() {
           <MDButton color="info" variant="gradient" disabled={saving || !selectedBillCount} onClick={submit}>{saving ? "Submitting…" : `Submit (${selectedBillCount})`}</MDButton>
         </DialogActions>
       </Dialog>
-      <AssignmentHistory api={API} onViewBill={setViewBill} areaOrder={routeAreaOrder} />
+      <AssignmentHistory api={API} onViewBill={setViewBill} areaOrder={routeAreaOrder} boys={boys} />
       <BillDetailsDialog bill={viewBill} onClose={() => setViewBill(null)} api={API} />
     </MDBox><Footer /></DashboardLayout>
   );

@@ -4,6 +4,7 @@ import crypto from 'crypto';
 import UserModel from '../models/userModel.js';
 import StaffModel from '../models/staffModel.js';
 import DeliveryBoyModel from '../models/deliveryBoyModel.js';
+import { PERMISSION_KEYS } from '../utils/permissionKeys.js';
 import {
     OTP_RESEND_COOLDOWN_MS,
     OTP_TTL_MS,
@@ -179,13 +180,7 @@ export const login = async (req, res) => {
                 if (!deliveryUser) {
                     return res.status(401).json({ error: 'Invalid login ID/email or password' });
                 }
-                const permissionKeys = [
-                    'dashboard', 'dms', 'add_seller', 'add_item', 'item_list',
-                    'update_payment', 'bank_deposit', 'create_staff', 'add_outlet', 'location_assignments', 'add_sales',
-                    'packaging', 'delivery', 'delivered', 'out_bill', 'requisition_approval', 'invoice_lookup',
-                    'chalan_add_sales', 'chalan_packaging', 'chalan_delivery', 'chalan_delivered', 'chalan_return',
-                ];
-                const permissions = permissionKeys.filter((key) => Boolean(deliveryUser[`can_${key}`]));
+                const permissions = PERMISSION_KEYS.filter((key) => Boolean(deliveryUser[`can_${key}`]));
                 const role = deliveryUser.role === 'packaging_staff' ? 'packaging_staff' : 'delivery_boy';
                 tokenPayload = {
                     id: deliveryUser.id,
@@ -283,6 +278,16 @@ export const refreshToken = async (req, res) => {
             tv = currentVersion;
         }
 
+        // Packaging Staff / Delivery Boy: pick up permission changes made since login.
+        let { permissions } = decoded;
+        if (['packaging_staff', 'delivery_boy'].includes(decoded.role) && decoded.deliveryBoyId) {
+            const current = await DeliveryBoyModel.getCurrentPermissions(decoded.deliveryBoyId);
+            if (!current?.isActive) {
+                return res.status(401).json({ error: 'This account is inactive. Please contact the admin.' });
+            }
+            permissions = current.permissions;
+        }
+
         const token = jwt.sign(
             {
                 id: decoded.id,
@@ -293,7 +298,7 @@ export const refreshToken = async (req, res) => {
                 staffType: decoded.staffType,
                 companyIds: decoded.companyIds,
                 deliveryBoyId: decoded.deliveryBoyId,
-                permissions: decoded.permissions,
+                permissions,
                 tv,
             },
             JWT_SECRET,
@@ -313,7 +318,7 @@ export const refreshToken = async (req, res) => {
                 staffType: decoded.staffType,
                 companyIds: decoded.companyIds,
                 deliveryBoyId: decoded.deliveryBoyId,
-                permissions: decoded.permissions || [],
+                permissions: permissions || [],
             }
         });
     } catch (error) {

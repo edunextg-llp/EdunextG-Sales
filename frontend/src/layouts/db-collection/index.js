@@ -301,6 +301,9 @@ function DBCollection() {
   // "Settle as" override: e.g. the app recorded UPI but the money actually came in cash.
   const [settleMode, setSettleMode] = useState("");
   const [upiNumber, setUpiNumber] = useState("");
+  // Amount to settle; the office can correct it if the app recorded the wrong figure.
+  const [settleAmount, setSettleAmount] = useState("");
+  const settleAmountValid = /^\d+(\.\d{1,2})?$/.test(settleAmount.trim()) && Number(settleAmount) > 0;
   const cashTotal = CASH_DENOMINATIONS.reduce((total, [, key, value]) => total + (Number(cashCounts[key]) || 0) * Math.round(value * 100), 0) / 100;
   const [settlementError, setSettlementError] = useState("");
   const [page, setPage] = useState(1);
@@ -361,17 +364,15 @@ function DBCollection() {
   };
 
   const requestSettlement = (row) => {
-    // Cash and credit settle straight away after the confirmation; cheque and UPI need their details.
-    if (["cheque", "upi"].includes(row.payment_mode)) {
-      setSettlementCollection(row);
-      setChequeDate(row.reference_date || "");
-      setCashCounts(row.cash_details || {});
-      setUpiNumber(row.reference_no || "");
-      setSettleMode(row.payment_mode);
-      setSettlementError("");
-    } else {
-      setConfirmSettle({ row, details: {} });
-    }
+    // Every mode opens the settle form so the amount can be checked or corrected;
+    // cheque and UPI also need their details there.
+    setSettlementCollection(row);
+    setChequeDate(row.reference_date || "");
+    setCashCounts(row.cash_details || {});
+    setUpiNumber(row.reference_no || "");
+    setSettleMode(row.payment_mode);
+    setSettleAmount(String(Number(row.amount) || ""));
+    setSettlementError("");
   };
 
   useEffect(() => {
@@ -744,8 +745,17 @@ function DBCollection() {
         <form onSubmit={(event) => {
           event.preventDefault();
           if (!settlementCollection || settlingId !== null) return;
-          const details = settleMode === "cash" ? { settleMode: "cash" }
-            : settleMode === "upi" ? { referenceNo: upiNumber.trim() } : { chequeDate };
+          if (!settleAmountValid) {
+            setSettlementError("Enter a valid amount greater than zero with at most two decimal places.");
+            return;
+          }
+          const recordedMode = settlementCollection.payment_mode;
+          const details = settleMode === "cash" && recordedMode !== "cash" ? { settleMode: "cash" }
+            : settleMode === "upi" ? { referenceNo: upiNumber.trim() }
+              : settleMode === "cheque" ? { chequeDate } : {};
+          if (Math.abs(Number(settleAmount) - Number(settlementCollection.amount)) > 0.001) {
+            details.amount = Number(settleAmount);
+          }
           setConfirmSettle({ row: settlementCollection, details });
         }}>
           <DialogContent>
@@ -754,7 +764,7 @@ function DBCollection() {
             </MDTypography>
             <MDTypography variant="caption" color="text" display="block" mb={0.75}>Settle as</MDTypography>
             <MDBox display="flex" gap={1} mb={2} flexWrap="wrap">
-              {[settlementCollection?.payment_mode, "cash"].filter(Boolean).map((mode) => (
+              {(["upi", "cheque"].includes(settlementCollection?.payment_mode) ? [settlementCollection.payment_mode, "cash"] : [settlementCollection?.payment_mode]).filter(Boolean).map((mode) => (
                 <Chip
                   key={mode}
                   clickable
@@ -766,9 +776,18 @@ function DBCollection() {
                 />
               ))}
             </MDBox>
-            {settleMode === "cash" && (
+            <MDInput label="Amount (Rs.)" required fullWidth type="number"
+              value={settleAmount} disabled={settlingId !== null}
+              onChange={(event) => { setSettleAmount(event.target.value); setSettlementError(""); }}
+              inputProps={{ min: 0.01, step: "0.01" }}
+              error={settleAmount !== "" && !settleAmountValid}
+              helperText={settleAmountValid && Math.abs(Number(settleAmount) - Number(settlementCollection?.amount)) > 0.001
+                ? `Corrected from ${formatCurrency(settlementCollection?.amount)} recorded in the app`
+                : "Change this if the recorded amount is wrong."}
+              sx={{ mb: 2 }} />
+            {settleMode === "cash" && settlementCollection?.payment_mode !== "cash" && (
               <Alert severity="info" sx={{ mb: 1 }}>
-                This will be settled as a cash payment of {formatCurrency(settlementCollection?.amount)} instead of {PAYMENT_LABELS[settlementCollection?.payment_mode]}.
+                This will be settled as a cash payment of {formatCurrency(settleAmountValid ? Number(settleAmount) : settlementCollection?.amount)} instead of {PAYMENT_LABELS[settlementCollection?.payment_mode]}.
               </Alert>
             )}
             {settleMode === "cheque" && <>
@@ -796,6 +815,7 @@ function DBCollection() {
           <DialogActions>
             <MDButton color="secondary" disabled={settlingId !== null} onClick={() => setSettlementCollection(null)}>Cancel</MDButton>
             <MDButton type="submit" color="success" variant="gradient" disabled={settlingId !== null
+              || !settleAmountValid
               || (settleMode === "cheque" && !chequeDate)
               || (settleMode === "upi" && !upiNumber.trim())}>
               {settlingId !== null ? "Settling..." : "Settle"}
@@ -827,8 +847,13 @@ function DBCollection() {
         <DialogTitle>Are you sure you want to submit?</DialogTitle>
         <DialogContent>
           <MDTypography variant="button" display="block" mb={1}>
-            {confirmSettle?.row?.outlet_name || "N/A"} — {formatCurrency(confirmSettle?.row?.amount)}
+            {confirmSettle?.row?.outlet_name || "N/A"} — {formatCurrency(confirmSettle?.details?.amount ?? confirmSettle?.row?.amount)}
           </MDTypography>
+          {confirmSettle?.details?.amount != null && (
+            <MDTypography variant="button" color="warning" display="block" mb={1}>
+              Amount corrected from {formatCurrency(confirmSettle?.row?.amount)} recorded in the app
+            </MDTypography>
+          )}
           <MDTypography variant="button" color="text" display="block">
             {confirmSettle?.details?.settleMode && confirmSettle.details.settleMode !== confirmSettle?.row?.payment_mode
               ? `Settle as ${PAYMENT_LABELS[confirmSettle.details.settleMode]} (recorded as ${PAYMENT_LABELS[confirmSettle.row.payment_mode]})`

@@ -74,6 +74,16 @@ export const AuthProvider = ({ children }) => {
           const refreshData = await refreshResponse.json();
           getStorage().setItem(AUTH_KEYS.token, refreshData.token);
           setToken(refreshData.token);
+          // Permissions may have been changed by the admin since login:
+          // update the menu without asking the user to log in again.
+          if (Array.isArray(refreshData.user?.permissions)) {
+            const storedUser = getStoredValue(AUTH_KEYS.user);
+            if (storedUser) {
+              const nextUser = { ...JSON.parse(storedUser), permissions: refreshData.user.permissions };
+              getStorage().setItem(AUTH_KEYS.user, JSON.stringify(nextUser));
+              setUser(nextUser);
+            }
+          }
           return refreshData.token;
         })()
           .catch(() => null)
@@ -137,6 +147,11 @@ export const AuthProvider = ({ children }) => {
 
       return response;
     };
+
+    // Reloading the page picks up permission changes straight away.
+    if (getStoredValue(AUTH_KEYS.token) && getStoredValue(AUTH_KEYS.refreshToken)) {
+      void refreshAccessToken();
+    }
 
     return () => {
       // Restore original fetch when context unmounts

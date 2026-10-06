@@ -1,6 +1,7 @@
 import DeliveryBoyModel from '../models/deliveryBoyModel.js';
 import StaffModel from '../models/staffModel.js';
 import DeliveryCollectionModel from '../models/deliveryCollectionModel.js';
+import { DMS_PERMISSION_KEYS, PERMISSION_KEYS } from '../utils/permissionKeys.js';
 import CompanyModel from '../models/companyModel.js';
 import {
     validateRequiredText,
@@ -241,12 +242,7 @@ export const getDeliveryBoys = async (req, res) => {
     }
 };
 
-const DELIVERY_PERMISSION_KEYS = [
-    'dashboard', 'dms', 'add_seller', 'add_item', 'item_list',
-    'update_payment', 'bank_deposit', 'create_staff', 'add_outlet', 'location_assignments', 'add_sales',
-    'packaging', 'delivery', 'delivered', 'out_bill', 'requisition_approval', 'invoice_lookup',
-    'chalan_add_sales', 'chalan_packaging', 'chalan_delivery', 'chalan_delivered', 'chalan_return',
-];
+const DELIVERY_PERMISSION_KEYS = PERMISSION_KEYS;
 
 export const getPermissionUsers = async (req, res) => {
     try {
@@ -282,9 +278,7 @@ export const updatePermissionUser = async (req, res) => {
         }
         const normalizedPermissions = [...new Set(permissions)];
         if (
-            normalizedPermissions.some((permission) =>
-                ['add_seller', 'add_item', 'item_list'].includes(permission)
-            )
+            normalizedPermissions.some((permission) => DMS_PERMISSION_KEYS.includes(permission))
             && !normalizedPermissions.includes('dms')
         ) {
             normalizedPermissions.push('dms');
@@ -653,6 +647,7 @@ export const settleDeliveryBoyCollection = async (req, res) => {
             CASH_TOTAL_MISMATCH: 'Cash denomination total must equal the collection amount',
             UPI_REFERENCE_REQUIRED: 'Enter a UPI number (up to 255 characters) before settlement',
             INVALID_SETTLE_MODE: 'Only UPI or cheque collections can be settled as cash',
+            INVALID_AMOUNT: 'Enter a valid amount greater than zero with at most two decimal places',
         };
         if (settlementErrors[error.message]) return res.status(400).json({ error: settlementErrors[error.message] });
         console.error('Error settling collection:', error);

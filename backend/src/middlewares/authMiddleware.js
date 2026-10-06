@@ -1,5 +1,6 @@
 import jwt from 'jsonwebtoken';
 import UserModel from '../models/userModel.js';
+import DeliveryBoyModel from '../models/deliveryBoyModel.js';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'super_secret_key_12345';
 
@@ -28,6 +29,21 @@ export const verifyTokenMiddleware = async (req, res, next) => {
             }
         } catch (error) {
             console.error('Admin session check failed:', error);
+            return res.status(500).json({ error: 'Internal server error' });
+        }
+    }
+
+    // Packaging Staff / Delivery Boy permissions are read fresh on every request,
+    // so granting or removing a permission works without logging in again.
+    if (['packaging_staff', 'delivery_boy'].includes(decoded.role) && decoded.deliveryBoyId) {
+        try {
+            const current = await DeliveryBoyModel.getCurrentPermissions(decoded.deliveryBoyId);
+            if (!current?.isActive) {
+                return res.status(401).json({ error: 'This account is inactive. Please contact the admin.' });
+            }
+            decoded.permissions = current.permissions;
+        } catch (error) {
+            console.error('Permission check failed:', error);
             return res.status(500).json({ error: 'Internal server error' });
         }
     }
@@ -90,6 +106,9 @@ export const enforceManagedUserApiScope = (req, res, next) => {
     const path = req.path;
     const method = req.method.toUpperCase();
     const hasDms = permissions.has('dms');
+    // DMS pages need the DMS menu plus that page's own permission.
+    const dms = (...keys) => hasDms && keys.some((key) => permissions.has(key));
+    const isGet = method === 'GET';
 
     let allowed = false;
     if (path === '/reports' || path === '/reports/payments' || path === '/reports/payments/export' || path === '/purchase-reports' || path === '/' || path === '/search') {
@@ -104,7 +123,8 @@ export const enforceManagedUserApiScope = (req, res, next) => {
             || permissions.has('delivery')
             || permissions.has('delivered')
             || permissions.has('out_bill')
-            || (hasDms && permissions.has('item_list'))
+            || permissions.has('delivery_report')
+            || dms('item_list', 'expiry_list', 'damage_list')
         )) || (path === '/' && method === 'POST' && permissions.has('create_staff'));
     } else if (path === '/companies') {
         // Company dropdowns appear on the Dashboard and Bank Deposit screens too.
@@ -117,16 +137,21 @@ export const enforceManagedUserApiScope = (req, res, next) => {
             || permissions.has('location_assignments')
         );
     } else if (path.startsWith('/dms-stock')) {
-        allowed = hasDms && permissions.has('item_list');
+        allowed = dms('item_list')
+            || (isGet && dms('purchase_history', 'current_stock', 'expiry_items', 'expiry_list', 'damage_list'));
     } else if (path.startsWith('/expiry-list')) {
-        allowed = hasDms && permissions.has('item_list');
+        allowed = dms('expiry_list');
     } else if (path.startsWith('/damage-list')) {
-        allowed = hasDms && permissions.has('item_list');
+        allowed = dms('damage_list');
+    } else if (path.startsWith('/physical-stock')) {
+        allowed = dms('physical_stock');
+    } else if (path === '/current-stock') {
+        allowed = isGet && dms('current_stock');
+    } else if (path === '/purchases' || path.startsWith('/purchases/')) {
+        allowed = dms('purchase');
     } else if (path.startsWith('/purchase-sellers')) {
-        allowed = hasDms && (
-            permissions.has('add_seller')
-            || (method === 'GET' && (permissions.has('add_item') || permissions.has('item_list')))
-        );
+        allowed = dms('add_seller')
+            || (isGet && dms('add_item', 'item_list', 'purchase_history', 'expiry_list', 'damage_list', 'purchase'));
     } else if (path.startsWith('/seller-items')) {
         allowed = hasDms && (
             permissions.has('add_item')
@@ -142,7 +167,7 @@ export const enforceManagedUserApiScope = (req, res, next) => {
         allowed = permissions.has('add_outlet');
     } else if (/^\/\d+\/(locations|outlets-by-date|all-counters|outlets-by-day|next-bill-number)$/.test(path)) {
         allowed = permissions.has('add_outlet') || permissions.has('add_sales') || permissions.has('location_assignments')
-            || (hasDms && permissions.has('item_list'));
+            || dms('item_list', 'expiry_list', 'damage_list');
     } else if (/^\/\d+$/.test(path)) {
         allowed = (method === 'GET' && (permissions.has('create_staff') || permissions.has('location_assignments')))
             || (method === 'PUT' && permissions.has('create_staff'));
@@ -154,17 +179,19 @@ export const enforceManagedUserApiScope = (req, res, next) => {
         allowed = method === 'GET' && permissions.has('invoice_lookup');
     } else if (path === '/sales/by-date' || /^\/\d+\/sales-by-date$/.test(path)) {
         allowed = permissions.has('add_sales') || permissions.has('update_payment')
-            || permissions.has('packaging') || permissions.has('delivery') || permissions.has('delivered');
+            || permissions.has('packaging') || permissions.has('delivery') || permissions.has('delivered')
+            || permissions.has('delivery_report');
     } else if (path === '/routes') {
-        allowed = method === 'GET' && permissions.has('delivery');
+        allowed = method === 'GET' && (permissions.has('delivery') || permissions.has('delivery_report'));
     } else if (path === '/sales/suspense') {
-        allowed = method === 'POST' && permissions.has('delivery');
+        allowed = method === 'POST' && (permissions.has('delivery') || permissions.has('delivery_report'));
     } else if (path === '/sales/move-to-delivery') {
         allowed = method === 'POST' && permissions.has('update_payment');
     } else if (path === '/sales/cancelled') {
         allowed = method === 'GET' && permissions.has('delivered');
     } else if (/^\/sales\/\d+\/packaging$/.test(path)) {
-        allowed = permissions.has('packaging') || permissions.has('delivery') || permissions.has('delivered');
+        allowed = permissions.has('packaging') || permissions.has('delivery') || permissions.has('delivered')
+            || permissions.has('delivery_report');
     } else if (/^\/sales\/\d+\/packaging-remarks$/.test(path)) {
         allowed = permissions.has('packaging') || permissions.has('delivery') || permissions.has('delivered');
     } else if (/^\/sales\/\d+\/status-history$/.test(path)) {
@@ -174,9 +201,12 @@ export const enforceManagedUserApiScope = (req, res, next) => {
     } else if (/^\/sales\/\d+\/cancel-log$/.test(path)) {
         allowed = permissions.has('update_payment');
     } else if (/^\/sales\/\d+\/items$/.test(path)) {
-        allowed = permissions.has('update_payment');
+        allowed = permissions.has('update_payment') || (isGet && permissions.has('delivery_report'));
+    } else if (/^\/purchase-requisitions\/[^/]+\/status$/.test(path)) {
+        // Approve / cancel button on Requisition Approvals.
+        allowed = method === 'PUT' && permissions.has('requisition_approval');
     } else if (/^\/purchase-requisitions\/[^/]+$/.test(path)) {
-        allowed = (method === 'GET' && permissions.has('add_sales'))
+        allowed = (method === 'GET' && (permissions.has('add_sales') || permissions.has('requisition_approval')))
             || (method === 'PUT' && permissions.has('requisition_approval'));
     } else if (path === '/purchase-requisitions') {
         allowed = permissions.has('requisition_approval');

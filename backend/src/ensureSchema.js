@@ -1,6 +1,7 @@
 import mysql from 'mysql2/promise';
 import dotenv from 'dotenv';
 import bcrypt from 'bcryptjs';
+import { NEW_PERMISSION_COLUMNS } from './utils/permissionKeys.js';
 import { migrateStaffSalesUniqueIndex } from './migrations/migrateStaffSalesUniqueIndex.js';
 import { migrateDeliveryOutletLocation } from './migrations/migrateDeliveryOutletLocation.js';
 import { migrateAreas } from './migrations/migrateAreas.js';
@@ -396,6 +397,22 @@ export async function ensureSchema() {
                 `ALTER TABLE delivery_user_permissions ADD COLUMN ${permissionColumn} TINYINT(1) NOT NULL DEFAULT 0`,
                 `${permissionColumn} on delivery_user_permissions`
             );
+        }
+        // DMS pages, D.B. Collection and Delivery Report got their own permissions.
+        for (const [key, copyFrom] of NEW_PERMISSION_COLUMNS) {
+            const [existing] = await connection.query(
+                `SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS
+                 WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'delivery_user_permissions' AND COLUMN_NAME = ?`,
+                [`can_${key}`]
+            );
+            if (existing.length) continue;
+            await connection.query(
+                `ALTER TABLE delivery_user_permissions ADD COLUMN can_${key} TINYINT(1) NOT NULL DEFAULT 0`
+            );
+            if (copyFrom) {
+                await connection.query(`UPDATE delivery_user_permissions SET can_${key} = can_${copyFrom}`);
+            }
+            console.log(`can_${key} on delivery_user_permissions`);
         }
 
         await connection.query(`

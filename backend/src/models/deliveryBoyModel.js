@@ -1,5 +1,6 @@
 import db from '../config/db.js';
 import bcrypt from 'bcryptjs';
+import { PERMISSION_KEYS, permissionColumnsSql, permissionsFromRow } from '../utils/permissionKeys.js';
 import {
     decryptDeliveryPasscode,
     encryptDeliveryPasscode,
@@ -130,28 +131,7 @@ class DeliveryBoyModel {
                     db.delivery_passcode_hash, db.role, db.is_active,
                     (SELECT GROUP_CONCAT(dbc.company_id ORDER BY dbc.company_id)
                      FROM delivery_boy_companies dbc WHERE dbc.delivery_boy_id = db.id) AS company_ids,
-                    COALESCE(p.can_dashboard, 0) AS can_dashboard,
-                    COALESCE(p.can_dms, 0) AS can_dms,
-                    COALESCE(p.can_add_seller, 0) AS can_add_seller,
-                    COALESCE(p.can_add_item, 0) AS can_add_item,
-                    COALESCE(p.can_item_list, 0) AS can_item_list,
-                    COALESCE(p.can_update_payment, 0) AS can_update_payment,
-                    COALESCE(p.can_bank_deposit, 0) AS can_bank_deposit,
-                    COALESCE(p.can_create_staff, 0) AS can_create_staff,
-                    COALESCE(p.can_add_outlet, 0) AS can_add_outlet,
-                    COALESCE(p.can_location_assignments, 0) AS can_location_assignments,
-                    COALESCE(p.can_add_sales, 0) AS can_add_sales,
-                    COALESCE(p.can_packaging, 0) AS can_packaging,
-                    COALESCE(p.can_delivery, 0) AS can_delivery,
-                    COALESCE(p.can_delivered, 0) AS can_delivered,
-                    COALESCE(p.can_out_bill, 0) AS can_out_bill,
-                    COALESCE(p.can_requisition_approval, 0) AS can_requisition_approval,
-                    COALESCE(p.can_invoice_lookup, 0) AS can_invoice_lookup,
-                    COALESCE(p.can_chalan_add_sales, 0) AS can_chalan_add_sales,
-                    COALESCE(p.can_chalan_packaging, 0) AS can_chalan_packaging,
-                    COALESCE(p.can_chalan_delivery, 0) AS can_chalan_delivery,
-                    COALESCE(p.can_chalan_delivered, 0) AS can_chalan_delivered,
-                    COALESCE(p.can_chalan_return, 0) AS can_chalan_return
+                    ${permissionColumnsSql()}
              FROM delivery_boys db
              LEFT JOIN delivery_user_permissions p ON p.delivery_boy_id = db.id
              WHERE db.delivery_login_id = ?
@@ -176,28 +156,7 @@ class DeliveryBoyModel {
         const [rows] = await db.execute(
             `SELECT db.id, db.name, db.role, db.is_active, db.delivery_login_id,
                     db.delivery_passcode, db.delivery_passcode_hash,
-                    COALESCE(p.can_dashboard, 0) AS can_dashboard,
-                    COALESCE(p.can_dms, 0) AS can_dms,
-                    COALESCE(p.can_add_seller, 0) AS can_add_seller,
-                    COALESCE(p.can_add_item, 0) AS can_add_item,
-                    COALESCE(p.can_item_list, 0) AS can_item_list,
-                    COALESCE(p.can_update_payment, 0) AS can_update_payment,
-                    COALESCE(p.can_bank_deposit, 0) AS can_bank_deposit,
-                    COALESCE(p.can_create_staff, 0) AS can_create_staff,
-                    COALESCE(p.can_add_outlet, 0) AS can_add_outlet,
-                    COALESCE(p.can_location_assignments, 0) AS can_location_assignments,
-                    COALESCE(p.can_add_sales, 0) AS can_add_sales,
-                    COALESCE(p.can_packaging, 0) AS can_packaging,
-                    COALESCE(p.can_delivery, 0) AS can_delivery,
-                    COALESCE(p.can_delivered, 0) AS can_delivered,
-                    COALESCE(p.can_out_bill, 0) AS can_out_bill,
-                    COALESCE(p.can_requisition_approval, 0) AS can_requisition_approval,
-                    COALESCE(p.can_invoice_lookup, 0) AS can_invoice_lookup,
-                    COALESCE(p.can_chalan_add_sales, 0) AS can_chalan_add_sales,
-                    COALESCE(p.can_chalan_packaging, 0) AS can_chalan_packaging,
-                    COALESCE(p.can_chalan_delivery, 0) AS can_chalan_delivery,
-                    COALESCE(p.can_chalan_delivered, 0) AS can_chalan_delivered,
-                    COALESCE(p.can_chalan_return, 0) AS can_chalan_return
+                    ${permissionColumnsSql()}
              FROM delivery_boys db
              LEFT JOIN delivery_user_permissions p ON p.delivery_boy_id = db.id
              WHERE db.is_active = 1
@@ -220,62 +179,28 @@ class DeliveryBoyModel {
     }
 
     static async setPermissions(deliveryBoyId, permissions) {
+        const columns = PERMISSION_KEYS.map((key) => `can_${key}`);
         await db.execute(
-            `INSERT INTO delivery_user_permissions (
-                delivery_boy_id, can_dashboard, can_dms, can_add_seller, can_add_item, can_item_list,
-                can_update_payment, can_bank_deposit, can_create_staff, can_add_outlet, can_location_assignments, can_add_sales,
-                can_packaging, can_delivery, can_delivered, can_out_bill, can_requisition_approval, can_invoice_lookup,
-                can_chalan_add_sales, can_chalan_packaging, can_chalan_delivery, can_chalan_delivered, can_chalan_return
-             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-             ON DUPLICATE KEY UPDATE
-                can_dashboard = VALUES(can_dashboard),
-                can_dms = VALUES(can_dms),
-                can_add_seller = VALUES(can_add_seller),
-                can_add_item = VALUES(can_add_item),
-                can_item_list = VALUES(can_item_list),
-                can_update_payment = VALUES(can_update_payment),
-                can_bank_deposit = VALUES(can_bank_deposit),
-                can_create_staff = VALUES(can_create_staff),
-                can_add_outlet = VALUES(can_add_outlet),
-                can_location_assignments = VALUES(can_location_assignments),
-                can_add_sales = VALUES(can_add_sales),
-                can_packaging = VALUES(can_packaging),
-                can_delivery = VALUES(can_delivery),
-                can_delivered = VALUES(can_delivered),
-                can_out_bill = VALUES(can_out_bill),
-                can_requisition_approval = VALUES(can_requisition_approval),
-                can_invoice_lookup = VALUES(can_invoice_lookup),
-                can_chalan_add_sales = VALUES(can_chalan_add_sales),
-                can_chalan_packaging = VALUES(can_chalan_packaging),
-                can_chalan_delivery = VALUES(can_chalan_delivery),
-                can_chalan_delivered = VALUES(can_chalan_delivered),
-                can_chalan_return = VALUES(can_chalan_return)`,
-            [
-                deliveryBoyId,
-                permissions.includes('dashboard') ? 1 : 0,
-                permissions.includes('dms') ? 1 : 0,
-                permissions.includes('add_seller') ? 1 : 0,
-                permissions.includes('add_item') ? 1 : 0,
-                permissions.includes('item_list') ? 1 : 0,
-                permissions.includes('update_payment') ? 1 : 0,
-                permissions.includes('bank_deposit') ? 1 : 0,
-                permissions.includes('create_staff') ? 1 : 0,
-                permissions.includes('add_outlet') ? 1 : 0,
-                permissions.includes('location_assignments') ? 1 : 0,
-                permissions.includes('add_sales') ? 1 : 0,
-                permissions.includes('packaging') ? 1 : 0,
-                permissions.includes('delivery') ? 1 : 0,
-                permissions.includes('delivered') ? 1 : 0,
-                permissions.includes('out_bill') ? 1 : 0,
-                permissions.includes('requisition_approval') ? 1 : 0,
-                permissions.includes('invoice_lookup') ? 1 : 0,
-                permissions.includes('chalan_add_sales') ? 1 : 0,
-                permissions.includes('chalan_packaging') ? 1 : 0,
-                permissions.includes('chalan_delivery') ? 1 : 0,
-                permissions.includes('chalan_delivered') ? 1 : 0,
-                permissions.includes('chalan_return') ? 1 : 0,
-            ]
+            `INSERT INTO delivery_user_permissions (delivery_boy_id, ${columns.join(', ')})
+             VALUES (?, ${columns.map(() => '?').join(', ')})
+             ON DUPLICATE KEY UPDATE ${columns.map((column) => `${column} = VALUES(${column})`).join(', ')}`,
+            [deliveryBoyId, ...PERMISSION_KEYS.map((key) => (permissions.includes(key) ? 1 : 0))]
         );
+    }
+
+    // Current permissions straight from the database, so a change made in
+    // Permissions applies on the user's next request without logging in again.
+    static async getCurrentPermissions(deliveryBoyId) {
+        const [rows] = await db.execute(
+            `SELECT db.is_active, ${permissionColumnsSql()}
+             FROM delivery_boys db
+             LEFT JOIN delivery_user_permissions p ON p.delivery_boy_id = db.id
+             WHERE db.id = ?
+             LIMIT 1`,
+            [deliveryBoyId]
+        );
+        if (!rows[0]) return null;
+        return { isActive: Number(rows[0].is_active) === 1, permissions: permissionsFromRow(rows[0]) };
     }
 
     static async update(id, name, contactNo, companyId = null, role = 'delivery_boy', aadharNo = null) {

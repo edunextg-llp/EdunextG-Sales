@@ -34,6 +34,7 @@ import PrivacyPolicy from "layouts/privacy-policy";
 // Material Dashboard 2 React contexts
 import { useMaterialUIController, setMiniSidenav } from "context";
 import { useAuth } from "context/AuthContext";
+import { extraLandingRoute } from "utils/landingRoutes";
 
 // Images
 import brandWhite from "assets/images/logo-ct.png";
@@ -221,7 +222,7 @@ export default function App() {
                             ? "/add-outlet"
                             : permissions.includes("add_sales")
                               ? "/add-sales"
-                              : "/welcome"
+                              : extraLandingRoute(permissions)
           } />} />
         </Routes>
       </ThemeProvider>
@@ -282,7 +283,7 @@ export default function App() {
                           ? "/add-outlet"
                           : permissions.includes("add_sales")
                             ? "/add-sales"
-                            : "/welcome"
+                            : extraLandingRoute(permissions)
         } />} />
       </Routes>
     </ThemeProvider>
