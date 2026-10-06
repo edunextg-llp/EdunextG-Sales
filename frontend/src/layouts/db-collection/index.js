@@ -359,7 +359,8 @@ function DBCollection() {
   };
 
   const requestSettlement = (row) => {
-    if (["cheque", "cash", "upi"].includes(row.payment_mode)) {
+    // Cash and credit settle straight away after the confirmation; cheque and UPI need their details.
+    if (["cheque", "upi"].includes(row.payment_mode)) {
       setSettlementCollection(row);
       setChequeDate(row.reference_date || "");
       setCashCounts(row.cash_details || {});

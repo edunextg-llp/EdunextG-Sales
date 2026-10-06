@@ -216,7 +216,9 @@ class DeliveryCollectionModel {
             );
             const collection = rows[0];
             if (!collection) { await connection.rollback(); return false; }
-            if (collection.payment_mode === 'cash') {
+            // Note counts are optional for cash: when the admin settles without them,
+            // keep whatever was recorded with the collection.
+            if (collection.payment_mode === 'cash' && details.cashDetails != null) {
                 const denominations = { note_500: 500, note_200: 200, note_100: 100, note_50: 50, note_20: 20, note_10: 10, coin_20: 20, coin_10: 10, coin_5: 5, coin_2: 2, coin_1: 1, paisa: 0.01 };
                 const counts = {};
                 let total = 0;
