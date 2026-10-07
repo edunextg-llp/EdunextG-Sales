@@ -42,6 +42,7 @@ export const verifyTokenMiddleware = async (req, res, next) => {
                 return res.status(401).json({ error: 'This account is inactive. Please contact the admin.' });
             }
             decoded.permissions = current.permissions;
+            decoded.companyIds = current.companyIds;
         } catch (error) {
             console.error('Permission check failed:', error);
             return res.status(500).json({ error: 'Internal server error' });
@@ -146,7 +147,8 @@ export const enforceManagedUserApiScope = (req, res, next) => {
     } else if (path.startsWith('/physical-stock')) {
         allowed = dms('physical_stock');
     } else if (path === '/current-stock') {
-        allowed = isGet && dms('current_stock');
+        // Add Sales needs live stock to check invoice and requisition quantities.
+        allowed = isGet && (dms('current_stock') || permissions.has('add_sales'));
     } else if (path === '/purchases' || path.startsWith('/purchases/')) {
         allowed = dms('purchase');
     } else if (path.startsWith('/purchase-sellers')) {

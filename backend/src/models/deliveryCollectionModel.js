@@ -1,6 +1,12 @@
 import db from '../config/db.js';
 import PaymentModel from './paymentModel.js';
 
+// Business date in India. Settled payments are dated with this instead of the
+// database's CURDATE(), which follows the DB server clock and can be a day off
+// (e.g. a UTC/US-hosted MySQL), hiding them from "Today Collection".
+export const indiaToday = (now = new Date()) =>
+    new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit' }).format(now);
+
 class DeliveryCollectionModel {
     static async getAssignedSale(deliveryBoyId, saleId) {
         const [rows] = await db.execute(
@@ -410,13 +416,14 @@ class DeliveryCollectionModel {
                 throw error;
             }
 
+            const paymentDate = indiaToday();
             const insertPayment = async (paymentAmount, parentCreditPaymentId = null) => {
                 const [result] = await connection.execute(
                     `INSERT INTO sale_payments
                      (sale_id, payment_date, payment_mode, amount, collector_name,
                       parent_credit_payment_id, reference_no, reference_date, credit_days, collector_staff_id)
-                     VALUES (?, CURDATE(), ?, ?, ?, ?, ?, ?, ?, ?)`,
-                    [collection.sale_id, collection.payment_mode, paymentAmount, collection.delivery_boy_name,
+                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                    [collection.sale_id, paymentDate, collection.payment_mode, paymentAmount, collection.delivery_boy_name,
                      parentCreditPaymentId, collection.reference_no, collection.reference_date, collection.credit_days,
                      collection.staff_id ?? null]
                 );
@@ -440,8 +447,8 @@ class DeliveryCollectionModel {
                 }
                 for (const credit of existingCredits) {
                     await connection.execute(
-                        'UPDATE sale_payments SET credit_days = ?, payment_date = CURDATE() WHERE id = ?',
-                        [collection.credit_days, credit.id]
+                        'UPDATE sale_payments SET credit_days = ?, payment_date = ? WHERE id = ?',
+                        [collection.credit_days, paymentDate, credit.id]
                     );
                     lastPaymentId = credit.id;
                     amountToApply = Math.max(0, Math.round((amountToApply - Number(credit.balance)) * 100) / 100);

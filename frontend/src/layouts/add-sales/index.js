@@ -646,6 +646,16 @@ function AddSales() {
       if (Number(data.requisition.staff_id) !== Number(selectedStaff.id)) {
         throw new Error("This requisition belongs to a different staff member.");
       }
+      // Stock is checked and deducted for the selected company, so it must match.
+      const requisitionCompany = String(data.requisition.company_name || "").trim();
+      if (requisitionCompany && selectedCompanyName
+        && requisitionCompany.toLowerCase() !== String(selectedCompanyName).trim().toLowerCase()) {
+        throw new Error(
+          `Requisition ${data.requisition.requisition_number || code} is for ${requisitionCompany}, `
+          + `but ${selectedCompanyName} is selected. Select ${requisitionCompany} in Company Name, `
+          + "then the staff, and load the requisition again."
+        );
+      }
 
       const requisitionOutlet = [...outlets, ...allOutlets].find(
         (outlet) => Number(outlet.id) === Number(data.requisition.outlet_id)

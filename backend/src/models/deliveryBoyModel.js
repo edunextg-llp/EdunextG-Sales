@@ -192,7 +192,10 @@ class DeliveryBoyModel {
     // Permissions applies on the user's next request without logging in again.
     static async getCurrentPermissions(deliveryBoyId) {
         const [rows] = await db.execute(
-            `SELECT db.is_active, ${permissionColumnsSql()}
+            `SELECT db.is_active, db.company_id,
+                    (SELECT GROUP_CONCAT(dbc.company_id ORDER BY dbc.company_id)
+                     FROM delivery_boy_companies dbc WHERE dbc.delivery_boy_id = db.id) AS company_ids,
+                    ${permissionColumnsSql()}
              FROM delivery_boys db
              LEFT JOIN delivery_user_permissions p ON p.delivery_boy_id = db.id
              WHERE db.id = ?
@@ -200,7 +203,11 @@ class DeliveryBoyModel {
             [deliveryBoyId]
         );
         if (!rows[0]) return null;
-        return { isActive: Number(rows[0].is_active) === 1, permissions: permissionsFromRow(rows[0]) };
+        // Assigned companies are read fresh too, so adding a company to a user
+        // shows up on their screens without logging in again.
+        const companyIds = String(rows[0].company_ids || rows[0].company_id || '')
+            .split(',').map(Number).filter((id) => Number.isInteger(id) && id > 0);
+        return { isActive: Number(rows[0].is_active) === 1, permissions: permissionsFromRow(rows[0]), companyIds };
     }
 
     static async update(id, name, contactNo, companyId = null, role = 'delivery_boy', aadharNo = null) {

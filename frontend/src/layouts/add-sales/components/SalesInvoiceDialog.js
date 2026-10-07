@@ -527,8 +527,19 @@ export default function SalesInvoiceDialog({
       if (Number(data.requisition.outlet_id) !== Number(outlet.id)) {
         throw new Error(`This requisition belongs to ${data.requisition.outlet_name || "a different outlet"}.`);
       }
+      const requisitionCompany = String(data.requisition.company_name || "").trim();
+      if (requisitionCompany && companyName
+        && requisitionCompany.toLowerCase() !== String(companyName).trim().toLowerCase()) {
+        throw new Error(
+          `This requisition is for ${requisitionCompany}, but this bill is for ${companyName}. `
+          + `Close this bill, select ${requisitionCompany} in Company Name and load the requisition there.`
+        );
+      }
       setRequisitionNumber(data.requisition.requisition_number || code);
       const liveStockItems = await fetchCurrentStock();
+      if (!liveStockItems?.length) {
+        throw new Error(`Current stock for ${companyName} could not be loaded. Please retry, or check that its stock has been uploaded.`);
+      }
       const liveStockByErp = new Map(
         liveStockItems.map((item) => [String(item.product_erp_id || "").trim().toLowerCase(), item])
       );

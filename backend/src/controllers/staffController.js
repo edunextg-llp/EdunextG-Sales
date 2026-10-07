@@ -722,7 +722,7 @@ export const searchStaff = async (req, res) => {
     try {
         const { query } = req.query;
         const results = await StaffModel.searchByName(query);
-        res.status(200).json(results);
+        res.status(200).json(filterStaffToAssignedCompanies(req, results));
     } catch (error) {
         res.status(500).json({ error: 'Internal server error' });
     }
@@ -870,6 +870,14 @@ export const toggleStaffActive = async (req, res) => {
     }
 };
 
+// Packaging Staff / Delivery Boy logins only see staff of their assigned companies.
+function filterStaffToAssignedCompanies(req, staff) {
+    if (!['packaging_staff', 'delivery_boy'].includes(req.user?.role)) return staff;
+    const assignedCompanyIds = new Set((req.user.companyIds || []).map(Number));
+    return staff.filter((item) => String(item.company_ids || item.company_id || '')
+        .split(',').map(Number).some((id) => assignedCompanyIds.has(id)));
+}
+
 export const getStaff = async (req, res) => {
     try {
         const includeInactive = req.query.includeInactive === 'true';
@@ -877,13 +885,8 @@ export const getStaff = async (req, res) => {
         if (req.query.companyId && (!Number.isInteger(companyId) || companyId <= 0)) {
             return res.status(400).json({ error: 'companyId must be a positive integer' });
         }
-        let staff = await StaffModel.getAll(includeInactive, companyId);
-        if (['packaging_staff', 'delivery_boy'].includes(req.user?.role)) {
-            const assignedCompanyIds = new Set((req.user.companyIds || []).map(Number));
-            staff = staff.filter((item) => String(item.company_ids || item.company_id || '')
-                .split(',').map(Number).some((id) => assignedCompanyIds.has(id)));
-        }
-        res.status(200).json(staff);
+        const staff = await StaffModel.getAll(includeInactive, companyId);
+        res.status(200).json(filterStaffToAssignedCompanies(req, staff));
     } catch (error) {
         res.status(500).json({ error: 'Internal server error' });
     }

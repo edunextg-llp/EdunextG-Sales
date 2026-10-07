@@ -279,13 +279,14 @@ export const refreshToken = async (req, res) => {
         }
 
         // Packaging Staff / Delivery Boy: pick up permission changes made since login.
-        let { permissions } = decoded;
+        let { permissions, companyIds } = decoded;
         if (['packaging_staff', 'delivery_boy'].includes(decoded.role) && decoded.deliveryBoyId) {
             const current = await DeliveryBoyModel.getCurrentPermissions(decoded.deliveryBoyId);
             if (!current?.isActive) {
                 return res.status(401).json({ error: 'This account is inactive. Please contact the admin.' });
             }
             permissions = current.permissions;
+            companyIds = current.companyIds;
         }
 
         const token = jwt.sign(
@@ -296,7 +297,7 @@ export const refreshToken = async (req, res) => {
                 staffId: decoded.staffId,
                 loginId: decoded.loginId,
                 staffType: decoded.staffType,
-                companyIds: decoded.companyIds,
+                companyIds,
                 deliveryBoyId: decoded.deliveryBoyId,
                 permissions,
                 tv,
@@ -316,7 +317,7 @@ export const refreshToken = async (req, res) => {
                 staffId: decoded.staffId,
                 loginId: decoded.loginId,
                 staffType: decoded.staffType,
-                companyIds: decoded.companyIds,
+                companyIds,
                 deliveryBoyId: decoded.deliveryBoyId,
                 permissions: permissions || [],
             }
