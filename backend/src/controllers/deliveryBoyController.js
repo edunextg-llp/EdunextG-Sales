@@ -518,6 +518,7 @@ function parseMobilePayment(body = {}) {
 function sendMobilePaymentError(res, error, fallback) {
     if (error.message === 'FULL_CREDIT_BALANCE_REQUIRED') return res.status(400).json({ error: 'Use the full outstanding balance when extending existing credit' });
     if (error.message === 'EXISTING_CREDIT_DUE') return res.status(400).json({ error: 'Credit is unavailable because this outlet already has a credit due' });
+    if (error.message === 'PAYMENT_ALREADY_PENDING') return res.status(409).json({ error: `Rs. ${Number(error.pendingAmount).toFixed(2)} for this bill is already waiting in D.B. Collection. It can be collected again only after the office settles or removes that entry.` });
     if (['EXCEEDS_BALANCE', 'EXCEEDS_CREDIT_BALANCE'].includes(error.message)) return res.status(400).json({ error: `Amount exceeds remaining balance of ${error.remaining}` });
     console.error(fallback, error);
     return res.status(500).json({ error: 'Unable to update payment' });

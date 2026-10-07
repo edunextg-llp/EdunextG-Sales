@@ -1,5 +1,6 @@
 import db from '../config/db.js';
 import PaymentModel from './paymentModel.js';
+import { getPendingCollectedAmount } from './staffPortalModel.js';
 
 // Business date in India. Settled payments are dated with this instead of the
 // database's CURDATE(), which follows the DB server clock and can be a day off
@@ -148,10 +149,12 @@ class DeliveryCollectionModel {
              ) credit_due ON credit_due.sale_id = ss.id
              WHERE (assigned_bill.sale_id IS NOT NULL OR ss.packaging_status = 'delivered')
                AND GREATEST(0, ss.price - COALESCE(cancelled.total, 0) - COALESCE(paid.total, 0)) > 0
-               AND NOT EXISTS (
+               -- A taken bill always shows to the person who took it; a recent delivery
+               -- drops off once a payment for it is waiting in D.B. Collection.
+               AND (assigned_bill.sale_id IS NOT NULL OR NOT EXISTS (
                     SELECT 1 FROM delivery_boy_collections pending
                     WHERE pending.sale_id = ss.id AND pending.settled_at IS NULL
-               )
+               ))
                AND (assigned_bill.sale_id IS NOT NULL OR (
                     ss.delivery_boy_id = ? AND NOT EXISTS (
                         SELECT 1 FROM delivery_boy_collections submitted
@@ -184,7 +187,12 @@ class DeliveryCollectionModel {
             if (!due) { await connection.rollback(); return null; }
             const price = await PaymentModel.getEffectiveSalePrice(connection, saleId);
             const paid = await PaymentModel.getTotalPaid(connection, saleId);
-            const remaining = Math.max(0, price - paid);
+            // Money already waiting in D.B. Collection can't be collected again.
+            const pendingAmount = await getPendingCollectedAmount(connection, saleId);
+            const remaining = Math.max(0, Math.round((price - paid - pendingAmount) * 100) / 100);
+            if (data.paymentMode !== 'credit' && remaining <= 0.001) {
+                throw Object.assign(new Error('PAYMENT_ALREADY_PENDING'), { pendingAmount });
+            }
             if (!Number.isFinite(data.amount) || data.amount <= 0 || data.amount > remaining + 0.001) {
                 throw Object.assign(new Error('EXCEEDS_BALANCE'), { remaining });
             }

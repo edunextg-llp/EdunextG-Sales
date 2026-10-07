@@ -33,6 +33,23 @@ const CREDIT_DUE_SQL = `
     WHERE credit.payment_mode = 'credit'
     GROUP BY credit.sale_id`;
 const BALANCE_SQL = 'GREATEST(0, ss.price - COALESCE(cancelled.total, 0) - COALESCE(paid.total, 0))';
+const PENDING_SQL = `SELECT sale_id,
+                            SUM(CASE WHEN payment_mode IN ('cash','upi','cheque') THEN amount ELSE 0 END) AS pending_amount,
+                            COUNT(*) AS pending_count
+                     FROM delivery_boy_collections WHERE settled_at IS NULL GROUP BY sale_id`;
+
+// Money (cash/UPI/cheque) already submitted for a sale and still waiting in
+// D.B. Collection. A pending Credit entry is not money, so it is not counted.
+export async function getPendingCollectedAmount(executor, saleId) {
+    const [rows] = await executor.execute(
+        `SELECT COALESCE(SUM(amount), 0) AS pending_amount
+         FROM delivery_boy_collections
+         WHERE sale_id = ? AND settled_at IS NULL AND payment_mode IN ('cash','upi','cheque')`,
+        [saleId]
+    );
+    return Number(rows[0]?.pending_amount) || 0;
+}
+
 
 function toNumber(value) {
     const number = Number(value);
@@ -210,8 +227,9 @@ class StaffPortalModel {
     }
 
     /**
-     * Active Out Bills this staff member took, with an unpaid balance and no payment
-     * already waiting in D.B. Collection (from anyone).
+     * Active Out Bills this staff member took, with an unpaid balance. A taken bill
+     * always shows, even when an older payment for it is still waiting in
+     * D.B. Collection; pending_amount tells the app how much of it is already submitted.
      */
     static async getOutBills(staffId, executor = db) {
         const [rows] = await executor.execute(
@@ -227,7 +245,9 @@ class StaffPortalModel {
                     DATE_FORMAT(ss.sale_date, '%Y-%m-%d') AS sale_date,
                     DATE_FORMAT(ss.delivery_date, '%Y-%m-%d') AS delivery_date,
                     sc.outlet_name, sc.outlet_erp_id, sc.contact_number, sc.location_name,
-                    COALESCE(c.name, 'Company not assigned') AS company_name
+                    COALESCE(c.name, 'Company not assigned') AS company_name,
+                    COALESCE(pending.pending_amount, 0) AS pending_amount,
+                    COALESCE(pending.pending_count, 0) AS pending_count
              FROM (
                  SELECT sp.sale_id, MIN(tb.id) AS taken_bill_id, MIN(tb.taken_date) AS taken_date
                  FROM taken_bills tb
@@ -246,11 +266,8 @@ class StaffPortalModel {
              LEFT JOIN (${PAID_SQL}) paid ON paid.sale_id = ss.id
              LEFT JOIN (${CANCELLED_SQL}) cancelled ON cancelled.sale_id = ss.id
              LEFT JOIN (${CREDIT_DUE_SQL}) credit_due ON credit_due.sale_id = ss.id
+             LEFT JOIN (${PENDING_SQL}) pending ON pending.sale_id = ss.id
              WHERE ${BALANCE_SQL} > 0
-               AND NOT EXISTS (
-                   SELECT 1 FROM delivery_boy_collections pending
-                   WHERE pending.sale_id = ss.id AND pending.settled_at IS NULL
-               )
              ORDER BY bill.taken_date ASC, ss.id ASC`,
             [staffId]
         );
@@ -262,6 +279,8 @@ class StaffPortalModel {
             credit_amount: toNumber(row.credit_amount),
             credit_days: row.credit_days == null ? null : toNumber(row.credit_days),
             overdue_days: toNumber(row.overdue_days),
+            pending_amount: toNumber(row.pending_amount),
+            pending_count: toNumber(row.pending_count),
         }));
     }
 
@@ -283,7 +302,12 @@ class StaffPortalModel {
 
             const price = await PaymentModel.getEffectiveSalePrice(connection, saleId);
             const paid = await PaymentModel.getTotalPaid(connection, saleId);
-            const remaining = Math.max(0, Math.round(((price ?? 0) - paid) * 100) / 100);
+            // Money already waiting in D.B. Collection can't be collected again.
+            const pendingAmount = await getPendingCollectedAmount(connection, saleId);
+            const remaining = Math.max(0, Math.round(((price ?? 0) - paid - pendingAmount) * 100) / 100);
+            if (data.paymentMode !== 'credit' && remaining <= 0.001) {
+                throw Object.assign(new Error('PAYMENT_ALREADY_PENDING'), { pendingAmount });
+            }
             if (!Number.isFinite(data.amount) || data.amount <= 0 || data.amount > remaining + 0.001) {
                 throw Object.assign(new Error('EXCEEDS_BALANCE'), { remaining });
             }

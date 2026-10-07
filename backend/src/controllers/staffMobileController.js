@@ -271,6 +271,9 @@ export const submitOutBillPayment = async (req, res) => {
         }
         return res.status(200).json({ message: 'Payment submitted to D.B. Collection for settlement', ...result });
     } catch (error) {
+        if (error.message === 'PAYMENT_ALREADY_PENDING') {
+            return res.status(409).json({ error: `Rs. ${Number(error.pendingAmount).toFixed(2)} for this bill is already waiting in D.B. Collection. It can be collected again only after the office settles or removes that entry.` });
+        }
         if (error.message === 'EXCEEDS_BALANCE') {
             return res.status(400).json({ error: `Amount exceeds remaining balance of ${Number(error.remaining).toFixed(2)}` });
         }

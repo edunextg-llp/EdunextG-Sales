@@ -1,55 +1,199 @@
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 
 import Box from "@mui/material/Box";
 import Container from "@mui/material/Container";
-import Grid from "@mui/material/Grid";
 import Icon from "@mui/material/Icon";
 import IconButton from "@mui/material/IconButton";
-import Stack from "@mui/material/Stack";
 
 import PageLayout from "examples/LayoutContainers/PageLayout";
-import brandLogo from "assets/images/logo-ct-dark.png";
 
-const features = [
+// Hero banners (text is part of the image).
+import heroPackagingExcellence from "assets/images/landing/hero-1.jpg";
+import heroQualityPackaging from "assets/images/landing/hero-2.jpg";
+// Product card and About images: replace these files with the real photos
+// (keep the same file names, or change the imports below).
+import everestImage from "assets/images/landing/products/everest.png";
+import lorealImage from "assets/images/landing/products/loreal.png";
+import neevamImage from "assets/images/landing/products/neevam.png";
+import relianceImage from "assets/images/landing/products/reliance.png";
+import assamTeaImage from "assets/images/landing/products/assam-tea.png";
+import saloniImage from "assets/images/landing/products/saloni.png";
+import aboutImage from "assets/images/landing/about.png";
+// Brand logos (transparent PNGs).
+import everestLogo from "assets/images/landing/brands/everest.png";
+import lorealLogo from "assets/images/landing/brands/loreal.png";
+import neevamLogo from "assets/images/landing/brands/neevam.png";
+import relianceLogo from "assets/images/landing/brands/reliance.png";
+import saloniLogo from "assets/images/landing/brands/saloni.png";
+// Doodle pattern behind the "Our Products" section.
+import productsBackground from "assets/images/landing/products-bg.jpg";
+
+const NAVY = "#1e2a6e";
+const BLUE = "#2b4cc4";
+const GREEN = "#2e8b3c";
+const FONT = "'Poppins', 'Roboto', 'Helvetica', sans-serif";
+const SERIF = "'Georgia', 'Times New Roman', serif";
+
+const heroSlides = [
   {
-    icon: "inventory_2",
-    title: "Smarter stock control",
-    text: "Track DMS stock, physical inventory, batches, expiry dates, GST, margins, and pricing in one place.",
+    image: heroPackagingExcellence,
+    alt: "Packaging Excellence for Every Brand – high-quality, reliable and innovative food packaging for leading brands",
   },
   {
-    icon: "receipt_long",
-    title: "Sales & billing",
-    text: "Create sales, invoices, challans, collections, and payment updates through one connected workflow.",
-  },
-  {
-    icon: "local_shipping",
-    title: "Delivery visibility",
-    text: "Move orders from packaging to delivery and completion with clear ownership at every step.",
-  },
-  {
-    icon: "admin_panel_settings",
-    title: "Role-based access",
-    text: "Give administrators, staff, packaging teams, and delivery teams only the tools they need.",
-  },
-  {
-    icon: "storefront",
-    title: "Outlet management",
-    text: "Maintain sellers, outlets, locations, route days, companies, and staff assignments accurately.",
-  },
-  {
-    icon: "query_stats",
-    title: "Actionable overview",
-    text: "See the operational picture quickly and make confident decisions using live business data.",
+    image: heroQualityPackaging,
+    alt: "Quality Packaging for Every Product – Pack. Protect. Deliver.",
   },
 ];
 
-const stats = [
-  ["One platform", "Sales to delivery"],
-  ["Real-time", "Stock visibility"],
-  ["Role based", "Secure access"],
-  ["GST ready", "Price calculations"],
+const products = [
+  { name: "Everest", text: "Authentic spices for richer taste and flavour in every meal.", image: everestImage },
+  { name: "L'Oréal", text: "Advanced hair care for stronger, healthier and shinier hair.", image: lorealImage },
+  { name: "Neevam", text: "Traditional spices, crafted for authentic Indian taste.", image: neevamImage },
+  { name: "Reliance", text: "Quality you can trust, for a healthier lifestyle.", image: relianceImage },
+  { name: "Assam Tea", text: "Rich aroma and bold flavour in every sip.", image: assamTeaImage },
+  { name: "Saloni Oil", text: "Pure and healthy mustard oil, packed with freshness and natural goodness.", image: saloniImage },
 ];
+
+// Brands with `logo` show the image; the others show their name as styled text.
+const brands = [
+  { name: "Everest", logo: everestLogo },
+  { name: "L'Oréal", logo: lorealLogo },
+  { name: "Neevam", logo: neevamLogo },
+  { name: "Reliance Consumer Products", logo: relianceLogo },
+  { name: "Assam Tea", color: "#1f6b2a", bg: "transparent", font: FONT },
+  { name: "Saloni Kachchi Ghani Mustard Oil", logo: saloniLogo },
+];
+
+const highlights = [
+  { icon: "verified_user", label: "Quality First", gradient: "linear-gradient(145deg,#4c6ef5,#1e2a6e)" },
+  { icon: "settings", label: "Reliable Process", gradient: "linear-gradient(145deg,#43b05c,#1d6b2c)" },
+  { icon: "layers", label: "Multiple Categories", gradient: "linear-gradient(145deg,#f7c948,#c98a0c)" },
+];
+
+const navItems = [
+  ["Home", "#home"],
+  ["Products", "#products"],
+  ["Solutions", "#solutions"],
+  ["About Us", "#about"],
+  ["Contact Us", "#contact"],
+];
+
+const SLIDE_MS = 4000; // auto-slide interval
+
+function HeroSlider() {
+  const [active, setActive] = useState(0);
+  const go = useCallback((index) => setActive((index + heroSlides.length) % heroSlides.length), []);
+
+  // Always auto-slide. The timer restarts after a manual click, so a chosen
+  // slide still stays on screen for the full interval.
+  useEffect(() => {
+    const timer = setTimeout(() => go(active + 1), SLIDE_MS);
+    return () => clearTimeout(timer);
+  }, [active, go]);
+
+  return (
+    <Box
+      id="home"
+      component="section"
+      aria-roledescription="carousel"
+      aria-label="Bawarchee highlights"
+      sx={{
+        position: "relative",
+        width: "100%",
+        aspectRatio: { xs: "auto", sm: "1600 / 571" },
+        height: { xs: 260, sm: "auto" },
+        overflow: "hidden",
+        bgcolor: "#e9f1e4",
+      }}
+    >
+      {heroSlides.map((slide, index) => (
+        <Box
+          key={slide.alt}
+          component="img"
+          src={slide.image}
+          alt={slide.alt}
+          aria-hidden={index !== active}
+          sx={{
+            position: "absolute",
+            inset: 0,
+            width: "100%",
+            height: "100%",
+            objectFit: "cover",
+            // On phones keep the headline (left side) in view.
+            objectPosition: { xs: "left center", sm: "center" },
+            opacity: index === active ? 1 : 0,
+            transform: index === active ? "scale(1)" : "scale(1.03)",
+            transition: "opacity 900ms ease, transform 5s ease",
+          }}
+        />
+      ))}
+
+      {[["chevron_left", -1, "Previous slide", { left: 12 }], ["chevron_right", 1, "Next slide", { right: 12 }]].map(([icon, step, label, side]) => (
+        <IconButton
+          key={icon}
+          aria-label={label}
+          onClick={() => go(active + step)}
+          sx={{
+            position: "absolute",
+            top: "50%",
+            transform: "translateY(-50%)",
+            ...side,
+            display: { xs: "none", md: "inline-flex" },
+            bgcolor: "rgba(255,255,255,.75)",
+            color: NAVY,
+            boxShadow: "0 4px 14px rgba(0,0,0,.12)",
+            "&:hover": { bgcolor: "#fff" },
+          }}
+        >
+          <Icon>{icon}</Icon>
+        </IconButton>
+      ))}
+
+      <Box sx={{ position: "absolute", bottom: 14, left: "50%", transform: "translateX(-50%)", display: "flex", gap: 1 }}>
+        {heroSlides.map((slide, index) => (
+          <Box
+            key={slide.alt}
+            component="button"
+            type="button"
+            aria-label={`Show slide ${index + 1}`}
+            aria-current={index === active}
+            onClick={() => go(index)}
+            sx={{
+              width: index === active ? 26 : 10,
+              height: 10,
+              p: 0,
+              border: "2px solid #fff",
+              borderRadius: 10,
+              cursor: "pointer",
+              bgcolor: index === active ? "#fff" : "rgba(255,255,255,.45)",
+              boxShadow: "0 1px 4px rgba(0,0,0,.25)",
+              transition: "all 300ms ease",
+            }}
+          />
+        ))}
+      </Box>
+    </Box>
+  );
+}
+
+function SectionHeading({ eyebrow, title, text, center = false, eyebrowColor = GREEN }) {
+  return (
+    <Box sx={{ textAlign: center ? "center" : "left", mb: { xs: 3, md: 4 } }}>
+      <Box sx={{ color: eyebrowColor, fontWeight: 700, fontSize: { xs: 15, md: 19 }, letterSpacing: 0.4, textTransform: center ? "none" : "uppercase" }}>
+        {center ? `--- ${eyebrow} ---` : eyebrow}
+      </Box>
+      <Box component="h2" sx={{ m: 0, mt: 0.5, color: NAVY, fontWeight: 800, fontSize: { xs: 25, md: 34 }, lineHeight: 1.2 }}>
+        {title}
+      </Box>
+      {text && (
+        <Box component="p" sx={{ m: 0, mt: 1, color: "#334155", fontSize: { xs: 13.5, md: 15 }, maxWidth: 640, mx: center ? "auto" : 0 }}>
+          {text}
+        </Box>
+      )}
+    </Box>
+  );
+}
 
 function LandingPage() {
   const [menuOpen, setMenuOpen] = useState(false);
@@ -57,381 +201,341 @@ function LandingPage() {
 
   return (
     <PageLayout>
-      <Box sx={{ minHeight: "100vh", bgcolor: "#f8fafc", color: "#172554", overflow: "hidden" }}>
+      <Box sx={{ minHeight: "100vh", bgcolor: "#fff", color: NAVY, fontFamily: FONT, overflowX: "hidden" }}>
+        {/* Header */}
         <Box
           component="header"
           sx={{
             position: "sticky",
             top: 0,
-            zIndex: 20,
-            bgcolor: "rgba(255,255,255,.9)",
-            backdropFilter: "blur(16px)",
-            borderBottom: "1px solid #e2e8f0",
+            zIndex: 30,
+            background: `linear-gradient(90deg, #1b2466 0%, ${NAVY} 35%, #3150b8 100%)`,
+            boxShadow: "0 4px 18px rgba(15,23,42,.25)",
           }}
         >
-          <Container maxWidth="lg">
-            <Box sx={{ minHeight: 76, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-              <Box component={Link} to="/" sx={{ display: "flex", alignItems: "center", gap: 1.25, textDecoration: "none" }}>
-                <Box component="img" src={brandLogo} alt="EduNextG Sales" sx={{ width: 42, height: 42, objectFit: "contain" }} />
-                <Box>
-                  <Box sx={{ fontWeight: 800, fontSize: 20, color: "#172554", lineHeight: 1.05 }}>EduNextG</Box>
-                  <Box sx={{ color: "#2563eb", fontSize: 11, fontWeight: 800, letterSpacing: 1.8 }}>SALES</Box>
-                </Box>
+          <Container maxWidth="xl">
+            <Box sx={{ minHeight: { xs: 64, md: 76 }, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 2 }}>
+              <Box component="a" href="#home" sx={{ textDecoration: "none", color: "#fff", lineHeight: 1.05 }}>
+                <Box sx={{ fontFamily: SERIF, fontWeight: 700, fontSize: { xs: 22, md: 30 }, letterSpacing: 1 }}>BAWARCHEE</Box>
+                <Box sx={{ fontFamily: SERIF, fontWeight: 700, fontSize: { xs: 10.5, md: 15 }, letterSpacing: 0.4 }}>FOOD PACKAGING PVT. LTD.</Box>
               </Box>
 
-              <Stack direction="row" spacing={4} sx={{ display: { xs: "none", md: "flex" }, alignItems: "center" }}>
-                {[
-                  ["Features", "#features"],
-                  ["Solutions", "#solutions"],
-                  ["Contact", "#contact"],
-                ].map(([label, href]) => (
+              <Box component="nav" aria-label="Main" sx={{ display: { xs: "none", md: "flex" }, alignItems: "center", gap: { md: 3, lg: 5 } }}>
+                {navItems.map(([label, href], index) => (
                   <Box
                     key={label}
                     component="a"
                     href={href}
-                    sx={{ color: "#475569", fontWeight: 700, fontSize: 14, textDecoration: "none", "&:hover": { color: "#2563eb" } }}
+                    sx={{
+                      color: "#fff",
+                      fontWeight: 600,
+                      fontSize: 16,
+                      textDecoration: index === 0 ? "underline" : "none",
+                      textUnderlineOffset: "8px",
+                      textDecorationThickness: "2px",
+                      "&:hover": { textDecoration: "underline" },
+                    }}
                   >
                     {label}
                   </Box>
                 ))}
+              </Box>
+
+              <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
                 <Box
                   component={Link}
                   to="/authentication/sign-in"
                   sx={{
-                    px: 2.6,
-                    py: 1.25,
-                    borderRadius: "10px",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 0.75,
+                    px: { xs: 1.5, md: 2.25 },
+                    py: { xs: 0.8, md: 1.1 },
+                    borderRadius: "12px",
+                    background: "linear-gradient(135deg,#5fb4ff,#2f7ef0)",
+                    border: "1px solid rgba(255,255,255,.6)",
+                    boxShadow: "0 0 14px rgba(95,180,255,.65)",
                     color: "#fff",
-                    bgcolor: "#2563eb",
-                    fontWeight: 800,
-                    fontSize: 14,
+                    fontWeight: 700,
+                    fontSize: { xs: 13, md: 15 },
                     textDecoration: "none",
-                    boxShadow: "0 10px 22px rgba(37,99,235,.25)",
-                    "&:hover": { bgcolor: "#1d4ed8", transform: "translateY(-1px)" },
+                    whiteSpace: "nowrap",
+                    "&:hover": { filter: "brightness(1.08)" },
                   }}
                 >
-                  Sign in
+                  <Icon sx={{ fontSize: "20px !important" }}>manage_accounts</Icon> Portal Login
                 </Box>
-              </Stack>
-
-              <IconButton onClick={() => setMenuOpen((value) => !value)} sx={{ display: { md: "none" }, color: "#172554" }}>
-                <Icon>{menuOpen ? "close" : "menu"}</Icon>
-              </IconButton>
+                <IconButton
+                  aria-label={menuOpen ? "Close menu" : "Open menu"}
+                  aria-expanded={menuOpen}
+                  onClick={() => setMenuOpen((open) => !open)}
+                  sx={{ display: { xs: "inline-flex", md: "none" }, color: "#fff" }}
+                >
+                  <Icon>{menuOpen ? "close" : "menu"}</Icon>
+                </IconButton>
+              </Box>
             </Box>
-
             {menuOpen && (
-              <Stack spacing={1.5} sx={{ display: { md: "none" }, pb: 2.5 }}>
-                {["features", "solutions", "contact"].map((item) => (
+              <Box component="nav" aria-label="Mobile" sx={{ display: { md: "none" }, pb: 2 }}>
+                {navItems.map(([label, href]) => (
                   <Box
+                    key={label}
                     component="a"
-                    href={`#${item}`}
-                    key={item}
+                    href={href}
                     onClick={() => setMenuOpen(false)}
-                    sx={{ textTransform: "capitalize", color: "#475569", fontWeight: 700, textDecoration: "none", py: 0.5 }}
+                    sx={{ display: "block", color: "#fff", fontWeight: 600, py: 1.1, borderTop: "1px solid rgba(255,255,255,.15)", textDecoration: "none" }}
                   >
-                    {item}
+                    {label}
                   </Box>
                 ))}
-                <Box component={Link} to="/authentication/sign-in" sx={{ color: "#2563eb", fontWeight: 800, textDecoration: "none", py: 0.5 }}>
-                  Sign in to dashboard
-                </Box>
-              </Stack>
+              </Box>
             )}
           </Container>
         </Box>
 
+        <HeroSlider />
+
+        {/* Products */}
         <Box
-          component="main"
+          id="products"
+          component="section"
           sx={{
-            background:
-              "radial-gradient(circle at 80% 12%, rgba(59,130,246,.18), transparent 29%), radial-gradient(circle at 7% 28%, rgba(14,165,233,.12), transparent 22%)",
+            py: { xs: 5, md: 7 },
+            bgcolor: "#eef4fa",
+            backgroundImage: `url(${productsBackground})`,
+            backgroundSize: "cover",
+            backgroundPosition: "center",
+            backgroundRepeat: "no-repeat",
+            scrollMarginTop: 80,
           }}
         >
-          <Container maxWidth="lg">
-            <Grid container spacing={6} alignItems="center" sx={{ minHeight: { md: 650 }, py: { xs: 9, md: 7 } }}>
-              <Grid item xs={12} md={6}>
+          <Container maxWidth="xl">
+            <SectionHeading
+              eyebrow="Our Products"
+              title="Premium Packaging for Leading Brands"
+              text="We offer a wide range of high-quality packaging solutions for your trusted brands."
+            />
+            <Box sx={{ display: "grid", gridTemplateColumns: { xs: "repeat(2, 1fr)", sm: "repeat(3, 1fr)", lg: "repeat(6, 1fr)" }, gap: { xs: 1.5, md: 2.5 } }}>
+              {products.map((product) => (
                 <Box
+                  key={product.name}
+                  component="article"
                   sx={{
-                    display: "inline-flex",
-                    gap: 1,
-                    alignItems: "center",
-                    px: 1.5,
-                    py: 0.75,
-                    mb: 3,
-                    borderRadius: 10,
-                    bgcolor: "#dbeafe",
-                    color: "#1d4ed8",
-                    fontSize: 12,
-                    fontWeight: 800,
-                    letterSpacing: 0.4,
+                    bgcolor: "#fff",
+                    borderRadius: "16px",
+                    border: "1px solid #dbe4f0",
+                    boxShadow: "0 6px 18px rgba(30,42,110,.08)",
+                    p: { xs: 1.25, md: 1.5 },
+                    display: "flex",
+                    flexDirection: "column",
+                    transition: "transform 200ms ease, box-shadow 200ms ease",
+                    "&:hover": { transform: "translateY(-4px)", boxShadow: "0 14px 28px rgba(30,42,110,.15)" },
                   }}
                 >
-                  <Icon sx={{ fontSize: "17px !important" }}>auto_awesome</Icon>
-                  BUILT FOR MODERN DISTRIBUTION
-                </Box>
-                <Box component="h1" sx={{ m: 0, maxWidth: 650, color: "#0f172a", fontSize: { xs: 43, sm: 58, md: 64 }, lineHeight: 1.04, letterSpacing: -2.2 }}>
-                  Run your entire sales operation with{" "}
-                  <Box component="span" sx={{ color: "#2563eb" }}>clarity.</Box>
-                </Box>
-                <Box component="p" sx={{ mt: 3, mb: 4, maxWidth: 590, color: "#64748b", fontSize: { xs: 17, md: 19 }, lineHeight: 1.75 }}>
-                  EduNextG Sales connects stock, outlets, billing, packaging, delivery, and collections—so every team works from the same reliable information.
-                </Box>
-                <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
                   <Box
-                    component={Link}
-                    to="/authentication/sign-in"
-                    sx={{
-                      display: "inline-flex",
-                      justifyContent: "center",
-                      alignItems: "center",
-                      gap: 1,
-                      px: 3.2,
-                      py: 1.65,
-                      borderRadius: "12px",
-                      bgcolor: "#2563eb",
-                      color: "#fff",
-                      fontWeight: 800,
-                      textDecoration: "none",
-                      boxShadow: "0 14px 30px rgba(37,99,235,.3)",
-                    }}
-                  >
-                    Open dashboard <Icon>arrow_forward</Icon>
-                  </Box>
-                  <Box
-                    component="a"
-                    href="#features"
-                    sx={{
-                      display: "inline-flex",
-                      justifyContent: "center",
-                      alignItems: "center",
-                      px: 3.2,
-                      py: 1.65,
-                      borderRadius: "12px",
-                      border: "1px solid #cbd5e1",
-                      bgcolor: "#fff",
-                      color: "#334155",
-                      fontWeight: 800,
-                      textDecoration: "none",
-                    }}
-                  >
-                    Explore features
-                  </Box>
-                </Stack>
-              </Grid>
-
-              <Grid item xs={12} md={6}>
-                <Box sx={{ position: "relative", p: { xs: 1, sm: 3 } }}>
-                  <Box
-                    sx={{
-                      position: "absolute",
-                      inset: "12% 4%",
-                      bgcolor: "#3b82f6",
-                      filter: "blur(70px)",
-                      opacity: 0.18,
-                    }}
+                    component="img"
+                    src={product.image}
+                    alt={`${product.name} products`}
+                    loading="lazy"
+                    sx={{ width: "100%", aspectRatio: "5 / 4", objectFit: "contain", borderRadius: "10px" }}
                   />
-                  <Box
-                    sx={{
-                      position: "relative",
-                      p: 2,
-                      bgcolor: "#fff",
-                      border: "1px solid rgba(148,163,184,.35)",
-                      borderRadius: "22px",
-                      boxShadow: "0 30px 70px rgba(15,23,42,.16)",
-                      transform: { md: "perspective(1200px) rotateY(-4deg) rotateX(2deg)" },
-                    }}
-                  >
-                    <Box sx={{ display: "flex", alignItems: "center", gap: 0.7, mb: 2 }}>
-                      {["#fb7185", "#fbbf24", "#4ade80"].map((color) => (
-                        <Box key={color} sx={{ width: 9, height: 9, borderRadius: "50%", bgcolor: color }} />
-                      ))}
-                      <Box sx={{ ml: 1, height: 8, width: "40%", borderRadius: 4, bgcolor: "#e2e8f0" }} />
-                    </Box>
-                    <Grid container spacing={1.4}>
-                      {[
-                        ["Total Sales", "₹4,82,650", "trending_up", "#2563eb"],
-                        ["Current Stock", "12,480", "inventory", "#0891b2"],
-                        ["Deliveries", "186", "local_shipping", "#7c3aed"],
-                      ].map(([label, value, icon, color]) => (
-                        <Grid item xs={4} key={label}>
-                          <Box sx={{ p: { xs: 1.2, sm: 1.8 }, borderRadius: "12px", bgcolor: "#f8fafc", minHeight: 100 }}>
-                            <Icon sx={{ color, fontSize: "20px !important" }}>{icon}</Icon>
-                            <Box sx={{ mt: 1, color: "#64748b", fontSize: { xs: 9, sm: 11 }, fontWeight: 700 }}>{label}</Box>
-                            <Box sx={{ color: "#0f172a", fontSize: { xs: 14, sm: 20 }, fontWeight: 800 }}>{value}</Box>
-                          </Box>
-                        </Grid>
-                      ))}
-                      <Grid item xs={8}>
-                        <Box sx={{ p: 2, height: 190, borderRadius: "14px", bgcolor: "#f8fafc" }}>
-                          <Box sx={{ fontWeight: 800, fontSize: 13, color: "#334155" }}>Sales overview</Box>
-                          <Box sx={{ mt: 3, height: 115, display: "flex", alignItems: "flex-end", gap: 1.2 }}>
-                            {[40, 62, 47, 78, 59, 92, 72, 100].map((height, index) => (
-                              <Box key={index} sx={{ flex: 1, height: `${height}%`, borderRadius: "5px 5px 2px 2px", background: "linear-gradient(180deg,#60a5fa,#2563eb)" }} />
-                            ))}
-                          </Box>
-                        </Box>
-                      </Grid>
-                      <Grid item xs={4}>
-                        <Box sx={{ p: 2, height: 190, borderRadius: "14px", bgcolor: "#eff6ff", display: "flex", flexDirection: "column", justifyContent: "space-between" }}>
-                          <Icon sx={{ color: "#2563eb" }}>verified</Icon>
-                          <Box>
-                            <Box sx={{ color: "#1e3a8a", fontWeight: 800, fontSize: { xs: 17, sm: 24 } }}>98.4%</Box>
-                            <Box sx={{ color: "#64748b", fontWeight: 700, fontSize: 10 }}>Orders completed</Box>
-                          </Box>
-                        </Box>
-                      </Grid>
-                    </Grid>
+                  <Box component="h3" sx={{ m: 0, mt: 1.25, textAlign: "center", color: NAVY, fontWeight: 600, fontSize: { xs: 17, md: 21 } }}>
+                    {product.name}
                   </Box>
-                </Box>
-              </Grid>
-            </Grid>
-          </Container>
-
-          <Box sx={{ bgcolor: "#0f172a", py: 3.5 }}>
-            <Container maxWidth="lg">
-              <Grid container spacing={3}>
-                {stats.map(([value, label]) => (
-                  <Grid item xs={6} md={3} key={label}>
-                    <Box sx={{ textAlign: "center" }}>
-                      <Box sx={{ color: "#fff", fontWeight: 800, fontSize: { xs: 18, md: 22 } }}>{value}</Box>
-                      <Box sx={{ color: "#94a3b8", fontSize: 12, mt: 0.4 }}>{label}</Box>
+                  <Box sx={{ display: "flex", alignItems: "flex-end", gap: 1, mt: 0.75, flex: 1 }}>
+                    <Box component="p" sx={{ m: 0, flex: 1, color: "#475569", fontSize: { xs: 11.5, md: 12.5 }, lineHeight: 1.45 }}>
+                      {product.text}
                     </Box>
-                  </Grid>
-                ))}
-              </Grid>
-            </Container>
-          </Box>
-
-          <Box id="features" sx={{ py: { xs: 9, md: 12 }, bgcolor: "#fff" }}>
-            <Container maxWidth="lg">
-              <Box sx={{ textAlign: "center", maxWidth: 720, mx: "auto", mb: 7 }}>
-                <Box sx={{ color: "#2563eb", fontSize: 13, fontWeight: 800, letterSpacing: 1.6 }}>EVERYTHING CONNECTED</Box>
-                <Box component="h2" sx={{ color: "#0f172a", fontSize: { xs: 34, md: 46 }, lineHeight: 1.15, mt: 1.5, mb: 2 }}>
-                  One workspace for every moving part
-                </Box>
-                <Box component="p" sx={{ color: "#64748b", fontSize: 17, lineHeight: 1.7, m: 0 }}>
-                  Replace scattered records with a secure operating system built around the way your sales and distribution teams actually work.
-                </Box>
-              </Box>
-              <Grid container spacing={3}>
-                {features.map((feature) => (
-                  <Grid item xs={12} sm={6} md={4} key={feature.title}>
                     <Box
+                      component="a"
+                      href="#contact"
+                      aria-label={`Ask about ${product.name} packaging`}
                       sx={{
-                        height: "100%",
-                        p: 3.5,
-                        border: "1px solid #e2e8f0",
-                        borderRadius: "18px",
-                        bgcolor: "#fff",
-                        transition: "all .25s ease",
-                        "&:hover": { transform: "translateY(-6px)", borderColor: "#bfdbfe", boxShadow: "0 18px 40px rgba(15,23,42,.08)" },
+                        flexShrink: 0,
+                        width: 30,
+                        height: 30,
+                        borderRadius: "50%",
+                        display: "grid",
+                        placeItems: "center",
+                        color: "#fff",
+                        background: `linear-gradient(145deg,${BLUE},${NAVY})`,
+                        boxShadow: "0 3px 8px rgba(30,42,110,.35)",
                       }}
                     >
-                      <Box sx={{ width: 48, height: 48, display: "grid", placeItems: "center", borderRadius: "13px", bgcolor: "#eff6ff", color: "#2563eb" }}>
-                        <Icon>{feature.icon}</Icon>
-                      </Box>
-                      <Box component="h3" sx={{ color: "#0f172a", fontSize: 19, mt: 2.5, mb: 1.2 }}>{feature.title}</Box>
-                      <Box component="p" sx={{ color: "#64748b", fontSize: 14.5, lineHeight: 1.75, m: 0 }}>{feature.text}</Box>
+                      <Icon sx={{ fontSize: "20px !important" }}>chevron_right</Icon>
                     </Box>
-                  </Grid>
-                ))}
-              </Grid>
-            </Container>
-          </Box>
-
-          <Box id="solutions" sx={{ py: { xs: 9, md: 12 }, bgcolor: "#f1f5f9" }}>
-            <Container maxWidth="lg">
-              <Grid container spacing={7} alignItems="center">
-                <Grid item xs={12} md={6}>
-                  <Box sx={{ color: "#2563eb", fontSize: 13, fontWeight: 800, letterSpacing: 1.6 }}>FROM DESK TO DOORSTEP</Box>
-                  <Box component="h2" sx={{ color: "#0f172a", fontSize: { xs: 34, md: 46 }, lineHeight: 1.15, mt: 1.5, mb: 2.5 }}>
-                    Give every team the right view and the right tools.
                   </Box>
-                  <Box component="p" sx={{ color: "#64748b", fontSize: 17, lineHeight: 1.75, mb: 3.5 }}>
-                    Administrators stay in control while staff members see only their assigned pages. Packaging and delivery teams can focus on execution without navigating unnecessary menus.
-                  </Box>
-                  {[
-                    "Permission-based menus for every staff role",
-                    "One-time secure login credential generation",
-                    "Clear handoff across packaging and delivery",
-                    "Centralized sales, stock, and collection records",
-                  ].map((item) => (
-                    <Box key={item} sx={{ display: "flex", gap: 1.3, alignItems: "center", mb: 1.5, color: "#334155", fontWeight: 700, fontSize: 14 }}>
-                      <Icon sx={{ color: "#22c55e" }}>check_circle</Icon> {item}
-                    </Box>
-                  ))}
-                </Grid>
-                <Grid item xs={12} md={6}>
-                  <Box sx={{ p: { xs: 3, sm: 5 }, bgcolor: "#172554", color: "#fff", borderRadius: "24px", boxShadow: "0 25px 55px rgba(15,23,42,.2)" }}>
-                    <Box sx={{ fontSize: 13, fontWeight: 800, color: "#93c5fd", letterSpacing: 1 }}>A SIMPLE FLOW</Box>
-                    {[
-                      ["01", "Create & assign", "Set up staff, outlets, companies, and access."],
-                      ["02", "Sell & prepare", "Process billing, stock, packaging, and challans."],
-                      ["03", "Deliver & collect", "Complete delivery and keep payments visible."],
-                    ].map(([number, title, text], index) => (
-                      <Box key={number} sx={{ display: "flex", gap: 2.2, py: 3, borderBottom: index < 2 ? "1px solid rgba(148,163,184,.22)" : 0 }}>
-                        <Box sx={{ color: "#60a5fa", fontSize: 14, fontWeight: 800 }}>{number}</Box>
-                        <Box>
-                          <Box sx={{ fontSize: 18, fontWeight: 800, mb: 0.6 }}>{title}</Box>
-                          <Box sx={{ color: "#cbd5e1", fontSize: 14, lineHeight: 1.6 }}>{text}</Box>
-                        </Box>
-                      </Box>
-                    ))}
-                  </Box>
-                </Grid>
-              </Grid>
-            </Container>
-          </Box>
-
-          <Box id="contact" sx={{ py: { xs: 9, md: 11 }, bgcolor: "#fff" }}>
-            <Container maxWidth="md">
-              <Box sx={{ textAlign: "center", p: { xs: 4, md: 7 }, borderRadius: "26px", background: "linear-gradient(135deg,#1d4ed8,#2563eb 55%,#0ea5e9)", color: "#fff", boxShadow: "0 25px 60px rgba(37,99,235,.25)" }}>
-                <Box component="h2" sx={{ fontSize: { xs: 32, md: 43 }, lineHeight: 1.15, m: 0 }}>Ready to get back to business?</Box>
-                <Box component="p" sx={{ maxWidth: 600, mx: "auto", my: 2.5, color: "#dbeafe", fontSize: 16.5, lineHeight: 1.7 }}>
-                  Sign in to access your personalized dashboard, assigned tools, and latest operational data.
                 </Box>
-                <Box component={Link} to="/authentication/sign-in" sx={{ display: "inline-flex", alignItems: "center", gap: 1, mt: 1, px: 3.4, py: 1.55, borderRadius: "12px", bgcolor: "#fff", color: "#1d4ed8", fontWeight: 800, textDecoration: "none" }}>
-                  Sign in securely <Icon>login</Icon>
-                </Box>
-              </Box>
-            </Container>
-          </Box>
+              ))}
+            </Box>
+          </Container>
         </Box>
 
-        <Box component="footer" sx={{ bgcolor: "#0b1220", color: "#cbd5e1", pt: 7, pb: 3 }}>
-          <Container maxWidth="lg">
-            <Grid container spacing={5} sx={{ pb: 5 }}>
-              <Grid item xs={12} md={5}>
-                <Box sx={{ display: "flex", alignItems: "center", gap: 1.2, mb: 2 }}>
-                  <Box component="img" src={brandLogo} alt="" sx={{ width: 40, height: 40, objectFit: "contain", filter: "brightness(0) invert(1)" }} />
-                  <Box sx={{ color: "#fff", fontWeight: 800, fontSize: 19 }}>EduNextG Sales</Box>
+        {/* Brands */}
+        <Box id="solutions" component="section" sx={{ py: { xs: 5, md: 6 }, bgcolor: "#f5f7ea", scrollMarginTop: 80 }}>
+          <Container maxWidth="xl">
+            <SectionHeading
+              center
+              eyebrow="Our Trusted Brands"
+              title="Brands We Work With"
+              text="We are proud to be the packaging partner for some of the most trusted names in the food and lifestyle industry."
+            />
+            <Box sx={{ display: "grid", gridTemplateColumns: { xs: "repeat(2, 1fr)", sm: "repeat(3, 1fr)", lg: "repeat(6, 1fr)" }, gap: { xs: 1.5, md: 2 } }}>
+              {brands.map((brand) => (
+                <Box
+                  key={brand.name}
+                  sx={{
+                    minHeight: { xs: 84, md: 110 },
+                    borderRadius: "18px",
+                    border: `2px solid ${GREEN}`,
+                    bgcolor: "#fff",
+                    boxShadow: "0 4px 12px rgba(46,139,60,.12)",
+                    display: "flex",
+                    flexDirection: "column",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    px: 1.5,
+                    textAlign: "center",
+                  }}
+                >
+                  {brand.logo ? (
+                    <Box component="img" src={brand.logo} alt={brand.name} loading="lazy" sx={{ maxWidth: "86%", maxHeight: { xs: 54, md: 72 }, objectFit: "contain" }} />
+                  ) : (
+                    <>
+                      <Box
+                        sx={{
+                          px: brand.bg === "transparent" ? 0 : 1.25,
+                          py: brand.bg === "transparent" ? 0 : 0.4,
+                          bgcolor: brand.bg,
+                          color: brand.color,
+                          fontFamily: brand.font,
+                          fontWeight: 600,
+                          letterSpacing: brand.spacing || 0,
+                          fontSize: { xs: 21, md: 28 },
+                          borderRadius: "4px",
+                          lineHeight: 1.15,
+                        }}
+                      >
+                        {brand.name}
+                      </Box>
+                      {brand.sub && (
+                        <Box sx={{ mt: 0.4, color: "#1f2937", fontSize: { xs: 7.5, md: 9 }, fontWeight: 700, letterSpacing: 0.3 }}>{brand.sub}</Box>
+                      )}
+                    </>
+                  )}
                 </Box>
-                <Box sx={{ maxWidth: 430, color: "#94a3b8", fontSize: 14, lineHeight: 1.75 }}>
-                  A connected sales and distribution management platform for teams that value speed, accuracy, and accountability.
+              ))}
+            </Box>
+          </Container>
+        </Box>
+
+        {/* About */}
+        <Box id="about" component="section" sx={{ py: { xs: 6, md: 8 }, bgcolor: "#fff", position: "relative", overflow: "hidden", scrollMarginTop: 80 }}>
+          <Container maxWidth="xl">
+            <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", md: "1.25fr 1fr" }, gap: { xs: 4, md: 6 }, alignItems: "center" }}>
+              <Box>
+                <Box sx={{ color: NAVY, fontWeight: 700, fontSize: { xs: 18, md: 26 }, letterSpacing: 0.3 }}>ABOUT BAWARCHEE</Box>
+                <Box component="h2" sx={{ m: 0, mt: 1, fontFamily: SERIF, color: NAVY, fontWeight: 700, fontSize: { xs: 28, md: 40 }, lineHeight: 1.2 }}>
+                  Packaging That Builds Brands
                 </Box>
-              </Grid>
-              <Grid item xs={6} md={2}>
-                <Box sx={{ color: "#fff", fontWeight: 800, mb: 2 }}>Product</Box>
-                {["Features", "Solutions", "Dashboard"].map((item) => (
-                  <Box key={item} component={item === "Dashboard" ? Link : "a"} to={item === "Dashboard" ? "/authentication/sign-in" : undefined} href={item !== "Dashboard" ? `#${item.toLowerCase()}` : undefined} sx={{ display: "block", color: "#94a3b8", fontSize: 14, textDecoration: "none", mb: 1.2, "&:hover": { color: "#fff" } }}>{item}</Box>
+                <Box component="p" sx={{ m: 0, mt: 2.5, fontFamily: SERIF, color: BLUE, fontWeight: 700, fontSize: { xs: 17, md: 24 }, lineHeight: 1.45, maxWidth: 640 }}>
+                  At BAWARCHEE FOOD PACKAGING PVT. LTD., we focus on delivering dependable packaging solutions designed
+                  around product quality, brand identity and consumer appeal.
+                </Box>
+                <Box sx={{ display: "flex", flexWrap: "wrap", gap: { xs: 3, md: 6 }, mt: { xs: 4, md: 5 } }}>
+                  {highlights.map((item) => (
+                    <Box key={item.label} sx={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 1.25, minWidth: 110 }}>
+                      <Box
+                        sx={{
+                          width: { xs: 70, md: 86 },
+                          height: { xs: 70, md: 86 },
+                          borderRadius: "50%",
+                          display: "grid",
+                          placeItems: "center",
+                          background: item.gradient,
+                          boxShadow: "inset 0 -4px 10px rgba(0,0,0,.2), 0 6px 14px rgba(0,0,0,.15)",
+                          border: "3px solid rgba(255,255,255,.7)",
+                        }}
+                      >
+                        <Icon sx={{ color: "#fff", fontSize: { xs: "34px !important", md: "42px !important" } }}>{item.icon}</Icon>
+                      </Box>
+                      <Box sx={{ color: NAVY, fontWeight: 600, fontSize: { xs: 14, md: 17 } }}>{item.label}</Box>
+                    </Box>
+                  ))}
+                </Box>
+              </Box>
+
+              <Box sx={{ position: "relative", maxWidth: 520, width: "100%", mx: "auto" }}>
+                <Box
+                  aria-hidden
+                  sx={{
+                    position: "absolute",
+                    inset: "-6% -10% -6% 8%",
+                    borderRadius: "48% 0 0 48% / 50% 0 0 50%",
+                    background: `linear-gradient(160deg, ${GREEN} 0%, #7cc576 30%, ${BLUE} 70%, ${NAVY} 100%)`,
+                    opacity: 0.9,
+                  }}
+                />
+                <Box
+                  component="img"
+                  src={aboutImage}
+                  alt="Bawarchee packaged products"
+                  loading="lazy"
+                  sx={{
+                    position: "relative",
+                    width: "100%",
+                    aspectRatio: "1 / 1",
+                    objectFit: "cover",
+                    borderRadius: "44% 12px 12px 44% / 50% 12px 12px 50%",
+                    border: "6px solid #fff",
+                    boxShadow: "0 18px 40px rgba(30,42,110,.25)",
+                  }}
+                />
+              </Box>
+            </Box>
+          </Container>
+        </Box>
+
+        {/* Contact + footer */}
+        <Box
+          id="contact"
+          component="footer"
+          sx={{ background: `linear-gradient(90deg, #1b2466 0%, ${NAVY} 45%, #3150b8 100%)`, color: "#dbe4ff", pt: { xs: 5, md: 6 }, pb: 3, scrollMarginTop: 80 }}
+        >
+          <Container maxWidth="xl">
+            <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", md: "1.4fr 1fr 1fr" }, gap: 4, pb: 4 }}>
+              <Box>
+                <Box sx={{ fontFamily: SERIF, fontWeight: 700, fontSize: 26, color: "#fff", letterSpacing: 1 }}>BAWARCHEE</Box>
+                <Box sx={{ fontFamily: SERIF, fontWeight: 700, fontSize: 13, color: "#fff" }}>FOOD PACKAGING PVT. LTD.</Box>
+                <Box component="p" sx={{ m: 0, mt: 1.5, fontSize: 14, lineHeight: 1.7, maxWidth: 420 }}>
+                  Quality packaging, trusted brands and a better tomorrow – ensuring freshness, safety and trust in every pack.
+                </Box>
+              </Box>
+              <Box>
+                <Box sx={{ color: "#fff", fontWeight: 700, mb: 1.5 }}>Quick Links</Box>
+                {navItems.map(([label, href]) => (
+                  <Box key={label} component="a" href={href} sx={{ display: "block", color: "#dbe4ff", fontSize: 14, mb: 1, textDecoration: "none", "&:hover": { color: "#fff" } }}>
+                    {label}
+                  </Box>
                 ))}
-              </Grid>
-              <Grid item xs={6} md={2}>
-                <Box sx={{ color: "#fff", fontWeight: 800, mb: 2 }}>Access</Box>
-                <Box component={Link} to="/authentication/sign-in" sx={{ display: "block", color: "#94a3b8", fontSize: 14, textDecoration: "none", mb: 1.2, "&:hover": { color: "#fff" } }}>Staff login</Box>
-                <Box component={Link} to="/authentication/sign-in" sx={{ display: "block", color: "#94a3b8", fontSize: 14, textDecoration: "none", mb: 1.2, "&:hover": { color: "#fff" } }}>Admin login</Box>
-              </Grid>
-              <Grid item xs={12} md={3}>
-                <Box sx={{ color: "#fff", fontWeight: 800, mb: 2 }}>Secure operations</Box>
-                <Box sx={{ display: "flex", gap: 1, color: "#94a3b8", fontSize: 14, lineHeight: 1.6 }}>
-                  <Icon sx={{ color: "#60a5fa" }}>lock</Icon>
-                  Protected access for every authorized user.
+              </Box>
+              <Box>
+                <Box sx={{ color: "#fff", fontWeight: 700, mb: 1.5 }}>Contact Us</Box>
+                <Box component="p" sx={{ m: 0, mb: 2, fontSize: 14, lineHeight: 1.7 }}>
+                  Staff, partners and delivery teams can sign in to the Bawarchee portal.
                 </Box>
-              </Grid>
-            </Grid>
-            <Box sx={{ pt: 3, borderTop: "1px solid #1e293b", display: "flex", flexDirection: { xs: "column", sm: "row" }, gap: 1, justifyContent: "space-between", color: "#64748b", fontSize: 12.5 }}>
-              <Box>© {year} EduNextG Sales. All rights reserved.</Box>
-              <Box>Designed for reliable business operations.</Box>
+                <Box
+                  component={Link}
+                  to="/authentication/sign-in"
+                  sx={{ display: "inline-flex", alignItems: "center", gap: 0.75, px: 2.25, py: 1.1, borderRadius: "12px", bgcolor: "#fff", color: NAVY, fontWeight: 700, textDecoration: "none" }}
+                >
+                  <Icon>login</Icon> Portal Login
+                </Box>
+              </Box>
+            </Box>
+            <Box sx={{ pt: 2.5, borderTop: "1px solid rgba(255,255,255,.18)", display: "flex", flexDirection: { xs: "column", sm: "row" }, gap: 1, justifyContent: "space-between", fontSize: 12.5 }}>
+              <Box>© {year} Bawarchee Food Packaging Pvt. Ltd. All rights reserved.</Box>
+              <Box component={Link} to="/privacy-policy" sx={{ color: "#dbe4ff", textDecoration: "none", "&:hover": { color: "#fff" } }}>Privacy Policy</Box>
             </Box>
           </Container>
         </Box>
