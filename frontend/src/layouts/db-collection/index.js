@@ -421,9 +421,10 @@ function DBCollection() {
       group.total += collectedAmount(row);
       if (!row.settled_at) group.pending += 1;
     });
-    // Groups with bills still to settle come first; fully settled groups drop to the bottom.
-    return [...map.values()].sort((a, b) => (a.pending > 0 ? 0 : 1) - (b.pending > 0 ? 0 : 1)
-      || (b.date || "").localeCompare(a.date || "")
+    // Newest date first (today on top); within a day, groups with bills still
+    // to settle come before fully settled ones.
+    return [...map.values()].sort((a, b) => (b.date || "").localeCompare(a.date || "")
+      || (a.pending > 0 ? 0 : 1) - (b.pending > 0 ? 0 : 1)
       || a.employeeName.localeCompare(b.employeeName));
   }, [collections]);
 
@@ -791,7 +792,7 @@ function DBCollection() {
               </Alert>
             )}
             {settleMode === "cheque" && <>
-            <MDTypography variant="button" display="block" mb={2}>Cheque No: {settlementCollection.reference_no || "N/A"}</MDTypography>
+            <MDTypography variant="button" display="block" mb={2}>Cheque No: {settlementCollection?.reference_no || "N/A"}</MDTypography>
             <MDInput label="Cheque date" type="date" required fullWidth
               value={chequeDate} onChange={(event) => setChequeDate(event.target.value)}
               disabled={settlingId !== null} InputLabelProps={{ shrink: true }}
