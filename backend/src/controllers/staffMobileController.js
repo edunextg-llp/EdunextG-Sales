@@ -277,6 +277,7 @@ export const submitOutBillPayment = async (req, res) => {
         if (error.message === 'EXCEEDS_BALANCE') {
             return res.status(400).json({ error: `Amount exceeds remaining balance of ${Number(error.remaining).toFixed(2)}` });
         }
+        if (error.message === 'TAKEN_BILL_ALREADY_CREDIT') return res.status(400).json({ error: 'This Out Bill is already on credit. Select cash, UPI, or cheque.' });
         if (error.message === 'FULL_CREDIT_BALANCE_REQUIRED') {
             return res.status(400).json({ error: 'Use the full outstanding balance when extending existing credit' });
         }

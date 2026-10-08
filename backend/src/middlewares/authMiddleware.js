@@ -200,6 +200,8 @@ export const enforceManagedUserApiScope = (req, res, next) => {
         allowed = method === 'GET' && (permissions.has('packaging') || permissions.has('delivery'));
     } else if (/^\/sales\/\d+\/payment$/.test(path) || /^\/sales\/\d+\/payments(?:\/\d+)?$/.test(path)) {
         allowed = permissions.has('update_payment');
+    } else if (/^\/sales\/\d+\/credit-photo$/.test(path)) {
+        allowed = permissions.has('update_payment') || permissions.has('out_bill');
     } else if (/^\/sales\/\d+\/cancel-log$/.test(path)) {
         allowed = permissions.has('update_payment');
     } else if (/^\/sales\/\d+\/items$/.test(path)) {

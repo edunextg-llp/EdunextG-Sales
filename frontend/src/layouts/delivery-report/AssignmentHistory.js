@@ -13,6 +13,12 @@ const today = () => { const date = new Date(); return `${date.getFullYear()}-${S
 const STATUS_LABEL = { out_for_delivery: 'Out for delivery', delivered: 'Delivered', cancelled: 'Cancelled', returned: 'Returned' };
 const STATUS_COLOR = { out_for_delivery: 'warning', delivered: 'success', cancelled: 'error', returned: 'default' };
 const statusKey = (row) => String(row.packaging_status || '').trim().toLowerCase();
+function formatInvoiceDate(value) {
+  if (!value) return '—';
+  const match = String(value).match(/^(\d{4})-(\d{2})-(\d{2})/);
+  return match ? match[3] + '-' + match[2] + '-' + match[1] : '—';
+}
+
 export default function AssignmentHistory({ api, onViewBill, areaOrder, boys }) {
   const [date, setDate] = useState(today);
   const [result, setResult] = useState({ date: '', rows: [] });
@@ -145,7 +151,7 @@ export default function AssignmentHistory({ api, onViewBill, areaOrder, boys }) 
         {editing && <MDBox mb={2} p={1.5} sx={{ border: '1px solid #93c5fd', borderRadius: 1, backgroundColor: '#eff6ff' }}>
           <Grid container spacing={2}>
             <Grid item xs={12} md={4}>
-              <MDInput select label="Delivery Boy" value={editBoy} onChange={(event) => setEditBoy(event.target.value)} fullWidth disabled={editSaving}>
+              <MDInput select label="Delivery Boy / Company Staff" value={editBoy} onChange={(event) => setEditBoy(event.target.value)} fullWidth disabled={editSaving}>
                 {boys.map((person) => <MenuItem key={person.id} value={String(person.id)}>{person.name}</MenuItem>)}
                 {!boys.some((person) => String(person.id) === String(selected?.id)) && selected && <MenuItem value={String(selected.id)}>{selected.name}</MenuItem>}
               </MDInput>
@@ -166,12 +172,12 @@ export default function AssignmentHistory({ api, onViewBill, areaOrder, boys }) 
         {error && <MDTypography variant="body2" color="error">{error}</MDTypography>}
         <TableContainer><Table size="small"><TableHead sx={{ display: 'table-header-group' }}><TableRow>
           {editing && <TableCell padding="checkbox">Keep</TableCell>}
-          {['Sr. No.', 'Invoice No.', 'BIT', 'Outlet Name', 'Invoice Amount', 'Status', 'Details'].map((label) => <TableCell key={label}>{label}</TableCell>)}
+          {['Sr. No.', 'Invoice No.', 'Invoice Date', 'Company Name', 'BIT', 'Outlet Name', 'Invoice Amount', 'Status', 'Details'].map((label) => <TableCell key={label}>{label}</TableCell>)}
         </TableRow></TableHead><TableBody>
           {(selected?.rows || []).map((row, index) => <TableRow key={row.id}>{editing && <TableCell padding="checkbox">{isEditableAssignment(row)
             ? <Checkbox size="small" checked={keepIds.includes(String(row.id))} disabled={editSaving} onChange={() => toggleKeep(String(row.id))} inputProps={{ 'aria-label': `Keep invoice ${row.invoice_number || row.id} in this assignment` }} />
-            : <MDTypography variant="caption" color="text">Locked</MDTypography>}</TableCell>}<TableCell>{index + 1}</TableCell><TableCell>{row.invoice_number || row.id}</TableCell><TableCell>{row[bitField] || '—'}</TableCell><TableCell>{row.outlet_name}</TableCell><TableCell>{money(invoiceValue(row))}</TableCell><TableCell><Chip size="small" variant="outlined" color={STATUS_COLOR[statusKey(row)] || 'default'} label={STATUS_LABEL[statusKey(row)] || row.packaging_status || '—'} /></TableCell><TableCell><MDButton size="small" color="info" onClick={() => onViewBill({ row, draft: { name: selected.name, date, vehicle: row.vehicle_no } })}>View</MDButton></TableCell></TableRow>)}
-          <TableRow>{editing && <TableCell />}<TableCell colSpan={4}>Total Invoice Value</TableCell><TableCell>{money(selected?.total || 0)}</TableCell><TableCell /><TableCell /></TableRow>
+            : <MDTypography variant="caption" color="text">Locked</MDTypography>}</TableCell>}<TableCell>{index + 1}</TableCell><TableCell>{row.invoice_number || row.id}</TableCell><TableCell sx={{ whiteSpace: 'nowrap' }}>{formatInvoiceDate(row.sale_date)}</TableCell><TableCell>{row.company_name || '—'}</TableCell><TableCell>{row[bitField] || '—'}</TableCell><TableCell>{row.outlet_name}</TableCell><TableCell>{money(invoiceValue(row))}</TableCell><TableCell><Chip size="small" variant="outlined" color={STATUS_COLOR[statusKey(row)] || 'default'} label={STATUS_LABEL[statusKey(row)] || row.packaging_status || '—'} /></TableCell><TableCell><MDButton size="small" color="info" onClick={() => onViewBill({ row, draft: { name: selected.name, date, vehicle: row.vehicle_no } })}>View</MDButton></TableCell></TableRow>)}
+          <TableRow>{editing && <TableCell />}<TableCell colSpan={6}>Total Invoice Value</TableCell><TableCell>{money(selected?.total || 0)}</TableCell><TableCell /><TableCell /></TableRow>
         </TableBody></Table></TableContainer>
       </DialogContent><DialogActions>
         {editing ? <>

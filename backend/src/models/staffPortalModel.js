@@ -5,7 +5,7 @@ import PaymentModel from './paymentModel.js';
  * Data access for the Company Staff mobile portal.
  *
  * A staff member sees only:
- *  - invoices they booked (staff_sales.staff_id), with packaging/delivery status
+ *  - invoices they booked or were assigned to deliver, with packaging/delivery status
  *  - Out Bills they took for collection (taken_bills.collector_type = 'company_staff')
  *  - the payments they submitted to D.B. Collection (delivery_boy_collections.staff_id)
  */
@@ -117,16 +117,16 @@ class StaffPortalModel {
      * the group 'packaging' (not_packing + packing + packing_done).
      */
     static async getInvoices(staffId, { fromDate, toDate, status = '', search = '', limit = 500 } = {}, executor = db) {
-        const params = [staffId];
-        let where = 'WHERE ss.staff_id = ?';
+        const params = [staffId, staffId];
+        let where = 'WHERE (ss.staff_id = ? OR ss.delivery_staff_id = ?)';
 
         if (fromDate) {
-            where += ' AND ss.sale_date >= ?';
-            params.push(fromDate);
+            where += " AND (ss.sale_date >= ? OR (ss.delivery_staff_id = ? AND ss.packaging_status = 'out_for_delivery'))";
+            params.push(fromDate, staffId);
         }
         if (toDate) {
-            where += ' AND ss.sale_date <= ?';
-            params.push(toDate);
+            where += " AND (ss.sale_date <= ? OR (ss.delivery_staff_id = ? AND ss.packaging_status = 'out_for_delivery'))";
+            params.push(toDate, staffId);
         }
         if (status === 'packaging') {
             where += ` AND ss.packaging_status IN (${PACKAGING_STATUSES.map(() => '?').join(', ')})`;
@@ -148,9 +148,9 @@ class StaffPortalModel {
                     DATE_FORMAT(ss.sale_date, '%Y-%m-%d') AS sale_date,
                     DATE_FORMAT(ss.delivery_date, '%Y-%m-%d') AS delivery_date,
                     ss.item_count, ss.packed_item_count, ss.box_count, ss.price,
-                    ss.packaging_status, ss.cancellation_reason, ss.vehicle_no,
+                    ss.packaging_status, ss.cancellation_reason, ss.vehicle_no, ss.delivery_staff_id,
                     sc.outlet_name, sc.outlet_erp_id, sc.contact_number, sc.location_name,
-                    dboy.name AS delivery_boy_name,
+                    COALESCE(dboy.name, (SELECT name FROM staff WHERE id = ss.delivery_staff_id)) AS delivery_boy_name,
                     COALESCE(paid.total, 0) AS paid_amount,
                     ${BALANCE_SQL} AS balance_amount,
                     DATE_FORMAT(history.status_updated_at, '%Y-%m-%d %H:%i:%s') AS status_updated_at
@@ -173,13 +173,13 @@ class StaffPortalModel {
 
     static async getInvoiceDetail(staffId, saleId) {
         const [rows] = await db.execute(
-            `SELECT ss.id, CONCAT('BP', ss.id) AS bp_sale_id, ss.invoice_number,
+            `SELECT ss.id, CONCAT('BP', ss.id) AS bp_sale_id, ss.invoice_number, ss.credit_photo_url,
                     DATE_FORMAT(ss.sale_date, '%Y-%m-%d') AS sale_date,
                     DATE_FORMAT(ss.delivery_date, '%Y-%m-%d') AS delivery_date,
                     ss.item_count, ss.packed_item_count, ss.box_count, ss.price,
-                    ss.packaging_status, ss.cancellation_reason, ss.vehicle_no,
+                    ss.packaging_status, ss.cancellation_reason, ss.vehicle_no, ss.delivery_staff_id,
                     sc.outlet_name, sc.outlet_erp_id, sc.contact_number, sc.location_name,
-                    dboy.name AS delivery_boy_name,
+                    COALESCE(dboy.name, (SELECT name FROM staff WHERE id = ss.delivery_staff_id)) AS delivery_boy_name,
                     COALESCE(paid.total, 0) AS paid_amount,
                     ${BALANCE_SQL} AS balance_amount
              FROM staff_sales ss
@@ -187,9 +187,9 @@ class StaffPortalModel {
              LEFT JOIN delivery_boys dboy ON dboy.id = ss.delivery_boy_id
              LEFT JOIN (${PAID_SQL}) paid ON paid.sale_id = ss.id
              LEFT JOIN (${CANCELLED_SQL}) cancelled ON cancelled.sale_id = ss.id
-             WHERE ss.id = ? AND ss.staff_id = ?
+             WHERE ss.id = ? AND (ss.staff_id = ? OR ss.delivery_staff_id = ?)
              LIMIT 1`,
-            [saleId, staffId]
+            [saleId, staffId, staffId]
         );
         if (!rows[0]) return null;
 
@@ -233,7 +233,7 @@ class StaffPortalModel {
      */
     static async getOutBills(staffId, executor = db) {
         const [rows] = await executor.execute(
-            `SELECT ss.id AS sale_id, CONCAT('BP', ss.id) AS bp_sale_id, ss.invoice_number, ss.price,
+            `SELECT ss.id AS sale_id, CONCAT('BP', ss.id) AS bp_sale_id, ss.invoice_number, ss.credit_photo_url, ss.price,
                     COALESCE(paid.total, 0) AS paid_amount,
                     ${BALANCE_SQL} AS balance_amount,
                     COALESCE(credit_due.credit_amount, 0) AS credit_amount,
@@ -289,6 +289,7 @@ class StaffPortalModel {
      * D.B. Collection entry. The sale balance changes only when an admin settles it.
      */
     static async submitOutBillPayment(staffId, saleId, data) {
+        if (data.paymentMode === 'credit') throw new Error('TAKEN_BILL_ALREADY_CREDIT');
         const connection = await db.getConnection();
         try {
             await connection.beginTransaction();
@@ -417,7 +418,7 @@ class StaffPortalModel {
              LEFT JOIN staff_counters sc ON sc.id = ss.outlet_id
              ${where}
              ORDER BY dbc.created_at DESC, dbc.id DESC
-             LIMIT 1000`,
+             ${fromDate && toDate ? '' : 'LIMIT 1000'}`,
             params
         );
         return rows.map(normalizeCollection);
@@ -479,7 +480,7 @@ class StaffPortalModel {
     /** Outstanding credit on this staff member's delivered invoices, grouped by outlet. */
     static async getCreditByOutlet(staffId) {
         const [rows] = await db.execute(
-            `SELECT sp.id AS payment_id, ss.id AS sale_id, CONCAT('BP', ss.id) AS bp_sale_id, ss.invoice_number,
+            `SELECT sp.id AS payment_id, ss.id AS sale_id, CONCAT('BP', ss.id) AS bp_sale_id, ss.invoice_number, ss.credit_photo_url,
                     DATE_FORMAT(sp.payment_date, '%Y-%m-%d') AS credit_date, sp.credit_days,
                     DATE_FORMAT(DATE_ADD(sp.payment_date, INTERVAL COALESCE(sp.credit_days, 0) DAY), '%Y-%m-%d') AS due_date,
                     GREATEST(0, DATEDIFF(CURDATE(), DATE_ADD(sp.payment_date, INTERVAL COALESCE(sp.credit_days, 0) DAY))) AS overdue_days,

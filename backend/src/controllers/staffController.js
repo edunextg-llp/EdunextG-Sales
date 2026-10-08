@@ -1821,7 +1821,7 @@ export const moveUnupdatedSalesToDelivery = async (req, res) => {
 export const updatePackagingStatus = async (req, res) => {
     try {
         const { saleId } = req.params;
-        const { packagingStatus, deliveryBoyId, vehicleNo, deliveryDate, statusDate, expectedStatus, packedItemCount, boxCount, packetCount, packedById } = req.body;
+        const { packagingStatus, deliveryBoyId, deliveryStaffId, vehicleNo, deliveryDate, statusDate, expectedStatus, packedItemCount, boxCount, packetCount, packedById } = req.body;
         const cancellationReason = String(req.body?.cancellationReason || '').trim();
 
         if (!['not_packing', 'packing', 'packing_done', 'out_for_delivery', 'delivered', 'cancelled', 'returned'].includes(packagingStatus)) {
@@ -1889,6 +1889,16 @@ export const updatePackagingStatus = async (req, res) => {
             normalizedPacketCount = packetValidation.value;
         }
 
+        let assignedStaffId = null;
+        if (deliveryStaffId != null && deliveryStaffId !== '') {
+            const validation = validatePositiveInteger(deliveryStaffId, 'Company staff');
+            if (!validation.valid || deliveryBoyId) return res.status(400).json({ error: 'Select either a delivery boy or company staff member.' });
+            const employee = await StaffModel.getDetails(validation.value);
+            if (!employee || Number(employee.is_active) !== 1) return res.status(400).json({ error: 'Select an active company staff member.' });
+            assignedStaffId = validation.value;
+        } else if (packagingStatus !== 'out_for_delivery') {
+            assignedStaffId = existingSale?.delivery_staff_id || null;
+        }
         const alreadyPacked = ['packing_done', 'out_for_delivery', 'delivered', 'returned'].includes(currentStatus);
         const hasPackedById = Object.prototype.hasOwnProperty.call(req.body, 'packedById');
         let normalizedPackedById = alreadyPacked ? existingSale?.packed_by_id ?? null : null;
@@ -1915,7 +1925,8 @@ export const updatePackagingStatus = async (req, res) => {
             normalizedBoxCount,
             normalizedPacketCount,
             normalizedPackedById,
-            cancellationReason || null
+            cancellationReason || null,
+            assignedStaffId
         );
         const updated = await StaffModel.getSaleById(saleId);
         res.status(200).json({

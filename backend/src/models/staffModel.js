@@ -63,7 +63,7 @@ class StaffModel {
                 if (payments.length || collections.length) continue;
                 await connection.execute(
                     `UPDATE staff_sales SET packaging_status = 'packing_done', in_suspense = 0, suspense_at = NULL,
-                     delivery_boy_id = NULL, vehicle_no = NULL, delivery_date = NULL WHERE id = ?`, [sale.id]
+                     delivery_boy_id = NULL, delivery_staff_id = NULL, vehicle_no = NULL, delivery_date = NULL WHERE id = ?`, [sale.id]
                 );
                 await connection.execute(
                     `INSERT INTO staff_sale_status_history (sale_id, status, changed_at)
@@ -809,7 +809,7 @@ class StaffModel {
                     COALESCE(cancelled.total_amount, 0) AS cancelled_amount,
                     GREATEST(0, ss.price - COALESCE(cancelled.total_amount, 0)) AS effective_price,
                     ss.invoice_number,
-                    ss.sticker_number, ss.packaging_status, ss.delivery_boy_id, ss.packed_by_id, ss.vehicle_no,
+                    ss.sticker_number, ss.packaging_status, ss.delivery_boy_id, ss.delivery_staff_id, ss.packed_by_id, ss.vehicle_no,
                     ss.in_suspense, DATE_FORMAT(ss.suspense_at, '%Y-%m-%d %H:%i:%s') AS suspense_at,
                     DATE_FORMAT(ss.delivery_date, '%Y-%m-%d') AS delivery_date,
                     DATE_FORMAT(ssh.status_updated_at, '%Y-%m-%d %H:%i:%s') AS status_updated_at,
@@ -831,7 +831,7 @@ class StaffModel {
                     sc.outlet_name, sc.outlet_erp_id, sc.location_name, sc.google_location, s.name as staff_name,
                     outlet_staff.id AS outlet_staff_id, outlet_staff.name AS outlet_staff_name,
                     DATE_FORMAT(ss.sale_date, '%d-%m-%Y') as formatted_date,
-                    db.name as delivery_boy_name,
+                    COALESCE(db.name, (SELECT name FROM staff WHERE id = ss.delivery_staff_id)) as delivery_boy_name,
                     packer.name AS packed_by_name,
                     COALESCE(staff_company.company_names, c.name) AS company_name,
                     COALESCE(staff_company.company_ids, s.company_id) AS company_ids
@@ -947,12 +947,12 @@ class StaffModel {
         const [rows] = await db.execute(
                 `SELECT ss.id,
                     ss.staff_id, ss.outlet_id, ss.sale_date, ss.item_count, ss.packed_item_count, ss.box_count, ss.packet_count, ss.price, ss.invoice_number,
-                    ss.sticker_number, ss.paid_amount, ss.balance_amount, ss.packaging_status,
+                    ss.sticker_number, ss.paid_amount, ss.balance_amount, ss.packaging_status, ss.delivery_staff_id, ss.delivery_boy_id,
                     ss.packed_by_id,
                     DATE_FORMAT(ss.delivery_date, '%Y-%m-%d') AS delivery_date,
                     DATE_FORMAT(ssh.status_updated_at, '%Y-%m-%d %H:%i:%s') AS status_updated_at,
                     sc.outlet_name, sc.outlet_erp_id, sc.location_name, s.name AS staff_name,
-                    db.name AS delivery_boy_name, packer.name AS packed_by_name, ss.vehicle_no
+                    COALESCE(db.name, (SELECT name FROM staff WHERE id = ss.delivery_staff_id)) AS delivery_boy_name, packer.name AS packed_by_name, ss.vehicle_no
              FROM staff_sales ss
              LEFT JOIN staff_counters sc ON ss.outlet_id = sc.id
              LEFT JOIN staff s ON ss.staff_id = s.id
@@ -1038,7 +1038,7 @@ class StaffModel {
             `SELECT ss.id,
                     ss.staff_id, ss.outlet_id, ss.sale_date, ss.item_count, ss.packed_item_count,
                     ss.box_count, ss.packet_count, ss.price, ss.invoice_number,
-                    ss.sticker_number, ss.packaging_status, ss.delivery_boy_id, ss.packed_by_id, ss.vehicle_no,
+                    ss.sticker_number, ss.packaging_status, ss.delivery_boy_id, ss.delivery_staff_id, ss.packed_by_id, ss.vehicle_no,
                     DATE_FORMAT(ss.delivery_date, '%Y-%m-%d') AS delivery_date,
                     DATE_FORMAT(ssh.status_updated_at, '%Y-%m-%d %H:%i:%s') AS status_updated_at,
                     DATE_FORMAT(ssh.packing_date, '%Y-%m-%d') AS packing_date,
@@ -1049,7 +1049,7 @@ class StaffModel {
                     s.name AS staff_name,
                     outlet_staff.id AS outlet_staff_id, outlet_staff.name AS outlet_staff_name,
                     DATE_FORMAT(ss.sale_date, '%d-%m-%Y') AS formatted_date,
-                    db.name AS delivery_boy_name,
+                    COALESCE(db.name, (SELECT name FROM staff WHERE id = ss.delivery_staff_id)) AS delivery_boy_name,
                     packer.name AS packed_by_name,
                     COALESCE(staff_company.company_names, c.name) AS company_name,
                     COALESCE(staff_company.company_ids, s.company_id) AS company_ids
@@ -1104,7 +1104,7 @@ class StaffModel {
             `SELECT ss.id,
                     ss.staff_id, ss.outlet_id, ss.sale_date, ss.item_count, ss.packed_item_count,
                     ss.box_count, ss.packet_count, ss.price, ss.invoice_number,
-                    ss.sticker_number, ss.packaging_status, ss.delivery_boy_id, ss.packed_by_id, ss.vehicle_no,
+                    ss.sticker_number, ss.packaging_status, ss.delivery_boy_id, ss.delivery_staff_id, ss.packed_by_id, ss.vehicle_no,
                     DATE_FORMAT(ss.delivery_date, '%Y-%m-%d') AS delivery_date,
                     DATE_FORMAT(ssh.status_updated_at, '%Y-%m-%d %H:%i:%s') AS status_updated_at,
                     DATE_FORMAT(ssh.packing_date, '%Y-%m-%d') AS packing_date,
@@ -1115,7 +1115,7 @@ class StaffModel {
                     s.name AS staff_name,
                     outlet_staff.id AS outlet_staff_id, outlet_staff.name AS outlet_staff_name,
                     DATE_FORMAT(ss.sale_date, '%d-%m-%Y') AS formatted_date,
-                    db.name AS delivery_boy_name,
+                    COALESCE(db.name, (SELECT name FROM staff WHERE id = ss.delivery_staff_id)) AS delivery_boy_name,
                     packer.name AS packed_by_name,
                     COALESCE(staff_company.company_names, c.name) AS company_name,
                     COALESCE(staff_company.company_ids, s.company_id) AS company_ids
@@ -1278,7 +1278,8 @@ class StaffModel {
         boxCount = null,
         packetCount = null,
         packedById = null,
-        cancellationReason = null
+        cancellationReason = null,
+        deliveryStaffId = null
     ) {
         const connection = await db.getConnection();
 
@@ -1347,7 +1348,7 @@ class StaffModel {
                          in_suspense = 0,
                          suspense_at = NULL,
                          cancellation_reason = ?,
-                         delivery_boy_id = NULL,
+                         delivery_boy_id = NULL, delivery_staff_id = NULL,
                          vehicle_no = NULL,
                          delivery_date = NULL,
                          packed_item_count = ?,
@@ -1363,15 +1364,15 @@ class StaffModel {
             if (status === 'out_for_delivery' || status === 'delivered' || status === 'returned') {
                 await connection.execute(
                     `UPDATE staff_sales 
-                     SET packaging_status = ?, delivery_boy_id = ?, vehicle_no = ?, delivery_date = ?,
+                     SET packaging_status = ?, delivery_boy_id = ?, vehicle_no = ?, delivery_date = ?, delivery_staff_id = ?,
                          in_suspense = 0, suspense_at = NULL
                      WHERE id = ?`,
-                    [status, deliveryBoyId, vehicleNo, deliveryDate, saleId]
+                    [status, deliveryStaffId ? null : deliveryBoyId, vehicleNo, deliveryDate, deliveryStaffId, saleId]
                 );
             } else {
                 await connection.execute(
                     `UPDATE staff_sales 
-                     SET packaging_status = ?, delivery_boy_id = NULL, vehicle_no = NULL, delivery_date = NULL,
+                     SET packaging_status = ?, delivery_boy_id = NULL, delivery_staff_id = NULL, vehicle_no = NULL, delivery_date = NULL,
                          in_suspense = 0, suspense_at = NULL,
                          packed_item_count = COALESCE(?, packed_item_count),
                          box_count = COALESCE(?, box_count),
@@ -1492,7 +1493,7 @@ class StaffModel {
                     COALESCE(cpr.latest_remarks, sp.remarks) AS remarks,
                     COALESCE(cpr.remarks_count, CASE WHEN sp.remarks IS NULL OR TRIM(sp.remarks) = '' THEN 0 ELSE 1 END) AS remarks_count,
                     DATE_FORMAT(cpr.latest_remark_date, '%Y-%m-%d') AS latest_remark_date,
-                    ss.invoice_number, sc.outlet_name, sc.outlet_erp_id, sc.location_name, sc.contact_number,
+                    ss.invoice_number, ss.credit_photo_url, sc.outlet_name, sc.outlet_erp_id, sc.location_name, sc.contact_number,
                     s.id AS staff_id, s.name AS staff_name,
                     COALESCE(staff_company.company_names, c.name) AS company_name,
                     COALESCE(staff_company.company_ids, s.company_id) AS company_ids,
@@ -1697,7 +1698,7 @@ class StaffModel {
                    sp.amount AS credit_amount,
                    GREATEST(0, sp.amount - COALESCE(credit_paid.paid_amount, 0)) AS balance_amount,
                    DATE_FORMAT(sp.payment_date, '%Y-%m-%d') AS sale_date, sp.credit_days,
-                   ss.invoice_number, ss.sticker_number,
+                   ss.invoice_number, ss.credit_photo_url, ss.sticker_number,
                    sc.outlet_name, sc.outlet_erp_id, sc.location_name, sc.contact_number,
                    COALESCE(s.name, db.name) AS staff_name,
                    COALESCE(tb.staff_id, tb.delivery_boy_id) AS staff_id,

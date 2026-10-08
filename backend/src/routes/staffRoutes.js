@@ -1,3 +1,5 @@
+import { requireCreditPhoto } from '../middlewares/requireCreditPhoto.js';
+import { authorizeCreditPhoto, receiveWebCreditPhoto, saveCreditPhoto, getCreditPhoto } from '../controllers/creditPhotoController.js';
 import express from 'express';
 import multer from 'multer';
 const router = express.Router();
@@ -120,14 +122,14 @@ router.get('/:id/next-bill-number', staffController.getNextBillNumber);
 router.get('/:id/sales-by-date', staffController.fetchSalesByDate);
 router.put('/counter/:counterId', staffController.editCounter);
 router.delete('/counter/:counterId', staffController.deleteCounter);
-router.put('/sales/:saleId/payment', staffController.updatePaymentMode);
+router.put('/sales/:saleId/payment', requireCreditPhoto, staffController.updatePaymentMode);
 router.post('/sales/move-to-delivery', staffController.moveUnupdatedSalesToDelivery);
 router.post('/sales/suspense', staffController.setSalesSuspense);
 router.get('/sales/:saleId/payments', staffController.getSalePayments);
 router.get('/sales/:saleId/status-history', staffController.getSaleStatusHistory);
-router.post('/sales/:saleId/payments', staffController.addSalePayment);
+router.post('/sales/:saleId/payments', requireCreditPhoto, staffController.addSalePayment);
 
-router.put('/sales/:saleId/payments/:paymentId', staffController.editSalePayment);
+router.put('/sales/:saleId/payments/:paymentId', requireCreditPhoto, staffController.editSalePayment);
 router.delete('/sales/:saleId/payments/:paymentId', staffController.deleteSalePayment);
 
 router.put('/sales/:saleId', staffController.updateSale);
@@ -138,5 +140,8 @@ router.post('/sales/:saleId/packaging-remarks', staffController.savePackagingRem
 router.post('/sales/:saleId/cancel-log', staffController.logOrderCancellation);
 router.get('/sales/:saleId/cancel-log', staffController.getOrderCancellations);
 router.get('/sales/:saleId/items', staffController.getSaleItems);
+
+router.get('/sales/:saleId/credit-photo', authorizeCreditPhoto, getCreditPhoto);
+router.post('/sales/:saleId/credit-photo', authorizeCreditPhoto, receiveWebCreditPhoto, saveCreditPhoto);
 
 export default router;

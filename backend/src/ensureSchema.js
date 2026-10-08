@@ -47,6 +47,10 @@ export async function ensureSchema() {
             INSERT IGNORE INTO sticker_sequence (id, seq_value) VALUES (1, 0)
         `);
 
+        await tryQuery(connection, `ALTER TABLE staff_sales ADD COLUMN credit_photo_url VARCHAR(1024) NULL`, 'Credit invoice photo');
+
+        await tryQuery(connection, `ALTER TABLE staff_sales ADD COLUMN delivery_staff_id INT NULL`, 'Company staff delivery assignee');
+
         // Session version for admins: bumped by "Logout from all devices"
         await tryQuery(
             connection,

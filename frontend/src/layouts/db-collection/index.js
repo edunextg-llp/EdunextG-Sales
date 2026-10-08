@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { CreditPhotoLink } from "components/CreditPhoto";
 import Card from "@mui/material/Card";
 import Icon from "@mui/material/Icon";
 import {
@@ -624,7 +625,10 @@ function DBCollection() {
                         <TableCell align="center">{String(index + 1).padStart(2, "0")}</TableCell>
                         <TableCell align="center">{formatDate(row.created_at)}</TableCell>
                         <TableCell align="center">
-                          {row.invoice_number || "N/A"}
+                          <MDBox display="flex" alignItems="center" gap={1} sx={{ whiteSpace: "nowrap" }}>
+                            <span>{row.invoice_number || "N/A"}</span>
+                            <CreditPhotoLink url={row.credit_photo_url} />
+                          </MDBox>
                           <MDTypography display="block" variant="caption" color="text">BP{row.sale_id}</MDTypography>
                         </TableCell>
                         <TableCell align="center">

@@ -1,3 +1,5 @@
+import { requireCreditPhoto } from '../middlewares/requireCreditPhoto.js';
+import { authorizeCreditPhoto, receiveCreditPhoto, saveCreditPhoto, getCreditPhoto } from '../controllers/creditPhotoController.js';
 import express from 'express';
 const router = express.Router();
 import * as deliveryBoyController from '../controllers/deliveryBoyController.js';
@@ -36,10 +38,10 @@ router.put('/mobile/items/:saleId/location', verifyDeliveryBoyToken, deliveryBoy
 router.put('/mobile/items/:saleId/contact', verifyDeliveryBoyToken, deliveryBoyController.updateMobileAssignedItemContact);
 router.get('/mobile/collections', verifyDeliveryBoyToken, deliveryBoyController.getMobileCollections);
 router.get('/mobile/credit-dues', verifyDeliveryBoyToken, deliveryBoyController.getMobileCreditDues);
-router.post('/mobile/credit-dues/:saleId/payments', verifyDeliveryBoyToken, deliveryBoyController.collectMobileCreditDue);
+router.post('/mobile/credit-dues/:saleId/payments', verifyDeliveryBoyToken, requireCreditPhoto, deliveryBoyController.collectMobileCreditDue);
 router.get('/mobile/pending-collections', verifyDeliveryBoyToken, deliveryBoyController.getMobilePendingCollections);
-router.put('/mobile/pending-collections/:collectionId', verifyDeliveryBoyToken, deliveryBoyController.editMobilePendingCollection);
-router.put('/mobile/items/:saleId/collection', verifyDeliveryBoyToken, deliveryBoyController.updateMobileCollection);
+router.put('/mobile/pending-collections/:collectionId', verifyDeliveryBoyToken, requireCreditPhoto, deliveryBoyController.editMobilePendingCollection);
+router.put('/mobile/items/:saleId/collection', verifyDeliveryBoyToken, requireCreditPhoto, deliveryBoyController.updateMobileCollection);
 router.get('/permissions', verifyTokenMiddleware, requireRole('admin'), deliveryBoyController.getPermissionUsers);
 router.put('/:id/permissions', verifyTokenMiddleware, requireRole('admin'), deliveryBoyController.updatePermissionUser);
 router.post('/', verifyTokenMiddleware, requireRole('admin'), deliveryBoyController.createDeliveryBoy);
@@ -52,5 +54,8 @@ router.put('/:id/credentials', verifyTokenMiddleware, requireRole('admin'), deli
 router.put('/:id/toggle-active', verifyTokenMiddleware, requireRole('admin'), deliveryBoyController.toggleDeliveryBoyActive);
 router.put('/:id', verifyTokenMiddleware, requireRole('admin'), deliveryBoyController.updateDeliveryBoy);
 router.delete('/:id', verifyTokenMiddleware, requireRole('admin'), deliveryBoyController.deleteDeliveryBoy);
+
+router.get('/mobile/credit-dues/:saleId/credit-photo', verifyDeliveryBoyToken, authorizeCreditPhoto, getCreditPhoto);
+router.post('/mobile/credit-dues/:saleId/credit-photo', verifyDeliveryBoyToken, authorizeCreditPhoto, receiveCreditPhoto, saveCreditPhoto);
 
 export default router;

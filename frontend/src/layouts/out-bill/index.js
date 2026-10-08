@@ -1,3 +1,4 @@
+import { CreditPhotoLink } from "components/CreditPhoto";
 import React, { useState, useEffect, useCallback } from "react";
 import {
   Table,
@@ -882,7 +883,7 @@ function OutBillPage() {
                             <TableCell align="center">{credit.outlet_erp_id || "N/A"}</TableCell>
                             <TableCell align="center">{credit.contact_number || "N/A"}</TableCell>
                             <TableCell align="center">{credit.sticker_number}</TableCell>
-                            <TableCell align="center">{credit.invoice_number}</TableCell>
+                            <TableCell align="center">{credit.invoice_number}<CreditPhotoLink url={credit.credit_photo_url} /></TableCell>
                             <TableCell align="center">{credit.staff_name}</TableCell>
                             <TableCell align="center">{credit.company_name || "N/A"}</TableCell>
                             <TableCell
@@ -965,7 +966,7 @@ function OutBillPage() {
                             <TableCell align="center">{bill.outlet_erp_id || "N/A"}</TableCell>
                             <TableCell align="center">{bill.contact_number || "N/A"}</TableCell>
                             <TableCell align="center">{bill.sticker_number}</TableCell>
-                            <TableCell align="center">{bill.invoice_number}</TableCell>
+                            <TableCell align="center">{bill.invoice_number}<CreditPhotoLink url={bill.credit_photo_url} /></TableCell>
                             <TableCell align="center">{formatTakerName(bill)}</TableCell>
                             <TableCell align="center">{bill.company_name || "N/A"}</TableCell>
                             <TableCell

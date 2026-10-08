@@ -1,3 +1,4 @@
+import CreditPhoto from "components/CreditPhoto";
 import { Fragment, useState, useEffect, useRef, useCallback } from "react";
 import { notifySalesUpdated, useSalesPolling } from "utils/salesSync";
 import { downloadSalesExcel } from "utils/downloadSalesExcel";
@@ -167,6 +168,8 @@ function UpdatePayment() {
   const [deletingPaymentId, setDeletingPaymentId] = useState(null);
   const [editingPaymentId, setEditingPaymentId] = useState(null);
   const [activeCreditPayment, setActiveCreditPayment] = useState(null);
+  const [photoBusy, setPhotoBusy] = useState(false);
+  const [photoSaleId, setPhotoSaleId] = useState(null);
   const [deliveryBoys, setDeliveryBoys] = useState([]);
   const [cancelDialogSale, setCancelDialogSale] = useState(null);
   const [cancellingFullBillId, setCancellingFullBillId] = useState(null);
@@ -2175,7 +2178,7 @@ function UpdatePayment() {
                           <MenuItem value="cash">Cash</MenuItem>
                           <MenuItem value="upi">UPI</MenuItem>
                           <MenuItem value="cheque">Cheque</MenuItem>
-                          {!activeCreditPayment && <MenuItem value="credit">Credit</MenuItem>}
+                          {!activeCreditPayment && (!hasCreditEntry || payments.some((payment) => payment.id === editingPaymentId && payment.payment_mode === "credit")) && <MenuItem value="credit">Credit</MenuItem>}
                         </Select>
                       </FormControl>
                     </Grid>
@@ -2362,12 +2365,13 @@ function UpdatePayment() {
                       The full remaining balance is placed on credit for up to 14 days. Balance stays the same until paid by cash, UPI, or cheque.
                     </MDTypography>
                   )}
+                  {paymentForm.paymentMode === "credit" && paymentDialogSale && <CreditPhoto key={paymentDialogSale.id} api={API} saleId={Number(paymentDialogSale.id)} disabled={addingPayment || photoBusy} onBusyChange={setPhotoBusy} onPhotoReady={setPhotoSaleId} />}
                   <MDBox mt={2} display="flex" gap={1} flexWrap="wrap">
                     <MDButton
                       variant="gradient"
                       color="info"
                       onClick={handleSavePayment}
-                      disabled={addingPayment}
+                      disabled={addingPayment || photoBusy || (paymentForm.paymentMode === "credit" && photoSaleId !== Number(paymentDialogSale?.id))}
                     >
                       <Icon sx={{ mr: 1 }}>{editingPaymentId ? "save" : "add"}</Icon>
                       {addingPayment
@@ -2381,7 +2385,7 @@ function UpdatePayment() {
                         variant="outlined"
                         color="dark"
                         onClick={cancelEditPayment}
-                        disabled={addingPayment}
+                        disabled={addingPayment || photoBusy}
                       >
                         Cancel
                       </MDButton>
@@ -2391,7 +2395,7 @@ function UpdatePayment() {
                         variant="outlined"
                         color="dark"
                         onClick={cancelEditPayment}
-                        disabled={addingPayment}
+                        disabled={addingPayment || photoBusy}
                       >
                         Cancel
                       </MDButton>

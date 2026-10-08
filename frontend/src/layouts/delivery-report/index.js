@@ -30,6 +30,19 @@ export default function DeliveryReport() {
   const [viewBill, setViewBill] = useState(null);
   const [viewGroup, setViewGroup] = useState(null);
   const [boy, setBoy] = useState("");
+  const [assigneeType, setAssigneeType] = useState("");
+  const [assigneeCompany, setAssigneeCompany] = useState("");
+  const marketingStaff = boys.filter((person) => String(person.id).startsWith("staff:") && (!person.staff_category || person.staff_category === "company_staff"));
+  const staffCompanyIds = (person) => String(person.company_ids || person.company_id || "").split(",").map((id) => id.trim()).filter(Boolean);
+  const companyMap = new Map();
+  marketingStaff.forEach((person) => {
+    const names = String(person.company_name || "").split(",").map((name) => name.trim());
+    staffCompanyIds(person).forEach((id, index) => companyMap.set(id, names[index] || `Company ${id}`));
+  });
+  const assigneeCompanies = [...companyMap.entries()].sort((a, b) => a[1].localeCompare(b[1]));
+  const eligibleAssignees = assigneeType === "delivery_boy"
+    ? boys.filter((person) => !String(person.id).startsWith("staff:"))
+    : marketingStaff.filter((person) => assigneeCompany && staffCompanyIds(person).includes(assigneeCompany));
   const [date, setDate] = useState(today);
   const [vehicle, setVehicle] = useState("");
   const [saving, setSaving] = useState(false);
@@ -41,10 +54,10 @@ export default function DeliveryReport() {
   const busy = useRef(false);
   const load = useCallback(async () => {
     try {
-      const responses = await Promise.all([fetch(API + "/staff/sales/by-date"), fetch(API + "/delivery-boy")]);
+      const responses = await Promise.all([fetch(API + "/staff/sales/by-date"), fetch(API + "/delivery-boy"), fetch(API + "/staff")]);
       if (responses.some((r) => !r.ok)) throw new Error("Unable to load delivery report");
-      const [rows, staff] = await Promise.all(responses.map((r) => r.json()));
-      setSales(rows.filter((row) => Number(row.in_suspense) !== 1)); setBoys(staff.filter((b) => b.role === "delivery_boy" && Number(b.is_active) === 1));
+      const [rows, staff, companyStaff] = await Promise.all(responses.map((r) => r.json()));
+      setSales(rows.filter((row) => Number(row.in_suspense) !== 1)); setBoys([...staff.filter((b) => b.role === "delivery_boy" && Number(b.is_active) === 1), ...companyStaff.filter((person) => Number(person.is_active) === 1).map((person) => ({ ...person, id: "staff:" + person.id, name: person.name + " (Company staff)" }))]);
     } catch (err) { setError(err.message); }
   }, []);
   useEffect(() => { void load(); }, [load]);
@@ -100,7 +113,7 @@ export default function DeliveryReport() {
     setSelected(ids);
     setError("");
     setMessage(ids.length
-      ? route.name + ": " + ids.length + " bills selected. Click Assign to choose the delivery boy."
+      ? route.name + ": " + ids.length + " bills selected. Click Assign to choose the delivery boy or company staff."
       : route.name + " has no pending bills.");
   };
   const chosen = pending.filter((row) => selected.includes(String(row.id)));
@@ -115,7 +128,8 @@ export default function DeliveryReport() {
   const toggle = (rows) => { const ids = rows.map((row) => String(row.id)); setSelected((prev) => ids.every((id) => prev.includes(id)) ? prev.filter((id) => !ids.includes(id)) : [...new Set([...prev, ...ids])]); };
   const stage = () => {
     if (busy.current || !chosen.length) return;
-    if (!boy || !date || !vehicle.trim()) { setError("Select delivery boy, date and vehicle number."); return; }
+    if (!assigneeType || !eligibleAssignees.some((person) => String(person.id) === boy)) { setError("Choose an assignment type and an employee from the selected company."); return; }
+    if (!boy || !date || !vehicle.trim()) { setError("Select delivery boy or company staff, date and vehicle number."); return; }
     setDrafts((prev) => [...prev, { id: Date.now(), boy, name: boys.find((person) => String(person.id) === boy)?.name || "Delivery Boy", date, vehicle: vehicle.trim(), rows: chosen }]);
     setSelected([]); setRouteId(""); setOpen(false); setError("");
     setMessage(chosen.length + " bills added to View. Use Submit in View to send assignments.");
@@ -145,7 +159,7 @@ export default function DeliveryReport() {
       try {
         const response = await fetch(API + "/staff/sales/" + row.id + "/packaging", {
           method: "PUT", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ packagingStatus: "out_for_delivery", expectedStatus: row.packaging_status, deliveryBoyId: Number(draft.boy), deliveryDate: draft.date, vehicleNo: draft.vehicle }),
+          body: JSON.stringify({ packagingStatus: "out_for_delivery", expectedStatus: row.packaging_status, deliveryBoyId: String(draft.boy).startsWith("staff:") ? null : Number(draft.boy), deliveryStaffId: String(draft.boy).startsWith("staff:") ? Number(String(draft.boy).slice(6)) : null, deliveryDate: draft.date, vehicleNo: draft.vehicle }),
         });
         if (!response.ok) { const result = await response.json(); throw new Error(result.error || "Assignment failed"); }
         moved.push(String(row.id));
@@ -156,7 +170,7 @@ export default function DeliveryReport() {
     setSales((prev) => prev.filter((row) => !moved.includes(String(row.id))));
     setDrafts((prev) => remainingAssignments(prev, moved, removeIds));
     setRemoveIds([]);
-    setMessage(moved.length + " bills assigned and sent to the delivery boys’ apps.");
+    setMessage(moved.length + " bills assigned and sent to the assigned employees’ apps.");
     if (failed.length) setError(failed.join("; "));
     notifySalesUpdated(); await load(); busy.current = false; setSaving(false);
   };
@@ -307,10 +321,30 @@ export default function DeliveryReport() {
         <DialogTitle>Assign {chosen.length} bills</DialogTitle>
         <DialogContent dividers><MDBox display="flex" flexDirection="column" gap={2}>
           {error && <MDTypography variant="body2" color="error">{error}</MDTypography>}
-          <FormControl fullWidth><InputLabel id="report-boy-label">Delivery Boy</InputLabel><Select labelId="report-boy-label" label="Delivery Boy" value={boy} disabled={saving} onChange={(event) => setBoy(event.target.value)} sx={{ height: 44 }}>{boys.map((person) => <MenuItem key={person.id} value={String(person.id)}>{person.name}</MenuItem>)}</Select></FormControl>
+          <FormControl fullWidth>
+            <InputLabel id="report-assignee-type-label">Assign To</InputLabel>
+            <Select labelId="report-assignee-type-label" label="Assign To" value={assigneeType} disabled={saving} onChange={(event) => { setAssigneeType(event.target.value); setAssigneeCompany(""); setBoy(""); setError(""); }} sx={{ height: 44 }}>
+              <MenuItem value="delivery_boy">Delivery Boy</MenuItem>
+              <MenuItem value="marketing_staff">Marketing Staff</MenuItem>
+            </Select>
+          </FormControl>
+          {assigneeType === "marketing_staff" && <FormControl fullWidth>
+            <InputLabel id="report-assignee-company-label">Company</InputLabel>
+            <Select labelId="report-assignee-company-label" label="Company" value={assigneeCompany} disabled={saving} onChange={(event) => { setAssigneeCompany(event.target.value); setBoy(""); }} sx={{ height: 44 }}>
+              {assigneeCompanies.map(([id, name]) => <MenuItem key={id} value={id}>{name}</MenuItem>)}
+              {!assigneeCompanies.length && <MenuItem disabled>No companies with active marketing staff</MenuItem>}
+            </Select>
+          </FormControl>}
+          {(assigneeType === "delivery_boy" || (assigneeType === "marketing_staff" && assigneeCompany)) && <FormControl fullWidth>
+            <InputLabel id="report-boy-label">{assigneeType === "delivery_boy" ? "Delivery Boy" : "Staff Name"}</InputLabel>
+            <Select labelId="report-boy-label" label={assigneeType === "delivery_boy" ? "Delivery Boy" : "Staff Name"} value={boy} disabled={saving} onChange={(event) => setBoy(event.target.value)} sx={{ height: 44 }}>
+              {eligibleAssignees.map((person) => <MenuItem key={person.id} value={String(person.id)}>{person.name.replace(/ \(Company staff\)$/, "")}</MenuItem>)}
+              {!eligibleAssignees.length && <MenuItem disabled>No active staff available</MenuItem>}
+            </Select>
+          </FormControl>}
           <MDInput type="date" label="Delivery Date" InputLabelProps={{ shrink: true }} value={date} disabled={saving} onChange={(event) => setDate(event.target.value)} />
           <MDInput label="Vehicle Number" value={vehicle} disabled={saving} onChange={(event) => setVehicle(event.target.value)} />
-          <MDTypography variant="caption">This adds bills to your draft. Open View and Submit to send them to the delivery boy’s app. Drafts remain here until you leave or reload this page.</MDTypography>
+          <MDTypography variant="caption">This adds bills to your draft. Open View and Submit to send them to the assigned employee’s app. Drafts remain here until you leave or reload this page.</MDTypography>
         </MDBox></DialogContent>
         <DialogActions><MDButton color="secondary" disabled={saving} onClick={() => setOpen(false)}>Cancel</MDButton><MDButton color="info" variant="gradient" disabled={saving || !chosen.length} onClick={stage}>Add to View</MDButton></DialogActions>
       </Dialog>

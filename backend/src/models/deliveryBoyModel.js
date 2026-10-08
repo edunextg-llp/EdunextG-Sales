@@ -365,15 +365,15 @@ class DeliveryBoyModel {
             .map(({ row }) => row);
     }
 
-    static async updateAssignedSaleStatus(deliveryBoyId, saleId, status, cancellationReason = null) {
+    static async updateAssignedSaleStatus(deliveryBoyId, saleId, status, cancellationReason = null, companyStaff = false) {
         const connection = await db.getConnection();
 
         try {
             await connection.beginTransaction();
             const [rows] = await connection.execute(
-                `SELECT id, packaging_status
+                `SELECT id, packaging_status${companyStaff ? ", (SELECT COALESCE(NULLIF(TRIM(sc.google_location), ''), NULLIF(TRIM(sc.delivery_google_location), '')) FROM staff_counters sc WHERE sc.id = staff_sales.outlet_id) AS google_location" : ''}
                  FROM staff_sales
-                 WHERE id = ? AND delivery_boy_id = ?
+                 WHERE id = ? AND ${companyStaff ? 'delivery_staff_id' : 'delivery_boy_id'} = ?
                  FOR UPDATE`,
                 [saleId, deliveryBoyId]
             );
@@ -388,6 +388,8 @@ class DeliveryBoyModel {
                 await connection.rollback();
                 return { locked: true, packaging_status: sale.packaging_status };
             }
+
+            if (companyStaff && status === 'delivered' && !sale.google_location?.trim()) throw new Error('OUTLET_LOCATION_REQUIRED');
 
             if (status === 'cancelled') {
                 if (sale.packaging_status !== 'cancelled') {
@@ -414,14 +416,14 @@ class DeliveryBoyModel {
                          packed_item_count = ?,
                          box_count = NULL,
                          packet_count = NULL
-                     WHERE id = ? AND delivery_boy_id = ?`,
+                     WHERE id = ? AND ${companyStaff ? 'delivery_staff_id' : 'delivery_boy_id'} = ?`,
                     [cancellationReason, resetPackedCount, saleId, deliveryBoyId]
                 );
             } else {
                 await connection.execute(
                     `UPDATE staff_sales
                      SET packaging_status = ?
-                     WHERE id = ? AND delivery_boy_id = ?`,
+                     WHERE id = ? AND ${companyStaff ? 'delivery_staff_id' : 'delivery_boy_id'} = ?`,
                     [status, saleId, deliveryBoyId]
                 );
 
@@ -439,6 +441,7 @@ class DeliveryBoyModel {
                 return { id: saleId, packaging_status: 'cancelled', delivery_cancelled: true };
             }
 
+            if (companyStaff) return { id: saleId, packaging_status: status };
             const updatedRows = await DeliveryBoyModel.getAssignedSales(deliveryBoyId);
             return updatedRows.find((item) => Number(item.id) === Number(saleId)) || null;
         } catch (error) {
@@ -487,13 +490,13 @@ class DeliveryBoyModel {
         return { id: saleId, contact_number: contactNumber };
     }
 
-    static async updateAssignedSaleLocation(deliveryBoyId, saleId, googleLocation) {
+    static async updateAssignedSaleLocation(deliveryBoyId, saleId, googleLocation, companyStaff = false) {
         const [result] = await db.execute(
             `UPDATE staff_counters sc
              INNER JOIN staff_sales ss ON ss.outlet_id = sc.id
              SET sc.google_location = ?, sc.delivery_google_location = ?
              WHERE ss.id = ?
-               AND ss.delivery_boy_id = ?
+               AND ss.${companyStaff ? 'delivery_staff_id' : 'delivery_boy_id'} = ?
                AND ss.packaging_status = 'out_for_delivery'
                AND (sc.google_location IS NULL OR TRIM(sc.google_location) = '')
                AND (sc.delivery_google_location IS NULL OR TRIM(sc.delivery_google_location) = '')`,

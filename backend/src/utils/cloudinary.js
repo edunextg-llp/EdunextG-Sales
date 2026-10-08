@@ -1,4 +1,10 @@
 import { v2 as cloudinary } from 'cloudinary';
+import dotenv from 'dotenv';
+import { fileURLToPath } from 'node:url';
+
+// Resolve against this module, not the directory used to launch the server.
+// Existing deployment environment variables keep precedence over the local file.
+dotenv.config({ path: fileURLToPath(new URL('../../.env', import.meta.url)), quiet: true });
 
 function isCloudinaryConfigured() {
     return Boolean(

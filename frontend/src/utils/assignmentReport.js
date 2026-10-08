@@ -7,9 +7,9 @@ export function groupAssignments(rows, areaOrder = []) {
   const groups = new Map();
   const seen = new Set();
   rows.forEach((row) => {
-    if (!row.delivery_boy_id || seen.has(String(row.id))) return;
+    if ((!row.delivery_boy_id && !row.delivery_staff_id) || seen.has(String(row.id))) return;
     seen.add(String(row.id));
-    const key = String(row.delivery_boy_id);
+    const key = row.delivery_staff_id ? `staff:${row.delivery_staff_id}` : String(row.delivery_boy_id);
     const group = groups.get(key) || { id: key, name: row.delivery_boy_name || `Employee ${key}`, rows: [], total: 0 };
     group.rows.push(row); group.total += invoiceValue(row); groups.set(key, group);
   });
@@ -122,7 +122,7 @@ export function assignmentEditRequests(rows, { boy, date, vehicle, keepIds }) {
     if (!keep.has(String(row.id))) {
       return [{ row, body: { packagingStatus: 'packing_done', expectedStatus: 'out_for_delivery' } }];
     }
-    const unchanged = String(row.delivery_boy_id) === String(boy)
+    const unchanged = (row.delivery_staff_id ? `staff:${row.delivery_staff_id}` : String(row.delivery_boy_id)) === String(boy)
       && String(row.delivery_date || '') === String(date)
       && String(row.vehicle_no || '').trim() === String(vehicle).trim();
     if (unchanged) return [];
@@ -130,7 +130,7 @@ export function assignmentEditRequests(rows, { boy, date, vehicle, keepIds }) {
       row,
       body: {
         packagingStatus: 'out_for_delivery', expectedStatus: 'out_for_delivery',
-        deliveryBoyId: Number(boy), deliveryDate: date, vehicleNo: String(vehicle).trim(),
+        ...(String(boy).startsWith('staff:') ? { deliveryStaffId: Number(String(boy).slice(6)), deliveryBoyId: null } : { deliveryBoyId: Number(boy) }), deliveryDate: date, vehicleNo: String(vehicle).trim(),
       },
     }];
   });

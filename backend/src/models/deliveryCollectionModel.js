@@ -105,7 +105,7 @@ class DeliveryCollectionModel {
         return rows.map(DeliveryCollectionModel.normalizeRow);
     }
 
-    static async getOutstandingSalesForDeliveryBoy(deliveryBoyId, executor = db) {
+    static async getOutstandingSalesForDeliveryBoy(deliveryBoyId, executor = db, companyStaff = false) {
         const [rows] = await executor.execute(
             `SELECT ss.id AS sale_id, ss.price, ss.paid_amount,
                     GREATEST(0, ss.price - COALESCE(cancelled.total, 0) - COALESCE(paid.total, 0)) AS balance_amount,
@@ -113,7 +113,7 @@ class DeliveryCollectionModel {
                     CASE WHEN assigned_bill.sale_id IS NOT NULL THEN 'taken_bill' ELSE 'delivery' END AS collection_source,
                     DATE_FORMAT(ss.delivery_date, '%Y-%m-%d') AS delivery_date,
                     DATE_FORMAT(ss.sale_date, '%Y-%m-%d') AS sale_date,
-                    ss.invoice_number, sc.outlet_name, sc.outlet_erp_id,
+                    ss.invoice_number, ss.credit_photo_url, sc.outlet_name, sc.outlet_erp_id,
                     sc.location_name, COALESCE(c.name, 'Company not assigned') AS company_name
              FROM staff_sales ss
              INNER JOIN staff_counters sc ON sc.id = ss.outlet_id
@@ -123,7 +123,7 @@ class DeliveryCollectionModel {
                  SELECT DISTINCT sp.sale_id
                  FROM taken_bills tb
                  INNER JOIN sale_payments sp ON sp.id = tb.payment_id
-                 WHERE tb.delivery_boy_id = ? AND tb.collector_type = 'bawarchee_staff'
+                 WHERE tb.${companyStaff ? 'staff_id' : 'delivery_boy_id'} = ? AND tb.collector_type = '${companyStaff ? 'company_staff' : 'bawarchee_staff'}'
                    AND tb.returned_at IS NULL
                    AND sp.payment_mode = 'credit'
                    AND sp.amount > COALESCE((SELECT SUM(child.amount) FROM sale_payments child
@@ -156,7 +156,7 @@ class DeliveryCollectionModel {
                     WHERE pending.sale_id = ss.id AND pending.settled_at IS NULL
                ))
                AND (assigned_bill.sale_id IS NOT NULL OR (
-                    ss.delivery_boy_id = ? AND NOT EXISTS (
+                    ss.${companyStaff ? 'delivery_staff_id' : 'delivery_boy_id'} = ? AND NOT EXISTS (
                         SELECT 1 FROM delivery_boy_collections submitted
                         WHERE submitted.sale_id = ss.id
                     ) AND EXISTS (
@@ -177,14 +177,15 @@ class DeliveryCollectionModel {
         }));
     }
 
-    static async collectOutstandingPayment(deliveryBoyId, saleId, data) {
+    static async collectOutstandingPayment(deliveryBoyId, saleId, data, companyStaff = false) {
         const connection = await db.getConnection();
         try {
             await connection.beginTransaction();
             await connection.execute('SELECT id FROM staff_sales WHERE id = ? FOR UPDATE', [saleId]);
-            const due = (await this.getOutstandingSalesForDeliveryBoy(deliveryBoyId, connection))
+            const due = (await this.getOutstandingSalesForDeliveryBoy(deliveryBoyId, connection, companyStaff))
                 .find((row) => Number(row.sale_id) === Number(saleId));
             if (!due) { await connection.rollback(); return null; }
+            if (due.collection_source === 'taken_bill' && data.paymentMode === 'credit') throw new Error('TAKEN_BILL_ALREADY_CREDIT');
             const price = await PaymentModel.getEffectiveSalePrice(connection, saleId);
             const paid = await PaymentModel.getTotalPaid(connection, saleId);
             // Money already waiting in D.B. Collection can't be collected again.
@@ -201,8 +202,8 @@ class DeliveryCollectionModel {
             }
             const [result] = await connection.execute(
                 `INSERT INTO delivery_boy_collections
-                 (sale_id, delivery_boy_id, payment_mode, amount, cash_details, reference_no, reference_date, credit_days, remarks, collection_source, settled_at)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)`,
+                 (sale_id, ${companyStaff ? 'staff_id' : 'delivery_boy_id'}, collector_type, payment_mode, amount, cash_details, reference_no, reference_date, credit_days, remarks, collection_source, settled_at)
+                 VALUES (?, ?, '${companyStaff ? 'company_staff' : 'delivery_boy'}', ?, ?, ?, ?, ?, ?, ?, ?, NULL)`,
                 [saleId, deliveryBoyId, data.paymentMode, data.amount,
                  data.cashDetails ? JSON.stringify(data.cashDetails) : null,
                  data.referenceNo, data.referenceDate, data.creditDays, `Mobile payment for BP${saleId}`, due.collection_source]
@@ -217,7 +218,7 @@ class DeliveryCollectionModel {
 
     // Payments this delivery boy submitted from the app that the office has not settled yet.
     // These stay visible in the app so the mode or amount can still be corrected.
-    static async getPendingCollectionsForDeliveryBoy(deliveryBoyId, executor = db) {
+    static async getPendingCollectionsForDeliveryBoy(deliveryBoyId, executor = db, companyStaff = false) {
         const [rows] = await executor.execute(
             `SELECT dbc.id AS collection_id, dbc.sale_id, dbc.payment_mode, dbc.amount,
                     dbc.reference_no, DATE_FORMAT(dbc.reference_date, '%Y-%m-%d') AS reference_date,
@@ -225,7 +226,7 @@ class DeliveryCollectionModel {
                     DATE_FORMAT(dbc.created_at, '%Y-%m-%d %H:%i:%s') AS created_at,
                     DATE_FORMAT(dbc.updated_at, '%Y-%m-%d %H:%i:%s') AS updated_at,
                     DATE_FORMAT(ss.sale_date, '%Y-%m-%d') AS sale_date,
-                    ss.invoice_number, sc.outlet_name, sc.outlet_erp_id,
+                    ss.invoice_number, ss.credit_photo_url, sc.outlet_name, sc.outlet_erp_id,
                     COALESCE(c.name, 'Company not assigned') AS company_name,
                     GREATEST(0, ss.price - COALESCE(cancelled.total, 0) - COALESCE(paid.total, 0)) AS max_amount,
                     COALESCE(credit_due.credit_amount, 0) AS credit_amount
@@ -252,8 +253,8 @@ class DeliveryCollectionModel {
                  WHERE credit.payment_mode = 'credit'
                  GROUP BY credit.sale_id
              ) credit_due ON credit_due.sale_id = ss.id
-             WHERE dbc.delivery_boy_id = ? AND dbc.settled_at IS NULL
-               AND COALESCE(dbc.collector_type, 'delivery_boy') = 'delivery_boy'
+             WHERE dbc.${companyStaff ? 'staff_id' : 'delivery_boy_id'} = ? AND dbc.settled_at IS NULL
+               AND COALESCE(dbc.collector_type, 'delivery_boy') = '${companyStaff ? 'company_staff' : 'delivery_boy'}'
              ORDER BY dbc.created_at DESC, dbc.id DESC`,
             [deliveryBoyId]
         );
@@ -266,19 +267,20 @@ class DeliveryCollectionModel {
     }
 
     // Lets the delivery boy correct the mode/amount of a payment until the office settles it.
-    static async updatePendingCollection(deliveryBoyId, collectionId, data) {
+    static async updatePendingCollection(deliveryBoyId, collectionId, data, companyStaff = false) {
         const connection = await db.getConnection();
         try {
             await connection.beginTransaction();
             const [rows] = await connection.execute(
-                `SELECT id, sale_id FROM delivery_boy_collections
-                 WHERE id = ? AND delivery_boy_id = ? AND settled_at IS NULL
-                   AND COALESCE(collector_type, 'delivery_boy') = 'delivery_boy'
+                `SELECT id, sale_id, collection_source FROM delivery_boy_collections
+                 WHERE id = ? AND ${companyStaff ? 'staff_id' : 'delivery_boy_id'} = ? AND settled_at IS NULL
+                   AND COALESCE(collector_type, 'delivery_boy') = '${companyStaff ? 'company_staff' : 'delivery_boy'}'
                  FOR UPDATE`,
                 [collectionId, deliveryBoyId]
             );
             const collection = rows[0];
             if (!collection) { await connection.rollback(); return null; }
+            if (collection.collection_source === 'taken_bill' && data.paymentMode === 'credit') throw new Error('TAKEN_BILL_ALREADY_CREDIT');
             await connection.execute('SELECT id FROM staff_sales WHERE id = ? FOR UPDATE', [collection.sale_id]);
             const price = await PaymentModel.getEffectiveSalePrice(connection, collection.sale_id);
             const paid = await PaymentModel.getTotalPaid(connection, collection.sale_id);
@@ -557,7 +559,7 @@ class DeliveryCollectionModel {
                     DATE_FORMAT(dbc.updated_at, '%Y-%m-%d %H:%i:%s') AS updated_at,
                     dbc.collection_source,
                     COALESCE(dbc.collector_type, 'delivery_boy') AS collector_type, dbc.staff_id,
-                    ss.invoice_number, ss.price, ss.paid_amount, ss.balance_amount,
+                    ss.invoice_number, ss.credit_photo_url, ss.price, ss.paid_amount, ss.balance_amount,
                     ss.packaging_status,
                     sc.outlet_name,
                     COALESCE(dboy.name, collector_staff.name) AS delivery_boy_name,

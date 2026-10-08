@@ -487,7 +487,7 @@ export const getMobileCreditDues = async (req, res) => {
     }
 };
 
-function parseMobilePayment(body = {}) {
+export function parseMobilePayment(body = {}) {
     const paymentMode = String(body.paymentMode || '').trim().toLowerCase();
     if (!['cash', 'upi', 'cheque', 'credit'].includes(paymentMode)) return { error: 'Select cash, UPI, cheque, or credit' };
     let amount;
@@ -515,7 +515,8 @@ function parseMobilePayment(body = {}) {
     return { payment: { paymentMode, amount, cashDetails, referenceNo, referenceDate, creditDays } };
 }
 
-function sendMobilePaymentError(res, error, fallback) {
+export function sendMobilePaymentError(res, error, fallback) {
+    if (error.message === 'TAKEN_BILL_ALREADY_CREDIT') return res.status(400).json({ error: 'This Out Bill is already on credit. Select cash, UPI, or cheque.' });
     if (error.message === 'FULL_CREDIT_BALANCE_REQUIRED') return res.status(400).json({ error: 'Use the full outstanding balance when extending existing credit' });
     if (error.message === 'EXISTING_CREDIT_DUE') return res.status(400).json({ error: 'Credit is unavailable because this outlet already has a credit due' });
     if (error.message === 'PAYMENT_ALREADY_PENDING') return res.status(409).json({ error: `Rs. ${Number(error.pendingAmount).toFixed(2)} for this bill is already waiting in D.B. Collection. It can be collected again only after the office settles or removes that entry.` });

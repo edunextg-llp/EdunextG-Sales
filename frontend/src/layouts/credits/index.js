@@ -1,3 +1,4 @@
+import CreditPhoto, { CreditPhotoLink } from "components/CreditPhoto";
 import React, { useState, useEffect } from "react";
 import {
   Table,
@@ -45,6 +46,8 @@ import { useAuth } from "context/AuthContext";
 function CreditsPage() {
   const { token } = useAuth();
   const [credits, setCredits] = useState([]);
+  const [photoCredit, setPhotoCredit] = useState(null);
+  const [photoUploading, setPhotoUploading] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCompanyId, setSelectedCompanyId] = useState("");
   const [selectedStaffId, setSelectedStaffId] = useState("");
@@ -216,6 +219,9 @@ function CreditsPage() {
   };
 
   const getCreditRowSx = (credit) => {
+    if (credit.credit_photo_url) {
+      return { backgroundColor: "#dbeafe", "&:hover": { backgroundColor: "#bfdbfe" } };
+    }
     if ((Number(credit.remarks_count) || 0) > 0 || credit.remarks?.trim()) {
       return {
         backgroundColor: "#dcfce7",
@@ -1399,7 +1405,17 @@ function CreditsPage() {
                           <TableCell align="center">{credit.outlet_erp_id || "N/A"}</TableCell>
                           <TableCell align="center">{credit.contact_number || "N/A"}</TableCell>
                           <TableCell align="center">{credit.sticker_number}</TableCell>
-                          <TableCell align="center">{credit.invoice_number}</TableCell>
+                          <TableCell align="center">
+                            <MDBox display="flex" alignItems="center" gap={1} sx={{ whiteSpace: "nowrap", "& > *": { flexShrink: 0 } }}>
+                              <span>{credit.invoice_number}</span>
+                              {credit.credit_photo_url ? <>
+                                <Tooltip title="Invoice uploaded"><Icon color="info" aria-label="Invoice uploaded">check_circle</Icon></Tooltip>
+                                <CreditPhotoLink url={credit.credit_photo_url} />
+                              </> : <Tooltip title="Upload invoice (less than 1 MB)">
+                                <IconButton size="small" color="info" aria-label="Upload credit invoice" onClick={() => setPhotoCredit(credit)}><Icon>upload_file</Icon></IconButton>
+                              </Tooltip>}
+                            </MDBox>
+                          </TableCell>
                           <TableCell align="center">{credit.staff_name}</TableCell>
                           <TableCell align="center">{credit.company_name || "N/A"}</TableCell>
                           <TableCell
@@ -1465,6 +1481,25 @@ function CreditsPage() {
         </Grid>
       </MDBox>
       <Footer />
+      <Dialog open={Boolean(photoCredit)} onClose={() => { if (!photoUploading) setPhotoCredit(null); }} fullWidth maxWidth="sm">
+        <DialogTitle>Upload credit invoice {photoCredit?.invoice_number}</DialogTitle>
+        <DialogContent dividers>
+          <MDTypography variant="body2">{photoCredit?.outlet_name}</MDTypography>
+          {photoCredit && <CreditPhoto
+            key={photoCredit.sale_id}
+            api={API}
+            saleId={Number(photoCredit.sale_id)}
+            requiredForPayment={false}
+            onBusyChange={setPhotoUploading}
+            onUploaded={(url) => {
+              const saleId = Number(photoCredit.sale_id);
+              setCredits((rows) => rows.map((row) => Number(row.sale_id) === saleId ? { ...row, credit_photo_url: url } : row));
+              setPhotoCredit(null);
+            }}
+          />}
+        </DialogContent>
+        <DialogActions><MDButton color="secondary" disabled={photoUploading} onClick={() => setPhotoCredit(null)}>Done</MDButton></DialogActions>
+      </Dialog>
 
       <Dialog
         open={remarksDialog.open}
