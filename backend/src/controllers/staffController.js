@@ -82,6 +82,8 @@ import PackagingRemarkModel from '../models/packagingRemarkModel.js';
 import DeliveryCollectionModel from '../models/deliveryCollectionModel.js';
 import ExpiryListModel from '../models/expiryListModel.js';
 import DamageListModel from '../models/damageListModel.js';
+import OverdueSaleRequestModel, { getOverdueOutlets, salesMatchApproval } from '../models/overdueSaleRequestModel.js';
+import { getRequester } from './overdueSaleRequestController.js';
 import db from '../config/db.js';
 import {
     validateDigitsOnly,
@@ -1582,66 +1584,15 @@ export const recordSales = async (req, res) => {
         }
 
         const outletIds = [...new Set(validatedSales.map((sale) => sale.outletId))];
-        const counters = await StaffModel.getCountersByIds(outletIds);
-        const counterById = new Map(counters.map((counter) => [Number(counter.id), counter]));
-        const erpIds = counters.map((counter) => counter.outlet_erp_id).filter(Boolean);
-        const overdueCredits = await StaffModel.getCreditsOverdueByErp(erpIds, 3);
+        const overdueOutlets = await getOverdueOutlets(outletIds);
+        const isAdmin = req.user?.role === 'admin';
+        let claimedRequestIds = [];
+        let approvedRequests = [];
+        let adminPermission = null;
 
-        if (overdueCredits.length > 0) {
-            const overdueByErp = new Map();
-            overdueCredits.forEach((credit) => {
-                const erpKey = String(credit.outlet_erp_id || '').trim().toLowerCase();
-                if (!erpKey) return;
-                if (!overdueByErp.has(erpKey)) {
-                    overdueByErp.set(erpKey, []);
-                }
-                overdueByErp.get(erpKey).push(credit);
-            });
-
-            const overdueOutlets = outletIds
-                .map((outletId) => {
-                    const counter = counterById.get(Number(outletId));
-                    if (!counter) return null;
-                    const erpKey = String(counter.outlet_erp_id || '').trim().toLowerCase();
-                    const credits = overdueByErp.get(erpKey) || [];
-                    if (credits.length === 0) return null;
-
-                    const maxOverdueDays = Math.max(
-                        ...credits.map((credit) => Number(credit.overdue_days) || 0)
-                    );
-                    return {
-                        outletId: Number(outletId),
-                        outletErpId: counter.outlet_erp_id,
-                        outletName: counter.outlet_name,
-                        maxOverdueDays,
-                        credits: credits.map((credit) => ({
-                            creditPaymentId: credit.credit_payment_id,
-                            saleId: credit.sale_id,
-                            invoiceNumber: credit.invoice_number,
-                            stickerNumber: credit.sticker_number,
-                            creditAmount: credit.credit_amount,
-                            balanceAmount: credit.balance_amount,
-                            issueDate: credit.issue_date,
-                            dueDate: credit.due_date,
-                            creditDays: credit.credit_days,
-                            overdueDays: credit.overdue_days,
-                            creditStaffName: credit.credit_staff_name,
-                            creditOutletName: credit.outlet_name,
-                        })),
-                    };
-                })
-                .filter(Boolean);
-
-            if (overdueOutlets.length > 0 && !permissionGranted) {
-                return res.status(409).json({
-                    code: 'OVERDUE_PERMISSION_REQUIRED',
-                    error:
-                        'One or more outlets have credit overdue by more than 3 days. Permission is required to add sales.',
-                    overdueOutlets,
-                });
-            }
-
-            if (overdueOutlets.length > 0 && permissionGranted) {
+        if (overdueOutlets.length > 0) {
+            if (isAdmin && permissionGranted) {
+                // Admin is the approver, so an admin can allow it directly with a note.
                 const note = String(permissionNote || '').trim();
                 if (!note) {
                     return res.status(400).json({
@@ -1650,32 +1601,99 @@ export const recordSales = async (req, res) => {
                         overdueOutlets,
                     });
                 }
+                const admin = await getRequester(req.user);
+                adminPermission = { note, adminId: admin.id, adminName: admin.name };
+            } else {
+                // Everyone else needs an admin-approved request for this staff, date and outlet.
+                const overdueIds = overdueOutlets.map((outlet) => outlet.outletId);
+                const approvals = await OverdueSaleRequestModel.findApproved({
+                    staffId: Number(id), saleDate: date, outletIds: overdueIds,
+                });
+                const approvalByOutlet = new Map();
+                approvals.forEach((request) => {
+                    if (!approvalByOutlet.has(Number(request.outlet_id))) approvalByOutlet.set(Number(request.outlet_id), request);
+                });
+                const missing = overdueOutlets.filter((outlet) => !approvalByOutlet.has(outlet.outletId));
+                if (missing.length > 0) {
+                    const requests = await OverdueSaleRequestModel.getLatestForSale({
+                        staffId: Number(id), saleDate: date, outletIds: overdueIds,
+                    });
+                    return res.status(409).json({
+                        code: 'OVERDUE_PERMISSION_REQUIRED',
+                        approvalRequired: !isAdmin,
+                        error: isAdmin
+                            ? 'One or more outlets have credit overdue by more than 3 days. Permission is required to add sales.'
+                            : 'One or more outlets have credit overdue by more than 3 days. Send a request to admin and add the sales after it is approved.',
+                        overdueOutlets,
+                        requests,
+                    });
+                }
+                approvedRequests = overdueOutlets.map((outlet) => approvalByOutlet.get(outlet.outletId));
 
-                const permittedByAdminId = req.user?.id || null;
-                const permittedByName =
-                    req.user?.username || req.user?.email || (permittedByAdminId ? `Admin #${permittedByAdminId}` : 'Admin');
-
-                for (const overdueOutlet of overdueOutlets) {
-                    await StaffModel.createOverdueSalePermission({
-                        staffId: id,
-                        saleDate: date,
-                        outletId: overdueOutlet.outletId,
-                        outletErpId: overdueOutlet.outletErpId,
-                        outletName: overdueOutlet.outletName,
-                        maxOverdueDays: overdueOutlet.maxOverdueDays,
-                        overdueCreditIds: overdueOutlet.credits.map((credit) => credit.creditPaymentId),
-                        overdueDetails: overdueOutlet.credits,
-                        permissionNote: note,
-                        permittedByAdminId,
-                        permittedByName,
+                // The approval covers only the invoice(s) that were requested: same invoice no., amount, items.
+                const mismatched = approvedRequests.filter((request) => {
+                    const approvedSales = request.sales_payload?.sales;
+                    if (!Array.isArray(approvedSales)) return false; // old requests saved without invoice details
+                    const submitted = sales.filter((sale) => Number(sale?.outletId) === Number(request.outlet_id));
+                    return !salesMatchApproval(approvedSales, submitted);
+                });
+                if (mismatched.length > 0) {
+                    const details = mismatched.map((request) => {
+                        const summary = request.sales_summary || {};
+                        const invoices = (summary.invoiceNumbers || []).join(', ') || '-';
+                        return `${request.outlet_name || request.outlet_erp_id}: invoice ${invoices}, ₹${Number(summary.totalAmount || 0).toFixed(2)}`;
+                    });
+                    return res.status(409).json({
+                        code: 'OVERDUE_APPROVAL_MISMATCH',
+                        error: `Admin approved only the requested invoice (${details.join('; ')}). Create that invoice from the Pending list, or send a new request after using it.`,
+                        requests: mismatched,
+                    });
+                }
+                claimedRequestIds = await OverdueSaleRequestModel.claim(approvedRequests.map((request) => request.id));
+                if (claimedRequestIds.length !== approvedRequests.length) {
+                    await OverdueSaleRequestModel.release(claimedRequestIds);
+                    return res.status(409).json({
+                        error: 'This approval has already been used. Refresh and send a new request if needed.',
                     });
                 }
             }
         }
 
-        const savedSales = await StaffModel.saveSales(id, date, validatedSales, {
-            companyName: resolvedCompanyName,
-        });
+        let savedSales;
+        try {
+            savedSales = await StaffModel.saveSales(id, date, validatedSales, {
+                companyName: resolvedCompanyName,
+            });
+        } catch (saveError) {
+            await OverdueSaleRequestModel.release(claimedRequestIds).catch(() => {});
+            throw saveError;
+        }
+
+        // Keep the permission log (overdue_sale_permissions) as before.
+        try {
+            for (const overdueOutlet of overdueOutlets) {
+                const request = approvedRequests.find((item) => Number(item.outlet_id) === overdueOutlet.outletId);
+                if (!adminPermission && !request) continue;
+                await StaffModel.createOverdueSalePermission({
+                    staffId: id,
+                    saleDate: date,
+                    outletId: overdueOutlet.outletId,
+                    outletErpId: overdueOutlet.outletErpId,
+                    outletName: overdueOutlet.outletName,
+                    maxOverdueDays: overdueOutlet.maxOverdueDays,
+                    overdueCreditIds: overdueOutlet.credits.map((credit) => credit.creditPaymentId),
+                    overdueDetails: overdueOutlet.credits,
+                    permissionNote: adminPermission
+                        ? adminPermission.note
+                        : `Approved request #${request.id} (by ${request.requested_by_name || 'user'}): ${request.request_note || ''}${request.review_note ? ` | Admin: ${request.review_note}` : ''}`,
+                    permittedByAdminId: adminPermission ? adminPermission.adminId : request.reviewed_by_admin_id,
+                    permittedByName: adminPermission ? adminPermission.adminName : request.reviewed_by_name,
+                });
+            }
+        } catch (logError) {
+            console.error('Sales saved, but overdue permission log failed:', logError);
+        }
+
         const dayName = new Intl.DateTimeFormat('en-US', { weekday: 'long' }).format(
             new Date(`${date}T12:00:00`)
         );

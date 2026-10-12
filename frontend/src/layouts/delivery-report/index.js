@@ -9,10 +9,11 @@ import { Dialog, DialogTitle, DialogContent, DialogActions, TableContainer, Tabl
 import MDBox from "components/MDBox";
 import MDTypography from "components/MDTypography";
 import MDButton from "components/MDButton";
-import { buildDeliveryLog, deliveryLogColors } from "utils/deliveryLog";
+import { boxCount, buildDeliveryLog, deliveryLogColors } from "utils/deliveryLog";
 import { printDeliveryAssignmentsPdf } from "utils/printDeliveryAssignmentsPdf";
 import { IconButton, Tooltip, FormControlLabel } from "@mui/material";
 import VisibilityIcon from "@mui/icons-material/Visibility";
+import Inventory2Icon from "@mui/icons-material/Inventory2";
 import BillDetailsDialog from "./BillDetailsDialog";
 import AssignmentHistory from "./AssignmentHistory";
 import { selectedAssignments, remainingAssignments, toggleAssignmentSelection } from "utils/deliveryAssignmentSelection";
@@ -229,7 +230,7 @@ export default function DeliveryReport() {
       </DialogTitle>
       <DialogContent dividers sx={{ p: 0 }}>
         <MDBox px={1} py={0.5} bgColor="#eff6ff">
-          <MDTypography variant="caption">All companies • Packed and returned bills awaiting delivery • {report.total} pending bills</MDTypography>
+          <MDTypography variant="caption">All companies • Packed and returned bills awaiting delivery • {report.total} pending bills • {boxCount(pending)} boxes</MDTypography>
           {routeError && <MDTypography variant="caption" display="block" color="warning">{routeError}</MDTypography>}
           {message && <MDTypography variant="caption" display="block" color="success">{message}</MDTypography>}
           {error && <MDTypography variant="caption" display="block" color="error">{error}</MDTypography>}
@@ -267,6 +268,9 @@ export default function DeliveryReport() {
                           </IconButton>
                         </span></Tooltip>
                       </MDBox>
+                        {value > 0 && <Tooltip title="No. of boxes"><MDBox component="span" display="flex" alignItems="center" justifyContent="center" gap={0.25} sx={{ color: "#7c2d12", fontSize: "0.68rem", fontWeight: 600, mt: 0.25 }}>
+                          <Inventory2Icon sx={{ fontSize: 12 }} />{boxCount(bills)}
+                        </MDBox></Tooltip>}
                         {selectedCount > 0 && <MDTypography component="span" sx={{ display: "block", color: "#166534", fontSize: "0.65rem", fontWeight: 700, whiteSpace: "nowrap", mt: 0.25 }}>
                           {selectedCount}/{bills.length} selected
                         </MDTypography>}
@@ -292,7 +296,7 @@ export default function DeliveryReport() {
                   checked={groupBills.length > 0 && groupSelectedCount === groupBills.length}
                   indeterminate={groupSelectedCount > 0 && groupSelectedCount < groupBills.length}
                   onChange={() => toggle(groupBills)} inputProps={{ "aria-label": "Select all bills in this group" }} /></TableCell>
-                <TableCell>Invoice number</TableCell><TableCell>Outlet name</TableCell><TableCell>Area</TableCell><TableCell align="right">Price</TableCell>
+                <TableCell>Invoice number</TableCell><TableCell>Outlet name</TableCell><TableCell>Area</TableCell><TableCell align="center">Boxes</TableCell><TableCell align="right">Price</TableCell>
               </TableRow></TableHead>
               <TableBody>
                 {groupBills.map((row) => <TableRow key={row.id} selected={selected.includes(String(row.id))} hover>
@@ -302,15 +306,16 @@ export default function DeliveryReport() {
                   <TableCell>{row.invoice_number || "N/A"}</TableCell>
                   <TableCell>{row.outlet_name || "Outlet not assigned"}</TableCell>
                   <TableCell>{reportAreaName(row.location_name)}</TableCell>
+                  <TableCell align="center">{row.box_count ?? "—"}</TableCell>
                   <TableCell align="right" sx={{ whiteSpace: "nowrap" }}>Rs. {Number(row.price || 0).toFixed(2)}</TableCell>
                 </TableRow>)}
-                {!groupBills.length && <TableRow><TableCell colSpan={5}>No pending bills remain in this group.</TableCell></TableRow>}
+                {!groupBills.length && <TableRow><TableCell colSpan={6}>No pending bills remain in this group.</TableCell></TableRow>}
               </TableBody>
             </Table>
           </TableContainer>
         </DialogContent>
         <DialogActions sx={{ flexWrap: "wrap", gap: 1 }}>
-          <MDTypography variant="caption" sx={{ mr: "auto", pl: 1 }}>Selected here: {groupSelectedCount} / {groupBills.length} · Total selected: {chosen.length}</MDTypography>
+          <MDTypography variant="caption" sx={{ mr: "auto", pl: 1 }}>Selected here: {groupSelectedCount} / {groupBills.length} · Boxes: {boxCount(groupBills.filter((row) => selected.includes(String(row.id))))} / {boxCount(groupBills)} · Total selected: {chosen.length} ({boxCount(chosen)} boxes)</MDTypography>
           <MDButton color="warning" disabled={saving || !groupSelectedCount} onClick={moveGroupToSuspense}>
             {suspenseBusy ? "Moving…" : `Suspense (${groupSelectedCount})`}
           </MDButton>
@@ -385,7 +390,8 @@ export default function DeliveryReport() {
                         onChange={() => toggleDraftArea(group.ids)}
                         inputProps={{ "aria-label": "Select " + group.area + " / " + group.company + " for " + draft.name + " on " + draft.date }} />
                       <MDBox><MDTypography variant="button" display="block">{group.area}</MDTypography><MDTypography variant="caption">{group.company}</MDTypography></MDBox>
-                      <MDTypography variant="button" sx={{ whiteSpace: "nowrap" }}>{group.ids.filter((id) => !removeIds.includes(id)).length}/{group.count} bills</MDTypography>
+                      <MDBox textAlign="right"><MDTypography variant="button" display="block" sx={{ whiteSpace: "nowrap" }}>{group.ids.filter((id) => !removeIds.includes(id)).length}/{group.count} bills</MDTypography>
+                      <MDTypography variant="caption" sx={{ whiteSpace: "nowrap" }}>{boxCount(group.rows.filter((row) => !removeIds.includes(String(row.id))))} boxes</MDTypography></MDBox>
                       </MDBox>
                       {group.rows.map((row) => <MDBox key={row.id} display="flex" alignItems="center" gap={0.5} pl={2} py={0.25}>
                         <Checkbox size="small" disabled={saving} checked={!removeIds.includes(String(row.id))}
@@ -395,19 +401,20 @@ export default function DeliveryReport() {
                           <MDTypography variant="caption" display="block">Bill: {row.invoice_number || row.id}</MDTypography>
                           <MDTypography variant="caption" display="block">{row.outlet_name || "Outlet not assigned"}</MDTypography>
                         </MDBox>
+                        <MDTypography variant="caption" sx={{ whiteSpace: "nowrap" }}>{row.box_count ?? 0} box</MDTypography>
                         <Tooltip title="View bill details"><IconButton size="small" aria-label={"View bill " + (row.invoice_number || row.id)} onClick={() => setViewBill({ row, draft })}><VisibilityIcon fontSize="small" /></IconButton></Tooltip>
                       </MDBox>)}
                     </MDBox>)}
                     <MDButton size="small" color="error" disabled={saving || !draft.rows.some((row) => removeIds.includes(String(row.id)))} onClick={() => removeSelectedAreas(draft.id)}>Remove unselected bills</MDButton>
                   </MDBox>;
                 })}
-                <MDTypography variant="button" sx={{ mt: "auto", p: 1, backgroundColor: "#fef3c7", fontWeight: 700 }}>Selected: {batches.reduce((total, draft) => total + draft.rows.filter((row) => !removeIds.includes(String(row.id))).length, 0)} bills</MDTypography>
+                <MDTypography variant="button" sx={{ mt: "auto", p: 1, backgroundColor: "#fef3c7", fontWeight: 700 }}>Selected: {batches.reduce((total, draft) => total + draft.rows.filter((row) => !removeIds.includes(String(row.id))).length, 0)} bills · {batches.reduce((total, draft) => total + boxCount(draft.rows.filter((row) => !removeIds.includes(String(row.id)))), 0)} boxes</MDTypography>
               </MDBox>;
             })}
           </MDBox>
         </DialogContent>
         <DialogActions>
-          <MDTypography variant="button" sx={{ mr: "auto", pl: 1 }}>Selected: {selectedBillCount} of {stagedIds.size} bills</MDTypography>
+          <MDTypography variant="button" sx={{ mr: "auto", pl: 1 }}>Selected: {selectedBillCount} of {stagedIds.size} bills · {selectedDrafts.reduce((total, draft) => total + boxCount(draft.rows), 0)} boxes</MDTypography>
           <MDButton color="info" variant="outlined" disabled={saving || !selectedBillCount} onClick={() => {
             try { setError(""); printDeliveryAssignmentsPdf(selectedDrafts); }
             catch (err) { setError(err.message); }

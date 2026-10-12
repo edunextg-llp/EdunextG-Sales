@@ -177,6 +177,9 @@ export const enforceManagedUserApiScope = (req, res, next) => {
         allowed = permissions.has('create_staff');
     } else if (/^\/\d+\/sales$/.test(path)) {
         allowed = permissions.has('add_sales');
+    } else if (path === '/overdue-requests') {
+        // Add Sales users can raise a request and check its status; only admin reviews.
+        allowed = ['GET', 'POST'].includes(method) && permissions.has('add_sales');
     } else if (path === '/sales/lookup') {
         allowed = method === 'GET' && permissions.has('invoice_lookup');
     } else if (path === '/sales/by-date' || /^\/\d+\/sales-by-date$/.test(path)) {

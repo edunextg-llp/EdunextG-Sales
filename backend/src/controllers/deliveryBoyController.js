@@ -389,6 +389,21 @@ export const getMobileAssignedItems = async (req, res) => {
     }
 };
 
+/** Coordinates for every outlet on the partner's open deliveries, for the in-app route map. */
+export const getMobileRouteLocations = async (req, res) => {
+    try {
+        const date = String(req.query.date || '').trim();
+        if (date && !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+            return res.status(400).json({ error: 'date must be YYYY-MM-DD' });
+        }
+        const locations = await DeliveryBoyModel.resolveRouteCoordinates(req.deliveryBoyId, { date });
+        res.status(200).json({ locations });
+    } catch (error) {
+        console.error('Error resolving delivery route locations:', error);
+        res.status(500).json({ error: 'Unable to load outlet locations' });
+    }
+};
+
 export const getMobileCollections = async (req, res) => {
     try {
         const collections = await DeliveryCollectionModel.getForDeliveryBoy(req.deliveryBoyId);

@@ -1,3 +1,4 @@
+import { resolveGoogleMapsCoordinates } from '../utils/googleMapsLocation.js';
 import db from '../config/db.js';
 import bcrypt from 'bcryptjs';
 import { PERMISSION_KEYS, permissionColumnsSql, permissionsFromRow } from '../utils/permissionKeys.js';
@@ -308,6 +309,11 @@ class DeliveryBoyModel {
                     ss.outlet_id, sc.outlet_name, sc.outlet_erp_id, sc.contact_number, sc.location_name,
                     COALESCE(NULLIF(TRIM(sc.google_location), ''),
                              NULLIF(TRIM(sc.delivery_google_location), '')) AS google_location,
+                    sc.priority_number, sc.serial_no,
+                    CASE WHEN sc.coords_source = COALESCE(NULLIF(TRIM(sc.google_location), ''), NULLIF(TRIM(sc.delivery_google_location), ''))
+                         THEN sc.latitude END AS latitude,
+                    CASE WHEN sc.coords_source = COALESCE(NULLIF(TRIM(sc.google_location), ''), NULLIF(TRIM(sc.delivery_google_location), ''))
+                         THEN sc.longitude END AS longitude,
                     s.name AS staff_name, c.name AS company_name,
                     DATE_FORMAT(ssh.status_updated_at, '%Y-%m-%d %H:%i:%s') AS status_updated_at,
                     CASE WHEN ss.packaging_status = 'delivered'
@@ -332,7 +338,56 @@ class DeliveryBoyModel {
              ORDER BY ss.delivery_date DESC, ss.id DESC`,
             params
         );
-        return DeliveryBoyModel.sortByRoutePriority(rows);
+        return DeliveryBoyModel.sortByRoutePriority(rows.map((row) => ({
+            ...row,
+            latitude: row.latitude == null ? null : Number(row.latitude),
+            longitude: row.longitude == null ? null : Number(row.longitude),
+        })));
+    }
+
+    /**
+     * Makes sure every outlet on this delivery partner's open deliveries has coordinates
+     * read from its Google location link (short links are followed once and cached on the
+     * outlet). Returns { outletId: { latitude, longitude } | null }.
+     */
+    static async resolveRouteCoordinates(deliveryBoyId, { date = '' } = {}, resolve = resolveGoogleMapsCoordinates) {
+        const params = [deliveryBoyId];
+        let dateFilter = '';
+        if (date) { dateFilter = ' AND ss.delivery_date = ?'; params.push(date); }
+        const [rows] = await db.execute(
+            `SELECT DISTINCT sc.id AS outlet_id, sc.latitude, sc.longitude, sc.coords_source,
+                    COALESCE(NULLIF(TRIM(sc.google_location), ''), NULLIF(TRIM(sc.delivery_google_location), '')) AS link
+             FROM staff_sales ss
+             INNER JOIN staff_counters sc ON sc.id = ss.outlet_id
+             WHERE ss.delivery_boy_id = ? AND ss.packaging_status = 'out_for_delivery'${dateFilter}`,
+            params
+        );
+
+        const result = {};
+        const pending = [];
+        for (const row of rows) {
+            if (!row.link) { result[row.outlet_id] = null; continue; }
+            if (row.coords_source === row.link) {
+                result[row.outlet_id] = row.latitude == null ? null : { latitude: Number(row.latitude), longitude: Number(row.longitude) };
+                continue;
+            }
+            pending.push(row);
+        }
+
+        // Follow at most 4 links at a time so a long route doesn't flood Google.
+        for (let start = 0; start < pending.length; start += 4) {
+            await Promise.all(pending.slice(start, start + 4).map(async (row) => {
+                let coords = null;
+                try { coords = await resolve(row.link); } catch { coords = null; }
+                result[row.outlet_id] = coords;
+                // Cache failures too (NULL coords): the link is only read again after it changes.
+                await db.execute(
+                    'UPDATE staff_counters SET latitude = ?, longitude = ?, coords_source = ? WHERE id = ?',
+                    [coords?.latitude ?? null, coords?.longitude ?? null, row.link, row.outlet_id]
+                );
+            }));
+        }
+        return result;
     }
 
     // Within each delivery date, bills in route areas come first, in the

@@ -17,6 +17,7 @@ import AddCompany from "layouts/add-company";
 import AddCounter from "layouts/add-counter";
 import AddSales from "layouts/add-sales";
 import PurchaseRequisition from "layouts/purchase-requisition";
+import OverdueRequests from "layouts/overdue-requests";
 import Purchase from "layouts/purchase";
 import CreateBawarcheeStaff from "layouts/create-bawarchee-staff";
 import UpdatePayment from "layouts/update-payment";
@@ -316,6 +317,15 @@ const routes = [
     component: <PurchaseRequisition />,
     allowedRoles: ["admin", "packaging_staff", "delivery_boy"],
     requiredPermission: "requisition_approval",
+  },
+  {
+    type: "collapse",
+    name: "Overdue Requests",
+    key: "overdue-requests",
+    icon: <Icon fontSize="small">assignment_late</Icon>,
+    route: "/overdue-requests",
+    component: <OverdueRequests />,
+    allowedRoles: ["admin"],
   },
   {
     type: "collapse",

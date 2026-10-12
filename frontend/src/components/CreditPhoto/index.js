@@ -50,7 +50,7 @@ export default function CreditPhoto({ api, saleId, disabled, onBusyChange, onPho
     {url && <a href={url} target="_blank" rel="noopener noreferrer"><Box component="img" src={url} alt="Credit invoice photo" sx={{ display: "block", maxWidth: "100%", height: 140, objectFit: "contain", mb: 1 }} /></a>}
     <Box sx={{ mb: 1, fontSize: "0.8rem" }}>JPG, PNG, or WebP · Less than 1 MB</Box>
     <Button component="label" variant="outlined" disabled={disabled || busy}>
-      {busy ? "Uploading photo…" : url ? "Replace credit photo" : "Upload credit photo"}
+      {busy ? "Uploading…" : url ? "Replace credit photo" : "Upload credit photo"}
       <input hidden type="file" accept="image/jpeg,image/png,image/webp" disabled={disabled || busy} onChange={upload} />
     </Button>
     {!url && requiredForPayment && <Alert severity="info" sx={{ mt: 1 }}>Credit photo is required before submitting Credit.</Alert>}

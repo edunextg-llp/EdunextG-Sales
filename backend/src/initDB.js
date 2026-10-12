@@ -1375,6 +1375,38 @@ async function initDB() {
     console.log('Overdue sale permissions table ready');
 
     await connection.query(`
+        CREATE TABLE IF NOT EXISTS overdue_sale_requests (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            staff_id INT NOT NULL,
+            sale_date DATE NOT NULL,
+            outlet_id INT NOT NULL,
+            outlet_erp_id VARCHAR(50) NOT NULL,
+            outlet_name VARCHAR(255) NULL,
+            max_overdue_days INT NOT NULL DEFAULT 0,
+            overdue_details TEXT NULL,
+            sales_summary TEXT NULL,
+            sales_payload LONGTEXT NULL,
+            request_note TEXT NOT NULL,
+            requested_by_role VARCHAR(30) NOT NULL,
+            requested_by_id INT NULL,
+            requested_by_name VARCHAR(255) NULL,
+            status ENUM('pending', 'approved', 'rejected', 'used') NOT NULL DEFAULT 'pending',
+            reviewed_by_admin_id INT NULL,
+            reviewed_by_name VARCHAR(255) NULL,
+            review_note TEXT NULL,
+            reviewed_at DATETIME NULL,
+            used_at DATETIME NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            INDEX idx_overdue_sale_requests_status (status, created_at),
+            INDEX idx_overdue_sale_requests_sale (staff_id, sale_date, outlet_id, status),
+            FOREIGN KEY (staff_id) REFERENCES staff(id) ON DELETE CASCADE,
+            FOREIGN KEY (outlet_id) REFERENCES staff_counters(id) ON DELETE CASCADE
+        );
+    `);
+    console.log('Overdue sale requests table ready');
+
+    await connection.query(`
         CREATE TABLE IF NOT EXISTS delivery_user_permissions (
             delivery_boy_id INT PRIMARY KEY,
             can_dashboard TINYINT(1) NOT NULL DEFAULT 0,

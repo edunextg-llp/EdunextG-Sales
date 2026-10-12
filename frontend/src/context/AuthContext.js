@@ -7,7 +7,13 @@ const AUTH_KEYS = {
   refreshToken: "auth_refresh_token",
   user: "auth_user",
   remember: "auth_remember",
+  lastActivity: "auth_last_activity",
 };
+
+const INACTIVITY_LIMIT_MS = 5 * 60 * 1000;
+const IDLE_CHECK_INTERVAL_MS = 10 * 1000;
+const ACTIVITY_WRITE_INTERVAL_MS = 5 * 1000;
+const ACTIVITY_EVENTS = ["mousemove", "mousedown", "keydown", "wheel", "scroll", "touchstart", "click"];
 
 const API_BASE = "https://bawarchee.edunextg.co/api";
 
@@ -38,6 +44,7 @@ const clearAuthStorage = () => {
     storage.removeItem(AUTH_KEYS.user);
   });
   localStorage.removeItem(AUTH_KEYS.remember);
+  localStorage.removeItem(AUTH_KEYS.lastActivity);
 };
 
 export const AuthProvider = ({ children }) => {
@@ -176,36 +183,48 @@ export const AuthProvider = ({ children }) => {
     clearAuthStorage();
   };
 
+  // Auto logout after 5 minutes with no mouse, keyboard, touch or scroll activity.
+  // Applies to every login (admin and users), including "Remember me".
+  // The last activity time is shared through localStorage, so working in one
+  // tab keeps the other open tabs signed in too.
   useEffect(() => {
-    let inactivityTimer;
+    if (!token) return undefined;
 
-    const resetTimer = () => {
-      clearTimeout(inactivityTimer);
-      const rememberMe = localStorage.getItem(AUTH_KEYS.remember) === "true";
-      if (rememberMe) return;
-      inactivityTimer = setTimeout(() => {
-        if (getStoredValue(AUTH_KEYS.token)) {
-          logout();
-          window.location.href = "/authentication/sign-in";
-        }
-      }, 7 * 60 * 60 * 1000);
+    const markActive = () => {
+      const now = Date.now();
+      const last = Number(localStorage.getItem(AUTH_KEYS.lastActivity)) || 0;
+      // Write at most once every few seconds; mousemove fires constantly.
+      if (now - last > ACTIVITY_WRITE_INTERVAL_MS) {
+        localStorage.setItem(AUTH_KEYS.lastActivity, String(now));
+      }
     };
 
-    if (token) {
-      window.addEventListener("mousemove", resetTimer);
-      window.addEventListener("keypress", resetTimer);
-      window.addEventListener("scroll", resetTimer);
-      window.addEventListener("click", resetTimer);
-      resetTimer();
+    const checkIdle = () => {
+      if (!getStoredValue(AUTH_KEYS.token)) return;
+      const last = Number(localStorage.getItem(AUTH_KEYS.lastActivity)) || Date.now();
+      if (Date.now() - last >= INACTIVITY_LIMIT_MS) {
+        logout();
+        window.location.href = "/authentication/sign-in";
+      }
+    };
+
+    // Keep an existing time (e.g. after a page reload) so idle time still counts;
+    // a fresh login has none, so it starts now.
+    if (!localStorage.getItem(AUTH_KEYS.lastActivity)) {
+      localStorage.setItem(AUTH_KEYS.lastActivity, String(Date.now()));
     }
+    checkIdle();
+    ACTIVITY_EVENTS.forEach((event) => window.addEventListener(event, markActive, { passive: true }));
+    // Re-check as soon as the tab comes back (e.g. after the laptop was asleep).
+    document.addEventListener("visibilitychange", checkIdle);
+    const timer = setInterval(checkIdle, IDLE_CHECK_INTERVAL_MS);
 
     return () => {
-      clearTimeout(inactivityTimer);
-      window.removeEventListener("mousemove", resetTimer);
-      window.removeEventListener("keypress", resetTimer);
-      window.removeEventListener("scroll", resetTimer);
-      window.removeEventListener("click", resetTimer);
+      clearInterval(timer);
+      ACTIVITY_EVENTS.forEach((event) => window.removeEventListener(event, markActive));
+      document.removeEventListener("visibilitychange", checkIdle);
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token]);
 
   return (

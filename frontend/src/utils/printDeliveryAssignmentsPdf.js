@@ -8,9 +8,10 @@ export function printDeliveryAssignmentsPdf(drafts) {
       const area = reportAreaName(row.location_name);
       const key = JSON.stringify([draft.date, draft.boy, area]);
       const group = groups.get(key) || {
-        date: draft.date, name: draft.name, area, count: 0, order: groups.size,
+        date: draft.date, name: draft.name, area, count: 0, boxes: 0, order: groups.size,
       };
       group.count += 1;
+      group.boxes += Number(row.box_count) || 0;
       groups.set(key, group);
     });
   });
@@ -29,7 +30,7 @@ export function printDeliveryAssignmentsPdf(drafts) {
       th, td { border: 1px solid #94a3b8; padding: 9px; text-align: left; overflow-wrap: anywhere; }
       th { background: #dbeafe; }
       th:first-child { width: 20%; }
-      th:last-child { width: 16%; }
+      th:nth-last-child(-n+2) { width: 14%; }
       .count { text-align: right; }
       thead { display: table-header-group; }
       tr { break-inside: avoid; }
@@ -39,14 +40,14 @@ export function printDeliveryAssignmentsPdf(drafts) {
     </style></head><body>
       <button onclick="window.print()">Print / Save as PDF</button>
       <p class="hint">Choose Save as PDF in the print dialog to download this report.</p>
-      <h1>Delivery Assignments</h1><p>Draft assignment summary · Total bill counts</p>
-      <table><thead><tr><th>Date</th><th>Staff Name</th><th>Assigned Area</th><th class="count">Total Bills</th></tr></thead>
+      <h1>Delivery Assignments</h1><p>Draft assignment summary · Total bill and box counts</p>
+      <table><thead><tr><th>Date</th><th>Staff Name</th><th>Assigned Area</th><th class="count">Total Bills</th><th class="count">Total Boxes</th></tr></thead>
       <tbody><% rows.forEach(function(row) { %>
-        <tr><td><%= row.date %></td><td><%= row.name %></td><td><%= row.area %></td><td class="count"><%= row.count %></td></tr>
+        <tr><td><%= row.date %></td><td><%= row.name %></td><td><%= row.area %></td><td class="count"><%= row.count %></td><td class="count"><%= row.boxes %></td></tr>
       <% }); %>
-        <tr class="total"><td colspan="3">Grand Total</td><td class="count"><%= total %></td></tr>
+        <tr class="total"><td colspan="3">Grand Total</td><td class="count"><%= total %></td><td class="count"><%= boxes %></td></tr>
       </tbody></table>
-    </body></html>`, { rows, total: rows.reduce((sum, row) => sum + row.count, 0) });
+    </body></html>`, { rows, total: rows.reduce((sum, row) => sum + row.count, 0), boxes: rows.reduce((sum, row) => sum + row.boxes, 0) });
   const printWindow = window.open("", "_blank", "width=900,height=900");
   if (!printWindow) throw new Error("Please allow popups to download the assignments PDF.");
   printWindow.document.open();

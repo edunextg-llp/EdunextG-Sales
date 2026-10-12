@@ -266,6 +266,23 @@ export async function ensureSchema() {
             `ALTER TABLE staff_counters ADD COLUMN priority_number INT NULL`,
             'priority_number on staff_counters'
         );
+        // Outlet coordinates read from its Google location link, for delivery route planning.
+        // coords_source is the link they were read from, so a changed link is read again.
+        await tryQuery(
+            connection,
+            `ALTER TABLE staff_counters ADD COLUMN latitude DECIMAL(10,7) NULL`,
+            'latitude on staff_counters'
+        );
+        await tryQuery(
+            connection,
+            `ALTER TABLE staff_counters ADD COLUMN longitude DECIMAL(10,7) NULL`,
+            'longitude on staff_counters'
+        );
+        await tryQuery(
+            connection,
+            `ALTER TABLE staff_counters ADD COLUMN coords_source TEXT NULL`,
+            'coords_source on staff_counters'
+        );
         await tryQuery(
             connection,
             `ALTER TABLE staff_counters ADD COLUMN operating_hours JSON NULL`,
@@ -1818,6 +1835,39 @@ export async function ensureSchema() {
             );
         `);
         console.log('overdue_sale_permissions table verified');
+
+        await connection.query(`
+            CREATE TABLE IF NOT EXISTS overdue_sale_requests (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                staff_id INT NOT NULL,
+                sale_date DATE NOT NULL,
+                outlet_id INT NOT NULL,
+                outlet_erp_id VARCHAR(50) NOT NULL,
+                outlet_name VARCHAR(255) NULL,
+                max_overdue_days INT NOT NULL DEFAULT 0,
+                overdue_details TEXT NULL,
+                sales_summary TEXT NULL,
+                sales_payload LONGTEXT NULL,
+                request_note TEXT NOT NULL,
+                requested_by_role VARCHAR(30) NOT NULL,
+                requested_by_id INT NULL,
+                requested_by_name VARCHAR(255) NULL,
+                status ENUM('pending', 'approved', 'rejected', 'used') NOT NULL DEFAULT 'pending',
+                reviewed_by_admin_id INT NULL,
+                reviewed_by_name VARCHAR(255) NULL,
+                review_note TEXT NULL,
+                reviewed_at DATETIME NULL,
+                used_at DATETIME NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                INDEX idx_overdue_sale_requests_status (status, created_at),
+                INDEX idx_overdue_sale_requests_sale (staff_id, sale_date, outlet_id, status),
+                FOREIGN KEY (staff_id) REFERENCES staff(id) ON DELETE CASCADE,
+                FOREIGN KEY (outlet_id) REFERENCES staff_counters(id) ON DELETE CASCADE
+            );
+        `);
+        await tryQuery(connection, `ALTER TABLE overdue_sale_requests ADD COLUMN sales_payload LONGTEXT NULL AFTER sales_summary`, 'Overdue request invoice details');
+        console.log('overdue_sale_requests table verified');
 
         await connection.query(`
             CREATE TABLE IF NOT EXISTS outlet_expiry_list (

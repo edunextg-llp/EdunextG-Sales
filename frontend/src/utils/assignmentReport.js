@@ -1,6 +1,7 @@
 import ejs from "ejs/ejs.min.js";
 
 export const invoiceValue = (row) => Number(row.effective_price ?? row.price) || 0;
+export const rowBoxes = (row) => Number(row.box_count) || 0;
 // areaOrder: area names in delivery priority (from Create Route). Bills in
 // those areas come first in that order; the rest keep their original order.
 export function groupAssignments(rows, areaOrder = []) {
@@ -29,15 +30,16 @@ export async function createAssignmentSheet(group, date, bitField) {
   const { default: ExcelJS } = await import('exceljs');
   const workbook = new ExcelJS.Workbook();
   const sheet = workbook.addWorksheet('Assigned Orders');
-  sheet.columns = [{ width: 10 }, { width: 25 }, { width: 28 }, { width: 40 }, { width: 22 }];
+  sheet.columns = [{ width: 10 }, { width: 25 }, { width: 28 }, { width: 40 }, { width: 12 }, { width: 22 }];
   sheet.addRow([`Assigned Orders — ${date} — ${group.name}`]);
-  sheet.mergeCells('A1:E1');
+  sheet.mergeCells('A1:F1');
   sheet.getRow(1).font = { bold: true, size: 14 };
-  sheet.addRow(['Sr. No.', 'Invoice No.', 'BIT', 'Outlet Name', 'Invoice Amount']);
-  group.rows.forEach((row, index) => sheet.addRow([index + 1, String(row.invoice_number || row.id), String(row[bitField] || ''), row.outlet_name || '', invoiceValue(row)]));
-  const totalRow = sheet.addRow(['Total Invoice Value', '', '', '', { formula: `SUM(E3:E${group.rows.length + 2})`, result: group.rows.reduce((sum, row) => sum + invoiceValue(row), 0) }]);
+  sheet.addRow(['Sr. No.', 'Invoice No.', 'BIT', 'Outlet Name', 'Boxes', 'Invoice Amount']);
+  group.rows.forEach((row, index) => sheet.addRow([index + 1, String(row.invoice_number || row.id), String(row[bitField] || ''), row.outlet_name || '', rowBoxes(row), invoiceValue(row)]));
+  const last = group.rows.length + 2;
+  const totalRow = sheet.addRow(['Total', '', '', '', { formula: `SUM(E3:E${last})`, result: group.rows.reduce((sum, row) => sum + rowBoxes(row), 0) }, { formula: `SUM(F3:F${last})`, result: group.rows.reduce((sum, row) => sum + invoiceValue(row), 0) }]);
   sheet.mergeCells(`A${totalRow.number}:D${totalRow.number}`);
-  sheet.getColumn(5).numFmt = '#,##0.00';
+  sheet.getColumn(6).numFmt = '#,##0.00';
   [sheet.getRow(2), totalRow].forEach((row) => {
     row.font = { bold: true };
     row.eachCell((cell) => { cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFDBEAFE' } }; });
@@ -66,9 +68,11 @@ export function assignmentSheetHtml(group, date, bitField) {
     invoice: String(row.invoice_number || row.id),
     bit: String(row[bitField] || '—'),
     outlet: row.outlet_name || '',
+    boxes: rowBoxes(row),
     amount: pdfMoney(invoiceValue(row)),
   }));
   const total = pdfMoney(group.rows.reduce((sum, row) => sum + invoiceValue(row), 0));
+  const boxes = group.rows.reduce((sum, row) => sum + rowBoxes(row), 0);
   return ejs.render(`<!doctype html>
     <html><head><meta charset="utf-8"><title>Assignments_<%= date %>_<%= name %></title>
     <style>
@@ -79,7 +83,7 @@ export function assignmentSheetHtml(group, date, bitField) {
       table { width: 100%; border-collapse: collapse; table-layout: fixed; }
       th, td { border: 1px solid #94a3b8; padding: 7px 8px; text-align: left; overflow-wrap: anywhere; }
       th { background: #dbeafe; }
-      .sr { width: 8%; } .inv { width: 20%; } .bit { width: 20%; } .amt { width: 18%; text-align: right; }
+      .sr { width: 8%; } .inv { width: 18%; } .bit { width: 18%; } .box { width: 9%; text-align: center; } .amt { width: 16%; text-align: right; }
       thead { display: table-header-group; }
       tr { break-inside: avoid; }
       .total td { font-weight: bold; background: #dbeafe; }
@@ -89,14 +93,14 @@ export function assignmentSheetHtml(group, date, bitField) {
       <button onclick="window.print()">Print / Save as PDF</button>
       <p class="hint">Choose Save as PDF in the print dialog to download this sheet.</p>
       <h1>Assigned Orders — <%= name %></h1>
-      <p>Date: <%= date %> · <%= rows.length %> orders</p>
-      <table><thead><tr><th class="sr">Sr. No.</th><th class="inv">Invoice No.</th><th class="bit">BIT</th><th>Outlet Name</th><th class="amt">Invoice Amount</th></tr></thead>
+      <p>Date: <%= date %> · <%= rows.length %> orders · <%= boxes %> boxes</p>
+      <table><thead><tr><th class="sr">Sr. No.</th><th class="inv">Invoice No.</th><th class="bit">BIT</th><th>Outlet Name</th><th class="box">Boxes</th><th class="amt">Invoice Amount</th></tr></thead>
       <tbody><% rows.forEach(function(row) { %>
-        <tr><td><%= row.sr %></td><td><%= row.invoice %></td><td><%= row.bit %></td><td><%= row.outlet %></td><td class="amt"><%= row.amount %></td></tr>
+        <tr><td><%= row.sr %></td><td><%= row.invoice %></td><td><%= row.bit %></td><td><%= row.outlet %></td><td class="box"><%= row.boxes %></td><td class="amt"><%= row.amount %></td></tr>
       <% }); %>
-        <tr class="total"><td colspan="4">Total Invoice Value</td><td class="amt"><%= total %></td></tr>
+        <tr class="total"><td colspan="4">Total</td><td class="box"><%= boxes %></td><td class="amt"><%= total %></td></tr>
       </tbody></table>
-    </body></html>`, { rows, total, date, name: group.name });
+    </body></html>`, { rows, total, boxes, date, name: group.name });
 }
 
 export function printAssignmentSheetPdf(group, date, bitField) {

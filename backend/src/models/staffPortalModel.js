@@ -227,9 +227,10 @@ class StaffPortalModel {
     }
 
     /**
-     * Active Out Bills this staff member took, with an unpaid balance. A taken bill
-     * always shows, even when an older payment for it is still waiting in
-     * D.B. Collection; pending_amount tells the app how much of it is already submitted.
+     * Active Out Bills this staff member took that still have money left to collect.
+     * Once cash/UPI/cheque waiting in D.B. Collection covers the whole balance, the bill
+     * leaves Out Bills (it shows under Collections instead). A part payment keeps the
+     * bill here; pending_amount tells the app how much is already submitted.
      */
     static async getOutBills(staffId, executor = db) {
         const [rows] = await executor.execute(
@@ -281,7 +282,7 @@ class StaffPortalModel {
             overdue_days: toNumber(row.overdue_days),
             pending_amount: toNumber(row.pending_amount),
             pending_count: toNumber(row.pending_count),
-        }));
+        })).filter((bill) => bill.balance_amount - bill.pending_amount > 0.001);
     }
 
     /**
@@ -639,7 +640,7 @@ class StaffPortalModel {
             },
             out_bills: {
                 count: outBills.length,
-                balance: Math.round(outBills.reduce((total, bill) => total + bill.balance_amount, 0) * 100) / 100,
+                balance: Math.round(outBills.reduce((total, bill) => total + bill.balance_amount - bill.pending_amount, 0) * 100) / 100,
                 overdue: outBills.filter((bill) => bill.overdue_days > 0).length,
             },
             pending_settlement: {

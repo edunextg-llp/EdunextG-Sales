@@ -20,6 +20,9 @@ import {
   DialogTitle,
   DialogContent,
   DialogActions,
+  Badge,
+  IconButton,
+  Tooltip,
 } from "@mui/material";
 
 // Material Dashboard 2 React components
@@ -38,6 +41,27 @@ import { printSalesInvoicePdf } from "utils/printSalesInvoicePdf";
 import { FaRegEdit } from "react-icons/fa";
 import { CiTrash } from "react-icons/ci";
 import SalesInvoiceDialog from "layouts/add-sales/components/SalesInvoiceDialog";
+import { useAuth } from "context/AuthContext";
+import ReviewDialog, { formatDate, formatDateTime, money, overdueBalance } from "layouts/overdue-requests/components/ReviewDialog";
+
+const REQUEST_STATUS = {
+  pending: { label: "Waiting for admin approval", color: "warning" },
+  approved: { label: "Approved — you can create the sales", color: "success" },
+  rejected: { label: "Rejected", color: "error" },
+  used: { label: "Approval already used", color: "secondary" },
+};
+
+const emptyPermissionDialog = {
+  open: false,
+  overdueOutlets: [],
+  pendingPayload: null,
+  submittedOutletIds: [],
+  permissionNote: "",
+  lineMapPatch: {},
+  approvalRequired: false,
+  requests: [],
+  sendingRequest: false,
+};
 
 const tableHeadSx = {
   color: "#6b7280",
@@ -64,6 +88,8 @@ const tableHeadRowSx = {
 };
 
 function AddSales() {
+  const { user } = useAuth() || {};
+  const isAdmin = user?.role === "admin";
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split("T")[0]);
   const [staffOptions, setStaffOptions] = useState([]);
   const [selectedStaffType, setSelectedStaffType] = useState("");
@@ -79,14 +105,10 @@ function AddSales() {
   const [searchingOutlets, setSearchingOutlets] = useState(false);
   const [savingEdit, setSavingEdit] = useState(false);
   const [saleLineItemsMap, setSaleLineItemsMap] = useState({});
-  const [permissionDialog, setPermissionDialog] = useState({
-    open: false,
-    overdueOutlets: [],
-    pendingPayload: null,
-    submittedOutletIds: [],
-    permissionNote: "",
-    lineMapPatch: {},
-  });
+  const [permissionDialog, setPermissionDialog] = useState(emptyPermissionDialog);
+  const [pendingRequests, setPendingRequests] = useState([]);
+  const [pendingOpen, setPendingOpen] = useState(false);
+  const [review, setReview] = useState({ request: null, action: "approve" });
   const [invoiceDialog, setInvoiceDialog] = useState({
     open: false,
     outlet: null,
@@ -446,6 +468,54 @@ function AddSales() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [outletSearch, selectedStaff, selectedDate, allOutlets]);
 
+  // Pending overdue requests: admin sees all, other users see the ones they sent.
+  const loadPendingRequests = async () => {
+    try {
+      const response = await fetch(`${API}/staff/overdue-requests?status=open`);
+      const data = await response.json().catch(() => ({}));
+      if (response.ok) setPendingRequests(data.requests || []);
+    } catch (error) {
+      console.error("Error loading pending overdue requests:", error);
+    }
+  };
+
+  const [creatingRequestId, setCreatingRequestId] = useState(null);
+
+  // Create exactly the invoice(s) the admin approved, even after a page refresh.
+  const createFromApprovedRequest = async (request) => {
+    const payload = request.sales_payload;
+    if (!payload?.sales?.length) {
+      alert("This request has no saved invoice. Select the staff and outlet and enter the invoice again.");
+      return;
+    }
+    setCreatingRequestId(request.id);
+    try {
+      const response = await fetch(`${API}/staff/${request.staff_id}/sales`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ date: request.sale_date, companyName: payload.companyName || "", sales: payload.sales }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || "Failed to create the invoice.");
+      if (Number(selectedStaff?.id) === Number(request.staff_id) && selectedDate === request.sale_date) {
+        await applySalesSuccess([Number(request.outlet_id)]);
+      }
+      alert(`Invoice ${(request.sales_summary?.invoiceNumbers || []).join(", ")} created.`);
+    } catch (error) {
+      alert(error.message || "Failed to create the invoice.");
+    } finally {
+      setCreatingRequestId(null);
+      loadPendingRequests();
+    }
+  };
+
+  useEffect(() => {
+    loadPendingRequests();
+    const timer = setInterval(loadPendingRequests, 30000);
+    return () => clearInterval(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const applySalesSuccess = async (submittedOutletIds = [], lineMapPatch = {}) => {
     await refreshSubmittedSales(lineMapPatch);
 
@@ -464,14 +534,7 @@ function AddSales() {
   };
 
   const closePermissionDialog = () => {
-    setPermissionDialog({
-      open: false,
-      overdueOutlets: [],
-      pendingPayload: null,
-      submittedOutletIds: [],
-      permissionNote: "",
-      lineMapPatch: {},
-    });
+    setPermissionDialog(emptyPermissionDialog);
   };
 
   const submitSalesPayload = async (
@@ -496,18 +559,21 @@ function AddSales() {
       if (response.ok) {
         closePermissionDialog();
         await applySalesSuccess(submittedOutletIds, lineMapPatch);
+        loadPendingRequests();
         return true;
       }
 
       const err = await response.json().catch(() => ({}));
       if (response.status === 409 && err.code === "OVERDUE_PERMISSION_REQUIRED") {
         setPermissionDialog({
+          ...emptyPermissionDialog,
           open: true,
           overdueOutlets: err.overdueOutlets || [],
           pendingPayload: payload,
           submittedOutletIds,
-          permissionNote: "",
           lineMapPatch,
+          approvalRequired: err.approvalRequired ?? !isAdmin,
+          requests: err.requests || [],
         });
         return false;
       }
@@ -539,6 +605,98 @@ function AddSales() {
         lineMapPatch: permissionDialog.lineMapPatch || {},
       }
     );
+  };
+
+  // ----- Overdue approval requests (non-admin users) -----
+  const requestByOutlet = useMemo(() => {
+    const map = new Map();
+    (permissionDialog.requests || []).forEach((request) => map.set(Number(request.outlet_id), request));
+    return map;
+  }, [permissionDialog.requests]);
+
+  const overdueRequestStates = (permissionDialog.overdueOutlets || []).map(
+    (outlet) => requestByOutlet.get(Number(outlet.outletId))?.status || "none"
+  );
+  const allRequestsApproved =
+    overdueRequestStates.length > 0 && overdueRequestStates.every((status) => status === "approved");
+  const anyRequestPending = overdueRequestStates.some((status) => status === "pending");
+  const needsNewRequest = overdueRequestStates.some((status) => ["none", "rejected", "used"].includes(status));
+
+  const refreshOverdueRequests = async () => {
+    const outletIds = (permissionDialog.overdueOutlets || []).map((outlet) => outlet.outletId);
+    if (!selectedStaff?.id || !outletIds.length) return;
+    try {
+      const params = new URLSearchParams({
+        staffId: String(selectedStaff.id),
+        saleDate: permissionDialog.pendingPayload?.date || selectedDate,
+        outletIds: outletIds.join(","),
+      });
+      const response = await fetch(`${API}/staff/overdue-requests?${params.toString()}`);
+      const data = await response.json().catch(() => ({}));
+      if (response.ok) {
+        setPermissionDialog((prev) => (prev.open ? { ...prev, requests: data.requests || [] } : prev));
+      }
+    } catch (error) {
+      console.error("Error loading overdue requests:", error);
+    }
+  };
+
+  useEffect(() => {
+    if (!permissionDialog.open || !permissionDialog.approvalRequired || !anyRequestPending) return undefined;
+    const timer = setInterval(refreshOverdueRequests, 15000);
+    return () => clearInterval(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [permissionDialog.open, permissionDialog.approvalRequired, anyRequestPending, permissionDialog.overdueOutlets]);
+
+  const handleSendOverdueRequest = async () => {
+    const note = String(permissionDialog.permissionNote || "").trim();
+    if (!note) {
+      alert("Reason for request is required.");
+      return;
+    }
+    const outletIds = (permissionDialog.overdueOutlets || [])
+      .filter((outlet) => {
+        const status = requestByOutlet.get(Number(outlet.outletId))?.status;
+        return !status || ["rejected", "used"].includes(status);
+      })
+      .map((outlet) => outlet.outletId);
+
+    setPermissionDialog((prev) => ({ ...prev, sendingRequest: true }));
+    try {
+      const response = await fetch(`${API}/staff/overdue-requests`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          staffId: selectedStaff.id,
+          saleDate: permissionDialog.pendingPayload?.date || selectedDate,
+          outletIds,
+          note,
+          salesPayload: {
+            companyName: permissionDialog.pendingPayload?.companyName || selectedCompanyName || "",
+            sales: permissionDialog.pendingPayload?.sales || [],
+          },
+        }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || "Unable to send the request.");
+      setPermissionDialog((prev) => {
+        const merged = new Map((prev.requests || []).map((request) => [Number(request.outlet_id), request]));
+        (data.requests || []).forEach((request) => merged.set(Number(request.outlet_id), request));
+        return { ...prev, permissionNote: "", requests: [...merged.values()] };
+      });
+      loadPendingRequests();
+    } catch (error) {
+      alert(error.message || "Unable to send the request.");
+    } finally {
+      setPermissionDialog((prev) => ({ ...prev, sendingRequest: false }));
+    }
+  };
+
+  const handleCreateApprovedSales = async () => {
+    if (!permissionDialog.pendingPayload) return;
+    await submitSalesPayload(permissionDialog.pendingPayload, permissionDialog.submittedOutletIds, {
+      lineMapPatch: permissionDialog.lineMapPatch || {},
+    });
   };
 
   const fetchNextBillNumber = async () => {
@@ -1011,6 +1169,26 @@ function AddSales() {
                     }}
                   />
                 </MDBox>
+                <Tooltip
+                  title={
+                    pendingRequests.length
+                      ? `${pendingRequests.length} overdue request(s) pending or approved`
+                      : "No pending overdue requests"
+                  }
+                >
+                  <IconButton
+                    color={pendingRequests.length ? "warning" : "secondary"}
+                    onClick={() => {
+                      loadPendingRequests();
+                      setPendingOpen(true);
+                    }}
+                    aria-label="Pending overdue requests"
+                  >
+                    <Badge badgeContent={pendingRequests.length} color="error" max={99}>
+                      <Icon>pending_actions</Icon>
+                    </Badge>
+                  </IconButton>
+                </Tooltip>
               </MDBox>
               <MDBox pb={3} px={3}>
                 <Grid container spacing={3}>
@@ -1820,64 +1998,246 @@ function AddSales() {
         maxWidth="md"
         fullWidth
       >
-        <DialogTitle>Permission Required — Overdue Credit</DialogTitle>
+        <DialogTitle>
+          {permissionDialog.approvalRequired ? "Admin Approval Required — Overdue Credit" : "Permission Required — Overdue Credit"}
+        </DialogTitle>
         <DialogContent dividers>
           <MDTypography variant="body2" color="text" mb={2}>
-            This ERP ID has credit overdue by more than 3 days. Permission note is required to add a
-            new sale for the same ERP ID. This permission will be stored in the database.
+            {permissionDialog.approvalRequired
+              ? "This ERP ID has credit overdue by more than 3 days. Send a request to admin. Once admin approves it, you can create the sales for this date."
+              : "This ERP ID has credit overdue by more than 3 days. Permission note is required to add a new sale for the same ERP ID. This permission will be stored in the database."}
           </MDTypography>
 
-          {(permissionDialog.overdueOutlets || []).map((outlet) => (
-            <MDBox
-              key={`${outlet.outletId}-${outlet.outletErpId}`}
-              mb={2}
-              p={2}
-              sx={{ backgroundColor: "#fff7f7", border: "1px solid #fecaca", borderRadius: "8px" }}
-            >
-              <MDTypography variant="button" fontWeight="bold" color="error">
-                ERP: {outlet.outletErpId} — {outlet.outletName}
-              </MDTypography>
-              <MDTypography variant="caption" display="block" color="text" mb={1}>
-                Max overdue: {outlet.maxOverdueDays} day(s)
-              </MDTypography>
-              {(outlet.credits || []).map((credit) => (
-                <MDTypography key={credit.creditPaymentId} variant="caption" display="block" color="text">
-                  Invoice {credit.invoiceNumber || "-"} | Balance ₹{Number(credit.balanceAmount || 0).toFixed(2)} | Due{" "}
-                  {credit.dueDate || "-"} | Overdue {credit.overdueDays} day(s)
-                  {credit.creditStaffName ? ` | Staff: ${credit.creditStaffName}` : ""}
+          {(permissionDialog.overdueOutlets || []).map((outlet) => {
+            const request = requestByOutlet.get(Number(outlet.outletId));
+            const statusInfo = request ? REQUEST_STATUS[request.status] : null;
+            return (
+              <MDBox
+                key={`${outlet.outletId}-${outlet.outletErpId}`}
+                mb={2}
+                p={2}
+                sx={{ backgroundColor: "#fff7f7", border: "1px solid #fecaca", borderRadius: "8px" }}
+              >
+                <MDBox display="flex" justifyContent="space-between" alignItems="center" flexWrap="wrap" gap={1}>
+                  <MDTypography variant="button" fontWeight="bold" color="error">
+                    ERP: {outlet.outletErpId} — {outlet.outletName}
+                  </MDTypography>
+                  {permissionDialog.approvalRequired && statusInfo && (
+                    <MDBadge badgeContent={statusInfo.label} color={statusInfo.color} variant="gradient" size="sm" container />
+                  )}
+                </MDBox>
+                <MDTypography variant="caption" display="block" color="text" mb={1}>
+                  Max overdue: {outlet.maxOverdueDays} day(s)
                 </MDTypography>
-              ))}
-            </MDBox>
-          ))}
+                {(outlet.credits || []).map((credit) => (
+                  <MDTypography key={credit.creditPaymentId} variant="caption" display="block" color="text">
+                    Invoice {credit.invoiceNumber || "-"} | Balance ₹{Number(credit.balanceAmount || 0).toFixed(2)} | Due{" "}
+                    {credit.dueDate || "-"} | Overdue {credit.overdueDays} day(s)
+                    {credit.creditStaffName ? ` | Staff: ${credit.creditStaffName}` : ""}
+                  </MDTypography>
+                ))}
+                {permissionDialog.approvalRequired && request && (
+                  <MDTypography variant="caption" display="block" color="text" mt={1}>
+                    Request #{request.id} by {request.requested_by_name || "-"}: {request.request_note}
+                    {request.review_note ? ` | Admin: ${request.review_note}` : ""}
+                  </MDTypography>
+                )}
+              </MDBox>
+            );
+          })}
 
-          <MDBox mt={1}>
-            <MDInput
-              label="Permission note *"
-              fullWidth
-              multiline
-              rows={2}
-              required
-              value={permissionDialog.permissionNote}
-              onChange={(e) =>
-                setPermissionDialog((prev) => ({ ...prev, permissionNote: e.target.value }))
-              }
-            />
-          </MDBox>
+          {(!permissionDialog.approvalRequired || needsNewRequest) && (
+            <MDBox mt={1}>
+              <MDInput
+                label={permissionDialog.approvalRequired ? "Reason for request *" : "Permission note *"}
+                fullWidth
+                multiline
+                rows={2}
+                required
+                value={permissionDialog.permissionNote}
+                onChange={(e) =>
+                  setPermissionDialog((prev) => ({ ...prev, permissionNote: e.target.value }))
+                }
+              />
+            </MDBox>
+          )}
+          {permissionDialog.approvalRequired && anyRequestPending && (
+            <MDTypography variant="caption" display="block" color="text" mt={1}>
+              This checks for approval every 15 seconds. You can also close this and submit the same sale again after approval.
+            </MDTypography>
+          )}
         </DialogContent>
         <DialogActions>
-          <MDButton color="secondary" variant="outlined" onClick={closePermissionDialog} disabled={submitting}>
-            Cancel
-          </MDButton>
           <MDButton
-            color="warning"
-            variant="gradient"
-            onClick={handleGrantPermissionAndSave}
-            disabled={submitting || !String(permissionDialog.permissionNote || "").trim()}
+            color="secondary"
+            variant="outlined"
+            onClick={closePermissionDialog}
+            disabled={submitting || permissionDialog.sendingRequest}
           >
-            {submitting ? "Saving..." : "Grant Permission & Save"}
+            {permissionDialog.approvalRequired ? "Close" : "Cancel"}
           </MDButton>
+          {permissionDialog.approvalRequired ? (
+            <>
+              {anyRequestPending && (
+                <Tooltip title="Check approval status">
+                  <IconButton color="info" onClick={refreshOverdueRequests}>
+                    <Icon>refresh</Icon>
+                  </IconButton>
+                </Tooltip>
+              )}
+              {needsNewRequest && (
+                <MDButton
+                  color="warning"
+                  variant="gradient"
+                  onClick={handleSendOverdueRequest}
+                  disabled={permissionDialog.sendingRequest || !String(permissionDialog.permissionNote || "").trim()}
+                >
+                  <Icon sx={{ mr: 0.75 }}>send</Icon>
+                  {permissionDialog.sendingRequest ? "Sending..." : "Send Request"}
+                </MDButton>
+              )}
+              <MDButton
+                color="success"
+                variant="gradient"
+                onClick={handleCreateApprovedSales}
+                disabled={submitting || !allRequestsApproved}
+              >
+                <Icon sx={{ mr: 0.75 }}>{allRequestsApproved ? "check_circle" : "lock"}</Icon>
+                {submitting ? "Saving..." : "Create Sales"}
+              </MDButton>
+            </>
+          ) : (
+            <MDButton
+              color="warning"
+              variant="gradient"
+              onClick={handleGrantPermissionAndSave}
+              disabled={submitting || !String(permissionDialog.permissionNote || "").trim()}
+            >
+              {submitting ? "Saving..." : "Grant Permission & Save"}
+            </MDButton>
+          )}
         </DialogActions>
       </Dialog>
+
+      <Dialog open={pendingOpen} onClose={() => setPendingOpen(false)} maxWidth="md" fullWidth>
+        <DialogTitle sx={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          <MDBox display="flex" alignItems="center" gap={1}>
+            <Icon color="warning">pending_actions</Icon>
+            Pending Overdue Requests
+          </MDBox>
+          <MDBox>
+            <Tooltip title="Refresh">
+              <IconButton size="small" onClick={loadPendingRequests}>
+                <Icon>refresh</Icon>
+              </IconButton>
+            </Tooltip>
+            <Tooltip title="Close">
+              <IconButton size="small" onClick={() => setPendingOpen(false)}>
+                <Icon>close</Icon>
+              </IconButton>
+            </Tooltip>
+          </MDBox>
+        </DialogTitle>
+        <DialogContent dividers sx={{ p: 0 }}>
+          {pendingRequests.length === 0 ? (
+            <MDBox p={3} textAlign="center">
+              <MDTypography variant="button" color="text">
+                No pending requests.
+              </MDTypography>
+            </MDBox>
+          ) : (
+            <TableContainer sx={{ boxShadow: "none" }}>
+              <Table size="small">
+                <TableHead sx={tableHeadRowSx}>
+                  <TableRow>
+                    {["ERP ID", "Outlet", "Staff", "Sale date", "Invoice", "Overdue", "Requested by", "Status", ""].map(
+                      (heading) => (
+                        <TableCell key={heading || "actions"} sx={tableHeadSx}>
+                          {heading}
+                        </TableCell>
+                      )
+                    )}
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {pendingRequests.map((request) => (
+                    <TableRow key={request.id}>
+                      <TableCell sx={{ ...tableBodySx, fontWeight: 600 }}>{request.outlet_erp_id}</TableCell>
+                      <TableCell sx={tableBodySx}>{request.outlet_name || "—"}</TableCell>
+                      <TableCell sx={tableBodySx}>{request.staff_name || `Staff #${request.staff_id}`}</TableCell>
+                      <TableCell sx={tableBodySx}>{formatDate(request.sale_date)}</TableCell>
+                      <TableCell sx={tableBodySx}>
+                        {(request.sales_summary?.invoiceNumbers || []).join(", ") || "—"}
+                        <MDTypography variant="caption" display="block" color="text">
+                          {request.sales_summary ? money(request.sales_summary.totalAmount) : ""}
+                        </MDTypography>
+                      </TableCell>
+                      <TableCell sx={tableBodySx}>
+                        {request.max_overdue_days} day(s)
+                        <MDTypography variant="caption" display="block" color="text">
+                          {money(overdueBalance(request))}
+                        </MDTypography>
+                      </TableCell>
+                      <TableCell sx={{ ...tableBodySx, maxWidth: 220 }}>
+                        {request.requested_by_name || "—"}
+                        <MDTypography variant="caption" display="block" color="text">
+                          {formatDateTime(request.created_at)} · {request.request_note}
+                        </MDTypography>
+                      </TableCell>
+                      <TableCell sx={tableBodySx}>
+                        <MDBadge
+                          badgeContent={request.status === "approved" ? "Approved" : "Pending"}
+                          color={request.status === "approved" ? "success" : "warning"}
+                          variant="gradient"
+                          size="xs"
+                          container
+                        />
+                      </TableCell>
+                      <TableCell sx={{ ...tableBodySx, whiteSpace: "nowrap" }}>
+                        {request.status === "approved" && (
+                          <Tooltip title="Create this approved invoice">
+                            <span>
+                              <IconButton
+                                size="small"
+                                color="success"
+                                disabled={creatingRequestId === request.id}
+                                onClick={() => createFromApprovedRequest(request)}
+                              >
+                                <Icon>add_task</Icon>
+                              </IconButton>
+                            </span>
+                          </Tooltip>
+                        )}
+                        {isAdmin && request.status === "pending" && (
+                          <>
+                            <Tooltip title="Approve">
+                              <IconButton size="small" color="success" onClick={() => setReview({ request, action: "approve" })}>
+                                <Icon>check_circle</Icon>
+                              </IconButton>
+                            </Tooltip>
+                            <Tooltip title="Reject">
+                              <IconButton size="small" color="error" onClick={() => setReview({ request, action: "reject" })}>
+                                <Icon>cancel</Icon>
+                              </IconButton>
+                            </Tooltip>
+                          </>
+                        )}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </TableContainer>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      <ReviewDialog
+        request={review.request}
+        action={review.action}
+        onClose={() => setReview({ request: null, action: "approve" })}
+        onDone={loadPendingRequests}
+      />
 
       <Footer />
     </DashboardLayout>

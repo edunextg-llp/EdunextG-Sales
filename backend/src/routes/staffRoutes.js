@@ -10,12 +10,18 @@ import * as dmsStockController from '../controllers/dmsStockController.js';
 import * as currentStockController from '../controllers/currentStockController.js';
 import * as physicalStockController from '../controllers/physicalStockController.js';
 import * as purchaseRequisitionController from '../controllers/purchaseRequisitionController.js';
+import * as overdueSaleRequestController from '../controllers/overdueSaleRequestController.js';
 import { requireRole, verifyTokenMiddleware } from '../middlewares/authMiddleware.js';
 
 const upload = multer({
     storage: multer.memoryStorage(),
     limits: { fileSize: 15 * 1024 * 1024 },
 });
+
+// Overdue credit sale requests (must stay above the '/:id' routes).
+router.get('/overdue-requests', overdueSaleRequestController.listOverdueRequests);
+router.post('/overdue-requests', overdueSaleRequestController.createOverdueRequest);
+router.put('/overdue-requests/:id/review', requireRole('admin'), overdueSaleRequestController.reviewOverdueRequest);
 
 router.post('/', staffController.createStaff);
 router.post('/upload-document', upload.single('file'), staffController.uploadStaffDocument);

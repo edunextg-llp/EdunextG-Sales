@@ -33,6 +33,7 @@ function verifyDeliveryBoyToken(req, res, next) {
 router.post('/mobile/login', deliveryBoyController.mobileLogin);
 router.get('/mobile/profile', verifyDeliveryBoyToken, deliveryBoyController.getMobileProfile);
 router.get('/mobile/items', verifyDeliveryBoyToken, deliveryBoyController.getMobileAssignedItems);
+router.get('/mobile/route/locations', verifyDeliveryBoyToken, deliveryBoyController.getMobileRouteLocations);
 router.put('/mobile/items/:saleId/status', verifyDeliveryBoyToken, deliveryBoyController.updateMobileAssignedItemStatus);
 router.put('/mobile/items/:saleId/location', verifyDeliveryBoyToken, deliveryBoyController.updateMobileAssignedItemLocation);
 router.put('/mobile/items/:saleId/contact', verifyDeliveryBoyToken, deliveryBoyController.updateMobileAssignedItemContact);

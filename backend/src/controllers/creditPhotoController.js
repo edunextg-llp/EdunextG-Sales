@@ -42,7 +42,7 @@ export async function authorizeCreditPhoto(req, res, next) {
             allowed = req.user?.role === 'admin' || req.user?.permissions?.includes('update_payment') || req.user?.permissions?.includes('out_bill');
         }
         if (!allowed) return res.status(403).json({ error: 'You cannot update photos for this invoice.' });
-        const [rows] = await db.execute('SELECT id, packaging_status, credit_photo_url FROM staff_sales WHERE id = ?', [saleId]);
+        const [rows] = await db.execute('SELECT id, invoice_number, packaging_status, credit_photo_url FROM staff_sales WHERE id = ?', [saleId]);
         if (!rows.length) return res.status(404).json({ error: 'Invoice not found.' });
         if (req.method !== 'GET' && rows[0].packaging_status !== 'delivered') {
             return res.status(400).json({ error: 'Credit photos can be added only after delivery.' });
