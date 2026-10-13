@@ -35,7 +35,7 @@ function Basic() {
   const navigate = useNavigate();
   const { login } = useAuth();
 
-  const API = `${process.env.REACT_APP_API_URL || "http://localhost:2002/api"}/auth`;
+  const API = `${process.env.REACT_APP_API_URL}/auth`;
 
   const handleSetRememberMe = () => setRememberMe(!rememberMe);
 
