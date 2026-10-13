@@ -2,7 +2,12 @@ name: Deploy production
 
 on:
   workflow_dispatch:
-  push:
+  # Deploy only after CI has passed for the same commit on master.
+  workflow_run:
+    workflows:
+      - CI
+    types:
+      - completed
     branches:
       - master
 
@@ -16,12 +21,15 @@ concurrency:
 jobs:
   deploy:
     name: Deploy to server
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.event == 'push')
     runs-on: ubuntu-latest
     environment: production
+    env:
+      DEPLOY_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
     steps:
-      - name: Check out repository
-        uses: actions/checkout@v4
-
       - name: Configure SSH
         env:
           SERVER_KNOWN_HOSTS: ${{ secrets.SERVER_KNOWN_HOSTS }}
@@ -42,4 +50,4 @@ jobs:
         run: |
           PORT="${SERVER_PORT:-22}"
           ssh -p "$PORT" "$SERVER_USER@$SERVER_HOST" \
-            "cd '$SERVER_APP_PATH' && bash scripts/deploy.sh '${{ github.sha }}'"
+            "cd '$SERVER_APP_PATH' && bash scripts/deploy.sh '$DEPLOY_SHA'"

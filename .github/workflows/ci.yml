@@ -4,9 +4,13 @@ on:
   pull_request:
     branches:
       - master
+      - main
+      - development
   push:
     branches:
       - master
+      - main
+      - development
 
 permissions:
   contents: read
@@ -29,7 +33,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
           cache-dependency-path: backend/package-lock.json
 
@@ -40,7 +44,7 @@ jobs:
         run: npm test
 
   frontend:
-    name: Frontend build
+    name: Frontend tests and build
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -52,15 +56,19 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
           cache-dependency-path: frontend/package-lock.json
 
       - name: Install dependencies
         run: npm ci
 
+      - name: Run tests
+        env:
+          CI: "true"
+        run: npm test -- --watchAll=false
+
       - name: Build application
         env:
           CI: "false"
         run: npm run build
-

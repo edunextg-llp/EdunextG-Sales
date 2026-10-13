@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import PropTypes from 'prop-types';
-import { Dialog, DialogTitle, DialogContent, DialogActions, Table, TableHead, TableBody, TableRow, TableCell, TableContainer, MenuItem, Checkbox, Chip, Grid } from '@mui/material';
+import { Dialog, DialogTitle, DialogContent, DialogActions, Table, TableHead, TableBody, TableRow, TableCell, TableContainer, MenuItem, Checkbox, Chip, Grid, FormControl, InputLabel, Select } from '@mui/material';
 import MDBox from 'components/MDBox';
 import MDTypography from 'components/MDTypography';
 import MDInput from 'components/MDInput';
 import MDButton from 'components/MDButton';
 import { notifySalesUpdated, useSalesPolling } from 'utils/salesSync';
-import { groupAssignments, invoiceValue, printAssignmentSheetPdf, isEditableAssignment, assignmentEditRequests } from 'utils/assignmentReport';
+import { groupAssignments, invoiceValue, printAssignmentSheetPdf, isEditableAssignment, assignmentEditRequests, assignmentCompanies, companyReportRows, printCompanyReportPdf, ALL_COMPANIES } from 'utils/assignmentReport';
 import { boxCount } from 'utils/deliveryLog';
 
 const money = (value) => Number(value).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -27,7 +27,7 @@ export default function AssignmentHistory({ api, onViewBill, areaOrder, boys }) 
   const [notice, setNotice] = useState('');
   const [loading, setLoading] = useState(false);
   const [employee, setEmployee] = useState(null);
-  const [bitField, setBitField] = useState('location_name');
+  const bitField = 'location_name';
   const [downloadError, setDownloadError] = useState('');
   const [refresh, setRefresh] = useState(0);
   const [editing, setEditing] = useState(false);
@@ -37,6 +37,9 @@ export default function AssignmentHistory({ api, onViewBill, areaOrder, boys }) 
   const [keepIds, setKeepIds] = useState([]);
   const [editSaving, setEditSaving] = useState(false);
   const [editMessage, setEditMessage] = useState('');
+  const [companyOpen, setCompanyOpen] = useState(false);
+  const [company, setCompany] = useState(ALL_COMPANIES);
+  const [companyError, setCompanyError] = useState('');
   const reload = useCallback(() => setRefresh((value) => value + 1), []);
   useSalesPolling(reload);
   useEffect(() => {
@@ -59,7 +62,19 @@ export default function AssignmentHistory({ api, onViewBill, areaOrder, boys }) 
   const groups = useMemo(() => groupAssignments(result.date === date ? result.rows : [], areaOrder), [result, date, areaOrder]);
   const selected = groups.find((group) => group.id === employee);
   const editableRows = (selected?.rows || []).filter(isEditableAssignment);
-  const closeDialog = () => { if (!editSaving) { setEmployee(null); setEditing(false); setEditMessage(''); } };
+  const companies = useMemo(() => assignmentCompanies(selected?.rows || []), [selected]);
+  const companyRows = selected ? companyReportRows(selected, date, company) : [];
+  const openCompanyReport = () => {
+    setCompany(companies.length === 1 ? companies[0] : ALL_COMPANIES);
+    setCompanyError('');
+    setCompanyOpen(true);
+  };
+  const downloadCompany = () => {
+    setCompanyError('');
+    try { printCompanyReportPdf(selected, date, company); }
+    catch (err) { setCompanyError(err?.message || 'Unable to download the company report. Please try again.'); }
+  };
+  const closeDialog = () => { if (!editSaving) { setEmployee(null); setEditing(false); setEditMessage(''); setCompanyOpen(false); } };
   const startEdit = () => {
     setEditMessage('');
     if (!editableRows.length) {
@@ -143,12 +158,10 @@ export default function AssignmentHistory({ api, onViewBill, areaOrder, boys }) 
         <MDBox display="flex" gap={1}>
           {!editing && <MDButton color="info" variant="outlined" onClick={startEdit} disabled={!selected}>Edit</MDButton>}
           <MDButton color="success" variant="gradient" onClick={download} disabled={!selected || editing}>Download PDF</MDButton>
+          <MDButton color="dark" variant="outlined" onClick={openCompanyReport} disabled={!selected || editing}>Company-wise</MDButton>
         </MDBox>
       </MDBox></DialogTitle>
       <DialogContent dividers>
-        <MDInput select label="BIT column" value={bitField} onChange={(event) => setBitField(event.target.value)} fullWidth sx={{ mb: 2 }}>
-          <MenuItem value="location_name">Area / route name</MenuItem><MenuItem value="sticker_number">Sticker number</MenuItem>
-        </MDInput>
         {editing && <MDBox mb={2} p={1.5} sx={{ border: '1px solid #93c5fd', borderRadius: 1, backgroundColor: '#eff6ff' }}>
           <Grid container spacing={2}>
             <Grid item xs={12} md={4}>
@@ -185,6 +198,25 @@ export default function AssignmentHistory({ api, onViewBill, areaOrder, boys }) 
           <MDButton color="secondary" onClick={() => { setEditing(false); setDownloadError(''); }} disabled={editSaving}>Cancel</MDButton>
           <MDButton color="info" variant="gradient" onClick={saveEdit} disabled={editSaving}>{editSaving ? 'Saving…' : 'Save changes'}</MDButton>
         </> : <MDButton color="secondary" onClick={closeDialog}>Close</MDButton>}
+      </DialogActions>
+    </Dialog>
+    <Dialog open={companyOpen && Boolean(selected)} onClose={() => setCompanyOpen(false)} fullWidth maxWidth="sm">
+      <DialogTitle>Company-wise Report — {selected?.name} — {date}</DialogTitle>
+      <DialogContent dividers>
+        <FormControl fullWidth sx={{ mt: 1, mb: 2 }}>
+          <InputLabel id="company-report-company-label">Company</InputLabel>
+          <Select labelId="company-report-company-label" label="Company" value={company} onChange={(event) => { setCompany(event.target.value); setCompanyError(''); }} sx={{ height: 44 }}>
+            <MenuItem value={ALL_COMPANIES}>All companies</MenuItem>
+            {companies.map((name) => <MenuItem key={name} value={name}>{name}</MenuItem>)}
+          </Select>
+        </FormControl>
+        <MDTypography variant="body2">{companyRows.length} orders · {companyRows.reduce((sum, row) => sum + row.boxes, 0)} boxes · Invoice Value: {money(companyRows.reduce((sum, row) => sum + row.amount, 0))}</MDTypography>
+        <MDTypography variant="caption" display="block" mt={1}>Columns: delivery boy, date, company, staff name, area, invoice number, outlet name, boxes and invoice amount.</MDTypography>
+        {companyError && <MDTypography variant="body2" color="error" role="alert">{companyError}</MDTypography>}
+      </DialogContent>
+      <DialogActions>
+        <MDButton color="secondary" onClick={() => setCompanyOpen(false)}>Close</MDButton>
+        <MDButton color="success" variant="gradient" onClick={downloadCompany} disabled={!companyRows.length}>Download PDF</MDButton>
       </DialogActions>
     </Dialog>
   </MDBox>;

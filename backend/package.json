@@ -4,7 +4,8 @@
   "description": "",
   "main": "src/index.js",
   "scripts": {
-    "test": "echo \"No tests configured\"",
+    "start": "node src/index.js",
+    "test": "node --test",
     "generate-delivery-credentials": "node src/scripts/generateDeliveryCredentials.js",
     "update-schema": "node updateSchema.js",
     "dev": "nodemon src/index.js"

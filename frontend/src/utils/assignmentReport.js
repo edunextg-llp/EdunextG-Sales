@@ -114,6 +114,82 @@ export function printAssignmentSheetPdf(group, date, bitField) {
   setTimeout(() => { if (!printWindow.closed) printWindow.print(); }, 250);
 }
 
+// A bill's company comes from its salesperson, who may belong to several
+// companies ("A, B"), so a bill counts towards each of them.
+export const rowCompanies = (row) => String(row.company_name || '').split(',').map((name) => name.trim()).filter(Boolean);
+export const assignmentCompanies = (rows) => [...new Set(rows.flatMap(rowCompanies))].sort((a, b) => a.localeCompare(b));
+export const ALL_COMPANIES = '__all__';
+
+// Rows for the company-wise report, ordered by company, then the assignment order.
+export function companyReportRows(group, date, company) {
+  const rows = group.rows.flatMap((row, index) => {
+    const companies = rowCompanies(row);
+    const matched = company === ALL_COMPANIES ? [companies.join(', ') || '—'] : companies.includes(company) ? [company] : [];
+    return matched.map((name) => ({ name, row, index }));
+  });
+  return rows.sort((a, b) => a.name.localeCompare(b.name) || a.index - b.index).map(({ name, row }, index) => ({
+    sr: index + 1,
+    deliveryBoy: group.name,
+    date,
+    company: name,
+    staff: row.staff_name || '—',
+    area: row.location_name || '—',
+    invoice: String(row.invoice_number || row.id),
+    outlet: row.outlet_name || '',
+    boxes: rowBoxes(row),
+    amount: invoiceValue(row),
+  }));
+}
+
+const companyLabel = (company) => (company === ALL_COMPANIES ? 'All Companies' : company);
+const companyFileName = (group, date, company) => `Company_Report_${date}_${group.name}_${companyLabel(company)}`.replace(/[^a-z0-9_-]/gi, '_');
+
+export function companyReportHtml(group, date, company) {
+  const reportRows = companyReportRows(group, date, company);
+  const rows = reportRows.map((row) => ({ ...row, amount: pdfMoney(row.amount) }));
+  const total = pdfMoney(reportRows.reduce((sum, row) => sum + row.amount, 0));
+  const boxes = reportRows.reduce((sum, row) => sum + row.boxes, 0);
+  return ejs.render(`<!doctype html>
+    <html><head><meta charset="utf-8"><title><%= fileName %></title>
+    <style>
+      @page { size: A4 landscape; margin: 10mm; }
+      body { font-family: Arial, sans-serif; color: #172033; font-size: 11px; }
+      h1 { font-size: 17px; margin: 0 0 4px; }
+      p { color: #475569; margin: 0 0 12px; }
+      table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+      th, td { border: 1px solid #94a3b8; padding: 6px 7px; text-align: left; overflow-wrap: anywhere; }
+      th { background: #dbeafe; }
+      .sr { width: 5%; } .date { width: 9%; } .box { width: 6%; text-align: center; } .amt { width: 11%; text-align: right; }
+      thead { display: table-header-group; }
+      tr { break-inside: avoid; }
+      .total td { font-weight: bold; background: #dbeafe; }
+      button { padding: 10px 16px; margin-bottom: 16px; cursor: pointer; }
+      @media print { button, .hint { display: none; } }
+    </style></head><body>
+      <button onclick="window.print()">Print / Save as PDF</button>
+      <p class="hint">Choose Save as PDF in the print dialog to download this report.</p>
+      <h1>Company-wise Assigned Orders — <%= company %></h1>
+      <p>Delivery boy: <%= name %> · Date: <%= date %> · <%= rows.length %> orders · <%= boxes %> boxes</p>
+      <table><thead><tr><th class="sr">Sr. No.</th><th>Delivery Boy</th><th class="date">Date</th><th>Company Name</th><th>Staff Name</th><th>Area</th><th>Invoice No.</th><th>Outlet Name</th><th class="box">Boxes</th><th class="amt">Invoice Amount</th></tr></thead>
+      <tbody><% rows.forEach(function(row) { %>
+        <tr><td><%= row.sr %></td><td><%= row.deliveryBoy %></td><td><%= row.date %></td><td><%= row.company %></td><td><%= row.staff %></td><td><%= row.area %></td><td><%= row.invoice %></td><td><%= row.outlet %></td><td class="box"><%= row.boxes %></td><td class="amt"><%= row.amount %></td></tr>
+      <% }); %>
+        <tr class="total"><td colspan="8">Total</td><td class="box"><%= boxes %></td><td class="amt"><%= total %></td></tr>
+      </tbody></table>
+    </body></html>`, { rows, total, boxes, date, name: group.name, company: companyLabel(company), fileName: companyFileName(group, date, company) });
+}
+
+export function printCompanyReportPdf(group, date, company) {
+  const html = companyReportHtml(group, date, company);
+  const printWindow = window.open('', '_blank', 'width=1100,height=900');
+  if (!printWindow) throw new Error('Please allow popups to download the company report PDF.');
+  printWindow.document.open();
+  printWindow.document.write(html);
+  printWindow.document.close();
+  printWindow.focus();
+  setTimeout(() => { if (!printWindow.closed) printWindow.print(); }, 250);
+}
+
 // Only bills still out for delivery can be reassigned or removed.
 export const isEditableAssignment = (row) => String(row.packaging_status || '').trim().toLowerCase() === 'out_for_delivery';
 
