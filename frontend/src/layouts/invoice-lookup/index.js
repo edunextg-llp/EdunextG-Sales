@@ -31,7 +31,7 @@ import Footer from "examples/Footer";
 const API = "https://bawarchee.edunextg.co/api";
 
 const STATUS_LABELS = {
-  not_packing: "Sale Created",
+  not_packing: "Not Packing",
   packing: "Packing In Progress",
   packing_done: "Packing Done",
   out_for_delivery: "Out for Delivery",
@@ -113,6 +113,27 @@ function InvoiceDetails({ details }) {
   const { sale, history, payments, cancellations, collections, takenBills, summary } = details;
   const currentStatus = sale.packaging_status || "not_packing";
   const activeStep = STATUS_ORDER.indexOf(currentStatus);
+
+  // Bill after cancellations, matching the backend's paid + balance totals.
+  const effectivePrice = Number(summary.paidAmount || 0) + Number(summary.balanceAmount || 0);
+  let paidSoFar = 0;
+  const paymentHistory = payments.map((payment) => {
+    const isCredit = payment.payment_mode === "credit";
+    // Credit entries record an amount owed; only cash, UPI and cheque count as paid.
+    if (!isCredit) paidSoFar += Number(payment.amount) || 0;
+    const modeLabel = PAYMENT_LABELS[payment.payment_mode] || payment.payment_mode;
+    return {
+      ...payment,
+      isCredit,
+      typeLabel: isCredit
+        ? "Credit Given"
+        : payment.parent_credit_payment_id
+          ? `Credit Collection (${modeLabel})`
+          : modeLabel,
+      paidSoFar,
+      balanceAfter: Math.max(0, Math.round((effectivePrice - paidSoFar) * 100) / 100),
+    };
+  });
 
   return (
     <MDBox mt={3}>
@@ -216,33 +237,77 @@ function InvoiceDetails({ details }) {
       )}
 
       <Card sx={{ p: 3, mb: 3 }}>
-        <MDTypography variant="h6" fontWeight="medium" mb={2}>
-          Payments ({payments.length})
-        </MDTypography>
-        {payments.length > 0 ? (
+        <MDBox display="flex" justifyContent="space-between" alignItems="center" flexWrap="wrap" gap={1} mb={2}>
+          <MDTypography variant="h6" fontWeight="medium">
+            Payment History ({payments.length})
+          </MDTypography>
+          <MDBox display="flex" gap={1} flexWrap="wrap">
+            <Chip size="small" variant="outlined" label={`Bill: ${formatCurrency(effectivePrice)}`} />
+            <Chip size="small" variant="outlined" color="success" label={`Paid: ${formatCurrency(summary.paidAmount)}`} />
+            <Chip
+              size="small"
+              variant="outlined"
+              color={Number(summary.balanceAmount) > 0 ? "error" : "success"}
+              label={`Balance: ${formatCurrency(summary.balanceAmount)}`}
+            />
+          </MDBox>
+        </MDBox>
+        {paymentHistory.length > 0 ? (
           <TableContainer component={Paper} variant="outlined">
             <Table size="small">
-              <TableHead>
+              <TableHead sx={{ display: "table-header-group" }}>
                 <TableRow>
-                  <TableCell>Date</TableCell>
-                  <TableCell>Mode</TableCell>
-                  <TableCell>Amount</TableCell>
+                  <TableCell>Sr No</TableCell>
+                  <TableCell>Payment Date</TableCell>
+                  <TableCell>Type</TableCell>
+                  <TableCell align="right">Amount</TableCell>
+                  <TableCell align="right">Total Paid</TableCell>
+                  <TableCell align="right">Balance After</TableCell>
                   <TableCell>Collector</TableCell>
                   <TableCell>Reference</TableCell>
+                  <TableCell>Entered By</TableCell>
+                  <TableCell>Entry Time</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
-                {payments.map((payment) => (
-                  <TableRow key={payment.id}>
+                {paymentHistory.map((payment, index) => (
+                  <TableRow
+                    key={payment.id}
+                    sx={{ backgroundColor: payment.isCredit ? "#fff7ed" : undefined }}
+                  >
+                    <TableCell>{index + 1}</TableCell>
                     <TableCell>{formatDate(payment.payment_date)}</TableCell>
-                    <TableCell>{PAYMENT_LABELS[payment.payment_mode] || payment.payment_mode}</TableCell>
-                    <TableCell>{formatCurrency(payment.amount)}</TableCell>
+                    <TableCell>
+                      <Chip
+                        size="small"
+                        variant="outlined"
+                        color={payment.isCredit ? "warning" : "success"}
+                        label={payment.typeLabel}
+                      />
+                    </TableCell>
+                    <TableCell align="right" sx={{ fontWeight: 700 }}>
+                      {formatCurrency(payment.amount)}
+                    </TableCell>
+                    <TableCell align="right">{formatCurrency(payment.paidSoFar)}</TableCell>
+                    <TableCell
+                      align="right"
+                      sx={{ fontWeight: 700, color: payment.balanceAfter > 0 ? "#b91c1c" : "#15803d" }}
+                    >
+                      {formatCurrency(payment.balanceAfter)}
+                    </TableCell>
                     <TableCell>{payment.collector_staff_name || payment.collector_name || "N/A"}</TableCell>
                     <TableCell>
                       {payment.reference_no
                         ? `${payment.reference_no}${payment.reference_date ? ` (${formatDate(payment.reference_date)})` : ""}`
                         : "—"}
+                      {payment.isCredit && payment.credit_days ? ` · ${payment.credit_days} days` : ""}
                     </TableCell>
+                    <TableCell>
+                      {payment.updated_by_name
+                        ? `${payment.updated_by_name}${payment.updated_by_employee_code ? ` (${payment.updated_by_employee_code})` : ""}`
+                        : "—"}
+                    </TableCell>
+                    <TableCell>{formatDateTime(payment.created_at)}</TableCell>
                   </TableRow>
                 ))}
               </TableBody>

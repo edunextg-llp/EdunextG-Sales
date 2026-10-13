@@ -1454,7 +1454,7 @@ class StaffModel {
                  INNER JOIN companies c2 ON c2.id = sc.company_id
                  GROUP BY sc.staff_id
              ) staff_company ON staff_company.staff_id = s.id
-             WHERE cancel_hist.sale_id IS NOT NULL OR ss.packaging_status = 'cancelled'
+             WHERE ss.packaging_status = 'cancelled'
              ORDER BY COALESCE(cancel_hist.cancel_date, legacy_cancel.status_updated_at) DESC, ss.id DESC`
         );
         return rows;

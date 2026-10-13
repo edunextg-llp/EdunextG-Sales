@@ -112,21 +112,6 @@ function Delivered() {
       .map((id) => Number(id))
       .filter((id) => Number.isInteger(id) && id > 0);
 
-  const csvValue = (value) => `"${String(value ?? "").replace(/"/g, '""')}"`;
-
-  const downloadCSV = (filename, csvContent) => {
-    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
-    const link = document.createElement("a");
-    const url = URL.createObjectURL(blob);
-    link.setAttribute("href", url);
-    link.setAttribute("download", filename);
-    link.style.visibility = "hidden";
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
-  };
-
   const fetchSales = useCallback(async ({ silent = false } = {}) => {
     try {
       const response = await fetch(`${API}/staff/sales/by-date`);
@@ -317,7 +302,14 @@ function Delivered() {
   const deliveredTotal = filteredSales.filter((row) => row.packaging_status === "delivered").length;
   const pendingDeliveryTotal = filteredSales.filter((row) => row.packaging_status === "out_for_delivery").length;
   const cancelledTotal = filteredCancelledSales.length;
-  const returnedTotal = filteredSales.filter((row) => row.packaging_status === "returned").length;
+  const returnedSales = filteredSales
+    .filter((row) => row.packaging_status === "returned")
+    .sort((a, b) =>
+      getDateOnly(a.delivery_date || a.status_updated_at).localeCompare(
+        getDateOnly(b.delivery_date || b.status_updated_at)
+      )
+    );
+  const returnedTotal = returnedSales.length;
   const pendingSales = filteredSales.filter((row) => row.packaging_status === "out_for_delivery");
   const cancelledSales = filteredCancelledSales;
   const activeList =
@@ -325,7 +317,9 @@ function Delivered() {
       ? cancelledSales
       : activeTab === "pending"
         ? pendingSales
-        : filteredSales;
+        : activeTab === "returned"
+          ? returnedSales
+          : filteredSales;
   const totalPages = Math.max(1, Math.ceil(activeList.length / rowsPerPage));
   const paginatedActiveList = activeList.slice(
     (page - 1) * rowsPerPage,
@@ -387,7 +381,9 @@ function Delivered() {
     const sourceRows =
       activeTab === "pending"
         ? pendingSales
-        : filteredSales.filter(
+        : activeTab === "returned"
+          ? returnedSales
+          : filteredSales.filter(
           (row) =>
             row.packaging_status === "delivered" ||
             row.packaging_status === "returned" ||
@@ -574,46 +570,130 @@ function Delivered() {
     printWindow.print();
   };
 
-  const handleDownloadCancelCSV = () => {
-    let csv =
-      "Report Type,Name,Cancel Count,Cancel Amount\n" +
-      staffCancelSummary
-        .map((row) => `Staff Wise,${csvValue(row.name)},${row.count},${row.amount.toFixed(2)}`)
-        .join("\n");
+  const returnedAmount = returnedSales.reduce((total, row) => total + (Number(row.price) || 0), 0);
+  // Keyed by ISO date so the summary sorts chronologically, then formatted for display.
+  const dateReturnSummary = buildSummary(returnedSales, (row) =>
+    getDateOnly(row.delivery_date || row.status_updated_at)
+  ).map((row) => ({ ...row, name: formatDate(row.name) }));
 
-    csv += "\n\nReport Type,Name,Cancel Count,Cancel Amount\n";
-    csv += companyCancelSummary
-      .map((row) => `Company Wise,${csvValue(row.name)},${row.count},${row.amount.toFixed(2)}`)
-      .join("\n");
+  const handleDownloadReturnReport = () => {
+    if (!returnedSales.length) {
+      alert("No returned items found for the selected filters.");
+      return;
+    }
 
-    csv += "\n\nReport Type,Area,Cancel Count,Cancel Amount\n";
-    csv += areaCancelSummary
-      .map((row) => `Area Wise,${csvValue(row.name)},${row.count},${row.amount.toFixed(2)}`)
-      .join("\n");
+    const summaryHtml = dateReturnSummary
+      .map(
+        (row, index) => `
+          <tr>
+            <td>${index + 1}</td>
+            <td>${escapeHtml(row.name)}</td>
+            <td class="right">${row.count}</td>
+            <td class="right">Rs. ${row.amount.toFixed(2)}</td>
+          </tr>
+        `
+      )
+      .join("");
 
-    csv += "\n\nReport Type,Date,Cancel Count,Cancel Amount\n";
-    csv += rangeCancelSummary
-      .map((row) => `Range Wise,${csvValue(row.name)},${row.count},${row.amount.toFixed(2)}`)
-      .join("\n");
+    const rowsHtml = returnedSales
+      .map(
+        (row, index) => `
+          <tr>
+            <td>${index + 1}</td>
+            <td>${escapeHtml(formatDate(row.delivery_date || row.status_updated_at))}</td>
+            <td>${escapeHtml(row.sticker_number || "N/A")}</td>
+            <td>${escapeHtml(row.staff_name || "N/A")}</td>
+            <td>${escapeHtml(row.company_name || "N/A")}</td>
+            <td>${escapeHtml(row.outlet_erp_id || "N/A")}</td>
+            <td>${escapeHtml(row.outlet_name || "N/A")}</td>
+            <td>${escapeHtml(row.location_name || "N/A")}</td>
+            <td>${escapeHtml(row.invoice_number || "N/A")}</td>
+            <td>${escapeHtml(row.delivery_boy_name || "N/A")}</td>
+            <td class="right">Rs. ${Number(row.price || 0).toFixed(2)}</td>
+          </tr>
+        `
+      )
+      .join("");
 
-    csv += "\n\nSr No,Sale ID,Staff Name,Company,Invoice Date,Cancel Date,ERP ID,Outlet Name,Area,Invoice No,Cancel Amount\n";
-    cancelledSales.forEach((row, index) => {
-      csv +=
-        `${index + 1},` +
-        `${csvValue(row.sticker_number || "N/A")},` +
-        `${csvValue(row.staff_name || "N/A")},` +
-        `${csvValue(row.company_name || "N/A")},` +
-        `${csvValue(formatDate(row.sale_date))},` +
-        `${csvValue(formatDate(row.delivery_date || row.status_updated_at))},` +
-        `${csvValue(row.outlet_erp_id || "N/A")},` +
-        `${csvValue(row.outlet_name || "N/A")},` +
-        `${csvValue(row.location_name || "N/A")},` +
-        `${csvValue(row.invoice_number || "N/A")},` +
-        `${Number(row.price || 0).toFixed(2)}\n`;
-    });
-    csv += `,,,,,,,,Total,${cancelledAmount.toFixed(2)}\n`;
+    const printWindow = window.open("", "_blank", "width=1200,height=800");
+    if (!printWindow) {
+      alert("Please allow popups to download the report.");
+      return;
+    }
 
-    downloadCSV("Cancelled_Invoice_Report.csv", csv);
+    printWindow.document.open();
+    printWindow.document.write(`
+      <!doctype html>
+      <html>
+        <head>
+          <title>Date Wise Return Report</title>
+          <style>
+            body { font-family: Arial, sans-serif; color: #111827; margin: 28px; }
+            h1 { font-size: 22px; margin: 0 0 6px; }
+            h2 { color: #9a3412; font-size: 15px; margin: 18px 0 8px; }
+            .meta { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px 20px; margin-bottom: 14px; font-size: 12px; background: #f8fafc; border: 1px solid #e5e7eb; border-radius: 6px; padding: 10px; }
+            .meta strong { display: inline-block; min-width: 90px; color: #4b5563; }
+            .total { display: inline-block; border: 1px solid #fed7aa; background: #fff7ed; color: #9a3412; padding: 10px 12px; border-radius: 6px; font-weight: 700; margin-bottom: 16px; }
+            table { width: 100%; border-collapse: collapse; font-size: 11px; }
+            th, td { border: 1px solid #d1d5db; padding: 7px; text-align: left; vertical-align: top; }
+            th { background: #fff7ed; font-weight: 700; color: #9a3412; }
+            .right { text-align: right; white-space: nowrap; }
+            tfoot td { font-weight: 700; background: #f8fafc; }
+            @media print { body { margin: 12mm; } }
+          </style>
+        </head>
+        <body>
+          <h1>Date Wise Return Report</h1>
+          <div class="meta">
+            <div><strong>Date Range:</strong> ${escapeHtml(deliveryRangeLabel)}</div>
+            <div><strong>Generated:</strong> ${escapeHtml(new Date().toLocaleString("en-GB"))}</div>
+          </div>
+          <div class="total">Total Returned: ${returnedSales.length} | Amount: Rs. ${returnedAmount.toFixed(2)}</div>
+          <h2>Date Wise Total</h2>
+          <table>
+            <thead>
+              <tr>
+                <th>Sr No</th>
+                <th>Return Date</th>
+                <th class="right">Return Count</th>
+                <th class="right">Return Amount</th>
+              </tr>
+            </thead>
+            <tbody>${summaryHtml}</tbody>
+            <tfoot>
+              <tr>
+                <td></td>
+                <td>Total</td>
+                <td class="right">${returnedSales.length}</td>
+                <td class="right">Rs. ${returnedAmount.toFixed(2)}</td>
+              </tr>
+            </tfoot>
+          </table>
+          <h2>Returned Invoice Details</h2>
+          <table>
+            <thead>
+              <tr>
+                <th>Sr No</th>
+                <th>Return Date</th>
+                <th>Sale ID</th>
+                <th>Staff Name</th>
+                <th>Company</th>
+                <th>ERP ID</th>
+                <th>Outlet Name</th>
+                <th>Area</th>
+                <th>Invoice No</th>
+                <th>Delivery Boy</th>
+                <th class="right">Return Amount</th>
+              </tr>
+            </thead>
+            <tbody>${rowsHtml}</tbody>
+          </table>
+        </body>
+      </html>
+    `);
+    printWindow.document.close();
+    printWindow.focus();
+    printWindow.print();
   };
 
   const handleUpdateStatus = async (saleId, newStatus, currentDeliveryBoy, currentVehicle, currentDeliveryDate) => {
@@ -707,6 +787,11 @@ function Delivered() {
                 >
                   <Tab label="Active Deliveries" value="delivered" />
                   <Tab label={`Pending Delivery (${pendingDeliveryTotal})`} value="pending" />
+                  <Tab
+                    label={`Returned Items (${returnedTotal})`}
+                    value="returned"
+                    sx={{ color: activeTab === "returned" ? "warning.main" : undefined }}
+                  />
                   <Tab
                     label={`Cancelled Items (${cancelledTotal})`}
                     value="cancelled"
@@ -889,7 +974,8 @@ function Delivered() {
                         px={2}
                         py={1.25}
                         borderRadius="lg"
-                        sx={{ backgroundColor: "#fff7ed", border: "1px solid #fed7aa" }}
+                        onClick={() => setActiveTab("returned")}
+                        sx={{ backgroundColor: "#fff7ed", border: "1px solid #fed7aa", cursor: "pointer" }}
                       >
                         <MDTypography variant="caption" color="text">
                           Total Returned
@@ -901,7 +987,7 @@ function Delivered() {
                     </MDBox>
                   </Grid>
                   <Grid item xs={12} display="flex" justifyContent="flex-end">
-                    <SalesExcelButton rows={activeList} filename={activeTab === "pending" ? "Pending_Delivery" : activeTab === "cancelled" ? "Cancelled_Deliveries" : "Active_Deliveries"} />
+                    <SalesExcelButton rows={activeList} filename={activeTab === "pending" ? "Pending_Delivery" : activeTab === "returned" ? "Returned_Deliveries" : activeTab === "cancelled" ? "Cancelled_Deliveries" : "Active_Deliveries"} />
                   </Grid>
                 </Grid>
 
@@ -910,10 +996,30 @@ function Delivered() {
                     {(deliveryRangeStart || deliveryRangeEnd) && (
                       <MDTypography variant="body2" color="text" mb={2}>
                         Delivery date: {deliveryRangeLabel}
-                        {activeTab === "pending" ? " · Pending only" : " · Delivered, pending, and returned"}
+                        {activeTab === "pending"
+                          ? " · Pending only"
+                          : activeTab === "returned"
+                            ? " · Returned only"
+                            : " · Delivered, pending, and returned"}
                       </MDTypography>
                     )}
-                    <MDBox display="flex" justifyContent="flex-end" mb={2}>
+                    <MDBox display="flex" justifyContent="flex-end" alignItems="center" gap={1} flexWrap="wrap" mb={2}>
+                      {activeTab === "returned" && (
+                        <>
+                          <MDTypography variant="h6" color="warning" fontWeight="bold" mr={1}>
+                            Total: {returnedTotal} | Amount: ₹{returnedAmount.toFixed(2)}
+                          </MDTypography>
+                          <MDButton
+                            color="warning"
+                            variant="contained"
+                            size="small"
+                            onClick={handleDownloadReturnReport}
+                          >
+                            <Icon sx={{ mr: 1 }}>picture_as_pdf</Icon>
+                            Date Wise Return Report
+                          </MDButton>
+                        </>
+                      )}
                       <MDButton
                         color="info"
                         variant="outlined"
@@ -1095,7 +1201,9 @@ function Delivered() {
                                 <MDTypography variant="body2" color="text">
                                   {activeTab === "pending"
                                     ? "No pending delivery items found."
-                                    : "No delivered items found."}
+                                    : activeTab === "returned"
+                                      ? "No returned items found."
+                                      : "No delivered items found."}
                                 </MDTypography>
                               </TableCell>
                             </TableRow>
@@ -1129,9 +1237,6 @@ function Delivered() {
                         <MDTypography variant="h6" color="error" fontWeight="bold">
                           Total: {cancelledTotal} | Amount: ₹{cancelledAmount.toFixed(2)}
                         </MDTypography>
-                        <MDButton color="dark" variant="outlined" size="small" onClick={handleDownloadCancelCSV}>
-                          Download CSV
-                        </MDButton>
                         <MDButton color="error" variant="contained" size="small" onClick={handleDownloadCancelReport}>
                           Download PDF
                         </MDButton>
@@ -1393,9 +1498,6 @@ function Delivered() {
           </TableContainer>
         </DialogContent>
         <DialogActions>
-          <MDButton color="dark" variant="outlined" onClick={handleDownloadCancelCSV}>
-            Download CSV
-          </MDButton>
           <MDButton color="error" variant="contained" onClick={handleDownloadCancelReport}>
             Download PDF
           </MDButton>
