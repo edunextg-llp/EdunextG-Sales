@@ -308,7 +308,7 @@ function DBCollection() {
   const cashTotal = CASH_DENOMINATIONS.reduce((total, [, key, value]) => total + (Number(cashCounts[key]) || 0) * Math.round(value * 100), 0) / 100;
   const [settlementError, setSettlementError] = useState("");
   const [page, setPage] = useState(1);
-  const API = "https://bawarchee.edunextg.co/api";
+  const API = (process.env.REACT_APP_API_URL);
 
   const fetchCollections = async (search = searchQuery) => {
     if (fromDate && toDate && fromDate > toDate) {

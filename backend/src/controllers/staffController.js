@@ -3201,6 +3201,57 @@ export const lookupSaleByInvoice = async (req, res) => {
     }
 };
 
+export const searchLookupOutlets = async (req, res) => {
+    try {
+        const term = String(req.query.search || '').trim();
+        if (term.length < 2) {
+            return res.status(400).json({ error: 'Enter at least 2 characters to search outlets.' });
+        }
+        const outlets = await StaffModel.searchOutlets(term);
+        return res.status(200).json({ outlets });
+    } catch (error) {
+        console.error('Error searching outlets for lookup:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+};
+
+export const getLookupOutletInvoices = async (req, res) => {
+    try {
+        const outletKey = String(req.query.outletKey || '').trim();
+        if (!outletKey) {
+            return res.status(400).json({ error: 'Outlet ERP ID is required' });
+        }
+        const data = await StaffModel.getOutletInvoices(outletKey);
+        if (!data) {
+            return res.status(404).json({ error: 'Outlet not found' });
+        }
+
+        // Cancelled bills stay in the list but do not count towards the totals.
+        const summary = data.invoices.reduce((totals, invoice) => {
+            if (invoice.packaging_status === 'cancelled') {
+                totals.cancelledCount += 1;
+                return totals;
+            }
+            const paid = parseFloat(invoice.paid_amount) || 0;
+            const balance = parseFloat(invoice.balance_amount) || 0;
+            totals.billed += paid + balance;
+            totals.paid += paid;
+            totals.outstanding += balance;
+            if (balance > 0) totals.unpaidCount += 1;
+            return totals;
+        }, { billed: 0, paid: 0, outstanding: 0, unpaidCount: 0, cancelledCount: 0 });
+
+        return res.status(200).json({
+            outlet: data.outlet,
+            invoices: data.invoices,
+            summary: { ...summary, invoiceCount: data.invoices.length },
+        });
+    } catch (error) {
+        console.error('Error fetching outlet invoices for lookup:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+};
+
 export const getCancelledDeliverySales = async (req, res) => {
     try {
         const sales = await StaffModel.getCancelledDeliverySales();

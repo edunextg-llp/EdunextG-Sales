@@ -12,7 +12,7 @@ import MDButton from "components/MDButton";
 import MDInput from "components/MDInput";
 import MDTypography from "components/MDTypography";
 
-const API = "https://bawarchee.edunextg.co/api";
+const API = (process.env.REACT_APP_API_URL);
 const PERMISSIONS = [
   ["dashboard", "Dashboard", "View the dashboard, reports, and business summary."],
   ["dms", "DMS", "Open the DMS section. This is required for DMS-related permissions."],

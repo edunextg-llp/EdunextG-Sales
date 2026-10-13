@@ -140,7 +140,7 @@ function Purchase() {
   const [gstManuallyEdited, setGstManuallyEdited] = useState(false);
   const [editingPurchaseId, setEditingPurchaseId] = useState(null);
   const [purchaseModalOpen, setPurchaseModalOpen] = useState(false);
-  const API = "https://bawarchee.edunextg.co/api";
+  const API = (process.env.REACT_APP_API_URL);
 
   const totals = useMemo(() => {
     const grossAmount = numberValue(form.grossAmount);

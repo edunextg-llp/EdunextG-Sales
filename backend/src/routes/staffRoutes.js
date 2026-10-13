@@ -105,6 +105,8 @@ router.post('/physical-stock/approve', physicalStockController.approvePhysicalSt
 router.post('/physical-stock/set-current', physicalStockController.approvePhysicalStockAsCurrentStock);
 router.get('/sales/by-date', staffController.getAllSalesByDate);
 router.get('/sales/lookup', staffController.lookupSaleByInvoice);
+router.get('/sales/lookup/outlets', staffController.searchLookupOutlets);
+router.get('/sales/lookup/outlet-invoices', staffController.getLookupOutletInvoices);
 router.get('/sales/cancelled', staffController.getCancelledDeliverySales);
 router.get('/reports', staffController.getReports);
 router.get('/reports/payments', staffController.getPaymentDetailsReport);

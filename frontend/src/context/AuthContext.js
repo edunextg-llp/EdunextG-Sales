@@ -15,7 +15,7 @@ const IDLE_CHECK_INTERVAL_MS = 10 * 1000;
 const ACTIVITY_WRITE_INTERVAL_MS = 5 * 1000;
 const ACTIVITY_EVENTS = ["mousemove", "mousedown", "keydown", "wheel", "scroll", "touchstart", "click"];
 
-const API_BASE = "https://bawarchee.edunextg.co/api";
+const API_BASE = (process.env.REACT_APP_API_URL);
 
 const getStorage = () => {
   const remember = localStorage.getItem(AUTH_KEYS.remember) === "true";

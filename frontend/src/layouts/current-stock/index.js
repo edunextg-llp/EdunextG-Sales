@@ -23,7 +23,7 @@ import DashboardNavbar from "examples/Navbars/DashboardNavbar";
 import Footer from "examples/Footer";
 import { stickyColumnSx, stickyHeadRowSx, stickyTableContainerSx, stickyTableSx } from "utils/stickyProductColumns";
 
-const API = "https://bawarchee.edunextg.co/api";
+const API = (process.env.REACT_APP_API_URL);
 
 const tableHeadSx = {
   color: "#6b7280",

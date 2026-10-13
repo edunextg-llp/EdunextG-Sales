@@ -18,7 +18,7 @@ import BillDetailsDialog from "./BillDetailsDialog";
 import AssignmentHistory from "./AssignmentHistory";
 import { selectedAssignments, remainingAssignments, toggleAssignmentSelection } from "utils/deliveryAssignmentSelection";
 
-const API = "https://bawarchee.edunextg.co/api";
+const API = (process.env.REACT_APP_API_URL);
 const today = () => { const d = new Date(); return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0"); };
 export default function DeliveryReport() {
   const [sales, setSales] = useState([]);

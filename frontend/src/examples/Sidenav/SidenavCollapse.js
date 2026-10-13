@@ -36,7 +36,10 @@ import {
 // Material Dashboard 2 React context
 import { useMaterialUIController } from "context";
 
-function SidenavCollapse({ icon, name, active, nested, collapsible, open, ...rest }) {
+// `noCollapse` is taken out of `rest` so it isn't passed on to the DOM element
+// (React warns about unknown props on <div>). It has no effect here.
+// eslint-disable-next-line no-unused-vars, react/prop-types
+function SidenavCollapse({ icon, name, active, nested, collapsible, open, noCollapse, ...rest }) {
   const [controller] = useMaterialUIController();
   const { miniSidenav, transparentSidenav, whiteSidenav, darkMode, sidenavColor } = controller;
 

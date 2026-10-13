@@ -1,23 +1,7 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import Card from "@mui/material/Card";
 import Icon from "@mui/material/Icon";
-import {
-  Box,
-  Chip,
-  Divider,
-  Grid,
-  Paper,
-  Step,
-  StepLabel,
-  Stepper,
-  Table,
-  TableBody,
-  TableCell,
-  TableContainer,
-  TableHead,
-  TableRow,
-  Typography,
-} from "@mui/material";
+import { Box, LinearProgress, ToggleButton, ToggleButtonGroup, Typography } from "@mui/material";
 
 import MDBox from "components/MDBox";
 import MDTypography from "components/MDTypography";
@@ -28,443 +12,119 @@ import DashboardLayout from "examples/LayoutContainers/DashboardLayout";
 import DashboardNavbar from "examples/Navbars/DashboardNavbar";
 import Footer from "examples/Footer";
 
-const API = "https://bawarchee.edunextg.co/api";
+import InvoiceDetails from "./components/InvoiceDetails";
+import OutletHistory from "./components/OutletHistory";
+import OutletPicker from "./components/OutletPicker";
+import { API, fetchJson, formatDate, outletKeyOf } from "./format";
 
-const STATUS_LABELS = {
-  not_packing: "Not Packing",
-  packing: "Packing In Progress",
-  packing_done: "Packing Done",
-  out_for_delivery: "Out for Delivery",
-  delivered: "Delivered",
-  cancelled: "Cancelled",
-  returned: "Returned",
+const MODES = {
+  invoice: {
+    label: "Invoice Number",
+    placeholder: "Enter invoice number, sale ID or sticker number...",
+    help: "Shows the invoice journey and payments, followed by every other invoice of the same outlet.",
+  },
+  outlet: {
+    label: "Outlet Name / ERP ID / Phone",
+    placeholder: "e.g. Matri Bhander, EVWB000001827 or 98749...",
+    help: "Shows every outlet that matches. Outlets with the same name are listed separately by ERP ID.",
+  },
 };
-
-const STATUS_ORDER = [
-  "not_packing",
-  "packing",
-  "packing_done",
-  "out_for_delivery",
-  "delivered",
-];
-
-const PAYMENT_LABELS = {
-  cash: "Cash",
-  upi: "UPI",
-  credit: "Credit",
-  cheque: "Cheque",
-};
-
-const STATUS_COLORS = {
-  not_packing: "default",
-  packing: "warning",
-  packing_done: "info",
-  out_for_delivery: "primary",
-  delivered: "success",
-  cancelled: "error",
-  returned: "secondary",
-};
-
-function formatCurrency(value) {
-  return `Rs. ${Number(value || 0).toFixed(2)}`;
-}
-
-function formatCancelQtyDisplay(cancellation) {
-  if (cancellation?.product_qty != null && cancellation.product_qty !== "") {
-    return Number(cancellation.product_qty);
-  }
-  const legacyValue = String(cancellation?.product_size ?? "").trim();
-  if (legacyValue && !Number.isNaN(Number(legacyValue))) {
-    return Number(legacyValue);
-  }
-  return "—";
-}
-
-function formatDate(value) {
-  if (!value) return "N/A";
-  const dateOnly = String(value).split("T")[0].split(" ")[0];
-  const parts = dateOnly.split("-");
-  if (parts.length === 3 && parts[0].length === 4) {
-    return `${parts[2]}-${parts[1]}-${parts[0]}`;
-  }
-  return value;
-}
-
-function formatDateTime(value) {
-  if (!value) return "N/A";
-  const [datePart, timePart = ""] = String(value).split(/[T ]/);
-  return `${formatDate(datePart)}${timePart ? ` ${timePart.slice(0, 8)}` : ""}`;
-}
-
-function InfoRow({ label, value }) {
-  return (
-    <Grid item xs={12} sm={6} md={4}>
-      <MDTypography variant="caption" color="text" fontWeight="medium" display="block">
-        {label}
-      </MDTypography>
-      <MDTypography variant="button" fontWeight="regular">
-        {value || "N/A"}
-      </MDTypography>
-    </Grid>
-  );
-}
-
-function InvoiceDetails({ details }) {
-  const { sale, history, payments, cancellations, collections, takenBills, summary } = details;
-  const currentStatus = sale.packaging_status || "not_packing";
-  const activeStep = STATUS_ORDER.indexOf(currentStatus);
-
-  // Bill after cancellations, matching the backend's paid + balance totals.
-  const effectivePrice = Number(summary.paidAmount || 0) + Number(summary.balanceAmount || 0);
-  let paidSoFar = 0;
-  const paymentHistory = payments.map((payment) => {
-    const isCredit = payment.payment_mode === "credit";
-    // Credit entries record an amount owed; only cash, UPI and cheque count as paid.
-    if (!isCredit) paidSoFar += Number(payment.amount) || 0;
-    const modeLabel = PAYMENT_LABELS[payment.payment_mode] || payment.payment_mode;
-    return {
-      ...payment,
-      isCredit,
-      typeLabel: isCredit
-        ? "Credit Given"
-        : payment.parent_credit_payment_id
-          ? `Credit Collection (${modeLabel})`
-          : modeLabel,
-      paidSoFar,
-      balanceAfter: Math.max(0, Math.round((effectivePrice - paidSoFar) * 100) / 100),
-    };
-  });
-
-  return (
-    <MDBox mt={3}>
-      <Card sx={{ p: 3, mb: 3 }}>
-        <MDBox display="flex" justifyContent="space-between" alignItems="flex-start" flexWrap="wrap" gap={2} mb={2}>
-          <MDBox>
-            <MDTypography variant="h5" fontWeight="bold">
-              Invoice {sale.invoice_number}
-            </MDTypography>
-            <MDTypography variant="button" color="text">
-              Sale ID: {sale.sticker_number || sale.id} &nbsp;|&nbsp; Date: {sale.formatted_date || formatDate(sale.sale_date)}
-            </MDTypography>
-          </MDBox>
-          <Chip
-            label={STATUS_LABELS[currentStatus] || currentStatus}
-            color={STATUS_COLORS[currentStatus] || "default"}
-            size="medium"
-          />
-        </MDBox>
-
-        <Divider sx={{ my: 2 }} />
-
-        <Grid container spacing={2}>
-          <InfoRow label="Company" value={sale.company_name} />
-          <InfoRow label="Staff" value={sale.staff_name} />
-          <InfoRow label="Outlet" value={sale.outlet_name} />
-          <InfoRow label="Outlet ERP ID" value={sale.outlet_erp_id} />
-          <InfoRow label="Location" value={sale.location_name} />
-          <InfoRow label="Contact" value={sale.contact_number} />
-          <InfoRow label="Items" value={sale.item_count} />
-          <InfoRow label="Packed Items" value={sale.packed_item_count} />
-          <InfoRow label="Boxes / Packets" value={`${sale.box_count || 0} / ${sale.packet_count || 0}`} />
-          <InfoRow label="Bill Amount" value={formatCurrency(summary.price)} />
-          <InfoRow label="Paid Amount" value={formatCurrency(summary.paidAmount)} />
-          <InfoRow label="Balance" value={formatCurrency(summary.balanceAmount)} />
-          <InfoRow label="Payment Mode" value={PAYMENT_LABELS[sale.payment_mode] || sale.payment_mode} />
-          {sale.reference_no && <InfoRow label="Reference No" value={sale.reference_no} />}
-          {sale.reference_date && <InfoRow label="Reference Date" value={formatDate(sale.reference_date)} />}
-          {sale.credit_days && <InfoRow label="Credit Days" value={sale.credit_days} />}
-        </Grid>
-      </Card>
-
-      <Card sx={{ p: 3, mb: 3 }}>
-        <MDTypography variant="h6" fontWeight="medium" mb={2}>
-          Invoice Journey
-        </MDTypography>
-        <Stepper activeStep={activeStep >= 0 ? activeStep : 0} alternativeLabel sx={{ mb: 3 }}>
-          {STATUS_ORDER.map((status) => (
-            <Step key={status} completed={STATUS_ORDER.indexOf(status) <= activeStep}>
-              <StepLabel>{STATUS_LABELS[status]}</StepLabel>
-            </Step>
-          ))}
-        </Stepper>
-
-        {history.length > 0 ? (
-          <TableContainer component={Paper} variant="outlined">
-            <Table size="small">
-              <TableHead>
-                <TableRow>
-                  <TableCell>Stage</TableCell>
-                  <TableCell>Date & Time</TableCell>
-                </TableRow>
-              </TableHead>
-              <TableBody>
-                {history.map((entry) => (
-                  <TableRow key={entry.id}>
-                    <TableCell>
-                      <Chip
-                        label={STATUS_LABELS[entry.status] || entry.status}
-                        color={STATUS_COLORS[entry.status] || "default"}
-                        size="small"
-                        variant="outlined"
-                      />
-                    </TableCell>
-                    <TableCell>{formatDateTime(entry.changed_at)}</TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </TableContainer>
-        ) : (
-          <MDTypography variant="button" color="text">
-            No status history recorded yet.
-          </MDTypography>
-        )}
-      </Card>
-
-      {(sale.delivery_boy_name || sale.vehicle_no || sale.delivery_date || sale.packed_by_name) && (
-        <Card sx={{ p: 3, mb: 3 }}>
-          <MDTypography variant="h6" fontWeight="medium" mb={2}>
-            Delivery Details
-          </MDTypography>
-          <Grid container spacing={2}>
-            <InfoRow label="Delivery Boy" value={sale.delivery_boy_name} />
-            <InfoRow label="Vehicle No" value={sale.vehicle_no} />
-            <InfoRow label="Delivery Date" value={formatDate(sale.delivery_date)} />
-            <InfoRow label="Packed By" value={sale.packed_by_name} />
-            <InfoRow label="Packing Date" value={formatDate(sale.packing_date)} />
-          </Grid>
-        </Card>
-      )}
-
-      <Card sx={{ p: 3, mb: 3 }}>
-        <MDBox display="flex" justifyContent="space-between" alignItems="center" flexWrap="wrap" gap={1} mb={2}>
-          <MDTypography variant="h6" fontWeight="medium">
-            Payment History ({payments.length})
-          </MDTypography>
-          <MDBox display="flex" gap={1} flexWrap="wrap">
-            <Chip size="small" variant="outlined" label={`Bill: ${formatCurrency(effectivePrice)}`} />
-            <Chip size="small" variant="outlined" color="success" label={`Paid: ${formatCurrency(summary.paidAmount)}`} />
-            <Chip
-              size="small"
-              variant="outlined"
-              color={Number(summary.balanceAmount) > 0 ? "error" : "success"}
-              label={`Balance: ${formatCurrency(summary.balanceAmount)}`}
-            />
-          </MDBox>
-        </MDBox>
-        {paymentHistory.length > 0 ? (
-          <TableContainer component={Paper} variant="outlined">
-            <Table size="small">
-              <TableHead sx={{ display: "table-header-group" }}>
-                <TableRow>
-                  <TableCell>Sr No</TableCell>
-                  <TableCell>Payment Date</TableCell>
-                  <TableCell>Type</TableCell>
-                  <TableCell align="right">Amount</TableCell>
-                  <TableCell align="right">Total Paid</TableCell>
-                  <TableCell align="right">Balance After</TableCell>
-                  <TableCell>Collector</TableCell>
-                  <TableCell>Reference</TableCell>
-                  <TableCell>Entered By</TableCell>
-                  <TableCell>Entry Time</TableCell>
-                </TableRow>
-              </TableHead>
-              <TableBody>
-                {paymentHistory.map((payment, index) => (
-                  <TableRow
-                    key={payment.id}
-                    sx={{ backgroundColor: payment.isCredit ? "#fff7ed" : undefined }}
-                  >
-                    <TableCell>{index + 1}</TableCell>
-                    <TableCell>{formatDate(payment.payment_date)}</TableCell>
-                    <TableCell>
-                      <Chip
-                        size="small"
-                        variant="outlined"
-                        color={payment.isCredit ? "warning" : "success"}
-                        label={payment.typeLabel}
-                      />
-                    </TableCell>
-                    <TableCell align="right" sx={{ fontWeight: 700 }}>
-                      {formatCurrency(payment.amount)}
-                    </TableCell>
-                    <TableCell align="right">{formatCurrency(payment.paidSoFar)}</TableCell>
-                    <TableCell
-                      align="right"
-                      sx={{ fontWeight: 700, color: payment.balanceAfter > 0 ? "#b91c1c" : "#15803d" }}
-                    >
-                      {formatCurrency(payment.balanceAfter)}
-                    </TableCell>
-                    <TableCell>{payment.collector_staff_name || payment.collector_name || "N/A"}</TableCell>
-                    <TableCell>
-                      {payment.reference_no
-                        ? `${payment.reference_no}${payment.reference_date ? ` (${formatDate(payment.reference_date)})` : ""}`
-                        : "—"}
-                      {payment.isCredit && payment.credit_days ? ` · ${payment.credit_days} days` : ""}
-                    </TableCell>
-                    <TableCell>
-                      {payment.updated_by_name
-                        ? `${payment.updated_by_name}${payment.updated_by_employee_code ? ` (${payment.updated_by_employee_code})` : ""}`
-                        : "—"}
-                    </TableCell>
-                    <TableCell>{formatDateTime(payment.created_at)}</TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </TableContainer>
-        ) : (
-          <MDTypography variant="button" color="text">
-            No payments recorded yet.
-          </MDTypography>
-        )}
-      </Card>
-
-      {collections.length > 0 && (
-        <Card sx={{ p: 3, mb: 3 }}>
-          <MDTypography variant="h6" fontWeight="medium" mb={2}>
-            D.B. Collection Submissions
-          </MDTypography>
-          <TableContainer component={Paper} variant="outlined">
-            <Table size="small">
-              <TableHead>
-                <TableRow>
-                  <TableCell>Delivery Boy</TableCell>
-                  <TableCell>Mode</TableCell>
-                  <TableCell>Amount</TableCell>
-                  <TableCell>Reference</TableCell>
-                  <TableCell>Submitted At</TableCell>
-                </TableRow>
-              </TableHead>
-              <TableBody>
-                {collections.map((row) => (
-                  <TableRow key={row.id}>
-                    <TableCell>{row.delivery_boy_name}</TableCell>
-                    <TableCell>{PAYMENT_LABELS[row.payment_mode] || row.payment_mode}</TableCell>
-                    <TableCell>{formatCurrency(row.amount)}</TableCell>
-                    <TableCell>
-                      {row.reference_no
-                        ? `${row.reference_no}${row.reference_date ? ` (${formatDate(row.reference_date)})` : ""}`
-                        : "—"}
-                    </TableCell>
-                    <TableCell>{formatDateTime(row.updated_at || row.created_at)}</TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </TableContainer>
-        </Card>
-      )}
-
-      {takenBills.length > 0 && (
-        <Card sx={{ p: 3, mb: 3 }}>
-          <MDTypography variant="h6" fontWeight="medium" mb={2}>
-            Credit Bill Collection
-          </MDTypography>
-          <TableContainer component={Paper} variant="outlined">
-            <Table size="small">
-              <TableHead>
-                <TableRow>
-                  <TableCell>Taken Date</TableCell>
-                  <TableCell>Collector</TableCell>
-                  <TableCell>Credit Amount</TableCell>
-                  <TableCell>Status</TableCell>
-                </TableRow>
-              </TableHead>
-              <TableBody>
-                {takenBills.map((row) => (
-                  <TableRow key={row.id}>
-                    <TableCell>{formatDate(row.taken_date)}</TableCell>
-                    <TableCell>{row.staff_name || row.delivery_boy_name || "N/A"}</TableCell>
-                    <TableCell>{formatCurrency(row.credit_amount)}</TableCell>
-                    <TableCell>{row.returned_at ? `Returned (${formatDateTime(row.returned_at)})` : "Taken"}</TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </TableContainer>
-        </Card>
-      )}
-
-      {cancellations.length > 0 && (
-        <Card sx={{ p: 3, mb: 3 }}>
-          <MDTypography variant="h6" fontWeight="medium" mb={2}>
-            Cancellations / Returns
-          </MDTypography>
-          <TableContainer component={Paper} variant="outlined">
-            <Table size="small">
-              <TableHead>
-                <TableRow>
-                  <TableCell>Product</TableCell>
-                  <TableCell>Qty to Cancel</TableCell>
-                  <TableCell>Amount</TableCell>
-                  <TableCell>Date</TableCell>
-                </TableRow>
-              </TableHead>
-              <TableBody>
-                {cancellations.map((row) => (
-                  <TableRow key={row.id}>
-                    <TableCell>{row.product_name}</TableCell>
-                    <TableCell>{formatCancelQtyDisplay(row)}</TableCell>
-                    <TableCell>{formatCurrency(row.amount)}</TableCell>
-                    <TableCell>{formatDateTime(row.created_at)}</TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </TableContainer>
-        </Card>
-      )}
-    </MDBox>
-  );
-}
 
 function InvoiceLookup() {
+  const [mode, setMode] = useState("invoice");
   const [searchQuery, setSearchQuery] = useState("");
+  const [searchedTerm, setSearchedTerm] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const [results, setResults] = useState([]);
-  const [selectedIndex, setSelectedIndex] = useState(0);
+  const [notFound, setNotFound] = useState(false);
 
-  const handleSearch = async (event) => {
-    event?.preventDefault();
-    const term = searchQuery.trim();
+  const [invoiceResults, setInvoiceResults] = useState([]);
+  const [selectedIndex, setSelectedIndex] = useState(0);
+  const [outlets, setOutlets] = useState([]);
+  const [selectedOutlet, setSelectedOutlet] = useState(null);
+
+  // Only the latest search may update the page, even if an older one answers later.
+  const requestIdRef = useRef(0);
+
+  const resetResults = () => {
+    setError("");
+    setNotFound(false);
+    setInvoiceResults([]);
+    setSelectedIndex(0);
+    setOutlets([]);
+    setSelectedOutlet(null);
+  };
+
+  const runSearch = async (searchMode, rawTerm) => {
+    const term = rawTerm.trim();
+    resetResults();
     if (!term) {
-      setError("Please enter an invoice number.");
+      setError(searchMode === "invoice" ? "Please enter an invoice number." : "Please enter an outlet name, ERP ID or phone.");
+      return;
+    }
+    if (searchMode === "outlet" && term.length < 2) {
+      setError("Enter at least 2 characters to search outlets.");
       return;
     }
 
+    const requestId = requestIdRef.current + 1;
+    requestIdRef.current = requestId;
+    setSearchedTerm(term);
     setLoading(true);
-    setError("");
-    setResults([]);
-    setSelectedIndex(0);
 
     try {
-      const response = await fetch(
-        `${API}/staff/sales/lookup?invoiceNumber=${encodeURIComponent(term)}`
-      );
-      const data = await response.json().catch(() => ({}));
-
-      if (!response.ok) {
-        setError(data.error || "No invoice found.");
-        return;
+      if (searchMode === "invoice") {
+        const data = await fetchJson(`${API}/staff/sales/lookup?invoiceNumber=${encodeURIComponent(term)}`);
+        if (requestId !== requestIdRef.current) return;
+        if (!data.results?.length) {
+          setNotFound(true);
+          return;
+        }
+        setInvoiceResults(data.results);
+      } else {
+        const data = await fetchJson(`${API}/staff/sales/lookup/outlets?search=${encodeURIComponent(term)}`);
+        if (requestId !== requestIdRef.current) return;
+        const found = data.outlets || [];
+        if (!found.length) {
+          setNotFound(true);
+          return;
+        }
+        setOutlets(found);
+        if (found.length === 1) setSelectedOutlet(found[0]);
       }
-
-      if (!data.results?.length) {
-        setError("No invoice found.");
-        return;
-      }
-
-      setResults(data.results);
     } catch (searchError) {
-      console.error("Invoice lookup failed:", searchError);
-      setError("Failed to search invoice. Please try again.");
+      if (requestId !== requestIdRef.current) return;
+      if (searchError.status === 404) {
+        setNotFound(true);
+      } else {
+        console.error("Invoice lookup failed:", searchError);
+        setError(searchError.message || "Search failed. Please try again.");
+      }
     } finally {
-      setLoading(false);
+      if (requestId === requestIdRef.current) setLoading(false);
     }
   };
 
-  const selectedDetails = results[selectedIndex] || null;
+  const handleSubmit = (event) => {
+    event.preventDefault();
+    runSearch(mode, searchQuery);
+  };
+
+  const handleModeChange = (_, nextMode) => {
+    if (!nextMode || nextMode === mode) return;
+    setMode(nextMode);
+    requestIdRef.current += 1;
+    setLoading(false);
+    resetResults();
+  };
+
+  const searchAsOutlet = () => {
+    setMode("outlet");
+    runSearch("outlet", searchQuery);
+  };
+
+  const selectedInvoice = invoiceResults[selectedIndex] || null;
+  const config = MODES[mode];
 
   return (
     <DashboardLayout>
@@ -475,17 +135,27 @@ function InvoiceLookup() {
             Invoice Lookup
           </MDTypography>
           <MDTypography variant="button" color="text">
-            Search by invoice number to view the complete journey from sale to delivery and payment.
+            Find an invoice or an outlet to see the full journey from sale to delivery and every payment.
           </MDTypography>
         </MDBox>
 
         <Card sx={{ p: 3 }}>
-          <Box component="form" onSubmit={handleSearch} display="flex" gap={2} flexWrap="wrap" alignItems="center">
+          <ToggleButtonGroup size="small" exclusive value={mode} onChange={handleModeChange} sx={{ mb: 2 }}>
+            <ToggleButton value="invoice" sx={{ px: 2 }}>
+              <Icon sx={{ mr: 0.75 }}>receipt_long</Icon> Invoice
+            </ToggleButton>
+            <ToggleButton value="outlet" sx={{ px: 2 }}>
+              <Icon sx={{ mr: 0.75 }}>storefront</Icon> Outlet
+            </ToggleButton>
+          </ToggleButtonGroup>
+
+          <Box component="form" onSubmit={handleSubmit} display="flex" gap={2} flexWrap="wrap" alignItems="center">
             <MDBox flex={1} minWidth="240px">
               <MDInput
                 fullWidth
-                label="Invoice Number"
-                placeholder="Enter invoice number..."
+                autoFocus
+                label={config.label}
+                placeholder={config.placeholder}
                 value={searchQuery}
                 onChange={(event) => setSearchQuery(event.target.value)}
               />
@@ -495,6 +165,10 @@ function InvoiceLookup() {
               {loading ? "Searching..." : "Search"}
             </MDButton>
           </Box>
+          <MDTypography variant="caption" color="text" display="block" mt={1}>
+            {config.help}
+          </MDTypography>
+          {loading && <LinearProgress sx={{ mt: 2 }} />}
         </Card>
 
         {error && (
@@ -505,13 +179,30 @@ function InvoiceLookup() {
           </MDBox>
         )}
 
-        {results.length > 1 && (
+        {notFound && (
+          <Card sx={{ p: 3, mt: 3 }}>
+            <MDBox display="flex" alignItems="center" justifyContent="space-between" flexWrap="wrap" gap={2}>
+              <MDTypography variant="button" color="text">
+                {mode === "invoice"
+                  ? `No invoice found for "${searchedTerm}".`
+                  : `No outlet found for "${searchedTerm}". Try part of the name, the ERP ID or the phone number.`}
+              </MDTypography>
+              {mode === "invoice" && (
+                <MDButton size="small" variant="outlined" color="info" onClick={searchAsOutlet}>
+                  <Icon sx={{ mr: 0.5 }}>storefront</Icon> Search &quot;{searchedTerm}&quot; as outlet
+                </MDButton>
+              )}
+            </MDBox>
+          </Card>
+        )}
+
+        {mode === "invoice" && invoiceResults.length > 1 && (
           <Card sx={{ p: 2, mt: 3 }}>
             <MDTypography variant="button" color="text" mb={1} display="block">
-              Multiple invoices found — select one:
+              {invoiceResults.length} invoices match — select one:
             </MDTypography>
             <MDBox display="flex" flexWrap="wrap" gap={1}>
-              {results.map((result, index) => (
+              {invoiceResults.map((result, index) => (
                 <MDButton
                   key={result.sale.id}
                   variant={selectedIndex === index ? "gradient" : "outlined"}
@@ -519,14 +210,42 @@ function InvoiceLookup() {
                   size="small"
                   onClick={() => setSelectedIndex(index)}
                 >
-                  {result.sale.invoice_number} — {result.sale.outlet_name} ({result.sale.formatted_date || formatDate(result.sale.sale_date)})
+                  {result.sale.invoice_number} — {result.sale.outlet_name} ({result.sale.outlet_erp_id}) ·{" "}
+                  {result.sale.formatted_date || formatDate(result.sale.sale_date)}
                 </MDButton>
               ))}
             </MDBox>
           </Card>
         )}
 
-        {selectedDetails && <InvoiceDetails details={selectedDetails} />}
+        {mode === "invoice" && selectedInvoice && (
+          <>
+            <InvoiceDetails details={selectedInvoice} />
+            {selectedInvoice.sale.outlet_erp_id && (
+              <OutletHistory
+                outletKey={outletKeyOf(selectedInvoice.sale.outlet_erp_id)}
+                currentSaleId={selectedInvoice.sale.id}
+              />
+            )}
+          </>
+        )}
+
+        {mode === "outlet" && outlets.length > 0 && !selectedOutlet && (
+          <OutletPicker outlets={outlets} searchTerm={searchedTerm} onSelect={setSelectedOutlet} />
+        )}
+
+        {mode === "outlet" && selectedOutlet && (
+          <>
+            {outlets.length > 1 && (
+              <MDBox mt={3}>
+                <MDButton size="small" variant="text" color="info" onClick={() => setSelectedOutlet(null)}>
+                  <Icon sx={{ mr: 0.5 }}>arrow_back</Icon> Back to {outlets.length} matching outlets
+                </MDButton>
+              </MDBox>
+            )}
+            <OutletHistory outletKey={selectedOutlet.outlet_key} />
+          </>
+        )}
       </MDBox>
       <Footer />
     </DashboardLayout>

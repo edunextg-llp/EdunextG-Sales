@@ -48,7 +48,7 @@ import Footer from "examples/Footer";
 import ReportsBarChart from "examples/Charts/BarCharts/ReportsBarChart";
 import ComplexStatisticsCard from "examples/Cards/StatisticsCards/ComplexStatisticsCard";
 
-const API = "https://bawarchee.edunextg.co/api";
+const API = (process.env.REACT_APP_API_URL);
 
 const emptyReportData = {
   summary: {
@@ -1702,7 +1702,7 @@ function Dashboard() {
     {
       color: "error",
       icon: "sell",
-      // title: "Trader Discount+Primary Discount+Secondary Discount",
+      title: "Total Discount",
       count: shortMoney(purchaseReportData.summary.total_trader_discount + purchaseReportData.summary.total_primary_discount + purchaseReportData.summary.total_secondary_discount),
       label: "Trader discount + primary discount + secondary discount total",
     },

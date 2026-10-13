@@ -1099,6 +1099,105 @@ class StaffModel {
         return rows;
     }
 
+    // One outlet = one ERP ID. The same shop has a counter row per staff/day
+    // (sometimes with spelling variants), while many different shops share a
+    // name, so outlets are grouped by the normalized ERP ID, never by name.
+    static async searchOutlets(searchTerm) {
+        const term = String(searchTerm || '').trim();
+        if (!term) {
+            return [];
+        }
+        const likeTerm = `%${term}%`;
+
+        const [rows] = await db.execute(
+            `SELECT UPPER(TRIM(sc.outlet_erp_id)) AS outlet_key,
+                    MAX(sc.outlet_erp_id) AS outlet_erp_id,
+                    GROUP_CONCAT(DISTINCT sc.outlet_name ORDER BY sc.outlet_name SEPARATOR ' | ') AS outlet_names,
+                    GROUP_CONCAT(DISTINCT NULLIF(TRIM(sc.location_name), '') ORDER BY sc.location_name SEPARATOR ', ') AS locations,
+                    GROUP_CONCAT(DISTINCT s.name ORDER BY s.name SEPARATOR ', ') AS staff_names,
+                    GROUP_CONCAT(DISTINCT NULLIF(TRIM(sc.contact_number), '') SEPARATOR ', ') AS contacts,
+                    COUNT(ss.id) AS invoice_count,
+                    COALESCE(SUM(CASE WHEN ss.packaging_status <> 'cancelled' THEN ss.balance_amount END), 0) AS total_outstanding,
+                    DATE_FORMAT(MAX(ss.sale_date), '%Y-%m-%d') AS last_sale_date
+             FROM staff_counters sc
+             LEFT JOIN staff s ON s.id = sc.staff_id
+             LEFT JOIN staff_sales ss ON ss.outlet_id = sc.id
+             WHERE UPPER(TRIM(sc.outlet_erp_id)) IN (
+                 SELECT UPPER(TRIM(m.outlet_erp_id))
+                 FROM staff_counters m
+                 WHERE m.outlet_name LIKE ? OR m.outlet_erp_id LIKE ? OR m.contact_number LIKE ?
+             )
+             GROUP BY outlet_key
+             ORDER BY (COUNT(ss.id) > 0) DESC, MAX(ss.sale_date) DESC, outlet_names
+             LIMIT 50`,
+            [likeTerm, likeTerm, likeTerm]
+        );
+        return rows;
+    }
+
+    static async getOutletInvoices(outletKey) {
+        const key = String(outletKey || '').trim().toUpperCase();
+        if (!key) {
+            return null;
+        }
+
+        const [[outlet]] = await db.execute(
+            `SELECT UPPER(TRIM(sc.outlet_erp_id)) AS outlet_key,
+                    MAX(sc.outlet_erp_id) AS outlet_erp_id,
+                    GROUP_CONCAT(DISTINCT sc.outlet_name ORDER BY sc.outlet_name SEPARATOR ' | ') AS outlet_names,
+                    GROUP_CONCAT(DISTINCT NULLIF(TRIM(sc.location_name), '') ORDER BY sc.location_name SEPARATOR ', ') AS locations,
+                    GROUP_CONCAT(DISTINCT s.name ORDER BY s.name SEPARATOR ', ') AS staff_names,
+                    GROUP_CONCAT(DISTINCT NULLIF(TRIM(sc.contact_number), '') SEPARATOR ', ') AS contacts,
+                    GROUP_CONCAT(DISTINCT sc.day ORDER BY FIELD(sc.day, 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'CNF') SEPARATOR ', ') AS visit_days
+             FROM staff_counters sc
+             LEFT JOIN staff s ON s.id = sc.staff_id
+             WHERE UPPER(TRIM(sc.outlet_erp_id)) = ?
+             GROUP BY outlet_key`,
+            [key]
+        );
+        if (!outlet) {
+            return null;
+        }
+
+        const [invoices] = await db.execute(
+            `SELECT ss.id, ss.invoice_number, ss.sticker_number,
+                    DATE_FORMAT(ss.sale_date, '%Y-%m-%d') AS sale_date,
+                    ss.price, ss.paid_amount, ss.balance_amount, ss.payment_mode, ss.credit_days,
+                    ss.packaging_status, ss.item_count,
+                    sc.outlet_name, sc.location_name,
+                    s.name AS staff_name,
+                    COALESCE(staff_company.company_names, c.name) AS company_name,
+                    COALESCE(pay.payment_count, 0) AS payment_count,
+                    DATE_FORMAT(pay.last_payment_date, '%Y-%m-%d') AS last_payment_date
+             FROM staff_sales ss
+             INNER JOIN staff_counters sc ON sc.id = ss.outlet_id
+             LEFT JOIN staff s ON s.id = ss.staff_id
+             LEFT JOIN companies c ON c.id = s.company_id
+             LEFT JOIN (
+                 SELECT sc_map.staff_id,
+                        GROUP_CONCAT(c2.name ORDER BY c2.name SEPARATOR ', ') AS company_names
+                 FROM staff_companies sc_map
+                 INNER JOIN companies c2 ON c2.id = sc_map.company_id
+                 GROUP BY sc_map.staff_id
+             ) staff_company ON staff_company.staff_id = s.id
+             LEFT JOIN (
+                 SELECT sp.sale_id,
+                        COUNT(*) AS payment_count,
+                        MAX(CASE WHEN sp.payment_mode <> 'credit' THEN sp.payment_date END) AS last_payment_date
+                 FROM sale_payments sp
+                 INNER JOIN staff_sales ss2 ON ss2.id = sp.sale_id
+                 INNER JOIN staff_counters sc2 ON sc2.id = ss2.outlet_id
+                 WHERE UPPER(TRIM(sc2.outlet_erp_id)) = ?
+                 GROUP BY sp.sale_id
+             ) pay ON pay.sale_id = ss.id
+             WHERE UPPER(TRIM(sc.outlet_erp_id)) = ?
+             ORDER BY ss.sale_date DESC, ss.id DESC`,
+            [key, key]
+        );
+
+        return { outlet, invoices };
+    }
+
     static async getSaleDetailsById(saleId) {
         const [rows] = await db.execute(
             `SELECT ss.id,

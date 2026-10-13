@@ -13,7 +13,7 @@ import DashboardNavbar from "examples/Navbars/DashboardNavbar";
 import Footer from "examples/Footer";
 import { useAuth } from "context/AuthContext";
 
-const API = process.env.REACT_APP_API_URL || "https://bawarchee.edunextg.co/api";
+const API = (process.env.REACT_APP_API_URL);
 const normalizeAreaName = (name) => String(name || "").trim().replace(/\s+/g, " ").toUpperCase();
 const routeDays = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 

@@ -28,7 +28,7 @@ import ReviewDialog, {
   overdueBalance,
 } from "layouts/overdue-requests/components/ReviewDialog";
 
-const API = "https://bawarchee.edunextg.co/api";
+const API = (process.env.REACT_APP_API_URL);
 
 const STATUS_OPTIONS = [
   { value: "pending", label: "Pending" },

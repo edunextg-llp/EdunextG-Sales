@@ -78,7 +78,7 @@ function ChalanReturn() {
     title: "",
     records: [],
   });
-  const API = "https://bawarchee.edunextg.co/api";
+  const API = (process.env.REACT_APP_API_URL);
 
   const getTodayLocalDate = () => {
     const now = new Date();

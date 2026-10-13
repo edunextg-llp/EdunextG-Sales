@@ -9,6 +9,10 @@
 
 # production
 /build
+# temporary folders used by scripts/deploy.sh on the server
+/build_next
+/build_prev
+/build_failed
 
 # misc
 .DS_Store

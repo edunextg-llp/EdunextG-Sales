@@ -105,7 +105,7 @@ function getStaffCompanies(staff) {
 }
 
 function ChalanAddSales() {
-  const API = "https://bawarchee.edunextg.co/api";
+  const API = (process.env.REACT_APP_API_URL);
 
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split("T")[0]);
   const [assigneeType, setAssigneeType] = useState("");

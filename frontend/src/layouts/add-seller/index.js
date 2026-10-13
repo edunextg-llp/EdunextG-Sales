@@ -34,7 +34,7 @@ import DashboardNavbar from "examples/Navbars/DashboardNavbar";
 import Footer from "examples/Footer";
 import { lookupPincode } from "utils/pincodeLookup";
 
-const API = "https://bawarchee.edunextg.co/api";
+const API = (process.env.REACT_APP_API_URL);
 
 const INDIAN_STATES = [
   "Andhra Pradesh",

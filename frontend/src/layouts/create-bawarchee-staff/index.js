@@ -54,7 +54,7 @@ function CreateBawarcheeStaff() {
   const [newPassword, setNewPassword] = useState("");
   const [savingCredentials, setSavingCredentials] = useState(false);
 
-  const API = "https://bawarchee.edunextg.co/api";
+  const API = (process.env.REACT_APP_API_URL);
 
   const fetchCompanyOptions = async () => {
     try {

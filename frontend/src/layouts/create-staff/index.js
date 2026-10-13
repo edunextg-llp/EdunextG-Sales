@@ -189,7 +189,7 @@ function CreateStaff() {
 
   const [formData, setFormData] = useState(createEmptyFormData());
 
-  const API = "https://bawarchee.edunextg.co/api";
+  const API = (process.env.REACT_APP_API_URL);
 
   // Fetch Staff List
   const fetchStaffList = async (includeInactive = false) => {

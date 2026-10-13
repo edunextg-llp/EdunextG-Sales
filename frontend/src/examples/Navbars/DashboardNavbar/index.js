@@ -72,7 +72,7 @@ function DashboardNavbar({ absolute, light, isMini }) {
 
     const fetchPendingCredits = async () => {
       try {
-        const response = await fetch("https://bawarchee.edunextg.co/api/staff/credits/pending");
+        const response = await fetch(`${process.env.REACT_APP_API_URL || "http://localhost:2002/api"}/staff/credits/pending`);
         if (response.ok) {
           const data = await response.json();
           const dueTomorrow = data.filter((credit) => {
@@ -151,7 +151,7 @@ function DashboardNavbar({ absolute, light, isMini }) {
     try {
       const authToken = token || sessionStorage.getItem("auth_token") || localStorage.getItem("auth_token");
       if (!authToken) throw new Error("Your session has expired. Please sign in again.");
-      const response = await fetch("https://bawarchee.edunextg.co/api/auth/admin/credentials", {
+      const response = await fetch(`${process.env.REACT_APP_API_URL || "http://localhost:2002/api"}/auth/admin/credentials`, {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",
@@ -185,7 +185,7 @@ function DashboardNavbar({ absolute, light, isMini }) {
     try {
       const authToken = token || sessionStorage.getItem("auth_token") || localStorage.getItem("auth_token");
       if (!authToken) throw new Error("Your session has expired. Please sign in again.");
-      const response = await fetch("https://bawarchee.edunextg.co/api/auth/admin/logout-all", {
+      const response = await fetch(`${process.env.REACT_APP_API_URL || "http://localhost:2002/api"}/auth/admin/logout-all`, {
         method: "POST",
         headers: { Authorization: `Bearer ${authToken}` },
       });

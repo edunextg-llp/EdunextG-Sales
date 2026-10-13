@@ -213,7 +213,7 @@ function calcLine(item) {
   return { qty, rate, total, disc: 0, taxable, cgst, sgst, gst, netTotal };
 }
 
-const API = "https://bawarchee.edunextg.co/api";
+const API = (process.env.REACT_APP_API_URL);
 
 export default function SalesInvoiceDialog({
   open,
