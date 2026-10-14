@@ -1869,6 +1869,31 @@ export async function ensureSchema() {
         await tryQuery(connection, `ALTER TABLE overdue_sale_requests ADD COLUMN sales_payload LONGTEXT NULL AFTER sales_summary`, 'Overdue request invoice details');
         console.log('overdue_sale_requests table verified');
 
+        // Moving bills to Suspense needs a reason and, for non-admin users, admin approval.
+        await connection.query(`
+            CREATE TABLE IF NOT EXISTS suspense_requests (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                sale_ids TEXT NOT NULL,
+                bills_summary LONGTEXT NULL,
+                reason TEXT NOT NULL,
+                status ENUM('pending', 'approved', 'rejected') NOT NULL DEFAULT 'pending',
+                requested_by_role VARCHAR(30) NOT NULL,
+                requested_by_id INT NULL,
+                requested_by_name VARCHAR(255) NULL,
+                reviewed_by_admin_id INT NULL,
+                reviewed_by_name VARCHAR(255) NULL,
+                review_note TEXT NULL,
+                reviewed_at DATETIME NULL,
+                moved_ids TEXT NULL,
+                skipped_ids TEXT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                INDEX idx_suspense_requests_status (status, created_at)
+            );
+        `);
+        await tryQuery(connection, `ALTER TABLE staff_sales ADD COLUMN suspense_reason TEXT NULL`, 'suspense_reason on staff_sales');
+        console.log('suspense_requests table verified');
+
         await connection.query(`
             CREATE TABLE IF NOT EXISTS outlet_expiry_list (
                 id INT AUTO_INCREMENT PRIMARY KEY,

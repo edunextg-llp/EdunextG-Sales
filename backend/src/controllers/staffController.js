@@ -1,15 +1,38 @@
 import StaffModel from '../models/staffModel.js';
-import { normalizeAreaName } from '../migrations/migrateAreas.js';
+import { normalizeAreaName, WEEKDAYS } from '../migrations/migrateAreas.js';
 
 export const createArea = async (req, res) => {
     const name = typeof req.body?.name === 'string' ? normalizeAreaName(req.body.name) : '';
     if (!name || name.length > 255) return res.status(400).json({ error: 'Enter an area name between 1 and 255 characters.' });
     try {
-        return res.status(201).json(await StaffModel.createArea(name));
+        const holidayDays = req.body?.holidayDays;
+        const list = Array.isArray(holidayDays) ? holidayDays : (holidayDays ? String(holidayDays).split(',') : []);
+        if (list.some((day) => !WEEKDAYS.some((weekday) => weekday.toLowerCase() === String(day).trim().toLowerCase()))) {
+            return res.status(400).json({ error: 'Holiday must be a weekday (Monday to Sunday).' });
+        }
+        return res.status(201).json(await StaffModel.createArea(name, list));
     } catch (error) {
         if (error.code === 'ER_DUP_ENTRY') return res.status(409).json({ error: 'This area already exists. Use a different name, such as DUMDUM-1.' });
         console.error('Error creating area:', error);
         return res.status(500).json({ error: 'Unable to create area.' });
+    }
+};
+
+export const updateAreaHoliday = async (req, res) => {
+    const name = typeof req.body?.name === 'string' ? normalizeAreaName(req.body.name) : '';
+    if (!name || name.length > 255) return res.status(400).json({ error: 'A valid area name is required.' });
+    const holidayDays = req.body?.holidayDays;
+    const list = Array.isArray(holidayDays) ? holidayDays : (holidayDays ? String(holidayDays).split(',') : []);
+    if (list.some((day) => !WEEKDAYS.some((weekday) => weekday.toLowerCase() === String(day).trim().toLowerCase()))) {
+        return res.status(400).json({ error: 'Holiday must be a weekday (Monday to Sunday).' });
+    }
+    try {
+        const area = await StaffModel.setAreaHoliday(name, list);
+        if (!area) return res.status(404).json({ error: 'Area not found.' });
+        return res.json(area);
+    } catch (error) {
+        console.error('Error updating area holiday:', error);
+        return res.status(500).json({ error: 'Unable to update the area holiday.' });
     }
 };
 
@@ -52,13 +75,14 @@ export const exportAreaDirectory = async (req, res) => {
         const sheet = workbook.addWorksheet('Areas');
         sheet.columns = [
             { header: 'Area name', key: 'name', width: 38 },
+            { header: 'Holiday', key: 'holiday', width: 24 },
             { header: 'Outlets', key: 'outlet_count', width: 14 },
             { header: 'Staff assignments', key: 'assignment_count', width: 22 },
         ];
-        sheet.addRows(areas);
+        sheet.addRows(areas.map((area) => ({ ...area, holiday: area.holiday_day || 'No holiday' })));
         sheet.getRow(1).font = { bold: true };
         sheet.views = [{ state: 'frozen', ySplit: 1 }];
-        sheet.autoFilter = 'A1:C1';
+        sheet.autoFilter = 'A1:D1';
         const buffer = await workbook.xlsx.writeBuffer();
         res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
         res.setHeader('Content-Disposition', 'attachment; filename="areas.xlsx"');
@@ -83,6 +107,7 @@ import DeliveryCollectionModel from '../models/deliveryCollectionModel.js';
 import ExpiryListModel from '../models/expiryListModel.js';
 import DamageListModel from '../models/damageListModel.js';
 import OverdueSaleRequestModel, { getOverdueOutlets, salesMatchApproval } from '../models/overdueSaleRequestModel.js';
+import SuspenseRequestModel from '../models/suspenseRequestModel.js';
 import { getRequester } from './overdueSaleRequestController.js';
 import db from '../config/db.js';
 import {
@@ -1806,6 +1831,9 @@ export const deleteSale = async (req, res) => {
     }
 };
 
+// Moving to Suspense needs a reason. Admin moves at once (logged as an
+// approved request); anyone else sends a request for admin approval.
+// Returning bills from Suspense needs neither.
 export const setSalesSuspense = async (req, res) => {
     const { saleIds, suspense } = req.body;
     if (!Array.isArray(saleIds) || !saleIds.length || saleIds.length > 10000 ||
@@ -1813,7 +1841,37 @@ export const setSalesSuspense = async (req, res) => {
         return res.status(400).json({ error: 'Select valid bills (up to 10,000 at a time).' });
     }
     try {
-        const result = await StaffModel.setSalesSuspense([...new Set(saleIds)], suspense);
+        const ids = [...new Set(saleIds)];
+        if (suspense) {
+            const reason = String(req.body.reason || '').trim();
+            if (!reason) return res.status(400).json({ code: 'SUSPENSE_REASON_REQUIRED', error: 'Enter the reason for moving these bills to Suspense.' });
+            if (reason.length > 1000) return res.status(400).json({ error: 'Reason must be 1000 characters or less.' });
+            const requester = await getRequester(req.user);
+            const { request, skippedIds } = await SuspenseRequestModel.create({ saleIds: ids, reason, requester });
+            if (!request) {
+                return res.status(409).json({
+                    error: 'None of these bills can be moved: they are already in Suspense, no longer pending delivery, or already waiting for admin approval.',
+                    movedIds: [], skippedIds,
+                });
+            }
+            if (req.user?.role === 'admin') {
+                const approved = await SuspenseRequestModel.review(request.id, { approve: true, note: 'Moved directly by admin', admin: requester });
+                return res.status(200).json({
+                    updated: approved.moved_ids.length,
+                    movedIds: approved.moved_ids,
+                    skippedIds: [...skippedIds, ...approved.skipped_ids],
+                    request: approved,
+                });
+            }
+            return res.status(202).json({
+                pendingApproval: true,
+                message: `Request #${request.id} sent to admin: ${request.sale_ids.length} bill(s) will move to Suspense after approval.${skippedIds.length ? ` ${skippedIds.length} skipped (already in Suspense, not pending delivery, or already requested).` : ''}`,
+                request,
+                movedIds: [],
+                skippedIds,
+            });
+        }
+        const result = await StaffModel.setSalesSuspense(ids, false);
         return res.status(200).json(result);
     } catch (error) {
         console.error('Error updating suspense bills:', error);
@@ -3119,6 +3177,19 @@ export const getOutletsByStaffAndDayName = async (req, res) => {
 export const getAllSalesByDate = async (req, res) => {
     try {
         const { date, search, scope } = req.query;
+        if (scope === 'delivery_report') {
+            const isDate = (value) => /^\d{4}-\d{2}-\d{2}$/.test(value || '') && !Number.isNaN(Date.parse(value));
+            const { companyId, from, to, status } = req.query;
+            const invoice = String(req.query.invoice || '').trim();
+            if (!invoice && !/^\d+$/.test(String(companyId || ''))) return res.status(400).json({ error: 'Choose a company.' });
+            if (companyId && !/^\d+$/.test(String(companyId))) return res.status(400).json({ error: 'Invalid company.' });
+            if ((from && !isDate(from)) || (to && !isDate(to))) return res.status(400).json({ error: 'Invalid date range.' });
+            if (from && to && from > to) return res.status(400).json({ error: 'From date must be on or before To date.' });
+            const allowed = ['delivered', 'cancelled', 'out_for_delivery', 'returned'];
+            const statuses = String(status || '').split(',').map((value) => value.trim()).filter((value) => allowed.includes(value));
+            const sales = await StaffModel.getAllSalesByDate(null, '', 'delivery_report', { companyId: companyId || null, invoice: invoice || null, from: invoice ? null : (from || null), to: invoice ? null : (to || null), statuses });
+            return res.status(200).json(sales);
+        }
         const salesScope = ['packaging', 'assignments'].includes(scope) ? scope : '';
         if (salesScope === 'assignments' && (!/^\d{4}-\d{2}-\d{2}$/.test(date || '') || Number.isNaN(Date.parse(date)))) {
             return res.status(400).json({ error: 'A valid assignment date is required.' });
@@ -3165,13 +3236,19 @@ async function buildSaleFullDetails(saleId) {
     };
 }
 
+// Marketing staff (role 'staff') may look up only their own invoices; everyone else sees all.
+function lookupStaffScope(req) {
+    return req.user?.role === 'staff' ? Number(req.user.staffId) || -1 : null;
+}
+
 export const lookupSaleByInvoice = async (req, res) => {
     try {
         const { invoiceNumber, saleId } = req.query;
+        const staffScope = lookupStaffScope(req);
 
         if (saleId) {
             const details = await buildSaleFullDetails(saleId);
-            if (!details) {
+            if (!details || (staffScope !== null && Number(details.sale.staff_id) !== staffScope)) {
                 return res.status(404).json({ error: 'Sale not found', results: [] });
             }
             return res.status(200).json({ results: [details], multiple: false });
@@ -3182,7 +3259,7 @@ export const lookupSaleByInvoice = async (req, res) => {
             return res.status(400).json({ error: 'Invoice number is required' });
         }
 
-        const matches = await StaffModel.searchSalesByInvoice(term);
+        const matches = await StaffModel.searchSalesByInvoice(term, staffScope);
         if (!matches.length) {
             return res.status(404).json({ error: 'No invoice found', results: [] });
         }
@@ -3207,7 +3284,7 @@ export const searchLookupOutlets = async (req, res) => {
         if (term.length < 2) {
             return res.status(400).json({ error: 'Enter at least 2 characters to search outlets.' });
         }
-        const outlets = await StaffModel.searchOutlets(term);
+        const outlets = await StaffModel.searchOutlets(term, lookupStaffScope(req));
         return res.status(200).json({ outlets });
     } catch (error) {
         console.error('Error searching outlets for lookup:', error);
@@ -3221,7 +3298,7 @@ export const getLookupOutletInvoices = async (req, res) => {
         if (!outletKey) {
             return res.status(400).json({ error: 'Outlet ERP ID is required' });
         }
-        const data = await StaffModel.getOutletInvoices(outletKey);
+        const data = await StaffModel.getOutletInvoices(outletKey, lookupStaffScope(req));
         if (!data) {
             return res.status(404).json({ error: 'Outlet not found' });
         }

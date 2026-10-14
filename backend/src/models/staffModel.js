@@ -1,5 +1,5 @@
 import db from '../config/db.js';
-import { normalizeAreaName } from '../migrations/migrateAreas.js';
+import { normalizeAreaName, normalizeHolidayDays } from '../migrations/migrateAreas.js';
 import { formatStickerNumber } from '../utils/stickerNumber.js';
 import { getCompanyBillPrefix, normalizeInvoiceNumber } from '../utils/invoiceNumber.js';
 import PhysicalStockModel from './physicalStockModel.js';
@@ -15,18 +15,19 @@ class StaffModel {
 
     // Park bills from Pending Deliveries in Suspense (inSuspense = true) or
     // return them (false). Only bills still waiting for delivery
-    // (packing_done / returned) can be moved into suspense.
-    static async setSalesSuspense(saleIds, inSuspense) {
+    // (packing_done / returned) can be moved into suspense. The reason is kept
+    // on the bill while it is in Suspense.
+    static async setSalesSuspense(saleIds, inSuspense, reason = null) {
         const placeholders = saleIds.map(() => '?').join(',');
         const [result] = inSuspense
             ? await db.execute(
-                `UPDATE staff_sales SET in_suspense = 1, suspense_at = NOW()
+                `UPDATE staff_sales SET in_suspense = 1, suspense_at = NOW(), suspense_reason = ?
                  WHERE id IN (${placeholders}) AND in_suspense = 0
                    AND packaging_status IN ('packing_done', 'returned')`,
-                saleIds
+                [reason, ...saleIds]
             )
             : await db.execute(
-                `UPDATE staff_sales SET in_suspense = 0, suspense_at = NULL
+                `UPDATE staff_sales SET in_suspense = 0, suspense_at = NULL, suspense_reason = NULL
                  WHERE id IN (${placeholders}) AND in_suspense = 1`,
                 saleIds
             );
@@ -492,18 +493,19 @@ class StaffModel {
 
     static async getAreaDirectory() {
         const [rows] = await db.execute(`
-            SELECT location_name, 'outlet' AS source FROM staff_counters
+            SELECT location_name, 'outlet' AS source, NULL AS holiday_day FROM staff_counters
             WHERE location_name IS NOT NULL AND TRIM(location_name) <> ''
             UNION ALL
-            SELECT location_name, 'assignment' AS source FROM staff_locations
+            SELECT location_name, 'assignment' AS source, NULL AS holiday_day FROM staff_locations
             WHERE location_name IS NOT NULL AND TRIM(location_name) <> ''
             UNION ALL
-            SELECT name AS location_name, 'area' AS source FROM areas
+            SELECT name AS location_name, 'area' AS source, holiday_day FROM areas
         `);
         const areas = new Map();
         for (const row of rows) {
             const name = normalizeAreaName(row.location_name);
-            if (!areas.has(name)) areas.set(name, { name, outlet_count: 0, assignment_count: 0 });
+            if (!areas.has(name)) areas.set(name, { name, outlet_count: 0, assignment_count: 0, holiday_day: null });
+            if (row.source === 'area' && row.holiday_day) areas.get(name).holiday_day = row.holiday_day;
             if (row.source !== 'area') areas.get(name)[row.source === 'outlet' ? 'outlet_count' : 'assignment_count'] += 1;
         }
         return [...areas.values()].sort((a, b) => a.name.localeCompare(b.name));
@@ -519,7 +521,7 @@ class StaffModel {
         return rows.map((row) => row.location_name);
     }
 
-    static async createArea(name) {
+    static async createArea(name, holidayDay = null) {
         const normalized = normalizeAreaName(name);
         const existing = await this.getAreaDirectory();
         if (existing.some(area => area.name === normalized)) {
@@ -527,8 +529,22 @@ class StaffModel {
             error.code = 'ER_DUP_ENTRY';
             throw error;
         }
-        const [result] = await db.execute('INSERT INTO areas (name) VALUES (?)', [normalized]);
-        return { id: result.insertId, name: normalized };
+        const holiday = normalizeHolidayDays(holidayDay);
+        const [result] = await db.execute('INSERT INTO areas (name, holiday_day) VALUES (?, ?)', [normalized, holiday]);
+        return { id: result.insertId, name: normalized, holiday_day: holiday };
+    }
+
+    // Sets an area's weekly holiday (null clears it). Areas that so far exist
+    // only on outlets or staff assignments are added to the registry.
+    static async setAreaHoliday(name, holidayDay) {
+        const normalized = normalizeAreaName(name);
+        if (!(await this.getAreaDirectory()).some(area => area.name === normalized)) return null;
+        const holiday = normalizeHolidayDays(holidayDay);
+        await db.execute(
+            'INSERT INTO areas (name, holiday_day) VALUES (?, ?) ON DUPLICATE KEY UPDATE holiday_day = VALUES(holiday_day)',
+            [normalized, holiday]
+        );
+        return { name: normalized, holiday_day: holiday };
     }
 
     static async deleteArea(name) {
@@ -802,15 +818,40 @@ class StaffModel {
         }
     }
 
-    static async getAllSalesByDate(date, search = '', scope = '') {
+    static async getAllSalesByDate(date, search = '', scope = '', report = {}) {
+        const isReport = scope === 'delivery_report';
+        // Delivery report: a delivered bill is dated by its delivery, a
+        // cancelled bill by its cancellation (cancelling clears delivery_date).
+        const reportDateSql = `CASE
+                WHEN ss.packaging_status = 'cancelled' THEN COALESCE(DATE(tl.cancelled_at), DATE(ss.sale_date))
+                WHEN ss.packaging_status = 'delivered' THEN COALESCE(ss.delivery_date, DATE(tl.delivered_at))
+                ELSE COALESCE(ss.delivery_date, DATE(ss.sale_date))
+            END`;
+        const timelineSelect = isReport ? `
+                    DATE_FORMAT(ss.sale_date, '%Y-%m-%d') AS sale_day,
+                    DATE_FORMAT(tl.packing_at, '%Y-%m-%d %H:%i') AS packing_at,
+                    DATE_FORMAT(tl.packing_done_at, '%Y-%m-%d %H:%i') AS packing_done_at,
+                    DATE_FORMAT(tl.delivered_at, '%Y-%m-%d %H:%i') AS delivered_at,
+                    DATE_FORMAT(tl.cancelled_at, '%Y-%m-%d %H:%i') AS cancelled_at,
+                    DATE_FORMAT(${reportDateSql}, '%Y-%m-%d') AS report_date,` : '';
+        const timelineJoin = isReport ? `
+             LEFT JOIN (
+                 SELECT sale_id,
+                        MIN(CASE WHEN status = 'packing' THEN changed_at END) AS packing_at,
+                        MIN(CASE WHEN status = 'packing_done' THEN changed_at END) AS packing_done_at,
+                        MAX(CASE WHEN status = 'delivered' THEN changed_at END) AS delivered_at,
+                        MAX(CASE WHEN status = 'cancelled' THEN changed_at END) AS cancelled_at
+                 FROM staff_sale_status_history
+                 GROUP BY sale_id
+             ) tl ON tl.sale_id = ss.id` : '';
         let query = `
-            SELECT ss.id,
+            SELECT ss.id,${timelineSelect}
                     ss.staff_id, ss.outlet_id, ss.sale_date, ss.item_count, ss.packed_item_count, ss.box_count, ss.packet_count, ss.price,
                     COALESCE(cancelled.total_amount, 0) AS cancelled_amount,
                     GREATEST(0, ss.price - COALESCE(cancelled.total_amount, 0)) AS effective_price,
                     ss.invoice_number,
                     ss.sticker_number, ss.packaging_status, ss.delivery_boy_id, ss.delivery_staff_id, ss.packed_by_id, ss.vehicle_no,
-                    ss.in_suspense, DATE_FORMAT(ss.suspense_at, '%Y-%m-%d %H:%i:%s') AS suspense_at,
+                    ss.in_suspense, DATE_FORMAT(ss.suspense_at, '%Y-%m-%d %H:%i:%s') AS suspense_at, ss.suspense_reason,
                     DATE_FORMAT(ss.delivery_date, '%Y-%m-%d') AS delivery_date,
                     DATE_FORMAT(ssh.status_updated_at, '%Y-%m-%d %H:%i:%s') AS status_updated_at,
                     DATE_FORMAT(ssh.packing_date, '%Y-%m-%d') AS packing_date,
@@ -871,7 +912,7 @@ class StaffModel {
                         MIN(CASE WHEN status = 'packing_done' THEN changed_at END) AS packing_date
                  FROM staff_sale_status_history
                  GROUP BY sale_id
-             ) ssh ON ssh.sale_id = ss.id
+             ) ssh ON ssh.sale_id = ss.id${timelineJoin}
         `;
         const params = [];
         const conditions = [];
@@ -881,11 +922,25 @@ class StaffModel {
             params.push(date);
         }
 
-        // Packaging needs every sale that still requires work. Applying this
-        // condition before ordering avoids losing older pending sales to the
-        // general-purpose 1,000-row cap below.
-        if (scope === 'packaging') {
-            conditions.push("COALESCE(ss.packaging_status, 'not_packing') IN ('not_packing', 'packing')");
+        // Delivery report: one company (or one invoice), optional date range
+        // on the delivered / cancelled date (none = all time), optional statuses.
+        if (isReport) {
+            if (report.invoice) {
+                conditions.push('ss.invoice_number = ?');
+                params.push(String(report.invoice));
+            }
+            if (report.companyId) {
+                conditions.push('FIND_IN_SET(?, COALESCE(staff_company.company_ids, s.company_id)) > 0');
+                params.push(String(report.companyId));
+            }
+            if (report.from) { conditions.push(`${reportDateSql} >= ?`); params.push(report.from); }
+            if (report.to) { conditions.push(`${reportDateSql} <= ?`); params.push(report.to); }
+            // No status list = all statuses, including bills not yet delivered.
+            const statuses = report.statuses || [];
+            if (!report.invoice && statuses.length) {
+                conditions.push(`ss.packaging_status IN (${statuses.map(() => '?').join(', ')})`);
+                params.push(...statuses);
+            }
         }
 
         const normalizedSearch = String(search || '').trim();
@@ -909,7 +964,7 @@ class StaffModel {
 
         query += ` ORDER BY ss.sale_date DESC, ss.id DESC`;
 
-        if (scope !== 'packaging' && scope !== 'assignments') {
+        if (scope !== 'packaging' && scope !== 'assignments' && scope !== 'delivery_report') {
             query += ` LIMIT 10000`;
         }
 
@@ -1025,7 +1080,8 @@ class StaffModel {
         return rows.find((row) => normalizeInvoiceNumber(row.invoice_number) === normalizedInvoiceNumber) || null;
     }
 
-    static async searchSalesByInvoice(invoiceNumber) {
+    // staffId (optional) limits results to one marketing staff member's own sales.
+    static async searchSalesByInvoice(invoiceNumber, staffId = null) {
         const term = String(invoiceNumber || '').trim();
         if (!term) {
             return [];
@@ -1080,12 +1136,13 @@ class StaffModel {
                  FROM staff_sale_status_history
                  GROUP BY sale_id
              ) ssh ON ssh.sale_id = ss.id
-             WHERE ss.invoice_number LIKE ?
+             WHERE (ss.invoice_number LIKE ?
                 OR ss.sticker_number LIKE ?
-                OR CAST(ss.id AS CHAR) LIKE ?
+                OR CAST(ss.id AS CHAR) LIKE ?)
+               AND (? IS NULL OR ss.staff_id = ?)
              ORDER BY ss.sale_date DESC, ss.id DESC
              LIMIT 50`,
-            [likeTerm, likeTerm, likeTerm]
+            [likeTerm, likeTerm, likeTerm, staffId, staffId]
         );
 
         if (normalizedTerm) {
@@ -1102,7 +1159,8 @@ class StaffModel {
     // One outlet = one ERP ID. The same shop has a counter row per staff/day
     // (sometimes with spelling variants), while many different shops share a
     // name, so outlets are grouped by the normalized ERP ID, never by name.
-    static async searchOutlets(searchTerm) {
+    // With staffId, only that staff member's counters and own sales are included.
+    static async searchOutlets(searchTerm, staffId = null) {
         const term = String(searchTerm || '').trim();
         if (!term) {
             return [];
@@ -1121,21 +1179,22 @@ class StaffModel {
                     DATE_FORMAT(MAX(ss.sale_date), '%Y-%m-%d') AS last_sale_date
              FROM staff_counters sc
              LEFT JOIN staff s ON s.id = sc.staff_id
-             LEFT JOIN staff_sales ss ON ss.outlet_id = sc.id
+             LEFT JOIN staff_sales ss ON ss.outlet_id = sc.id AND (? IS NULL OR ss.staff_id = ?)
              WHERE UPPER(TRIM(sc.outlet_erp_id)) IN (
                  SELECT UPPER(TRIM(m.outlet_erp_id))
                  FROM staff_counters m
                  WHERE m.outlet_name LIKE ? OR m.outlet_erp_id LIKE ? OR m.contact_number LIKE ?
              )
+               AND (? IS NULL OR sc.staff_id = ? OR sc.id IN (SELECT own.outlet_id FROM staff_sales own WHERE own.staff_id = ?))
              GROUP BY outlet_key
              ORDER BY (COUNT(ss.id) > 0) DESC, MAX(ss.sale_date) DESC, outlet_names
              LIMIT 50`,
-            [likeTerm, likeTerm, likeTerm]
+            [staffId, staffId, likeTerm, likeTerm, likeTerm, staffId, staffId, staffId]
         );
         return rows;
     }
 
-    static async getOutletInvoices(outletKey) {
+    static async getOutletInvoices(outletKey, staffId = null) {
         const key = String(outletKey || '').trim().toUpperCase();
         if (!key) {
             return null;
@@ -1152,8 +1211,9 @@ class StaffModel {
              FROM staff_counters sc
              LEFT JOIN staff s ON s.id = sc.staff_id
              WHERE UPPER(TRIM(sc.outlet_erp_id)) = ?
+               AND (? IS NULL OR sc.staff_id = ? OR sc.id IN (SELECT own.outlet_id FROM staff_sales own WHERE own.staff_id = ?))
              GROUP BY outlet_key`,
-            [key]
+            [key, staffId, staffId, staffId]
         );
         if (!outlet) {
             return null;
@@ -1191,8 +1251,9 @@ class StaffModel {
                  GROUP BY sp.sale_id
              ) pay ON pay.sale_id = ss.id
              WHERE UPPER(TRIM(sc.outlet_erp_id)) = ?
+               AND (? IS NULL OR ss.staff_id = ?)
              ORDER BY ss.sale_date DESC, ss.id DESC`,
-            [key, key]
+            [key, key, staffId, staffId]
         );
 
         return { outlet, invoices };

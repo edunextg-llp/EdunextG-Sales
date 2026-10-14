@@ -11,6 +11,7 @@ import MDButton from "components/MDButton";
 import DashboardLayout from "examples/LayoutContainers/DashboardLayout";
 import DashboardNavbar from "examples/Navbars/DashboardNavbar";
 import Footer from "examples/Footer";
+import { useAuth } from "context/AuthContext";
 
 import InvoiceDetails from "./components/InvoiceDetails";
 import OutletHistory from "./components/OutletHistory";
@@ -31,6 +32,8 @@ const MODES = {
 };
 
 function InvoiceLookup() {
+  const { user } = useAuth();
+  const isMarketingStaff = user?.role === "staff";
   const [mode, setMode] = useState("invoice");
   const [searchQuery, setSearchQuery] = useState("");
   const [searchedTerm, setSearchedTerm] = useState("");
@@ -137,6 +140,11 @@ function InvoiceLookup() {
           <MDTypography variant="button" color="text">
             Find an invoice or an outlet to see the full journey from sale to delivery and every payment.
           </MDTypography>
+          {isMarketingStaff && (
+            <MDTypography variant="caption" color="info" fontWeight="medium" display="block" mt={0.5}>
+              You are seeing only the invoices you created, with their delivery status and payments.
+            </MDTypography>
+          )}
         </MDBox>
 
         <Card sx={{ p: 3 }}>

@@ -2,6 +2,8 @@ import { reportAreaName } from "./areaName";
 
 // Total "No. of box" entered at packaging for a list of bills.
 export const boxCount = (rows = []) => rows.reduce((sum, row) => sum + (Number(row?.box_count) || 0), 0);
+// Total "No. of packet" entered at packaging for a list of bills.
+export const packetCount = (rows = []) => rows.reduce((sum, row) => sum + (Number(row?.packet_count) || 0), 0);
 // A single report layout drives both the dialog and its Excel export.
 // areaOrder: optional list of area names (route priority) shown first, in that order.
 export function buildDeliveryLog(sales, { hideEmptyAreas = false, areaOrder = [] } = {}) {

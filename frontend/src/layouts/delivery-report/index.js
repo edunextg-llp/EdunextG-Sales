@@ -9,13 +9,14 @@ import { Dialog, DialogTitle, DialogContent, DialogActions, TableContainer, Tabl
 import MDBox from "components/MDBox";
 import MDTypography from "components/MDTypography";
 import MDButton from "components/MDButton";
-import { boxCount, buildDeliveryLog, deliveryLogColors } from "utils/deliveryLog";
+import { boxCount, packetCount, buildDeliveryLog, deliveryLogColors } from "utils/deliveryLog";
+import PackBadges from "./PackBadges";
 import { printDeliveryAssignmentsPdf } from "utils/printDeliveryAssignmentsPdf";
-import { IconButton, Tooltip, FormControlLabel } from "@mui/material";
+import { IconButton, Tooltip, FormControlLabel, Tabs, Tab } from "@mui/material";
 import VisibilityIcon from "@mui/icons-material/Visibility";
-import Inventory2Icon from "@mui/icons-material/Inventory2";
 import BillDetailsDialog from "./BillDetailsDialog";
 import AssignmentHistory from "./AssignmentHistory";
+import DeliveryStatusReport from "./DeliveryStatusReport";
 import { selectedAssignments, remainingAssignments, toggleAssignmentSelection } from "utils/deliveryAssignmentSelection";
 
 const API = (process.env.REACT_APP_API_URL);
@@ -51,7 +52,9 @@ export default function DeliveryReport() {
   const [routes, setRoutes] = useState([]);
   const [routeId, setRouteId] = useState("");
   const [suspenseFeedback, setSuspenseFeedback] = useState("");
+  const [suspenseReason, setSuspenseReason] = useState("");
   const [message, setMessage] = useState("");
+  const [historyTab, setHistoryTab] = useState("assignments");
   const busy = useRef(false);
   const load = useCallback(async () => {
     try {
@@ -181,6 +184,7 @@ export default function DeliveryReport() {
   const moveGroupToSuspense = async () => {
     const saleIds = groupBills.filter((row) => selected.includes(String(row.id))).map((row) => row.id);
     if (busy.current || !saleIds.length) return;
+    if (!suspenseReason.trim()) { setSuspenseFeedback("Enter the reason for moving these bills to Suspense."); return; }
     busy.current = true;
     setSaving(true);
     setSuspenseBusy(true);
@@ -189,10 +193,17 @@ export default function DeliveryReport() {
       const response = await fetch(`${API}/staff/sales/suspense`, {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${localStorage.getItem("token")}` },
-        body: JSON.stringify({ saleIds, suspense: true }),
+        body: JSON.stringify({ saleIds, suspense: true, reason: suspenseReason.trim() }),
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "Unable to move bills to Suspense.");
+      setSuspenseReason("");
+      if (data.pendingApproval) {
+        setSelected((current) => current.filter((id) => !saleIds.map(String).includes(String(id))));
+        setSuspenseFeedback(data.message);
+        setMessage(data.message);
+        return;
+      }
       const moved = new Set((data.movedIds || []).map(String));
       setSales((current) => current.filter((row) => !moved.has(String(row.id))));
       setSelected((current) => current.filter((id) => !moved.has(String(id))));
@@ -230,7 +241,7 @@ export default function DeliveryReport() {
       </DialogTitle>
       <DialogContent dividers sx={{ p: 0 }}>
         <MDBox px={1} py={0.5} bgColor="#eff6ff">
-          <MDTypography variant="caption">All companies • Packed and returned bills awaiting delivery • {report.total} pending bills • {boxCount(pending)} boxes</MDTypography>
+          <MDTypography variant="caption">All companies • Packed and returned bills awaiting delivery • {report.total} pending bills • {boxCount(pending)} boxes • {packetCount(pending)} packets</MDTypography>
           {routeError && <MDTypography variant="caption" display="block" color="warning">{routeError}</MDTypography>}
           {message && <MDTypography variant="caption" display="block" color="success">{message}</MDTypography>}
           {error && <MDTypography variant="caption" display="block" color="error">{error}</MDTypography>}
@@ -268,9 +279,7 @@ export default function DeliveryReport() {
                           </IconButton>
                         </span></Tooltip>
                       </MDBox>
-                        {value > 0 && <Tooltip title="No. of boxes"><MDBox component="span" display="flex" alignItems="center" justifyContent="center" gap={0.25} sx={{ color: "#7c2d12", fontSize: "0.68rem", fontWeight: 600, mt: 0.25 }}>
-                          <Inventory2Icon sx={{ fontSize: 12 }} />{boxCount(bills)}
-                        </MDBox></Tooltip>}
+                        {value > 0 && <PackBadges rows={bills} compact />}
                         {selectedCount > 0 && <MDTypography component="span" sx={{ display: "block", color: "#166534", fontSize: "0.65rem", fontWeight: 700, whiteSpace: "nowrap", mt: 0.25 }}>
                           {selectedCount}/{bills.length} selected
                         </MDTypography>}
@@ -287,7 +296,8 @@ export default function DeliveryReport() {
         <DialogTitle>{viewGroup?.title} — Pending bills</DialogTitle>
         <DialogContent dividers>
           <MDTypography variant="caption" display="block" mb={1}>Select bills, then click Done to choose more from another area or company. When finished, use the Assign button at the top of the report.</MDTypography>
-          <MDTypography variant="caption" display="block" mb={1}>Suspense moves only the selected bills in this window out of Pending Deliveries.</MDTypography>
+          <MDTypography variant="caption" display="block" mb={1}>Suspense moves only the selected bills in this window out of Pending Deliveries. A reason is required; unless you are admin, the request goes to admin and the bills move after approval.</MDTypography>
+          <MDInput label="Reason for Suspense" value={suspenseReason} onChange={(event) => setSuspenseReason(event.target.value)} fullWidth multiline minRows={1} inputProps={{ maxLength: 1000 }} disabled={saving} sx={{ mb: 1 }} />
           {suspenseFeedback && <MDTypography role="status" variant="body2" mb={1}>{suspenseFeedback}</MDTypography>}
           <TableContainer sx={{ maxHeight: "55vh" }}>
             <Table size="small" stickyHeader sx={{ "& .MuiTableCell-root": { fontSize: "0.8125rem" } }}>
@@ -296,7 +306,7 @@ export default function DeliveryReport() {
                   checked={groupBills.length > 0 && groupSelectedCount === groupBills.length}
                   indeterminate={groupSelectedCount > 0 && groupSelectedCount < groupBills.length}
                   onChange={() => toggle(groupBills)} inputProps={{ "aria-label": "Select all bills in this group" }} /></TableCell>
-                <TableCell>Invoice number</TableCell><TableCell>Outlet name</TableCell><TableCell>Area</TableCell><TableCell align="center">Boxes</TableCell><TableCell align="right">Price</TableCell>
+                <TableCell>Invoice number</TableCell><TableCell>Outlet name</TableCell><TableCell>Area</TableCell><TableCell align="center">Boxes</TableCell><TableCell align="center">Packets</TableCell><TableCell align="right">Price</TableCell>
               </TableRow></TableHead>
               <TableBody>
                 {groupBills.map((row) => <TableRow key={row.id} selected={selected.includes(String(row.id))} hover>
@@ -307,16 +317,17 @@ export default function DeliveryReport() {
                   <TableCell>{row.outlet_name || "Outlet not assigned"}</TableCell>
                   <TableCell>{reportAreaName(row.location_name)}</TableCell>
                   <TableCell align="center">{row.box_count ?? "—"}</TableCell>
+                  <TableCell align="center">{row.packet_count ?? "—"}</TableCell>
                   <TableCell align="right" sx={{ whiteSpace: "nowrap" }}>Rs. {Number(row.price || 0).toFixed(2)}</TableCell>
                 </TableRow>)}
-                {!groupBills.length && <TableRow><TableCell colSpan={6}>No pending bills remain in this group.</TableCell></TableRow>}
+                {!groupBills.length && <TableRow><TableCell colSpan={7}>No pending bills remain in this group.</TableCell></TableRow>}
               </TableBody>
             </Table>
           </TableContainer>
         </DialogContent>
         <DialogActions sx={{ flexWrap: "wrap", gap: 1 }}>
-          <MDTypography variant="caption" sx={{ mr: "auto", pl: 1 }}>Selected here: {groupSelectedCount} / {groupBills.length} · Boxes: {boxCount(groupBills.filter((row) => selected.includes(String(row.id))))} / {boxCount(groupBills)} · Total selected: {chosen.length} ({boxCount(chosen)} boxes)</MDTypography>
-          <MDButton color="warning" disabled={saving || !groupSelectedCount} onClick={moveGroupToSuspense}>
+          <MDTypography variant="caption" sx={{ mr: "auto", pl: 1 }}>Selected here: {groupSelectedCount} / {groupBills.length} · Boxes: {boxCount(groupBills.filter((row) => selected.includes(String(row.id))))} / {boxCount(groupBills)} · Packets: {packetCount(groupBills.filter((row) => selected.includes(String(row.id))))} / {packetCount(groupBills)} · Total selected: {chosen.length} ({boxCount(chosen)} boxes, {packetCount(chosen)} packets)</MDTypography>
+          <MDButton color="warning" disabled={saving || !groupSelectedCount || !suspenseReason.trim()} onClick={moveGroupToSuspense}>
             {suspenseBusy ? "Moving…" : `Suspense (${groupSelectedCount})`}
           </MDButton>
           <MDButton color="secondary" disabled={saving} onClick={() => { setViewGroup(null); setSuspenseFeedback(""); }}>Done</MDButton>
@@ -391,7 +402,7 @@ export default function DeliveryReport() {
                         inputProps={{ "aria-label": "Select " + group.area + " / " + group.company + " for " + draft.name + " on " + draft.date }} />
                       <MDBox><MDTypography variant="button" display="block">{group.area}</MDTypography><MDTypography variant="caption">{group.company}</MDTypography></MDBox>
                       <MDBox textAlign="right"><MDTypography variant="button" display="block" sx={{ whiteSpace: "nowrap" }}>{group.ids.filter((id) => !removeIds.includes(id)).length}/{group.count} bills</MDTypography>
-                      <MDTypography variant="caption" sx={{ whiteSpace: "nowrap" }}>{boxCount(group.rows.filter((row) => !removeIds.includes(String(row.id))))} boxes</MDTypography></MDBox>
+                      <PackBadges rows={group.rows.filter((row) => !removeIds.includes(String(row.id)))} /></MDBox>
                       </MDBox>
                       {group.rows.map((row) => <MDBox key={row.id} display="flex" alignItems="center" gap={0.5} pl={2} py={0.25}>
                         <Checkbox size="small" disabled={saving} checked={!removeIds.includes(String(row.id))}
@@ -401,20 +412,20 @@ export default function DeliveryReport() {
                           <MDTypography variant="caption" display="block">Bill: {row.invoice_number || row.id}</MDTypography>
                           <MDTypography variant="caption" display="block">{row.outlet_name || "Outlet not assigned"}</MDTypography>
                         </MDBox>
-                        <MDTypography variant="caption" sx={{ whiteSpace: "nowrap" }}>{row.box_count ?? 0} box</MDTypography>
+                        <MDTypography variant="caption" sx={{ whiteSpace: "nowrap" }}>{row.box_count ?? 0} box · {row.packet_count ?? 0} pkt</MDTypography>
                         <Tooltip title="View bill details"><IconButton size="small" aria-label={"View bill " + (row.invoice_number || row.id)} onClick={() => setViewBill({ row, draft })}><VisibilityIcon fontSize="small" /></IconButton></Tooltip>
                       </MDBox>)}
                     </MDBox>)}
                     <MDButton size="small" color="error" disabled={saving || !draft.rows.some((row) => removeIds.includes(String(row.id)))} onClick={() => removeSelectedAreas(draft.id)}>Remove unselected bills</MDButton>
                   </MDBox>;
                 })}
-                <MDTypography variant="button" sx={{ mt: "auto", p: 1, backgroundColor: "#fef3c7", fontWeight: 700 }}>Selected: {batches.reduce((total, draft) => total + draft.rows.filter((row) => !removeIds.includes(String(row.id))).length, 0)} bills · {batches.reduce((total, draft) => total + boxCount(draft.rows.filter((row) => !removeIds.includes(String(row.id)))), 0)} boxes</MDTypography>
+                <MDTypography variant="button" sx={{ mt: "auto", p: 1, backgroundColor: "#fef3c7", fontWeight: 700 }}>Selected: {batches.reduce((total, draft) => total + draft.rows.filter((row) => !removeIds.includes(String(row.id))).length, 0)} bills · {batches.reduce((total, draft) => total + boxCount(draft.rows.filter((row) => !removeIds.includes(String(row.id)))), 0)} boxes · {batches.reduce((total, draft) => total + packetCount(draft.rows.filter((row) => !removeIds.includes(String(row.id)))), 0)} packets</MDTypography>
               </MDBox>;
             })}
           </MDBox>
         </DialogContent>
         <DialogActions>
-          <MDTypography variant="button" sx={{ mr: "auto", pl: 1 }}>Selected: {selectedBillCount} of {stagedIds.size} bills · {selectedDrafts.reduce((total, draft) => total + boxCount(draft.rows), 0)} boxes</MDTypography>
+          <MDTypography variant="button" sx={{ mr: "auto", pl: 1 }}>Selected: {selectedBillCount} of {stagedIds.size} bills · {selectedDrafts.reduce((total, draft) => total + boxCount(draft.rows), 0)} boxes · {selectedDrafts.reduce((total, draft) => total + packetCount(draft.rows), 0)} packets</MDTypography>
           <MDButton color="info" variant="outlined" disabled={saving || !selectedBillCount} onClick={() => {
             try { setError(""); printDeliveryAssignmentsPdf(selectedDrafts); }
             catch (err) { setError(err.message); }
@@ -423,7 +434,15 @@ export default function DeliveryReport() {
           <MDButton color="info" variant="gradient" disabled={saving || !selectedBillCount} onClick={submit}>{saving ? "Submitting…" : `Submit (${selectedBillCount})`}</MDButton>
         </DialogActions>
       </Dialog>
-      <AssignmentHistory api={API} onViewBill={setViewBill} areaOrder={routeAreaOrder} boys={boys} />
+      <MDBox mt={3} sx={{ borderBottom: "1px solid #cbd5e1" }}>
+        <Tabs value={historyTab} onChange={(_, value) => setHistoryTab(value)} sx={{ maxWidth: 520 }}>
+          <Tab value="assignments" label="Date-wise Assigned Orders" />
+          <Tab value="download" label="Download Report" />
+        </Tabs>
+      </MDBox>
+      {historyTab === "assignments"
+        ? <AssignmentHistory api={API} onViewBill={setViewBill} areaOrder={routeAreaOrder} boys={boys} />
+        : <DeliveryStatusReport api={API} />}
       <BillDetailsDialog bill={viewBill} onClose={() => setViewBill(null)} api={API} />
     </MDBox><Footer /></DashboardLayout>
   );

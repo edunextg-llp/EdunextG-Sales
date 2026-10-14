@@ -269,7 +269,7 @@ function Delivery() {
           mergeSalesRows(data, prev, enhanceDeliveryRow, isDeliveryRowDirty).map((row) => {
             const serverRow = serverById.get(row.id);
             return serverRow
-              ? { ...row, in_suspense: serverRow.in_suspense, suspense_at: serverRow.suspense_at }
+              ? { ...row, in_suspense: serverRow.in_suspense, suspense_at: serverRow.suspense_at, suspense_reason: serverRow.suspense_reason }
               : row;
           })
         );
@@ -304,27 +304,53 @@ function Delivery() {
     });
   };
 
-  // Move selected bills into Suspense (suspense = true) or return them to
-  // Pending Deliveries (suspense = false).
-  const updateSuspense = async (saleIds, suspense) => {
+  // Bills waiting in a pending Suspense request (shown as "Suspense requested").
+  const [requestedIds, setRequestedIds] = useState(new Set());
+  const [reasonDialog, setReasonDialog] = useState({ open: false, saleIds: [], reason: "" });
+  const loadSuspenseRequests = useCallback(async () => {
+    try {
+      const response = await fetch(`${API}/staff/suspense-requests?status=pending`);
+      if (!response.ok) return;
+      const data = await response.json();
+      setRequestedIds(new Set((data.requests || []).flatMap((request) => request.sale_ids || []).map(Number)));
+    } catch (error) {
+      console.error("Error loading suspense requests:", error);
+    }
+  }, [API]);
+  useEffect(() => { loadSuspenseRequests(); }, [loadSuspenseRequests]);
+
+  // Move selected bills into Suspense (suspense = true, needs a reason and,
+  // for non-admin users, admin approval) or return them to Pending
+  // Deliveries (suspense = false).
+  const updateSuspense = async (saleIds, suspense, reason = "") => {
     if (!saleIds.length || suspenseBusy) return;
-    const label = suspense ? "Move" : "Return";
-    if (!window.confirm(`${label} ${saleIds.length} bill(s) ${suspense ? "to Suspense" : "to Pending Deliveries"}?`)) return;
+    if (suspense && !reason.trim()) {
+      setReasonDialog({ open: true, saleIds, reason: "" });
+      return;
+    }
+    if (!suspense && !window.confirm(`Return ${saleIds.length} bill(s) to Pending Deliveries?`)) return;
 
     setSuspenseBusy(true);
     try {
       const response = await fetch(`${API}/staff/sales/suspense`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ saleIds, suspense }),
+        body: JSON.stringify({ saleIds, suspense, reason: reason.trim() }),
       });
       const data = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(data.error || "Unable to update Suspense.");
+      setReasonDialog({ open: false, saleIds: [], reason: "" });
+      if (data.pendingApproval) {
+        setSelectedIds(new Set());
+        loadSuspenseRequests();
+        alert(data.message || "Request sent to admin for approval.");
+        return;
+      }
       const moved = new Set(data.movedIds || []);
       setSalesData((prev) =>
         prev.map((row) =>
           moved.has(row.id)
-            ? { ...row, in_suspense: suspense ? 1 : 0, suspense_at: suspense ? new Date().toISOString() : null }
+            ? { ...row, in_suspense: suspense ? 1 : 0, suspense_at: suspense ? new Date().toISOString() : null, suspense_reason: suspense ? reason.trim() : null }
             : row
         )
       );
@@ -337,6 +363,7 @@ function Delivery() {
         alert(`${moved.size} bill(s) updated. ${data.skippedIds.length} skipped because their status changed. The list has been refreshed.`);
       }
       fetchSales({ silent: true });
+      loadSuspenseRequests();
     } catch (error) {
       alert(error.message || "Unable to update Suspense.");
     } finally {
@@ -738,6 +765,7 @@ function Delivery() {
                         {activeTab === "suspense" && (
                           <>
                             <TableCell align="center" sx={paginatedTableHeadCellSx}>In Suspense Since</TableCell>
+                            <TableCell align="center" sx={paginatedTableHeadCellSx}>Reason</TableCell>
                             <TableCell align="center" sx={paginatedTableHeadCellSx}>Action</TableCell>
                           </>
                         )}
@@ -790,6 +818,11 @@ function Delivery() {
                               </TableCell>
                               <TableCell align="center" sx={{ borderBottom: borderCol, py: 2, color: txColor }}>
                                 {row.invoice_number}
+                                {activeTab === "pending" && requestedIds.has(Number(row.id)) && (
+                                  <MDTypography component="span" display="block" sx={{ fontSize: "0.68rem", fontWeight: 700, color: "#b45309", whiteSpace: "nowrap" }}>
+                                    Suspense requested
+                                  </MDTypography>
+                                )}
                               </TableCell>
                               <TableCell align="right" sx={{ borderBottom: borderCol, py: 2, color: txColor, fontWeight: "bold" }}>
                                 ₹{Number(row.price).toFixed(2)}
@@ -876,6 +909,9 @@ function Delivery() {
                                 <>
                                   <TableCell align="center" sx={{ borderBottom: borderCol, py: 2, color: txColor }}>
                                     {formatDateTime(row.suspense_at)}
+                                  </TableCell>
+                                  <TableCell sx={{ borderBottom: borderCol, py: 2, color: txColor, maxWidth: 240, whiteSpace: "pre-wrap" }}>
+                                    {row.suspense_reason || "—"}
                                   </TableCell>
                                   <TableCell align="center" sx={{ borderBottom: borderCol, py: 2 }}>
                                     <MDButton
@@ -970,6 +1006,44 @@ function Delivery() {
         </DialogContent>
         <DialogActions>
           <MDButton onClick={handleCloseDetails} color="dark">Done</MDButton>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog
+        open={reasonDialog.open}
+        onClose={() => { if (!suspenseBusy) setReasonDialog({ open: false, saleIds: [], reason: "" }); }}
+        fullWidth
+        maxWidth="sm"
+      >
+        <DialogTitle>Move {reasonDialog.saleIds.length} bill(s) to Suspense</DialogTitle>
+        <DialogContent dividers>
+          <MDTypography variant="body2" color="text" mb={2}>
+            Enter why these bills should go to Suspense. Admin moves them at once; for anyone else the request goes to admin
+            and the bills move only after it is approved (see Suspense Requests).
+          </MDTypography>
+          <MDInput
+            label="Reason *"
+            fullWidth
+            multiline
+            rows={3}
+            autoFocus
+            value={reasonDialog.reason}
+            inputProps={{ maxLength: 1000 }}
+            onChange={(e) => setReasonDialog((prev) => ({ ...prev, reason: e.target.value }))}
+          />
+        </DialogContent>
+        <DialogActions>
+          <MDButton color="secondary" disabled={suspenseBusy} onClick={() => setReasonDialog({ open: false, saleIds: [], reason: "" })}>
+            Cancel
+          </MDButton>
+          <MDButton
+            color="warning"
+            variant="gradient"
+            disabled={suspenseBusy || !reasonDialog.reason.trim()}
+            onClick={() => updateSuspense(reasonDialog.saleIds, true, reasonDialog.reason)}
+          >
+            {suspenseBusy ? "Sending..." : "Move to Suspense"}
+          </MDButton>
         </DialogActions>
       </Dialog>
 

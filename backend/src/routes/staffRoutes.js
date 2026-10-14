@@ -11,6 +11,7 @@ import * as currentStockController from '../controllers/currentStockController.j
 import * as physicalStockController from '../controllers/physicalStockController.js';
 import * as purchaseRequisitionController from '../controllers/purchaseRequisitionController.js';
 import * as overdueSaleRequestController from '../controllers/overdueSaleRequestController.js';
+import * as suspenseRequestController from '../controllers/suspenseRequestController.js';
 import { requireRole, verifyTokenMiddleware } from '../middlewares/authMiddleware.js';
 
 const upload = multer({
@@ -22,6 +23,11 @@ const upload = multer({
 router.get('/overdue-requests', overdueSaleRequestController.listOverdueRequests);
 router.post('/overdue-requests', overdueSaleRequestController.createOverdueRequest);
 router.put('/overdue-requests/:id/review', requireRole('admin'), overdueSaleRequestController.reviewOverdueRequest);
+router.post('/overdue-requests/:id/create-sales', requireRole('admin'), overdueSaleRequestController.createSalesForRequest);
+
+// Suspense requests: raised from Move to Suspense, approved by admin.
+router.get('/suspense-requests', suspenseRequestController.listSuspenseRequests);
+router.put('/suspense-requests/:id/review', requireRole('admin'), suspenseRequestController.reviewSuspenseRequest);
 
 router.post('/', staffController.createStaff);
 router.post('/upload-document', upload.single('file'), staffController.uploadStaffDocument);
@@ -31,6 +37,7 @@ router.get('/areas', verifyTokenMiddleware, requireRole('admin'), staffControlle
 router.get('/areas/options', verifyTokenMiddleware, requireRole('admin', 'packaging_staff', 'delivery_boy', 'staff'), staffController.getAreaOptions);
 router.post('/areas', verifyTokenMiddleware, requireRole('admin'), staffController.createArea);
 router.delete('/areas', verifyTokenMiddleware, requireRole('admin'), staffController.deleteArea);
+router.put('/areas/holiday', verifyTokenMiddleware, requireRole('admin'), staffController.updateAreaHoliday);
 router.get('/areas/export', verifyTokenMiddleware, requireRole('admin'), staffController.exportAreaDirectory);
 router.get('/routes', verifyTokenMiddleware, requireRole('admin', 'packaging_staff', 'delivery_boy'), routeController.getRoutes);
 router.post('/routes', verifyTokenMiddleware, requireRole('admin'), routeController.createRoute);

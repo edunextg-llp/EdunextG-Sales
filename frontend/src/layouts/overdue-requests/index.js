@@ -64,6 +64,29 @@ function OverdueRequests() {
   const [error, setError] = useState("");
   const [expandedId, setExpandedId] = useState(null);
   const [review, setReview] = useState({ request: null, action: "approve" });
+  const [notice, setNotice] = useState(null);
+  const [creatingId, setCreatingId] = useState(null);
+
+  const showResult = (data) => {
+    if (!data) return;
+    setNotice({ color: data.salesError ? "warning" : "success", text: data.message });
+  };
+
+  const createSales = async (request) => {
+    setCreatingId(request.id);
+    setNotice(null);
+    try {
+      const response = await fetch(`${API}/staff/overdue-requests/${request.id}/create-sales`, { method: "POST" });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || "Unable to create the sales.");
+      setNotice({ color: "success", text: `Request #${request.id}: ${data.message}` });
+    } catch (err) {
+      setNotice({ color: "error", text: `Request #${request.id}: ${err.message}` });
+    } finally {
+      setCreatingId(null);
+      load(true);
+    }
+  };
 
   const load = useCallback(
     async (silent = false) => {
@@ -124,6 +147,13 @@ function OverdueRequests() {
             </MDBox>
           </MDBox>
 
+          {notice && (
+            <MDBox px={2} pb={2}>
+              <MDTypography variant="button" color={notice.color}>
+                {notice.text}
+              </MDTypography>
+            </MDBox>
+          )}
           {error && (
             <MDBox px={2} pb={2}>
               <MDTypography variant="button" color="error">
@@ -136,7 +166,7 @@ function OverdueRequests() {
             <Table>
               <TableHead sx={{ display: "table-header-group", backgroundColor: "#f9fafb" }}>
                 <TableRow>
-                  {["Requested", "Staff / Sale date", "Outlet", "Overdue", "New sale", "Requested by", "Status", "Actions"].map(
+                  {["Requested", "Staff / Sale date", "Company", "Outlet", "Overdue", "New sale", "Requested by", "Status", "Actions"].map(
                     (heading) => (
                       <TableCell key={heading} sx={headSx}>
                         {heading}
@@ -148,7 +178,7 @@ function OverdueRequests() {
               <TableBody>
                 {!loading && requests.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={8} sx={{ ...cellSx, textAlign: "center", py: 4 }}>
+                    <TableCell colSpan={9} sx={{ ...cellSx, textAlign: "center", py: 4 }}>
                       No requests here.
                     </TableCell>
                   </TableRow>
@@ -167,6 +197,9 @@ function OverdueRequests() {
                         <strong>{request.staff_name || `Staff #${request.staff_id}`}</strong>
                         <br />
                         {formatDate(request.sale_date)}
+                      </TableCell>
+                      <TableCell sx={cellSx}>
+                        <strong>{request.company_name || "—"}</strong>
                       </TableCell>
                       <TableCell sx={cellSx}>
                         <strong>{request.outlet_name || "—"}</strong>
@@ -213,9 +246,18 @@ function OverdueRequests() {
                             <Icon>{expanded ? "expand_less" : "receipt_long"}</Icon>
                           </IconButton>
                         </Tooltip>
+                        {request.status === "approved" && request.sales_payload?.sales?.length > 0 && (
+                          <Tooltip title="Create the approved sales now">
+                            <span>
+                              <IconButton size="small" color="success" disabled={creatingId === request.id} onClick={() => createSales(request)}>
+                                <Icon>add_shopping_cart</Icon>
+                              </IconButton>
+                            </span>
+                          </Tooltip>
+                        )}
                         {request.status === "pending" && (
                           <>
-                            <Tooltip title="Approve">
+                            <Tooltip title="Approve & create sales">
                               <IconButton size="small" color="success" onClick={() => setReview({ request, action: "approve" })}>
                                 <Icon>check_circle</Icon>
                               </IconButton>
@@ -231,7 +273,7 @@ function OverdueRequests() {
                     </TableRow>,
                     expanded && (
                       <TableRow key={`${request.id}-bills`}>
-                        <TableCell colSpan={8} sx={{ ...cellSx, backgroundColor: "#fff7f7" }}>
+                        <TableCell colSpan={9} sx={{ ...cellSx, backgroundColor: "#fff7f7" }}>
                           {(request.overdue_details || []).map((credit) => (
                             <MDTypography key={credit.creditPaymentId} variant="caption" display="block" color="text">
                               Invoice {credit.invoiceNumber || "-"} | Balance {money(credit.balanceAmount)} | Due{" "}
@@ -254,7 +296,7 @@ function OverdueRequests() {
         request={review.request}
         action={review.action}
         onClose={() => setReview({ request: null, action: "approve" })}
-        onDone={() => load(true)}
+        onDone={(_, data) => { showResult(data); load(true); }}
       />
 
       <Footer />

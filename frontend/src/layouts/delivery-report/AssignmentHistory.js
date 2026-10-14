@@ -7,7 +7,7 @@ import MDInput from 'components/MDInput';
 import MDButton from 'components/MDButton';
 import { notifySalesUpdated, useSalesPolling } from 'utils/salesSync';
 import { groupAssignments, invoiceValue, printAssignmentSheetPdf, isEditableAssignment, assignmentEditRequests, assignmentCompanies, companyReportRows, printCompanyReportPdf, ALL_COMPANIES } from 'utils/assignmentReport';
-import { boxCount } from 'utils/deliveryLog';
+import { boxCount, packetCount } from 'utils/deliveryLog';
 
 const money = (value) => Number(value).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const today = () => { const date = new Date(); return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`; };
@@ -145,12 +145,12 @@ export default function AssignmentHistory({ api, onViewBill, areaOrder, boys }) 
     {notice && <MDTypography color="success" variant="body2" role="status">{notice}</MDTypography>}
     {loading && result.date !== date ? <MDTypography variant="body2" role="status">Loading assignments…</MDTypography> : <>
       <TableContainer><Table size="small"><TableHead sx={{ display: 'table-header-group' }}><TableRow>
-        {['Date', 'Employee', 'Assigned Orders', 'Boxes', 'Invoice Value', 'Action'].map((label) => <TableCell key={label}>{label}</TableCell>)}
+        {['Date', 'Employee', 'Assigned Orders', 'Boxes', 'Packets', 'Invoice Value', 'Action'].map((label) => <TableCell key={label}>{label}</TableCell>)}
       </TableRow></TableHead><TableBody>
-        {groups.map((group) => <TableRow key={group.id}><TableCell>{date}</TableCell><TableCell>{group.name}</TableCell><TableCell>{group.rows.length}</TableCell><TableCell>{boxCount(group.rows)}</TableCell><TableCell>{money(group.total)}</TableCell><TableCell><MDButton size="small" color="info" onClick={() => { setEmployee(group.id); setDownloadError(''); setEditing(false); setEditMessage(''); setNotice(''); }}>View</MDButton></TableCell></TableRow>)}
-        {!groups.length && <TableRow><TableCell colSpan={6}>{date ? 'No assigned orders for this date.' : 'Choose an assignment date.'}</TableCell></TableRow>}
+        {groups.map((group) => <TableRow key={group.id}><TableCell>{date}</TableCell><TableCell>{group.name}</TableCell><TableCell>{group.rows.length}</TableCell><TableCell>{boxCount(group.rows)}</TableCell><TableCell>{packetCount(group.rows)}</TableCell><TableCell>{money(group.total)}</TableCell><TableCell><MDButton size="small" color="info" onClick={() => { setEmployee(group.id); setDownloadError(''); setEditing(false); setEditMessage(''); setNotice(''); }}>View</MDButton></TableCell></TableRow>)}
+        {!groups.length && <TableRow><TableCell colSpan={7}>{date ? 'No assigned orders for this date.' : 'Choose an assignment date.'}</TableCell></TableRow>}
       </TableBody></Table></TableContainer>
-      <MDTypography variant="button">Total: {groups.reduce((sum, group) => sum + group.rows.length, 0)} orders · {groups.reduce((sum, group) => sum + boxCount(group.rows), 0)} boxes · Invoice Value: {money(groups.reduce((sum, group) => sum + group.total, 0))}</MDTypography>
+      <MDTypography variant="button">Total: {groups.reduce((sum, group) => sum + group.rows.length, 0)} orders · {groups.reduce((sum, group) => sum + boxCount(group.rows), 0)} boxes · {groups.reduce((sum, group) => sum + packetCount(group.rows), 0)} packets · Invoice Value: {money(groups.reduce((sum, group) => sum + group.total, 0))}</MDTypography>
     </>}
     <Dialog open={Boolean(employee)} onClose={closeDialog} fullWidth maxWidth="lg">
       <DialogTitle><MDBox display="flex" justifyContent="space-between" alignItems="center" gap={2} flexWrap="wrap">
@@ -186,12 +186,12 @@ export default function AssignmentHistory({ api, onViewBill, areaOrder, boys }) 
         {error && <MDTypography variant="body2" color="error">{error}</MDTypography>}
         <TableContainer><Table size="small"><TableHead sx={{ display: 'table-header-group' }}><TableRow>
           {editing && <TableCell padding="checkbox">Keep</TableCell>}
-          {['Sr. No.', 'Invoice No.', 'Invoice Date', 'Company Name', 'BIT', 'Outlet Name', 'Boxes', 'Invoice Amount', 'Status', 'Details'].map((label) => <TableCell key={label}>{label}</TableCell>)}
+          {['Sr. No.', 'Invoice No.', 'Invoice Date', 'Company Name', 'BIT', 'Outlet Name', 'Boxes', 'Packets', 'Invoice Amount', 'Status', 'Details'].map((label) => <TableCell key={label}>{label}</TableCell>)}
         </TableRow></TableHead><TableBody>
           {(selected?.rows || []).map((row, index) => <TableRow key={row.id}>{editing && <TableCell padding="checkbox">{isEditableAssignment(row)
             ? <Checkbox size="small" checked={keepIds.includes(String(row.id))} disabled={editSaving} onChange={() => toggleKeep(String(row.id))} inputProps={{ 'aria-label': `Keep invoice ${row.invoice_number || row.id} in this assignment` }} />
-            : <MDTypography variant="caption" color="text">Locked</MDTypography>}</TableCell>}<TableCell>{index + 1}</TableCell><TableCell>{row.invoice_number || row.id}</TableCell><TableCell sx={{ whiteSpace: 'nowrap' }}>{formatInvoiceDate(row.sale_date)}</TableCell><TableCell>{row.company_name || '—'}</TableCell><TableCell>{row[bitField] || '—'}</TableCell><TableCell>{row.outlet_name}</TableCell><TableCell>{row.box_count ?? '—'}</TableCell><TableCell>{money(invoiceValue(row))}</TableCell><TableCell><Chip size="small" variant="outlined" color={STATUS_COLOR[statusKey(row)] || 'default'} label={STATUS_LABEL[statusKey(row)] || row.packaging_status || '—'} /></TableCell><TableCell><MDButton size="small" color="info" onClick={() => onViewBill({ row, draft: { name: selected.name, date, vehicle: row.vehicle_no } })}>View</MDButton></TableCell></TableRow>)}
-          <TableRow>{editing && <TableCell />}<TableCell colSpan={6}>Total</TableCell><TableCell>{boxCount(selected?.rows || [])}</TableCell><TableCell>{money(selected?.total || 0)}</TableCell><TableCell /><TableCell /></TableRow>
+            : <MDTypography variant="caption" color="text">Locked</MDTypography>}</TableCell>}<TableCell>{index + 1}</TableCell><TableCell>{row.invoice_number || row.id}</TableCell><TableCell sx={{ whiteSpace: 'nowrap' }}>{formatInvoiceDate(row.sale_date)}</TableCell><TableCell>{row.company_name || '—'}</TableCell><TableCell>{row[bitField] || '—'}</TableCell><TableCell>{row.outlet_name}</TableCell><TableCell>{row.box_count ?? '—'}</TableCell><TableCell>{row.packet_count ?? '—'}</TableCell><TableCell>{money(invoiceValue(row))}</TableCell><TableCell><Chip size="small" variant="outlined" color={STATUS_COLOR[statusKey(row)] || 'default'} label={STATUS_LABEL[statusKey(row)] || row.packaging_status || '—'} /></TableCell><TableCell><MDButton size="small" color="info" onClick={() => onViewBill({ row, draft: { name: selected.name, date, vehicle: row.vehicle_no } })}>View</MDButton></TableCell></TableRow>)}
+          <TableRow>{editing && <TableCell />}<TableCell colSpan={6}>Total</TableCell><TableCell>{boxCount(selected?.rows || [])}</TableCell><TableCell>{packetCount(selected?.rows || [])}</TableCell><TableCell>{money(selected?.total || 0)}</TableCell><TableCell /><TableCell /></TableRow>
         </TableBody></Table></TableContainer>
       </DialogContent><DialogActions>
         {editing ? <>

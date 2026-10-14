@@ -59,12 +59,17 @@ export const summarizeSales = (sales = []) => ({
     invoiceNumbers: sales.map((sale) => sale.invoiceNumber).filter(Boolean),
 });
 
-const mapRequest = (row) => ({
-    ...row,
-    overdue_details: parseJson(row.overdue_details, []),
-    sales_summary: parseJson(row.sales_summary, null),
-    sales_payload: parseJson(row.sales_payload, null),
-});
+const mapRequest = (row) => {
+    const salesPayload = parseJson(row.sales_payload, null);
+    return {
+        ...row,
+        overdue_details: parseJson(row.overdue_details, []),
+        sales_summary: parseJson(row.sales_summary, null),
+        sales_payload: salesPayload,
+        // The company chosen on Add Sales, else the staff's companies.
+        company_name: String(salesPayload?.companyName || '').trim() || row.staff_company_names || '',
+    };
+};
 
 // Outlets (by ERP ID) that have credit overdue by more than OVERDUE_DAYS_LIMIT days.
 export async function getOverdueOutlets(outletIds = []) {
@@ -119,7 +124,13 @@ const REQUEST_SELECT = `
            r.outlet_id, r.outlet_erp_id, r.outlet_name, r.max_overdue_days, r.overdue_details,
            r.sales_summary, r.sales_payload, r.request_note, r.requested_by_role, r.requested_by_id, r.requested_by_name,
            r.status, r.reviewed_by_admin_id, r.reviewed_by_name, r.review_note, r.reviewed_at,
-           r.used_at, r.created_at, r.updated_at
+           r.used_at, r.created_at, r.updated_at,
+           COALESCE(
+               (SELECT GROUP_CONCAT(c.name ORDER BY c.name SEPARATOR ', ')
+                FROM staff_companies sc INNER JOIN companies c ON c.id = sc.company_id
+                WHERE sc.staff_id = r.staff_id),
+               (SELECT c.name FROM companies c WHERE c.id = s.company_id)
+           ) AS staff_company_names
     FROM overdue_sale_requests r
     LEFT JOIN staff s ON s.id = r.staff_id`;
 

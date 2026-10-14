@@ -18,6 +18,7 @@ import AddCounter from "layouts/add-counter";
 import AddSales from "layouts/add-sales";
 import PurchaseRequisition from "layouts/purchase-requisition";
 import OverdueRequests from "layouts/overdue-requests";
+import SuspenseRequests from "layouts/suspense-requests";
 import Purchase from "layouts/purchase";
 import CreateBawarcheeStaff from "layouts/create-bawarchee-staff";
 import UpdatePayment from "layouts/update-payment";
@@ -329,6 +330,15 @@ const routes = [
   },
   {
     type: "collapse",
+    name: "Suspense Requests",
+    key: "suspense-requests",
+    icon: <Icon fontSize="small">pause_circle</Icon>,
+    route: "/suspense-requests",
+    component: <SuspenseRequests />,
+    allowedRoles: ["admin"],
+  },
+  {
+    type: "collapse",
     name: "Add Sales",
     key: "add-sales",
     icon: <Icon fontSize="small">payments</Icon>,
@@ -452,7 +462,8 @@ const routes = [
     icon: <Icon fontSize="small">manage_search</Icon>,
     route: "/invoice-lookup",
     component: <InvoiceLookup />,
-    allowedRoles: ["admin", "packaging_staff", "delivery_boy"],
+    // Marketing staff see only their own invoices (enforced by the API).
+    allowedRoles: ["admin", "packaging_staff", "delivery_boy", "staff"],
     requiredPermission: "invoice_lookup",
   },
   {

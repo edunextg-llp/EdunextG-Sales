@@ -89,6 +89,8 @@ export const enforceStaffApiScope = (req, res, next) => {
         path.startsWith('/purchase-requisitions')
         || (method === 'GET' && path === '/current-stock')
         || (method === 'GET' && path === '/outlets-template')
+        // Invoice Lookup: the controller limits results to the staff member's own sales.
+        || (method === 'GET' && ['/sales/lookup', '/sales/lookup/outlets', '/sales/lookup/outlet-invoices'].includes(path))
         || (isOwnStaffPath && method === 'GET' && ['details', 'locations', 'outlets-by-day', 'all-counters'].includes(ownOperation))
         || (isOwnStaffPath && method === 'PUT' && ownOperation === 'locations')
         || (isOwnStaffPath && method === 'POST' && ['counters', 'outlets-upload'].includes(ownOperation))
@@ -190,6 +192,9 @@ export const enforceManagedUserApiScope = (req, res, next) => {
         allowed = method === 'GET' && (permissions.has('delivery') || permissions.has('delivery_report'));
     } else if (path === '/sales/suspense') {
         allowed = method === 'POST' && (permissions.has('delivery') || permissions.has('delivery_report'));
+    } else if (path === '/suspense-requests') {
+        // Users who can ask for Suspense can see their own requests; only admin reviews.
+        allowed = isGet && (permissions.has('delivery') || permissions.has('delivery_report'));
     } else if (path === '/sales/move-to-delivery') {
         allowed = method === 'POST' && permissions.has('update_payment');
     } else if (path === '/sales/cancelled') {

@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import PropTypes from "prop-types";
-import { Dialog, DialogActions, DialogContent, DialogTitle } from "@mui/material";
+import { Checkbox, Dialog, DialogActions, DialogContent, DialogTitle, FormControlLabel } from "@mui/material";
 
 import MDButton from "components/MDButton";
 import MDInput from "components/MDInput";
@@ -38,11 +38,13 @@ export const overdueBalance = (request) =>
 function ReviewDialog({ request = null, action = "approve", onClose, onDone = undefined }) {
   const [note, setNote] = useState("");
   const [saving, setSaving] = useState(false);
+  const [createSales, setCreateSales] = useState(true);
   const open = Boolean(request);
   const approving = action === "approve";
+  const hasInvoices = Array.isArray(request?.sales_payload?.sales) && request.sales_payload.sales.length > 0;
 
   useEffect(() => {
-    if (open) setNote("");
+    if (open) { setNote(""); setCreateSales(true); }
   }, [open, request?.id, action]);
 
   const submit = async () => {
@@ -56,11 +58,11 @@ function ReviewDialog({ request = null, action = "approve", onClose, onDone = un
       const response = await fetch(`${API}/staff/overdue-requests/${request.id}/review`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action, note: trimmed }),
+        body: JSON.stringify({ action, note: trimmed, createSales: approving && hasInvoices && createSales }),
       });
       const data = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(data.error || "Unable to update the request.");
-      onDone?.(data.request);
+      onDone?.(data.request, data);
       onClose();
     } catch (err) {
       alert(err.message);
@@ -76,7 +78,8 @@ function ReviewDialog({ request = null, action = "approve", onClose, onDone = un
         {request && (
           <MDTypography variant="body2" color="text" mb={2}>
             {request.requested_by_name || "User"} wants to add sales for <strong>{request.outlet_name}</strong> (ERP{" "}
-            {request.outlet_erp_id}) under {request.staff_name || "staff"} on {formatDate(request.sale_date)}. Overdue{" "}
+            {request.outlet_erp_id}) under {request.staff_name || "staff"}
+            {request.company_name ? <> (<strong>{request.company_name}</strong>)</> : ""} on {formatDate(request.sale_date)}. Overdue{" "}
             {request.max_overdue_days} day(s), {money(overdueBalance(request))} pending.
             {request.sales_summary && (
               <>
@@ -85,6 +88,19 @@ function ReviewDialog({ request = null, action = "approve", onClose, onDone = un
               </>
             )}
           </MDTypography>
+        )}
+        {approving && (
+          <>
+            <FormControlLabel
+              control={<Checkbox checked={hasInvoices && createSales} disabled={!hasInvoices || saving} onChange={(e) => setCreateSales(e.target.checked)} />}
+              label="Create the sales now (deducts stock, same as Add Sales)"
+            />
+            <MDTypography variant="caption" color="text" display="block" mb={2}>
+              {hasInvoices
+                ? "If the sales can't be created (for example not enough stock), the request stays approved and you can retry with Create sales."
+                : "This request has no invoice details saved, so the sales must be added from Add Sales after approval."}
+            </MDTypography>
+          </>
         )}
         <MDInput
           label={approving ? "Note (optional)" : "Reason for rejecting *"}
@@ -105,7 +121,7 @@ function ReviewDialog({ request = null, action = "approve", onClose, onDone = un
           onClick={submit}
           disabled={saving || (!approving && !note.trim())}
         >
-          {saving ? "Saving..." : approving ? "Approve" : "Reject"}
+          {saving ? "Saving..." : approving ? (hasInvoices && createSales ? "Approve & create sales" : "Approve") : "Reject"}
         </MDButton>
       </DialogActions>
     </Dialog>
@@ -117,6 +133,8 @@ ReviewDialog.propTypes = {
     id: PropTypes.number,
     outlet_name: PropTypes.string,
     outlet_erp_id: PropTypes.string,
+    company_name: PropTypes.string,
+    sales_payload: PropTypes.shape({ sales: PropTypes.arrayOf(PropTypes.object) }),
     staff_name: PropTypes.string,
     sale_date: PropTypes.string,
     requested_by_name: PropTypes.string,
