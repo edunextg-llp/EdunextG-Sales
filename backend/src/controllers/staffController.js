@@ -3177,6 +3177,26 @@ export const getOutletsByStaffAndDayName = async (req, res) => {
 export const getAllSalesByDate = async (req, res) => {
     try {
         const { date, search, scope } = req.query;
+        if (scope === 'delivery_transfers') {
+            // Invoices delivery boys handed to each other from the app, by transfer date.
+            const isDate = (value) => /^\d{4}-\d{2}-\d{2}$/.test(value || '') && !Number.isNaN(Date.parse(value));
+            const { from, to } = req.query;
+            if ((from && !isDate(from)) || (to && !isDate(to))) return res.status(400).json({ error: 'Invalid date range.' });
+            if (from && to && from > to) return res.status(400).json({ error: 'From date must be on or before To date.' });
+            const transfers = await DeliveryBoyModel.getTransfers({ from: from || null, to: to || null });
+            return res.status(200).json(transfers);
+        }
+        if (scope === 'pending_deliveries') {
+            // Bills assigned to a delivery boy / company staff but not yet delivered.
+            // Optional company and assignment-date range (none = all pending bills).
+            const isDate = (value) => /^\d{4}-\d{2}-\d{2}$/.test(value || '') && !Number.isNaN(Date.parse(value));
+            const { companyId, from, to } = req.query;
+            if (companyId && !/^\d+$/.test(String(companyId))) return res.status(400).json({ error: 'Invalid company.' });
+            if ((from && !isDate(from)) || (to && !isDate(to))) return res.status(400).json({ error: 'Invalid date range.' });
+            if (from && to && from > to) return res.status(400).json({ error: 'From date must be on or before To date.' });
+            const sales = await StaffModel.getAllSalesByDate(null, '', 'delivery_report', { companyId: companyId || null, from: from || null, to: to || null, statuses: ['out_for_delivery'] });
+            return res.status(200).json(sales.filter((row) => Number(row.in_suspense) !== 1));
+        }
         if (scope === 'delivery_report') {
             const isDate = (value) => /^\d{4}-\d{2}-\d{2}$/.test(value || '') && !Number.isNaN(Date.parse(value));
             const { companyId, from, to, status } = req.query;

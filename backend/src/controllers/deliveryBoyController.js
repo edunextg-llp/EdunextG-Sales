@@ -646,6 +646,47 @@ export const updateMobileAssignedItemStatus = async (req, res) => {
     }
 };
 
+export const getMobileTransferTargets = async (req, res) => {
+    try {
+        const targets = await DeliveryBoyModel.getTransferTargets(req.deliveryBoyId);
+        res.status(200).json(targets);
+    } catch (error) {
+        console.error('Error fetching delivery transfer targets:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+};
+
+export const transferMobileAssignedItem = async (req, res) => {
+    try {
+        const saleId = Number(req.params.saleId);
+        const toDeliveryBoyId = Number(req.body.toDeliveryBoyId);
+        const reason = typeof req.body.reason === 'string' ? req.body.reason.trim().slice(0, 1000) : '';
+        if (!Number.isInteger(saleId) || saleId <= 0) {
+            return res.status(400).json({ error: 'saleId must be a positive integer' });
+        }
+        if (!Number.isInteger(toDeliveryBoyId) || toDeliveryBoyId <= 0) {
+            return res.status(400).json({ error: 'Choose the delivery boy to transfer this invoice to.' });
+        }
+        if (!reason) {
+            return res.status(400).json({ error: 'Transfer reason is required.' });
+        }
+        const result = await DeliveryBoyModel.transferAssignedSale(req.deliveryBoyId, saleId, toDeliveryBoyId, reason);
+        if (!result) {
+            return res.status(404).json({ error: 'Assigned delivery item not found' });
+        }
+        if (result.locked) {
+            return res.status(409).json({ error: 'Only invoices that are still out for delivery can be transferred.', packaging_status: result.packaging_status });
+        }
+        if (result.invalidTarget) {
+            return res.status(400).json({ error: 'Choose an active delivery boy other than yourself.' });
+        }
+        res.status(200).json({ message: `Invoice transferred to ${result.to_delivery_boy_name}.`, transfer: result });
+    } catch (error) {
+        console.error('Error transferring delivery item:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+};
+
 export const settleDeliveryBoyCollection = async (req, res) => {
     try {
         const collectionId = Number(req.params.collectionId);

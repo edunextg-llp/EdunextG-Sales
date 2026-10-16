@@ -36,6 +36,8 @@ router.get('/mobile/items', verifyDeliveryBoyToken, deliveryBoyController.getMob
 router.get('/mobile/route/locations', verifyDeliveryBoyToken, deliveryBoyController.getMobileRouteLocations);
 router.put('/mobile/items/:saleId/status', verifyDeliveryBoyToken, deliveryBoyController.updateMobileAssignedItemStatus);
 router.put('/mobile/items/:saleId/location', verifyDeliveryBoyToken, deliveryBoyController.updateMobileAssignedItemLocation);
+router.get('/mobile/transfer-targets', verifyDeliveryBoyToken, deliveryBoyController.getMobileTransferTargets);
+router.post('/mobile/items/:saleId/transfer', verifyDeliveryBoyToken, deliveryBoyController.transferMobileAssignedItem);
 router.put('/mobile/items/:saleId/contact', verifyDeliveryBoyToken, deliveryBoyController.updateMobileAssignedItemContact);
 router.get('/mobile/collections', verifyDeliveryBoyToken, deliveryBoyController.getMobileCollections);
 router.get('/mobile/credit-dues', verifyDeliveryBoyToken, deliveryBoyController.getMobileCreditDues);

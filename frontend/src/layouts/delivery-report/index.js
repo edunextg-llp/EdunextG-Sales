@@ -17,6 +17,8 @@ import VisibilityIcon from "@mui/icons-material/Visibility";
 import BillDetailsDialog from "./BillDetailsDialog";
 import AssignmentHistory from "./AssignmentHistory";
 import DeliveryStatusReport from "./DeliveryStatusReport";
+import PendingDeliveries from "./PendingDeliveries";
+import DeliveryTransfers from "./DeliveryTransfers";
 import { selectedAssignments, remainingAssignments, toggleAssignmentSelection } from "utils/deliveryAssignmentSelection";
 
 const API = (process.env.REACT_APP_API_URL);
@@ -435,14 +437,17 @@ export default function DeliveryReport() {
         </DialogActions>
       </Dialog>
       <MDBox mt={3} sx={{ borderBottom: "1px solid #cbd5e1" }}>
-        <Tabs value={historyTab} onChange={(_, value) => setHistoryTab(value)} sx={{ maxWidth: 520 }}>
+        <Tabs value={historyTab} onChange={(_, value) => setHistoryTab(value)} sx={{ maxWidth: 900 }}>
           <Tab value="assignments" label="Date-wise Assigned Orders" />
+          <Tab value="pending" label="Pending Deliveries" />
+          <Tab value="transfers" label="Transfers" />
           <Tab value="download" label="Download Report" />
         </Tabs>
       </MDBox>
-      {historyTab === "assignments"
-        ? <AssignmentHistory api={API} onViewBill={setViewBill} areaOrder={routeAreaOrder} boys={boys} />
-        : <DeliveryStatusReport api={API} />}
+      {historyTab === "assignments" && <AssignmentHistory api={API} onViewBill={setViewBill} areaOrder={routeAreaOrder} boys={boys} />}
+      {historyTab === "pending" && <PendingDeliveries api={API} />}
+      {historyTab === "transfers" && <DeliveryTransfers api={API} />}
+      {historyTab === "download" && <DeliveryStatusReport api={API} />}
       <BillDetailsDialog bill={viewBill} onClose={() => setViewBill(null)} api={API} />
     </MDBox><Footer /></DashboardLayout>
   );

@@ -507,6 +507,106 @@ class DeliveryBoyModel {
         }
     }
 
+    /** Active delivery boys an invoice can be handed to (everyone except the sender). */
+    static async getTransferTargets(deliveryBoyId) {
+        const [rows] = await db.execute(
+            `SELECT id, name, contact_no
+             FROM delivery_boys
+             WHERE is_active = 1 AND role = 'delivery_boy' AND id <> ?
+             ORDER BY name`,
+            [deliveryBoyId]
+        );
+        return rows;
+    }
+
+    /**
+     * Moves one out-for-delivery bill from this delivery boy to another and logs it.
+     * Returns null (not this boy's bill), { locked } (already delivered/cancelled/returned),
+     * { invalidTarget } (target not an active delivery boy) or the transfer.
+     */
+    static async transferAssignedSale(fromDeliveryBoyId, saleId, toDeliveryBoyId, reason = null) {
+        const connection = await db.getConnection();
+        try {
+            await connection.beginTransaction();
+            const [rows] = await connection.execute(
+                `SELECT id, packaging_status, DATE_FORMAT(delivery_date, '%Y-%m-%d') AS delivery_date
+                 FROM staff_sales WHERE id = ? AND delivery_boy_id = ? FOR UPDATE`,
+                [saleId, fromDeliveryBoyId]
+            );
+            const sale = rows[0];
+            if (!sale) { await connection.rollback(); return null; }
+            if (sale.packaging_status !== 'out_for_delivery') {
+                await connection.rollback();
+                return { locked: true, packaging_status: sale.packaging_status };
+            }
+            const [targets] = await connection.execute(
+                `SELECT id, name FROM delivery_boys
+                 WHERE id = ? AND is_active = 1 AND role = 'delivery_boy'`,
+                [toDeliveryBoyId]
+            );
+            const target = targets[0];
+            if (!target || Number(target.id) === Number(fromDeliveryBoyId)) {
+                await connection.rollback();
+                return { invalidTarget: true };
+            }
+            await connection.execute(
+                `UPDATE staff_sales SET delivery_boy_id = ?, delivery_staff_id = NULL
+                 WHERE id = ? AND delivery_boy_id = ? AND packaging_status = 'out_for_delivery'`,
+                [toDeliveryBoyId, saleId, fromDeliveryBoyId]
+            );
+            await connection.execute(
+                `INSERT INTO delivery_transfers (sale_id, from_delivery_boy_id, to_delivery_boy_id, delivery_date, reason)
+                 VALUES (?, ?, ?, ?, ?)`,
+                [saleId, fromDeliveryBoyId, toDeliveryBoyId, sale.delivery_date || null, reason]
+            );
+            await connection.commit();
+            return { id: saleId, to_delivery_boy_id: target.id, to_delivery_boy_name: target.name };
+        } catch (error) {
+            await connection.rollback();
+            throw error;
+        } finally {
+            connection.release();
+        }
+    }
+
+    /** Transfer log for the admin report, filtered on the transfer date. */
+    static async getTransfers({ from = null, to = null } = {}) {
+        const conditions = [];
+        const params = [];
+        if (from) { conditions.push('DATE(dt.transferred_at) >= ?'); params.push(from); }
+        if (to) { conditions.push('DATE(dt.transferred_at) <= ?'); params.push(to); }
+        const [rows] = await db.execute(
+            `SELECT dt.id, dt.sale_id, dt.reason,
+                    DATE_FORMAT(dt.transferred_at, '%Y-%m-%d %H:%i') AS transferred_at,
+                    DATE_FORMAT(dt.delivery_date, '%Y-%m-%d') AS delivery_date,
+                    from_boy.name AS from_delivery_boy_name,
+                    to_boy.name AS to_delivery_boy_name,
+                    ss.invoice_number, ss.price, ss.packaging_status,
+                    GREATEST(0, ss.price - COALESCE(cancelled.total_amount, 0)) AS effective_price,
+                    sc.outlet_name, sc.location_name,
+                    COALESCE(staff_company.company_names, c.name) AS company_name
+             FROM delivery_transfers dt
+             INNER JOIN staff_sales ss ON ss.id = dt.sale_id
+             LEFT JOIN delivery_boys from_boy ON from_boy.id = dt.from_delivery_boy_id
+             LEFT JOIN delivery_boys to_boy ON to_boy.id = dt.to_delivery_boy_id
+             LEFT JOIN staff_counters sc ON sc.id = ss.outlet_id
+             LEFT JOIN staff s ON s.id = ss.staff_id
+             LEFT JOIN companies c ON c.id = s.company_id
+             LEFT JOIN (
+                 SELECT sc_map.staff_id, GROUP_CONCAT(c2.name ORDER BY c2.name SEPARATOR ', ') AS company_names
+                 FROM staff_companies sc_map INNER JOIN companies c2 ON c2.id = sc_map.company_id
+                 GROUP BY sc_map.staff_id
+             ) staff_company ON staff_company.staff_id = s.id
+             LEFT JOIN (
+                 SELECT sale_id, SUM(amount) AS total_amount FROM order_cancellations GROUP BY sale_id
+             ) cancelled ON cancelled.sale_id = ss.id
+             ${conditions.length ? `WHERE ${conditions.join(' AND ')}` : ''}
+             ORDER BY dt.transferred_at DESC, dt.id DESC`,
+            params
+        );
+        return rows;
+    }
+
     static async updateCredentials(id, deliveryLoginId, passcode) {
         const passcodeHash = await bcrypt.hash(passcode, 10);
         const encryptedPasscode = encryptDeliveryPasscode(passcode);

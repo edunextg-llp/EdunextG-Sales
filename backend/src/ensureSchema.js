@@ -1933,6 +1933,22 @@ export async function ensureSchema() {
         `);
         await tryQuery(connection, 'ALTER TABLE outlet_expiry_list ADD COLUMN qty DECIMAL(12, 2) NOT NULL DEFAULT 1.00', 'quantity on outlet expiry list');
 
+        // Delivery boys can hand an out-for-delivery bill to another delivery boy from the app.
+        await connection.query(`
+            CREATE TABLE IF NOT EXISTS delivery_transfers (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                sale_id INT NOT NULL,
+                from_delivery_boy_id INT NOT NULL,
+                to_delivery_boy_id INT NOT NULL,
+                delivery_date DATE NULL,
+                reason TEXT NULL,
+                transferred_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                INDEX idx_delivery_transfers_date (transferred_at),
+                INDEX idx_delivery_transfers_sale (sale_id)
+            );
+        `);
+        console.log('delivery_transfers table verified');
+
         console.log('Database schema verified');
     } finally {
         await connection.end();
