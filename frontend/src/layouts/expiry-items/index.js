@@ -20,6 +20,8 @@ import MDTypography from "components/MDTypography";
 import DashboardLayout from "examples/LayoutContainers/DashboardLayout";
 import DashboardNavbar from "examples/Navbars/DashboardNavbar";
 import Footer from "examples/Footer";
+import CompanyTypeSelect from "components/CompanyFilter/CompanyTypeSelect";
+import { useCompanyTypeLookup } from "utils/companyTypes";
 
 const API = (process.env.REACT_APP_API_URL);
 const dayMs = 86400000;
@@ -60,6 +62,8 @@ const expiryDetails = (value) => {
 function ExpiryItems() {
   const [imports, setImports] = useState([]);
   const [selectedCompanyId, setSelectedCompanyId] = useState("");
+  const [companyType, setCompanyType] = useState("");
+  const { matches: companyMatchesType } = useCompanyTypeLookup();
   const [selectedImportId, setSelectedImportId] = useState("");
   const [stockImport, setStockImport] = useState(null);
   const [items, setItems] = useState([]);
@@ -135,6 +139,16 @@ function ExpiryItems() {
     })
     .sort((left, right) => String(left.expiry_date).localeCompare(String(right.expiry_date))), [items, search, status, stockImport]);
 
+  const typedCompanyOptions = companyOptions.filter((company) =>
+    companyMatchesType(company, companyType)
+  );
+  const handleCompanyTypeChange = (type) => {
+    setCompanyType(type);
+    if (selectedCompanyId && type && !companyMatchesType(selectedCompanyId, type)) {
+      handleCompanyChange("");
+    }
+  };
+
   return (
     <DashboardLayout>
       <DashboardNavbar />
@@ -151,10 +165,17 @@ function ExpiryItems() {
               <MDBox px={3} pb={3}>
                 <Grid container spacing={2} mb={2} alignItems="center">
                   <Grid item xs={12} md={3}>
+                    <CompanyTypeSelect
+                      id="expiry-items-company-type"
+                      value={companyType}
+                      onChange={handleCompanyTypeChange}
+                    />
+                  </Grid>
+                  <Grid item xs={12} md={3}>
                     <FormControl size="small" fullWidth>
                       <Select displayEmpty value={selectedCompanyId} onChange={(event) => handleCompanyChange(event.target.value)} sx={{ height: 44, backgroundColor: "#fff" }}>
                         <MenuItem value="">All Companies</MenuItem>
-                        {companyOptions.map((company) => <MenuItem key={company.id} value={company.id}>{company.name}</MenuItem>)}
+                        {typedCompanyOptions.map((company) => <MenuItem key={company.id} value={company.id}>{company.name}</MenuItem>)}
                       </Select>
                     </FormControl>
                   </Grid>

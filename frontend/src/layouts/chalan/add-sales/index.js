@@ -26,6 +26,8 @@ import Footer from "examples/Footer";
 import { printChalanPdf } from "utils/printChalanPdf";
 import { FaRegEdit } from "react-icons/fa";
 import { CiTrash } from "react-icons/ci";
+import CompanyTypeSelect from "components/CompanyFilter/CompanyTypeSelect";
+import { useCompanyTypeLookup } from "utils/companyTypes";
 
 const emptyItem = { itemName: "", qty: "", mrp: "" };
 
@@ -112,6 +114,8 @@ function ChalanAddSales() {
   const [staffOptions, setStaffOptions] = useState([]);
   const [deliveryBoyOptions, setDeliveryBoyOptions] = useState([]);
   const [selectedCompanyName, setSelectedCompanyName] = useState("");
+  const [companyType, setCompanyType] = useState("");
+  const { matches: companyMatchesType, typeOf: companyTypeOf } = useCompanyTypeLookup();
   const [selectedStaffId, setSelectedStaffId] = useState("");
   const [selectedDeliveryBoyId, setSelectedDeliveryBoyId] = useState("");
   const [items, setItems] = useState([{ ...emptyItem }]);
@@ -146,6 +150,7 @@ function ChalanAddSales() {
 
   const resetEntryForm = () => {
     setItems([{ ...emptyItem }]);
+    setCompanyType("");
     setSelectedCompanyName("");
     setSelectedStaffId("");
     setSelectedDeliveryBoyId("");
@@ -243,6 +248,23 @@ function ChalanAddSales() {
     setSelectedStaffId("");
     setErrorMessage("");
   };
+
+  const typedCompanyOptions = companyOptions.filter((name) => companyMatchesType(name, companyType));
+
+  const handleCompanyTypeChange = (type) => {
+    setCompanyType(type);
+    if (selectedCompanyName && type && !companyMatchesType(selectedCompanyName, type)) {
+      handleCompanyChange("");
+    }
+  };
+
+  // When a company is filled in automatically (e.g. from the chosen staff), show its type too.
+  useEffect(() => {
+    if (selectedCompanyName && !companyType) {
+      const type = companyTypeOf(selectedCompanyName);
+      if (type) setCompanyType(type);
+    }
+  }, [selectedCompanyName, companyType, companyTypeOf]);
 
   const handleItemChange = (index, field, value) => {
     setItems((prev) =>
@@ -501,7 +523,16 @@ function ChalanAddSales() {
                   {assigneeType === "company_staff" && (
                     <>
                       <Grid item xs={12} md={4}>
-                        <FormControl fullWidth size="small">
+                        <CompanyTypeSelect
+                          id="chalan-company-type"
+                          value={companyType}
+                          onChange={handleCompanyTypeChange}
+                          height={48}
+                          required
+                        />
+                      </Grid>
+                      <Grid item xs={12} md={4}>
+                        <FormControl fullWidth size="small" disabled={!companyType}>
                           <InputLabel id="company-name-label">Company Name</InputLabel>
                           <Select
                             labelId="company-name-label"
@@ -513,12 +544,12 @@ function ChalanAddSales() {
                             <MenuItem value="">
                               <em>Select Company</em>
                             </MenuItem>
-                            {companyOptions.map((companyName) => (
+                            {typedCompanyOptions.map((companyName) => (
                               <MenuItem key={companyName} value={companyName}>
                                 {companyName}
                               </MenuItem>
                             ))}
-                            {companyOptions.length === 0 && (
+                            {companyType && typedCompanyOptions.length === 0 && (
                               <MenuItem disabled>No company found</MenuItem>
                             )}
                           </Select>

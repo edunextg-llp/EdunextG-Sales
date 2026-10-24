@@ -1869,6 +1869,38 @@ export async function ensureSchema() {
         await tryQuery(connection, `ALTER TABLE overdue_sale_requests ADD COLUMN sales_payload LONGTEXT NULL AFTER sales_summary`, 'Overdue request invoice details');
         console.log('overdue_sale_requests table verified');
 
+        // Add Sales users can bill only today's bit (outlets whose route day is today's weekday).
+        // Billing an outlet from another day's bit needs admin approval for that staff + date + outlet.
+        await connection.query(`
+            CREATE TABLE IF NOT EXISTS other_day_sale_requests (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                staff_id INT NOT NULL,
+                sale_date DATE NOT NULL,
+                outlet_id INT NOT NULL,
+                outlet_erp_id VARCHAR(50) NULL,
+                outlet_name VARCHAR(255) NULL,
+                outlet_day VARCHAR(20) NULL,
+                request_day VARCHAR(20) NULL,
+                request_note TEXT NOT NULL,
+                requested_by_role VARCHAR(30) NOT NULL,
+                requested_by_id INT NULL,
+                requested_by_name VARCHAR(255) NULL,
+                status ENUM('pending', 'approved', 'rejected', 'used') NOT NULL DEFAULT 'pending',
+                reviewed_by_admin_id INT NULL,
+                reviewed_by_name VARCHAR(255) NULL,
+                review_note TEXT NULL,
+                reviewed_at DATETIME NULL,
+                used_at DATETIME NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                INDEX idx_other_day_requests_status (status, created_at),
+                INDEX idx_other_day_requests_sale (staff_id, sale_date, outlet_id, status),
+                FOREIGN KEY (staff_id) REFERENCES staff(id) ON DELETE CASCADE,
+                FOREIGN KEY (outlet_id) REFERENCES staff_counters(id) ON DELETE CASCADE
+            );
+        `);
+        console.log('other_day_sale_requests table verified');
+
         // Moving bills to Suspense needs a reason and, for non-admin users, admin approval.
         await connection.query(`
             CREATE TABLE IF NOT EXISTS suspense_requests (

@@ -109,6 +109,7 @@ import DamageListModel from '../models/damageListModel.js';
 import OverdueSaleRequestModel, { getOverdueOutlets, salesMatchApproval } from '../models/overdueSaleRequestModel.js';
 import SuspenseRequestModel from '../models/suspenseRequestModel.js';
 import { getRequester } from './overdueSaleRequestController.js';
+import OtherDaySaleRequestModel, { getOtherDayOutlets } from '../models/otherDaySaleRequestModel.js';
 import db from '../config/db.js';
 import {
     validateDigitsOnly,
@@ -1609,8 +1610,57 @@ export const recordSales = async (req, res) => {
         }
 
         const outletIds = [...new Set(validatedSales.map((sale) => sale.outletId))];
-        const overdueOutlets = await getOverdueOutlets(outletIds);
         const isAdmin = req.user?.role === 'admin';
+
+        // Only today's bit can be billed directly. Another day's outlet needs an admin-approved
+        // request for this staff + date + outlet (admin is the approver, so admin can bill directly).
+        let otherDayApprovals = [];
+        if (!isAdmin) {
+            const otherDayOutlets = await getOtherDayOutlets(outletIds, date);
+            if (otherDayOutlets.length > 0) {
+                const otherDayIds = otherDayOutlets.map((outlet) => outlet.outletId);
+                const approvals = await OtherDaySaleRequestModel.findApproved({
+                    staffId: Number(id), saleDate: date, outletIds: otherDayIds,
+                });
+                const approvalByOutlet = new Map();
+                approvals.forEach((request) => {
+                    if (!approvalByOutlet.has(Number(request.outlet_id))) approvalByOutlet.set(Number(request.outlet_id), request);
+                });
+                // An approved overdue request is admin's OK for this exact staff + date + outlet sale,
+                // so it covers the bit/date rule too (e.g. "Create invoice" the day after approval).
+                const overdueApproved = new Set(
+                    (await OverdueSaleRequestModel.findApproved({ staffId: Number(id), saleDate: date, outletIds: otherDayIds }))
+                        .map((request) => Number(request.outlet_id))
+                );
+                const missing = otherDayOutlets.filter(
+                    (outlet) => !approvalByOutlet.has(outlet.outletId) && !overdueApproved.has(outlet.outletId)
+                );
+                if (missing.length > 0) {
+                    const requests = await OtherDaySaleRequestModel.getLatestForSale({
+                        staffId: Number(id), saleDate: date, outletIds: missing.map((outlet) => outlet.outletId),
+                    });
+                    const otherDate = missing[0].reason === 'other_date';
+                    return res.status(409).json({
+                        code: 'OTHER_DAY_PERMISSION_REQUIRED',
+                        error: otherDate
+                            ? `You can add sales directly only for today's date (${missing[0].todayDate}). `
+                                + 'Send a request to admin to add sales for another date.'
+                            : `You can add sales only for today's (${missing[0].todayDay}) bit. `
+                                + 'Send a request to admin for the other-day outlets and add the sales after it is approved.',
+                        reason: missing[0].reason,
+                        todayDay: missing[0].todayDay,
+                        todayDate: missing[0].todayDate,
+                        otherDayOutlets: missing,
+                        requests,
+                    });
+                }
+                otherDayApprovals = otherDayOutlets
+                    .map((outlet) => approvalByOutlet.get(outlet.outletId))
+                    .filter(Boolean);
+            }
+        }
+
+        const overdueOutlets = await getOverdueOutlets(outletIds);
         let claimedRequestIds = [];
         let approvedRequests = [];
         let adminPermission = null;
@@ -1684,6 +1734,17 @@ export const recordSales = async (req, res) => {
             }
         }
 
+        // Use up the other-day bit approvals only once every other check has passed.
+        const claimedOtherDayIds = await OtherDaySaleRequestModel.claim(otherDayApprovals.map((request) => request.id));
+        if (claimedOtherDayIds.length !== otherDayApprovals.length) {
+            await OtherDaySaleRequestModel.release(claimedOtherDayIds).catch(() => {});
+            await OverdueSaleRequestModel.release(claimedRequestIds).catch(() => {});
+            return res.status(409).json({
+                code: 'OTHER_DAY_PERMISSION_REQUIRED',
+                error: 'The other-day bit approval has already been used. Send a new request if needed.',
+            });
+        }
+
         let savedSales;
         try {
             savedSales = await StaffModel.saveSales(id, date, validatedSales, {
@@ -1691,6 +1752,7 @@ export const recordSales = async (req, res) => {
             });
         } catch (saveError) {
             await OverdueSaleRequestModel.release(claimedRequestIds).catch(() => {});
+            await OtherDaySaleRequestModel.release(claimedOtherDayIds).catch(() => {});
             throw saveError;
         }
 

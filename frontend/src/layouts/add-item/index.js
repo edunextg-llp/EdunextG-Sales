@@ -28,6 +28,8 @@ import MDButton from "components/MDButton";
 import DashboardLayout from "examples/LayoutContainers/DashboardLayout";
 import DashboardNavbar from "examples/Navbars/DashboardNavbar";
 import Footer from "examples/Footer";
+import CompanyTypeSelect from "components/CompanyTypeSelect";
+import { companyTypeLabel } from "utils/companyTypes";
 
 const API = (process.env.REACT_APP_API_URL);
 
@@ -40,12 +42,19 @@ const emptyForm = () => ({
   pcsPerBox: "",
 });
 
+// MySQL DECIMAL columns come back as text like "420.0000" or "5.00"; show them as 420 / 5 / 2.5.
+const trimDecimal = (value) => {
+  if (value == null || value === "") return "";
+  const num = Number(value);
+  return Number.isFinite(num) ? String(num) : String(value);
+};
+
 const splitGstDisplay = (gstPercent) => {
   const gst = Number(gstPercent);
   if (!Number.isFinite(gst) || gst < 0) {
     return { cgstPercent: "", sgstPercent: "" };
   }
-  const half = (gst / 2).toFixed(2);
+  const half = String(Number((gst / 2).toFixed(2)));
   return { cgstPercent: half, sgstPercent: half };
 };
 
@@ -79,6 +88,7 @@ function AddItem() {
   const [companies, setCompanies] = useState([]);
   const [sellers, setSellers] = useState([]);
   const [items, setItems] = useState([]);
+  const [companyType, setCompanyType] = useState("");
   const [selectedCompanyId, setSelectedCompanyId] = useState("");
   const [selectedSellerId, setSelectedSellerId] = useState("");
   const [form, setForm] = useState(emptyForm());
@@ -268,6 +278,7 @@ function AddItem() {
   };
 
   const validateForm = (data) => {
+    if (!companyType) return "Please choose a company type first.";
     if (!selectedCompanyId) return "Please choose a company first.";
     if (!selectedSellerId) return "Please choose a seller.";
     if (!data.productErpId.trim()) return "Product ERP ID is required.";
@@ -331,8 +342,8 @@ function AddItem() {
       skuName: item.sku_name || "",
       variantName: item.variant_name || "",
       hsnCode: item.hsn_code || "",
-      gstPercent: item.gst_percent != null ? String(item.gst_percent) : "5",
-      pcsPerBox: item.pcs_per_box != null ? String(item.pcs_per_box) : "",
+      gstPercent: item.gst_percent != null ? trimDecimal(item.gst_percent) : "5",
+      pcsPerBox: item.pcs_per_box != null ? trimDecimal(item.pcs_per_box) : "",
     });
     setEditError("");
     setEditModalOpen(true);
@@ -398,6 +409,13 @@ function AddItem() {
     }
   };
 
+  const filteredCompanies = companyType
+    ? companies.filter((c) => c.type === companyType)
+    : [];
+  const handleCompanyTypeChange = (value) => {
+    setCompanyType(value);
+    setSelectedCompanyId("");
+  };
   const selectedCompany = companies.find((c) => String(c.id) === String(selectedCompanyId));
   const selectedSeller = sellers.find((s) => String(s.id) === String(selectedSellerId));
   const formGstSplit = splitGstDisplay(form.gstPercent);
@@ -415,14 +433,25 @@ function AddItem() {
                   Add Item
                 </MDTypography>
                 <MDTypography variant="body2" color="text" mt={0.5}>
-                  Choose company, then seller, then add product items linked to that seller.
+                  Choose company type, then company, then seller, then add product items linked to that seller.
                 </MDTypography>
               </MDBox>
 
               <MDBox p={3}>
                 <Grid container spacing={2.5}>
                   <Grid item xs={12} md={4}>
-                    <FormControl fullWidth size="small" required>
+                    <CompanyTypeSelect
+                      id="add-item-company-type"
+                      value={companyType}
+                      onChange={handleCompanyTypeChange}
+                      required
+                      disabled={loadingCompanies}
+                      height={48}
+                    />
+                  </Grid>
+
+                  <Grid item xs={12} md={4}>
+                    <FormControl fullWidth size="small" required disabled={!companyType || loadingCompanies}>
                       <InputLabel id="company-select-label">Company *</InputLabel>
                       <Select
                         labelId="company-select-label"
@@ -430,17 +459,21 @@ function AddItem() {
                         label="Company *"
                         onChange={(e) => setSelectedCompanyId(e.target.value)}
                         sx={{ minHeight: 48, height: 48 }}
-                        disabled={loadingCompanies}
                       >
                         <MenuItem value="">
-                          <em>Select Company</em>
+                          <em>{companyType ? "Select Company" : "Select company type first"}</em>
                         </MenuItem>
-                        {companies.map((company) => (
+                        {filteredCompanies.map((company) => (
                           <MenuItem key={company.id} value={String(company.id)}>
                             {company.name}
                             {company.code ? ` (${company.code})` : ""}
                           </MenuItem>
                         ))}
+                        {companyType && filteredCompanies.length === 0 && (
+                          <MenuItem disabled>
+                            No {companyTypeLabel(companyType)} companies found
+                          </MenuItem>
+                        )}
                       </Select>
                     </FormControl>
                   </Grid>
@@ -782,7 +815,7 @@ function AddItem() {
         <DialogContent dividers>
           <MDBox pt={1}>
             <Grid container spacing={2}>
-              <Grid item xs={12} md={6}>
+              <Grid item xs={12} md={12}>
                 <MDInput
                   label="Product ERP ID *"
                   fullWidth
@@ -790,7 +823,9 @@ function AddItem() {
                   onChange={(e) => handleEditChange("productErpId", e.target.value)}
                 />
               </Grid>
-              <Grid item xs={12}>
+
+              {/* Row: SKU Name · Variant Name · HSN Code */}
+              <Grid item xs={12} md={4}>
                 <MDInput
                   label="SKU Name"
                   fullWidth
@@ -798,7 +833,7 @@ function AddItem() {
                   onChange={(e) => handleEditChange("skuName", e.target.value)}
                 />
               </Grid>
-              <Grid item xs={12}>
+              <Grid item xs={12} md={4}>
                 <MDInput
                   label="Variant Name *"
                   fullWidth
@@ -806,7 +841,7 @@ function AddItem() {
                   onChange={(e) => handleEditChange("variantName", e.target.value)}
                 />
               </Grid>
-              <Grid item xs={12}>
+              <Grid item xs={12} md={4}>
                 <MDInput
                   label="HSN Code"
                   fullWidth
@@ -814,7 +849,9 @@ function AddItem() {
                   onChange={(e) => handleEditChange("hsnCode", e.target.value.toUpperCase())}
                 />
               </Grid>
-              <Grid item xs={12} md={4}>
+
+              {/* Row: GST · CGST · SGST · 1 Box = Pieces */}
+              <Grid item xs={12} md={3}>
                 <MDInput
                   label="GST % *"
                   fullWidth
@@ -823,11 +860,19 @@ function AddItem() {
                   onChange={(e) => handleEditChange("gstPercent", e.target.value)}
                 />
               </Grid>
-              <Grid item xs={12} md={4}>
+              <Grid item xs={12} md={3}>
                 <MDInput
                   label="CGST %"
                   fullWidth
                   value={editGstSplit.cgstPercent ? `${editGstSplit.cgstPercent}%` : ""}
+                  disabled
+                />
+              </Grid>
+              <Grid item xs={12} md={3}>
+                <MDInput
+                  label="SGST %"
+                  fullWidth
+                  value={editGstSplit.sgstPercent ? `${editGstSplit.sgstPercent}%` : ""}
                   disabled
                 />
               </Grid>
@@ -839,14 +884,6 @@ function AddItem() {
                   inputProps={{ min: 1, step: 1 }}
                   value={editForm.pcsPerBox}
                   onChange={(e) => handleEditChange("pcsPerBox", e.target.value)}
-                />
-              </Grid>
-              <Grid item xs={12} md={4}>
-                <MDInput
-                  label="SGST %"
-                  fullWidth
-                  value={editGstSplit.sgstPercent ? `${editGstSplit.sgstPercent}%` : ""}
-                  disabled
                 />
               </Grid>
               {editError && (

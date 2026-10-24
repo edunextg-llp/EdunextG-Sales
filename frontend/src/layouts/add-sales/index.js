@@ -41,8 +41,11 @@ import { printSalesInvoicePdf } from "utils/printSalesInvoicePdf";
 import { FaRegEdit } from "react-icons/fa";
 import { CiTrash } from "react-icons/ci";
 import SalesInvoiceDialog from "layouts/add-sales/components/SalesInvoiceDialog";
+import OtherDayBitDialog, { isTodaysBit, todayDate, todayDayName } from "layouts/add-sales/components/OtherDayBitDialog";
+import PendingOverdueRequestsDialog from "layouts/add-sales/components/PendingOverdueRequestsDialog";
+import OtherDayRequestsDialog from "layouts/add-sales/components/OtherDayRequestsDialog";
 import { useAuth } from "context/AuthContext";
-import ReviewDialog, { formatDate, formatDateTime, money, overdueBalance } from "layouts/overdue-requests/components/ReviewDialog";
+import ReviewDialog from "layouts/overdue-requests/components/ReviewDialog";
 
 const REQUEST_STATUS = {
   pending: { label: "Waiting for admin approval", color: "warning" },
@@ -61,6 +64,17 @@ const emptyPermissionDialog = {
   approvalRequired: false,
   requests: [],
   sendingRequest: false,
+};
+
+const emptyOtherDayDialog = {
+  open: false,
+  outlets: [],
+  requests: [],
+  todayDay: "",
+  reason: "other_day",
+  pendingPayload: null,
+  submittedOutletIds: [],
+  lineMapPatch: {},
 };
 
 const tableHeadSx = {
@@ -90,7 +104,7 @@ const tableHeadRowSx = {
 function AddSales() {
   const { user } = useAuth() || {};
   const isAdmin = user?.role === "admin";
-  const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split("T")[0]);
+  const [selectedDate, setSelectedDate] = useState(todayDate);
   const [staffOptions, setStaffOptions] = useState([]);
   const [selectedStaffType, setSelectedStaffType] = useState("");
   const [selectedCompanyName, setSelectedCompanyName] = useState("");
@@ -481,6 +495,32 @@ function AddSales() {
 
   const [creatingRequestId, setCreatingRequestId] = useState(null);
 
+  // Other-day bit / other-date approval requests: admin sees all, other users their own.
+  const [otherDayRequests, setOtherDayRequests] = useState([]);
+  const [otherDayListOpen, setOtherDayListOpen] = useState(false);
+  const loadOtherDayRequests = async () => {
+    try {
+      const response = await fetch(`${API}/staff/other-day-requests?status=all&limit=100`);
+      const data = await response.json().catch(() => ({}));
+      if (response.ok) setOtherDayRequests(data.requests || []);
+    } catch (error) {
+      console.error("Error loading other-day bit requests:", error);
+    }
+  };
+  const otherDayPendingCount = otherDayRequests.filter((request) => request.status === "pending").length;
+  const otherDayApprovedCount = otherDayRequests.filter((request) => request.status === "approved").length;
+  // Admin acts on pending ones; users act on approved ones (and watch pending).
+  const otherDayBadgeCount = isAdmin ? otherDayPendingCount : otherDayPendingCount + otherDayApprovedCount;
+
+  // Outlets admin has approved for the selected staff + date (not used yet).
+  const approvedOutletIds = useMemo(() => new Set(
+    otherDayRequests
+      .filter((request) => request.status === "approved"
+        && Number(request.staff_id) === Number(selectedStaff?.id)
+        && request.sale_date === selectedDate)
+      .map((request) => Number(request.outlet_id))
+  ), [otherDayRequests, selectedStaff, selectedDate]);
+
   // Create exactly the invoice(s) the admin approved, even after a page refresh.
   const createFromApprovedRequest = async (request) => {
     const payload = request.sales_payload;
@@ -511,7 +551,11 @@ function AddSales() {
 
   useEffect(() => {
     loadPendingRequests();
-    const timer = setInterval(loadPendingRequests, 30000);
+    loadOtherDayRequests();
+    const timer = setInterval(() => {
+      loadPendingRequests();
+      loadOtherDayRequests();
+    }, 30000);
     return () => clearInterval(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -537,6 +581,28 @@ function AddSales() {
     setPermissionDialog(emptyPermissionDialog);
   };
 
+  // Only today's bit can be billed without admin approval (admin can bill any bit).
+  const [otherDayDialog, setOtherDayDialog] = useState(emptyOtherDayDialog);
+  const outletDayById = useMemo(() => {
+    const map = new Map();
+    (allOutlets || []).forEach((outlet) => map.set(Number(outlet.id), outlet.day));
+    return map;
+  }, [allOutlets]);
+  // Another date than today needs approval for every outlet; on today, only other-day bits do.
+  const isOtherDate = Boolean(selectedDate) && selectedDate !== todayDate();
+  const outletApprovalLabel = (outlet) => {
+    if (isAdmin) return "";
+    const day = outlet.day || outletDayById.get(Number(outlet.id));
+    const needsApproval = isOtherDate || (day && !isTodaysBit(day));
+    if (!needsApproval) return "";
+    if (approvedOutletIds.has(Number(outlet.id))) return "Approved by admin · you can add the sale";
+    return isOtherDate ? "Not today's date · needs approval" : `${day} bit · needs approval`;
+  };
+  const closeOtherDayDialog = () => {
+    setOtherDayDialog(emptyOtherDayDialog);
+    loadOtherDayRequests(); // pick up a request sent from the dialog
+  };
+
   const submitSalesPayload = async (
     payload,
     submittedOutletIds = [],
@@ -558,12 +624,28 @@ function AddSales() {
 
       if (response.ok) {
         closePermissionDialog();
+        closeOtherDayDialog();
         await applySalesSuccess(submittedOutletIds, lineMapPatch);
         loadPendingRequests();
+        loadOtherDayRequests();
         return true;
       }
 
       const err = await response.json().catch(() => ({}));
+      if (response.status === 409 && err.code === "OTHER_DAY_PERMISSION_REQUIRED" && err.otherDayOutlets?.length) {
+        closePermissionDialog();
+        setOtherDayDialog({
+          open: true,
+          outlets: err.otherDayOutlets,
+          requests: err.requests || [],
+          todayDay: err.todayDay || "",
+          reason: err.reason || "other_day",
+          pendingPayload: payload,
+          submittedOutletIds,
+          lineMapPatch,
+        });
+        return false;
+      }
       if (response.status === 409 && err.code === "OVERDUE_PERMISSION_REQUIRED") {
         setPermissionDialog({
           ...emptyPermissionDialog,
@@ -1169,26 +1251,48 @@ function AddSales() {
                     }}
                   />
                 </MDBox>
-                <Tooltip
-                  title={
-                    pendingRequests.length
-                      ? `${pendingRequests.length} overdue request(s) pending or approved`
-                      : "No pending overdue requests"
-                  }
-                >
-                  <IconButton
-                    color={pendingRequests.length ? "warning" : "secondary"}
-                    onClick={() => {
-                      loadPendingRequests();
-                      setPendingOpen(true);
-                    }}
-                    aria-label="Pending overdue requests"
+                <MDBox display="flex" alignItems="center" gap={0.5}>
+                  <Tooltip
+                    title={
+                      otherDayBadgeCount
+                        ? `Other bit / date approvals: ${otherDayPendingCount} waiting, ${otherDayApprovedCount} approved`
+                        : "Other bit / date approvals"
+                    }
                   >
-                    <Badge badgeContent={pendingRequests.length} color="error" max={99}>
-                      <Icon>pending_actions</Icon>
-                    </Badge>
-                  </IconButton>
-                </Tooltip>
+                    <IconButton
+                      color={otherDayBadgeCount ? "info" : "secondary"}
+                      onClick={() => {
+                        loadOtherDayRequests();
+                        setOtherDayListOpen(true);
+                      }}
+                      aria-label="Other bit and date approvals"
+                    >
+                      <Badge badgeContent={otherDayBadgeCount} color={otherDayApprovedCount && !isAdmin ? "success" : "error"} max={99}>
+                        <Icon>event_busy</Icon>
+                      </Badge>
+                    </IconButton>
+                  </Tooltip>
+                  <Tooltip
+                    title={
+                      pendingRequests.length
+                        ? `${pendingRequests.length} overdue request(s) pending or approved`
+                        : "No pending overdue requests"
+                    }
+                  >
+                    <IconButton
+                      color={pendingRequests.length ? "warning" : "secondary"}
+                      onClick={() => {
+                        loadPendingRequests();
+                        setPendingOpen(true);
+                      }}
+                      aria-label="Pending overdue requests"
+                    >
+                      <Badge badgeContent={pendingRequests.length} color="error" max={99}>
+                        <Icon>pending_actions</Icon>
+                      </Badge>
+                    </IconButton>
+                  </Tooltip>
+                </MDBox>
               </MDBox>
               <MDBox pb={3} px={3}>
                 <Grid container spacing={3}>
@@ -1531,6 +1635,28 @@ function AddSales() {
                                             >
                                               {outlet.outlet_erp_id}
                                             </MDTypography>
+                                            {outletApprovalLabel(outlet) && (
+                                              <Tooltip
+                                                title={approvedOutletIds.has(Number(outlet.id))
+                                                  ? "Admin approved this outlet for this date. Save the bill as usual (one time)."
+                                                  : isOtherDate
+                                                  ? "Sales for a date other than today need admin approval."
+                                                  : `Not in today's (${todayDayName()}) bit. Admin approval is needed to add a sale.`}
+                                              >
+                                                <MDTypography
+                                                  display="block"
+                                                  variant="caption"
+                                                  sx={{
+                                                    fontSize: "0.7rem",
+                                                    fontWeight: 600,
+                                                    mt: 0.5,
+                                                    color: approvedOutletIds.has(Number(outlet.id)) ? "#15803d" : "#b45309",
+                                                  }}
+                                                >
+                                                  {outletApprovalLabel(outlet)}
+                                                </MDTypography>
+                                              </Tooltip>
+                                            )}
                                           </MDBox>
                                         </MDBox>
                                       </TableCell>
@@ -2119,118 +2245,41 @@ function AddSales() {
         </DialogActions>
       </Dialog>
 
-      <Dialog open={pendingOpen} onClose={() => setPendingOpen(false)} maxWidth="md" fullWidth>
-        <DialogTitle sx={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-          <MDBox display="flex" alignItems="center" gap={1}>
-            <Icon color="warning">pending_actions</Icon>
-            Pending Overdue Requests
-          </MDBox>
-          <MDBox>
-            <Tooltip title="Refresh">
-              <IconButton size="small" onClick={loadPendingRequests}>
-                <Icon>refresh</Icon>
-              </IconButton>
-            </Tooltip>
-            <Tooltip title="Close">
-              <IconButton size="small" onClick={() => setPendingOpen(false)}>
-                <Icon>close</Icon>
-              </IconButton>
-            </Tooltip>
-          </MDBox>
-        </DialogTitle>
-        <DialogContent dividers sx={{ p: 0 }}>
-          {pendingRequests.length === 0 ? (
-            <MDBox p={3} textAlign="center">
-              <MDTypography variant="button" color="text">
-                No pending requests.
-              </MDTypography>
-            </MDBox>
-          ) : (
-            <TableContainer sx={{ boxShadow: "none" }}>
-              <Table size="small">
-                <TableHead sx={tableHeadRowSx}>
-                  <TableRow>
-                    {["ERP ID", "Outlet", "Staff", "Sale date", "Invoice", "Overdue", "Requested by", "Status", ""].map(
-                      (heading) => (
-                        <TableCell key={heading || "actions"} sx={tableHeadSx}>
-                          {heading}
-                        </TableCell>
-                      )
-                    )}
-                  </TableRow>
-                </TableHead>
-                <TableBody>
-                  {pendingRequests.map((request) => (
-                    <TableRow key={request.id}>
-                      <TableCell sx={{ ...tableBodySx, fontWeight: 600 }}>{request.outlet_erp_id}</TableCell>
-                      <TableCell sx={tableBodySx}>{request.outlet_name || "—"}</TableCell>
-                      <TableCell sx={tableBodySx}>{request.staff_name || `Staff #${request.staff_id}`}</TableCell>
-                      <TableCell sx={tableBodySx}>{formatDate(request.sale_date)}</TableCell>
-                      <TableCell sx={tableBodySx}>
-                        {(request.sales_summary?.invoiceNumbers || []).join(", ") || "—"}
-                        <MDTypography variant="caption" display="block" color="text">
-                          {request.sales_summary ? money(request.sales_summary.totalAmount) : ""}
-                        </MDTypography>
-                      </TableCell>
-                      <TableCell sx={tableBodySx}>
-                        {request.max_overdue_days} day(s)
-                        <MDTypography variant="caption" display="block" color="text">
-                          {money(overdueBalance(request))}
-                        </MDTypography>
-                      </TableCell>
-                      <TableCell sx={{ ...tableBodySx, maxWidth: 220 }}>
-                        {request.requested_by_name || "—"}
-                        <MDTypography variant="caption" display="block" color="text">
-                          {formatDateTime(request.created_at)} · {request.request_note}
-                        </MDTypography>
-                      </TableCell>
-                      <TableCell sx={tableBodySx}>
-                        <MDBadge
-                          badgeContent={request.status === "approved" ? "Approved" : "Pending"}
-                          color={request.status === "approved" ? "success" : "warning"}
-                          variant="gradient"
-                          size="xs"
-                          container
-                        />
-                      </TableCell>
-                      <TableCell sx={{ ...tableBodySx, whiteSpace: "nowrap" }}>
-                        {request.status === "approved" && (
-                          <Tooltip title="Create this approved invoice">
-                            <span>
-                              <IconButton
-                                size="small"
-                                color="success"
-                                disabled={creatingRequestId === request.id}
-                                onClick={() => createFromApprovedRequest(request)}
-                              >
-                                <Icon>add_task</Icon>
-                              </IconButton>
-                            </span>
-                          </Tooltip>
-                        )}
-                        {isAdmin && request.status === "pending" && (
-                          <>
-                            <Tooltip title="Approve">
-                              <IconButton size="small" color="success" onClick={() => setReview({ request, action: "approve" })}>
-                                <Icon>check_circle</Icon>
-                              </IconButton>
-                            </Tooltip>
-                            <Tooltip title="Reject">
-                              <IconButton size="small" color="error" onClick={() => setReview({ request, action: "reject" })}>
-                                <Icon>cancel</Icon>
-                              </IconButton>
-                            </Tooltip>
-                          </>
-                        )}
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </TableContainer>
-          )}
-        </DialogContent>
-      </Dialog>
+      <OtherDayBitDialog
+        open={otherDayDialog.open}
+        staffId={selectedStaff?.id || ""}
+        saleDate={otherDayDialog.pendingPayload?.date || selectedDate}
+        todayDay={otherDayDialog.todayDay}
+        reason={otherDayDialog.reason}
+        outlets={otherDayDialog.outlets}
+        initialRequests={otherDayDialog.requests}
+        onClose={closeOtherDayDialog}
+        retrying={submitting}
+        onRetry={() =>
+          submitSalesPayload(otherDayDialog.pendingPayload, otherDayDialog.submittedOutletIds, {
+            lineMapPatch: otherDayDialog.lineMapPatch || {},
+          })
+        }
+      />
+
+      <OtherDayRequestsDialog
+        open={otherDayListOpen}
+        onClose={() => setOtherDayListOpen(false)}
+        requests={otherDayRequests}
+        onRefresh={loadOtherDayRequests}
+        isAdmin={isAdmin}
+      />
+
+      <PendingOverdueRequestsDialog
+        open={pendingOpen}
+        onClose={() => setPendingOpen(false)}
+        requests={pendingRequests}
+        onRefresh={loadPendingRequests}
+        isAdmin={isAdmin}
+        creatingRequestId={creatingRequestId}
+        onCreate={createFromApprovedRequest}
+        onReview={(request, action) => setReview({ request, action })}
+      />
 
       <ReviewDialog
         request={review.request}

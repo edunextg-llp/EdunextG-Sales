@@ -46,6 +46,8 @@ import {
   paginatedTableHeadCellSx,
   paginatedTableHeadSx,
 } from "utils/tablePagination";
+import CompanyTypeSelect from "components/CompanyFilter/CompanyTypeSelect";
+import { useCompanyTypeLookup } from "utils/companyTypes";
 
 const PAYMENT_MODE_LABELS = {
   cash: "Cash",
@@ -144,6 +146,7 @@ function UpdatePayment() {
   const isAdmin = user?.role === "admin";
   const [searchQuery, setSearchQuery] = useState("");
   const [salesCompanyId, setSalesCompanyId] = useState("");
+  const [salesCompanyType, setSalesCompanyType] = useState("");
   const [paymentUpdateFilter, setPaymentUpdateFilter] = useState("all");
   const [selectedDeliveryIds, setSelectedDeliveryIds] = useState([]);
   const [movingToDelivery, setMovingToDelivery] = useState(false);
@@ -155,6 +158,8 @@ function UpdatePayment() {
   const [paymentDetailRows, setPaymentDetailRows] = useState([]);
   const [collectionCompanyStaffId, setCollectionCompanyStaffId] = useState("");
   const [collectionCompanyId, setCollectionCompanyId] = useState("");
+  const [collectionCompanyType, setCollectionCompanyType] = useState("");
+  const { matches: companyMatchesType } = useCompanyTypeLookup();
   const [companyOptions, setCompanyOptions] = useState([]);
   const [companyStaff, setCompanyStaff] = useState([]);
   const [salesData, setSalesData] = useState([]);
@@ -1410,6 +1415,27 @@ function UpdatePayment() {
     ? getCreditRemainingAmount(activeCreditPayment)
     : dialogRemaining;
 
+  const collectionTypedCompanies = companyOptions.filter((company) =>
+    companyMatchesType(company, collectionCompanyType)
+  );
+  const handleCollectionCompanyTypeChange = (type) => {
+    setCollectionCompanyType(type);
+    if (collectionCompanyId && type && !companyMatchesType(collectionCompanyId, type)) {
+      setCollectionCompanyId("");
+      setCollectionCompanyStaffId("");
+    }
+  };
+
+  const salesTypedCompanies = companyOptions.filter((company) =>
+    companyMatchesType(company, salesCompanyType)
+  );
+  const handleSalesCompanyTypeChange = (type) => {
+    setSalesCompanyType(type);
+    if (salesCompanyId && type && !companyMatchesType(salesCompanyId, type)) {
+      setSalesCompanyId("");
+    }
+  };
+
   return (
     <DashboardLayout>
       <DashboardNavbar />
@@ -1469,6 +1495,13 @@ function UpdatePayment() {
                     />
                   </Grid>
                   <Grid item xs={12} sm={6} md={3}>
+                    <CompanyTypeSelect
+                      id="collection-company-type"
+                      value={collectionCompanyType}
+                      onChange={handleCollectionCompanyTypeChange}
+                    />
+                  </Grid>
+                  <Grid item xs={12} sm={6} md={3}>
                     <FormControl fullWidth>
                       <InputLabel id="collection-company-filter-label">Company</InputLabel>
                       <Select
@@ -1482,7 +1515,7 @@ function UpdatePayment() {
                         }}
                       >
                         <MenuItem value="">All Companies</MenuItem>
-                        {companyOptions.map((company) => (
+                        {collectionTypedCompanies.map((company) => (
                           <MenuItem key={company.id} value={String(company.id)}>{company.name}</MenuItem>
                         ))}
                       </Select>
@@ -1542,6 +1575,13 @@ function UpdatePayment() {
                     />
                   </Grid>
                   <Grid item xs={12} sm={6} md={3}>
+                    <CompanyTypeSelect
+                      id="sales-company-type"
+                      value={salesCompanyType}
+                      onChange={handleSalesCompanyTypeChange}
+                    />
+                  </Grid>
+                  <Grid item xs={12} sm={6} md={3}>
                     <FormControl fullWidth>
                       <InputLabel id="sales-company-filter-label">Company</InputLabel>
                       <Select
@@ -1553,7 +1593,7 @@ function UpdatePayment() {
                         onChange={(event) => setSalesCompanyId(event.target.value)}
                       >
                         <MenuItem value="">All Companies</MenuItem>
-                        {companyOptions.map((company) => (
+                        {salesTypedCompanies.map((company) => (
                           <MenuItem key={company.id} value={String(company.id)}>{company.name}</MenuItem>
                         ))}
                       </Select>

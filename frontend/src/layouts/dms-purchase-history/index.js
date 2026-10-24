@@ -19,6 +19,7 @@ import MDTypography from "components/MDTypography";
 import DashboardLayout from "examples/LayoutContainers/DashboardLayout";
 import DashboardNavbar from "examples/Navbars/DashboardNavbar";
 import Footer from "examples/Footer";
+import { COMPANY_TYPES } from "utils/companyTypes";
 
 const API = (process.env.REACT_APP_API_URL);
 
@@ -63,6 +64,7 @@ function DmsPurchaseHistory() {
   const [sellers, setSellers] = useState([]);
   const [imports, setImports] = useState([]);
   const [companyId, setCompanyId] = useState("");
+  const [companyType, setCompanyType] = useState("");
   const [sellerId, setSellerId] = useState("");
 
   useEffect(() => {
@@ -117,12 +119,28 @@ function DmsPurchaseHistory() {
             <MDTypography variant="h5" fontWeight="bold">DMS Purchase History</MDTypography>
             <Grid container spacing={2} mt={0.5} mb={3}>
               <Grid item xs={12} md={4}>
+                <MDTypography variant="caption" fontWeight="bold">Company Type</MDTypography>
+                <FormControl fullWidth>
+                  <Select displayEmpty value={companyType}
+                    onChange={(event) => {
+                      const type = event.target.value;
+                      setCompanyType(type);
+                      const current = companies.find((company) => String(company.id) === String(companyId));
+                      if (current && type && current.type !== type) selectCompany("");
+                    }}
+                    sx={{ height: 56, backgroundColor: "#fff" }}>
+                    <MenuItem value="">All Types</MenuItem>
+                    {COMPANY_TYPES.map((type) => <MenuItem key={type.value} value={type.value}>{type.label}</MenuItem>)}
+                  </Select>
+                </FormControl>
+              </Grid>
+              <Grid item xs={12} md={4}>
                 <MDTypography variant="caption" fontWeight="bold">Company</MDTypography>
                 <FormControl fullWidth>
                   <Select displayEmpty value={companyId} onChange={(event) => selectCompany(event.target.value)}
                     sx={{ height: 56, backgroundColor: "#fff" }}>
                     <MenuItem value="">All Companies</MenuItem>
-                    {companies.map((company) => <MenuItem key={company.id} value={String(company.id)}>{company.name}</MenuItem>)}
+                    {companies.filter((company) => !companyType || company.type === companyType).map((company) => <MenuItem key={company.id} value={String(company.id)}>{company.name}</MenuItem>)}
                   </Select>
                 </FormControl>
               </Grid>

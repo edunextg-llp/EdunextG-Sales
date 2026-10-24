@@ -42,6 +42,7 @@ import { FaRegEdit } from "react-icons/fa";
 import { IoPrintOutline } from "react-icons/io5";
 import { CiTrash } from "react-icons/ci";
 import { FaRegEye } from "react-icons/fa";
+import { COMPANY_TYPES } from "utils/companyTypes";
 
 
 const CASH_NOTE_DENOMINATIONS = [500, 200, 100, 50, 20, 10];
@@ -276,6 +277,7 @@ const upiDisplayText = (deposit, field) => {
 function BankDeposit() {
   const [form, setForm] = useState(emptyForm());
   const [companies, setCompanies] = useState([]);
+  const [companyType, setCompanyType] = useState("");
   const [deposits, setDeposits] = useState([]);
   const [pendingCheques, setPendingCheques] = useState([]);
   const [loadingPendingCheques, setLoadingPendingCheques] = useState(false);
@@ -1140,6 +1142,18 @@ function BankDeposit() {
     printWindow.print();
   };
 
+  // Editing an existing record fills the company; show its type too.
+  useEffect(() => {
+    const type = companies.find((company) => String(company.id) === String(form.companyId))?.type;
+    if (type) setCompanyType(type);
+  }, [form.companyId, companies]);
+
+  const handleCompanyTypeChange = (type) => {
+    setCompanyType(type);
+    const current = companies.find((company) => String(company.id) === String(form.companyId));
+    if (current && current.type !== type) handleFormChange("companyId", "");
+  };
+
   return (
     <DashboardLayout>
       <DashboardNavbar />
@@ -1422,14 +1436,31 @@ function BankDeposit() {
                 <FormControl size="small" fullWidth>
                   <Select
                     displayEmpty
+                    value={companyType}
+                    onChange={(e) => handleCompanyTypeChange(e.target.value)}
+                    sx={{ height: 44, backgroundColor: "#fff" }}
+                  >
+                    <MenuItem value="" disabled>Choose Company Type *</MenuItem>
+                    {COMPANY_TYPES.map((type) => (
+                      <MenuItem key={type.value} value={type.value}>{type.label}</MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+              </Grid>
+              <Grid item xs={12} md={3}>
+                <FormControl size="small" fullWidth>
+                  <Select
+                    displayEmpty
                     value={form.companyId}
                     onChange={(e) => handleFormChange("companyId", e.target.value)}
                     sx={{ height: 44, backgroundColor: "#fff" }}
                   >
                     <MenuItem value="" disabled>Choose Company *</MenuItem>
-                    {companies.map((company) => (
-                      <MenuItem key={company.id} value={String(company.id)}>{company.name}</MenuItem>
-                    ))}
+                    {companies
+                      .filter((company) => company.type === companyType || String(company.id) === String(form.companyId))
+                      .map((company) => (
+                        <MenuItem key={company.id} value={String(company.id)}>{company.name}</MenuItem>
+                      ))}
                   </Select>
                 </FormControl>
               </Grid>

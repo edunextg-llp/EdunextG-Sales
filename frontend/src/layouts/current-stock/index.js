@@ -22,6 +22,8 @@ import DashboardLayout from "examples/LayoutContainers/DashboardLayout";
 import DashboardNavbar from "examples/Navbars/DashboardNavbar";
 import Footer from "examples/Footer";
 import { stickyColumnSx, stickyHeadRowSx, stickyTableContainerSx, stickyTableSx } from "utils/stickyProductColumns";
+import CompanyTypeSelect from "components/CompanyFilter/CompanyTypeSelect";
+import { useCompanyTypeLookup } from "utils/companyTypes";
 
 const API = (process.env.REACT_APP_API_URL);
 
@@ -101,6 +103,8 @@ const formatExpiredStockDate = (value) => {
 function CurrentStock() {
   const [companies, setCompanies] = useState([]);
   const [companyFilter, setCompanyFilter] = useState("");
+  const [companyType, setCompanyType] = useState("");
+  const { matches: companyMatchesType, typeOf: companyTypeOf } = useCompanyTypeLookup();
   const [stockImport, setStockImport] = useState(null);
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -155,6 +159,25 @@ function CurrentStock() {
     setCompanyFilter(companyName);
     fetchCurrentStock(companyName);
   };
+
+  const typedCompanies = companies.filter((company) => companyMatchesType(company, companyType));
+
+  const handleCompanyTypeChange = (type) => {
+    setCompanyType(type);
+    if (companyFilter && type && !companyMatchesType(companyFilter, type)) {
+      const first = companies.find((company) => companyMatchesType(company, type));
+      if (first) handleCompanyChange({ target: { value: first } });
+      else setCompanyFilter("");
+    }
+  };
+
+  // The latest upload's company is picked automatically; show its type too.
+  useEffect(() => {
+    if (companyFilter && !companyType) {
+      const type = companyTypeOf(companyFilter);
+      if (type) setCompanyType(type);
+    }
+  }, [companyFilter, companyType, companyTypeOf]);
 
   return (
     <DashboardLayout>
@@ -223,10 +246,17 @@ function CurrentStock() {
               <MDBox px={3} pb={3}>
                 <Grid container spacing={2} mb={2} alignItems="center">
                   <Grid item xs={12} sm={6} md={4}>
+                    <CompanyTypeSelect
+                      id="current-stock-company-type"
+                      value={companyType}
+                      onChange={handleCompanyTypeChange}
+                    />
+                  </Grid>
+                  <Grid item xs={12} sm={6} md={4}>
                     <FormControl size="small" fullWidth>
                       <Select displayEmpty value={companyFilter} onChange={handleCompanyChange} sx={{ height: 44, backgroundColor: "#fff" }}>
                         <MenuItem value="" disabled>Select Company</MenuItem>
-                        {companies.map((company) => <MenuItem key={company} value={company}>{company}</MenuItem>)}
+                        {typedCompanies.map((company) => <MenuItem key={company} value={company}>{company}</MenuItem>)}
                       </Select>
                     </FormControl>
                   </Grid>

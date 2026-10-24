@@ -19,6 +19,7 @@ import AddSales from "layouts/add-sales";
 import PurchaseRequisition from "layouts/purchase-requisition";
 import OverdueRequests from "layouts/overdue-requests";
 import SuspenseRequests from "layouts/suspense-requests";
+import OtherDayRequests from "layouts/other-day-requests";
 import Purchase from "layouts/purchase";
 import CreateBawarcheeStaff from "layouts/create-bawarchee-staff";
 import UpdatePayment from "layouts/update-payment";
@@ -311,31 +312,49 @@ const routes = [
   },
   {
     type: "collapse",
-    name: "Requisition Approvals",
-    key: "requisition-approvals",
-    icon: <Icon fontSize="small">approval</Icon>,
-    route: "/requisition-approvals",
-    component: <PurchaseRequisition />,
+    name: "Approvals",
+    key: "approvals",
+    icon: <Icon fontSize="small">verified</Icon>,
     allowedRoles: ["admin", "packaging_staff", "delivery_boy"],
-    requiredPermission: "requisition_approval",
-  },
-  {
-    type: "collapse",
-    name: "Overdue Requests",
-    key: "overdue-requests",
-    icon: <Icon fontSize="small">assignment_late</Icon>,
-    route: "/overdue-requests",
-    component: <OverdueRequests />,
-    allowedRoles: ["admin"],
-  },
-  {
-    type: "collapse",
-    name: "Suspense Requests",
-    key: "suspense-requests",
-    icon: <Icon fontSize="small">pause_circle</Icon>,
-    route: "/suspense-requests",
-    component: <SuspenseRequests />,
-    allowedRoles: ["admin"],
+    collapse: [
+      {
+        type: "collapse",
+        name: "Requisition Approvals",
+        key: "requisition-approvals",
+        icon: <Icon fontSize="small">approval</Icon>,
+        route: "/requisition-approvals",
+        component: <PurchaseRequisition />,
+        allowedRoles: ["admin", "packaging_staff", "delivery_boy"],
+        requiredPermission: "requisition_approval",
+      },
+      {
+        type: "collapse",
+        name: "Overdue Requests",
+        key: "overdue-requests",
+        icon: <Icon fontSize="small">assignment_late</Icon>,
+        route: "/overdue-requests",
+        component: <OverdueRequests />,
+        allowedRoles: ["admin"],
+      },
+      {
+        type: "collapse",
+        name: "Suspense Requests",
+        key: "suspense-requests",
+        icon: <Icon fontSize="small">pause_circle</Icon>,
+        route: "/suspense-requests",
+        component: <SuspenseRequests />,
+        allowedRoles: ["admin"],
+      },
+      {
+        type: "collapse",
+        name: "Other Day Bit Requests",
+        key: "other-day-requests",
+        icon: <Icon fontSize="small">event_busy</Icon>,
+        route: "/other-day-requests",
+        component: <OtherDayRequests />,
+        allowedRoles: ["admin"],
+      },
+    ],
   },
   {
     type: "collapse",

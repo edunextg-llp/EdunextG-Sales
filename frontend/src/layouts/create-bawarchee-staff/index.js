@@ -33,6 +33,7 @@ import Footer from "examples/Footer";
 import DataTable from "examples/Tables/DataTable";
 import { FaRegEdit } from "react-icons/fa";
 import { CiTrash } from "react-icons/ci";
+import CompanyTypeSelect from "components/CompanyFilter/CompanyTypeSelect";
 
 
 function CreateBawarcheeStaff() {
@@ -41,6 +42,7 @@ function CreateBawarcheeStaff() {
   const [aadharNo, setAadharNo] = useState("");
   const [companyIds, setCompanyIds] = useState([]);
   const [companyOptions, setCompanyOptions] = useState([]);
+  const [companyType, setCompanyType] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [deliveryBoys, setDeliveryBoys] = useState([]);
   const [loadingList, setLoadingList] = useState(true);
@@ -483,6 +485,13 @@ function CreateBawarcheeStaff() {
               </FormControl>
             </MDBox>
             <MDBox mb={2}>
+              <CompanyTypeSelect
+                id="delivery-company-type"
+                value={companyType}
+                onChange={setCompanyType}
+              />
+            </MDBox>
+            <MDBox mb={2}>
               <FormControl fullWidth size="small">
                 <InputLabel id="delivery-company-label">Company Name</InputLabel>
                 <Select
@@ -503,11 +512,13 @@ function CreateBawarcheeStaff() {
                   }
                   sx={{ minHeight: 44 }}
                 >
-                  {companyOptions.map((company) => (
-                    <MenuItem key={company.id} value={company.id}>
-                      {company.name}
-                    </MenuItem>
-                  ))}
+                  {companyOptions
+                    .filter((company) => !companyType || company.type === companyType || companyIds.includes(company.id))
+                    .map((company) => (
+                      <MenuItem key={company.id} value={company.id}>
+                        {company.name}
+                      </MenuItem>
+                    ))}
                   {companyOptions.length === 0 && (
                     <MenuItem disabled>No staff company assigned</MenuItem>
                   )}

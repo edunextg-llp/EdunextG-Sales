@@ -31,6 +31,7 @@ import DashboardNavbar from "examples/Navbars/DashboardNavbar";
 import Footer from "examples/Footer";
 import { FaRegEdit } from "react-icons/fa";
 import { CiTrash } from "react-icons/ci";
+import { COMPANY_TYPES } from "utils/companyTypes";
 
 const emptyForm = () => ({
   companyId: "",
@@ -136,6 +137,7 @@ function Purchase() {
   const [purchases, setPurchases] = useState([]);
   const [sellerDirectory, setSellerDirectory] = useState([]);
   const [companies, setCompanies] = useState([]);
+  const [companyType, setCompanyType] = useState("");
   const [loadingSellers, setLoadingSellers] = useState(false);
   const [gstManuallyEdited, setGstManuallyEdited] = useState(false);
   const [editingPurchaseId, setEditingPurchaseId] = useState(null);
@@ -466,6 +468,18 @@ function Purchase() {
     }
   };
 
+  // Editing an existing record fills the company; show its type too.
+  useEffect(() => {
+    const type = companies.find((company) => String(company.id) === String(form.companyId))?.type;
+    if (type) setCompanyType(type);
+  }, [form.companyId, companies]);
+
+  const handleCompanyTypeChange = (type) => {
+    setCompanyType(type);
+    const current = companies.find((company) => String(company.id) === String(form.companyId));
+    if (current && current.type !== type) handleChange("companyId", "");
+  };
+
   return (
     <DashboardLayout>
       <DashboardNavbar />
@@ -571,6 +585,21 @@ function Purchase() {
                 </MDTypography>
               </Grid>
               <Grid item xs={12} md={3}>
+                <FormControl size="small" fullWidth>
+                  <Select
+                    displayEmpty
+                    value={companyType}
+                    onChange={(e) => handleCompanyTypeChange(e.target.value)}
+                    sx={{ height: 44, backgroundColor: "#fff" }}
+                  >
+                    <MenuItem value="" disabled>Choose Company Type</MenuItem>
+                    {COMPANY_TYPES.map((type) => (
+                      <MenuItem key={type.value} value={type.value}>{type.label}</MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+              </Grid>
+              <Grid item xs={12} md={3}>
                 <FormControl size="small" fullWidth required>
                   <Select
                     displayEmpty
@@ -579,11 +608,13 @@ function Purchase() {
                     sx={{ height: 44, backgroundColor: "#fff" }}
                   >
                     <MenuItem value="" disabled>Choose Company</MenuItem>
-                    {companies.map((company) => (
-                      <MenuItem key={company.id} value={String(company.id)}>
-                        {company.name}
-                      </MenuItem>
-                    ))}
+                    {companies
+                      .filter((company) => company.type === companyType || String(company.id) === String(form.companyId))
+                      .map((company) => (
+                        <MenuItem key={company.id} value={String(company.id)}>
+                          {company.name}
+                        </MenuItem>
+                      ))}
                   </Select>
                 </FormControl>
               </Grid>

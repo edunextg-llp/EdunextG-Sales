@@ -12,6 +12,8 @@ import * as physicalStockController from '../controllers/physicalStockController
 import * as purchaseRequisitionController from '../controllers/purchaseRequisitionController.js';
 import * as overdueSaleRequestController from '../controllers/overdueSaleRequestController.js';
 import * as suspenseRequestController from '../controllers/suspenseRequestController.js';
+import * as otherDaySaleRequestController from '../controllers/otherDaySaleRequestController.js';
+import * as pincodeController from '../controllers/pincodeController.js';
 import { requireRole, verifyTokenMiddleware } from '../middlewares/authMiddleware.js';
 
 const upload = multer({
@@ -28,6 +30,11 @@ router.post('/overdue-requests/:id/create-sales', requireRole('admin'), overdueS
 // Suspense requests: raised from Move to Suspense, approved by admin.
 router.get('/suspense-requests', suspenseRequestController.listSuspenseRequests);
 router.put('/suspense-requests/:id/review', requireRole('admin'), suspenseRequestController.reviewSuspenseRequest);
+
+// Other-day bit requests: billing an outlet outside today's bit needs admin approval.
+router.get('/other-day-requests', otherDaySaleRequestController.listOtherDayRequests);
+router.post('/other-day-requests', otherDaySaleRequestController.createOtherDayRequest);
+router.put('/other-day-requests/:id/review', requireRole('admin'), otherDaySaleRequestController.reviewOtherDayRequest);
 
 router.post('/', staffController.createStaff);
 router.post('/upload-document', upload.single('file'), staffController.uploadStaffDocument);
@@ -66,6 +73,7 @@ router.put('/bank-deposits/:depositId', staffController.updateBankDeposit);
 router.delete('/bank-deposits/:depositId', staffController.deleteBankDeposit);
 router.get('/purchase-sellers', staffController.searchPurchaseSellers);
 router.get('/purchase-sellers/company/:companyId', staffController.getPurchaseSellersByCompany);
+router.get('/purchase-sellers/pincode/:pin', pincodeController.lookupPincode);
 router.get('/companies', staffController.getCompanies);
 router.post('/companies', staffController.createCompany);
 router.put('/companies/:id', staffController.updateCompany);

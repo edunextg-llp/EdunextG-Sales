@@ -29,6 +29,8 @@ import DashboardLayout from "examples/LayoutContainers/DashboardLayout";
 import DashboardNavbar from "examples/Navbars/DashboardNavbar";
 import Footer from "examples/Footer";
 import { stickyColumnSx, stickyHeadRowSx, stickyTableContainerSx, stickyTableSx } from "utils/stickyProductColumns";
+import CompanyTypeSelect from "components/CompanyFilter/CompanyTypeSelect";
+import { COMPANY_TYPES } from "utils/companyTypes";
 
 const API = (process.env.REACT_APP_API_URL);
 const PHYSICAL_STOCK_TEMPLATE_URL =
@@ -200,6 +202,15 @@ function Metric({ label, value }) {
 function PhysicalStock() {
   const fileInputRef = useRef(null);
   const [companies, setCompanies] = useState([]);
+  const [companyType, setCompanyType] = useState("");
+  const [uploadCompanyType, setUploadCompanyType] = useState("");
+  const [manualCompanyType, setManualCompanyType] = useState("");
+  const companiesOfType = (type, keepId) =>
+    (Array.isArray(companies) ? companies : []).filter(
+      (company) => !type || company.type === type || (keepId && String(company.id) === String(keepId))
+    );
+  const typeOfCompanyId = (id) =>
+    (Array.isArray(companies) ? companies : []).find((company) => String(company.id) === String(id))?.type || "";
   const [dmsImportId, setDmsImportId] = useState(null);
   const [approveModalOpen, setApproveModalOpen] = useState(false);
   const [selectedApproveItem, setSelectedApproveItem] = useState(null);
@@ -1005,6 +1016,18 @@ function PhysicalStock() {
                     </Grid>
                   )}
                   <Grid item xs={12} md={2}>
+                    <CompanyTypeSelect
+                      id="physical-stock-company-type"
+                      value={companyType}
+                      onChange={(type) => {
+                        setCompanyType(type);
+                        if (companyFilter && type && typeOfCompanyId(companyFilter) !== type) {
+                          handleCompanyFilterChange({ target: { value: "" } });
+                        }
+                      }}
+                    />
+                  </Grid>
+                  <Grid item xs={12} md={2}>
                     <FormControl size="small" fullWidth>
                       <Select
                         displayEmpty
@@ -1013,7 +1036,7 @@ function PhysicalStock() {
                         sx={{ height: 44, backgroundColor: "#fff" }}
                       >
                         <MenuItem value="">Select Company</MenuItem>
-                        {companies.map((comp) => (
+                        {companiesOfType(companyType).map((comp) => (
                           <MenuItem key={comp.id} value={String(comp.id)}>
                             {comp.name}
                           </MenuItem>
@@ -1144,6 +1167,18 @@ function PhysicalStock() {
                 <MDTypography variant="caption" color="text" display="block" mb={1}>
                   Choose the DMS stock upload (company + date), then upload the matching Physical Stock file.
                 </MDTypography>
+                <MDBox mb={2}>
+                  <CompanyTypeSelect
+                    id="upload-company-type"
+                    value={uploadCompanyType}
+                    onChange={(type) => {
+                      setUploadCompanyType(type);
+                      if (uploadDmsImportFilter && type && typeOfCompanyId(uploadDmsImportFilter) !== type) {
+                        setUploadDmsImportFilter("");
+                      }
+                    }}
+                  />
+                </MDBox>
                 <FormControl size="small" fullWidth>
                   <Select
                     displayEmpty
@@ -1158,7 +1193,7 @@ function PhysicalStock() {
                     sx={{ height: 44, backgroundColor: "#fff" }}
                   >
                     <MenuItem value="">Latest DMS Upload</MenuItem>
-                    {companies.map((stock) => (
+                    {companiesOfType(uploadCompanyType).map((stock) => (
                       <MenuItem key={stock.id} value={String(stock.id)}>
                         {stock.name}
                       </MenuItem>
@@ -1318,6 +1353,32 @@ function PhysicalStock() {
             <Grid container spacing={2}>
               <Grid item xs={12} md={6}>
                 <MDTypography sx={fieldLabelSx}>
+                  Company Type{requiredMark}
+                </MDTypography>
+                <FormControl fullWidth size="small">
+                  <Select
+                    displayEmpty
+                    value={typeOfCompanyId(manualDmsImportFilter) || manualCompanyType}
+                    onChange={(event) => {
+                      const type = event.target.value;
+                      setManualCompanyType(type);
+                      if (manualDmsImportFilter && typeOfCompanyId(manualDmsImportFilter) !== type) {
+                        handleManualDmsImportChange("");
+                      }
+                    }}
+                    sx={{ backgroundColor: "#fff", height: 40 }}
+                  >
+                    <MenuItem value="" disabled>
+                      Select Company Type
+                    </MenuItem>
+                    {COMPANY_TYPES.map((type) => (
+                      <MenuItem key={type.value} value={type.value}>{type.label}</MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+              </Grid>
+              <Grid item xs={12} md={6}>
+                <MDTypography sx={fieldLabelSx}>
                   Invoice Number{requiredMark}
                 </MDTypography>
                 <FormControl fullWidth size="small">
@@ -1330,7 +1391,7 @@ function PhysicalStock() {
                     <MenuItem value="" disabled>
                       Select Invoice Number
                     </MenuItem>
-                    {companies.map((stock) => (
+                    {companiesOfType(typeOfCompanyId(manualDmsImportFilter) || manualCompanyType, manualDmsImportFilter).map((stock) => (
                       <MenuItem key={stock.id} value={String(stock.id)}>
                         {stock.name}
                       </MenuItem>

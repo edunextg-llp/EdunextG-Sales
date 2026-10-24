@@ -47,6 +47,8 @@ import DashboardNavbar from "examples/Navbars/DashboardNavbar";
 import Footer from "examples/Footer";
 import ReportsBarChart from "examples/Charts/BarCharts/ReportsBarChart";
 import ComplexStatisticsCard from "examples/Cards/StatisticsCards/ComplexStatisticsCard";
+import CompanyTypeSelect from "components/CompanyFilter/CompanyTypeSelect";
+import { useCompanyTypeLookup } from "utils/companyTypes";
 
 const API = (process.env.REACT_APP_API_URL);
 
@@ -937,7 +939,18 @@ function Dashboard() {
   const [salesFromDate, setSalesFromDate] = useState("");
   const [salesToDate, setSalesToDate] = useState("");
   const [salesCompanies, setSalesCompanies] = useState([]);
+  const [salesCompanyType, setSalesCompanyType] = useState("");
+  const { matches: companyMatchesType } = useCompanyTypeLookup();
   const [selectedSalesCompanyId, setSelectedSalesCompanyId] = useState("");
+  const typedSalesCompanies = salesCompanies.filter((company) =>
+    companyMatchesType(company, salesCompanyType)
+  );
+  const handleSalesCompanyTypeChange = (type) => {
+    setSalesCompanyType(type);
+    if (selectedSalesCompanyId && type && !companyMatchesType(selectedSalesCompanyId, type)) {
+      setSelectedSalesCompanyId("");
+    }
+  };
   const [reportData, setReportData] = useState(emptyReportData);
   const [purchaseReportData, setPurchaseReportData] = useState(emptyPurchaseReportData);
   const [activeDashboardTab, setActiveDashboardTab] = useState("purchase");
@@ -2079,6 +2092,13 @@ function Dashboard() {
               </MDTypography>
             </MDBox>
             <MDBox display="flex" gap={1.5} flexWrap="wrap" alignItems="center" sx={{ ml: { xs: 0, md: "auto" } }}>
+              <MDBox sx={{ minWidth: 160 }}>
+                <CompanyTypeSelect
+                  id="dashboard-sales-company-type"
+                  value={salesCompanyType}
+                  onChange={handleSalesCompanyTypeChange}
+                />
+              </MDBox>
               <FormControl size="small" sx={{ minWidth: 180 }}>
                 <InputLabel id="dashboard-sales-company-label">Company</InputLabel>
                 <Select
@@ -2089,7 +2109,7 @@ function Dashboard() {
                   sx={{ height: 44, backgroundColor: "#fff" }}
                 >
                   <MenuItem value="">All Companies</MenuItem>
-                  {salesCompanies.map((company) => (
+                  {typedSalesCompanies.map((company) => (
                     <MenuItem key={company.id} value={String(company.id)}>
                       {company.name}
                     </MenuItem>
@@ -2527,6 +2547,15 @@ function Dashboard() {
                         )}
                         <CollectionSplit split={collectionDateReportData.todayCollectionSplit} compact />
                         <MDBox display="flex" gap={0.75} alignItems="center" flexWrap="wrap">
+                          <MDBox sx={{ minWidth: 140 }}>
+                            <CompanyTypeSelect
+                              id="today-collection-company-type"
+                              value={salesCompanyType}
+                              onChange={handleSalesCompanyTypeChange}
+                              height={36}
+                              sx={{ fontSize: "0.8125rem" }}
+                            />
+                          </MDBox>
                           <FormControl size="small" sx={{ minWidth: 155 }}>
                             <InputLabel id="today-collection-company-label">Company</InputLabel>
                             <Select
@@ -2537,7 +2566,7 @@ function Dashboard() {
                               sx={{ height: 36, fontSize: "0.8125rem", backgroundColor: "#fff" }}
                             >
                               <MenuItem value="">All Companies</MenuItem>
-                              {salesCompanies.map((company) => (
+                              {typedSalesCompanies.map((company) => (
                                 <MenuItem key={`today-collection-company-${company.id}`} value={String(company.id)}>
                                   {company.name}
                                 </MenuItem>

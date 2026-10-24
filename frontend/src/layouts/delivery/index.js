@@ -616,7 +616,7 @@ function Delivery() {
                       onChange={(e) => setSearchQuery(e.target.value)}
                     />
                   </Grid>
-                  <Grid item xs={12} md={3}>
+                  <Grid item xs={12} md={4}>
                     <CompanyFilter
                       id="delivery-company-filter"
                       rows={salesData}

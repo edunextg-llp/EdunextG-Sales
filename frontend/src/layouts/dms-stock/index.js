@@ -30,6 +30,7 @@ import DashboardLayout from "examples/LayoutContainers/DashboardLayout";
 import DashboardNavbar from "examples/Navbars/DashboardNavbar";
 import Footer from "examples/Footer";
 import { stickyColumnSx, stickyHeadRowSx, stickyTableContainerSx, stickyTableSx } from "utils/stickyProductColumns";
+import { COMPANY_TYPES } from "utils/companyTypes";
 
 const API = (process.env.REACT_APP_API_URL);
 const DMS_STOCK_TEMPLATE_URL =
@@ -406,6 +407,14 @@ function DmsStock() {
   const [loadingSellers, setLoadingSellers] = useState(false);
   const [loadingSellerItems, setLoadingSellerItems] = useState(false);
   const [companies, setCompanies] = useState([]);
+  const [uploadCompanyType, setUploadCompanyType] = useState("");
+  const [manualCompanyType, setManualCompanyType] = useState("");
+  const typeOfCompanyId = (id) =>
+    (Array.isArray(companies) ? companies : []).find((company) => String(company.id) === String(id))?.type || "";
+  const companiesOfType = (type, keepId) =>
+    (Array.isArray(companies) ? companies : []).filter(
+      (company) => !type || company.type === type || (keepId && String(company.id) === String(keepId))
+    );
   const [selectedCompanyId, setSelectedCompanyId] = useState("");
 
   const fetchCompanies = async () => {
@@ -1356,18 +1365,43 @@ function DmsStock() {
               <Grid item xs={12}>
                 <FormControl fullWidth>
                   <MDTypography variant="caption" color="text" fontWeight="medium" mb={0.5}>
+                    Company Type
+                  </MDTypography>
+                  <Select
+                    displayEmpty
+                    value={typeOfCompanyId(selectedCompanyId) || uploadCompanyType}
+                    onChange={(event) => {
+                      const type = event.target.value;
+                      setUploadCompanyType(type);
+                      if (selectedCompanyId && typeOfCompanyId(selectedCompanyId) !== type) setSelectedCompanyId("");
+                    }}
+                    sx={{ height: 44, backgroundColor: "#fff" }}
+                  >
+                    <MenuItem value="" disabled>
+                      Choose Company Type
+                    </MenuItem>
+                    {COMPANY_TYPES.map((type) => (
+                      <MenuItem key={type.value} value={type.value}>{type.label}</MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+              </Grid>
+              <Grid item xs={12}>
+                <FormControl fullWidth>
+                  <MDTypography variant="caption" color="text" fontWeight="medium" mb={0.5}>
                     Company
                   </MDTypography>
                   <Select
                     displayEmpty
                     value={selectedCompanyId}
                     onChange={(event) => setSelectedCompanyId(event.target.value)}
+                    disabled={!(typeOfCompanyId(selectedCompanyId) || uploadCompanyType)}
                     sx={{ height: 44, backgroundColor: "#fff" }}
                   >
                     <MenuItem value="" disabled>
                       Choose Company
                     </MenuItem>
-                    {companies.map((company) => (
+                    {companiesOfType(typeOfCompanyId(selectedCompanyId) || uploadCompanyType, selectedCompanyId).map((company) => (
                       <MenuItem key={company.id} value={String(company.id)}>
                         {company.name}
                       </MenuItem>
@@ -1469,6 +1503,30 @@ function DmsStock() {
             <Grid container spacing={2}>
               <Grid item xs={12} md={3}>
                 <MDTypography sx={fieldLabelSx}>
+                  Company Type{requiredMark}
+                </MDTypography>
+                <FormControl fullWidth size="small">
+                  <Select
+                    displayEmpty
+                    value={typeOfCompanyId(manualCompanyId) || manualCompanyType}
+                    onChange={(event) => {
+                      const type = event.target.value;
+                      setManualCompanyType(type);
+                      if (manualCompanyId && typeOfCompanyId(manualCompanyId) !== type) handleManualCompanyChange("");
+                    }}
+                    sx={{ backgroundColor: "#fff", height: 40 }}
+                  >
+                    <MenuItem value="" disabled>
+                      Select Company Type
+                    </MenuItem>
+                    {COMPANY_TYPES.map((type) => (
+                      <MenuItem key={type.value} value={type.value}>{type.label}</MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+              </Grid>
+              <Grid item xs={12} md={3}>
+                <MDTypography sx={fieldLabelSx}>
                   Company{requiredMark}
                 </MDTypography>
                 <FormControl fullWidth size="small">
@@ -1476,12 +1534,13 @@ function DmsStock() {
                     displayEmpty
                     value={manualCompanyId}
                     onChange={(event) => handleManualCompanyChange(event.target.value)}
+                    disabled={!(typeOfCompanyId(manualCompanyId) || manualCompanyType)}
                     sx={{ backgroundColor: "#fff", height: 40 }}
                   >
                     <MenuItem value="" disabled>
                       Select Company
                     </MenuItem>
-                    {companies.map((company) => (
+                    {companiesOfType(typeOfCompanyId(manualCompanyId) || manualCompanyType, manualCompanyId).map((company) => (
                       <MenuItem key={company.id} value={String(company.id)}>
                         {company.name}
                       </MenuItem>

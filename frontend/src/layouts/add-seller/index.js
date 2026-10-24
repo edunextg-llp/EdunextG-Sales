@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import Grid from "@mui/material/Grid";
 import Card from "@mui/material/Card";
@@ -32,7 +32,7 @@ import MDButton from "components/MDButton";
 import DashboardLayout from "examples/LayoutContainers/DashboardLayout";
 import DashboardNavbar from "examples/Navbars/DashboardNavbar";
 import Footer from "examples/Footer";
-import { lookupPincode } from "utils/pincodeLookup";
+import { lookupPincode, normaliseStateName } from "utils/pincodeLookup";
 
 const API = (process.env.REACT_APP_API_URL);
 
@@ -109,6 +109,7 @@ const tableBodySx = {
 
 function AddSeller() {
   const [companies, setCompanies] = useState([]);
+  const [companyType, setCompanyType] = useState("");
   const [selectedCompanyId, setSelectedCompanyId] = useState("");
   const [form, setForm] = useState(emptyForm());
   const [sellers, setSellers] = useState([]);
@@ -125,6 +126,12 @@ function AddSeller() {
   const [editError, setEditError] = useState("");
   const [savingEdit, setSavingEdit] = useState(false);
   const [editPincodeLoading, setEditPincodeLoading] = useState(false);
+  const [pincodeMsg, setPincodeMsg] = useState("");
+  const [editPincodeMsg, setEditPincodeMsg] = useState("");
+  const lastPincodeLookup = useRef({ form: "", edit: "" });
+  // Values the last pin code lookup filled in, so a new pin can replace them
+  // without wiping anything the user typed themselves.
+  const autoFilled = useRef({ form: {}, edit: {} });
   const [deletingId, setDeletingId] = useState(null);
 
   const authHeaders = {
@@ -170,6 +177,9 @@ function AddSeller() {
 
   useEffect(() => {
     setForm(emptyForm());
+    setPincodeMsg("");
+    lastPincodeLookup.current.form = "";
+    autoFilled.current.form = {};
     setError("");
     setSuccess("");
     fetchSellers(selectedCompanyId);
@@ -186,24 +196,90 @@ function AddSeller() {
     setEditForm((prev) => ({ ...prev, [field]: value }));
   };
 
-  const applyPincodeLookup = async (pinCode, setter, setLoading) => {
+  // Replace a field only if it's empty or still holds the previous auto-filled value.
+  const replaceAuto = (prev, key, field, next) => {
+    const current = prev[field] || "";
+    return !current || current === autoFilled.current[key][field] ? next : current;
+  };
+
+  const clearAutoFilled = (setter, key) => {
+    setter((prev) => ({
+      ...prev,
+      city: replaceAuto(prev, key, "city", ""),
+      district: replaceAuto(prev, key, "district", ""),
+      state: replaceAuto(prev, key, "state", ""),
+    }));
+    autoFilled.current[key] = {};
+  };
+
+  const applyPincodeLookup = async (pinCode, setter, setLoading, setMsg, key, force = false) => {
     const clean = String(pinCode || "").replace(/\D/g, "");
-    if (clean.length !== 6) return;
+    if (clean.length !== 6) {
+      setMsg("");
+      return;
+    }
+    // Typing the 6th digit and then leaving the field shouldn't look the same pin up twice.
+    if (!force && lastPincodeLookup.current[key] === clean) return;
+    lastPincodeLookup.current[key] = clean;
 
     setLoading(true);
+    setMsg("");
     const result = await lookupPincode(clean);
     setLoading(false);
 
-    if (!result) return;
+    // The pin was changed again while this lookup was running.
+    if (lastPincodeLookup.current[key] !== clean) return;
 
+    if (!result) {
+      lastPincodeLookup.current[key] = "";
+      clearAutoFilled(setter, key);
+      setMsg("Couldn't find this pin code. Please fill district and state manually.");
+      return;
+    }
+
+    const normalised = normaliseStateName(result.state, INDIAN_STATES);
+    const filled = {
+      city: result.city || "",
+      district: result.district || "",
+      state: INDIAN_STATES.includes(normalised) ? normalised : "",
+    };
     setter((prev) => ({
       ...prev,
       pinCode: clean,
-      district: result.district || prev.district,
-      state: result.state || prev.state,
-      city: prev.city || result.city,
-      address: prev.address || result.area || prev.address,
+      city: replaceAuto(prev, key, "city", filled.city),
+      district: replaceAuto(prev, key, "district", filled.district),
+      state: replaceAuto(prev, key, "state", filled.state),
     }));
+    autoFilled.current[key] = filled;
+    setMsg(`Detected: ${[filled.district, filled.state].filter(Boolean).join(", ")}`);
+  };
+
+  const handlePincodeChange = (value) => {
+    const clean = value.replace(/\D/g, "").slice(0, 6);
+    handleChange("pinCode", clean);
+    if (clean.length === 6) {
+      applyPincodeLookup(clean, setForm, setPincodeLoading, setPincodeMsg, "form", true);
+    } else {
+      setPincodeMsg("");
+      if (lastPincodeLookup.current.form) {
+        lastPincodeLookup.current.form = "";
+        clearAutoFilled(setForm, "form");
+      }
+    }
+  };
+
+  const handleEditPincodeChange = (value) => {
+    const clean = value.replace(/\D/g, "").slice(0, 6);
+    handleEditChange("pinCode", clean);
+    if (clean.length === 6) {
+      applyPincodeLookup(clean, setEditForm, setEditPincodeLoading, setEditPincodeMsg, "edit", true);
+    } else {
+      setEditPincodeMsg("");
+      if (lastPincodeLookup.current.edit) {
+        lastPincodeLookup.current.edit = "";
+        clearAutoFilled(setEditForm, "edit");
+      }
+    }
   };
 
   const buildPayload = (data, companyId) => ({
@@ -220,6 +296,7 @@ function AddSeller() {
   });
 
   const validateForm = (data) => {
+    if (!companyType) return "Please choose a company type first.";
     if (!selectedCompanyId) return "Please choose a company first.";
     if (!data.sellerName.trim()) return "Seller name is required.";
     if (!data.contact.trim()) return "Contact number is required.";
@@ -256,6 +333,9 @@ function AddSeller() {
         const codeLabel = data.seller?.seller_code ? ` (${data.seller.seller_code})` : "";
         setSuccess(`Seller "${form.sellerName.trim()}" added successfully${codeLabel}.`);
         setForm(emptyForm());
+        setPincodeMsg("");
+        lastPincodeLookup.current.form = "";
+        autoFilled.current.form = {};
         fetchSellers(selectedCompanyId);
       }
     } catch {
@@ -279,6 +359,11 @@ function AddSeller() {
       pinCode: seller.in_code || "",
     });
     setEditError("");
+    setEditPincodeMsg("");
+    lastPincodeLookup.current.edit = String(seller.in_code || "");
+    autoFilled.current.edit = seller.in_code
+      ? { city: seller.city || "", district: seller.district || "", state: seller.state || "" }
+      : {};
     setEditModalOpen(true);
   };
 
@@ -342,7 +427,15 @@ function AddSeller() {
     }
   };
 
+  const filteredCompanies = companyType
+    ? companies.filter((c) => c.type === companyType)
+    : [];
   const selectedCompany = companies.find((c) => String(c.id) === String(selectedCompanyId));
+
+  const handleCompanyTypeChange = (value) => {
+    setCompanyType(value);
+    setSelectedCompanyId("");
+  };
 
   return (
     <DashboardLayout>
@@ -356,14 +449,33 @@ function AddSeller() {
                   Add Seller
                 </MDTypography>
                 <MDTypography variant="body2" color="text" mt={0.5}>
-                  Choose a company first, then add sellers under that company. Pin code auto-fills district and state.
+                  Choose a company type and company first, then add sellers under that company. Pin code auto-fills district and state.
                 </MDTypography>
               </MDBox>
 
               <MDBox p={3}>
                 <Grid container spacing={2.5}>
                   <Grid item xs={12} md={4}>
-                    <FormControl fullWidth size="small" required>
+                    <FormControl fullWidth size="small">
+                      <InputLabel id="company-type-select-label">Company Type *</InputLabel>
+                      <Select
+                        labelId="company-type-select-label"
+                        value={companyType}
+                        label="Company Type *"
+                        onChange={(e) => handleCompanyTypeChange(e.target.value)}
+                        sx={{ minHeight: 48, height: 48 }}
+                      >
+                        <MenuItem value="">
+                          <em>Select Company Type</em>
+                        </MenuItem>
+                        <MenuItem value="distributor">Distributor</MenuItem>
+                        <MenuItem value="cnf">CNF</MenuItem>
+                      </Select>
+                    </FormControl>
+                  </Grid>
+
+                  <Grid item xs={12} md={4}>
+                    <FormControl fullWidth size="small" disabled={!companyType || loadingCompanies}>
                       <InputLabel id="company-select-label">Company *</InputLabel>
                       <Select
                         labelId="company-select-label"
@@ -371,12 +483,17 @@ function AddSeller() {
                         label="Company *"
                         onChange={(e) => setSelectedCompanyId(e.target.value)}
                         sx={{ minHeight: 48, height: 48 }}
-                        disabled={loadingCompanies}
                       >
                         <MenuItem value="">
-                          <em>Select Company</em>
+                          <em>
+                            {!companyType
+                              ? "Select company type first"
+                              : filteredCompanies.length
+                                ? "Select Company"
+                                : "No companies of this type"}
+                          </em>
                         </MenuItem>
-                        {companies.map((company) => (
+                        {filteredCompanies.map((company) => (
                           <MenuItem key={company.id} value={String(company.id)}>
                             {company.name}
                             {company.code ? ` (${company.code})` : ""}
@@ -387,7 +504,7 @@ function AddSeller() {
                   </Grid>
 
                   {selectedCompany && (
-                    <Grid item xs={12} md={8} display="flex" alignItems="center">
+                    <Grid item xs={12} md={4} display="flex" alignItems="center">
                       <Chip
                         icon={<Icon sx={{ fontSize: "16px !important" }}>business</Icon>}
                         label={`Adding seller under ${selectedCompany.name}`}
@@ -490,13 +607,13 @@ function AddSeller() {
                       label="Pin Code"
                       fullWidth
                       value={form.pinCode}
-                      onChange={(e) => handleChange("pinCode", e.target.value.replace(/\D/g, "").slice(0, 6))}
-                      onBlur={() => applyPincodeLookup(form.pinCode, setForm, setPincodeLoading)}
+                      onChange={(e) => handlePincodeChange(e.target.value)}
+                      onBlur={() => applyPincodeLookup(form.pinCode, setForm, setPincodeLoading, setPincodeMsg, "form")}
                       disabled={!selectedCompanyId}
                       InputProps={{
                         endAdornment: pincodeLoading ? <CircularProgress size={18} /> : null,
                       }}
-                      helperText="Enter 6-digit pin code to auto-detect district & state"
+                      helperText={pincodeMsg || "Enter 6-digit pin code to auto-detect district & state"}
                     />
                   </Grid>
 
@@ -576,7 +693,7 @@ function AddSeller() {
                 {!selectedCompanyId ? (
                   <MDBox p={4} textAlign="center">
                     <MDTypography variant="body2" color="text">
-                      Select a company to view and manage its sellers.
+                      Select a company type and company to view and manage its sellers.
                     </MDTypography>
                   </MDBox>
                 ) : loadingSellers ? (
@@ -755,13 +872,14 @@ function AddSeller() {
                   label="Pin Code"
                   fullWidth
                   value={editForm.pinCode}
-                  onChange={(e) =>
-                    handleEditChange("pinCode", e.target.value.replace(/\D/g, "").slice(0, 6))
+                  onChange={(e) => handleEditPincodeChange(e.target.value)}
+                  onBlur={() =>
+                    applyPincodeLookup(editForm.pinCode, setEditForm, setEditPincodeLoading, setEditPincodeMsg, "edit")
                   }
-                  onBlur={() => applyPincodeLookup(editForm.pinCode, setEditForm, setEditPincodeLoading)}
                   InputProps={{
                     endAdornment: editPincodeLoading ? <CircularProgress size={18} /> : null,
                   }}
+                  helperText={editPincodeMsg}
                 />
               </Grid>
               <Grid item xs={12} md={4}>

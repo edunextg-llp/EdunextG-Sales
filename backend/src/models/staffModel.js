@@ -1908,7 +1908,7 @@ class StaffModel {
 
         const placeholders = ids.map(() => '?').join(', ');
         const [rows] = await db.execute(
-            `SELECT id, outlet_erp_id, outlet_name, contact_number, location_name
+            `SELECT id, outlet_erp_id, outlet_name, contact_number, location_name, day
              FROM staff_counters
              WHERE id IN (${placeholders})`,
             ids

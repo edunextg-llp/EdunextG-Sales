@@ -9,6 +9,7 @@ import MDButton from 'components/MDButton';
 import { invoiceValue } from 'utils/assignmentReport';
 import { reportAreaName } from 'utils/areaName';
 import { useSalesPolling } from 'utils/salesSync';
+import CompanyTypeSelect from "components/CompanyFilter/CompanyTypeSelect";
 
 const money = (value) => Number(value).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 // "2026-10-14..." -> "14-10-2026"
@@ -74,13 +75,14 @@ export default function PendingDeliveries({ api }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [refresh, setRefresh] = useState(0);
+  const [companyType, setCompanyType] = useState('');
   const reload = useCallback(() => setRefresh((value) => value + 1), []);
   useSalesPolling(reload);
 
   useEffect(() => {
     fetch(`${api}/staff/companies`)
       .then(async (response) => { if (!response.ok) throw new Error('Unable to load companies.'); return response.json(); })
-      .then((list) => setCompanies((Array.isArray(list) ? list : []).map((item) => ({ id: String(item.id), name: String(item.name || '').trim() })).filter((item) => item.name).sort((a, b) => a.name.localeCompare(b.name))))
+      .then((list) => setCompanies((Array.isArray(list) ? list : []).map((item) => ({ id: String(item.id), name: String(item.name || '').trim(), type: item.type || '' })).filter((item) => item.name).sort((a, b) => a.name.localeCompare(b.name))))
       .catch((err) => setError(err.message));
   }, [api]);
 
@@ -139,11 +141,21 @@ export default function PendingDeliveries({ api }) {
     <MDTypography variant="h6">Pending Deliveries</MDTypography>
     <MDTypography variant="caption" display="block">Bills assigned to a delivery boy or company staff that are still out for delivery. Dates filter on the assignment date; leave them empty to see every pending bill.</MDTypography>
     <MDBox display="flex" gap={2} alignItems="center" my={2} flexWrap="wrap">
+      <MDBox sx={{ minWidth: 180 }}>
+        <CompanyTypeSelect
+          id="pending-company-type"
+          value={companyType}
+          onChange={(type) => {
+            setCompanyType(type);
+            if (companyId && type && companies.find((item) => item.id === companyId)?.type !== type) setCompanyId('');
+          }}
+        />
+      </MDBox>
       <FormControl size="small" sx={{ minWidth: 200 }}>
         <InputLabel id="pending-company-label">Company</InputLabel>
         <Select labelId="pending-company-label" label="Company" value={companyId} onChange={(event) => setCompanyId(event.target.value)} sx={{ height: 44 }}>
           <MenuItem value="">All companies</MenuItem>
-          {companies.map((item) => <MenuItem key={item.id} value={item.id}>{item.name}</MenuItem>)}
+          {companies.filter((item) => !companyType || item.type === companyType).map((item) => <MenuItem key={item.id} value={item.id}>{item.name}</MenuItem>)}
         </Select>
       </FormControl>
       <FormControl size="small" sx={{ minWidth: 200 }}>

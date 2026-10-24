@@ -16,6 +16,7 @@ import {
   printPurchaseRequisitionsPdf,
 } from "utils/printPurchaseRequisitionPdf";
 import { useAuth } from "context/AuthContext";
+import { COMPANY_TYPES } from "utils/companyTypes";
 
 const API = (process.env.REACT_APP_API_URL);
 const auth = () => {
@@ -99,6 +100,7 @@ function PurchaseRequisition() {
   const [result, setResult] = useState("");
   const [savedRequisitions, setSavedRequisitions] = useState([]);
   const [historyCompanyId, setHistoryCompanyId] = useState("");
+  const [historyCompanyType, setHistoryCompanyType] = useState("");
   const [historyStaffId, setHistoryStaffId] = useState("");
   const [historyDateFilter, setHistoryDateFilter] = useState("");
   const [loadingHistory, setLoadingHistory] = useState(false);
@@ -527,6 +529,30 @@ function PurchaseRequisition() {
                   <Icon sx={{ mr: 0.5 }}>print</Icon>
                   Print Selected ({selectedRequisitionIds.length})
                 </MDButton>
+                {!isStaff && user?.role === "admin" && <MDBox minWidth={160}>
+                  <MDTypography variant="caption" fontWeight="bold">Company Type</MDTypography>
+                  <FormControl fullWidth>
+                    <Select
+                      value={historyCompanyType}
+                      displayEmpty
+                      onChange={(e) => {
+                        const type = e.target.value;
+                        setHistoryCompanyType(type);
+                        const current = companies.find((company) => String(company.id) === String(historyCompanyId));
+                        if (current && type && current.type !== type) {
+                          setHistoryCompanyId("");
+                          setHistoryStaffId("");
+                        }
+                      }}
+                      sx={{ height: 44 }}
+                    >
+                      <MenuItem value="">All Types</MenuItem>
+                      {COMPANY_TYPES.map((type) => (
+                        <MenuItem key={type.value} value={type.value}>{type.label}</MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
+                </MDBox>}
                 {!isStaff && user?.role === "admin" && <MDBox minWidth={200}>
                   <MDTypography variant="caption" fontWeight="bold">Company</MDTypography>
                   <FormControl fullWidth>
@@ -540,7 +566,7 @@ function PurchaseRequisition() {
                       sx={{ height: 44 }}
                     >
                       <MenuItem value="">All Companies</MenuItem>
-                      {companies.map((company) => (
+                      {companies.filter((company) => !historyCompanyType || company.type === historyCompanyType).map((company) => (
                         <MenuItem key={company.id} value={String(company.id)}>{company.name}</MenuItem>
                       ))}
                     </Select>

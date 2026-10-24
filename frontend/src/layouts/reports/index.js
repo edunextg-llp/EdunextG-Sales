@@ -26,6 +26,8 @@ import MDInput from "components/MDInput";
 import DashboardLayout from "examples/LayoutContainers/DashboardLayout";
 import DashboardNavbar from "examples/Navbars/DashboardNavbar";
 import Footer from "examples/Footer";
+import CompanyTypeSelect from "components/CompanyFilter/CompanyTypeSelect";
+import { useCompanyTypeLookup } from "utils/companyTypes";
 
 const API = (process.env.REACT_APP_API_URL);
 
@@ -328,6 +330,8 @@ function Reports() {
   const [endDate, setEndDate] = useState(selectedFinancialYearOption.endDate);
   const [staffOptions, setStaffOptions] = useState([]);
   const [selectedCompanyId, setSelectedCompanyId] = useState("");
+  const [companyType, setCompanyType] = useState("");
+  const { matches: companyMatchesType } = useCompanyTypeLookup();
   const [selectedStaffId, setSelectedStaffId] = useState("");
   const [reportData, setReportData] = useState(defaultReportData);
   const [loading, setLoading] = useState(false);
@@ -436,6 +440,16 @@ function Reports() {
   );
   const chequeAlerts = reportData.chequeReports.filter((row) => row.report_status === "alarm");
 
+  const typedCompanyOptions = companyOptions.filter((company) =>
+    companyMatchesType(company, companyType)
+  );
+  const handleCompanyTypeChange = (type) => {
+    setCompanyType(type);
+    if (selectedCompanyId && type && !companyMatchesType(selectedCompanyId, type)) {
+      handleCompanyChange("");
+    }
+  };
+
   return (
     <DashboardLayout>
       <DashboardNavbar />
@@ -472,6 +486,13 @@ function Reports() {
                     </FormControl>
                   </Grid>
                   <Grid item xs={12} sm={6} md={2}>
+                    <CompanyTypeSelect
+                      id="report-company-type"
+                      value={companyType}
+                      onChange={handleCompanyTypeChange}
+                    />
+                  </Grid>
+                  <Grid item xs={12} sm={6} md={2}>
                     <FormControl size="small" fullWidth>
                       <InputLabel id="report-company-label">Company</InputLabel>
                       <Select
@@ -482,7 +503,7 @@ function Reports() {
                         sx={{ height: 44 }}
                       >
                         <MenuItem value="">All Companies</MenuItem>
-                        {companyOptions.map((company) => (
+                        {typedCompanyOptions.map((company) => (
                           <MenuItem key={company.id} value={company.id}>
                             {company.name}
                           </MenuItem>

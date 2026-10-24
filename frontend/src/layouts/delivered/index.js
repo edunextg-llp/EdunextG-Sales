@@ -50,6 +50,8 @@ import { printSalesInvoicePdf } from "utils/printSalesInvoicePdf";
 // import { IoSaveOutline } from "react-icons/io5";
 import { FaRegEdit } from "react-icons/fa";
 import { MdCancel, MdCheckCircle, MdUndo } from "react-icons/md";
+import CompanyTypeSelect from "components/CompanyFilter/CompanyTypeSelect";
+import { useCompanyTypeLookup } from "utils/companyTypes";
 
 const tableActionBoxSx = {
   flexWrap: "nowrap",
@@ -72,6 +74,8 @@ function Delivered() {
   const [searchQuery, setSearchQuery] = useState("");
   const [companyFilter, setCompanyFilter] = useState("");
   const [selectedCompanyId, setSelectedCompanyId] = useState("");
+  const [companyType, setCompanyType] = useState("");
+  const { matches: companyMatchesType } = useCompanyTypeLookup();
   const [selectedStaffId, setSelectedStaffId] = useState("");
   const [selectedArea, setSelectedArea] = useState("");
   const [cancelRangeStart, setCancelRangeStart] = useState("");
@@ -223,6 +227,17 @@ function Delivered() {
     setSelectedCompanyId(value);
     setSelectedStaffId("");
     setSelectedArea("");
+  };
+
+  const typedCompanyOptions = companyOptions.filter((company) =>
+    companyMatchesType(company, companyType)
+  );
+
+  const handleCompanyTypeChange = (type) => {
+    setCompanyType(type);
+    if (selectedCompanyId && type && !companyMatchesType(selectedCompanyId, type)) {
+      handleCompanyChange("");
+    }
   };
 
   const matchesDeliveryDateRange = (row) => {
@@ -811,7 +826,7 @@ function Delivered() {
                     />
                   </Grid>
                   {activeTab !== "cancelled" && (
-                  <Grid item xs={12} md={3}>
+                  <Grid item xs={12} md={4}>
                     <CompanyFilter
                       id="delivered-company-filter"
                       rows={salesData}
@@ -847,6 +862,13 @@ function Delivered() {
                   {activeTab === "cancelled" && (
                     <>
                       <Grid item xs={12} md={2}>
+                        <CompanyTypeSelect
+                          id="cancel-page-company-type"
+                          value={companyType}
+                          onChange={handleCompanyTypeChange}
+                        />
+                      </Grid>
+                      <Grid item xs={12} md={2}>
                         <FormControl size="small" fullWidth>
                           <InputLabel id="cancel-page-company-label">Company</InputLabel>
                           <Select
@@ -857,7 +879,7 @@ function Delivered() {
                             sx={{ height: 44 }}
                           >
                             <MenuItem value="">All Companies</MenuItem>
-                            {companyOptions.map((company) => (
+                            {typedCompanyOptions.map((company) => (
                               <MenuItem key={company.id} value={company.id}>
                                 {company.name}
                               </MenuItem>
@@ -1339,6 +1361,13 @@ function Delivered() {
         <DialogContent dividers>
           <Grid container spacing={2} mb={2}>
             <Grid item xs={12} md={2}>
+              <CompanyTypeSelect
+                id="cancel-company-type"
+                value={companyType}
+                onChange={handleCompanyTypeChange}
+              />
+            </Grid>
+            <Grid item xs={12} md={2}>
               <FormControl size="small" fullWidth>
                 <InputLabel id="cancel-company-filter-label">Company</InputLabel>
                 <Select
@@ -1349,7 +1378,7 @@ function Delivered() {
                   sx={{ height: 44 }}
                 >
                   <MenuItem value="">All Companies</MenuItem>
-                  {companyOptions.map((company) => (
+                  {typedCompanyOptions.map((company) => (
                     <MenuItem key={company.id} value={company.id}>
                       {company.name}
                     </MenuItem>

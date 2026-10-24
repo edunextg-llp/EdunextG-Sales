@@ -9,6 +9,7 @@ import MDTypography from "components/MDTypography";
 import DashboardLayout from "examples/LayoutContainers/DashboardLayout";
 import DashboardNavbar from "examples/Navbars/DashboardNavbar";
 import Footer from "examples/Footer";
+import { COMPANY_TYPES } from "utils/companyTypes";
 
 const API = (process.env.REACT_APP_API_URL);
 const emptyForm = () => ({ companyId: "", sellerId: "", staffId: "", area: "", outletId: "", productSource: "fetched",
@@ -28,6 +29,7 @@ export default function ExpiryList({ mode = "expiry" }) {
   const listPath = isDamage ? "damage-list" : "expiry-list";
   const [records, setRecords] = useState([]);
   const [companies, setCompanies] = useState([]);
+  const [companyType, setCompanyType] = useState("");
   const [sellers, setSellers] = useState([]);
   const [staff, setStaff] = useState([]);
   const [outlets, setOutlets] = useState([]);
@@ -70,6 +72,7 @@ export default function ExpiryList({ mode = "expiry" }) {
   const areaOutlets = useMemo(() => outlets.filter((o) => o.location_name === form.area), [outlets, form.area]);
 
   const editRecord = async (record) => {
+    setCompanyType(companies.find((c) => String(c.id) === String(record.company_id))?.type || "");
     const [staffResponse, sellerResponse, outletResponse, productResponse] = await Promise.all([
       fetch(`${API}/staff?companyId=${record.company_id}`),
       fetch(`${API}/staff/purchase-sellers/company/${record.company_id}`),
@@ -110,14 +113,15 @@ export default function ExpiryList({ mode = "expiry" }) {
   return <DashboardLayout><DashboardNavbar /><MDBox pt={6} pb={3}><Card>
     <MDBox p={3} display="flex" justifyContent="space-between" alignItems="center">
       <MDBox><MDTypography variant="h5">{isDamage ? "Damage List" : "Expiry List"}</MDTypography><MDTypography variant="caption" color="text">Outlet-wise product {isDamage ? "damage" : "expiry"} records.</MDTypography></MDBox>
-      <MDButton color="info" variant="gradient" onClick={() => { setEditingId(null); setForm(emptyForm()); setOpen(true); }}>Add {isDamage ? "Damage" : "Expiry"}</MDButton>
+      <MDButton color="info" variant="gradient" onClick={() => { setEditingId(null); setCompanyType(""); setForm(emptyForm()); setOpen(true); }}>Add {isDamage ? "Damage" : "Expiry"}</MDButton>
     </MDBox><MDBox px={3} pb={3}><TableContainer component={Paper} sx={{ border: "1px solid #e5e7eb" }}><Table size="small">
       <TableHead sx={{ display: "table-header-group" }}><TableRow>{["Company", "Seller", "Staff", "Area", "Outlet", "Invoice No", "ERP ID", "Product", "Batch No", isDamage ? "Damage Description" : "Expiry Date", "Qty", "Amount", "Action"].map((h) => <TableCell key={h} sx={headSx}>{h}</TableCell>)}</TableRow></TableHead>
       <TableBody>{records.map((r) => <TableRow key={r.id}><TableCell sx={cellSx}>{r.company_name}</TableCell><TableCell sx={cellSx}>{r.seller_name}</TableCell><TableCell sx={cellSx}>{r.staff_name}</TableCell><TableCell sx={cellSx}>{r.location_name}</TableCell><TableCell sx={cellSx}>{r.outlet_name}</TableCell><TableCell sx={cellSx}>{r.invoice_number}</TableCell><TableCell sx={cellSx}>{r.product_erp_id || "Manual"}</TableCell><TableCell sx={cellSx}>{r.product_name}</TableCell><TableCell sx={cellSx}>{r.batch_number}</TableCell><TableCell sx={{ ...cellSx, whiteSpace: isDamage ? "normal" : "nowrap", minWidth: isDamage ? 180 : undefined }}>{isDamage ? r.damage_description : formatDate(r.expiry_date)}</TableCell><TableCell sx={cellSx}>{Number(r.qty)}</TableCell><TableCell sx={cellSx}>₹{Number(r.amount).toFixed(2)}</TableCell><TableCell sx={cellSx}><MDButton size="small" color="info" variant="outlined" onClick={() => editRecord(r)}>Edit</MDButton></TableCell></TableRow>)}
         {!records.length && <TableRow><TableCell colSpan={13} align="center" sx={cellSx}>No expiry records added yet.</TableCell></TableRow>}</TableBody>
     </Table></TableContainer></MDBox></Card></MDBox>
     <Dialog open={open} onClose={() => !saving && setOpen(false)} fullWidth maxWidth="md"><DialogTitle>{editingId ? "Edit" : "Add"} {isDamage ? "Damage" : "Expiry"}</DialogTitle><DialogContent dividers><Grid container spacing={2}>
-      <Grid item xs={12} md={6}><FormControl fullWidth size="small"><Select sx={chooseSx} displayEmpty value={form.companyId} onChange={(e) => changeCompany(e.target.value)}><MenuItem value="" disabled>Choose Company *</MenuItem>{companies.map((c) => <MenuItem key={c.id} value={String(c.id)}>{c.name}</MenuItem>)}</Select></FormControl></Grid>
+      <Grid item xs={12} md={6}><FormControl fullWidth size="small"><Select sx={chooseSx} displayEmpty value={companyType} onChange={(e) => { const type = e.target.value; setCompanyType(type); const current = companies.find((c) => String(c.id) === String(form.companyId)); if (current && current.type !== type) changeCompany(""); }}><MenuItem value="" disabled>Choose Company Type *</MenuItem>{COMPANY_TYPES.map((t) => <MenuItem key={t.value} value={t.value}>{t.label}</MenuItem>)}</Select></FormControl></Grid>
+      <Grid item xs={12} md={6}><FormControl fullWidth size="small"><Select sx={chooseSx} displayEmpty disabled={!companyType} value={form.companyId} onChange={(e) => changeCompany(e.target.value)}><MenuItem value="" disabled>Choose Company *</MenuItem>{companies.filter((c) => c.type === companyType || String(c.id) === String(form.companyId)).map((c) => <MenuItem key={c.id} value={String(c.id)}>{c.name}</MenuItem>)}</Select></FormControl></Grid>
       <Grid item xs={12} md={6}><FormControl fullWidth size="small"><Select sx={chooseSx} displayEmpty disabled={!form.companyId} value={form.sellerId} onChange={(e) => setForm((old) => ({ ...old, sellerId: e.target.value }))}><MenuItem value="" disabled>Choose Seller *</MenuItem>{sellers.map((seller) => <MenuItem key={seller.id} value={String(seller.id)}>{seller.seller_name}</MenuItem>)}</Select></FormControl></Grid>
       <Grid item xs={12} md={6}><FormControl fullWidth size="small"><Select sx={chooseSx} displayEmpty disabled={!form.companyId} value={form.staffId} onChange={(e) => changeStaff(e.target.value)}><MenuItem value="" disabled>Choose Staff *</MenuItem>{staff.map((s) => <MenuItem key={s.id} value={String(s.id)}>{s.name}</MenuItem>)}</Select></FormControl></Grid>
       <Grid item xs={12} md={6}><FormControl fullWidth size="small"><Select sx={chooseSx} displayEmpty disabled={!form.staffId} value={form.area} onChange={(e) => setForm((o) => ({ ...o, area: e.target.value, outletId: "" }))}><MenuItem value="" disabled>Choose Area *</MenuItem>{areas.map((a) => <MenuItem key={a} value={a}>{a}</MenuItem>)}</Select></FormControl></Grid>

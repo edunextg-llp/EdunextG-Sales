@@ -42,6 +42,8 @@ import {
 } from "utils/tablePagination";
 import { IoPrintOutline } from "react-icons/io5";
 import { useAuth } from "context/AuthContext";
+import CompanyTypeSelect from "components/CompanyFilter/CompanyTypeSelect";
+import { useCompanyTypeLookup } from "utils/companyTypes";
 
 function CreditsPage() {
   const { token } = useAuth();
@@ -50,6 +52,8 @@ function CreditsPage() {
   const [photoUploading, setPhotoUploading] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCompanyId, setSelectedCompanyId] = useState("");
+  const [companyType, setCompanyType] = useState("");
+  const { matches: companyMatchesType } = useCompanyTypeLookup();
   const [selectedStaffId, setSelectedStaffId] = useState("");
   const [selectedArea, setSelectedArea] = useState("");
   const [dueDateFrom, setDueDateFrom] = useState("");
@@ -1118,6 +1122,16 @@ function CreditsPage() {
     downloadCSV("Staff_Wise_Overdue_Report.csv", csv);
   };
 
+  const typedCompanyOptions = companyOptions.filter((company) =>
+    companyMatchesType(company, companyType)
+  );
+  const handleCompanyTypeChange = (type) => {
+    setCompanyType(type);
+    if (selectedCompanyId && type && !companyMatchesType(selectedCompanyId, type)) {
+      handleCompanyChange("");
+    }
+  };
+
   return (
     <DashboardLayout>
       <DashboardNavbar />
@@ -1152,6 +1166,13 @@ function CreditsPage() {
                     />
                   </Grid>
                   <Grid item xs={12} md={6} lg={3}>
+                    <CompanyTypeSelect
+                      id="credit-company-type"
+                      value={companyType}
+                      onChange={handleCompanyTypeChange}
+                    />
+                  </Grid>
+                  <Grid item xs={12} md={6} lg={3}>
                     <FormControl size="small" fullWidth>
                       <InputLabel id="credit-company-filter-label">Company</InputLabel>
                       <Select
@@ -1164,7 +1185,7 @@ function CreditsPage() {
                         <MenuItem value="" disabled>
                           Select Company
                         </MenuItem>
-                        {companyOptions.map((company) => (
+                        {typedCompanyOptions.map((company) => (
                           <MenuItem key={company.id} value={company.id}>
                             {company.name}
                           </MenuItem>

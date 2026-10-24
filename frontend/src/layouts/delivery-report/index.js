@@ -20,6 +20,8 @@ import DeliveryStatusReport from "./DeliveryStatusReport";
 import PendingDeliveries from "./PendingDeliveries";
 import DeliveryTransfers from "./DeliveryTransfers";
 import { selectedAssignments, remainingAssignments, toggleAssignmentSelection } from "utils/deliveryAssignmentSelection";
+import CompanyTypeSelect from "components/CompanyFilter/CompanyTypeSelect";
+import { useCompanyTypeLookup } from "utils/companyTypes";
 
 const API = (process.env.REACT_APP_API_URL);
 const today = () => { const d = new Date(); return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0"); };
@@ -36,6 +38,8 @@ export default function DeliveryReport() {
   const [boy, setBoy] = useState("");
   const [assigneeType, setAssigneeType] = useState("");
   const [assigneeCompany, setAssigneeCompany] = useState("");
+  const [assigneeCompanyType, setAssigneeCompanyType] = useState("");
+  const { matches: companyMatchesType } = useCompanyTypeLookup();
   const marketingStaff = boys.filter((person) => String(person.id).startsWith("staff:") && (!person.staff_category || person.staff_category === "company_staff"));
   const staffCompanyIds = (person) => String(person.company_ids || person.company_id || "").split(",").map((id) => id.trim()).filter(Boolean);
   const companyMap = new Map();
@@ -43,7 +47,9 @@ export default function DeliveryReport() {
     const names = String(person.company_name || "").split(",").map((name) => name.trim());
     staffCompanyIds(person).forEach((id, index) => companyMap.set(id, names[index] || `Company ${id}`));
   });
-  const assigneeCompanies = [...companyMap.entries()].sort((a, b) => a[1].localeCompare(b[1]));
+  const assigneeCompanies = [...companyMap.entries()]
+    .sort((a, b) => a[1].localeCompare(b[1]))
+    .filter(([id]) => companyMatchesType(id, assigneeCompanyType));
   const eligibleAssignees = assigneeType === "delivery_boy"
     ? boys.filter((person) => !String(person.id).startsWith("staff:"))
     : marketingStaff.filter((person) => assigneeCompany && staffCompanyIds(person).includes(assigneeCompany));
@@ -346,11 +352,24 @@ export default function DeliveryReport() {
               <MenuItem value="marketing_staff">Marketing Staff</MenuItem>
             </Select>
           </FormControl>
-          {assigneeType === "marketing_staff" && <FormControl fullWidth>
+          {assigneeType === "marketing_staff" && <CompanyTypeSelect
+            id="report-assignee-company-type"
+            value={assigneeCompanyType}
+            disabled={saving}
+            required
+            onChange={(type) => {
+              setAssigneeCompanyType(type);
+              if (assigneeCompany && type && !companyMatchesType(assigneeCompany, type)) {
+                setAssigneeCompany("");
+                setBoy("");
+              }
+            }}
+          />}
+          {assigneeType === "marketing_staff" && <FormControl fullWidth disabled={!assigneeCompanyType}>
             <InputLabel id="report-assignee-company-label">Company</InputLabel>
             <Select labelId="report-assignee-company-label" label="Company" value={assigneeCompany} disabled={saving} onChange={(event) => { setAssigneeCompany(event.target.value); setBoy(""); }} sx={{ height: 44 }}>
               {assigneeCompanies.map(([id, name]) => <MenuItem key={id} value={id}>{name}</MenuItem>)}
-              {!assigneeCompanies.length && <MenuItem disabled>No companies with active marketing staff</MenuItem>}
+              {!assigneeCompanies.length && <MenuItem disabled>No {assigneeCompanyType === "cnf" ? "CNF" : "Distributor"} companies with active marketing staff</MenuItem>}
             </Select>
           </FormControl>}
           {(assigneeType === "delivery_boy" || (assigneeType === "marketing_staff" && assigneeCompany)) && <FormControl fullWidth>

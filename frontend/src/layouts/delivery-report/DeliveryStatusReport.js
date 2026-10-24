@@ -8,6 +8,7 @@ import MDInput from 'components/MDInput';
 import MDButton from 'components/MDButton';
 import { invoiceValue } from 'utils/assignmentReport';
 import { reportAreaName } from 'utils/areaName';
+import CompanyTypeSelect from "components/CompanyFilter/CompanyTypeSelect";
 
 const pad = (value) => String(value).padStart(2, '0');
 const toIso = (date) => `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
@@ -123,12 +124,18 @@ export default function DeliveryStatusReport({ api }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const company = companies.find((item) => item.id === companyId)?.name || '';
+  const [companyType, setCompanyType] = useState('');
+  const typedCompanies = companies.filter((item) => !companyType || item.type === companyType);
+  const handleCompanyTypeChange = (type) => {
+    setCompanyType(type);
+    if (companyId && type && companies.find((item) => item.id === companyId)?.type !== type) setCompanyId('');
+  };
   const invoiceQuery = invoice.trim();
 
   useEffect(() => {
     fetch(`${api}/staff/companies`)
       .then(async (response) => { if (!response.ok) throw new Error('Unable to load companies.'); return response.json(); })
-      .then((list) => setCompanies((Array.isArray(list) ? list : []).map((item) => ({ id: String(item.id), name: String(item.name || '').trim() })).filter((item) => item.name).sort((a, b) => a.name.localeCompare(b.name))))
+      .then((list) => setCompanies((Array.isArray(list) ? list : []).map((item) => ({ id: String(item.id), name: String(item.name || '').trim(), type: item.type || '' })).filter((item) => item.name).sort((a, b) => a.name.localeCompare(b.name))))
       .catch((err) => setError(err.message));
   }, [api]);
 
@@ -197,11 +204,14 @@ export default function DeliveryStatusReport({ api }) {
     <MDTypography variant="h6">Delivery Report Download</MDTypography>
     <MDTypography variant="caption" display="block">Choose a company, or search one invoice number. Each bill shows its sales date, delivered / cancelled date and the total days between them. Dates filter on the delivered / cancelled date; with All statuses, bills not yet delivered are included by their sales date.</MDTypography>
     <MDBox display="flex" gap={2} alignItems="center" my={2} flexWrap="wrap">
+      <MDBox sx={{ minWidth: 180 }}>
+        <CompanyTypeSelect id="delivery-report-company-type" value={companyType} onChange={handleCompanyTypeChange} disabled={Boolean(invoiceQuery)} />
+      </MDBox>
       <FormControl size="small" sx={{ minWidth: 220 }}>
         <InputLabel id="delivery-report-company-label">Company</InputLabel>
         <Select labelId="delivery-report-company-label" label="Company" value={companyId} disabled={Boolean(invoiceQuery)} onChange={(event) => { setCompanyId(event.target.value); setError(''); }} sx={{ height: 44 }}>
-          {companies.map((item) => <MenuItem key={item.id} value={item.id}>{item.name}</MenuItem>)}
-          {!companies.length && <MenuItem disabled>No companies found</MenuItem>}
+          {typedCompanies.map((item) => <MenuItem key={item.id} value={item.id}>{item.name}</MenuItem>)}
+          {!typedCompanies.length && <MenuItem disabled>No companies found</MenuItem>}
         </Select>
       </FormControl>
       <MDInput type="date" label="From" InputLabelProps={{ shrink: true }} value={from} disabled={filtersOff || allTime} onChange={(event) => setFrom(event.target.value)} />

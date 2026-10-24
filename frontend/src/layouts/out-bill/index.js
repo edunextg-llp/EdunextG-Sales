@@ -690,7 +690,7 @@ function OutBillPage() {
                   {activeTab === "pending" ? (
                     <>
 
-                      <Grid item xs={12} md={3}>
+                      <Grid item xs={12} md={4}>
                         <CompanyFilter rows={credits} value={companyFilter} onChange={setCompanyFilter} id="out-bill-company" />
                       </Grid>
                       <Grid item xs={12} md={3}>
@@ -724,7 +724,7 @@ function OutBillPage() {
                     </>
                   ) : (
                     <>
-                      <Grid item xs={12} md={3}>
+                      <Grid item xs={12} md={4}>
                         <CompanyFilter rows={takenBills} value={reportCompanyFilter} onChange={setReportCompanyFilter} id="taken-bill-company" />
                       </Grid>
                       <Grid item xs={12} md={2}>

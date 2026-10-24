@@ -8,6 +8,8 @@ import MDButton from 'components/MDButton';
 import { notifySalesUpdated, useSalesPolling } from 'utils/salesSync';
 import { groupAssignments, invoiceValue, printAssignmentSheetPdf, isEditableAssignment, assignmentEditRequests, assignmentCompanies, companyReportRows, printCompanyReportPdf, ALL_COMPANIES } from 'utils/assignmentReport';
 import { boxCount, packetCount } from 'utils/deliveryLog';
+import CompanyTypeSelect from "components/CompanyFilter/CompanyTypeSelect";
+import { useCompanyTypeLookup } from "utils/companyTypes";
 
 const money = (value) => Number(value).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const today = () => { const date = new Date(); return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`; };
@@ -63,6 +65,13 @@ export default function AssignmentHistory({ api, onViewBill, areaOrder, boys }) 
   const selected = groups.find((group) => group.id === employee);
   const editableRows = (selected?.rows || []).filter(isEditableAssignment);
   const companies = useMemo(() => assignmentCompanies(selected?.rows || []), [selected]);
+  const [companyType, setCompanyType] = useState('');
+  const { matches: companyMatchesType } = useCompanyTypeLookup();
+  const typedCompanies = companies.filter((name) => companyMatchesType(name, companyType));
+  const handleCompanyTypeChange = (type) => {
+    setCompanyType(type);
+    if (company !== ALL_COMPANIES && type && !companyMatchesType(company, type)) setCompany(ALL_COMPANIES);
+  };
   const companyRows = selected ? companyReportRows(selected, date, company) : [];
   const openCompanyReport = () => {
     setCompany(companies.length === 1 ? companies[0] : ALL_COMPANIES);
@@ -203,11 +212,14 @@ export default function AssignmentHistory({ api, onViewBill, areaOrder, boys }) 
     <Dialog open={companyOpen && Boolean(selected)} onClose={() => setCompanyOpen(false)} fullWidth maxWidth="sm">
       <DialogTitle>Company-wise Report — {selected?.name} — {date}</DialogTitle>
       <DialogContent dividers>
-        <FormControl fullWidth sx={{ mt: 1, mb: 2 }}>
+        <MDBox mt={1} mb={2}>
+          <CompanyTypeSelect id="company-report-company-type" value={companyType} onChange={handleCompanyTypeChange} />
+        </MDBox>
+        <FormControl fullWidth sx={{ mb: 2 }}>
           <InputLabel id="company-report-company-label">Company</InputLabel>
           <Select labelId="company-report-company-label" label="Company" value={company} onChange={(event) => { setCompany(event.target.value); setCompanyError(''); }} sx={{ height: 44 }}>
             <MenuItem value={ALL_COMPANIES}>All companies</MenuItem>
-            {companies.map((name) => <MenuItem key={name} value={name}>{name}</MenuItem>)}
+            {typedCompanies.map((name) => <MenuItem key={name} value={name}>{name}</MenuItem>)}
           </Select>
         </FormControl>
         <MDTypography variant="body2">{companyRows.length} orders · {companyRows.reduce((sum, row) => sum + row.boxes, 0)} boxes · Invoice Value: {money(companyRows.reduce((sum, row) => sum + row.amount, 0))}</MDTypography>
