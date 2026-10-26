@@ -164,7 +164,11 @@ export const enforceManagedUserApiScope = (req, res, next) => {
     } else if (path === '/bank-deposits' || path.startsWith('/bank-deposits/')) {
         allowed = permissions.has('bank_deposit');
     } else if (path.startsWith('/credits/')) {
-        allowed = permissions.has('out_bill');
+        allowed = permissions.has('credits') || permissions.has('out_bill');
+    } else if (path.startsWith('/cancellation-requests')) {
+        allowed = permissions.has('update_payment');
+    } else if (path === '/upload-document') {
+        allowed = permissions.has('create_staff') || permissions.has('update_payment');
     } else if (/^\/\d+\/counters$/.test(path) || /^\/counter\/\d+$/.test(path)) {
         allowed = permissions.has('add_outlet');
     } else if (path === '/outlets-export' || path === '/outlets-template' || /^\/\d+\/outlets-upload$/.test(path)) {

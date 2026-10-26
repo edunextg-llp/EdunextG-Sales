@@ -375,6 +375,7 @@ export async function ensureSchema() {
                 can_item_list TINYINT(1) NOT NULL DEFAULT 0,
                 can_update_payment TINYINT(1) NOT NULL DEFAULT 0,
                 can_bank_deposit TINYINT(1) NOT NULL DEFAULT 0,
+                can_credits TINYINT(1) NOT NULL DEFAULT 0,
                 can_create_staff TINYINT(1) NOT NULL DEFAULT 0,
                 can_add_outlet TINYINT(1) NOT NULL DEFAULT 0,
                 can_location_assignments TINYINT(1) NOT NULL DEFAULT 0,
@@ -1593,6 +1594,60 @@ export async function ensureSchema() {
         await tryQuery(connection, 'ALTER TABLE order_cancellations ADD COLUMN reason VARCHAR(255) NULL', 'order cancellation reason');
         await tryQuery(connection, 'ALTER TABLE order_cancellations ADD COLUMN remarks TEXT NULL', 'order cancellation remarks');
         await tryQuery(connection, 'ALTER TABLE order_cancellations ADD COLUMN product_qty DECIMAL(10, 2) NULL', 'order cancellation product qty');
+
+        await connection.query(`
+            CREATE TABLE IF NOT EXISTS order_cancellation_requests (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                sale_id INT NOT NULL,
+                sale_item_id INT NULL,
+                product_erp_id VARCHAR(100) NULL,
+                outlet_name VARCHAR(255) NOT NULL,
+                invoice_number VARCHAR(255) NOT NULL,
+                product_name VARCHAR(255) NOT NULL,
+                product_qty DECIMAL(10,2) NOT NULL,
+                amount DECIMAL(10,2) NOT NULL,
+                reason VARCHAR(255) NOT NULL,
+                remarks TEXT NULL,
+                invoice_image_url TEXT NOT NULL,
+                status ENUM('pending','approved','rejected') NOT NULL DEFAULT 'pending',
+                requested_by_id INT NULL,
+                requested_by_name VARCHAR(255) NULL,
+                reviewed_by_id INT NULL,
+                reviewed_by_name VARCHAR(255) NULL,
+                review_note TEXT NULL,
+                reviewed_at TIMESTAMP NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (sale_id) REFERENCES staff_sales(id) ON DELETE CASCADE,
+                INDEX idx_cancellation_requests_status (status, created_at)
+            );
+        `);
+
+        await connection.query(`
+            CREATE TABLE IF NOT EXISTS backdated_payment_requests (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                sale_id INT NOT NULL,
+                payment_id INT NULL,
+                action ENUM('add','edit') NOT NULL DEFAULT 'add',
+                payment_date DATE NOT NULL,
+                payment_mode VARCHAR(20) NOT NULL,
+                amount DECIMAL(10,2) NOT NULL,
+                invoice_number VARCHAR(255) NOT NULL,
+                outlet_name VARCHAR(255) NULL,
+                request_body TEXT NOT NULL,
+                requester_user TEXT NULL,
+                status ENUM('pending','approved','rejected') NOT NULL DEFAULT 'pending',
+                requested_by_id INT NULL,
+                requested_by_name VARCHAR(255) NULL,
+                reviewed_by_id INT NULL,
+                reviewed_by_name VARCHAR(255) NULL,
+                review_note TEXT NULL,
+                reviewed_at TIMESTAMP NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (sale_id) REFERENCES staff_sales(id) ON DELETE CASCADE,
+                INDEX idx_backdated_payment_requests_status (status, created_at)
+            );
+        `);
+        console.log('backdated_payment_requests table verified');
 
         await connection.query(`
             CREATE TABLE IF NOT EXISTS packaging_sale_remarks (

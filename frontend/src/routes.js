@@ -20,6 +20,8 @@ import PurchaseRequisition from "layouts/purchase-requisition";
 import OverdueRequests from "layouts/overdue-requests";
 import SuspenseRequests from "layouts/suspense-requests";
 import OtherDayRequests from "layouts/other-day-requests";
+import CancellationRequests from "layouts/cancellation-requests";
+import BackdatedPaymentRequests from "layouts/backdated-payment-requests";
 import Purchase from "layouts/purchase";
 import CreateBawarcheeStaff from "layouts/create-bawarchee-staff";
 import UpdatePayment from "layouts/update-payment";
@@ -347,6 +349,24 @@ const routes = [
       },
       {
         type: "collapse",
+        name: "Cancellation Approvals",
+        key: "cancellation-requests",
+        icon: <Icon fontSize="small">cancel_schedule_send</Icon>,
+        route: "/cancellation-requests",
+        component: <CancellationRequests />,
+        allowedRoles: ["admin"],
+      },
+      {
+        type: "collapse",
+        name: "Backdated Payment Approvals",
+        key: "backdated-payment-requests",
+        icon: <Icon fontSize="small">history</Icon>,
+        route: "/backdated-payment-requests",
+        component: <BackdatedPaymentRequests />,
+        allowedRoles: ["admin"],
+      },
+      {
+        type: "collapse",
         name: "Other Day Bit Requests",
         key: "other-day-requests",
         icon: <Icon fontSize="small">event_busy</Icon>,
@@ -508,11 +528,13 @@ const routes = [
 
   {
     type: "collapse",
-    name: "Credits",
+    name: "Give Credit",
     key: "credits",
     icon: <Icon fontSize="small">price_change</Icon>,
     route: "/credits",
     component: <Credits />,
+    allowedRoles: ["admin", "packaging_staff", "delivery_boy"],
+    requiredPermission: "credits",
   },
   {
     type: "collapse",

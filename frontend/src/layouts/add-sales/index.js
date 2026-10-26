@@ -23,6 +23,7 @@ import {
   Badge,
   IconButton,
   Tooltip,
+  InputAdornment,
 } from "@mui/material";
 
 // Material Dashboard 2 React components
@@ -46,6 +47,7 @@ import PendingOverdueRequestsDialog from "layouts/add-sales/components/PendingOv
 import OtherDayRequestsDialog from "layouts/add-sales/components/OtherDayRequestsDialog";
 import { useAuth } from "context/AuthContext";
 import ReviewDialog from "layouts/overdue-requests/components/ReviewDialog";
+import { getInvoicePrefix, getInvoiceSuffix, buildInvoiceNumber } from "utils/invoicePrefix";
 
 const REQUEST_STATUS = {
   pending: { label: "Waiting for admin approval", color: "warning" },
@@ -155,6 +157,26 @@ function AddSales() {
   const emptySaleRow = { itemCount: "", invoiceNumber: "", price: "", deliveryBoyId: "", vehicleNo: "" };
 
   const outletKey = (id) => String(id);
+
+  // Everest / Loriel invoices start with a fixed number; the user types only the rest.
+  const invoicePrefix = getInvoicePrefix(selectedCompanyName);
+  const invoicePrefixAdornment = (prefix) =>
+    prefix
+      ? {
+          startAdornment: (
+            <InputAdornment position="start" disableTypography sx={{ mr: 0.25 }}>
+              <span style={{ fontSize: "0.75rem", fontWeight: 600, color: "#344767", whiteSpace: "nowrap" }}>
+                {prefix}
+              </span>
+            </InputAdornment>
+          ),
+        }
+      : undefined;
+  // In the edit dialog, keep old invoice numbers that don't use the prefix untouched.
+  const editInvoicePrefix =
+    invoicePrefix && (!manualEditDialog.invoiceNumber || manualEditDialog.invoiceNumber.startsWith(invoicePrefix))
+      ? invoicePrefix
+      : "";
 
   const getStaffCompanies = (staff) =>
     String(staff?.company_name || "")
@@ -816,7 +838,9 @@ function AddSales() {
   const openInvoiceDialog = async (outlet, index, requisitionNumber = "") => {
     const row = (salesData[outletKey(outlet.id)] || [])[index];
     let invoiceNumber = row?.invoiceNumber?.trim() || "";
-    if (!invoiceNumber) {
+    // Everest and Loriel use printed invoice books with a fixed leading number.
+    // Leave the editable suffix blank instead of generating an unrelated bill no.
+    if (!invoiceNumber && !invoicePrefix) {
       invoiceNumber = await fetchNextBillNumber();
       if (!invoiceNumber) return;
     }
@@ -1505,19 +1529,17 @@ function AddSales() {
                         sx={{
                           tableLayout: "fixed",
                           width: "100%",
-                          minWidth: 720,
+                          minWidth: invoicePrefix ? 960 : 720,
                           "& .MuiTableCell-root": { overflow: "hidden" },
                         }}
                       >
                         <colgroup>
-                          <col style={{ width: "5%" }} />
-                          <col style={{ width: "19%" }} />
-                          <col style={{ width: "12%" }} />
-                          <col style={{ width: "13%" }} />
-                          <col style={{ width: "12%" }} />
-                          <col style={{ width: "14%" }} />
-                          <col style={{ width: "13%" }} />
-                          <col style={{ width: "12%" }} />
+                          {(invoicePrefix
+                            ? ["5%", "16%", "10%", "11%", "10%", "23%", "13%", "12%"] // wider Invoice No. for the fixed prefix
+                            : ["5%", "19%", "12%", "13%", "12%", "14%", "13%", "12%"]
+                          ).map((width, i) => (
+                            <col key={i} style={{ width }} />
+                          ))}
                         </colgroup>
                         <TableHead sx={tableHeadRowSx}>
                           <TableRow>
@@ -1703,8 +1725,16 @@ function AddSales() {
                                     <TableCell align="center" sx={{ ...tableBodySx, ...rowBorder }}>
                                       {isManualEntry && (
                                         <MDInput
-                                          value={row.invoiceNumber || ""}
-                                          onChange={(e) => handleManualSalesChange(outlet.id, index, "invoiceNumber", e.target.value)}
+                                          value={getInvoiceSuffix(row.invoiceNumber, invoicePrefix)}
+                                          onChange={(e) =>
+                                            handleManualSalesChange(
+                                              outlet.id,
+                                              index,
+                                              "invoiceNumber",
+                                              invoicePrefix ? buildInvoiceNumber(e.target.value, invoicePrefix) : e.target.value
+                                            )
+                                          }
+                                          InputProps={invoicePrefixAdornment(invoicePrefix)}
                                           sx={{ width: "100%" }}
                                         />
                                       )}
@@ -2092,8 +2122,15 @@ function AddSales() {
               <MDInput
                 label="Invoice No."
                 fullWidth
-                value={manualEditDialog.invoiceNumber}
-                onChange={(e) => setManualEditDialog((prev) => ({ ...prev, invoiceNumber: e.target.value }))}
+                value={getInvoiceSuffix(manualEditDialog.invoiceNumber, editInvoicePrefix)}
+                onChange={(e) => {
+                  const typed = e.target.value;
+                  setManualEditDialog((prev) => ({
+                    ...prev,
+                    invoiceNumber: editInvoicePrefix ? buildInvoiceNumber(typed, editInvoicePrefix) : typed,
+                  }));
+                }}
+                InputProps={invoicePrefixAdornment(editInvoicePrefix)}
               />
             </Grid>
             <Grid item xs={12}>

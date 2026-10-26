@@ -166,7 +166,7 @@ function OverdueRequests() {
             <Table>
               <TableHead sx={{ display: "table-header-group", backgroundColor: "#f9fafb" }}>
                 <TableRow>
-                  {["Requested", "Staff / Sale date", "Company", "Outlet", "Overdue", "New sale", "Requested by", "Status", "Actions"].map(
+                  {["Sr. No.", "Requested", "Staff / Sale date", "Company", "Outlet", "Overdue", "New sale", "Requested by", "Status", "Actions"].map(
                     (heading) => (
                       <TableCell key={heading} sx={headSx}>
                         {heading}
@@ -178,16 +178,17 @@ function OverdueRequests() {
               <TableBody>
                 {!loading && requests.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={9} sx={{ ...cellSx, textAlign: "center", py: 4 }}>
+                    <TableCell colSpan={10} sx={{ ...cellSx, textAlign: "center", py: 4 }}>
                       No requests here.
                     </TableCell>
                   </TableRow>
                 )}
-                {requests.map((request) => {
+                {requests.map((request, index) => {
                   const badge = STATUS_BADGE[request.status] || { label: request.status, color: "secondary" };
                   const expanded = expandedId === request.id;
                   return [
                     <TableRow key={request.id}>
+                      <TableCell sx={cellSx}>{index + 1}</TableCell>
                       <TableCell sx={cellSx}>
                         #{request.id}
                         <br />
@@ -273,7 +274,7 @@ function OverdueRequests() {
                     </TableRow>,
                     expanded && (
                       <TableRow key={`${request.id}-bills`}>
-                        <TableCell colSpan={9} sx={{ ...cellSx, backgroundColor: "#fff7f7" }}>
+                        <TableCell colSpan={10} sx={{ ...cellSx, backgroundColor: "#fff7f7" }}>
                           {(request.overdue_details || []).map((credit) => (
                             <MDTypography key={credit.creditPaymentId} variant="caption" display="block" color="text">
                               Invoice {credit.invoiceNumber || "-"} | Balance {money(credit.balanceAmount)} | Due{" "}

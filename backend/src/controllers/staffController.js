@@ -341,7 +341,8 @@ const getTodayLocalDate = () => {
 };
 
 function getBackdatedPaymentAccessError(req, paymentDate) {
-    if (req.user?.role === 'admin' || paymentDate >= getTodayLocalDate()) {
+    // req.backdateApproved is set only when an admin approves a backdated payment request.
+    if (req.user?.role === 'admin' || req.backdateApproved || paymentDate >= getTodayLocalDate()) {
         return null;
     }
     return 'You can\'t add or update a backdated payment.';
@@ -742,7 +743,8 @@ export const uploadStaffDocument = async (req, res) => {
         });
     } catch (error) {
         console.error('Error uploading staff document:', error);
-        res.status(500).json({ error: 'Failed to upload document.' });
+        const reason = error?.message || error?.error?.message || '';
+        res.status(500).json({ error: reason ? `Failed to upload document: ${reason}` : 'Failed to upload document.' });
     }
 };
 
@@ -3633,10 +3635,8 @@ export const addSalePayment = async (req, res) => {
 
         const formattedPaymentDate = normalizeDateInput(paymentDate);
         const formattedRefDate = normalizeDateInput(referenceDate);
-        const backdatedAccessError = getBackdatedPaymentAccessError(req, formattedPaymentDate);
-        if (backdatedAccessError) {
-            return res.status(403).json({ error: backdatedAccessError });
-        }
+        // Non-admins can't save a backdated payment directly: it goes to the admin for approval.
+        const needsBackdateApproval = Boolean(getBackdatedPaymentAccessError(req, formattedPaymentDate));
         const collectorPayload = await parseCollectorPayload({
             collectorType,
             collectorStaffId,
@@ -3644,6 +3644,16 @@ export const addSalePayment = async (req, res) => {
         });
         if (collectorPayload.error) {
             return res.status(400).json({ error: collectorPayload.error });
+        }
+        if (needsBackdateApproval) {
+            return createBackdatedPaymentRequest(req, res, {
+                action: 'add',
+                saleId,
+                paymentId: null,
+                paymentDate: formattedPaymentDate,
+                paymentMode: mode,
+                amount: amountValidation.value,
+            });
         }
 
         const result = await PaymentModel.addPayment(saleId, {
@@ -3737,10 +3747,8 @@ export const editSalePayment = async (req, res) => {
         if (formattedPaymentDate && typeof formattedPaymentDate === 'string' && formattedPaymentDate.includes('T')) {
             formattedPaymentDate = formattedPaymentDate.split('T')[0];
         }
-        const backdatedAccessError = getBackdatedPaymentAccessError(req, formattedPaymentDate);
-        if (backdatedAccessError) {
-            return res.status(403).json({ error: backdatedAccessError });
-        }
+        // Non-admins can't save a backdated payment directly: it goes to the admin for approval.
+        const needsBackdateApproval = Boolean(getBackdatedPaymentAccessError(req, formattedPaymentDate));
         const collectorPayload = await parseCollectorPayload({
             collectorType,
             collectorStaffId,
@@ -3748,6 +3756,16 @@ export const editSalePayment = async (req, res) => {
         });
         if (collectorPayload.error) {
             return res.status(400).json({ error: collectorPayload.error });
+        }
+        if (needsBackdateApproval) {
+            return createBackdatedPaymentRequest(req, res, {
+                action: 'edit',
+                saleId,
+                paymentId: paymentId,
+                paymentDate: formattedPaymentDate,
+                paymentMode: mode,
+                amount: amountValidation.value,
+            });
         }
 
         const result = await PaymentModel.updatePayment(paymentId, saleId, {
@@ -3794,6 +3812,150 @@ export const editSalePayment = async (req, res) => {
         }
         console.error('Error updating sale payment:', error);
         res.status(error.statusCode || 500).json({ error: error.statusCode === 400 ? error.message : 'Internal server error' });
+    }
+};
+
+// ---------- Backdated payment approval ----------
+// A non-admin's backdated payment is stored as a request. When the admin approves,
+// the original request is replayed through addSalePayment / editSalePayment so every
+// normal payment check (balance, credit limits) still applies.
+const BACKDATED_REQUEST_BODY_FIELDS = [
+    'paymentDate', 'paymentMode', 'amount', 'collectorStaffId', 'collectorName', 'collectorType',
+    'referenceNo', 'referenceDate', 'creditDays', 'parentCreditPaymentId', 'cashDetails',
+];
+
+async function createBackdatedPaymentRequest(req, res, { action, saleId, paymentId, paymentDate, paymentMode, amount }) {
+    try {
+        const [saleRows] = await db.execute(
+            `SELECT ss.id, ss.invoice_number, sc.outlet_name
+             FROM staff_sales ss
+             LEFT JOIN staff_counters sc ON sc.id = ss.outlet_id
+             WHERE ss.id = ? LIMIT 1`,
+            [saleId]
+        );
+        if (!saleRows[0]) return res.status(404).json({ error: 'Sale not found' });
+
+        const body = {};
+        BACKDATED_REQUEST_BODY_FIELDS.forEach((field) => {
+            if (req.body?.[field] !== undefined) body[field] = req.body[field];
+        });
+        const requesterUser = {
+            id: req.user?.id ?? null,
+            role: req.user?.role ?? null,
+            username: req.user?.username ?? null,
+            loginId: req.user?.loginId ?? null,
+            email: req.user?.email ?? null,
+            deliveryBoyId: req.user?.deliveryBoyId ?? null,
+        };
+        const requester = await getRequester(req.user);
+        const [result] = await db.execute(
+            `INSERT INTO backdated_payment_requests
+             (sale_id, payment_id, action, payment_date, payment_mode, amount, invoice_number, outlet_name,
+              request_body, requester_user, requested_by_id, requested_by_name)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            [
+                Number(saleId), paymentId ? Number(paymentId) : null, action, paymentDate, paymentMode, amount,
+                saleRows[0].invoice_number || '', saleRows[0].outlet_name || null,
+                JSON.stringify(body), JSON.stringify(requesterUser), requester.id || null, requester.name || null,
+            ]
+        );
+        return res.status(202).json({
+            pendingApproval: true,
+            requestId: result.insertId,
+            message: 'Backdated payment sent to the admin for approval. It will be applied to the invoice once approved.',
+        });
+    } catch (error) {
+        console.error('Error creating backdated payment request:', error);
+        const hint = error?.code === 'ER_NO_SUCH_TABLE' ? ' Restart the backend so it creates the backdated payment requests table.' : '';
+        return res.status(500).json({ error: `Unable to send the backdated payment for approval.${hint}` });
+    }
+}
+
+export const listBackdatedPaymentRequests = async (_req, res) => {
+    try {
+        const [rows] = await db.execute(
+            `SELECT r.id, r.sale_id, r.payment_id, r.action, DATE_FORMAT(r.payment_date, '%Y-%m-%d') AS payment_date,
+                    r.payment_mode, r.amount, r.invoice_number, r.outlet_name, r.request_body, r.status,
+                    r.requested_by_name, r.reviewed_by_name, r.review_note,
+                    DATE_FORMAT(r.created_at, '%Y-%m-%d %H:%i') AS created_at_display
+             FROM backdated_payment_requests r
+             ORDER BY (r.status = 'pending') DESC, r.created_at DESC`
+        );
+        res.json(rows.map((row) => {
+            let details = {};
+            try { details = JSON.parse(row.request_body || '{}'); } catch { details = {}; }
+            const { request_body: _omit, ...rest } = row;
+            return { ...rest, reference_no: details.referenceNo || null, credit_days: details.creditDays || null };
+        }));
+    } catch (error) {
+        console.error('Error loading backdated payment requests:', error);
+        res.status(500).json({ error: 'Unable to load backdated payment requests.' });
+    }
+};
+
+export const reviewBackdatedPaymentRequest = async (req, res) => {
+    const id = Number(req.params.id);
+    const action = String(req.body?.action || '').toLowerCase();
+    const note = String(req.body?.note || '').trim();
+    if (!Number.isSafeInteger(id) || !['approve', 'reject'].includes(action)) return res.status(400).json({ error: 'Invalid review.' });
+    if (action === 'reject' && !note) return res.status(400).json({ error: 'Enter a rejection reason.' });
+    let claimed = false;
+    try {
+        const [rows] = await db.execute('SELECT * FROM backdated_payment_requests WHERE id = ? AND status = \'pending\'', [id]);
+        const request = rows[0];
+        if (!request) return res.status(409).json({ error: 'This request was already reviewed.' });
+        // Claim the request so a double click or a second admin can't add the payment twice.
+        const [claim] = await db.execute(
+            'UPDATE backdated_payment_requests SET reviewed_at = NOW() WHERE id = ? AND status = \'pending\' AND reviewed_at IS NULL',
+            [id]
+        );
+        if (!claim.affectedRows) return res.status(409).json({ error: 'This request is already being reviewed.' });
+        claimed = true;
+        const admin = await getRequester(req.user);
+
+        if (action === 'approve') {
+            let result = null;
+            const capture = {
+                status(code) { return { json: (body) => { result = { code, body }; } }; },
+                json(body) { result = { code: 200, body }; },
+            };
+            let requesterUser = null;
+            let body = {};
+            try { requesterUser = JSON.parse(request.requester_user || 'null'); } catch { requesterUser = null; }
+            try { body = JSON.parse(request.request_body || '{}'); } catch { body = {}; }
+            const replayReq = {
+                params: { saleId: String(request.sale_id), ...(request.payment_id ? { paymentId: String(request.payment_id) } : {}) },
+                body,
+                user: requesterUser || req.user,
+                backdateApproved: true,
+            };
+            if (request.action === 'edit') {
+                await editSalePayment(replayReq, capture);
+            } else {
+                await addSalePayment(replayReq, capture);
+            }
+            if (!result || result.code >= 300) {
+                await db.execute('UPDATE backdated_payment_requests SET reviewed_at = NULL WHERE id = ? AND status = \'pending\'', [id]);
+                claimed = false;
+                return res.status(result?.code && result.code >= 400 ? result.code : 500)
+                    .json(result?.body || { error: 'Unable to apply the payment.' });
+            }
+            claimed = false; // payment already applied: never release the claim after this point
+        }
+
+        await db.execute(
+            `UPDATE backdated_payment_requests
+             SET status = ?, review_note = ?, reviewed_by_id = ?, reviewed_by_name = ?, reviewed_at = NOW()
+             WHERE id = ?`,
+            [action === 'approve' ? 'approved' : 'rejected', note || null, admin.id || null, admin.name || null, id]
+        );
+        res.json({ message: action === 'approve' ? 'Backdated payment approved and applied to the invoice.' : 'Backdated payment request rejected.' });
+    } catch (error) {
+        console.error('Error reviewing backdated payment request:', error);
+        if (claimed) {
+            await db.execute('UPDATE backdated_payment_requests SET reviewed_at = NULL WHERE id = ? AND status = \'pending\'', [id]).catch(() => {});
+        }
+        res.status(500).json({ error: 'Unable to review the backdated payment request.' });
     }
 };
 
@@ -3985,6 +4147,85 @@ export const getOrderCancellations = async (req, res) => {
     } catch (error) {
         console.error('Error fetching order cancellations:', error);
         res.status(500).json({ error: 'Internal server error' });
+    }
+};
+
+export const createCancellationRequest = async (req, res) => {
+    try {
+        const saleId = Number(req.params.saleId);
+        const body = req.body || {};
+        const amount = Number(body.amount);
+        const qty = Number(body.productQty);
+        if (!Number.isSafeInteger(saleId) || saleId <= 0) return res.status(400).json({ error: 'Invalid invoice.' });
+        if (!String(body.reason || '').trim() || !String(body.productName || '').trim()) return res.status(400).json({ error: 'Cancellation reason and product are required.' });
+        if (!Number.isFinite(amount) || amount <= 0 || !Number.isFinite(qty) || qty <= 0) return res.status(400).json({ error: 'Enter a valid cancellation quantity and amount.' });
+        if (!String(body.invoiceImageUrl || '').trim()) return res.status(400).json({ error: 'Upload the cancellation invoice image.' });
+        const saleItemId = Number(body.saleItemId);
+        const requester = await getRequester(req.user);
+        const [result] = await db.execute(
+            `INSERT INTO order_cancellation_requests
+             (sale_id, sale_item_id, product_erp_id, outlet_name, invoice_number, product_name, product_qty, amount, reason, remarks, invoice_image_url, requested_by_id, requested_by_name)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            [saleId, Number.isSafeInteger(saleItemId) && saleItemId > 0 ? saleItemId : null, body.productErpId || null, body.outletName, body.invoiceNumber, String(body.productName).trim(), qty, amount, String(body.reason).trim(), String(body.remarks || '').trim() || null, String(body.invoiceImageUrl).trim(), requester.id || null, requester.name || null]
+        );
+        res.status(201).json({ message: 'Cancellation request sent for admin approval.', requestId: result.insertId });
+    } catch (error) {
+        console.error('Error creating cancellation request:', error);
+        const hint = error?.code === 'ER_NO_SUCH_TABLE' ? ' Restart the backend so it creates the cancellation requests table.' : '';
+        res.status(500).json({ error: `Unable to send cancellation request: ${error?.message || 'unknown error'}.${hint}` });
+    }
+};
+
+export const listCancellationRequests = async (_req, res) => {
+    try {
+        const [rows] = await db.execute(`SELECT r.*, DATE_FORMAT(r.created_at, '%Y-%m-%d %H:%i') AS created_at_display
+            FROM order_cancellation_requests r ORDER BY (r.status = 'pending') DESC, r.created_at DESC`);
+        res.json(rows);
+    } catch (error) { res.status(500).json({ error: 'Unable to load cancellation requests.' }); }
+};
+
+export const reviewCancellationRequest = async (req, res) => {
+    const id = Number(req.params.id);
+    const action = String(req.body?.action || '').toLowerCase();
+    const note = String(req.body?.note || '').trim();
+    if (!Number.isSafeInteger(id) || !['approve', 'reject'].includes(action)) return res.status(400).json({ error: 'Invalid review.' });
+    if (action === 'reject' && !note) return res.status(400).json({ error: 'Enter a rejection reason.' });
+    let claimed = false;
+    try {
+        const [rows] = await db.execute('SELECT * FROM order_cancellation_requests WHERE id = ? AND status = \'pending\'', [id]);
+        const request = rows[0];
+        if (!request) return res.status(409).json({ error: 'This request was already reviewed.' });
+        // Claim the request so a double click or a second admin can't deduct the amount twice.
+        const [claim] = await db.execute(
+            'UPDATE order_cancellation_requests SET reviewed_at = NOW() WHERE id = ? AND status = \'pending\' AND reviewed_at IS NULL',
+            [id]
+        );
+        if (!claim.affectedRows) return res.status(409).json({ error: 'This request is already being reviewed.' });
+        claimed = true;
+        const admin = await getRequester(req.user);
+        if (action === 'approve') {
+            let result;
+            const response = { status: (code) => ({ json: (body) => { result = { code, body }; } }) };
+            await logOrderCancellation({ params: { saleId: request.sale_id }, body: {
+                outletName: request.outlet_name, invoiceNumber: request.invoice_number, productName: request.product_name,
+                productErpId: request.product_erp_id, saleItemId: request.sale_item_id, productQty: request.product_qty,
+                amount: request.amount, reason: request.reason, remarks: request.remarks,
+            } }, response);
+            if (!result || result.code >= 400) {
+                await db.execute('UPDATE order_cancellation_requests SET reviewed_at = NULL WHERE id = ? AND status = \'pending\'', [id]);
+                return res.status(result?.code || 500).json(result?.body || { error: 'Unable to approve cancellation.' });
+            }
+            claimed = false; // amount already deducted: never release the claim after this point
+        }
+        await db.execute(`UPDATE order_cancellation_requests SET status = ?, review_note = ?, reviewed_by_id = ?, reviewed_by_name = ?, reviewed_at = NOW() WHERE id = ?`,
+            [action === 'approve' ? 'approved' : 'rejected', note || null, admin.id || null, admin.name || null, id]);
+        res.json({ message: action === 'approve' ? 'Cancellation approved and invoice price updated.' : 'Cancellation request rejected.' });
+    } catch (error) {
+        console.error('Error reviewing cancellation request:', error);
+        if (claimed) {
+            await db.execute('UPDATE order_cancellation_requests SET reviewed_at = NULL WHERE id = ? AND status = \'pending\'', [id]).catch(() => {});
+        }
+        res.status(500).json({ error: 'Unable to review cancellation request.' });
     }
 };
 

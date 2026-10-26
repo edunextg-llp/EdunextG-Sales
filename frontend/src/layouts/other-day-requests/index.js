@@ -44,7 +44,7 @@ const STATUS_BADGE = {
   used: { label: "Sale added", color: "info" },
   rejected: { label: "Rejected", color: "error" },
 };
-const HEADINGS = ["Requested", "Staff", "Sale Date", "Outlet", "Bit", "Requested by", "Reason", "Status", "Actions"];
+const HEADINGS = ["Sr. No.", "Requested", "Staff", "Sale Date", "Outlet", "Bit", "Requested by", "Reason", "Status", "Actions"];
 const headSx = { color: "#6b7280", fontSize: "0.75rem", fontWeight: 600, borderBottom: "1px solid #e5e7eb", px: 2, py: 1.5, whiteSpace: "nowrap" };
 const cellSx = { px: 2, py: 1.5, verticalAlign: "top", fontSize: "0.8rem" };
 
@@ -155,10 +155,11 @@ function OtherDayRequests() {
                     <TableCell colSpan={HEADINGS.length} sx={{ ...cellSx, textAlign: "center", py: 4 }}>No requests here.</TableCell>
                   </TableRow>
                 )}
-                {requests.map((request) => {
+                {requests.map((request, index) => {
                   const badge = STATUS_BADGE[request.status] || { label: request.status, color: "secondary" };
                   return (
                     <TableRow key={request.id}>
+                      <TableCell sx={cellSx}>{index + 1}</TableCell>
                       <TableCell sx={cellSx}>#{request.id}<br />{formatDateTime(request.created_at)}</TableCell>
                       <TableCell sx={cellSx}><strong>{request.staff_name || `Staff #${request.staff_id}`}</strong></TableCell>
                       <TableCell sx={{ ...cellSx, whiteSpace: "nowrap" }}>{formatDate(request.sale_date)}</TableCell>

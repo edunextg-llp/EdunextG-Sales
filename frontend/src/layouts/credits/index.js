@@ -226,16 +226,12 @@ function CreditsPage() {
     if (credit.credit_photo_url) {
       return { backgroundColor: "#dbeafe", "&:hover": { backgroundColor: "#bfdbfe" } };
     }
-    if ((Number(credit.remarks_count) || 0) > 0 || credit.remarks?.trim()) {
-      return {
-        backgroundColor: "#dcfce7",
-        "&:hover": { backgroundColor: "#bbf7d0" },
-      };
-    }
-
+    // Invoice not uploaded yet: highlight in red. A green left edge still marks rows with remarks.
+    const hasRemarks = (Number(credit.remarks_count) || 0) > 0 || Boolean(credit.remarks?.trim());
     return {
-      backgroundColor: "#fff",
-      "&:hover": { backgroundColor: "#f8fafc" },
+      backgroundColor: "#fee2e2",
+      "&:hover": { backgroundColor: "#fecaca" },
+      ...(hasRemarks ? { "& > td:first-of-type": { boxShadow: "inset 4px 0 0 #16a34a" } } : {}),
     };
   };
 
@@ -1392,6 +1388,18 @@ function CreditsPage() {
               </MDBox>
 
               <MDBox pb={4} px={3}>
+                <MDBox display="flex" flexWrap="wrap" gap={2} mb={1} sx={{ fontSize: "0.75rem", color: "#475569" }}>
+                  {[
+                    { label: "Invoice not uploaded", sx: { backgroundColor: "#fee2e2", border: "1px solid #fca5a5" } },
+                    { label: "Invoice uploaded", sx: { backgroundColor: "#dbeafe", border: "1px solid #93c5fd" } },
+                    { label: "Has remarks", sx: { backgroundColor: "#fee2e2", border: "1px solid #fca5a5", boxShadow: "inset 4px 0 0 #16a34a" } },
+                  ].map((item) => (
+                    <MDBox key={item.label} display="flex" alignItems="center" gap={0.75}>
+                      <MDBox component="span" sx={{ width: 22, height: 14, borderRadius: "3px", ...item.sx }} />
+                      {item.label}
+                    </MDBox>
+                  ))}
+                </MDBox>
                 <TableContainer
                   component={Paper}
                   sx={{ ...paginatedTableContainerSx, backgroundColor: "transparent" }}

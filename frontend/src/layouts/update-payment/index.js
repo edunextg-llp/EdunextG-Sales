@@ -185,6 +185,7 @@ function UpdatePayment() {
     amount: "",
     reason: "",
     remarks: "",
+    invoiceImageFile: null,
   });
   const [cancelSaleItems, setCancelSaleItems] = useState([]);
   const [loadingCancelItems, setLoadingCancelItems] = useState(false);
@@ -695,6 +696,7 @@ function UpdatePayment() {
       amount: "",
       reason: "",
       remarks: "",
+      invoiceImageFile: null,
     });
   };
 
@@ -796,7 +798,7 @@ function UpdatePayment() {
   const handleSaveCancellation = async () => {
     if (!cancelDialogSale) return;
 
-    const { productName, productQtyToCancel, amount, reason, remarks } = cancelForm;
+    const { productName, productQtyToCancel, amount, reason, remarks, invoiceImageFile } = cancelForm;
 
     if (!productName.trim()) {
       alert("Please enter product name.");
@@ -823,11 +825,21 @@ function UpdatePayment() {
       alert("Please enter a valid amount.");
       return;
     }
+    if (!invoiceImageFile) {
+      alert("Please upload the cancellation invoice image.");
+      return;
+    }
 
     setLoggingCancel(true);
     try {
+      const uploadData = new FormData();
+      uploadData.append("file", invoiceImageFile);
+      uploadData.append("documentType", "cancellation-invoice");
+      const uploadResponse = await fetch(`${API}/staff/upload-document`, { method: "POST", body: uploadData });
+      const uploadResult = await uploadResponse.json().catch(() => ({}));
+      if (!uploadResponse.ok || !uploadResult.url) throw new Error(uploadResult.error || "Unable to upload the invoice image.");
       const response = await fetch(
-        `${API}/staff/sales/${cancelDialogSale.id}/cancel-log`,
+        `${API}/staff/sales/${cancelDialogSale.id}/cancellation-requests`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -835,52 +847,30 @@ function UpdatePayment() {
             outletName: cancelDialogSale.outlet_name,
             invoiceNumber: cancelDialogSale.invoice_number,
             productName: productName.trim(),
-            saleItemId: selectedCancelItem?.id || null,
+            // Placeholder items (e.g. "manual-entry") have no real sale item id.
+            saleItemId: Number(selectedCancelItem?.id) > 0 ? Number(selectedCancelItem.id) : null,
             productErpId: selectedCancelItem?.product_erp_id || "",
             productQty: parsedQty,
             amount: parsedAmount,
             reason,
             remarks: remarks.trim(),
+            invoiceImageUrl: uploadResult.url,
           }),
         }
       );
 
       if (response.ok) {
-        const data = await response.json().catch(() => ({}));
-        alert("Order cancellation logged, balance reduced, and stock restored successfully.");
+        alert("Cancellation request sent to the admin for approval.");
         closeAddCancelDialog();
-        if (data.summary) {
-          setSalesData((prev) =>
-            prev.map((sale) =>
-              sale.id === cancelDialogSale.id
-                ? {
-                    ...sale,
-                    balance_amount: data.summary.balanceAmount,
-                    paid_amount: data.summary.paidAmount,
-                  }
-                : sale
-            )
-          );
-          setCancelDialogSale((prev) =>
-            prev
-              ? {
-                  ...prev,
-                  balance_amount: data.summary.balanceAmount,
-                  paid_amount: data.summary.paidAmount,
-                }
-              : prev
-          );
-        } else {
-          await fetchSales();
-        }
+        await fetchSales();
         await fetchCancellationHistory(cancelDialogSale.id);
       } else {
         const err = await response.json().catch(() => ({}));
-        alert(err.error || "Failed to log cancellation.");
+        alert(err.error || "Failed to send cancellation request.");
       }
     } catch (error) {
-      console.error("Error logging cancellation:", error);
-      alert("Error logging cancellation.");
+      console.error("Error sending cancellation request:", error);
+      alert(error.message || "Error sending cancellation request.");
     } finally {
       setLoggingCancel(false);
     }
@@ -1278,7 +1268,17 @@ function UpdatePayment() {
         body: JSON.stringify(payload),
       });
 
-      if (response.ok) {
+      if (response.status === 202) {
+        // Backdated payment by a non-admin: saved as a request, applied after admin approval.
+        const data = await response.json().catch(() => ({}));
+        setEditingPaymentId(null);
+        setActiveCreditPayment(null);
+        setPaymentForm(buildDefaultPaymentForm());
+        setPaymentSuccessMessage(
+          data.message || "Backdated payment sent to the admin for approval."
+        );
+        alert(data.message || "Backdated payment sent to the admin for approval.");
+      } else if (response.ok) {
         const data = await response.json();
         const outletName = paymentDialogSale.outlet_name || "the selected outlet";
 
@@ -2204,6 +2204,12 @@ function UpdatePayment() {
                         InputLabelProps={{ shrink: true }}
                         value={paymentForm.paymentDate}
                         onChange={(e) => handlePaymentFormChange("paymentDate", e.target.value)}
+                        helperText={
+                          !isAdmin && paymentForm.paymentDate && paymentForm.paymentDate < getTodayLocalDate()
+                            ? "Backdated: needs admin approval"
+                            : undefined
+                        }
+                        FormHelperTextProps={{ sx: { color: "#b45309", fontWeight: 600, mx: 0 } }}
                       />
                     </Grid>
                     <Grid item xs={12} sm={6} md={3}>
@@ -2819,6 +2825,14 @@ function UpdatePayment() {
                         : "Enter cancel amount manually"
                     }
                   />
+                </Grid>
+                <Grid item xs={12} sm={6}>
+                  <MDButton variant="outlined" color="info" component="label" fullWidth>
+                    {cancelForm.invoiceImageFile ? "Invoice image selected" : "Upload Invoice Image *"}
+                    <input hidden type="file" accept="image/jpeg,image/png,image/webp,application/pdf"
+                      onChange={(e) => handleCancelFormChange("invoiceImageFile", e.target.files?.[0] || null)} />
+                  </MDButton>
+                  <MDTypography variant="caption" color="text">JPG, PNG, WebP or PDF. Required for admin approval.</MDTypography>
                 </Grid>
                 <Grid item xs={12}>
                   <MDInput

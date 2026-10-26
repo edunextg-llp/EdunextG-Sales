@@ -16,6 +16,7 @@ import {
   Icon,
   Select,
   MenuItem,
+  InputAdornment,
 } from "@mui/material";
 import { FaRegEdit } from "react-icons/fa";
 import { CiTrash } from "react-icons/ci";
@@ -24,6 +25,7 @@ import MDBox from "components/MDBox";
 import MDTypography from "components/MDTypography";
 import MDInput from "components/MDInput";
 import MDButton from "components/MDButton";
+import { buildInvoiceNumber, getInvoicePrefix, getInvoiceSuffix } from "utils/invoicePrefix";
 
 /* ─────────────────────────────────────────────────────────────
    THEME TOKENS  (matches the reference screenshot precisely)
@@ -254,6 +256,19 @@ export default function SalesInvoiceDialog({
     () => stockItems.filter((item) => String(item.product_erp_id || "").trim()),
     [stockItems]
   );
+  const invoicePrefix = getInvoicePrefix(companyName);
+  const showEditableInvoiceSuffix = Boolean(invoicePrefix);
+  const invoiceInputProps = invoicePrefix
+    ? {
+        startAdornment: (
+          <InputAdornment position="start" disableTypography sx={{ mr: 0.25 }}>
+            <span style={{ fontSize: "0.75rem", fontWeight: 600, color: "#344767", whiteSpace: "nowrap" }}>
+              {invoicePrefix}
+            </span>
+          </InputAdornment>
+        ),
+      }
+    : undefined;
 
   const buildExistingSaleLine = (itemCount, price) => {
     const qty = Math.max(1, Number(itemCount) || 1);
@@ -670,9 +685,12 @@ export default function SalesInvoiceDialog({
                 <MDTypography sx={{ ...colLabelSx, color: "#e2c9ff" }}>Bill No.</MDTypography>
                 <MDInput
                   fullWidth
-                  value={billNo}
-                  onChange={(e) => setBillNo(e.target.value)}
-                  disabled={!editMode}
+                  value={getInvoiceSuffix(billNo, invoicePrefix)}
+                  onChange={(e) => setBillNo(
+                    invoicePrefix ? buildInvoiceNumber(e.target.value, invoicePrefix) : e.target.value
+                  )}
+                  InputProps={invoiceInputProps}
+                  disabled={!editMode && !showEditableInvoiceSuffix}
                   sx={headerInput}
                 />
               </Grid>

@@ -36,6 +36,14 @@ router.get('/other-day-requests', otherDaySaleRequestController.listOtherDayRequ
 router.post('/other-day-requests', otherDaySaleRequestController.createOtherDayRequest);
 router.put('/other-day-requests/:id/review', requireRole('admin'), otherDaySaleRequestController.reviewOtherDayRequest);
 
+// Cancellation requests: raised from Update Payment, approved by admin (must stay above '/:id').
+router.get('/cancellation-requests', requireRole('admin'), staffController.listCancellationRequests);
+router.put('/cancellation-requests/:id/review', requireRole('admin'), staffController.reviewCancellationRequest);
+
+// Backdated payment requests: non-admin backdated payments, applied when the admin approves (must stay above '/:id').
+router.get('/backdated-payment-requests', requireRole('admin'), staffController.listBackdatedPaymentRequests);
+router.put('/backdated-payment-requests/:id/review', requireRole('admin'), staffController.reviewBackdatedPaymentRequest);
+
 router.post('/', staffController.createStaff);
 router.post('/upload-document', upload.single('file'), staffController.uploadStaffDocument);
 router.get('/', staffController.getStaff);
@@ -162,6 +170,7 @@ router.get('/sales/:saleId/packaging-remarks', staffController.getPackagingRemar
 router.post('/sales/:saleId/packaging-remarks', staffController.savePackagingRemarks);
 router.post('/sales/:saleId/cancel-log', staffController.logOrderCancellation);
 router.get('/sales/:saleId/cancel-log', staffController.getOrderCancellations);
+router.post('/sales/:saleId/cancellation-requests', staffController.createCancellationRequest);
 router.get('/sales/:saleId/items', staffController.getSaleItems);
 
 router.get('/sales/:saleId/credit-photo', authorizeCreditPhoto, getCreditPhoto);

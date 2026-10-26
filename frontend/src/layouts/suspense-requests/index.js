@@ -149,7 +149,7 @@ function SuspenseRequests() {
             <Table>
               <TableHead sx={{ display: "table-header-group", backgroundColor: "#f9fafb" }}>
                 <TableRow>
-                  {["Requested", "Company", "Requested by", "Reason", "Bills", "Status", "Actions"].map((heading) => (
+                  {["Sr. No.", "Requested", "Company", "Requested by", "Reason", "Bills", "Status", "Actions"].map((heading) => (
                     <TableCell key={heading} sx={headSx}>{heading}</TableCell>
                   ))}
                 </TableRow>
@@ -157,15 +157,16 @@ function SuspenseRequests() {
               <TableBody>
                 {!loading && requests.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={7} sx={{ ...cellSx, textAlign: "center", py: 4 }}>No requests here.</TableCell>
+                    <TableCell colSpan={8} sx={{ ...cellSx, textAlign: "center", py: 4 }}>No requests here.</TableCell>
                   </TableRow>
                 )}
-                {requests.map((request) => {
+                {requests.map((request, index) => {
                   const badge = STATUS_BADGE[request.status] || { label: request.status, color: "secondary" };
                   const expanded = expandedId === request.id;
                   const bills = request.bills_summary || [];
                   return [
                     <TableRow key={request.id}>
+                      <TableCell sx={cellSx}>{index + 1}</TableCell>
                       <TableCell sx={cellSx}>#{request.id}<br />{formatDateTime(request.created_at)}</TableCell>
                       <TableCell sx={cellSx}>
                         {requestCompanies(request).map((name) => <strong key={name} style={{ display: "block" }}>{name}</strong>)}
@@ -216,7 +217,7 @@ function SuspenseRequests() {
                     </TableRow>,
                     expanded && (
                       <TableRow key={`${request.id}-bills`}>
-                        <TableCell colSpan={7} sx={{ ...cellSx, backgroundColor: "#fffbeb" }}>
+                        <TableCell colSpan={8} sx={{ ...cellSx, backgroundColor: "#fffbeb" }}>
                           <Table size="small">
                             <TableHead sx={{ display: "table-header-group" }}>
                               <TableRow>

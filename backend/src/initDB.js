@@ -1416,6 +1416,7 @@ async function initDB() {
             can_item_list TINYINT(1) NOT NULL DEFAULT 0,
             can_update_payment TINYINT(1) NOT NULL DEFAULT 0,
             can_bank_deposit TINYINT(1) NOT NULL DEFAULT 0,
+            can_credits TINYINT(1) NOT NULL DEFAULT 0,
             can_create_staff TINYINT(1) NOT NULL DEFAULT 0,
             can_add_outlet TINYINT(1) NOT NULL DEFAULT 0,
             can_location_assignments TINYINT(1) NOT NULL DEFAULT 0,

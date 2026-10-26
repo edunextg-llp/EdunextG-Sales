@@ -3,7 +3,7 @@
 export const PERMISSION_KEYS = [
     'dashboard', 'dms', 'add_seller', 'add_item', 'item_list',
     'purchase_history', 'physical_stock', 'current_stock', 'expiry_items', 'expiry_list', 'damage_list', 'purchase',
-    'update_payment', 'bank_deposit', 'db_collection', 'create_staff', 'add_outlet', 'location_assignments', 'add_sales',
+    'update_payment', 'bank_deposit', 'db_collection', 'credits', 'create_staff', 'add_outlet', 'location_assignments', 'add_sales',
     'packaging', 'delivery', 'delivery_report', 'delivered', 'out_bill', 'requisition_approval', 'invoice_lookup',
     'chalan_add_sales', 'chalan_packaging', 'chalan_delivery', 'chalan_delivered', 'chalan_return',
 ];
@@ -25,6 +25,9 @@ export const NEW_PERMISSION_COLUMNS = [
     ['damage_list', 'item_list'],
     ['purchase', null],
     ['db_collection', null],
+    // Credits previously shared the Out Bill permission. Preserve that access
+    // when the standalone Give Credit permission is introduced.
+    ['credits', 'out_bill'],
     ['delivery_report', 'delivery'],
 ];
 
