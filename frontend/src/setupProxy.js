@@ -7,7 +7,7 @@ module.exports = function setupProxy(app) {
   app.use(
     "/api",
     createProxyMiddleware({
-      target: "http://localhost:2002",
+      target: "https://bawarchee.edunextg.in",
       changeOrigin: true,
     })
   );
