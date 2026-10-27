@@ -122,6 +122,7 @@ import { normalizeInvoiceNumber } from '../utils/invoiceNumber.js';
 import { validateGoogleMapsLocation } from '../utils/googleMapsLocation.js';
 import { resolveItemGst } from '../utils/itemGst.js';
 import { uploadBufferToCloudinary, isCloudinaryConfigured } from '../utils/cloudinary.js';
+import { compressPhoto, MAX_PHOTO_BYTES } from '../utils/compressPhoto.js';
 import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
 import xlsx from 'xlsx';
@@ -729,7 +730,14 @@ export const uploadStaffDocument = async (req, res) => {
         }
 
         const documentType = String(req.body.documentType || 'document').trim().toLowerCase();
-        const result = await uploadBufferToCloudinary(req.file.buffer, {
+        // Every document is max 1 MB; photos above 70 KB are compressed before storing.
+        if (req.file.size > MAX_PHOTO_BYTES) {
+            return res.status(413).json({ error: 'File must not be more than 1 MB.' });
+        }
+        const buffer = req.file.mimetype === 'application/pdf'
+            ? req.file.buffer
+            : (await compressPhoto(req.file.buffer)).buffer;
+        const result = await uploadBufferToCloudinary(buffer, {
             folder: 'staff-documents',
             uploadOptions: {
                 public_id: `${documentType}_${Date.now()}`,

@@ -1008,12 +1008,15 @@ function CreateStaff() {
                         <input
                           hidden
                           type="file"
-                          accept="image/*,.pdf"
+                          accept="image/jpeg,image/png,image/webp,application/pdf"
                           onChange={(e) =>
                             handleDocumentUpload(e, "aadharDocumentUrl", "aadhar", setUploadingAadhar)
                           }
                         />
                       </MDButton>
+                      <MDTypography variant="caption" color="text" display="block" mt={0.75}>
+                        JPG, PNG, WebP or PDF · max 1 MB
+                      </MDTypography>
                       {formData.aadharDocumentUrl && (
                         <MDTypography variant="caption" color="success" display="block" mt={0.75}>
                           Aadhar uploaded
@@ -1044,12 +1047,15 @@ function CreateStaff() {
                     <input
                       hidden
                       type="file"
-                      accept="image/*,.pdf"
+                      accept="image/jpeg,image/png,image/webp,application/pdf"
                       onChange={(e) =>
                         handleDocumentUpload(e, "pccCertificateUrl", "pcc", setUploadingPcc)
                       }
                     />
                   </MDButton>
+                  <MDTypography variant="caption" color="text" display="block" mt={0.75}>
+                    JPG, PNG, WebP or PDF · max 1 MB
+                  </MDTypography>
                   {formData.pccCertificateUrl && (
                     <MDTypography variant="caption" color="success" display="block" mt={0.75}>
                       PCC certificate uploaded

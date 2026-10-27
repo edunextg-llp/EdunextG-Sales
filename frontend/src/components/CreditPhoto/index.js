@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import PropTypes from "prop-types";
+import { prepareUpload } from "utils/compressImage";
 import { Alert, Box, Button, Icon, IconButton, Tooltip } from "@mui/material";
 
 export function CreditPhotoLink({ url }) {
@@ -27,16 +28,14 @@ export default function CreditPhoto({ api, saleId, disabled, onBusyChange, onPho
     const file = event.target.files?.[0];
     event.target.value = "";
     if (!file) return;
-    if (!["image/jpeg", "image/png", "image/webp"].includes(file.type) || file.size >= 1024 * 1024) {
-      setError("Choose a JPG, PNG, or WebP photo smaller than 1 MB.");
-      return;
-    }
     setBusy(true);
     onBusyChange?.(true);
     setError("");
     try {
+      // Max 1 MB; photos above 70 KB are shrunk to about 70 KB first.
+      const photo = await prepareUpload(file);
       const body = new FormData();
-      body.append("file", file);
+      body.append("file", photo);
       const response = await fetch(endpoint, { method: "POST", body });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "Photo upload failed.");
@@ -48,7 +47,7 @@ export default function CreditPhoto({ api, saleId, disabled, onBusyChange, onPho
   }
   return <Box sx={{ my: 2 }}>
     {url && <a href={url} target="_blank" rel="noopener noreferrer"><Box component="img" src={url} alt="Credit invoice photo" sx={{ display: "block", maxWidth: "100%", height: 140, objectFit: "contain", mb: 1 }} /></a>}
-    <Box sx={{ mb: 1, fontSize: "0.8rem" }}>JPG, PNG, or WebP · Less than 1 MB</Box>
+    <Box sx={{ mb: 1, fontSize: "0.8rem" }}>JPG, PNG, or WebP · max 1 MB</Box>
     <Button component="label" variant="outlined" disabled={disabled || busy}>
       {busy ? "Uploading…" : url ? "Replace credit photo" : "Upload credit photo"}
       <input hidden type="file" accept="image/jpeg,image/png,image/webp" disabled={disabled || busy} onChange={upload} />

@@ -248,7 +248,7 @@ class StaffModel {
             nextSerial = maxSerial + 1;
         }
 
-        await connection.execute(
+        const [result] = await connection.execute(
             `INSERT INTO staff_counters (
                 staff_id, day, location_name, outlet_erp_id, outlet_name,
                 contact_number, whatsapp_number, address, google_location, has_gst, gst_number,
@@ -271,6 +271,7 @@ class StaffModel {
                 operatingHours ? JSON.stringify(operatingHours) : null,
             ]
         );
+        return result.insertId;
     }
 
     static async findDuplicateCounter(staffId, outletErpId, excludeCounterId = null) {

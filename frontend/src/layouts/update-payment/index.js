@@ -1,4 +1,5 @@
 import CreditPhoto from "components/CreditPhoto";
+import { formatBytes, prepareUpload } from "utils/compressImage";
 import { Fragment, useState, useEffect, useRef, useCallback } from "react";
 import { notifySalesUpdated, useSalesPolling } from "utils/salesSync";
 import { downloadSalesExcel } from "utils/downloadSalesExcel";
@@ -190,6 +191,9 @@ function UpdatePayment() {
   const [cancelSaleItems, setCancelSaleItems] = useState([]);
   const [loadingCancelItems, setLoadingCancelItems] = useState(false);
   const [loggingCancel, setLoggingCancel] = useState(false);
+  const [cancelImageBusy, setCancelImageBusy] = useState(false);
+  const [cancelImageError, setCancelImageError] = useState("");
+  const [cancelImageNote, setCancelImageNote] = useState("");
   const [addCancelDialogOpen, setAddCancelDialogOpen] = useState(false);
   const [cancellationHistory, setCancellationHistory] = useState([]);
   const [loadingCancellations, setLoadingCancellations] = useState(false);
@@ -698,6 +702,32 @@ function UpdatePayment() {
       remarks: "",
       invoiceImageFile: null,
     });
+    setCancelImageError("");
+    setCancelImageNote("");
+  };
+
+  // Max 1 MB; photos above 70 KB are shrunk to about 70 KB before upload.
+  const handleCancelImageSelect = async (event) => {
+    const file = event.target.files?.[0] || null;
+    event.target.value = "";
+    if (!file) return;
+    setCancelImageBusy(true);
+    setCancelImageError("");
+    setCancelImageNote("");
+    setCancelForm((prev) => ({ ...prev, invoiceImageFile: null }));
+    try {
+      const prepared = await prepareUpload(file, { allowPdf: true });
+      setCancelForm((prev) => ({ ...prev, invoiceImageFile: prepared }));
+      setCancelImageNote(
+        prepared === file
+          ? `${file.name} · ${formatBytes(file.size)}`
+          : `${file.name} · reduced from ${formatBytes(file.size)} to ${formatBytes(prepared.size)}`
+      );
+    } catch (error) {
+      setCancelImageError(error.message);
+    } finally {
+      setCancelImageBusy(false);
+    }
   };
 
   const openCancelDialog = async (sale) => {
@@ -827,6 +857,10 @@ function UpdatePayment() {
     }
     if (!invoiceImageFile) {
       alert("Please upload the cancellation invoice image.");
+      return;
+    }
+    if (invoiceImageFile.size > 1024 * 1024) {
+      alert("File must not be more than 1 MB.");
       return;
     }
 
@@ -2828,11 +2862,13 @@ function UpdatePayment() {
                 </Grid>
                 <Grid item xs={12} sm={6}>
                   <MDButton variant="outlined" color="info" component="label" fullWidth>
-                    {cancelForm.invoiceImageFile ? "Invoice image selected" : "Upload Invoice Image *"}
+                    {cancelImageBusy ? "Reducing image size…" : cancelForm.invoiceImageFile ? "Change invoice image" : "Upload Invoice Image *"}
                     <input hidden type="file" accept="image/jpeg,image/png,image/webp,application/pdf"
-                      onChange={(e) => handleCancelFormChange("invoiceImageFile", e.target.files?.[0] || null)} />
+                      disabled={cancelImageBusy || loggingCancel} onChange={handleCancelImageSelect} />
                   </MDButton>
-                  <MDTypography variant="caption" color="text">JPG, PNG, WebP or PDF. Required for admin approval.</MDTypography>
+                  <MDTypography variant="caption" color="text" display="block">JPG, PNG, WebP or PDF · max 1 MB. Required for admin approval.</MDTypography>
+                  {cancelImageNote && <MDTypography variant="caption" color="success" display="block">{cancelImageNote}</MDTypography>}
+                  {cancelImageError && <MDTypography variant="caption" color="error" display="block" role="alert">{cancelImageError}</MDTypography>}
                 </Grid>
                 <Grid item xs={12}>
                   <MDInput
@@ -2870,7 +2906,7 @@ function UpdatePayment() {
                 color="error"
                 iconOnly
                 onClick={handleSaveCancellation}
-                disabled={loggingCancel}
+                disabled={loggingCancel || cancelImageBusy}
               >
                 {loggingCancel ? (
                   <CircularProgress size={18} color="inherit" />

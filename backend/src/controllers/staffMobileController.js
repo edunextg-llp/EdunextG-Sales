@@ -428,6 +428,67 @@ export const updateOutletContact = async (req, res) => {
     }
 };
 
+const OUTLET_DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'CNF'];
+const GSTIN_PATTERN = /^[0-9]{2}[A-Z0-9]{10}[0-9A-Z]{3}$/;
+
+const text = (value) => (typeof value === 'string' ? value.trim() : '');
+
+/** Marketing staff add a new outlet from the field; it joins their own outlet list. */
+export const createOutlet = async (req, res) => {
+    try {
+        const body = req.body || {};
+        const outletName = text(body.outletName).replace(/\s+/g, ' ');
+        const outletErpId = text(body.outletErpId);
+        const contactNumber = text(body.contactNumber);
+        const whatsappNumber = text(body.whatsappNumber) || contactNumber;
+        const address = text(body.address);
+        const day = text(body.day);
+        const areaName = text(body.areaName).replace(/\s+/g, ' ');
+        const hasGst = body.hasGst === true;
+        const gstNumber = text(body.gstNumber).toUpperCase();
+
+        if (!outletName || outletName.length > 255) return res.status(400).json({ error: 'Enter the outlet name (up to 255 characters)' });
+        if (!outletErpId || outletErpId.length > 100) return res.status(400).json({ error: 'Enter the outlet ERP ID (up to 100 characters)' });
+        if (!/^\d{10,15}$/.test(contactNumber)) return res.status(400).json({ error: 'Enter a contact number with 10 to 15 digits' });
+        if (!/^\d{10,15}$/.test(whatsappNumber)) return res.status(400).json({ error: 'Enter a WhatsApp number with 10 to 15 digits' });
+        if (!OUTLET_DAYS.includes(day)) return res.status(400).json({ error: 'Choose a route day (Monday to Saturday, or CNF)' });
+        if (!areaName || areaName.length > 255) return res.status(400).json({ error: 'Choose or enter the area' });
+        if (address.length > 1000) return res.status(400).json({ error: 'Address must be 1000 characters or less' });
+        if (hasGst && !GSTIN_PATTERN.test(gstNumber)) return res.status(400).json({ error: 'Enter a valid 15-character GST number' });
+
+        const rawLatitude = body.latitude;
+        const rawLongitude = body.longitude;
+        const latitude = Number(rawLatitude);
+        const longitude = Number(rawLongitude);
+        const validCoord = (raw, value, limit) => ['number', 'string'].includes(typeof raw)
+            && String(raw).trim() !== ''
+            && Number.isFinite(value)
+            && Math.abs(value) <= limit;
+        if (!validCoord(rawLatitude, latitude, 90) || !validCoord(rawLongitude, longitude, 180) || (latitude === 0 && longitude === 0)) {
+            return res.status(400).json({ error: 'Capture the outlet location with your phone GPS before saving' });
+        }
+
+        const outlet = await StaffPortalModel.createOutlet(req.staffId, {
+            outletName,
+            outletErpId,
+            contactNumber,
+            whatsappNumber,
+            address: address || null,
+            day,
+            areaName,
+            hasGst,
+            gstNumber: hasGst ? gstNumber : null,
+            googleLocation: `https://www.google.com/maps/search/?api=1&query=${latitude},${longitude}`,
+        });
+        if (!outlet) return res.status(409).json({ error: `ERP ID ${outletErpId} is already used by another outlet` });
+        return res.status(201).json({ message: 'Outlet added', outlet });
+    } catch (error) {
+        if (error?.code === 'ER_DUP_ENTRY') return res.status(409).json({ error: 'This outlet already exists' });
+        console.error('Error creating staff outlet:', error);
+        return res.status(500).json({ error: 'Internal server error' });
+    }
+};
+
 export const getCancellations = async (req, res) => {
     try {
         const range = req.query.scope === 'all' ? OVERALL_RANGE : readDateRange(req.query);

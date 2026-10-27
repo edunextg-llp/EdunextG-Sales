@@ -21,6 +21,7 @@ router.get('/out-bills', auth, staffMobile.getOutBills);
 router.post('/out-bills/:saleId/payments', auth, requireCreditPhoto, staffMobile.submitOutBillPayment);
 router.get('/collections', auth, staffMobile.getCollections);
 router.get('/outlets', auth, staffMobile.getOutlets);
+router.post('/outlets', auth, staffMobile.createOutlet);
 router.put('/outlets/:outletId/location', auth, staffMobile.updateOutletLocation);
 router.put('/outlets/:outletId/contact', auth, staffMobile.updateOutletContact);
 

@@ -1,8 +1,12 @@
+import { prepareUpload } from "utils/compressImage";
+
 const API = (process.env.REACT_APP_API_URL);
 
+/** Max 1 MB; photos above 70 KB are shrunk to about 70 KB before upload. */
 export async function uploadStaffDocument(file, documentType) {
+  const prepared = await prepareUpload(file, { allowPdf: true });
   const formData = new FormData();
-  formData.append("file", file);
+  formData.append("file", prepared);
   formData.append("documentType", documentType);
 
   const response = await fetch(`${API}/staff/upload-document`, {

@@ -21,6 +21,17 @@ const upload = multer({
     limits: { fileSize: 15 * 1024 * 1024 },
 });
 
+// Photos and documents (Aadhar, PCC, cancellation invoices): max 1 MB.
+const documentUpload = multer({
+    storage: multer.memoryStorage(),
+    limits: { fileSize: 1024 * 1024, files: 1 },
+}).single('file');
+const receiveDocument = (req, res, next) => documentUpload(req, res, (error) => {
+    if (!error) return next();
+    if (error.code === 'LIMIT_FILE_SIZE') return res.status(413).json({ error: 'File must not be more than 1 MB.' });
+    return res.status(400).json({ error: 'Unable to read the uploaded file.' });
+});
+
 // Overdue credit sale requests (must stay above the '/:id' routes).
 router.get('/overdue-requests', overdueSaleRequestController.listOverdueRequests);
 router.post('/overdue-requests', overdueSaleRequestController.createOverdueRequest);
@@ -45,7 +56,7 @@ router.get('/backdated-payment-requests', requireRole('admin'), staffController.
 router.put('/backdated-payment-requests/:id/review', requireRole('admin'), staffController.reviewBackdatedPaymentRequest);
 
 router.post('/', staffController.createStaff);
-router.post('/upload-document', upload.single('file'), staffController.uploadStaffDocument);
+router.post('/upload-document', receiveDocument, staffController.uploadStaffDocument);
 router.get('/', staffController.getStaff);
 router.get('/search', staffController.searchStaff);
 router.get('/areas', verifyTokenMiddleware, requireRole('admin'), staffController.getAreaDirectory);

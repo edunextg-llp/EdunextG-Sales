@@ -1440,7 +1440,7 @@ function CreditsPage() {
                               {credit.credit_photo_url ? <>
                                 <Tooltip title="Invoice uploaded"><Icon color="info" aria-label="Invoice uploaded">check_circle</Icon></Tooltip>
                                 <CreditPhotoLink url={credit.credit_photo_url} />
-                              </> : <Tooltip title="Upload invoice (less than 1 MB)">
+                              </> : <Tooltip title="Upload invoice (max 1 MB)">
                                 <IconButton size="small" color="info" aria-label="Upload credit invoice" onClick={() => setPhotoCredit(credit)}><Icon>upload_file</Icon></IconButton>
                               </Tooltip>}
                             </MDBox>

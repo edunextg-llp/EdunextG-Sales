@@ -3,25 +3,34 @@ import db from '../config/db.js';
 import DeliveryCollectionModel from '../models/deliveryCollectionModel.js';
 import StaffPortalModel from '../models/staffPortalModel.js';
 import { isCloudinaryConfigured, uploadBufferToCloudinary } from '../utils/cloudinary.js';
+import {
+    compressPhoto,
+    MAX_PHOTO_BYTES,
+    MOBILE_MAX_PHOTO_BYTES,
+    MOBILE_TARGET_PHOTO_BYTES,
+    TARGET_PHOTO_BYTES,
+} from '../utils/compressPhoto.js';
 
-const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 8 * 1024 * 1024, files: 1 } }).single('file');
-const webUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 1024 * 1024, files: 1 } }).single('file');
+export const PHOTO_TOO_LARGE = 'Photo must not be more than 1 MB.';
+export const MOBILE_PHOTO_TOO_LARGE = 'Photo must not be more than 3 MB.';
 
-export function receiveWebCreditPhoto(req, res, next) {
-    webUpload(req, res, (error) => {
-        if (error || req.file?.size >= 1024 * 1024) {
-            return res.status(400).json({ error: !error || error.code === 'LIMIT_FILE_SIZE'
-                ? 'Photo must be smaller than 1 MB.' : 'Unable to read photo upload.' });
+function receiver(maxBytes, targetBytes, tooLarge) {
+    const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: maxBytes, files: 1 } }).single('file');
+    return (req, res, next) => upload(req, res, (error) => {
+        if (error) {
+            return res.status(error.code === 'LIMIT_FILE_SIZE' ? 413 : 400)
+                .json({ error: error.code === 'LIMIT_FILE_SIZE' ? tooLarge : 'Unable to read photo upload.' });
         }
+        if (req.file && req.file.size > maxBytes) return res.status(413).json({ error: tooLarge });
+        req.photoLimits = { maxBytes, targetBytes, tooLarge };
         return next();
     });
 }
 
-export function receiveCreditPhoto(req, res, next) {
-    upload(req, res, (error) => error
-        ? res.status(400).json({ error: error.code === 'LIMIT_FILE_SIZE' ? 'Photo must be smaller than 8 MB.' : 'Unable to read photo upload.' })
-        : next());
-}
+/** Delivery and staff mobile apps: up to 3 MB, stored under 50 KB. */
+export const receiveCreditPhoto = receiver(MOBILE_MAX_PHOTO_BYTES, MOBILE_TARGET_PHOTO_BYTES, MOBILE_PHOTO_TOO_LARGE);
+/** Web portal: up to 1 MB, stored at about 70 KB. */
+export const receiveWebCreditPhoto = receiver(MAX_PHOTO_BYTES, TARGET_PHOTO_BYTES, PHOTO_TOO_LARGE);
 
 // Check invoice access before receiving bytes or contacting Cloudinary.
 export async function authorizeCreditPhoto(req, res, next) {
@@ -69,7 +78,11 @@ export async function saveCreditPhoto(req, res) {
     try {
         if (!isCreditPhoto(req.file?.buffer)) return res.status(400).json({ error: 'Select a JPG, PNG, or WebP photo.' });
         if (!isCloudinaryConfigured()) return res.status(503).json({ error: 'Photo storage is not configured. Please contact your administrator.' });
-        const result = await uploadBufferToCloudinary(req.file.buffer, {
+        const limits = req.photoLimits || { maxBytes: MAX_PHOTO_BYTES, targetBytes: TARGET_PHOTO_BYTES, tooLarge: PHOTO_TOO_LARGE };
+        // Shrunk to the route's target (web ~70 KB, mobile under 50 KB) before it is stored.
+        const photo = await compressPhoto(req.file.buffer, { targetBytes: limits.targetBytes });
+        if (photo.bytes > limits.maxBytes) return res.status(413).json({ error: limits.tooLarge });
+        const result = await uploadBufferToCloudinary(photo.buffer, {
             folder: 'credit-photos', resourceType: 'image', uploadOptions: { format: 'jpg' },
         });
         await db.execute('UPDATE staff_sales SET credit_photo_url = ? WHERE id = ?', [result.secure_url, req.creditPhotoSale.id]);

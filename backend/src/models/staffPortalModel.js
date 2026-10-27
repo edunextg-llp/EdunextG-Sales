@@ -1,5 +1,7 @@
 import db from '../config/db.js';
 import PaymentModel from './paymentModel.js';
+import StaffModel from './staffModel.js';
+import { normalizeAreaName } from '../migrations/migrateAreas.js';
 
 /**
  * Data access for the Company Staff mobile portal.
@@ -386,6 +388,63 @@ class StaffPortalModel {
             [googleLocation, googleLocation, outletId, staffId]
         );
         return result.affectedRows > 0 ? StaffPortalModel.getOutlet(staffId, outletId) : null;
+    }
+
+    /**
+     * Adds a new outlet (counter) to this staff member's own outlet list.
+     * The area keeps the spelling already used on the staff member's outlets when it
+     * matches case-insensitively; otherwise it is stored in the normalised (upper-case) form.
+     * Returns null when the ERP ID is already used by any outlet.
+     */
+    static async createOutlet(staffId, outlet) {
+        const connection = await db.getConnection();
+        try {
+            await connection.beginTransaction();
+            const [duplicates] = await connection.execute(
+                'SELECT id FROM staff_counters WHERE LOWER(TRIM(outlet_erp_id)) = LOWER(TRIM(?)) LIMIT 1 FOR UPDATE',
+                [outlet.outletErpId]
+            );
+            if (duplicates.length) {
+                await connection.rollback();
+                return null;
+            }
+
+            const wanted = normalizeAreaName(outlet.areaName);
+            const [areaRows] = await connection.execute(
+                `SELECT DISTINCT location_name FROM staff_counters
+                 WHERE staff_id = ? AND location_name IS NOT NULL AND TRIM(location_name) <> ''`,
+                [staffId]
+            );
+            const existingArea = areaRows.map((row) => row.location_name).find((name) => normalizeAreaName(name) === wanted);
+            const areaName = existingArea || wanted;
+            await connection.execute(
+                'INSERT INTO areas (name) VALUES (?) ON DUPLICATE KEY UPDATE name = VALUES(name)',
+                [wanted]
+            );
+
+            const outletId = await StaffModel.addCounter(staffId, outlet.day, areaName, {
+                outletErpId: outlet.outletErpId,
+                outletName: outlet.outletName,
+                contactNumber: outlet.contactNumber,
+                whatsappNumber: outlet.whatsappNumber,
+                address: outlet.address,
+                googleLocation: outlet.googleLocation,
+                hasGst: outlet.hasGst,
+                gstNumber: outlet.gstNumber,
+            }, connection);
+            // The GPS captured at the outlet also seeds the delivery location, like a location update does.
+            await connection.execute(
+                'UPDATE staff_counters SET delivery_google_location = ? WHERE id = ?',
+                [outlet.googleLocation, outletId]
+            );
+            await connection.commit();
+            return StaffPortalModel.getOutlet(staffId, outletId);
+        } catch (error) {
+            await connection.rollback();
+            throw error;
+        } finally {
+            connection.release();
+        }
     }
 
     static async updateOutletContact(staffId, outletId, contactNumber) {
