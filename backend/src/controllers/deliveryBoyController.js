@@ -76,11 +76,13 @@ async function parseAssignedCompanyIds(companyId, companyIds) {
         return { error: 'Company is required' };
     }
 
-    const assignedCompanies = await CompanyModel.getAssignedToStaff();
-    const assignedCompanyIds = new Set(assignedCompanies.map(company => company.id));
-    const allCompaniesExist = parsedCompanyIds.every((id) => assignedCompanyIds.has(id));
-    if (!allCompaniesExist) {
-        return { error: 'Select a company assigned to staff' };
+    // The form lists every company, so accept any existing company
+    // (not only companies that already have marketing staff).
+    const companies = await CompanyModel.getAll();
+    const existingCompanyIds = new Set(companies.map((company) => Number(company.id)));
+    const unknownIds = parsedCompanyIds.filter((id) => !existingCompanyIds.has(id));
+    if (unknownIds.length) {
+        return { error: 'One of the selected companies no longer exists. Refresh the page and select again.' };
     }
 
     return { companyIds: parsedCompanyIds };
