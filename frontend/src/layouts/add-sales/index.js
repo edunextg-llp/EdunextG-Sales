@@ -64,6 +64,10 @@ const emptyPermissionDialog = {
   permissionNote: "",
   lineMapPatch: {},
   approvalRequired: false,
+  // true when the user's "7 days overdue" permission lets them add the sale with a reason.
+  selfApproval: false,
+  selfApproveDays: 13,
+  serverMessage: "",
   requests: [],
   sendingRequest: false,
 };
@@ -677,6 +681,9 @@ function AddSales() {
           submittedOutletIds,
           lineMapPatch,
           approvalRequired: err.approvalRequired ?? !isAdmin,
+          selfApproval: Boolean(err.selfApproval),
+          selfApproveDays: Number(err.selfApproveDays) || 13,
+          serverMessage: err.error || "",
           requests: err.requests || [],
         });
         return false;
@@ -2162,13 +2169,20 @@ function AddSales() {
         fullWidth
       >
         <DialogTitle>
-          {permissionDialog.approvalRequired ? "Admin Approval Required — Overdue Credit" : "Permission Required — Overdue Credit"}
+          {permissionDialog.selfApproval
+            ? "Reason Required — Overdue Credit (7 Days Permission)"
+            : permissionDialog.approvalRequired
+              ? "Admin Approval Required — Overdue Credit"
+              : "Permission Required — Overdue Credit"}
         </DialogTitle>
         <DialogContent dividers>
           <MDTypography variant="body2" color="text" mb={2}>
-            {permissionDialog.approvalRequired
-              ? "This ERP ID has credit overdue by more than 3 days. Send a request to admin. Once admin approves it, you can create the sales for this date."
-              : "This ERP ID has credit overdue by more than 3 days. Permission note is required to add a new sale for the same ERP ID. This permission will be stored in the database."}
+            {permissionDialog.selfApproval
+              ? `This ERP ID has credit overdue by ${permissionDialog.selfApproveDays} days or less. With your 7 days overdue permission you can add the sale by giving a reason — no admin approval needed. Admin will see the reason.`
+              : permissionDialog.approvalRequired
+                ? permissionDialog.serverMessage
+                  || "This ERP ID has credit overdue by more than 3 days. Send a request to admin. Once admin approves it, you can create the sales for this date."
+                : "This ERP ID has credit overdue by more than 3 days. Permission note is required to add a new sale for the same ERP ID. This permission will be stored in the database."}
           </MDTypography>
 
           {(permissionDialog.overdueOutlets || []).map((outlet) => {
@@ -2212,7 +2226,13 @@ function AddSales() {
           {(!permissionDialog.approvalRequired || needsNewRequest) && (
             <MDBox mt={1}>
               <MDInput
-                label={permissionDialog.approvalRequired ? "Reason for request *" : "Permission note *"}
+                label={
+                  permissionDialog.selfApproval
+                    ? "Reason for adding this sale *"
+                    : permissionDialog.approvalRequired
+                      ? "Reason for request *"
+                      : "Permission note *"
+                }
                 fullWidth
                 multiline
                 rows={2}
@@ -2276,7 +2296,7 @@ function AddSales() {
               onClick={handleGrantPermissionAndSave}
               disabled={submitting || !String(permissionDialog.permissionNote || "").trim()}
             >
-              {submitting ? "Saving..." : "Grant Permission & Save"}
+              {submitting ? "Saving..." : permissionDialog.selfApproval ? "Add Sales with Reason" : "Grant Permission & Save"}
             </MDButton>
           )}
         </DialogActions>

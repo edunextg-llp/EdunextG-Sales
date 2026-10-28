@@ -43,6 +43,56 @@ function InfoRow({ label, value }) {
   );
 }
 
+// Who did a journey step. Older entries (before tracking started) fall back to the
+// packer / delivery boy saved on the invoice, marked as "assigned".
+function journeyActor(entry, sale) {
+  if (entry.changed_by_name) {
+    return { name: entry.changed_by_name, role: entry.changed_by_role, recorded: true };
+  }
+  if (entry.status === "not_packing" && sale.created_by_name) {
+    return { name: sale.created_by_name, role: sale.created_by_role, recorded: true };
+  }
+  if (["packing", "packing_done"].includes(entry.status) && sale.packed_by_name) {
+    return { name: sale.packed_by_name, role: "Packing (assigned)", recorded: false };
+  }
+  if (["out_for_delivery", "delivered", "returned"].includes(entry.status) && sale.delivery_boy_name) {
+    return { name: sale.delivery_boy_name, role: "Delivery (assigned)", recorded: false };
+  }
+  return null;
+}
+
+function ActorCell({ actor }) {
+  if (!actor) {
+    return (
+      <MDTypography variant="caption" color="text">
+        Not recorded
+      </MDTypography>
+    );
+  }
+  return (
+    <MDBox lineHeight={1.2}>
+      <MDTypography variant="button" fontWeight={actor.recorded ? "medium" : "regular"} display="block">
+        {actor.name}
+      </MDTypography>
+      {actor.role && (
+        <MDTypography variant="caption" color="text" fontStyle={actor.recorded ? "normal" : "italic"}>
+          {actor.role}
+        </MDTypography>
+      )}
+    </MDBox>
+  );
+}
+
+const ACTION_LABELS = {
+  not_packing: "Added sale",
+  packing: "Started packing",
+  packing_done: "Packed",
+  out_for_delivery: "Sent for delivery",
+  delivered: "Delivered",
+  cancelled: "Cancelled",
+  returned: "Returned",
+};
+
 function InvoiceDetails({ details, embedded = false }) {
   const { sale, history, payments, cancellations, collections, takenBills, summary } = details;
   // Inside an outlet history row the cards sit on a tinted panel, so drop the shadow.
@@ -111,6 +161,42 @@ function InvoiceDetails({ details, embedded = false }) {
           {sale.reference_no && <InfoRow label="Reference No" value={sale.reference_no} />}
           {sale.reference_date && <InfoRow label="Reference Date" value={formatDate(sale.reference_date)} />}
           {sale.credit_days && <InfoRow label="Credit Days" value={sale.credit_days} />}
+          <InfoRow
+            label="Added By"
+            value={sale.created_by_name ? `${sale.created_by_name}${sale.created_by_role ? ` (${sale.created_by_role})` : ""}` : "Not recorded"}
+          />
+          {sale.credit_photo_url && (
+            <Grid item xs={12} sm={6} md={4}>
+              <MDTypography variant="caption" color="text" fontWeight="medium" display="block">
+                Credit Bill Photo
+              </MDTypography>
+              <MDTypography
+                variant="button"
+                fontWeight="regular"
+                component="a"
+                href={sale.credit_photo_url}
+                target="_blank"
+                rel="noopener noreferrer"
+                color="info"
+              >
+                View photo
+              </MDTypography>
+              <MDTypography variant="caption" color="text" display="block">
+                {sale.credit_photo_by_name
+                  ? `Uploaded by ${sale.credit_photo_by_name}${sale.credit_photo_by_role ? ` (${sale.credit_photo_by_role})` : ""}`
+                  : "Uploader not recorded"}
+                {sale.credit_photo_at ? ` · ${formatDateTime(sale.credit_photo_at)}` : ""}
+              </MDTypography>
+            </Grid>
+          )}
+          {sale.requisition_number && (
+            <InfoRow
+              label="From Requisition"
+              value={`${sale.requisition_number}${sale.requisition_raised_by ? ` · raised by ${sale.requisition_raised_by}` : ""}${
+                sale.requisition_approved_by ? ` · approved by ${sale.requisition_approved_by}` : ""
+              }`}
+            />
+          )}
         </Grid>
       </Card>
 
@@ -133,6 +219,7 @@ function InvoiceDetails({ details, embedded = false }) {
                 <TableRow>
                   <TableCell>Stage</TableCell>
                   <TableCell>Date & Time</TableCell>
+                  <TableCell>Done by</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
@@ -147,6 +234,12 @@ function InvoiceDetails({ details, embedded = false }) {
                       />
                     </TableCell>
                     <TableCell>{formatDateTime(entry.changed_at)}</TableCell>
+                    <TableCell>
+                      <MDTypography variant="caption" color="text" display="block">
+                        {ACTION_LABELS[entry.status] || ""}
+                      </MDTypography>
+                      <ActorCell actor={journeyActor(entry, sale)} />
+                    </TableCell>
                   </TableRow>
                 ))}
               </TableBody>
@@ -337,6 +430,8 @@ function InvoiceDetails({ details, embedded = false }) {
                   <TableCell>Qty to Cancel</TableCell>
                   <TableCell>Amount</TableCell>
                   <TableCell>Date</TableCell>
+                  <TableCell>Requested by</TableCell>
+                  <TableCell>Cancelled / Approved by</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
@@ -346,6 +441,16 @@ function InvoiceDetails({ details, embedded = false }) {
                     <TableCell>{formatCancelQtyDisplay(row)}</TableCell>
                     <TableCell>{formatCurrency(row.amount)}</TableCell>
                     <TableCell>{formatDateTime(row.created_at)}</TableCell>
+                    <TableCell>{row.requested_by_name || "—"}</TableCell>
+                    <TableCell>
+                      <ActorCell
+                        actor={
+                          row.approved_by_name
+                            ? { name: row.approved_by_name, role: row.cancelled_by_role, recorded: true }
+                            : null
+                        }
+                      />
+                    </TableCell>
                   </TableRow>
                 ))}
               </TableBody>

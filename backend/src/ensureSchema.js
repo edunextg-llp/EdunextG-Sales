@@ -48,8 +48,15 @@ export async function ensureSchema() {
         `);
 
         await tryQuery(connection, `ALTER TABLE staff_sales ADD COLUMN credit_photo_url VARCHAR(1024) NULL`, 'Credit invoice photo');
+        // Who uploaded the credit bill photo (web, delivery app or staff app) and when.
+        await tryQuery(connection, `ALTER TABLE staff_sales ADD COLUMN credit_photo_by_type VARCHAR(20) NULL`, 'credit photo uploaded by (type)');
+        await tryQuery(connection, `ALTER TABLE staff_sales ADD COLUMN credit_photo_by_id INT NULL`, 'credit photo uploaded by (id)');
+        await tryQuery(connection, `ALTER TABLE staff_sales ADD COLUMN credit_photo_at DATETIME NULL`, 'credit photo uploaded at');
 
         await tryQuery(connection, `ALTER TABLE staff_sales ADD COLUMN delivery_staff_id INT NULL`, 'Company staff delivery assignee');
+        // Who entered the sale (Add Sales page or invoicing an approved requisition).
+        await tryQuery(connection, `ALTER TABLE staff_sales ADD COLUMN created_by_type VARCHAR(20) NULL`, 'sale created by (type)');
+        await tryQuery(connection, `ALTER TABLE staff_sales ADD COLUMN created_by_id INT NULL`, 'sale created by (id)');
 
         // Session version for admins: bumped by "Logout from all devices"
         await tryQuery(
@@ -1101,6 +1108,7 @@ export async function ensureSchema() {
             'purchase requisition approval statuses'
         );
         await tryQuery(connection, `ALTER TABLE purchase_requisitions ADD COLUMN reviewed_by INT NULL`, 'reviewed_by on purchase requisitions');
+        await tryQuery(connection, `ALTER TABLE purchase_requisitions ADD COLUMN reviewed_by_type VARCHAR(20) NULL`, 'reviewer type on purchase requisitions');
         // Requisitions are created without a seller; strict SQL mode rejects the insert unless this is nullable.
         await tryQuery(connection, `ALTER TABLE purchase_requisitions MODIFY seller_id INT NULL`, 'nullable seller_id on purchase requisitions');
         await tryQuery(connection, `ALTER TABLE purchase_requisitions ADD COLUMN reviewed_at DATETIME NULL`, 'reviewed_at on purchase requisitions');
@@ -1512,6 +1520,9 @@ export async function ensureSchema() {
             );
         `);
 
+        await tryQuery(connection, 'ALTER TABLE staff_sale_status_history ADD COLUMN changed_by_type VARCHAR(20) NULL', 'who changed invoice status (type)');
+        await tryQuery(connection, 'ALTER TABLE staff_sale_status_history ADD COLUMN changed_by_id INT NULL', 'who changed invoice status (id)');
+
         await tryQuery(
             connection,
             `
@@ -1594,6 +1605,9 @@ export async function ensureSchema() {
         await tryQuery(connection, 'ALTER TABLE order_cancellations ADD COLUMN reason VARCHAR(255) NULL', 'order cancellation reason');
         await tryQuery(connection, 'ALTER TABLE order_cancellations ADD COLUMN remarks TEXT NULL', 'order cancellation remarks');
         await tryQuery(connection, 'ALTER TABLE order_cancellations ADD COLUMN product_qty DECIMAL(10, 2) NULL', 'order cancellation product qty');
+        await tryQuery(connection, 'ALTER TABLE order_cancellations ADD COLUMN cancelled_by_type VARCHAR(20) NULL', 'who cancelled items (type)');
+        await tryQuery(connection, 'ALTER TABLE order_cancellations ADD COLUMN cancelled_by_id INT NULL', 'who cancelled items (id)');
+        await tryQuery(connection, 'ALTER TABLE order_cancellations ADD COLUMN cancellation_request_id INT NULL', 'approved cancellation request');
 
         await connection.query(`
             CREATE TABLE IF NOT EXISTS order_cancellation_requests (
@@ -1922,6 +1936,8 @@ export async function ensureSchema() {
             );
         `);
         await tryQuery(connection, `ALTER TABLE overdue_sale_requests ADD COLUMN sales_payload LONGTEXT NULL AFTER sales_summary`, 'Overdue request invoice details');
+        // 1 = added by staff with the "7 days overdue" permission (reason given, no admin approval needed).
+        await tryQuery(connection, `ALTER TABLE overdue_sale_requests ADD COLUMN self_approved TINYINT(1) NOT NULL DEFAULT 0`, 'Overdue sales allowed by 7-day permission');
         console.log('overdue_sale_requests table verified');
 
         // Add Sales users can bill only today's bit (outlets whose route day is today's weekday).

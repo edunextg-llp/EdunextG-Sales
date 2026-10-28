@@ -35,6 +35,7 @@ const STATUS_OPTIONS = [
   { value: "approved", label: "Approved (not used yet)" },
   { value: "used", label: "Approved & sales created" },
   { value: "rejected", label: "Rejected" },
+  { value: "self_approved", label: "Staff added with reason (7-day permission)" },
   { value: "all", label: "All" },
 ];
 
@@ -124,6 +125,7 @@ function OverdueRequests() {
               <MDTypography variant="caption" color="text">
                 Requests to add sales for outlets with credit overdue by more than 3 days.
                 {counts.pending ? ` ${counts.pending} waiting for review.` : ""}
+                {counts.self_approved ? ` ${counts.self_approved} added by staff with the 7-day permission.` : ""}
               </MDTypography>
             </MDBox>
             <MDBox display="flex" gap={1} alignItems="center">
@@ -184,7 +186,9 @@ function OverdueRequests() {
                   </TableRow>
                 )}
                 {requests.map((request, index) => {
-                  const badge = STATUS_BADGE[request.status] || { label: request.status, color: "secondary" };
+                  const badge = Number(request.self_approved)
+                    ? { label: "7-day permission", color: "warning" }
+                    : STATUS_BADGE[request.status] || { label: request.status, color: "secondary" };
                   const expanded = expandedId === request.id;
                   return [
                     <TableRow key={request.id}>

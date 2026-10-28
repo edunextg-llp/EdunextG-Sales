@@ -1,7 +1,7 @@
 import DeliveryBoyModel from '../models/deliveryBoyModel.js';
 import StaffModel from '../models/staffModel.js';
 import DeliveryCollectionModel from '../models/deliveryCollectionModel.js';
-import { DMS_PERMISSION_KEYS, PERMISSION_KEYS } from '../utils/permissionKeys.js';
+import { DMS_PERMISSION_KEYS, PERMISSION_KEYS, PERMISSION_REQUIRES } from '../utils/permissionKeys.js';
 import CompanyModel from '../models/companyModel.js';
 import {
     validateRequiredText,
@@ -278,7 +278,10 @@ export const updatePermissionUser = async (req, res) => {
         if (!user) {
             return res.status(404).json({ error: 'Packaging Staff or Delivery Boy not found.' });
         }
-        const normalizedPermissions = [...new Set(permissions)];
+        // An option like "7 days overdue" is dropped when its page (Add Sales) is not granted.
+        const normalizedPermissions = [...new Set(permissions)].filter(
+            (permission) => !PERMISSION_REQUIRES[permission] || permissions.includes(PERMISSION_REQUIRES[permission])
+        );
         if (
             normalizedPermissions.some((permission) => DMS_PERMISSION_KEYS.includes(permission))
             && !normalizedPermissions.includes('dms')

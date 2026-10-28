@@ -3,6 +3,7 @@ import db from '../config/db.js';
 import DeliveryCollectionModel from '../models/deliveryCollectionModel.js';
 import StaffPortalModel from '../models/staffPortalModel.js';
 import { isCloudinaryConfigured, uploadBufferToCloudinary } from '../utils/cloudinary.js';
+import { actorNameSql, actorParams } from '../utils/requestContext.js';
 import {
     compressPhoto,
     MAX_PHOTO_BYTES,
@@ -51,7 +52,16 @@ export async function authorizeCreditPhoto(req, res, next) {
             allowed = req.user?.role === 'admin' || req.user?.permissions?.includes('update_payment') || req.user?.permissions?.includes('out_bill');
         }
         if (!allowed) return res.status(403).json({ error: 'You cannot update photos for this invoice.' });
-        const [rows] = await db.execute('SELECT id, invoice_number, packaging_status, credit_photo_url FROM staff_sales WHERE id = ?', [saleId]);
+        const uploadedBy = actorNameSql('ss', 'credit_photo_by');
+        const [rows] = await db.execute(
+            `SELECT ss.id, ss.invoice_number, ss.packaging_status, ss.credit_photo_url,
+                    DATE_FORMAT(ss.credit_photo_at, '%Y-%m-%d %H:%i:%s') AS credit_photo_at,
+                    ${uploadedBy.columns}
+             FROM staff_sales ss
+             ${uploadedBy.joins}
+             WHERE ss.id = ?`,
+            [saleId]
+        );
         if (!rows.length) return res.status(404).json({ error: 'Invoice not found.' });
         if (req.method !== 'GET' && rows[0].packaging_status !== 'delivered') {
             return res.status(400).json({ error: 'Credit photos can be added only after delivery.' });
@@ -64,7 +74,15 @@ export async function authorizeCreditPhoto(req, res, next) {
     }
 }
 
-export const getCreditPhoto = (req, res) => res.json({ url: req.creditPhotoSale.credit_photo_url || null });
+export const getCreditPhoto = (req, res) => {
+    const sale = req.creditPhotoSale;
+    return res.json({
+        url: sale.credit_photo_url || null,
+        uploadedBy: sale.credit_photo_url ? sale.credit_photo_by_name || null : null,
+        uploadedByRole: sale.credit_photo_url ? sale.credit_photo_by_role || null : null,
+        uploadedAt: sale.credit_photo_url ? sale.credit_photo_at || null : null,
+    });
+};
 
 export function isCreditPhoto(buffer) {
     return Buffer.isBuffer(buffer) && (
@@ -85,8 +103,24 @@ export async function saveCreditPhoto(req, res) {
         const result = await uploadBufferToCloudinary(photo.buffer, {
             folder: 'credit-photos', resourceType: 'image', uploadOptions: { format: 'jpg' },
         });
-        await db.execute('UPDATE staff_sales SET credit_photo_url = ? WHERE id = ?', [result.secure_url, req.creditPhotoSale.id]);
-        res.json({ url: result.secure_url });
+        await db.execute(
+            `UPDATE staff_sales
+             SET credit_photo_url = ?, credit_photo_by_type = ?, credit_photo_by_id = ?, credit_photo_at = NOW()
+             WHERE id = ?`,
+            [result.secure_url, ...actorParams(), req.creditPhotoSale.id]
+        );
+        const uploadedBy = actorNameSql('ss', 'credit_photo_by');
+        const [rows] = await db.execute(
+            `SELECT DATE_FORMAT(ss.credit_photo_at, '%Y-%m-%d %H:%i:%s') AS credit_photo_at, ${uploadedBy.columns}
+             FROM staff_sales ss ${uploadedBy.joins} WHERE ss.id = ?`,
+            [req.creditPhotoSale.id]
+        );
+        res.json({
+            url: result.secure_url,
+            uploadedBy: rows[0]?.credit_photo_by_name || null,
+            uploadedByRole: rows[0]?.credit_photo_by_role || null,
+            uploadedAt: rows[0]?.credit_photo_at || null,
+        });
     } catch (error) {
         console.error('Credit photo upload failed:', error);
         res.status(500).json({ error: 'Unable to save the photo. Please try again.' });

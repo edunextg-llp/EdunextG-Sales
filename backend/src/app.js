@@ -8,6 +8,7 @@ import chalanRoutes from './routes/chalanRoutes.js';
 import authRoutes from './routes/authRoutes.js';
 import auditRoutes from './routes/auditRoutes.js';
 import { auditStaffChanges } from './middlewares/auditMiddleware.js';
+import { requestContextMiddleware } from './utils/requestContext.js';
 import {
     enforceManagedUserApiScope,
     enforceStaffApiScope,
@@ -22,6 +23,9 @@ const app = express();
 app.use(cors());
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
+// After the body parsers (their stream callbacks would drop the context):
+// lets the data layer record who made each change (invoice journey, cancellations).
+app.use(requestContextMiddleware);
 
 // Routes
 app.use('/api/auth', authRoutes);

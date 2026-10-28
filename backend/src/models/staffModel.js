@@ -3,6 +3,7 @@ import { normalizeAreaName, normalizeHolidayDays } from '../migrations/migrateAr
 import { formatStickerNumber } from '../utils/stickerNumber.js';
 import { getCompanyBillPrefix, normalizeInvoiceNumber } from '../utils/invoiceNumber.js';
 import PhysicalStockModel from './physicalStockModel.js';
+import { actorNameSql, actorParams } from '../utils/requestContext.js';
 
 class StaffModel {
     static async isSaleInSuspense(saleId) {
@@ -67,8 +68,8 @@ class StaffModel {
                      delivery_boy_id = NULL, delivery_staff_id = NULL, vehicle_no = NULL, delivery_date = NULL WHERE id = ?`, [sale.id]
                 );
                 await connection.execute(
-                    `INSERT INTO staff_sale_status_history (sale_id, status, changed_at)
-                     VALUES (?, 'packing_done', NOW())`, [sale.id]
+                    `INSERT INTO staff_sale_status_history (sale_id, status, changed_at, changed_by_type, changed_by_id)
+                     VALUES (?, 'packing_done', NOW(), ?, ?)`, [sale.id, ...actorParams()]
                 );
                 movedIds.push(Number(sale.id));
             }
@@ -717,8 +718,9 @@ class StaffModel {
                     stickerNumber = await StaffModel.getNextStickerNumber(connection);
                     const [insertResult] = await connection.execute(
                         `INSERT INTO staff_sales
-                         (staff_id, outlet_id, sale_date, item_count, packed_item_count, invoice_number, price, sticker_number, payment_mode, delivery_boy_id, vehicle_no, paid_amount, balance_amount)
-                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?)`,
+                         (staff_id, outlet_id, sale_date, item_count, packed_item_count, invoice_number, price, sticker_number, payment_mode, delivery_boy_id, vehicle_no, paid_amount, balance_amount,
+                          created_by_type, created_by_id)
+                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?)`,
                         [
                             staffId,
                             item.outletId,
@@ -732,6 +734,7 @@ class StaffModel {
                             item.deliveryBoyId,
                             item.vehicleNo,
                             item.price,
+                            ...actorParams(),
                         ]
                     );
                     saleId = insertResult.insertId;
@@ -749,12 +752,12 @@ class StaffModel {
 
                 if (saleId) {
                     await connection.execute(
-                        `INSERT INTO staff_sale_status_history (sale_id, status, changed_at)
-                         SELECT ?, 'not_packing', NOW()
+                        `INSERT INTO staff_sale_status_history (sale_id, status, changed_at, changed_by_type, changed_by_id)
+                         SELECT ?, 'not_packing', NOW(), ?, ?
                          WHERE NOT EXISTS (
                              SELECT 1 FROM staff_sale_status_history WHERE sale_id = ?
                          )`,
-                        [saleId, saleId]
+                        [saleId, ...actorParams(), saleId]
                     );
                 }
 
@@ -1261,8 +1264,22 @@ class StaffModel {
     }
 
     static async getSaleDetailsById(saleId) {
+        const createdBy = actorNameSql('ss', 'created_by');
+        const reviewedBy = actorNameSql('pr', 'reviewed_by');
+        const photoBy = actorNameSql('ss', 'credit_photo_by');
         const [rows] = await db.execute(
             `SELECT ss.id,
+                    ${createdBy.columns},
+                    ss.credit_photo_url,
+                    DATE_FORMAT(ss.credit_photo_at, '%Y-%m-%d %H:%i:%s') AS credit_photo_at,
+                    ${photoBy.columns},
+                    pr.requisition_number,
+                    DATE_FORMAT(pr.created_at, '%Y-%m-%d %H:%i:%s') AS requisition_created_at,
+                    req_staff.name AS requisition_raised_by,
+                    DATE_FORMAT(pr.reviewed_at, '%Y-%m-%d %H:%i:%s') AS requisition_approved_at,
+                    -- Requisitions approved before reviewer types were saved were approved by an admin.
+                    COALESCE(reviewed_by_admin.username, reviewed_by_staff.name, reviewed_by_db.name,
+                             IF(pr.reviewed_by_type IS NULL, legacy_reviewer.username, NULL)) AS requisition_approved_by,
                     ss.staff_id, ss.outlet_id, ss.sale_date, ss.item_count, ss.packed_item_count,
                     ss.box_count, ss.packet_count, ss.price, ss.invoice_number,
                     ss.sticker_number, ss.packaging_status, ss.delivery_boy_id, ss.delivery_staff_id, ss.packed_by_id, ss.vehicle_no,
@@ -1281,6 +1298,12 @@ class StaffModel {
                     COALESCE(staff_company.company_names, c.name) AS company_name,
                     COALESCE(staff_company.company_ids, s.company_id) AS company_ids
              FROM staff_sales ss
+             ${createdBy.joins}
+             ${photoBy.joins}
+             LEFT JOIN purchase_requisitions pr ON pr.invoiced_sale_id = ss.id
+             LEFT JOIN staff req_staff ON req_staff.id = pr.staff_id
+             ${reviewedBy.joins}
+             LEFT JOIN admins legacy_reviewer ON pr.reviewed_by_type IS NULL AND legacy_reviewer.id = pr.reviewed_by
              LEFT JOIN staff_counters sc ON ss.outlet_id = sc.id
              LEFT JOIN staff s ON ss.staff_id = s.id
              LEFT JOIN staff outlet_staff ON outlet_staff.id = sc.staff_id
@@ -1489,15 +1512,15 @@ class StaffModel {
 
                     if (statusDate) {
                         await connection.execute(
-                            `INSERT INTO staff_sale_status_history (sale_id, status, changed_at)
-                             VALUES (?, 'cancelled', ?)`,
-                            [saleId, `${statusDate} 00:00:00`]
+                            `INSERT INTO staff_sale_status_history (sale_id, status, changed_at, changed_by_type, changed_by_id)
+                             VALUES (?, 'cancelled', ?, ?, ?)`,
+                            [saleId, `${statusDate} 00:00:00`, ...actorParams()]
                         );
                     } else {
                         await connection.execute(
-                            `INSERT INTO staff_sale_status_history (sale_id, status, changed_at)
-                             VALUES (?, 'cancelled', NOW())`,
-                            [saleId]
+                            `INSERT INTO staff_sale_status_history (sale_id, status, changed_at, changed_by_type, changed_by_id)
+                             VALUES (?, 'cancelled', NOW(), ?, ?)`,
+                            [saleId, ...actorParams()]
                         );
                     }
                 }
@@ -1554,15 +1577,15 @@ class StaffModel {
             if (currentStatus !== status) {
                 if (statusDate) {
                     await connection.execute(
-                        `INSERT INTO staff_sale_status_history (sale_id, status, changed_at)
-                         VALUES (?, ?, ?)`,
-                        [saleId, status, `${statusDate} 00:00:00`]
+                        `INSERT INTO staff_sale_status_history (sale_id, status, changed_at, changed_by_type, changed_by_id)
+                         VALUES (?, ?, ?, ?, ?)`,
+                        [saleId, status, `${statusDate} 00:00:00`, ...actorParams()]
                     );
                 } else {
                     await connection.execute(
-                        `INSERT INTO staff_sale_status_history (sale_id, status, changed_at)
-                         VALUES (?, ?, NOW())`,
-                        [saleId, status]
+                        `INSERT INTO staff_sale_status_history (sale_id, status, changed_at, changed_by_type, changed_by_id)
+                         VALUES (?, ?, NOW(), ?, ?)`,
+                        [saleId, status, ...actorParams()]
                     );
                 }
             }
@@ -1627,11 +1650,14 @@ class StaffModel {
             return null;
         }
 
+        const changedBy = actorNameSql('h', 'changed_by');
         const [history] = await db.execute(
-            `SELECT id, status, DATE_FORMAT(changed_at, '%Y-%m-%d %H:%i:%s') AS changed_at
-             FROM staff_sale_status_history
-             WHERE sale_id = ?
-             ORDER BY changed_at ASC, id ASC`,
+            `SELECT h.id, h.status, DATE_FORMAT(h.changed_at, '%Y-%m-%d %H:%i:%s') AS changed_at,
+                    ${changedBy.columns}
+             FROM staff_sale_status_history h
+             ${changedBy.joins}
+             WHERE h.sale_id = ?
+             ORDER BY h.changed_at ASC, h.id ASC`,
             [saleId]
         );
 

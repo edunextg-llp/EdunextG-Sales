@@ -2,6 +2,9 @@ import db from '../config/db.js';
 import StaffModel from './staffModel.js';
 
 export const OVERDUE_DAYS_LIMIT = 3;
+// Staff with the "7 days overdue" permission may bill an outlet whose oldest overdue credit
+// is this many days past due or less (4-13 days), by giving a reason. 14+ days needs admin approval.
+export const SELF_APPROVE_OVERDUE_DAYS = 13;
 
 const parseJson = (value, fallback) => {
     if (!value) return fallback;
@@ -124,7 +127,7 @@ const REQUEST_SELECT = `
            r.outlet_id, r.outlet_erp_id, r.outlet_name, r.max_overdue_days, r.overdue_details,
            r.sales_summary, r.sales_payload, r.request_note, r.requested_by_role, r.requested_by_id, r.requested_by_name,
            r.status, r.reviewed_by_admin_id, r.reviewed_by_name, r.review_note, r.reviewed_at,
-           r.used_at, r.created_at, r.updated_at,
+           r.used_at, r.created_at, r.updated_at, r.self_approved,
            COALESCE(
                (SELECT GROUP_CONCAT(c.name ORDER BY c.name SEPARATOR ', ')
                 FROM staff_companies sc INNER JOIN companies c ON c.id = sc.company_id
@@ -209,6 +212,8 @@ export default class OverdueSaleRequestModel {
         const conditions = [];
         if (status === 'open') {
             conditions.push("r.status IN ('pending', 'approved')");
+        } else if (status === 'self_approved') {
+            conditions.push('r.self_approved = 1');
         } else if (status && status !== 'all') {
             conditions.push('r.status = ?');
             params.push(status);
@@ -225,7 +230,8 @@ export default class OverdueSaleRequestModel {
         );
         const [[counts]] = await db.execute(
             `SELECT SUM(r.status = 'pending') AS pending, SUM(r.status = 'approved') AS approved,
-                    SUM(r.status = 'rejected') AS rejected, SUM(r.status = 'used') AS used
+                    SUM(r.status = 'rejected') AS rejected, SUM(r.status = 'used') AS used,
+                    SUM(r.self_approved = 1) AS self_approved
              FROM overdue_sale_requests r ${requestedBy ? 'WHERE r.requested_by_role = ? AND r.requested_by_id = ?' : ''}`,
             requestedBy ? [requestedBy.role, requestedBy.id] : []
         );
@@ -256,6 +262,28 @@ export default class OverdueSaleRequestModel {
             [staffId, saleDate, ...ids]
         );
         return rows.map(mapRequest);
+    }
+
+    // Sales added with the 7-day overdue permission: saved as already used, so admin sees them
+    // in the Overdue Requests list ("Staff approved") without having to act on them.
+    static async recordSelfApproved({ staffId, saleDate, outlet, note, salesPayload, requester }) {
+        const summary = salesPayload ? summarizeSales(salesPayload.sales || []) : null;
+        const [result] = await db.execute(
+            `INSERT INTO overdue_sale_requests (
+                staff_id, sale_date, outlet_id, outlet_erp_id, outlet_name, max_overdue_days,
+                overdue_details, sales_summary, sales_payload, request_note, requested_by_role, requested_by_id, requested_by_name,
+                status, reviewed_by_name, review_note, reviewed_at, used_at, self_approved
+             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'used', ?, ?, NOW(), NOW(), 1)`,
+            [
+                staffId, saleDate, outlet.outletId, outlet.outletErpId || '', outlet.outletName || null,
+                outlet.maxOverdueDays || 0, JSON.stringify(outlet.credits || []),
+                summary ? JSON.stringify(summary) : null, salesPayload ? JSON.stringify(salesPayload) : null, note,
+                requester.role, requester.id || null, requester.name || null,
+                `${requester.name || 'Staff'} (7-day overdue permission)`,
+                `Allowed without admin approval: overdue ${outlet.maxOverdueDays} day(s), within ${SELF_APPROVE_OVERDUE_DAYS} days.`,
+            ]
+        );
+        return result.insertId;
     }
 
     // Each approval can create sales once. Returns the ids that were actually claimed.

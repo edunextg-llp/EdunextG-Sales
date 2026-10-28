@@ -106,7 +106,7 @@ import PackagingRemarkModel from '../models/packagingRemarkModel.js';
 import DeliveryCollectionModel from '../models/deliveryCollectionModel.js';
 import ExpiryListModel from '../models/expiryListModel.js';
 import DamageListModel from '../models/damageListModel.js';
-import OverdueSaleRequestModel, { getOverdueOutlets, salesMatchApproval } from '../models/overdueSaleRequestModel.js';
+import OverdueSaleRequestModel, { cleanSaleForRequest, getOverdueOutlets, salesMatchApproval, SELF_APPROVE_OVERDUE_DAYS } from '../models/overdueSaleRequestModel.js';
 import SuspenseRequestModel from '../models/suspenseRequestModel.js';
 import { getRequester } from './overdueSaleRequestController.js';
 import OtherDaySaleRequestModel, { getOtherDayOutlets } from '../models/otherDaySaleRequestModel.js';
@@ -1674,6 +1674,13 @@ export const recordSales = async (req, res) => {
         let claimedRequestIds = [];
         let approvedRequests = [];
         let adminPermission = null;
+        // Outlets billed with the "7 days overdue" permission (reason given, no admin approval).
+        let selfApprovedOutlets = [];
+        let selfApproval = null;
+        const userPermissions = Array.isArray(req.user?.permissions) ? req.user.permissions : [];
+        const canSelfApproveOverdue = !isAdmin
+            && userPermissions.includes('add_sales')
+            && userPermissions.includes('overdue_7_days');
 
         if (overdueOutlets.length > 0) {
             if (isAdmin && permissionGranted) {
@@ -1698,22 +1705,67 @@ export const recordSales = async (req, res) => {
                 approvals.forEach((request) => {
                     if (!approvalByOutlet.has(Number(request.outlet_id))) approvalByOutlet.set(Number(request.outlet_id), request);
                 });
-                const missing = overdueOutlets.filter((outlet) => !approvalByOutlet.has(outlet.outletId));
+                let missing = overdueOutlets.filter((outlet) => !approvalByOutlet.has(outlet.outletId));
+
+                // 7-day permission: if every outlet still needing approval is overdue by
+                // SELF_APPROVE_OVERDUE_DAYS or less, the user can add the sale with a reason.
+                // Anything older still needs admin approval.
+                if (
+                    canSelfApproveOverdue
+                    && missing.length > 0
+                    && missing.every((outlet) => Number(outlet.maxOverdueDays) <= SELF_APPROVE_OVERDUE_DAYS)
+                ) {
+                    const reason = String(permissionNote || '').trim();
+                    if (!permissionGranted || !reason) {
+                        const requests = await OverdueSaleRequestModel.getLatestForSale({
+                            staffId: Number(id), saleDate: date, outletIds: overdueIds,
+                        });
+                        return res.status(409).json({
+                            code: 'OVERDUE_PERMISSION_REQUIRED',
+                            approvalRequired: false,
+                            selfApproval: true,
+                            selfApproveDays: SELF_APPROVE_OVERDUE_DAYS,
+                            error: `Credit is overdue by ${SELF_APPROVE_OVERDUE_DAYS} days or less. `
+                                + 'You have the 7 days overdue permission: give a reason to add the sales. Admin will see it.',
+                            overdueOutlets: missing,
+                            requests,
+                        });
+                    }
+                    if (reason.length > 1000) {
+                        return res.status(400).json({ error: 'Reason must be 1000 characters or less.' });
+                    }
+                    selfApprovedOutlets = missing;
+                    selfApproval = { note: reason, requester: await getRequester(req.user) };
+                    missing = [];
+                }
+
                 if (missing.length > 0) {
                     const requests = await OverdueSaleRequestModel.getLatestForSale({
                         staffId: Number(id), saleDate: date, outletIds: overdueIds,
                     });
+                    const beyondSelfLimit = canSelfApproveOverdue
+                        && missing.some((outlet) => Number(outlet.maxOverdueDays) > SELF_APPROVE_OVERDUE_DAYS);
                     return res.status(409).json({
                         code: 'OVERDUE_PERMISSION_REQUIRED',
                         approvalRequired: !isAdmin,
                         error: isAdmin
                             ? 'One or more outlets have credit overdue by more than 3 days. Permission is required to add sales.'
-                            : 'One or more outlets have credit overdue by more than 3 days. Send a request to admin and add the sales after it is approved.',
-                        overdueOutlets,
+                            : beyondSelfLimit
+                                ? `One or more outlets have credit overdue by ${SELF_APPROVE_OVERDUE_DAYS + 1} days or more. `
+                                    + 'Your overdue permission does not cover this. Send a request to admin for these outlets and add the sales after it is approved. '
+                                    + `Outlets overdue by ${SELF_APPROVE_OVERDUE_DAYS} days or less only need your reason.`
+                                : 'One or more outlets have credit overdue by more than 3 days. Send a request to admin and add the sales after it is approved.',
+                        // With the permission, only the outlets beyond the limit go to admin;
+                        // the rest are added with a reason on the next save.
+                        overdueOutlets: beyondSelfLimit
+                            ? missing.filter((outlet) => Number(outlet.maxOverdueDays) > SELF_APPROVE_OVERDUE_DAYS)
+                            : overdueOutlets,
                         requests,
                     });
                 }
-                approvedRequests = overdueOutlets.map((outlet) => approvalByOutlet.get(outlet.outletId));
+                approvedRequests = overdueOutlets
+                    .map((outlet) => approvalByOutlet.get(outlet.outletId))
+                    .filter(Boolean);
 
                 // The approval covers only the invoice(s) that were requested: same invoice no., amount, items.
                 const mismatched = approvedRequests.filter((request) => {
@@ -1770,6 +1822,39 @@ export const recordSales = async (req, res) => {
         try {
             for (const overdueOutlet of overdueOutlets) {
                 const request = approvedRequests.find((item) => Number(item.outlet_id) === overdueOutlet.outletId);
+                const selfApproved = selfApproval
+                    && selfApprovedOutlets.some((outlet) => outlet.outletId === overdueOutlet.outletId);
+                if (selfApproved) {
+                    const { requester, note } = selfApproval;
+                    // Shown to admin under Overdue Requests -> "Staff approved (7-day permission)".
+                    await OverdueSaleRequestModel.recordSelfApproved({
+                        staffId: Number(id),
+                        saleDate: date,
+                        outlet: overdueOutlet,
+                        note,
+                        salesPayload: {
+                            companyName: String(resolvedCompanyName || '').trim(),
+                            sales: sales
+                                .filter((sale) => Number(sale?.outletId) === overdueOutlet.outletId)
+                                .map(cleanSaleForRequest),
+                        },
+                        requester,
+                    });
+                    await StaffModel.createOverdueSalePermission({
+                        staffId: id,
+                        saleDate: date,
+                        outletId: overdueOutlet.outletId,
+                        outletErpId: overdueOutlet.outletErpId,
+                        outletName: overdueOutlet.outletName,
+                        maxOverdueDays: overdueOutlet.maxOverdueDays,
+                        overdueCreditIds: overdueOutlet.credits.map((credit) => credit.creditPaymentId),
+                        overdueDetails: overdueOutlet.credits,
+                        permissionNote: `7 days overdue permission (by ${requester.name}): ${note}`,
+                        permittedByAdminId: null,
+                        permittedByName: `${requester.name} (7-day permission)`,
+                    });
+                    continue;
+                }
                 if (!adminPermission && !request) continue;
                 await StaffModel.createOverdueSalePermission({
                     staffId: id,
@@ -4018,7 +4103,7 @@ export const updatePaymentMode = async (req, res) => {
 export const logOrderCancellation = async (req, res) => {
     try {
         const { saleId } = req.params;
-        const { outletName, invoiceNumber, productName, productErpId, saleItemId, productQty, productSize, amount, reason, remarks } = req.body;
+        const { outletName, invoiceNumber, productName, productErpId, saleItemId, productQty, productSize, amount, reason, remarks, cancellationRequestId } = req.body;
         const qtyValue = productQty ?? productSize;
 
         if (!outletName) {
@@ -4105,6 +4190,7 @@ export const logOrderCancellation = async (req, res) => {
                 amount: amountValidation.value,
                 reason: String(reason).trim().slice(0, 255),
                 remarks: String(remarks || '').trim().slice(0, 2000) || null,
+                cancellationRequestId: Number.isSafeInteger(Number(cancellationRequestId)) ? Number(cancellationRequestId) : null,
             }, connection);
 
             if (saleItem) {
@@ -4218,6 +4304,7 @@ export const reviewCancellationRequest = async (req, res) => {
                 outletName: request.outlet_name, invoiceNumber: request.invoice_number, productName: request.product_name,
                 productErpId: request.product_erp_id, saleItemId: request.sale_item_id, productQty: request.product_qty,
                 amount: request.amount, reason: request.reason, remarks: request.remarks,
+                cancellationRequestId: request.id,
             } }, response);
             if (!result || result.code >= 400) {
                 await db.execute('UPDATE order_cancellation_requests SET reviewed_at = NULL WHERE id = ? AND status = \'pending\'', [id]);

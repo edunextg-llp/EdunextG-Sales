@@ -1,4 +1,5 @@
 import db from '../config/db.js';
+import { currentActor } from '../utils/requestContext.js';
 
 class PurchaseRequisitionModel {
     static async create(data) {
@@ -157,9 +158,9 @@ class PurchaseRequisitionModel {
     static async updateStatus(id, status, adminId, note = null) {
         const [result] = await db.execute(
             `UPDATE purchase_requisitions
-             SET status = ?, reviewed_by = ?, reviewed_at = NOW(), review_note = ?
+             SET status = ?, reviewed_by = ?, reviewed_by_type = ?, reviewed_at = NOW(), review_note = ?
              WHERE id = ? AND status IN ('open', 'pending')`,
-            [status, adminId, note || null, id]
+            [status, adminId, currentActor().type, note || null, id]
         );
         return result.affectedRows ? PurchaseRequisitionModel.getById(id) : null;
     }

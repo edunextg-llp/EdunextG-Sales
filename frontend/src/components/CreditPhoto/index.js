@@ -11,6 +11,7 @@ CreditPhotoLink.propTypes = { url: PropTypes.string };
 
 export default function CreditPhoto({ api, saleId, disabled, onBusyChange, onPhotoReady, onUploaded, requiredForPayment = true }) {
   const [url, setUrl] = useState(null);
+  const [uploader, setUploader] = useState(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const endpoint = `${api}/staff/sales/${saleId}/credit-photo`;
@@ -19,7 +20,7 @@ export default function CreditPhoto({ api, saleId, disabled, onBusyChange, onPho
     fetch(endpoint).then(async (response) => {
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "Unable to load credit photo.");
-      if (active) { setUrl(data.url); onPhotoReady?.(data.url ? saleId : null); }
+      if (active) { setUrl(data.url); setUploader(data.url ? data : null); onPhotoReady?.(data.url ? saleId : null); }
     }).catch((err) => { if (active) setError(err.message); });
     return () => { active = false; onPhotoReady?.(null); };
   }, [endpoint, saleId, onPhotoReady]);
@@ -40,6 +41,7 @@ export default function CreditPhoto({ api, saleId, disabled, onBusyChange, onPho
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "Photo upload failed.");
       setUrl(data.url);
+      setUploader(data);
       onUploaded?.(data.url);
       onPhotoReady?.(data.url ? saleId : null);
     } catch (err) { setError(err.message); }
@@ -53,7 +55,13 @@ export default function CreditPhoto({ api, saleId, disabled, onBusyChange, onPho
       <input hidden type="file" accept="image/jpeg,image/png,image/webp" disabled={disabled || busy} onChange={upload} />
     </Button>
     {!url && requiredForPayment && <Alert severity="info" sx={{ mt: 1 }}>Credit photo is required before submitting Credit.</Alert>}
-    {url && !busy && <Alert severity="success" sx={{ mt: 1 }}>Photo saved to this invoice.</Alert>}
+    {url && !busy && (
+      <Alert severity="success" sx={{ mt: 1 }}>
+        Photo saved to this invoice
+        {uploader?.uploadedBy ? ` · by ${uploader.uploadedBy}${uploader.uploadedByRole ? ` (${uploader.uploadedByRole})` : ""}` : ""}
+        {uploader?.uploadedAt ? ` · ${uploader.uploadedAt.slice(8, 10)}-${uploader.uploadedAt.slice(5, 7)}-${uploader.uploadedAt.slice(0, 4)} ${uploader.uploadedAt.slice(11, 16)}` : ""}
+      </Alert>
+    )}
     {error && <Alert severity="error" sx={{ mt: 1 }}>{error}</Alert>}
   </Box>;
 }

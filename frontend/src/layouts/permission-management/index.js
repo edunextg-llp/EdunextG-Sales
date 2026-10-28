@@ -49,7 +49,15 @@ const PERMISSIONS = [
   ["chalan_delivery", "Chalan Delivery", "Assign and deliver Chalan sales."],
   ["chalan_delivered", "Chalan Delivered", "View and manage delivered Chalan sales."],
   ["chalan_return", "Chalan Return", "Process and manage Chalan returns."],
+  [
+    "overdue_7_days",
+    "7 Days Overdue Permission",
+    "Add sales for an outlet whose credit is overdue by up to 13 days by giving a reason (admin can see it). 14 days or more still needs admin approval.",
+  ],
 ];
+// Extra options shown under a page, only while that page is switched on.
+const SUB_OPTIONS = { add_sales: ["overdue_7_days"] };
+const SUB_OPTION_KEYS = Object.values(SUB_OPTIONS).flat();
 const PERMISSION_FOLDERS = [
   { key: "dms", label: "DMS", icon: "inventory_2", description: "Sellers, items, stock, expiry and purchases.", children: ["add_seller", "add_item", "item_list", "purchase_history", "physical_stock", "current_stock", "expiry_items", "expiry_list", "damage_list", "purchase"] },
   { key: "delivery_manager", label: "Delivery Manager", icon: "local_shipping", description: "Packaging, delivery, report and delivered orders.", children: ["packaging", "delivery", "delivery_report", "delivered"] },
@@ -62,7 +70,7 @@ const GENERAL_GROUP = {
   label: "General Pages",
   icon: "dashboard",
   description: "Individual pages outside a section.",
-  children: PERMISSIONS.filter(([key]) => !FOLDER_KEYS.includes(key)).map(([key]) => key),
+  children: PERMISSIONS.filter(([key]) => !FOLDER_KEYS.includes(key) && !SUB_OPTION_KEYS.includes(key)).map(([key]) => key),
 };
 const DISPLAY_ONLY_FOLDER_KEYS = ["delivery_manager", "staff_management", "chalan"];
 // The pages a user can actually be granted (folder keys are just groupings).
@@ -137,7 +145,8 @@ function PermissionManagement() {
   const togglePermission = (key) => setPermissions((current) => {
     const folder = PERMISSION_FOLDERS.find((item) => item.children.includes(key));
     if (current.includes(key)) {
-      const next = current.filter((item) => item !== key);
+      // Switching a page off also removes its extra options (e.g. Add Sales -> 7 days overdue).
+      const next = current.filter((item) => item !== key && !(SUB_OPTIONS[key] || []).includes(item));
       if (folder && !folder.children.some((permission) => next.includes(permission))) {
         return next.filter((item) => item !== folder.key);
       }
@@ -149,8 +158,9 @@ function PermissionManagement() {
   const toggleGroup = (group) => setPermissions((current) => {
     const groupKeys = group.key === "general" ? group.children : [group.key, ...group.children];
     const allSelected = group.children.every((key) => current.includes(key));
+    const removed = [...groupKeys, ...groupKeys.flatMap((key) => SUB_OPTIONS[key] || [])];
     return allSelected
-      ? current.filter((key) => !groupKeys.includes(key))
+      ? current.filter((key) => !removed.includes(key))
       : [...new Set([...current, ...groupKeys])];
   });
 
@@ -163,7 +173,9 @@ function PermissionManagement() {
     setConfirmSaveOpen(false);
     // Folder keys are UI grouping keys. The child menu permissions are what the
     // server persists and enforces, so older assigned permissions remain valid.
-    const savedPermissions = permissions.filter((key) => !DISPLAY_ONLY_FOLDER_KEYS.includes(key));
+    const savedPermissions = permissions.filter((key) => !DISPLAY_ONLY_FOLDER_KEYS.includes(key)
+      && !SUB_OPTION_KEYS.some((option) => option === key && !Object.entries(SUB_OPTIONS)
+        .some(([page, options]) => options.includes(option) && permissions.includes(page))));
     setSaving(true);
     setError("");
     try {
@@ -186,7 +198,9 @@ function PermissionManagement() {
   };
 
   const groups = [GENERAL_GROUP, ...PERMISSION_FOLDERS];
-  const grantedLabels = PAGE_KEYS.filter((key) => permissions.includes(key)).map((key) => PERMISSION_MAP[key].label);
+  const grantedLabels = [...PAGE_KEYS, ...SUB_OPTION_KEYS]
+    .filter((key) => permissions.includes(key))
+    .map((key) => PERMISSION_MAP[key].label);
 
   const renderGroup = (group) => {
     const selectedCount = group.children.filter((key) => permissions.includes(key)).length;
@@ -223,6 +237,20 @@ function PermissionManagement() {
                 <Switch checked={permissions.includes(key)} onChange={() => togglePermission(key)}
                   inputProps={{ "aria-label": PERMISSION_MAP[key].label }} />
               </MDBox>
+              {permissions.includes(key) && (SUB_OPTIONS[key] || []).map((option) => (
+                <MDBox key={option} component="label" display="flex" alignItems="center" gap={1} ml={3} mr={1} mb={1} px={1.25} py={0.75}
+                  sx={{ cursor: "pointer", borderRadius: "8px", borderLeft: "3px solid #f59e0b", backgroundColor: "#fffbeb" }}>
+                  <Icon fontSize="small" sx={{ color: "#d97706" }}>schedule</Icon>
+                  <MDBox flexGrow={1} minWidth={0}>
+                    <MDTypography variant="button" fontWeight="medium" display="block">{PERMISSION_MAP[option].label}</MDTypography>
+                    <MDTypography variant="caption" color="text" display="block" sx={{ lineHeight: 1.35 }}>
+                      {PERMISSION_MAP[option].description}
+                    </MDTypography>
+                  </MDBox>
+                  <Switch checked={permissions.includes(option)} onChange={() => togglePermission(option)}
+                    inputProps={{ "aria-label": PERMISSION_MAP[option].label }} />
+                </MDBox>
+              ))}
             </MDBox>
           ))}
         </MDBox>

@@ -1,5 +1,6 @@
 import { resolveGoogleMapsCoordinates } from '../utils/googleMapsLocation.js';
 import db from '../config/db.js';
+import { actorParams } from '../utils/requestContext.js';
 import bcrypt from 'bcryptjs';
 import { PERMISSION_KEYS, permissionColumnsSql, permissionsFromRow } from '../utils/permissionKeys.js';
 import {
@@ -449,9 +450,9 @@ class DeliveryBoyModel {
             if (status === 'cancelled') {
                 if (sale.packaging_status !== 'cancelled') {
                     await connection.execute(
-                        `INSERT INTO staff_sale_status_history (sale_id, status, changed_at)
-                         VALUES (?, 'cancelled', NOW())`,
-                        [saleId]
+                        `INSERT INTO staff_sale_status_history (sale_id, status, changed_at, changed_by_type, changed_by_id)
+                         VALUES (?, 'cancelled', NOW(), ?, ?)`,
+                        [saleId, ...actorParams()]
                     );
                 }
 
@@ -484,9 +485,9 @@ class DeliveryBoyModel {
 
                 if (sale.packaging_status !== status) {
                     await connection.execute(
-                        `INSERT INTO staff_sale_status_history (sale_id, status, changed_at)
-                         VALUES (?, ?, NOW())`,
-                        [saleId, status]
+                        `INSERT INTO staff_sale_status_history (sale_id, status, changed_at, changed_by_type, changed_by_id)
+                         VALUES (?, ?, NOW(), ?, ?)`,
+                        [saleId, status, ...actorParams()]
                     );
                 }
             }
