@@ -221,6 +221,9 @@ export const enforceManagedUserApiScope = (req, res, next) => {
         allowed = permissions.has('update_payment');
     } else if (/^\/sales\/\d+\/items$/.test(path)) {
         allowed = permissions.has('update_payment') || (isGet && permissions.has('delivery_report'));
+    } else if (/^\/purchase-requisitions\/target-requests(?:\/\d+)?$/.test(path)) {
+        // Below Target requests: approvers send them; Below Target approvers review them.
+        allowed = permissions.has('requisition_approval') || permissions.has('requisition_target_approval');
     } else if (/^\/purchase-requisitions\/[^/]+\/status$/.test(path)) {
         // Approve / cancel button on Requisition Approvals.
         allowed = method === 'PUT' && permissions.has('requisition_approval');
@@ -228,7 +231,9 @@ export const enforceManagedUserApiScope = (req, res, next) => {
         allowed = (method === 'GET' && (permissions.has('add_sales') || permissions.has('requisition_approval')))
             || (method === 'PUT' && permissions.has('requisition_approval'));
     } else if (path === '/purchase-requisitions') {
-        allowed = permissions.has('requisition_approval');
+        // Below Target approvers read a day's requisitions from their approvals page.
+        allowed = permissions.has('requisition_approval')
+            || (isGet && permissions.has('requisition_target_approval'));
     } else if (/^\/sales\/\d+$/.test(path)) {
         allowed = permissions.has('add_sales');
     }

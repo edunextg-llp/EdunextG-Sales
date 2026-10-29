@@ -154,7 +154,7 @@ function AddCompany() {
 
   const [editModalOpen, setEditModalOpen] = useState(false);
   const [editingId, setEditingId] = useState(null);
-  const [editForm, setEditForm] = useState({ type: "", name: "", about: "", code: "", emails: [] });
+  const [editForm, setEditForm] = useState({ type: "", name: "", about: "", code: "", emails: [], dailyRequisitionTarget: "" });
   const [editError, setEditError] = useState("");
   const [savingEdit, setSavingEdit] = useState(false);
 
@@ -212,6 +212,9 @@ function AddCompany() {
       about: company.about || "",
       code: company.code || "",
       emails: Array.isArray(company.emails) ? company.emails : [],
+      dailyRequisitionTarget: company.daily_requisition_target != null && Number(company.daily_requisition_target) > 0
+        ? String(Number(company.daily_requisition_target))
+        : "",
     });
     setEditError("");
     setEditModalOpen(true);
@@ -220,7 +223,7 @@ function AddCompany() {
   const closeEditModal = () => {
     setEditModalOpen(false);
     setEditingId(null);
-    setEditForm({ type: "", name: "", about: "", code: "", emails: [] });
+    setEditForm({ type: "", name: "", about: "", code: "", emails: [], dailyRequisitionTarget: "" });
     setEditError("");
   };
 
@@ -279,6 +282,7 @@ function AddCompany() {
           name: editForm.name.trim(),
           about: editForm.about.trim(),
           emails: editForm.emails,
+          dailyRequisitionTarget: String(editForm.dailyRequisitionTarget || "").trim(),
         }),
       });
       const data = await res.json();
@@ -536,6 +540,7 @@ function AddCompany() {
                           <TableCell sx={{ ...tableHeadSx, width: "14%" }}>Type</TableCell>
                           <TableCell sx={{ ...tableHeadSx, width: "20%" }}>Company Name</TableCell>
                           <TableCell sx={{ ...tableHeadSx, width: "22%" }}>Email IDs</TableCell>
+                          <TableCell sx={{ ...tableHeadSx, width: "10%" }}>Daily Target</TableCell>
                           <TableCell sx={{ ...tableHeadSx }}>About</TableCell>
                           <TableCell sx={{ ...tableHeadSx, width: "12%", textAlign: "center" }}>Action</TableCell>
                         </TableRow>
@@ -560,6 +565,11 @@ function AddCompany() {
                             </TableCell>
                             <TableCell sx={{ ...tableBodySx, borderBottom: "1px solid #e5e7eb", maxWidth: 220 }}>
                               <EmailList emails={company.emails} />
+                            </TableCell>
+                            <TableCell sx={{ ...tableBodySx, borderBottom: "1px solid #e5e7eb", fontWeight: 600 }}>
+                              {Number(company.daily_requisition_target) > 0
+                                ? `₹${Number(company.daily_requisition_target).toLocaleString("en-IN")}`
+                                : <span style={{ fontStyle: "italic", color: "#d1d5db" }}>—</span>}
                             </TableCell>
                             <TableCell
                               sx={{
@@ -654,6 +664,21 @@ function AddCompany() {
                   value={editForm.name}
                   onChange={(e) => handleEditChange("name", e.target.value)}
                 />
+              </Grid>
+
+              <Grid item xs={12} sm={6}>
+                <MDInput
+                  label="Daily Requisition Target (₹, optional)"
+                  type="number"
+                  fullWidth
+                  value={editForm.dailyRequisitionTarget}
+                  onChange={(e) => handleEditChange("dailyRequisitionTarget", e.target.value)}
+                  inputProps={{ min: 0, step: "0.01" }}
+                />
+                <MDTypography variant="caption" color="text" display="block" mt={0.5}>
+                  Each staff member&apos;s requisitions for a day must reach this value. Below it, the day
+                  needs Below Target approval. Leave blank for no target.
+                </MDTypography>
               </Grid>
 
               <Grid item xs={12}>

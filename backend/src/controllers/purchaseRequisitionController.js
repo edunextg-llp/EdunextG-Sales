@@ -5,6 +5,14 @@ import PurchaseRequisitionModel from '../models/purchaseRequisitionModel.js';
 import StaffModel from '../models/staffModel.js';
 import { buildCurrentStockDiff } from './currentStockController.js';
 
+// Today's date in India (the business day), as YYYY-MM-DD.
+const indiaToday = () => new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit',
+}).format(new Date());
+
+const canApproveBelowTarget = (user) => user?.role === 'admin'
+    || user?.permissions?.includes('requisition_target_approval');
+
 export const create = async (req, res) => {
     try {
         const companyId = Number(req.body?.companyId);
@@ -97,7 +105,11 @@ export const list = async (req, res) => {
                 companyId,
                 status: req.query.status ? String(req.query.status).trim() : null,
             });
-        return res.json({ requisitions });
+        // Who approved / rejected is shown to Admin only.
+        const visible = req.user?.role === 'admin'
+            ? requisitions
+            : requisitions.map(({ reviewed_by_name, reviewed_by_login_id, reviewed_by, reviewed_by_type, ...row }) => row);
+        return res.json({ requisitions: visible });
     } catch (error) {
         return res.status(500).json({ error: 'Internal server error' });
     }
@@ -149,6 +161,29 @@ export const review = async (req, res) => {
         if (!['approved', 'cancelled'].includes(status)) {
             return res.status(400).json({ error: 'Status must be approved or cancelled.' });
         }
+        // Companies with a daily target (e.g. SIL Rs. 11,250): if the staff member's
+        // requisitions for that day add up to less, only Admin or a user with the
+        // "Below Target Approval" permission may approve. Cancelling stays open.
+        if (status === 'approved') {
+            const current = await PurchaseRequisitionModel.getById(Number(req.params.id));
+            const target = Number(current?.company_daily_target) || 0;
+            if (current && target > 0) {
+                const day = await PurchaseRequisitionModel.getDayTotal(
+                    current.staff_id, current.company_id, current.requisition_date
+                );
+                if (day.total < target && canApproveBelowTarget(req.user)) {
+                    req.belowTargetDay = current;
+                }
+                if (day.total < target && !canApproveBelowTarget(req.user)) {
+                    return res.status(403).json({
+                        error: `${current.staff_name}'s ${current.company_name} requisitions on ${current.requisition_date} total Rs. ${day.total.toFixed(2)}, below the daily target of Rs. ${target.toFixed(2)}. This day needs Below Target approval.`,
+                        code: 'BELOW_TARGET',
+                        target,
+                        achieved: day.total,
+                    });
+                }
+            }
+        }
         const requisition = await PurchaseRequisitionModel.updateStatus(
             Number(req.params.id),
             status,
@@ -158,12 +193,117 @@ export const review = async (req, res) => {
         if (!requisition) {
             return res.status(409).json({ error: 'This requisition was already reviewed or was not found.' });
         }
+        if (req.belowTargetDay) {
+            await PurchaseRequisitionModel.resolveTargetRequestForDay(
+                req.belowTargetDay.staff_id, req.belowTargetDay.company_id, req.belowTargetDay.requisition_date
+            ).catch((error) => console.error('Could not close below-target request:', error));
+        }
         return res.json({
             message: status === 'approved' ? 'Requisition approved.' : 'Requisition cancelled.',
             requisition,
         });
     } catch (error) {
         return res.status(500).json({ error: error.message || 'Internal server error' });
+    }
+};
+
+// Daily target progress. Staff (web or app) always get their own; approvers can pass ?staffId=.
+export const getTargetProgress = async (req, res) => {
+    try {
+        const staffId = req.user?.role === 'staff' ? Number(req.user.staffId) : Number(req.query.staffId);
+        if (!Number.isInteger(staffId) || staffId <= 0) {
+            return res.status(400).json({ error: 'Staff is required.' });
+        }
+        const requestedDate = String(req.query.date || '').trim();
+        const date = /^\d{4}-\d{2}-\d{2}$/.test(requestedDate) ? requestedDate : indiaToday();
+        const targets = await PurchaseRequisitionModel.getTargetProgress(staffId, date);
+        return res.json({ date, targets });
+    } catch (error) {
+        console.error('Error loading requisition target progress:', error);
+        return res.status(500).json({ error: 'Internal server error' });
+    }
+};
+
+const canReviewRequisitions = (user) => user?.role === 'admin'
+    || user?.permissions?.includes('requisition_approval');
+
+// Who did what (requester / reviewer names and IDs) is shown to Admin only.
+const hideActors = (row) => ({
+    ...row,
+    requested_by_type: null, requested_by_id: null, requested_by_name: null, requested_by_login_id: null,
+    reviewed_by_type: null, reviewed_by_id: null, reviewed_by_name: null, reviewed_by_login_id: null,
+});
+
+export const listTargetRequests = async (req, res) => {
+    try {
+        if (!canReviewRequisitions(req.user) && !canApproveBelowTarget(req.user)) {
+            return res.status(403).json({ error: 'You do not have permission to view requisition requests.' });
+        }
+        const status = ['pending', 'approved', 'rejected'].includes(req.query.status) ? req.query.status : null;
+        const rows = await PurchaseRequisitionModel.listTargetRequests({ status });
+        return res.json({ requests: req.user?.role === 'admin' ? rows : rows.map(hideActors) });
+    } catch (error) {
+        console.error('Error listing below-target requests:', error);
+        return res.status(500).json({ error: 'Internal server error' });
+    }
+};
+
+// A Requisition Approval user sends a below-target day for Below Target approval.
+export const createTargetRequest = async (req, res) => {
+    try {
+        if (!canReviewRequisitions(req.user)) {
+            return res.status(403).json({ error: 'You do not have permission to send approval requests.' });
+        }
+        const staffId = Number(req.body?.staffId);
+        const companyId = Number(req.body?.companyId);
+        const date = String(req.body?.date || '').trim();
+        if (!Number.isInteger(staffId) || staffId <= 0 || !Number.isInteger(companyId) || companyId <= 0
+            || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+            return res.status(400).json({ error: 'Staff, company and date are required.' });
+        }
+        const company = await CompanyModel.getById(companyId);
+        const target = Number(company?.daily_requisition_target) || 0;
+        const day = await PurchaseRequisitionModel.getDayTotal(staffId, companyId, date);
+        if (!target || day.total >= target) {
+            return res.status(400).json({ error: 'This day is not below its daily target, so it can be approved normally.' });
+        }
+        if (await PurchaseRequisitionModel.getPendingTargetRequest(staffId, companyId, date)) {
+            return res.status(409).json({ error: 'An approval request for this day is already waiting.' });
+        }
+        const id = await PurchaseRequisitionModel.createTargetRequest({
+            staffId, companyId, date, target, achieved: day.total,
+            note: String(req.body?.note || '').trim().slice(0, 1000),
+        });
+        return res.status(201).json({ message: 'Approval request sent.', id });
+    } catch (error) {
+        console.error('Error creating below-target request:', error);
+        return res.status(500).json({ error: 'Internal server error' });
+    }
+};
+
+// Admin / Below Target Approval user approves (approves all pending requisitions of that day) or rejects.
+export const reviewTargetRequest = async (req, res) => {
+    try {
+        if (!canApproveBelowTarget(req.user)) {
+            return res.status(403).json({ error: 'Only Admin or a Below Target Approval user can review this request.' });
+        }
+        const status = String(req.body?.status || '').toLowerCase();
+        if (!['approved', 'rejected'].includes(status)) {
+            return res.status(400).json({ error: 'Status must be approved or rejected.' });
+        }
+        const result = await PurchaseRequisitionModel.reviewTargetRequest(
+            Number(req.params.id), status, Number(req.user.id), String(req.body?.note || '').trim()
+        );
+        if (!result) return res.status(409).json({ error: 'This request was already reviewed or was not found.' });
+        return res.json({
+            message: status === 'approved'
+                ? `Request approved. ${result.approvedCount} pending requisition(s) approved.`
+                : 'Request rejected.',
+            ...result,
+        });
+    } catch (error) {
+        console.error('Error reviewing below-target request:', error);
+        return res.status(500).json({ error: 'Internal server error' });
     }
 };
 

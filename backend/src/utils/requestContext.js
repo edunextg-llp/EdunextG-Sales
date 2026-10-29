@@ -1,4 +1,5 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
+import db from '../config/db.js';
 
 /**
  * Remembers the current HTTP request for the duration of its handling, so data-layer code
@@ -30,6 +31,37 @@ export function currentActor() {
     if (Number.isInteger(req.deliveryBoyId)) return { type: 'delivery_boy', id: req.deliveryBoyId };
     if (Number.isInteger(req.staffId)) return { type: 'staff', id: req.staffId };
     return { type: null, id: null };
+}
+
+/**
+ * Who is making the current request, with a display name and login ID, for the
+ * updated_by_* columns on payments:
+ *  - admin        -> name "Admin", code = admin username
+ *  - staff        -> staff name, code = staff login ID
+ *  - delivery     -> delivery / packaging staff name, code = delivery login ID
+ * Fields are null when there is no logged-in user (scripts, schedulers).
+ */
+export async function resolveCurrentActor() {
+    const req = storage.getStore()?.req;
+    const user = req?.user;
+    const actor = currentActor();
+    const result = { type: actor.type, id: actor.id, role: user?.role || actor.type, name: null, employeeCode: user?.loginId || null };
+    if (!actor.type) return result;
+    try {
+        if (actor.type === 'admin') {
+            const [rows] = await db.execute('SELECT username FROM admins WHERE id = ? LIMIT 1', [actor.id]);
+            return { ...result, role: 'admin', name: 'Admin', employeeCode: rows[0]?.username || result.employeeCode };
+        }
+        if (actor.type === 'staff') {
+            const [rows] = await db.execute('SELECT name, login_id FROM staff WHERE id = ? LIMIT 1', [actor.id]);
+            return { ...result, name: rows[0]?.name || user?.username || null, employeeCode: rows[0]?.login_id || result.employeeCode };
+        }
+        const [rows] = await db.execute('SELECT name, delivery_login_id FROM delivery_boys WHERE id = ? LIMIT 1', [actor.id]);
+        return { ...result, name: rows[0]?.name || user?.username || null, employeeCode: rows[0]?.delivery_login_id || result.employeeCode };
+    } catch (error) {
+        console.error('Could not resolve the current user:', error);
+        return result;
+    }
 }
 
 /** [type, id] for SQL parameters. */

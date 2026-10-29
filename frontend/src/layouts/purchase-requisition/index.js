@@ -17,6 +17,8 @@ import {
 } from "utils/printPurchaseRequisitionPdf";
 import { useAuth } from "context/AuthContext";
 import { COMPANY_TYPES } from "utils/companyTypes";
+import ApprovalQueue from "./ApprovalQueue";
+import TargetProgress from "./TargetProgress";
 
 const API = (process.env.REACT_APP_API_URL);
 const auth = () => {
@@ -84,6 +86,12 @@ function PurchaseRequisition() {
   const isStaff = user?.role === "staff";
   const canApproveRequisitions = user?.role === "admin"
     || user?.permissions?.includes("requisition_approval");
+  // Approving a day below the company's daily target (e.g. SIL Rs. 11,250).
+  const canApproveBelowTarget = user?.role === "admin"
+    || user?.permissions?.includes("requisition_target_approval");
+  const [targets, setTargets] = useState([]);
+  const [targetRequests, setTargetRequests] = useState([]);
+  const isAdmin = user?.role === "admin";
   const [sellerType, setSellerType] = useState("");
   const [companies, setCompanies] = useState([]);
   const [staff, setStaff] = useState([]);
@@ -183,6 +191,84 @@ function PurchaseRequisition() {
   useEffect(() => {
     fetchHistory(isStaff ? staffId : historyStaffId, historyCompanyId, historyDateFilter);
   }, [staffId, historyCompanyId, historyStaffId, historyDateFilter, fetchHistory, isStaff]);
+
+  // Staff: today's daily target progress, refreshed whenever their list changes.
+  useEffect(() => {
+    if (!isStaff) return;
+    fetch(`${API}/staff/purchase-requisitions/target`, { headers: auth() })
+      .then((response) => (response.ok ? response.json() : { targets: [] }))
+      .then((data) => setTargets(Array.isArray(data.targets) ? data.targets : []))
+      .catch(() => setTargets([]));
+  }, [isStaff, savedRequisitions]);
+
+  // Below Target approval requests (approvers only).
+  const loadTargetRequests = useCallback(async () => {
+    if (isStaff || !(canApproveRequisitions || canApproveBelowTarget)) return;
+    try {
+      const response = await fetch(`${API}/staff/purchase-requisitions/target-requests`, { headers: auth() });
+      const data = await response.json().catch(() => ({}));
+      setTargetRequests(response.ok && Array.isArray(data.requests) ? data.requests : []);
+    } catch {
+      setTargetRequests([]);
+    }
+  }, [isStaff, canApproveRequisitions, canApproveBelowTarget]);
+
+  useEffect(() => {
+    loadTargetRequests();
+  }, [loadTargetRequests, savedRequisitions]);
+
+  const sendTargetRequest = async (group) => {
+    const note = window.prompt(
+      `Send ${group.staffName}'s ${group.companyName} requisitions on ${group.date} for Below Target approval?\n\nReason (optional):`,
+      ""
+    );
+    if (note === null) return;
+    const response = await fetch(`${API}/staff/purchase-requisitions/target-requests`, {
+      method: "POST",
+      headers: { ...auth(), "Content-Type": "application/json" },
+      body: JSON.stringify({ staffId: group.staffId, companyId: group.companyId, date: group.date, note }),
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) alert(data.error || "Unable to send the request.");
+    await loadTargetRequests();
+  };
+
+  const reviewTargetRequest = async (request, status) => {
+    const approving = status === "approved";
+    const note = approving
+      ? ""
+      : window.prompt("Reason for rejecting this request (optional):", "");
+    if (note === null) return;
+    if (approving && !window.confirm("Approve this request? All pending requisitions of that day will be approved.")) return;
+    const response = await fetch(`${API}/staff/purchase-requisitions/target-requests/${request.id}`, {
+      method: "PUT",
+      headers: { ...auth(), "Content-Type": "application/json" },
+      body: JSON.stringify({ status, note }),
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) alert(data.error || "Unable to update the request.");
+    await fetchHistory(historyStaffId, historyCompanyId, historyDateFilter);
+  };
+
+  // Approve / reject one or more requisitions from the day View.
+  const reviewRequisitions = async (rowsToReview, status) => {
+    const failures = [];
+    for (const row of rowsToReview) {
+      try {
+        const response = await fetch(`${API}/staff/purchase-requisitions/${row.id}/status`, {
+          method: "PUT",
+          headers: { ...auth(), "Content-Type": "application/json" },
+          body: JSON.stringify({ status }),
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) failures.push(`${row.requisition_number}: ${data.error || "Unable to update."}`);
+      } catch (error) {
+        failures.push(`${row.requisition_number}: ${error.message || "Unable to update."}`);
+      }
+    }
+    await fetchHistory(historyStaffId, historyCompanyId, historyDateFilter);
+    if (failures.length) alert(failures.slice(0, 5).join("\n"));
+  };
 
   const groupedHistory = useMemo(() => {
     const groups = new Map();
@@ -342,6 +428,75 @@ function PurchaseRequisition() {
     await fetchHistory(isStaff ? staffId : historyStaffId, historyCompanyId, historyDateFilter);
   };
 
+  const historyFilters = (
+    <>
+                {!isStaff && user?.role === "admin" && <MDBox minWidth={160}>
+                  <MDTypography variant="caption" fontWeight="bold">Company Type</MDTypography>
+                  <FormControl fullWidth>
+                    <Select
+                      value={historyCompanyType}
+                      displayEmpty
+                      onChange={(e) => {
+                        const type = e.target.value;
+                        setHistoryCompanyType(type);
+                        const current = companies.find((company) => String(company.id) === String(historyCompanyId));
+                        if (current && type && current.type !== type) {
+                          setHistoryCompanyId("");
+                          setHistoryStaffId("");
+                        }
+                      }}
+                      sx={{ height: 44 }}
+                    >
+                      <MenuItem value="">All Types</MenuItem>
+                      {COMPANY_TYPES.map((type) => (
+                        <MenuItem key={type.value} value={type.value}>{type.label}</MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
+                </MDBox>}
+                {!isStaff && user?.role === "admin" && <MDBox minWidth={200}>
+                  <MDTypography variant="caption" fontWeight="bold">Company</MDTypography>
+                  <FormControl fullWidth>
+                    <Select
+                      value={historyCompanyId}
+                      displayEmpty
+                      onChange={(e) => {
+                        setHistoryCompanyId(e.target.value);
+                        setHistoryStaffId("");
+                      }}
+                      sx={{ height: 44 }}
+                    >
+                      <MenuItem value="">All Companies</MenuItem>
+                      {companies.filter((company) => !historyCompanyType || company.type === historyCompanyType).map((company) => (
+                        <MenuItem key={company.id} value={String(company.id)}>{company.name}</MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
+                </MDBox>}
+                {!isStaff && user?.role === "admin" && <MDBox minWidth={200}>
+                  <MDTypography variant="caption" fontWeight="bold">Staff</MDTypography>
+                  <FormControl fullWidth>
+                    <Select value={historyStaffId} displayEmpty onChange={(e) => setHistoryStaffId(e.target.value)} sx={{ height: 44 }}>
+                      <MenuItem value="">All Staff</MenuItem>
+                      {historyStaff.map((member) => (
+                        <MenuItem key={member.id} value={String(member.id)}>{member.name}</MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
+                </MDBox>}
+                <MDBox minWidth={220}>
+                  <MDInput
+                    type="date"
+                    label="Filter by Date"
+                    fullWidth
+                    value={historyDateFilter}
+                    onChange={(e) => setHistoryDateFilter(e.target.value)}
+                    InputLabelProps={{ shrink: true }}
+                  />
+                </MDBox>
+    </>
+  );
+
   return (
     <DashboardLayout>
       <DashboardNavbar />
@@ -349,6 +504,7 @@ function PurchaseRequisition() {
         {isStaff && <Card>
           <MDBox p={3}>
             <MDTypography variant="h5" fontWeight="bold">Purchase Requisition</MDTypography>
+            <MDBox mt={1.5}><TargetProgress targets={targets} /></MDBox>
             <Grid container spacing={2} mt={0.5}>
               {[
                 ["Seller Type", sellerType, (v) => { setSellerType(v); setCompanyId(""); }, [
@@ -506,7 +662,26 @@ function PurchaseRequisition() {
           </MDBox>
         </Card>}
 
-        {(staffId || !isStaff) && (
+        {!isStaff && (
+          <Card sx={{ mt: 3 }}>
+            <MDBox p={3}>
+              <ApprovalQueue
+                rows={savedRequisitions}
+                loading={loadingHistory}
+                filters={<MDBox display="flex" gap={2} flexWrap="wrap" alignItems="flex-end">{historyFilters}</MDBox>}
+                canApprove={canApproveRequisitions}
+                canApproveBelowTarget={canApproveBelowTarget}
+                onReview={reviewRequisitions}
+                isAdmin={isAdmin}
+                requests={targetRequests}
+                onRequest={sendTargetRequest}
+                onReviewRequest={reviewTargetRequest}
+              />
+            </MDBox>
+          </Card>
+        )}
+
+        {isStaff && staffId && (
           <Card sx={{ mt: 3 }}>
             <MDBox p={3}>
               <MDBox display="flex" justifyContent="space-between" alignItems="center" flexWrap="wrap" gap={2} mb={2}>
@@ -529,70 +704,7 @@ function PurchaseRequisition() {
                   <Icon sx={{ mr: 0.5 }}>print</Icon>
                   Print Selected ({selectedRequisitionIds.length})
                 </MDButton>
-                {!isStaff && user?.role === "admin" && <MDBox minWidth={160}>
-                  <MDTypography variant="caption" fontWeight="bold">Company Type</MDTypography>
-                  <FormControl fullWidth>
-                    <Select
-                      value={historyCompanyType}
-                      displayEmpty
-                      onChange={(e) => {
-                        const type = e.target.value;
-                        setHistoryCompanyType(type);
-                        const current = companies.find((company) => String(company.id) === String(historyCompanyId));
-                        if (current && type && current.type !== type) {
-                          setHistoryCompanyId("");
-                          setHistoryStaffId("");
-                        }
-                      }}
-                      sx={{ height: 44 }}
-                    >
-                      <MenuItem value="">All Types</MenuItem>
-                      {COMPANY_TYPES.map((type) => (
-                        <MenuItem key={type.value} value={type.value}>{type.label}</MenuItem>
-                      ))}
-                    </Select>
-                  </FormControl>
-                </MDBox>}
-                {!isStaff && user?.role === "admin" && <MDBox minWidth={200}>
-                  <MDTypography variant="caption" fontWeight="bold">Company</MDTypography>
-                  <FormControl fullWidth>
-                    <Select
-                      value={historyCompanyId}
-                      displayEmpty
-                      onChange={(e) => {
-                        setHistoryCompanyId(e.target.value);
-                        setHistoryStaffId("");
-                      }}
-                      sx={{ height: 44 }}
-                    >
-                      <MenuItem value="">All Companies</MenuItem>
-                      {companies.filter((company) => !historyCompanyType || company.type === historyCompanyType).map((company) => (
-                        <MenuItem key={company.id} value={String(company.id)}>{company.name}</MenuItem>
-                      ))}
-                    </Select>
-                  </FormControl>
-                </MDBox>}
-                {!isStaff && user?.role === "admin" && <MDBox minWidth={200}>
-                  <MDTypography variant="caption" fontWeight="bold">Staff</MDTypography>
-                  <FormControl fullWidth>
-                    <Select value={historyStaffId} displayEmpty onChange={(e) => setHistoryStaffId(e.target.value)} sx={{ height: 44 }}>
-                      <MenuItem value="">All Staff</MenuItem>
-                      {historyStaff.map((member) => (
-                        <MenuItem key={member.id} value={String(member.id)}>{member.name}</MenuItem>
-                      ))}
-                    </Select>
-                  </FormControl>
-                </MDBox>}
-                <MDBox minWidth={220}>
-                  <MDInput
-                    type="date"
-                    label="Filter by Date"
-                    fullWidth
-                    value={historyDateFilter}
-                    onChange={(e) => setHistoryDateFilter(e.target.value)}
-                    InputLabelProps={{ shrink: true }}
-                  />
-                </MDBox>
+                {historyFilters}
               </MDBox>
 
               {loadingHistory ? (

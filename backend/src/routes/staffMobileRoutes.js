@@ -28,6 +28,7 @@ router.put('/outlets/:outletId/contact', auth, staffMobile.updateOutletContact);
 // Purchase requisitions reuse the web rules (stock limits, pricing, numbering, approval flow).
 router.get('/requisitions/options', ...asStaff, staffMobile.getRequisitionOptions);
 router.get('/requisitions/stock', ...asStaff, getCurrentStock);
+router.get('/requisitions/target', ...asStaff, purchaseRequisitions.getTargetProgress);
 router.get('/requisitions', ...asStaff, purchaseRequisitions.list);
 router.post('/requisitions', ...asStaff, staffMobile.prepareRequisitionBody, purchaseRequisitions.create);
 router.delete('/requisitions/:id', ...asStaff, purchaseRequisitions.removePending);

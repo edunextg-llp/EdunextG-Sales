@@ -1,7 +1,7 @@
 import db from '../config/db.js';
 import PaymentModel from './paymentModel.js';
 import { getPendingCollectedAmount } from './staffPortalModel.js';
-import { actorParams } from '../utils/requestContext.js';
+import { actorParams, resolveCurrentActor } from '../utils/requestContext.js';
 
 // Business date in India. Settled payments are dated with this instead of the
 // database's CURDATE(), which follows the DB server clock and can be a day off
@@ -320,6 +320,9 @@ class DeliveryCollectionModel {
     }
 
     static async settle(collectionId, chequeDate, details = {}) {
+        // Who is settling: "Admin" for admins, otherwise the user's name and login ID.
+        const settler = await resolveCurrentActor();
+        const updatedBy = [settler.id ?? null, settler.role ?? null, settler.name ?? null, settler.employeeCode ?? null];
         const connection = await db.getConnection();
         try {
             await connection.beginTransaction();
@@ -433,11 +436,12 @@ class DeliveryCollectionModel {
                     `INSERT INTO sale_payments
                      (sale_id, payment_date, payment_mode, amount, collector_name,
                       parent_credit_payment_id, reference_no, reference_date, credit_days, collector_staff_id,
-                      settled_by_type, settled_by_id)
-                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                      settled_by_type, settled_by_id,
+                      updated_by_id, updated_by_role, updated_by_name, updated_by_employee_code)
+                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
                     [collection.sale_id, paymentDate, collection.payment_mode, paymentAmount, collection.delivery_boy_name,
                      parentCreditPaymentId, collection.reference_no, collection.reference_date, collection.credit_days,
-                     collection.staff_id ?? null, ...actorParams()]
+                     collection.staff_id ?? null, ...actorParams(), ...updatedBy]
                 );
                 return result.insertId;
             };
@@ -459,8 +463,10 @@ class DeliveryCollectionModel {
                 }
                 for (const credit of existingCredits) {
                     await connection.execute(
-                        'UPDATE sale_payments SET credit_days = ?, payment_date = ? WHERE id = ?',
-                        [collection.credit_days, paymentDate, credit.id]
+                        `UPDATE sale_payments SET credit_days = ?, payment_date = ?,
+                             updated_by_id = ?, updated_by_role = ?, updated_by_name = ?, updated_by_employee_code = ?
+                         WHERE id = ?`,
+                        [collection.credit_days, paymentDate, ...updatedBy, credit.id]
                     );
                     lastPaymentId = credit.id;
                     amountToApply = Math.max(0, Math.round((amountToApply - Number(credit.balance)) * 100) / 100);

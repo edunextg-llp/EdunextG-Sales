@@ -427,6 +427,22 @@ export async function ensureSchema() {
                 `${permissionColumn} on delivery_user_permissions`
             );
         }
+        // Daily requisition target per company (Rs., before GST). A staff member's day
+        // below the target needs the Below Target approval. Seeded once for SIL at Rs. 11,250.
+        {
+            const [targetColumn] = await connection.query(
+                `SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS
+                 WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'companies' AND COLUMN_NAME = 'daily_requisition_target'`
+            );
+            if (!targetColumn.length) {
+                await connection.query('ALTER TABLE companies ADD COLUMN daily_requisition_target DECIMAL(12, 2) NULL');
+                await connection.query(
+                    "UPDATE companies SET daily_requisition_target = 11250 WHERE UPPER(TRIM(name)) = 'SIL'"
+                );
+                console.log('daily_requisition_target on companies (SIL = 11250)');
+            }
+        }
+
         // DMS pages, D.B. Collection and Delivery Report got their own permissions.
         for (const [key, copyFrom] of NEW_PERMISSION_COLUMNS) {
             const [existing] = await connection.query(
@@ -1611,6 +1627,30 @@ export async function ensureSchema() {
         await tryQuery(connection, 'ALTER TABLE order_cancellations ADD COLUMN cancelled_by_type VARCHAR(20) NULL', 'who cancelled items (type)');
         await tryQuery(connection, 'ALTER TABLE order_cancellations ADD COLUMN cancelled_by_id INT NULL', 'who cancelled items (id)');
         await tryQuery(connection, 'ALTER TABLE order_cancellations ADD COLUMN cancellation_request_id INT NULL', 'approved cancellation request');
+
+        // A Requisition Approval user asks for a below-target day (e.g. SIL under
+        // Rs. 11,250) to be approved by Admin / a Below Target Approval user.
+        await connection.query(`
+            CREATE TABLE IF NOT EXISTS requisition_target_requests (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                staff_id INT NOT NULL,
+                company_id INT NOT NULL,
+                request_date DATE NOT NULL,
+                target_amount DECIMAL(12, 2) NOT NULL DEFAULT 0,
+                achieved_amount DECIMAL(12, 2) NOT NULL DEFAULT 0,
+                note TEXT NULL,
+                status ENUM('pending', 'approved', 'rejected') NOT NULL DEFAULT 'pending',
+                requested_by_type VARCHAR(20) NULL,
+                requested_by_id INT NULL,
+                reviewed_by_type VARCHAR(20) NULL,
+                reviewed_by_id INT NULL,
+                review_note TEXT NULL,
+                reviewed_at DATETIME NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                INDEX idx_requisition_target_requests_day (staff_id, company_id, request_date),
+                INDEX idx_requisition_target_requests_status (status, created_at)
+            )
+        `);
 
         await connection.query(`
             CREATE TABLE IF NOT EXISTS order_cancellation_requests (

@@ -8,6 +8,9 @@ export const PERMISSION_KEYS = [
     'chalan_add_sales', 'chalan_packaging', 'chalan_delivery', 'chalan_delivered', 'chalan_return',
     // Not a page: lets an Add Sales user bill an outlet overdue by up to 13 days with a reason (14+ needs admin).
     'overdue_7_days',
+    // Approvals > Below Target Approvals page: approve staff days that are below the
+    // company's daily requisition target (e.g. SIL Rs. 11,250) instead of Admin.
+    'requisition_target_approval',
 ];
 
 // Extra options that only make sense together with a page permission.
@@ -37,6 +40,7 @@ export const NEW_PERMISSION_COLUMNS = [
     ['credits', 'out_bill'],
     ['delivery_report', 'delivery'],
     ['overdue_7_days', null],
+    ['requisition_target_approval', null],
 ];
 
 export const permissionColumnsSql = (alias = 'p') =>

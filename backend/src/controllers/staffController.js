@@ -1,4 +1,5 @@
 import StaffModel from '../models/staffModel.js';
+import { resolveCurrentActor } from '../utils/requestContext.js';
 import { normalizeAreaName, WEEKDAYS } from '../migrations/migrateAreas.js';
 
 export const createArea = async (req, res) => {
@@ -349,14 +350,17 @@ function getBackdatedPaymentAccessError(req, paymentDate) {
     return 'You can\'t add or update a backdated payment.';
 }
 
-function getPaymentUpdater(req) {
+// Admin -> "Admin"; anyone else -> their real name and login ID (looked up, since
+// staff / delivery tokens do not carry the name).
+async function getPaymentUpdater(req) {
     const isAdmin = req.user?.role === 'admin';
-    const employeeCode = req.user?.loginId || req.user?.email || (req.user?.id ? `ID ${req.user.id}` : null);
+    const actor = await resolveCurrentActor();
+    const employeeCode = actor.employeeCode || req.user?.loginId || req.user?.email || (req.user?.id ? `ID ${req.user.id}` : null);
 
     return {
         id: req.user?.id || null,
         role: req.user?.role || null,
-        name: isAdmin ? 'Admin' : (req.user?.username || 'Staff'),
+        name: isAdmin ? 'Admin' : (actor.name || req.user?.username || 'Staff'),
         employeeCode,
     };
 }
@@ -3760,7 +3764,7 @@ export const addSalePayment = async (req, res) => {
             creditDays: mode === 'credit' ? parseInt(creditDays, 10) : null,
             parentCreditPaymentId: normalizedParentCreditPaymentId,
             cashDetails: mode === 'cash' ? cashDetails : null,
-            updatedBy: getPaymentUpdater(req),
+            updatedBy: await getPaymentUpdater(req),
         });
 
 
@@ -3872,7 +3876,7 @@ export const editSalePayment = async (req, res) => {
             referenceDate: formattedRefDate,
             creditDays: mode === 'credit' ? parseInt(creditDays, 10) : null,
             cashDetails: mode === 'cash' ? cashDetails : null,
-            updatedBy: getPaymentUpdater(req),
+            updatedBy: await getPaymentUpdater(req),
 
         });
 
@@ -4581,6 +4585,20 @@ function normalizeCompanyEmails(rawEmails) {
     return { valid: true, value: unique };
 }
 
+// Daily requisition target from a company form: blank -> no target (null),
+// otherwise a positive amount. Returns { valid, value, provided }.
+function parseDailyRequisitionTarget(body) {
+    const provided = Object.prototype.hasOwnProperty.call(body || {}, 'dailyRequisitionTarget');
+    if (!provided) return { valid: true, provided: false, value: undefined };
+    const raw = body.dailyRequisitionTarget;
+    if (raw === null || String(raw).trim() === '') return { valid: true, provided: true, value: null };
+    const amount = Number(raw);
+    if (!Number.isFinite(amount) || amount < 0 || amount > 100000000) {
+        return { valid: false, error: 'Daily requisition target must be a valid amount (or blank for no target).' };
+    }
+    return { valid: true, provided: true, value: amount > 0 ? Math.round(amount * 100) / 100 : null };
+}
+
 export const createCompany = async (req, res) => {
     try {
         const name = String(req.body.name || '').trim();
@@ -4607,8 +4625,18 @@ export const createCompany = async (req, res) => {
             return res.status(400).json({ error: emailsValidation.error });
         }
 
-        const { id, code } = await CompanyModel.create(name, type, about || null, emailsValidation.value);
-        res.status(201).json({ id, code, name, type, about, emails: emailsValidation.value });
+        const targetValidation = parseDailyRequisitionTarget(req.body);
+        if (!targetValidation.valid) {
+            return res.status(400).json({ error: targetValidation.error });
+        }
+
+        const { id, code } = await CompanyModel.create(
+            name, type, about || null, emailsValidation.value, targetValidation.value ?? null
+        );
+        res.status(201).json({
+            id, code, name, type, about, emails: emailsValidation.value,
+            daily_requisition_target: targetValidation.value ?? null,
+        });
     } catch (error) {
         if (error.code === 'ER_DUP_ENTRY') {
             return res.status(409).json({ error: 'A company with this name already exists.' });
@@ -4654,12 +4682,18 @@ export const updateCompany = async (req, res) => {
             return res.status(404).json({ error: 'Company not found.' });
         }
 
+        const targetValidation = parseDailyRequisitionTarget(req.body);
+        if (!targetValidation.valid) {
+            return res.status(400).json({ error: targetValidation.error });
+        }
+
         const emails = emailsProvided ? emailsValidation.value : existing.emails;
         const affectedRows = await CompanyModel.updateById(idValidation.value, {
             name,
             type,
             about: about || null,
             emails: emailsProvided ? emails : undefined,
+            dailyRequisitionTarget: targetValidation.provided ? targetValidation.value : undefined,
         });
         if (affectedRows === 0) {
             return res.status(404).json({ error: 'Company not found.' });
@@ -4672,6 +4706,9 @@ export const updateCompany = async (req, res) => {
             type,
             about: about || null,
             emails,
+            daily_requisition_target: targetValidation.provided
+                ? targetValidation.value
+                : existing.daily_requisition_target ?? null,
         });
     } catch (error) {
         if (error.code === 'ER_DUP_ENTRY') {

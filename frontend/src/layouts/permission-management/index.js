@@ -40,6 +40,7 @@ const PERMISSIONS = [
   ["delivery_report", "Report", "Delivery report: assign bills route-wise, edit assignments and download sheets."],
   ["delivered", "Delivered", "View delivered or cancelled orders and their delivery details."],
   ["out_bill", "Out Bill", "Assign, track, and return outstanding credit bills."],
+  ["approvals", "Approvals", "Grant every Approvals page."],
   ["requisition_approval", "Requisition Approval", "View, approve, or cancel staff purchase requisitions."],
   ["delivery_manager", "Delivery Manager", "Grant every Delivery Manager submenu."],
   ["staff_management", "Staff Management", "Grant every available Staff Management submenu."],
@@ -54,6 +55,11 @@ const PERMISSIONS = [
     "7 Days Overdue Permission",
     "Add sales for an outlet whose credit is overdue by up to 13 days by giving a reason (admin can see it). 14 days or more still needs admin approval.",
   ],
+  [
+    "requisition_target_approval",
+    "Below Target Approvals",
+    "Open Approvals > Below Target Approvals and approve or reject days where a staff member's requisitions are below the company's daily target (e.g. SIL ₹11,250), instead of Admin.",
+  ],
 ];
 // Extra options shown under a page, only while that page is switched on.
 const SUB_OPTIONS = { add_sales: ["overdue_7_days"] };
@@ -63,6 +69,7 @@ const PERMISSION_FOLDERS = [
   { key: "delivery_manager", label: "Delivery Manager", icon: "local_shipping", description: "Packaging, delivery, report and delivered orders.", children: ["packaging", "delivery", "delivery_report", "delivered"] },
   { key: "staff_management", label: "Staff Management", icon: "badge", description: "Create staff, locations and outlets.", children: ["create_staff", "location_assignments", "add_outlet"] },
   { key: "chalan", label: "Chalan", icon: "receipt_long", description: "The full Chalan workflow.", children: ["chalan_add_sales", "chalan_packaging", "chalan_delivery", "chalan_delivered", "chalan_return"] },
+  { key: "approvals", label: "Approvals", icon: "verified", description: "Requisition and Below Target approvals.", children: ["requisition_approval", "requisition_target_approval"] },
 ];
 const FOLDER_KEYS = PERMISSION_FOLDERS.flatMap((folder) => [folder.key, ...folder.children]);
 const GENERAL_GROUP = {
@@ -72,7 +79,7 @@ const GENERAL_GROUP = {
   description: "Individual pages outside a section.",
   children: PERMISSIONS.filter(([key]) => !FOLDER_KEYS.includes(key) && !SUB_OPTION_KEYS.includes(key)).map(([key]) => key),
 };
-const DISPLAY_ONLY_FOLDER_KEYS = ["delivery_manager", "staff_management", "chalan"];
+const DISPLAY_ONLY_FOLDER_KEYS = ["delivery_manager", "staff_management", "chalan", "approvals"];
 // The pages a user can actually be granted (folder keys are just groupings).
 const PAGE_KEYS = [...GENERAL_GROUP.children, ...PERMISSION_FOLDERS.flatMap((folder) => folder.children)];
 const PERMISSION_MAP = Object.fromEntries(PERMISSIONS.map(([key, label, description]) => [key, { label, description }]));

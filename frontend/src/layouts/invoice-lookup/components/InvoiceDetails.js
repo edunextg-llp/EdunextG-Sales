@@ -15,6 +15,7 @@ import {
   TableRow,
 } from "@mui/material";
 
+import { useAuth } from "context/AuthContext";
 import MDBox from "components/MDBox";
 import MDTypography from "components/MDTypography";
 
@@ -95,6 +96,9 @@ const ACTION_LABELS = {
 
 function InvoiceDetails({ details, embedded = false }) {
   const { sale, history, payments, cancellations, collections, takenBills, summary } = details;
+  // Who did what (names, roles, login IDs) is shown to Admin only.
+  const { user } = useAuth();
+  const isAdmin = user?.role === "admin";
   // Inside an outlet history row the cards sit on a tinted panel, so drop the shadow.
   const cardSx = embedded
     ? { p: 2, mb: 2, boxShadow: "none", border: "1px solid", borderColor: "grey.300" }
@@ -161,10 +165,12 @@ function InvoiceDetails({ details, embedded = false }) {
           {sale.reference_no && <InfoRow label="Reference No" value={sale.reference_no} />}
           {sale.reference_date && <InfoRow label="Reference Date" value={formatDate(sale.reference_date)} />}
           {sale.credit_days && <InfoRow label="Credit Days" value={sale.credit_days} />}
-          <InfoRow
-            label="Added By"
-            value={sale.created_by_name ? `${sale.created_by_name}${sale.created_by_role ? ` (${sale.created_by_role})` : ""}` : "Not recorded"}
-          />
+          {isAdmin && (
+            <InfoRow
+              label="Added By"
+              value={sale.created_by_name ? `${sale.created_by_name}${sale.created_by_role ? ` (${sale.created_by_role})` : ""}` : "Not recorded"}
+            />
+          )}
           {sale.credit_photo_url && (
             <Grid item xs={12} sm={6} md={4}>
               <MDTypography variant="caption" color="text" fontWeight="medium" display="block">
@@ -182,18 +188,18 @@ function InvoiceDetails({ details, embedded = false }) {
                 View photo
               </MDTypography>
               <MDTypography variant="caption" color="text" display="block">
-                {sale.credit_photo_by_name
+                {isAdmin && (sale.credit_photo_by_name
                   ? `Uploaded by ${sale.credit_photo_by_name}${sale.credit_photo_by_role ? ` (${sale.credit_photo_by_role})` : ""}`
-                  : "Uploader not recorded"}
-                {sale.credit_photo_at ? ` · ${formatDateTime(sale.credit_photo_at)}` : ""}
+                  : "Uploader not recorded")}
+                {sale.credit_photo_at ? `${isAdmin ? " · " : ""}${formatDateTime(sale.credit_photo_at)}` : ""}
               </MDTypography>
             </Grid>
           )}
           {sale.requisition_number && (
             <InfoRow
               label="From Requisition"
-              value={`${sale.requisition_number}${sale.requisition_raised_by ? ` · raised by ${sale.requisition_raised_by}` : ""}${
-                sale.requisition_approved_by ? ` · approved by ${sale.requisition_approved_by}` : ""
+              value={`${sale.requisition_number}${isAdmin && sale.requisition_raised_by ? ` · raised by ${sale.requisition_raised_by}` : ""}${
+                isAdmin && sale.requisition_approved_by ? ` · approved by ${sale.requisition_approved_by}` : ""
               }`}
             />
           )}
@@ -219,7 +225,7 @@ function InvoiceDetails({ details, embedded = false }) {
                 <TableRow>
                   <TableCell>Stage</TableCell>
                   <TableCell>Date & Time</TableCell>
-                  <TableCell>Done by</TableCell>
+                  <TableCell>{isAdmin ? "Done by" : "Action"}</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
@@ -238,7 +244,7 @@ function InvoiceDetails({ details, embedded = false }) {
                       <MDTypography variant="caption" color="text" display="block">
                         {ACTION_LABELS[entry.status] || ""}
                       </MDTypography>
-                      <ActorCell actor={journeyActor(entry, sale)} />
+                      {isAdmin && <ActorCell actor={journeyActor(entry, sale)} />}
                     </TableCell>
                   </TableRow>
                 ))}
@@ -296,7 +302,7 @@ function InvoiceDetails({ details, embedded = false }) {
                   <TableCell align="right">Balance After</TableCell>
                   <TableCell>Collector</TableCell>
                   <TableCell>Reference</TableCell>
-                  <TableCell>Entered By</TableCell>
+                  {isAdmin && <TableCell>Entered By</TableCell>}
                   <TableCell>Entry Time</TableCell>
                 </TableRow>
               </TableHead>
@@ -333,11 +339,15 @@ function InvoiceDetails({ details, embedded = false }) {
                         : "—"}
                       {payment.isCredit && payment.credit_days ? ` · ${payment.credit_days} days` : ""}
                     </TableCell>
-                    <TableCell>
-                      {payment.updated_by_name
-                        ? `${payment.updated_by_name}${payment.updated_by_employee_code ? ` (${payment.updated_by_employee_code})` : ""}`
-                        : "—"}
-                    </TableCell>
+                    {isAdmin && (
+                      <TableCell>
+                        {payment.updated_by_role === "admin"
+                          ? "Admin"
+                          : payment.updated_by_name && payment.updated_by_name !== "Staff"
+                            ? `${payment.updated_by_name}${payment.updated_by_employee_code ? ` (${payment.updated_by_employee_code})` : ""}`
+                            : payment.updated_by_employee_code || "Not recorded"}
+                      </TableCell>
+                    )}
                     <TableCell>{formatDateTime(payment.created_at)}</TableCell>
                   </TableRow>
                 ))}
@@ -430,8 +440,8 @@ function InvoiceDetails({ details, embedded = false }) {
                   <TableCell>Qty to Cancel</TableCell>
                   <TableCell>Amount</TableCell>
                   <TableCell>Date</TableCell>
-                  <TableCell>Requested by</TableCell>
-                  <TableCell>Cancelled / Approved by</TableCell>
+                  {isAdmin && <TableCell>Requested by</TableCell>}
+                  {isAdmin && <TableCell>Cancelled / Approved by</TableCell>}
                 </TableRow>
               </TableHead>
               <TableBody>
@@ -441,8 +451,8 @@ function InvoiceDetails({ details, embedded = false }) {
                     <TableCell>{formatCancelQtyDisplay(row)}</TableCell>
                     <TableCell>{formatCurrency(row.amount)}</TableCell>
                     <TableCell>{formatDateTime(row.created_at)}</TableCell>
-                    <TableCell>{row.requested_by_name || "—"}</TableCell>
-                    <TableCell>
+                    {isAdmin && <TableCell>{row.requested_by_name || "—"}</TableCell>}
+                    {isAdmin && <TableCell>
                       <ActorCell
                         actor={
                           row.approved_by_name
@@ -450,7 +460,7 @@ function InvoiceDetails({ details, embedded = false }) {
                             : null
                         }
                       />
-                    </TableCell>
+                    </TableCell>}
                   </TableRow>
                 ))}
               </TableBody>

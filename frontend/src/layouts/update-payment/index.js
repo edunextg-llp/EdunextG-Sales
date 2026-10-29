@@ -244,11 +244,14 @@ function UpdatePayment() {
   const getCollectorName = (payment) =>
     payment.collector_staff_name || payment.collector_name || getOutletMarketingStaffName() || "N/A";
 
+  // Admin -> "Admin"; anyone else -> "Name (Login ID)". Older entries saved before
+  // this was tracked have nothing stored and show "Not recorded".
   const getPaymentUpdatedBy = (payment) => {
-    const roleName = payment.updated_by_role === "admin" ? "Admin" : "Staff";
-    const updaterName = payment.updated_by_name || roleName;
-    const employeeCode = payment.updated_by_employee_code || "Not recorded";
-    return `${updaterName} · ${employeeCode}`;
+    if (payment.updated_by_role === "admin") return "Admin";
+    const name = payment.updated_by_name && payment.updated_by_name !== "Staff" ? payment.updated_by_name : "";
+    const code = payment.updated_by_employee_code || "";
+    if (!name && !code) return "Not recorded";
+    return name && code ? `${name} (${code})` : name || code;
   };
 
   const inferCollectorType = (payment) =>

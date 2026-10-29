@@ -17,6 +17,7 @@ import AddCompany from "layouts/add-company";
 import AddCounter from "layouts/add-counter";
 import AddSales from "layouts/add-sales";
 import PurchaseRequisition from "layouts/purchase-requisition";
+import BelowTargetApprovals from "layouts/below-target-approvals";
 import OverdueRequests from "layouts/overdue-requests";
 import SuspenseRequests from "layouts/suspense-requests";
 import OtherDayRequests from "layouts/other-day-requests";
@@ -328,6 +329,16 @@ const routes = [
         component: <PurchaseRequisition />,
         allowedRoles: ["admin", "packaging_staff", "delivery_boy"],
         requiredPermission: "requisition_approval",
+      },
+      {
+        type: "collapse",
+        name: "Below Target Approvals",
+        key: "below-target-approvals",
+        icon: <Icon fontSize="small">trending_down</Icon>,
+        route: "/below-target-approvals",
+        component: <BelowTargetApprovals />,
+        allowedRoles: ["admin", "packaging_staff", "delivery_boy"],
+        requiredPermission: "requisition_target_approval",
       },
       {
         type: "collapse",
