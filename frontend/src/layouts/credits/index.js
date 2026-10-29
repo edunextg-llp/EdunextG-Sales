@@ -58,6 +58,8 @@ function CreditsPage() {
   const [selectedArea, setSelectedArea] = useState("");
   const [dueDateFrom, setDueDateFrom] = useState("");
   const [dueDateTo, setDueDateTo] = useState("");
+  // "" = all, "missing" = invoice photo not uploaded, "uploaded" = photo uploaded
+  const [photoFilter, setPhotoFilter] = useState("");
   const [remarksDialog, setRemarksDialog] = useState({ open: false, mode: "edit", credit: null });
   const [remarksText, setRemarksText] = useState("");
   const [remarksDate, setRemarksDate] = useState("");
@@ -97,7 +99,7 @@ function CreditsPage() {
 
   useEffect(() => {
     setPage(1);
-  }, [searchQuery, selectedCompanyId, selectedStaffId, selectedArea, dueDateFrom, dueDateTo, rowsPerPage]);
+  }, [searchQuery, selectedCompanyId, selectedStaffId, selectedArea, dueDateFrom, dueDateTo, photoFilter, rowsPerPage]);
 
   const getStatus = (saleDateStr, creditDays) => {
     if (!creditDays) return <Chip label="No Term" size="small" variant="outlined" />;
@@ -405,7 +407,7 @@ function CreditsPage() {
     }
   };
 
-  const filteredCredits = credits.filter((credit) => {
+  const baseFilteredCredits = credits.filter((credit) => {
     const saleBalance = Number(credit.sale_balance_amount ?? credit.saleBalanceAmount);
     if (!Number.isNaN(saleBalance) && saleBalance <= 0) {
       return false;
@@ -449,6 +451,27 @@ function CreditsPage() {
       stickerNum.includes(search)
     )
   });
+
+  // Invoice photo upload status, counted within the other filters.
+  const missingPhotoCredits = baseFilteredCredits.filter((credit) => !credit.credit_photo_url);
+  const uploadedPhotoCount = baseFilteredCredits.length - missingPhotoCredits.length;
+  const filteredCredits = baseFilteredCredits.filter((credit) => {
+    if (photoFilter === "missing") return !credit.credit_photo_url;
+    if (photoFilter === "uploaded") return Boolean(credit.credit_photo_url);
+    return true;
+  });
+  // Who has not uploaded: staff with the most missing invoices first.
+  const missingPhotoByStaff = Object.values(
+    missingPhotoCredits.reduce((groups, credit) => {
+      const key = String(credit.staff_id ?? credit.staff_name ?? "unknown");
+      if (!groups[key]) {
+        groups[key] = { key, staffId: credit.staff_id, name: credit.staff_name || "Unknown staff", count: 0, amount: 0 };
+      }
+      groups[key].count += 1;
+      groups[key].amount += Number(credit.balance_amount) || 0;
+      return groups;
+    }, {})
+  ).sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
 
   const totalPages = Math.max(1, Math.ceil(filteredCredits.length / rowsPerPage));
   const paginatedCredits = filteredCredits.slice(
@@ -1251,6 +1274,23 @@ function CreditsPage() {
                       onChange={(e) => setDueDateTo(e.target.value)}
                     />
                   </Grid>
+                  <Grid item xs={12} md={6} lg={3}>
+                    <FormControl size="small" fullWidth>
+                      <InputLabel id="credit-photo-filter-label">Invoice Upload</InputLabel>
+                      <Select
+                        labelId="credit-photo-filter-label"
+                        value={photoFilter}
+                        label="Invoice Upload"
+                        onChange={(e) => setPhotoFilter(e.target.value)}
+                        displayEmpty
+                        sx={{ height: 44 }}
+                      >
+                        <MenuItem value="">All ({baseFilteredCredits.length})</MenuItem>
+                        <MenuItem value="missing">Not Uploaded ({missingPhotoCredits.length})</MenuItem>
+                        <MenuItem value="uploaded">Uploaded ({uploadedPhotoCount})</MenuItem>
+                      </Select>
+                    </FormControl>
+                  </Grid>
                   {showPrintButton && (
                     <Grid item xs={6} md={4} lg={2}>
                       {/* <MDButton
@@ -1304,6 +1344,32 @@ function CreditsPage() {
                   </Grid>
                 </Grid>
               </MDBox>
+
+              {photoFilter === "missing" && (
+                <MDBox px={3} pt={1} pb={2}>
+                  <MDTypography variant="subtitle2" fontWeight="bold" color="text" mb={1}>
+                    Invoice not uploaded — by staff ({missingPhotoCredits.length} bills):
+                  </MDTypography>
+                  {missingPhotoByStaff.length === 0 ? (
+                    <MDTypography variant="caption" color="success">
+                      Every credit in this view has its invoice uploaded.
+                    </MDTypography>
+                  ) : (
+                    <MDBox display="flex" gap={1} flexWrap="wrap">
+                      {missingPhotoByStaff.map((staff) => (
+                        <Chip
+                          key={staff.key}
+                          color="error"
+                          variant="outlined"
+                          size="small"
+                          label={`${staff.name}: ${staff.count} bill${staff.count === 1 ? "" : "s"} · ₹${staff.amount.toFixed(2)}`}
+                          onClick={() => setSearchQuery(staff.name === "Unknown staff" ? "" : staff.name)}
+                        />
+                      ))}
+                    </MDBox>
+                  )}
+                </MDBox>
+              )}
 
               <MDBox px={3} pt={1} pb={2} display="flex" flexDirection="column" gap={1.5} sx={{ borderBottom: "1px solid #f0f2f5" }}>
                 <MDTypography variant="subtitle2" fontWeight="bold" color="text">

@@ -1,4 +1,5 @@
 import db from '../config/db.js';
+import { actorNameSql } from '../utils/requestContext.js';
 
 const moneyFields = [
     'total_sales',
@@ -333,6 +334,54 @@ class ReportModel {
                       END ASC,
                       ss.invoice_number ASC`,
             [...dateWhere.params, ...companyFilter.params]
+        );
+        return toNumberRows(rows);
+    }
+
+    // One row per payment for the Today Collection report: grouped by company,
+    // Cash first, then UPI, then Cheque. "Settled by" is the office user who settled a
+    // delivery / Out Bill collection, or who recorded the payment directly.
+    static async getTodayCollectionEntries(startDate, endDate, companyId = null) {
+        const dateWhere = ReportModel.buildDateWhere('sp.payment_date', startDate, endDate);
+        const companyFilter = ReportModel.buildCompanyFilter(companyId);
+        const settledBy = actorNameSql('sp', 'settled_by');
+        const [rows] = await db.execute(
+            `SELECT sp.id AS payment_id,
+                    DATE_FORMAT(sp.payment_date, '%Y-%m-%d') AS payment_date,
+                    sp.payment_mode, sp.amount, sp.reference_no,
+                    DATE_FORMAT(sp.reference_date, '%Y-%m-%d') AS reference_date,
+                    ss.id AS sale_id, ss.invoice_number,
+                    sc.outlet_name, sc.outlet_erp_id, sc.location_name,
+                    ${companyId ? 'selected_company.name' : "COALESCE(outlet_staff_company.company_names, sale_company.name, 'N/A')"} AS company_name,
+                    COALESCE(NULLIF(TRIM(sp.collector_name), ''), collector.name, sale_staff.name, 'N/A') AS collected_by,
+                    -- Show the role only: "Admin" for admin users, "Staff" for anyone else.
+                    CASE
+                        WHEN sp.settled_by_type = 'admin' THEN 'Admin'
+                        WHEN sp.settled_by_type IS NOT NULL THEN 'Staff'
+                        WHEN sp.updated_by_role = 'admin' THEN 'Admin'
+                        WHEN sp.updated_by_role IS NOT NULL OR NULLIF(TRIM(sp.updated_by_name), '') IS NOT NULL THEN 'Staff'
+                        -- Settled from D.B. Collection before the settler was recorded.
+                        ELSE 'DB Collection'
+                    END AS settled_by
+             FROM sale_payments sp
+             JOIN staff_sales ss ON ss.id = sp.sale_id
+             LEFT JOIN staff sale_staff ON sale_staff.id = ss.staff_id
+             LEFT JOIN staff collector ON collector.id = sp.collector_staff_id
+             LEFT JOIN staff_counters sc ON sc.id = ss.outlet_id
+             LEFT JOIN staff outlet_staff ON outlet_staff.id = sc.staff_id
+             LEFT JOIN companies sale_company ON sale_company.id = sale_staff.company_id
+             ${companyId ? 'LEFT JOIN companies selected_company ON selected_company.id = ?' : ''}
+             LEFT JOIN (
+                 SELECT sc_map.staff_id,
+                        GROUP_CONCAT(c2.name ORDER BY c2.name SEPARATOR ', ') AS company_names
+                 FROM staff_companies sc_map
+                 INNER JOIN companies c2 ON c2.id = sc_map.company_id
+                 GROUP BY sc_map.staff_id
+             ) outlet_staff_company ON outlet_staff_company.staff_id = outlet_staff.id
+             ${settledBy.joins}
+             ${dateWhere.sql ? `${dateWhere.sql} AND` : 'WHERE sp.payment_date = CURDATE() AND'} sp.payment_mode IN ('cash', 'upi', 'cheque')${companyFilter.sql}
+             ORDER BY company_name ASC, FIELD(sp.payment_mode, 'cash', 'upi', 'cheque'), sp.payment_date ASC, ss.invoice_number ASC, sp.id ASC`,
+            [...(companyId ? [companyId] : []), ...dateWhere.params, ...companyFilter.params]
         );
         return toNumberRows(rows);
     }
@@ -972,6 +1021,7 @@ class ReportModel {
             deliveredCancellationDetails,
             deliveredOutstandingDetails,
             todayCollectionSplit,
+            todayCollectionEntries,
         ] = await Promise.all([
             ReportModel.getSummary(startDate, endDate, companyId, staffId),
             ReportModel.getCollectionByMode(startDate, endDate, staffId, companyId),
@@ -993,6 +1043,7 @@ class ReportModel {
             ReportModel.getDeliveredCancellationDetails(startDate, endDate, companyId, staffId),
             ReportModel.getDeliveredOutstandingDetails(startDate, endDate, companyId, staffId),
             ReportModel.getTodayCollectionSplit(startDate, endDate, companyId),
+            ReportModel.getTodayCollectionEntries(startDate, endDate, companyId),
         ]);
 
         return {
@@ -1016,6 +1067,7 @@ class ReportModel {
             deliveredCancellationDetails,
             deliveredOutstandingDetails,
             todayCollectionSplit,
+            todayCollectionEntries,
         };
     }
 }

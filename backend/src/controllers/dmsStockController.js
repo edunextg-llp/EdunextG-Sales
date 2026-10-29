@@ -82,6 +82,21 @@ const getDpPriceAfterDiscount = (dpPrice, discountPercent) => {
     return toNumber(dpPrice) * (1 - normalizedDiscount / 100);
 };
 
+// Companies whose DMS stock entries do not need Retail / Wholesale Price
+// (Distributor: SALONI, CNF: ASSAM TEA CORPORATION). Every other company still requires them.
+const SALE_PRICE_OPTIONAL_COMPANIES = new Set(['SALONI', 'ASSAM TEA CORPORATION']);
+const isSalePriceOptionalCompany = (companyName) =>
+    SALE_PRICE_OPTIONAL_COMPANIES.has(String(companyName || '').trim().replace(/\s+/g, ' ').toUpperCase());
+// A retail/wholesale price is invalid when below DP after discount. For the companies above
+// a blank (or 0) price is allowed; an entered price is still checked.
+const isSalePriceInvalid = (price, dpPrice, discountPercent, optional) => {
+    if (optional && (price === '' || price == null || toNumber(price) <= 0)) return false;
+    return Number(price) < getDpPriceAfterDiscount(dpPrice, discountPercent);
+};
+// No price entered -> no margin (instead of a negative margin).
+const saleMargin = (price, dpPrice, discountPercent) =>
+    (price > 0 ? roundRate(price - getDpPriceAfterDiscount(dpPrice, discountPercent)) : 0);
+
 export function parseRows(file) {
     const extension = (file.originalname.split('.').pop() || '').toLowerCase();
 
@@ -542,6 +557,7 @@ export const createManualDmsStock = async (req, res) => {
 
         const items = Array.isArray(req.body?.items) ? req.body.items : [];
         const invoiceNumber = textValue(req.body?.invoiceNumber) || null;
+        const salePriceOptional = isSalePriceOptionalCompany(company.name);
         if (!items.length) {
             return res.status(400).json({ error: 'Please add at least one stock item.' });
         }
@@ -553,8 +569,8 @@ export const createManualDmsStock = async (req, res) => {
                 && (!Number.isFinite(Number(item.dpPrice)) || Number(item.dpPrice) < 0))
             || !Number.isFinite(Number(item?.mrp))
             || Number(item.mrp) <= 0
-            || Number(item?.retailPrice) < getDpPriceAfterDiscount(item.dpPrice, item.discountPercent)
-            || Number(item?.wholesalePrice) < getDpPriceAfterDiscount(item.dpPrice, item.discountPercent)
+            || isSalePriceInvalid(item?.retailPrice, item?.dpPrice, item?.discountPercent, salePriceOptional)
+            || isSalePriceInvalid(item?.wholesalePrice, item?.dpPrice, item?.discountPercent, salePriceOptional)
         ));
         if (invalidItem) {
             const { item, rowNumber } = invalidItem;
@@ -606,8 +622,8 @@ export const createManualDmsStock = async (req, res) => {
                     taxableAmount,
                     retailPrice,
                     wholesalePrice,
-                    retailMargin: roundRate(retailPrice - getDpPriceAfterDiscount(dpPrice, discountPercent)),
-                    wholesaleMargin: roundRate(wholesalePrice - getDpPriceAfterDiscount(dpPrice, discountPercent)),
+                    retailMargin: saleMargin(retailPrice, dpPrice, discountPercent),
+                    wholesaleMargin: saleMargin(wholesalePrice, dpPrice, discountPercent),
                 };
             })
             .filter((row) => row.productErpId || row.productName)
@@ -692,15 +708,18 @@ export const updateDmsStockItem = async (req, res) => {
             totalValue: roundRate(taxableAmount + cgstAmount + sgstAmount),
             retailPrice,
             wholesalePrice,
-            retailMargin: roundRate(retailPrice - getDpPriceAfterDiscount(dpPrice, discountPercent)),
-            wholesaleMargin: roundRate(wholesalePrice - getDpPriceAfterDiscount(dpPrice, discountPercent)),
+            retailMargin: saleMargin(retailPrice, dpPrice, discountPercent),
+            wholesaleMargin: saleMargin(wholesalePrice, dpPrice, discountPercent),
         };
+        const salePriceOptional = isSalePriceOptionalCompany(
+            await DmsStockModel.getImportCompanyName(existing.import_id) || existing.product_division
+        );
         if ((row.mfgDate && !/^\d{4}-\d{2}-\d{2}$/.test(row.mfgDate))
             || (row.expiryDate && !/^\d{4}-\d{2}-\d{2}$/.test(row.expiryDate))
             || (row.mfgDate && row.expiryDate && row.mfgDate > row.expiryDate)
             || row.dpPrice <= 0 || row.mrp <= 0
-            || row.retailPrice < getDpPriceAfterDiscount(row.dpPrice, row.discountPercent)
-            || row.wholesalePrice < getDpPriceAfterDiscount(row.dpPrice, row.discountPercent)) {
+            || isSalePriceInvalid(row.retailPrice, row.dpPrice, row.discountPercent, salePriceOptional)
+            || isSalePriceInvalid(row.wholesalePrice, row.dpPrice, row.discountPercent, salePriceOptional)) {
             return res.status(400).json({
                 error: 'Enter valid batch, dates, MRP, DP, and GST-inclusive retail/wholesale prices.',
             });

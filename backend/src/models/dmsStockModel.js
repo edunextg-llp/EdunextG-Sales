@@ -500,6 +500,17 @@ class DmsStockModel {
         return DmsStockModel.upsertItemsToImport(importId, rows);
     }
 
+    static async getImportCompanyName(importId) {
+        if (!importId) return null;
+        const [rows] = await db.execute(
+            `SELECT c.name FROM dms_stock_imports i
+             INNER JOIN companies c ON c.id = i.company_id
+             WHERE i.id = ? LIMIT 1`,
+            [importId]
+        );
+        return rows[0]?.name || null;
+    }
+
     static async getItemById(itemId) {
         const [rows] = await db.execute(
             `SELECT dsi.*, DATE_FORMAT(dsi.mfg_date, '%Y-%m-%d') AS mfg_date,

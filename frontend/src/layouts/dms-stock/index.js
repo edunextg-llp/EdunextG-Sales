@@ -349,6 +349,12 @@ const requiredMark = (
 const getImportUploadDate = (stockImport) =>
   stockImport?.upload_date || stockImport?.created_at || null;
 
+// Companies whose DMS stock entries do not need Retail / Wholesale Price.
+// Keep in sync with SALE_PRICE_OPTIONAL_COMPANIES in backend dmsStockController.js.
+const SALE_PRICE_OPTIONAL_COMPANIES = ["SALONI", "ASSAM TEA CORPORATION"];
+const isSalePriceOptionalCompany = (name) =>
+  SALE_PRICE_OPTIONAL_COMPANIES.includes(String(name || "").trim().replace(/\s+/g, " ").toUpperCase());
+
 function Metric({ label, value }) {
   return (
     <MDBox p={2} sx={metricBoxSx}>
@@ -407,6 +413,10 @@ function DmsStock() {
   const [loadingSellers, setLoadingSellers] = useState(false);
   const [loadingSellerItems, setLoadingSellerItems] = useState(false);
   const [companies, setCompanies] = useState([]);
+  // SALONI (Distributor) and ASSAM TEA CORPORATION (CNF) do not need Retail / Wholesale Price.
+  const salePricesOptional = isSalePriceOptionalCompany(
+    companies.find((company) => String(company.id) === String(manualCompanyId))?.name
+  );
   const [uploadCompanyType, setUploadCompanyType] = useState("");
   const [manualCompanyType, setManualCompanyType] = useState("");
   const typeOfCompanyId = (id) =>
@@ -767,8 +777,11 @@ function DmsStock() {
       Math.max(0, Number(manualItem.discountPercent) || 0)
     );
     const dpPriceAfterDiscount = Number(manualItem.dpPrice) * (1 - discountPercent / 100);
-    if (Number(manualItem.retailPrice) < dpPriceAfterDiscount
-      || Number(manualItem.wholesalePrice) < dpPriceAfterDiscount) {
+    const priceTooLow = (value) => {
+      if (salePricesOptional && (value === "" || value == null || Number(value) <= 0)) return false;
+      return Number(value) < dpPriceAfterDiscount;
+    };
+    if (priceTooLow(manualItem.retailPrice) || priceTooLow(manualItem.wholesalePrice)) {
       setError("Retail and Wholesale Price must be at least DP Price after discount.");
       return;
     }
@@ -1859,13 +1872,13 @@ function DmsStock() {
                 </Grid>
               ))}
               <Grid item xs={6} md={2}>
-                <MDTypography sx={fieldLabelSx}>Retail Price (Incl. 5% GST)</MDTypography>
+                <MDTypography sx={fieldLabelSx}>Retail Price (Incl. 5% GST){salePricesOptional ? " (Optional)" : ""}</MDTypography>
                 <MDInput fullWidth type="number" value={manualItem.retailPrice}
                   onChange={(event) => updateManualItem("retailPrice", event.target.value)}
                   sx={{ "& .MuiInputBase-root": { backgroundColor: "#fff", height: 40 } }} />
               </Grid>
               <Grid item xs={6} md={2}>
-                <MDTypography sx={fieldLabelSx}>Wholesale Price (Incl. 5% GST)</MDTypography>
+                <MDTypography sx={fieldLabelSx}>Wholesale Price (Incl. 5% GST){salePricesOptional ? " (Optional)" : ""}</MDTypography>
                 <MDInput fullWidth type="number" value={manualItem.wholesalePrice}
                   onChange={(event) => updateManualItem("wholesalePrice", event.target.value)}
                   sx={{ "& .MuiInputBase-root": { backgroundColor: "#fff", height: 40 } }} />

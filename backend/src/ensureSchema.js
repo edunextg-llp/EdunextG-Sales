@@ -721,6 +721,9 @@ export async function ensureSchema() {
             `ALTER TABLE sale_payments ADD COLUMN updated_by_employee_code VARCHAR(100) NULL`,
             'updated_by_employee_code on sale_payments'
         );
+        // Who settled a delivery / Out Bill collection into a payment (Today Collection report).
+        await tryQuery(connection, 'ALTER TABLE sale_payments ADD COLUMN settled_by_type VARCHAR(20) NULL', 'settled_by_type on sale_payments');
+        await tryQuery(connection, 'ALTER TABLE sale_payments ADD COLUMN settled_by_id INT NULL', 'settled_by_id on sale_payments');
 
         await connection.query(`
             UPDATE sale_payments sp

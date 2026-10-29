@@ -1265,7 +1265,10 @@ class StaffModel {
 
     static async getSaleDetailsById(saleId) {
         const createdBy = actorNameSql('ss', 'created_by');
+        // purchase_requisitions stores the reviewer id in `reviewed_by` (not `reviewed_by_id`),
+        // so the shared actor helper's join is pointed at that column here.
         const reviewedBy = actorNameSql('pr', 'reviewed_by');
+        reviewedBy.joins = reviewedBy.joins.replaceAll('pr.reviewed_by_id', 'pr.reviewed_by');
         const photoBy = actorNameSql('ss', 'credit_photo_by');
         const [rows] = await db.execute(
             `SELECT ss.id,

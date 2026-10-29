@@ -970,6 +970,7 @@ function Dashboard() {
   const [collectionDateReportData, setCollectionDateReportData] = useState({
     todayCollection: [],
     todayCollectionDetails: [],
+    todayCollectionEntries: [],
     todayCollectionSplit: { new_bill_amount: 0, new_bill_count: 0, old_credit_amount: 0, old_credit_count: 0 },
   });
   const [totalCollectionReportData, setTotalCollectionReportData] = useState({
@@ -1131,7 +1132,7 @@ function Dashboard() {
 
   const fetchCollectionDateReport = async (date) => {
     if (!date) {
-      return { todayCollection: [], todayCollectionDetails: [], todayCollectionSplit: { new_bill_amount: 0, new_bill_count: 0, old_credit_amount: 0, old_credit_count: 0 } };
+      return { todayCollection: [], todayCollectionDetails: [], todayCollectionEntries: [], todayCollectionSplit: { new_bill_amount: 0, new_bill_count: 0, old_credit_amount: 0, old_credit_count: 0 } };
     }
 
     const params = new URLSearchParams({
@@ -1148,6 +1149,7 @@ function Dashboard() {
     return {
       todayCollection: data.todayCollection || [],
       todayCollectionDetails: data.todayCollectionDetails || [],
+      todayCollectionEntries: data.todayCollectionEntries || [],
       todayCollectionSplit: data.todayCollectionSplit || { new_bill_amount: 0, new_bill_count: 0, old_credit_amount: 0, old_credit_count: 0 },
     };
   };
@@ -1255,7 +1257,7 @@ function Dashboard() {
       } catch (error) {
         console.error("Error fetching collection date report:", error);
         if (!ignore) {
-          setCollectionDateReportData({ todayCollection: [], todayCollectionDetails: [], todayCollectionSplit: { new_bill_amount: 0, new_bill_count: 0, old_credit_amount: 0, old_credit_count: 0 } });
+          setCollectionDateReportData({ todayCollection: [], todayCollectionDetails: [], todayCollectionEntries: [], todayCollectionSplit: { new_bill_amount: 0, new_bill_count: 0, old_credit_amount: 0, old_credit_count: 0 } });
         }
       } finally {
         if (!ignore) {
@@ -1534,65 +1536,193 @@ function Dashboard() {
     printWindow.print();
   };
 
-  const handlePrintTodayCollection = async () => {
+  // Company-wise collection sheet: one table per company, Cash first, then UPI, then Cheque.
+  const writeCompanyCollectionPrintReport = (printWindow, entries, dateLabel, companyLabel) => {
+    const MODES = [
+      { key: "cash", label: "Cash" },
+      { key: "upi", label: "UPI" },
+      { key: "cheque", label: "Cheque" },
+    ];
+    const money = (value) => `Rs. ${(Number(value) || 0).toFixed(2)}`;
+    const companies = new Map();
+    entries.forEach((entry) => {
+      const name = entry.company_name || "N/A";
+      if (!companies.has(name)) companies.set(name, []);
+      companies.get(name).push(entry);
+    });
+    const grand = { total: 0, cash: 0, upi: 0, cheque: 0, count: 0 };
+    const overallRows = [];
+
+    const companiesHtml = [...companies.entries()]
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([companyName, rows]) => {
+        let sr = 0;
+        let companyTotal = 0;
+        const companySummary = { name: companyName, cash: 0, upi: 0, cheque: 0, count: 0, total: 0 };
+        overallRows.push(companySummary);
+        const bodyHtml = MODES.map((mode) => {
+          const modeRows = rows.filter((row) => row.payment_mode === mode.key);
+          if (!modeRows.length) return "";
+          const modeTotal = modeRows.reduce((sum, row) => sum + (Number(row.amount) || 0), 0);
+          companyTotal += modeTotal;
+          grand[mode.key] += modeTotal;
+          grand.count += modeRows.length;
+          companySummary[mode.key] += modeTotal;
+          companySummary.count += modeRows.length;
+          companySummary.total += modeTotal;
+          const rowsHtml = modeRows
+            .map((row) => {
+              sr += 1;
+              const reference = row.reference_no
+                ? `<div class="sub">Ref: ${escapeHtml(row.reference_no)}${row.reference_date ? ` · ${escapeHtml(formatDate(row.reference_date))}` : ""}</div>`
+                : row.reference_date ? `<div class="sub">${escapeHtml(formatDate(row.reference_date))}</div>` : "";
+              return `
+                <tr>
+                  <td class="center">${sr}</td>
+                  <td>${mode.label}${reference}</td>
+                  <td>${escapeHtml(row.invoice_number || "-")}</td>
+                  <td>${escapeHtml(row.outlet_name || "-")}${row.location_name ? `<div class="sub">${escapeHtml(row.location_name)}</div>` : ""}</td>
+                  <td>${escapeHtml(row.collected_by || "-")}</td>
+                  <td>${escapeHtml(row.settled_by || "-")}</td>
+                  <td class="right">${money(row.amount)}</td>
+                </tr>`;
+            })
+            .join("");
+          return `${rowsHtml}
+                <tr class="mode-total">
+                  <td colspan="6">${mode.label} Total (${modeRows.length})</td>
+                  <td class="right">${money(modeTotal)}</td>
+                </tr>`;
+        }).join("");
+        grand.total += companyTotal;
+        return `
+          <section class="company">
+            <h2>Company Name — ${escapeHtml(companyName)}</h2>
+            <table>
+              <thead>
+                <tr>
+                  <th class="center" style="width:44px">SR</th>
+                  <th style="width:110px">Payment Mode</th>
+                  <th style="width:130px">Invoice No.</th>
+                  <th>Outlet</th>
+                  <th style="width:150px">Collected By</th>
+                  <th style="width:150px">Settled By</th>
+                  <th class="right" style="width:120px">Amount</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${bodyHtml}
+                <tr class="company-total">
+                  <td colspan="6">${escapeHtml(companyName)} Total</td>
+                  <td class="right">${money(companyTotal)}</td>
+                </tr>
+              </tbody>
+            </table>
+          </section>`;
+      })
+      .join("");
+
+    printWindow.document.open();
+    printWindow.document.write(`<!DOCTYPE html>
+      <html>
+        <head>
+          <title>Today Collection - ${escapeHtml(dateLabel)}</title>
+          <style>
+            * { box-sizing: border-box; }
+            body { font-family: Arial, sans-serif; color: #111827; margin: 24px; font-size: 12px; }
+            h1 { font-size: 20px; margin: 0 0 4px; }
+            .meta { color: #4b5563; margin-bottom: 16px; }
+            .company { margin-bottom: 22px; page-break-inside: auto; }
+            h2 { font-size: 15px; margin: 0 0 8px; padding: 6px 10px; background: #f3f4f6; border-left: 4px solid #111827; }
+            table { width: 100%; border-collapse: collapse; }
+            th, td { border: 1px solid #d1d5db; padding: 6px 8px; vertical-align: top; }
+            th { background: #111827; color: #fff; text-align: left; font-size: 11px; text-transform: uppercase; }
+            tr { page-break-inside: avoid; }
+            .right { text-align: right; }
+            .center { text-align: center; }
+            .sub { color: #6b7280; font-size: 10px; margin-top: 2px; }
+            .mode-total td { background: #f9fafb; font-weight: bold; }
+            .company-total td { background: #e5e7eb; font-weight: bold; font-size: 13px; }
+            .overall { margin-top: 28px; page-break-inside: avoid; }
+            .overall h2 { background: #111827; color: #fff; border-left-color: #f59e0b; }
+            .overall .company-total td { background: #111827; color: #fff; font-size: 14px; }
+            .empty { padding: 24px; text-align: center; color: #6b7280; border: 1px dashed #d1d5db; }
+            @media print { body { margin: 10mm; } }
+          </style>
+        </head>
+        <body>
+          <h1>Today Collection</h1>
+          <div class="meta">Date: ${escapeHtml(dateLabel)} · ${escapeHtml(companyLabel)} · Order: Cash → UPI → Cheque</div>
+          ${companiesHtml || '<div class="empty">No cash, UPI or cheque collection on this date.</div>'}
+          ${companiesHtml ? `
+          <section class="company overall">
+            <h2>Overall Collection</h2>
+            <table>
+              <thead>
+                <tr>
+                  <th class="center" style="width:44px">SR</th>
+                  <th>Company</th>
+                  <th class="center" style="width:80px">Entries</th>
+                  <th class="right" style="width:130px">Cash</th>
+                  <th class="right" style="width:130px">UPI</th>
+                  <th class="right" style="width:130px">Cheque</th>
+                  <th class="right" style="width:140px">Total</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${overallRows.map((row, index) => `
+                <tr>
+                  <td class="center">${index + 1}</td>
+                  <td>${escapeHtml(row.name)}</td>
+                  <td class="center">${row.count}</td>
+                  <td class="right">${money(row.cash)}</td>
+                  <td class="right">${money(row.upi)}</td>
+                  <td class="right">${money(row.cheque)}</td>
+                  <td class="right"><strong>${money(row.total)}</strong></td>
+                </tr>`).join("")}
+                <tr class="company-total">
+                  <td colspan="2">Overall Total</td>
+                  <td class="center">${grand.count}</td>
+                  <td class="right">${money(grand.cash)}</td>
+                  <td class="right">${money(grand.upi)}</td>
+                  <td class="right">${money(grand.cheque)}</td>
+                  <td class="right">${money(grand.total)}</td>
+                </tr>
+              </tbody>
+            </table>
+          </section>` : ""}
+          <script>window.onload = function () { window.print(); };</script>
+        </body>
+      </html>`);
+    printWindow.document.close();
+  };
+
+  const handlePrintCompanyCollection = async () => {
     if (!collectionPrintDate) {
       alert("Please choose a date.");
       return;
     }
-
     const printWindow = window.open("", "_blank", "width=1100,height=800");
     if (!printWindow) {
       alert("Please allow popups to print the report.");
       return;
     }
-
     printWindow.document.write("<p style=\"font-family: Arial, sans-serif; padding: 24px;\">Preparing collection report...</p>");
     printWindow.document.close();
-
     try {
-      const data =
-        collectionDateReportData.todayCollectionDetails.length > 0 || collectionDateReportData.todayCollection.length > 0
-          ? collectionDateReportData
-          : await fetchCollectionDateReport(collectionPrintDate);
-      writeCollectionPrintReport(
+      // Always fetch fresh so collections settled a moment ago are included.
+      const data = await fetchCollectionDateReport(collectionPrintDate);
+      writeCompanyCollectionPrintReport(
         printWindow,
-        data.todayCollectionDetails || [],
-        formatDate(collectionPrintDate)
+        data.todayCollectionEntries || [],
+        formatDate(collectionPrintDate),
+        selectedSalesCompanyName
       );
     } catch (error) {
-      console.error("Error printing collection report:", error);
+      console.error("Error printing company collection report:", error);
       printWindow.document.open();
       printWindow.document.write("<p style=\"font-family: Arial, sans-serif; padding: 24px;\">Unable to load collection report.</p>");
       printWindow.document.close();
-    }
-  };
-
-  const handleDownloadTodayCollection = async () => {
-    if (!collectionPrintDate) {
-      alert("Please choose a date.");
-      return;
-    }
-
-    try {
-      const params = new URLSearchParams({
-        startDate: collectionPrintDate,
-        endDate: collectionPrintDate,
-      });
-      if (selectedSalesCompanyId) params.set("companyId", selectedSalesCompanyId);
-      const response = await fetch(`${API}/staff/reports/payments/export?${params.toString()}`);
-      if (!response.ok) throw new Error("Unable to download report.");
-
-      const file = await response.blob();
-      const url = URL.createObjectURL(file);
-      const link = document.createElement("a");
-      const companyPart = selectedSalesCompanyName.replace(/[^a-z0-9]+/gi, "-").replace(/^-|-$/g, "") || "all-companies";
-      link.href = url;
-      link.download = `today-collection-${companyPart}-${collectionPrintDate}.xlsx`;
-      link.click();
-      URL.revokeObjectURL(url);
-    } catch (error) {
-      console.error("Error downloading collection report:", error);
-      alert("Unable to download the collection report.");
     }
   };
 
@@ -2547,15 +2677,6 @@ function Dashboard() {
                         )}
                         <CollectionSplit split={collectionDateReportData.todayCollectionSplit} compact />
                         <MDBox display="flex" gap={0.75} alignItems="center" flexWrap="wrap">
-                          <MDBox sx={{ minWidth: 140 }}>
-                            <CompanyTypeSelect
-                              id="today-collection-company-type"
-                              value={salesCompanyType}
-                              onChange={handleSalesCompanyTypeChange}
-                              height={36}
-                              sx={{ fontSize: "0.8125rem" }}
-                            />
-                          </MDBox>
                           <FormControl size="small" sx={{ minWidth: 155 }}>
                             <InputLabel id="today-collection-company-label">Company</InputLabel>
                             <Select
@@ -2566,7 +2687,7 @@ function Dashboard() {
                               sx={{ height: 36, fontSize: "0.8125rem", backgroundColor: "#fff" }}
                             >
                               <MenuItem value="">All Companies</MenuItem>
-                              {typedSalesCompanies.map((company) => (
+                              {salesCompanies.map((company) => (
                                 <MenuItem key={`today-collection-company-${company.id}`} value={String(company.id)}>
                                   {company.name}
                                 </MenuItem>
@@ -2583,26 +2704,15 @@ function Dashboard() {
                             sx={compactDateFieldSx}
                           />
                           <MDButton
-                            color="success"
+                            color="info"
                             variant="contained"
                             size="small"
-                            onClick={handleDownloadTodayCollection}
+                            onClick={handlePrintCompanyCollection}
                             disabled={!collectionPrintDate || collectionDateLoading}
                             sx={{ minWidth: 44, p: 1.2 }}
-                            title="Download company collection Excel report"
+                            title="Print company-wise collection sheet (Cash → UPI → Cheque)"
                           >
-                            <Icon>download</Icon>
-                          </MDButton>
-                          <MDButton
-                            color="dark"
-                            variant="contained"
-                            size="small"
-                            onClick={handlePrintTodayCollection}
-                            disabled={!collectionPrintDate || collectionDateLoading}
-                            sx={{ minWidth: 44, p: 1.2 }}
-                            title="Print collection report"
-                          >
-                            <Icon>print</Icon>
+                            <Icon>receipt_long</Icon>
                           </MDButton>
                         </MDBox>
                       </>

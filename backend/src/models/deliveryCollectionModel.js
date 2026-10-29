@@ -1,6 +1,7 @@
 import db from '../config/db.js';
 import PaymentModel from './paymentModel.js';
 import { getPendingCollectedAmount } from './staffPortalModel.js';
+import { actorParams } from '../utils/requestContext.js';
 
 // Business date in India. Settled payments are dated with this instead of the
 // database's CURDATE(), which follows the DB server clock and can be a day off
@@ -431,11 +432,12 @@ class DeliveryCollectionModel {
                 const [result] = await connection.execute(
                     `INSERT INTO sale_payments
                      (sale_id, payment_date, payment_mode, amount, collector_name,
-                      parent_credit_payment_id, reference_no, reference_date, credit_days, collector_staff_id)
-                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                      parent_credit_payment_id, reference_no, reference_date, credit_days, collector_staff_id,
+                      settled_by_type, settled_by_id)
+                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
                     [collection.sale_id, paymentDate, collection.payment_mode, paymentAmount, collection.delivery_boy_name,
                      parentCreditPaymentId, collection.reference_no, collection.reference_date, collection.credit_days,
-                     collection.staff_id ?? null]
+                     collection.staff_id ?? null, ...actorParams()]
                 );
                 return result.insertId;
             };
