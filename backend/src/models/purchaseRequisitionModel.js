@@ -14,12 +14,12 @@ class PurchaseRequisitionModel {
             const [result] = await connection.execute(
                 `INSERT INTO purchase_requisitions
                  (requisition_number, seller_type, company_id, staff_id, outlet_id, outlet_day,
-                  items, item_count, total_quantity, total_amount)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                  items, item_count, total_quantity, total_amount, status)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
                 [
                     requisitionNumber, data.sellerType, data.companyId, data.staffId,
                     data.outletId, data.outletDay || null, JSON.stringify(data.items),
-                    data.items.length, data.totalQuantity, data.totalAmount,
+                    data.items.length, data.totalQuantity, data.totalAmount, data.status || 'pending',
                 ]
             );
             await connection.commit();
@@ -175,6 +175,9 @@ class PurchaseRequisitionModel {
         if (status) {
             clauses.push('pr.status = ?');
             params.push(status);
+        } else {
+            // Drafts are not submitted yet, so approvers don't see them.
+            clauses.push("pr.status <> 'draft'");
         }
         const where = clauses.length ? `WHERE ${clauses.join(' AND ')}` : '';
         const [rows] = await db.execute(
@@ -236,19 +239,27 @@ class PurchaseRequisitionModel {
             `SELECT c.id AS company_id, c.name AS company_name, c.type AS company_type,
                     c.daily_requisition_target AS target,
                     COALESCE(SUM(CASE WHEN pr.status <> 'cancelled' THEN pr.total_amount END), 0) AS achieved,
-                    COUNT(CASE WHEN pr.status <> 'cancelled' THEN pr.id END) AS requisition_count
+                    COUNT(CASE WHEN pr.status <> 'cancelled' THEN pr.id END) AS requisition_count,
+                    COALESCE(drafts.draft_count, 0) AS draft_count,
+                    COALESCE(drafts.draft_total, 0) AS draft_total
              FROM companies c
              INNER JOIN (
                  SELECT company_id FROM staff_companies WHERE staff_id = ?
                  UNION
                  SELECT company_id FROM staff WHERE id = ? AND company_id IS NOT NULL
              ) link ON link.company_id = c.id
+             LEFT JOIN (
+                 SELECT company_id, COUNT(*) AS draft_count, SUM(total_amount) AS draft_total
+                 FROM purchase_requisitions
+                 WHERE staff_id = ? AND status = 'draft'
+                 GROUP BY company_id
+             ) drafts ON drafts.company_id = c.id
              LEFT JOIN purchase_requisitions pr
                     ON pr.company_id = c.id AND pr.staff_id = ? AND DATE(pr.created_at) = ?
              WHERE c.daily_requisition_target IS NOT NULL AND c.daily_requisition_target > 0
-             GROUP BY c.id, c.name, c.type, c.daily_requisition_target
+             GROUP BY c.id, c.name, c.type, c.daily_requisition_target, drafts.draft_count, drafts.draft_total
              ORDER BY c.name`,
-            [staffId, staffId, staffId, date]
+            [staffId, staffId, staffId, staffId, date]
         );
         return rows.map((row) => {
             const target = Number(row.target) || 0;
@@ -263,6 +274,9 @@ class PurchaseRequisitionModel {
                 remaining: Math.max(0, Math.round((target - achieved) * 100) / 100),
                 completed: achieved >= target,
                 requisitionCount: Number(row.requisition_count) || 0,
+                // Saved but not Final Submitted yet (any date).
+                draftCount: Number(row.draft_count) || 0,
+                draftTotal: Math.round((Number(row.draft_total) || 0) * 100) / 100,
             };
         });
     }
@@ -381,10 +395,33 @@ class PurchaseRequisitionModel {
         );
     }
 
+    // Days that still have draft requisitions for this staff member and company.
+    static async listDraftDays(staffId, companyId) {
+        const [rows] = await db.execute(
+            `SELECT DATE_FORMAT(created_at, '%Y-%m-%d') AS draft_date, COUNT(*) AS draft_count
+             FROM purchase_requisitions
+             WHERE staff_id = ? AND company_id = ? AND status = 'draft'
+             GROUP BY draft_date
+             ORDER BY draft_date`,
+            [staffId, companyId]
+        );
+        return rows.map((row) => ({ date: row.draft_date, count: Number(row.draft_count) || 0 }));
+    }
+
+    // Final Submit: drafts of that day go to the approval queue.
+    static async submitDrafts(staffId, companyId, date) {
+        const [result] = await db.execute(
+            `UPDATE purchase_requisitions SET status = 'pending'
+             WHERE staff_id = ? AND company_id = ? AND DATE(created_at) = ? AND status = 'draft'`,
+            [staffId, companyId, date]
+        );
+        return result.affectedRows;
+    }
+
     static async deletePendingByStaff(id, staffId) {
         const [result] = await db.execute(
             `DELETE FROM purchase_requisitions
-             WHERE id = ? AND staff_id = ? AND status = 'pending'
+             WHERE id = ? AND staff_id = ? AND status IN ('pending', 'draft')
              LIMIT 1`,
             [id, staffId]
         );

@@ -90,6 +90,7 @@ function PurchaseRequisition() {
   const canApproveBelowTarget = user?.role === "admin"
     || user?.permissions?.includes("requisition_target_approval");
   const [targets, setTargets] = useState([]);
+  const [finalSubmitting, setFinalSubmitting] = useState(false);
   const [targetRequests, setTargetRequests] = useState([]);
   const isAdmin = user?.role === "admin";
   const [sellerType, setSellerType] = useState("");
@@ -200,6 +201,43 @@ function PurchaseRequisition() {
       .then((data) => setTargets(Array.isArray(data.targets) ? data.targets : []))
       .catch(() => setTargets([]));
   }, [isStaff, savedRequisitions]);
+
+  // Staff: Final Submit today's draft requisitions for a company with a daily target.
+  const finalSubmit = async (target, confirmBelowTarget = false, note = "") => {
+    if (!confirmBelowTarget && !window.confirm(
+      `Final Submit your ${target.companyName} draft requisitions for approval?`
+    )) return;
+    setFinalSubmitting(true);
+    try {
+      const response = await fetch(`${API}/staff/purchase-requisitions/final-submit`, {
+        method: "POST",
+        headers: { ...auth(), "Content-Type": "application/json" },
+        body: JSON.stringify({ companyId: target.companyId, confirmBelowTarget, note }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (response.status === 409 && data.code === "BELOW_TARGET") {
+        const shortBy = (data.days || []).map((day) => `${day.date}: short ₹${Number(day.short || 0).toFixed(2)}`).join("\n");
+        const reason = window.prompt(
+          `${data.error}\n\n${shortBy}\n\nReason for Admin (optional). Press OK to submit for Admin approval:`,
+          ""
+        );
+        if (reason === null) return;
+        setFinalSubmitting(false);
+        await finalSubmit(target, true, reason);
+        return;
+      }
+      if (!response.ok) {
+        alert(data.error || "Unable to Final Submit.");
+        return;
+      }
+      alert(data.message || "Submitted.");
+      await fetchHistory(staffId, historyCompanyId, historyDateFilter);
+    } catch (error) {
+      alert(error.message || "Unable to Final Submit.");
+    } finally {
+      setFinalSubmitting(false);
+    }
+  };
 
   // Below Target approval requests (approvers only).
   const loadTargetRequests = useCallback(async () => {
@@ -384,7 +422,9 @@ function PurchaseRequisition() {
       }
 
       const requisition = data.requisition;
-      setResult(requisition.requisition_number);
+      setResult(requisition.status === "draft"
+        ? `${requisition.requisition_number} (saved as draft — Final Submit when your day is complete)`
+        : requisition.requisition_number);
       setItems([]);
       setSelectedItem(null);
       setQuantity("");
@@ -414,8 +454,8 @@ function PurchaseRequisition() {
   };
 
   const deletePendingRequisition = async (row) => {
-    if (row.status !== "pending") return;
-    if (!window.confirm(`Delete pending requisition ${row.requisition_number}? This cannot be undone.`)) return;
+    if (!["pending", "draft"].includes(row.status)) return;
+    if (!window.confirm(`Delete ${row.status} requisition ${row.requisition_number}? This cannot be undone.`)) return;
 
     const response = await fetch(`${API}/staff/purchase-requisitions/${row.id}`, {
       method: "DELETE",
@@ -504,7 +544,9 @@ function PurchaseRequisition() {
         {isStaff && <Card>
           <MDBox p={3}>
             <MDTypography variant="h5" fontWeight="bold">Purchase Requisition</MDTypography>
-            <MDBox mt={1.5}><TargetProgress targets={targets} /></MDBox>
+            <MDBox mt={1.5}>
+              <TargetProgress targets={targets} onFinalSubmit={(target) => finalSubmit(target)} submitting={finalSubmitting} />
+            </MDBox>
             <Grid container spacing={2} mt={0.5}>
               {[
                 ["Seller Type", sellerType, (v) => { setSellerType(v); setCompanyId(""); }, [
@@ -782,7 +824,7 @@ function PurchaseRequisition() {
                               <TableCell>{Number(row.total_quantity || 0).toFixed(2)}</TableCell>
                               <TableCell>{Number(row.total_amount || 0).toFixed(2)}</TableCell>
                               <TableCell>{getRequisitionTotalPayable(row).toFixed(2)}</TableCell>
-                              <TableCell>{row.status || "open"}</TableCell>
+                              <TableCell>{row.status === "draft" ? "draft (not submitted)" : row.status || "open"}</TableCell>
                               <TableCell>{row.invoiced_invoice_number || "—"}</TableCell>
                               {isStaff && (
                                 <TableCell sx={{ fontWeight: 700 }}>
@@ -813,7 +855,7 @@ function PurchaseRequisition() {
                               </TableCell>
                               {isStaff && (
                                 <TableCell>
-                                  {row.status === "pending" ? (
+                                  {["pending", "draft"].includes(row.status) ? (
                                     <MDButton
                                       color="error"
                                       variant="outlined"

@@ -31,6 +31,7 @@ router.get('/requisitions/stock', ...asStaff, getCurrentStock);
 router.get('/requisitions/target', ...asStaff, purchaseRequisitions.getTargetProgress);
 router.get('/requisitions', ...asStaff, purchaseRequisitions.list);
 router.post('/requisitions', ...asStaff, staffMobile.prepareRequisitionBody, purchaseRequisitions.create);
+router.post('/requisitions/final-submit', ...asStaff, purchaseRequisitions.finalSubmit);
 router.delete('/requisitions/:id', ...asStaff, purchaseRequisitions.removePending);
 
 router.get('/out-bills/:saleId/credit-photo', auth, authorizeCreditPhoto, getCreditPhoto);

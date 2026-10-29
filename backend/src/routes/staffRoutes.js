@@ -112,6 +112,7 @@ router.put('/purchases/:purchaseId', staffController.updatePurchase);
 router.delete('/purchases/:purchaseId', staffController.deletePurchase);
 router.get('/purchase-reports', staffController.getPurchaseReports);
 router.post('/purchase-requisitions', purchaseRequisitionController.create);
+router.post('/purchase-requisitions/final-submit', purchaseRequisitionController.finalSubmit);
 router.get('/purchase-requisitions', purchaseRequisitionController.list);
 router.put('/purchase-requisitions/:id/status', purchaseRequisitionController.review);
 router.delete('/purchase-requisitions/:id', purchaseRequisitionController.removePending);

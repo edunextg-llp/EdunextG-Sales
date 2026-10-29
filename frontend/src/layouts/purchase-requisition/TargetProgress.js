@@ -1,6 +1,7 @@
-import { LinearProgress } from "@mui/material";
+import { Icon, LinearProgress } from "@mui/material";
 
 import MDBox from "components/MDBox";
+import MDButton from "components/MDButton";
 import MDTypography from "components/MDTypography";
 
 const money = (value) => Number(value || 0).toLocaleString("en-IN", {
@@ -9,7 +10,7 @@ const money = (value) => Number(value || 0).toLocaleString("en-IN", {
 });
 
 /** Today's requisition target (e.g. SIL Rs. 11,250) for the logged-in staff member. */
-function TargetProgress({ targets }) {
+function TargetProgress({ targets, onFinalSubmit, submitting = false }) {
   if (!Array.isArray(targets) || !targets.length) return null;
   return (
     <MDBox display="flex" flexDirection="column" gap={1.5} mb={2}>
@@ -41,10 +42,35 @@ function TargetProgress({ targets }) {
               color={target.completed ? "success" : "warning"}
               sx={{ height: 8, borderRadius: 4, my: 1 }}
             />
-            <MDTypography variant="caption" color="text">
+            <MDTypography variant="caption" color="text" display="block">
               Done today: ₹{money(target.achieved)} from {target.requisitionCount} requisition
-              {target.requisitionCount === 1 ? "" : "s"}. Below target, your requisitions need special approval.
+              {target.requisitionCount === 1 ? "" : "s"}. Requisitions are saved as drafts until you Final Submit.
+              {target.completed ? "" : " If you Final Submit below the target, Admin has to approve them."}
             </MDTypography>
+            {target.draftCount > 0 ? (
+              <MDBox display="flex" justifyContent="space-between" alignItems="center" flexWrap="wrap" gap={1} mt={1.5}>
+                <MDTypography variant="button" fontWeight="medium">
+                  {target.draftCount} draft{target.draftCount === 1 ? "" : "s"} not submitted · ₹{money(target.draftTotal)}
+                </MDTypography>
+                {onFinalSubmit && (
+                  <MDButton
+                    color={target.completed ? "success" : "warning"}
+                    variant="gradient"
+                    size="small"
+                    disabled={submitting}
+                    onClick={() => onFinalSubmit(target)}
+                  >
+                    <Icon sx={{ mr: 0.5 }}>task_alt</Icon> Final Submit
+                  </MDButton>
+                )}
+              </MDBox>
+            ) : (
+              target.requisitionCount > 0 && (
+                <MDTypography variant="caption" color="success" fontWeight="medium" display="block" mt={1}>
+                  All of today&apos;s requisitions are submitted.
+                </MDTypography>
+              )
+            )}
           </MDBox>
         );
       })}

@@ -77,13 +77,22 @@ export const create = async (req, res) => {
                 gst_percent: gstPercent,
             };
         });
+        // Companies with a daily target (e.g. SIL Rs. 11,250): requisitions are saved as drafts
+        // and go for approval only when the staff member taps Final Submit for the day.
+        const needsFinalSubmit = Number(company.daily_requisition_target) > 0;
         const requisition = await PurchaseRequisitionModel.create({
             sellerType, companyId, staffId, outletId, outletDay: req.body?.outletDay,
             items,
             totalQuantity: items.reduce((sum, item) => sum + item.quantity, 0),
             totalAmount: items.reduce((sum, item) => sum + item.amount, 0),
+            status: needsFinalSubmit ? 'draft' : 'pending',
         });
-        return res.status(201).json({ message: 'Purchase requisition created.', requisition });
+        return res.status(201).json({
+            message: needsFinalSubmit
+                ? 'Requisition saved as draft. Final Submit when your day is complete.'
+                : 'Purchase requisition created.',
+            requisition,
+        });
     } catch (error) {
         return res.status(error.statusCode || 500).json({ error: error.message || 'Internal server error' });
     }
@@ -105,10 +114,14 @@ export const list = async (req, res) => {
                 companyId,
                 status: req.query.status ? String(req.query.status).trim() : null,
             });
+        // Approvers never see drafts (not Final Submitted yet); staff see their own.
+        const submitted = req.user?.role === 'staff'
+            ? requisitions
+            : requisitions.filter((row) => row.status !== 'draft');
         // Who approved / rejected is shown to Admin only.
         const visible = req.user?.role === 'admin'
-            ? requisitions
-            : requisitions.map(({ reviewed_by_name, reviewed_by_login_id, reviewed_by, reviewed_by_type, ...row }) => row);
+            ? submitted
+            : submitted.map(({ reviewed_by_name, reviewed_by_login_id, reviewed_by, reviewed_by_type, ...row }) => row);
         return res.json({ requisitions: visible });
     } catch (error) {
         return res.status(500).json({ error: 'Internal server error' });
@@ -127,6 +140,7 @@ export const getByNumber = async (req, res) => {
                     : 'This requisition has already been used for an invoice and cannot be used again. The invoice link was not recorded for this older requisition.',
                 cancelled: 'This requisition was cancelled and cannot be used in Add Sales.',
                 pending: 'This requisition is still pending approval.',
+                draft: 'This requisition has not been Final Submitted by the staff member yet.',
                 open: 'This requisition is still pending approval.',
             };
             return res.status(409).json({
@@ -307,6 +321,83 @@ export const reviewTargetRequest = async (req, res) => {
     }
 };
 
+// Staff: Final Submit their draft requisitions for a company. A day that reaches the daily
+// target goes to normal approval. A day below the target needs confirmBelowTarget and then
+// also creates a Below Target approval request for Admin / an assigned approver.
+export const finalSubmit = async (req, res) => {
+    try {
+        if (req.user?.role !== 'staff') {
+            return res.status(403).json({ error: 'Only staff can Final Submit their requisitions.' });
+        }
+        const staffId = Number(req.user.staffId);
+        const companyId = Number(req.body?.companyId);
+        if (!Number.isInteger(companyId) || companyId <= 0) {
+            return res.status(400).json({ error: 'Company is required.' });
+        }
+        if (!req.user.companyIds?.map(Number).includes(companyId)) {
+            return res.status(403).json({ error: 'This company is not assigned to your staff account.' });
+        }
+        const company = await CompanyModel.getById(companyId);
+        const target = Number(company?.daily_requisition_target) || 0;
+        const draftDays = await PurchaseRequisitionModel.listDraftDays(staffId, companyId);
+        if (!draftDays.length) {
+            return res.status(400).json({ error: 'You have no draft requisitions to submit.' });
+        }
+
+        const days = [];
+        for (const draftDay of draftDays) {
+            const day = await PurchaseRequisitionModel.getDayTotal(staffId, companyId, draftDay.date);
+            days.push({
+                date: draftDay.date,
+                draftCount: draftDay.count,
+                total: day.total,
+                target,
+                short: target > 0 ? Math.max(0, Math.round((target - day.total) * 100) / 100) : 0,
+                belowTarget: target > 0 && day.total < target,
+            });
+        }
+
+        const below = days.filter((day) => day.belowTarget);
+        if (below.length && req.body?.confirmBelowTarget !== true) {
+            return res.status(409).json({
+                code: 'BELOW_TARGET',
+                error: `Your ${company.name} requisitions are below the daily target of Rs. ${target.toFixed(2)}. `
+                    + 'If you Final Submit now, they will need Admin approval.',
+                days,
+            });
+        }
+
+        const note = String(req.body?.note || '').trim().slice(0, 1000);
+        let submitted = 0;
+        for (const day of days) {
+            submitted += await PurchaseRequisitionModel.submitDrafts(staffId, companyId, day.date);
+            if (day.belowTarget
+                && !await PurchaseRequisitionModel.getPendingTargetRequest(staffId, companyId, day.date)) {
+                await PurchaseRequisitionModel.createTargetRequest({
+                    staffId,
+                    companyId,
+                    date: day.date,
+                    target,
+                    achieved: day.total,
+                    note: note || 'Final submitted by staff below the daily target.',
+                });
+            }
+        }
+
+        return res.json({
+            message: below.length
+                ? `${submitted} requisition(s) submitted. Below target, so they are waiting for Admin approval.`
+                : `${submitted} requisition(s) submitted for approval.`,
+            submitted,
+            belowTarget: below.length > 0,
+            days,
+        });
+    } catch (error) {
+        console.error('Error on requisition final submit:', error);
+        return res.status(500).json({ error: 'Internal server error' });
+    }
+};
+
 export const removePending = async (req, res) => {
     try {
         if (req.user?.role !== 'staff') {
@@ -322,7 +413,7 @@ export const removePending = async (req, res) => {
         );
         if (!deleted) {
             return res.status(409).json({
-                error: 'Only your own pending requisition can be deleted. It may already be approved, cancelled, or invoiced.',
+                error: 'Only your own draft or pending requisition can be deleted. It may already be approved, cancelled, or invoiced.',
             });
         }
         return res.json({ message: 'Pending requisition deleted successfully.' });

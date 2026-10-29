@@ -1108,7 +1108,7 @@ export async function ensureSchema() {
                 item_count INT NOT NULL DEFAULT 0,
                 total_quantity DECIMAL(14, 4) NOT NULL DEFAULT 0.0000,
                 total_amount DECIMAL(14, 4) NOT NULL DEFAULT 0.0000,
-                status ENUM('pending', 'approved', 'invoiced', 'cancelled') NOT NULL DEFAULT 'pending',
+                status ENUM('draft', 'pending', 'approved', 'invoiced', 'cancelled') NOT NULL DEFAULT 'pending',
                 reviewed_by INT NULL,
                 reviewed_at DATETIME NULL,
                 review_note VARCHAR(500) NULL,
@@ -1123,7 +1123,8 @@ export async function ensureSchema() {
         await tryQuery(connection, `CREATE UNIQUE INDEX uq_staff_login_id ON staff(login_id)`, 'unique staff login_id');
         await tryQuery(
             connection,
-            `ALTER TABLE purchase_requisitions MODIFY COLUMN status ENUM('open', 'pending', 'approved', 'invoiced', 'cancelled') NOT NULL DEFAULT 'pending'`,
+            // 'draft': saved by staff of a company with a daily target, not yet Final Submitted.
+            `ALTER TABLE purchase_requisitions MODIFY COLUMN status ENUM('draft', 'open', 'pending', 'approved', 'invoiced', 'cancelled') NOT NULL DEFAULT 'pending'`,
             'purchase requisition approval statuses'
         );
         await tryQuery(connection, `ALTER TABLE purchase_requisitions ADD COLUMN reviewed_by INT NULL`, 'reviewed_by on purchase requisitions');
