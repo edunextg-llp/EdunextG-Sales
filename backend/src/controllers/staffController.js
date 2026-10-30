@@ -2570,8 +2570,8 @@ export const updateStaffLocations = async (req, res) => {
             assignments[day] = [...new Map(assignments[day].map(location => [location.locationName, location])).values()];
         }
 
-        await StaffModel.replaceLocations(staffId, assignments);
-        res.status(200).json({ message: 'Location assignments updated successfully' });
+        const result = await StaffModel.replaceLocations(staffId, assignments);
+        res.status(200).json({ message: 'Location assignments updated successfully', ...result });
     } catch (error) {
         console.error('Error updating staff locations:', error);
         res.status(500).json({ error: 'Internal server error' });

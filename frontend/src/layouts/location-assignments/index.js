@@ -36,6 +36,7 @@ function LocationAssignments() {
   const [areas, setAreas] = useState([]);
   const [areasLoading, setAreasLoading] = useState(true);
   const [areasError, setAreasError] = useState("");
+  const [outletCounts, setOutletCounts] = useState({});
 
   useEffect(() => {
     const controller = new AbortController();
@@ -61,8 +62,28 @@ function LocationAssignments() {
     return () => { controller.abort(); window.removeEventListener("focus", loadAreas); };
   }, []);
 
+  // Outlets mapped to each area for this staff; they follow the area to its day on save.
+  const loadOutletCounts = async (staffId) => {
+    try {
+      const response = await fetch(`${API}/staff/${staffId}/all-counters`);
+      const data = await response.json();
+      if (!response.ok || !Array.isArray(data)) throw new Error();
+      const outletsByArea = {};
+      data.forEach((outlet) => {
+        const area = normalizeAreaName(outlet.location_name);
+        if (!area) return;
+        outletsByArea[area] = outletsByArea[area] || new Set();
+        outletsByArea[area].add(outlet.outlet_erp_id || outlet.id);
+      });
+      setOutletCounts(Object.fromEntries(Object.entries(outletsByArea).map(([area, ids]) => [area, ids.size])));
+    } catch {
+      setOutletCounts({});
+    }
+  };
+
   useEffect(() => {
     if (!isSelfService || !user?.staffId) return;
+    void loadOutletCounts(user.staffId);
     setLoading(true);
     fetch(`${API}/staff/${user.staffId}`)
       .then((response) => response.json().then((data) => ({ response, data })))
@@ -120,9 +141,11 @@ function LocationAssignments() {
   const selectStaff = async (value) => {
     setSelectedStaff(value);
     setAssignments(emptyAssignments());
+    setOutletCounts({});
     setActiveTab(0);
     if (!value) return;
 
+    void loadOutletCounts(value.id);
     setLoading(true);
     try {
       const response = await fetch(`${API}/staff/${value.id}`);
@@ -177,7 +200,11 @@ function LocationAssignments() {
       });
       const data = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(data.error || "Unable to save assignments.");
-      alert("Location assignments saved successfully.");
+      const sharedNote = data.sharedAreas?.length
+        ? `\n\nOutlets not moved for areas assigned to more than one day: ${data.sharedAreas.join(", ")}.`
+        : "";
+      alert(`Location assignments saved successfully. ${data.outletsMoved || 0} outlet(s) moved to their area's new day.${sharedNote}`);
+      void loadOutletCounts(selectedStaff.id);
     } catch (error) {
       alert(error.message);
     } finally {
@@ -199,7 +226,7 @@ function LocationAssignments() {
                 <MDTypography variant="body2" color="text" mb={3}>
                   {isSelfService
                     ? "Search and select saved areas for each working day."
-                    : "Choose a staff member, then search and select areas from Create Area for each day."}
+                    : "Choose a staff member, then search and select areas from Create Area for each day. On save, each area's outlets move to the day the area is assigned to."}
                 </MDTypography>
                 {areasError && <Alert severity="error">{areasError} Refresh the page to retry.</Alert>}
 
@@ -279,6 +306,11 @@ function LocationAssignments() {
                               noOptionsText="No matching areas. Add new areas in Create Area."
                               renderInput={(params) => <MDInput {...params} label="Search and select area" />}
                             />
+                            {location.locationName && (
+                              <MDTypography variant="caption" color="text" sx={{ whiteSpace: "nowrap" }}>
+                                {outletCounts[normalizeAreaName(location.locationName)] || 0} outlet(s)
+                              </MDTypography>
+                            )}
                             <MDButton color="error" variant="text" onClick={() => removeLocation(day, index)}>
                               <Icon>delete</Icon>
                             </MDButton>

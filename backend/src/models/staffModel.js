@@ -461,22 +461,52 @@ class StaffModel {
         );
     }
 
+    // Saves the day-wise areas and moves each area's outlets to the day the area
+    // is now assigned to, so any number of day changes can be saved at once.
+    // Outlets are never deleted: an area on several days, or removed from every
+    // day, keeps its outlets where they are, and an outlet already present on
+    // the target day is left in place rather than duplicated.
     static async replaceLocations(staffId, assignments) {
         const connection = await db.getConnection();
         try {
             await connection.beginTransaction();
             await connection.execute('DELETE FROM staff_locations WHERE staff_id = ?', [staffId]);
 
+            const areaDays = new Map();
             for (const [day, locations] of Object.entries(assignments)) {
                 for (const location of locations) {
                     await connection.execute(
                         'INSERT INTO staff_locations (staff_id, day, location_name) VALUES (?, ?, ?)',
                         [staffId, day, location.locationName]
                     );
+                    const area = normalizeAreaName(location.locationName);
+                    areaDays.set(area, new Set([...(areaDays.get(area) || []), day]));
                 }
             }
 
+            let outletsMoved = 0;
+            const sharedAreas = [];
+            for (const [area, days] of areaDays) {
+                if (days.size > 1) {
+                    sharedAreas.push(area);
+                    continue;
+                }
+                const [day] = days;
+                const [result] = await connection.execute(
+                    `UPDATE staff_counters SET day = ?
+                     WHERE staff_id = ? AND UPPER(TRIM(location_name)) = ? AND day <> ?
+                       AND outlet_erp_id NOT IN (
+                           SELECT erp_id FROM (
+                               SELECT outlet_erp_id AS erp_id FROM staff_counters WHERE staff_id = ? AND day = ?
+                           ) AS target_day
+                       )`,
+                    [day, staffId, area, day, staffId, day]
+                );
+                outletsMoved += result.affectedRows;
+            }
+
             await connection.commit();
+            return { outletsMoved, sharedAreas };
         } catch (error) {
             await connection.rollback();
             throw error;
