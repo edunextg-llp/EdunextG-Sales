@@ -4,7 +4,7 @@ import crypto from 'crypto';
 import UserModel from '../models/userModel.js';
 import StaffModel from '../models/staffModel.js';
 import DeliveryBoyModel from '../models/deliveryBoyModel.js';
-import { PERMISSION_KEYS } from '../utils/permissionKeys.js';
+import { PERMISSION_KEYS, parseStoredPermissions, withRolePermissions } from '../utils/permissionKeys.js';
 import {
     OTP_RESEND_COOLDOWN_MS,
     OTP_TTL_MS,
@@ -145,7 +145,30 @@ export const login = async (req, res) => {
                 && Number(staff.is_active) === 1
                 && staff.password_hash
                 && await bcrypt.compare(password, staff.password_hash);
-            if (validStaff) {
+            if (validStaff && staff.staff_category === 'bawarchee_staff') {
+                // Bawarchee Staff open the web panel with the pages ticked for them.
+                const bawarcheeRole = staff.bawarchee_role || null;
+                const permissions = withRolePermissions(parseStoredPermissions(staff.permissions), bawarcheeRole);
+                tokenPayload = {
+                    id: staff.id,
+                    staffId: staff.id,
+                    loginId: staff.login_id,
+                    role: 'bawarchee_staff',
+                    bawarcheeRole,
+                    permissions,
+                    companyIds: [],
+                };
+                user = {
+                    id: staff.id,
+                    staffId: staff.id,
+                    username: staff.name,
+                    loginId: staff.login_id,
+                    role: 'bawarchee_staff',
+                    bawarcheeRole,
+                    permissions,
+                    companies: [],
+                };
+            } else if (validStaff) {
                 const companyIds = String(staff.company_ids || '')
                     .split(',')
                     .map(Number)
@@ -288,6 +311,15 @@ export const refreshToken = async (req, res) => {
             permissions = current.permissions;
             companyIds = current.companyIds;
         }
+        let { bawarcheeRole } = decoded;
+        if (decoded.role === 'bawarchee_staff' && decoded.staffId) {
+            const current = await StaffModel.getCurrentWebAccess(decoded.staffId);
+            if (!current?.isActive) {
+                return res.status(401).json({ error: 'This account is inactive. Please contact the admin.' });
+            }
+            permissions = current.permissions;
+            bawarcheeRole = current.bawarcheeRole;
+        }
 
         const token = jwt.sign(
             {
@@ -299,6 +331,7 @@ export const refreshToken = async (req, res) => {
                 staffType: decoded.staffType,
                 companyIds,
                 deliveryBoyId: decoded.deliveryBoyId,
+                bawarcheeRole,
                 permissions,
                 tv,
             },
@@ -319,6 +352,7 @@ export const refreshToken = async (req, res) => {
                 staffType: decoded.staffType,
                 companyIds,
                 deliveryBoyId: decoded.deliveryBoyId,
+                bawarcheeRole,
                 permissions: permissions || [],
             }
         });

@@ -31,7 +31,7 @@ class AuditLogModel {
                     al.actor_role, al.created_at,
                     CASE
                         WHEN al.actor_role IN ('packaging_staff', 'delivery_boy') THEN dboy.name
-                        WHEN al.actor_role = 'staff' THEN s.name
+                        WHEN al.actor_role IN ('staff', 'bawarchee_staff') THEN s.name
                         WHEN al.actor_role = 'admin' THEN COALESCE(u.username, u.email, 'Admin')
                         ELSE 'Unknown user'
                     END AS staff_name
@@ -40,7 +40,7 @@ class AuditLogModel {
                     ON al.actor_role IN ('packaging_staff', 'delivery_boy')
                    AND dboy.id = al.actor_id
              LEFT JOIN staff s
-                    ON al.actor_role = 'staff' AND s.id = al.actor_id
+                    ON al.actor_role IN ('staff', 'bawarchee_staff') AND s.id = al.actor_id
              LEFT JOIN users u
                     ON al.actor_role = 'admin' AND u.id = al.actor_id
              ORDER BY al.created_at DESC, al.id DESC

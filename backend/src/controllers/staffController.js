@@ -125,6 +125,13 @@ import { resolveItemGst } from '../utils/itemGst.js';
 import { uploadBufferToCloudinary, isCloudinaryConfigured } from '../utils/cloudinary.js';
 import { compressPhoto, MAX_PHOTO_BYTES } from '../utils/compressPhoto.js';
 import bcrypt from 'bcryptjs';
+import { encryptPassword, decryptPassword } from '../utils/passwordCipher.js';
+import {
+    BAWARCHEE_ROLES,
+    PERMISSION_KEYS,
+    normalizePermissionList,
+    parseStoredPermissions,
+} from '../utils/permissionKeys.js';
 import crypto from 'crypto';
 import xlsx from 'xlsx';
 import ExcelJS from 'exceljs';
@@ -294,6 +301,49 @@ function buildStaffCompanies(staff) {
 
 function normalizeStaffCategory(value) {
     return ['bawarchee_staff', 'operator'].includes(value) ? value : 'company_staff';
+}
+
+// Bawarchee staff pick a role (Admin / Manager / Accountant / Operator) and page permissions.
+function resolveBawarcheeAccess(staffCategory, bawarcheeRole, permissions) {
+    if (staffCategory !== 'bawarchee_staff') {
+        return { bawarcheeRole: null, permissions: null };
+    }
+    const role = String(bawarcheeRole || '').trim().toLowerCase();
+    if (!BAWARCHEE_ROLES.includes(role)) {
+        return { error: 'Please choose a staff type: Admin, Manager, Accountant or Operator.' };
+    }
+    if (Array.isArray(permissions) && permissions.some((key) => !PERMISSION_KEYS.includes(key))) {
+        return { error: 'One or more permissions are invalid.' };
+    }
+    return { bawarcheeRole: role, permissions: normalizePermissionList(permissions) };
+}
+
+// Bawarchee staff have no Distributor/CNF type.
+function resolveStaffType(staffType, staffCategory) {
+    if (staffCategory === 'bawarchee_staff') return null;
+    return staffType === 'cnf' ? 'cnf' : 'distributor';
+}
+
+function staffLoginPrefix(companyName, staffCategory) {
+    if (staffCategory === 'bawarchee_staff') return 'BAW';
+    if (staffCategory === 'operator') return 'OPR';
+    return String(companyName || 'STAFF')
+        .replace(/[^a-z0-9]/gi, '')
+        .slice(0, 8)
+        .toUpperCase() || 'STAFF';
+}
+
+async function issueStaffCredentials(staffId, companyName, staffCategory) {
+    const companyPrefix = staffLoginPrefix(companyName, staffCategory);
+    const loginId = `${companyPrefix}${String(staffId).padStart(4, '0')}`;
+    const generatedPassword = `${companyPrefix.slice(0, 4)}@${crypto.randomInt(100000, 999999)}`;
+    await StaffModel.setLoginCredentials(
+        staffId,
+        loginId,
+        await bcrypt.hash(generatedPassword, 10),
+        encryptPassword(generatedPassword)
+    );
+    return { loginId, password: generatedPassword };
 }
 
 function managedCompanyScopeError(req, staffCategory, companyIds) {
@@ -549,7 +599,7 @@ export const createStaff = async (req, res) => {
             companyName,
             companyNames,
             companyIds,
-            staffType = 'distributor',
+            staffType,
             assignments = {},
             dob,
             whatsappNumber,
@@ -558,17 +608,28 @@ export const createStaff = async (req, res) => {
             aadharDocumentUrl,
             pccCertificateUrl,
             staffCategory = 'company_staff',
+            bawarcheeRole,
+            permissions,
         } = req.body;
-        const normalizedStaffType = staffType === 'cnf' ? 'cnf' : 'distributor';
         const normalizedStaffCategory = normalizeStaffCategory(staffCategory);
+        const normalizedStaffType = resolveStaffType(staffType, normalizedStaffCategory);
 
-        const contactValidation = validateDigitsOnly(contactNo, 'Contact number');
+        if (!String(name || '').trim()) {
+            return res.status(400).json({ error: 'Staff name is required.' });
+        }
+
+        const access = resolveBawarcheeAccess(normalizedStaffCategory, bawarcheeRole, permissions);
+        if (access.error) {
+            return res.status(400).json({ error: access.error });
+        }
+
+        const contactValidation = validateDigitsOnly(contactNo, 'Contact number', { required: false });
         if (!contactValidation.valid) {
             return res.status(400).json({ error: contactValidation.error });
         }
 
         const whatsappSource = String(whatsappNumber || '').trim() || contactValidation.value;
-        const whatsappValidation = validateDigitsOnly(whatsappSource, 'WhatsApp number');
+        const whatsappValidation = validateDigitsOnly(whatsappSource, 'WhatsApp number', { required: false });
         if (!whatsappValidation.valid) {
             return res.status(400).json({ error: whatsappValidation.error });
         }
@@ -590,10 +651,6 @@ export const createStaff = async (req, res) => {
         const scopeError = managedCompanyScopeError(req, normalizedStaffCategory, resolvedCompanyIds);
         if (scopeError) return res.status(403).json({ error: scopeError });
 
-        if (normalizedStaffCategory === 'company_staff' && resolvedCompanyIds.length === 0) {
-            return res.status(400).json({ error: 'Please select at least one company.' });
-        }
-
         const companyId = resolvedCompanyIds[0] || null;
         const profile = buildStaffProfile({
             dob,
@@ -605,9 +662,11 @@ export const createStaff = async (req, res) => {
             contactNo: contactValidation.value,
             staffCategory: normalizedStaffCategory,
         });
+        profile.bawarcheeRole = access.bawarcheeRole;
+        profile.permissions = access.permissions;
 
         const staffId = await StaffModel.create(
-            name,
+            String(name).trim(),
             contactValidation.value,
             companyId,
             normalizedStaffType,
@@ -616,16 +675,10 @@ export const createStaff = async (req, res) => {
         await StaffModel.setCompanies(staffId, resolvedCompanyIds);
 
         const primaryCompany = companyId ? await CompanyModel.getById(companyId) : null;
-        const companyPrefix = String(primaryCompany?.name || 'STAFF')
-            .replace(/[^a-z0-9]/gi, '')
-            .slice(0, 8)
-            .toUpperCase() || 'STAFF';
-        const loginId = `${companyPrefix}${String(staffId).padStart(4, '0')}`;
-        const generatedPassword = `${companyPrefix.slice(0, 4)}@${crypto.randomInt(100000, 999999)}`;
-        await StaffModel.setLoginCredentials(
+        const credentials = await issueStaffCredentials(
             staffId,
-            loginId,
-            await bcrypt.hash(generatedPassword, 10)
+            primaryCompany?.name,
+            normalizedStaffCategory
         );
 
         // Add location assignments
@@ -643,10 +696,7 @@ export const createStaff = async (req, res) => {
         res.status(201).json({
             message: 'Staff, locations, and login credentials created successfully',
             staffId,
-            credentials: {
-                loginId,
-                password: generatedPassword,
-            },
+            credentials,
         });
     } catch (error) {
         console.error('Error creating staff:', error);
@@ -661,26 +711,35 @@ export const generateStaffCredentials = async (req, res) => {
         if (!staff) {
             return res.status(404).json({ error: 'Staff was not found.' });
         }
-        const companyName = String(staff.company_name || 'STAFF').split(',')[0].trim();
-        const companyPrefix = companyName
-            .replace(/[^a-z0-9]/gi, '')
-            .slice(0, 8)
-            .toUpperCase() || 'STAFF';
-        const loginId = `${companyPrefix}${String(staffId).padStart(4, '0')}`;
-        const generatedPassword = `${companyPrefix.slice(0, 4)}@${crypto.randomInt(100000, 999999)}`;
-        await StaffModel.setLoginCredentials(
-            staffId,
-            loginId,
-            await bcrypt.hash(generatedPassword, 10)
-        );
+        const companyName = String(staff.company_name || '').split(',')[0].trim();
+        const credentials = await issueStaffCredentials(staffId, companyName, staff.staff_category);
         return res.json({
             message: 'Staff login credentials generated.',
-            credentials: { loginId, password: generatedPassword },
+            credentials,
         });
     } catch (error) {
         if (error.code === 'ER_DUP_ENTRY') {
             return res.status(409).json({ error: 'The generated login ID is already in use.' });
         }
+        return res.status(500).json({ error: error.message || 'Internal server error' });
+    }
+};
+
+export const getStaffCredentials = async (req, res) => {
+    try {
+        const staffId = Number(req.params.id);
+        if (!Number.isInteger(staffId) || staffId <= 0) {
+            return res.status(400).json({ error: 'Staff id must be a positive integer.' });
+        }
+        const staff = await StaffModel.getLoginCredentials(staffId);
+        if (!staff) {
+            return res.status(404).json({ error: 'Staff was not found.' });
+        }
+        return res.json({
+            loginId: staff.login_id || null,
+            password: decryptPassword(staff.password_encrypted),
+        });
+    } catch (error) {
         return res.status(500).json({ error: error.message || 'Internal server error' });
     }
 };
@@ -708,7 +767,12 @@ export const updateStaffCredentials = async (req, res) => {
             return res.status(409).json({ error: 'That Login ID is already in use.' });
         }
 
-        await StaffModel.setLoginCredentials(staffId, loginId, await bcrypt.hash(password, 10));
+        await StaffModel.setLoginCredentials(
+            staffId,
+            loginId,
+            await bcrypt.hash(password, 10),
+            encryptPassword(password)
+        );
         return res.json({ message: 'Staff login credentials updated successfully.' });
     } catch (error) {
         if (error.code === 'ER_DUP_ENTRY') {
@@ -958,7 +1022,12 @@ export const getStaffFullDetails = async (req, res) => {
 
         const companies = buildStaffCompanies(staff);
 
-        res.status(200).json({ ...staff, companies, assignments });
+        res.status(200).json({
+            ...staff,
+            permissions: parseStoredPermissions(staff.permissions),
+            companies,
+            assignments,
+        });
     } catch (error) {
         res.status(500).json({ error: 'Internal server error' });
     }
@@ -978,7 +1047,7 @@ export const updateStaff = async (req, res) => {
             companyName,
             companyNames,
             companyIds,
-            staffType = 'distributor',
+            staffType,
             assignments = {},
             dob,
             whatsappNumber,
@@ -987,17 +1056,28 @@ export const updateStaff = async (req, res) => {
             aadharDocumentUrl,
             pccCertificateUrl,
             staffCategory = 'company_staff',
+            bawarcheeRole,
+            permissions,
         } = req.body;
-        const normalizedStaffType = staffType === 'cnf' ? 'cnf' : 'distributor';
         const normalizedStaffCategory = normalizeStaffCategory(staffCategory);
+        const normalizedStaffType = resolveStaffType(staffType, normalizedStaffCategory);
 
-        const contactValidation = validateDigitsOnly(contactNo, 'Contact number');
+        if (!String(name || '').trim()) {
+            return res.status(400).json({ error: 'Staff name is required.' });
+        }
+
+        const access = resolveBawarcheeAccess(normalizedStaffCategory, bawarcheeRole, permissions);
+        if (access.error) {
+            return res.status(400).json({ error: access.error });
+        }
+
+        const contactValidation = validateDigitsOnly(contactNo, 'Contact number', { required: false });
         if (!contactValidation.valid) {
             return res.status(400).json({ error: contactValidation.error });
         }
 
         const whatsappSource = String(whatsappNumber || '').trim() || contactValidation.value;
-        const whatsappValidation = validateDigitsOnly(whatsappSource, 'WhatsApp number');
+        const whatsappValidation = validateDigitsOnly(whatsappSource, 'WhatsApp number', { required: false });
         if (!whatsappValidation.valid) {
             return res.status(400).json({ error: whatsappValidation.error });
         }
@@ -1019,10 +1099,6 @@ export const updateStaff = async (req, res) => {
         const scopeError = managedCompanyScopeError(req, normalizedStaffCategory, resolvedCompanyIds);
         if (scopeError) return res.status(403).json({ error: scopeError });
 
-        if (normalizedStaffCategory === 'company_staff' && resolvedCompanyIds.length === 0) {
-            return res.status(400).json({ error: 'Please select at least one company.' });
-        }
-
         const companyId = resolvedCompanyIds[0] || null;
         const profile = buildStaffProfile({
             dob,
@@ -1034,10 +1110,12 @@ export const updateStaff = async (req, res) => {
             contactNo: contactValidation.value,
             staffCategory: normalizedStaffCategory,
         });
+        profile.bawarcheeRole = access.bawarcheeRole;
+        profile.permissions = access.permissions;
 
         await StaffModel.update(
             id,
-            name,
+            String(name).trim(),
             contactValidation.value,
             companyId,
             normalizedStaffType,
@@ -1500,6 +1578,47 @@ export const getNextBillNumber = async (req, res) => {
     }
 };
 
+// An invoice for an outlet 14+ days overdue: saved as cancelled, with no stock taken.
+export const cancelOverdueSale = async (req, res) => {
+    try {
+        const staffId = Number(req.params.id);
+        const { date, lineItems } = req.body;
+        const outletValidation = validatePositiveInteger(req.body.outletId, 'Outlet');
+        if (!outletValidation.valid) return res.status(400).json({ error: outletValidation.error });
+        const invoiceValidation = validateRequiredText(req.body.invoiceNumber, 'Invoice number');
+        if (!invoiceValidation.valid) return res.status(400).json({ error: invoiceValidation.error });
+        const priceValidation = validateNumeric(req.body.price, 'Price');
+        if (!priceValidation.valid) return res.status(400).json({ error: priceValidation.error });
+        const itemCountValidation = validatePositiveInteger(req.body.itemCount, 'No. of item');
+        if (!itemCountValidation.valid) return res.status(400).json({ error: itemCountValidation.error });
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(String(date || ''))) return res.status(400).json({ error: 'Sale date is invalid.' });
+
+        const staff = await StaffModel.getDetails(staffId);
+        if (!staff) return res.status(404).json({ error: 'Staff not found' });
+
+        // Never trust the client: this is only for outlets that are really that far overdue.
+        const [overdue] = await getOverdueOutlets([outletValidation.value]);
+        if (!overdue || Number(overdue.maxOverdueDays) <= SELF_APPROVE_OVERDUE_DAYS) {
+            return res.status(409).json({ error: `This outlet is not overdue by more than ${SELF_APPROVE_OVERDUE_DAYS} days. Save the sale normally.` });
+        }
+        if (await StaffModel.findSaleByInvoice(staffId, invoiceValidation.value)) {
+            return res.status(400).json({ error: 'Same invoice number already exists.' });
+        }
+
+        const sale = await StaffModel.saveOverdueCancelledSale(staffId, date, {
+            outletId: outletValidation.value,
+            invoiceNumber: invoiceValidation.value,
+            itemCount: itemCountValidation.value,
+            price: priceValidation.value,
+            lineItems: Array.isArray(lineItems) ? lineItems : [],
+        });
+        return res.status(201).json({ message: `Invoice ${sale.invoiceNumber} cancelled due to overdue.`, sale });
+    } catch (error) {
+        console.error('Error cancelling overdue invoice:', error);
+        return res.status(500).json({ error: 'Unable to cancel this invoice.' });
+    }
+};
+
 export const recordSales = async (req, res) => {
     try {
         const { id } = req.params;
@@ -1675,6 +1794,26 @@ export const recordSales = async (req, res) => {
         }
 
         const overdueOutlets = await getOverdueOutlets(outletIds);
+
+        // 14 days or more overdue: the invoice can't be billed by anyone. The user cancels it, unless
+        // Admin approved a request for this exact sale before this rule existed.
+        const tooOldOutlets = overdueOutlets.filter((outlet) => Number(outlet.maxOverdueDays) > SELF_APPROVE_OVERDUE_DAYS);
+        if (tooOldOutlets.length > 0) {
+            const alreadyApproved = new Set(
+                (await OverdueSaleRequestModel.findApproved({
+                    staffId: Number(id), saleDate: date, outletIds: tooOldOutlets.map((outlet) => outlet.outletId),
+                })).map((request) => Number(request.outlet_id))
+            );
+            const blocked = tooOldOutlets.filter((outlet) => !alreadyApproved.has(outlet.outletId));
+            if (blocked.length > 0) {
+                return res.status(409).json({
+                    code: 'OVERDUE_CANCEL_REQUIRED',
+                    error: `Credit is overdue by more than ${SELF_APPROVE_OVERDUE_DAYS} days, so this invoice cannot be billed.`,
+                    overdueOutlets: blocked,
+                });
+            }
+        }
+
         let claimedRequestIds = [];
         let approvedRequests = [];
         let adminPermission = null;
@@ -2176,6 +2315,38 @@ export const updatePackagingStatus = async (req, res) => {
     }
 };
 
+export const undoSaleCancellation = async (req, res) => {
+    const saleId = Number(req.params.saleId);
+    if (!Number.isSafeInteger(saleId) || saleId <= 0) {
+        return res.status(400).json({ error: 'Invalid sale.' });
+    }
+    const reason = String(req.body?.reason || '').trim();
+    if (!reason) return res.status(400).json({ error: 'Enter the reason for returning this invoice.' });
+    if (reason.length > 1000) return res.status(400).json({ error: 'Reason must be 1000 characters or less.' });
+    try {
+        const result = await StaffModel.undoSaleCancellation(saleId, reason);
+        if (!result) return res.status(404).json({ error: 'Sale not found' });
+        if (result.conflict) {
+            return res.status(409).json({
+                error: 'This invoice is no longer cancelled. The list has been refreshed.',
+                currentStatus: result.currentStatus,
+            });
+        }
+        return res.status(200).json({
+            message: result.status === 'packing_done'
+                ? 'Invoice moved to Pending Deliveries.'
+                : 'This invoice was cancelled before packing, so it moved back to Packaging.',
+            status: result.status,
+        });
+    } catch (error) {
+        if (error.code === 'STOCK_UNAVAILABLE') {
+            return res.status(409).json({ error: `Could not return this invoice: ${error.message}` });
+        }
+        console.error('Error undoing sale cancellation:', error);
+        return res.status(500).json({ error: 'Unable to return this invoice.' });
+    }
+};
+
 export const getSaleStatusHistory = async (req, res) => {
     try {
         const { saleId } = req.params;
@@ -2546,36 +2717,43 @@ export const updateStaffLocations = async (req, res) => {
             return res.status(403).json({ error: 'This staff member is outside your assigned companies.' });
         }
 
-        const allowedDays = staff.staff_type === 'cnf'
-            ? ['CNF']
-            : ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-        const submitted = req.body.assignments;
-        if (!submitted || typeof submitted !== 'object' || Array.isArray(submitted)) {
-            return res.status(400).json({ error: 'Assignments are required.' });
-        }
-
-        const assignments = {};
-        const areaNames = new Set((await StaffModel.getAreaDirectory()).map(area => area.name));
-        for (const day of allowedDays) {
-            const locations = submitted[day] || [];
-            if (!Array.isArray(locations)) {
-                return res.status(400).json({ error: `Locations for ${day} must be a list.` });
-            }
-            assignments[day] = locations
-                .map((location) => ({ locationName: normalizeAreaName(location?.locationName) }))
-                .filter((location) => location.locationName);
-            if (assignments[day].some(location => !areaNames.has(location.locationName))) {
-                return res.status(400).json({ error: 'Select an existing area. New areas must be added in Create Area.' });
-            }
-            assignments[day] = [...new Map(assignments[day].map(location => [location.locationName, location])).values()];
-        }
-
-        const result = await StaffModel.replaceLocations(staffId, assignments);
-        res.status(200).json({ message: 'Location assignments updated successfully', ...result });
+        const saved = await saveDayAreas(staff, req.body.assignments);
+        if (saved.error) return res.status(400).json({ error: saved.error });
+        res.status(200).json({ message: 'Location assignments updated successfully', ...saved });
     } catch (error) {
         console.error('Error updating staff locations:', error);
         res.status(500).json({ error: 'Internal server error' });
     }
+};
+
+export const staffRouteDays = (staff) => (staff.staff_type === 'cnf'
+    ? ['CNF']
+    : ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']);
+
+// Validates day-wise areas and saves them; outlets follow their area's day.
+// Shared by the web Location Assignments page and the staff mobile app.
+export const saveDayAreas = async (staff, submitted) => {
+    if (!submitted || typeof submitted !== 'object' || Array.isArray(submitted)) {
+        return { error: 'Assignments are required.' };
+    }
+
+    const assignments = {};
+    const areaNames = new Set((await StaffModel.getAreaDirectory()).map(area => area.name));
+    for (const day of staffRouteDays(staff)) {
+        const locations = submitted[day] || [];
+        if (!Array.isArray(locations)) {
+            return { error: `Locations for ${day} must be a list.` };
+        }
+        assignments[day] = locations
+            .map((location) => ({ locationName: normalizeAreaName(location?.locationName) }))
+            .filter((location) => location.locationName);
+        if (assignments[day].some(location => !areaNames.has(location.locationName))) {
+            return { error: 'Select an existing area. New areas must be added in Create Area.' };
+        }
+        assignments[day] = [...new Map(assignments[day].map(location => [location.locationName, location])).values()];
+    }
+
+    return StaffModel.replaceLocations(staff.id, assignments);
 };
 
 const normalizeSellerItemHeader = (value) => String(value || '')

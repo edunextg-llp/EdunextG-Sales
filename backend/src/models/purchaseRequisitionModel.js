@@ -339,6 +339,37 @@ class PurchaseRequisitionModel {
         return result.insertId;
     }
 
+    // Keeps a day's Below Target request in step with its total: a day under the target waits
+    // for Admin / a Below Target approver, and the request goes away once the target is reached.
+    static async syncTargetRequest(staffId, companyId, date, target, note = null) {
+        const day = await PurchaseRequisitionModel.getDayTotal(staffId, companyId, date);
+        const pending = await PurchaseRequisitionModel.getPendingTargetRequest(staffId, companyId, date);
+        if (!day.count || day.total >= target) {
+            if (pending) await db.execute('DELETE FROM requisition_target_requests WHERE id = ?', [pending.id]);
+            return;
+        }
+        if (pending) {
+            await db.execute(
+                'UPDATE requisition_target_requests SET target_amount = ?, achieved_amount = ?, note = COALESCE(?, note) WHERE id = ?',
+                [target, day.total, note, pending.id]
+            );
+            return;
+        }
+        await PurchaseRequisitionModel.createTargetRequest({
+            staffId, companyId, date, target, achieved: day.total, note: note || 'Below the daily target.',
+        });
+    }
+
+    // Below Target requests for one staff member, oldest first, for their Requisition Queue.
+    static async listTargetRequestsForStaff(staffId) {
+        const [rows] = await db.execute(
+            `SELECT company_id, DATE_FORMAT(request_date, '%Y-%m-%d') AS request_date, status, note, review_note
+             FROM requisition_target_requests WHERE staff_id = ? ORDER BY id`,
+            [staffId]
+        );
+        return rows;
+    }
+
     // Approve: approves every still-pending requisition of that staff / company / day.
     static async reviewTargetRequest(id, status, reviewerId, note = null) {
         const actor = currentActor();

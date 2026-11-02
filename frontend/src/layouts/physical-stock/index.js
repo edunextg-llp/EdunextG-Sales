@@ -1,5 +1,6 @@
 import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 
+import Alert from "@mui/material/Alert";
 import Autocomplete from "@mui/material/Autocomplete";
 import Card from "@mui/material/Card";
 import Dialog from "@mui/material/Dialog";
@@ -462,6 +463,7 @@ function PhysicalStock() {
         physicalStockInPcs: String(item.physical_stock?.physical_stock_in_pcs ?? item.current_stock_in_pcs ?? 0),
         initialPhysicalStockInCase: String(item.physical_stock?.physical_stock_in_case ?? item.current_stock_in_case ?? 0),
         initialPhysicalStockInPcs: String(item.physical_stock?.physical_stock_in_pcs ?? item.current_stock_in_pcs ?? 0),
+        initialStockUpdateDate: String(item.physical_stock?.stock_update_date || item.stock_update_date || "").slice(0, 10),
       }));
       const loadToken = bulkEditLoadTokenRef.current + 1;
       bulkEditLoadTokenRef.current = loadToken;
@@ -473,6 +475,7 @@ function PhysicalStock() {
       setBulkEditDate(sharedDate);
       setBulkEditTotal(preparedRows.length);
       setBulkEditSearch("");
+      setMessage("");
       setBulkEditRows(preparedRows.slice(0, 1));
       setBulkEditLoading(preparedRows.length > 1);
       setBulkEditOpen(true);
@@ -487,7 +490,7 @@ function PhysicalStock() {
         }
         setBulkEditRows((current) => [
           ...current,
-          ...nextRows.map((row) => bulkEditDateRef.current
+          ...nextRows.map((row) => bulkEditDateRef.current && !row.is_edit_locked
             ? { ...row, stock_update_date: bulkEditDateRef.current }
             : row),
         ]);
@@ -506,13 +509,14 @@ function PhysicalStock() {
     setBulkEditSearch("");
     setBulkEditDate("");
     bulkEditDateRef.current = "";
+    setError("");
     setBulkEditOpen(false);
   };
 
   const applyBulkEditDate = (value) => {
     bulkEditDateRef.current = value;
     setBulkEditDate(value);
-    setBulkEditRows((rows) => rows.map((row) => ({
+    setBulkEditRows((rows) => rows.map((row) => (row.is_edit_locked ? row : {
       ...row,
       stock_update_date: value,
     })));
@@ -535,12 +539,23 @@ function PhysicalStock() {
 
   const saveBulkPhysicalStock = async () => {
     if (!dmsImportId || !bulkEditRows.length) return;
-    const changedRows = bulkEditRows.filter((item) => (
+    // Locked products cannot be saved (the server rejects the whole submit), so skip them.
+    const changedRows = bulkEditRows.filter((item) => !item.is_edit_locked && (
       item.physicalStockInCase !== item.initialPhysicalStockInCase
       || item.physicalStockInPcs !== item.initialPhysicalStockInPcs
+      || String(item.stock_update_date || "").slice(0, 10) !== (item.initialStockUpdateDate || "")
     ));
     if (!changedRows.length) {
-      setError("Update at least one product before final submit.");
+      setError("No changes to submit. Change the stock quantity or date of at least one unlocked product.");
+      return;
+    }
+    const invalidRow = changedRows.find((item) => (
+      [item.physicalStockInCase, item.physicalStockInPcs].some((value) => (
+        String(value).trim() === "" || !Number.isFinite(Number(value)) || Number(value) < 0
+      ))
+    ));
+    if (invalidRow) {
+      setError(`Enter a valid stock quantity (0 or more) for ${invalidRow.product_name || invalidRow.product_erp_id}.`);
       return;
     }
     if (!window.confirm(`Final submit will lock the ${changedRows.length} changed product(s) for 15 days. Products you did not change will remain editable. Continue?`)) return;
@@ -575,7 +590,7 @@ function PhysicalStock() {
       if (!finalResponse.ok) throw new Error(finalData.error || "Unable to finalize physical stock.");
 
       await fetchPhysicalStock(companyFilter);
-      setBulkEditOpen(false);
+      closeBulkPhysicalStockEdit();
       setMessage(finalData.message || data.message || "Physical stock submitted successfully.");
     } catch (saveError) {
       setError(saveError.message);
@@ -1287,6 +1302,18 @@ function PhysicalStock() {
           </MDBox>
         </DialogTitle>
         <DialogContent dividers sx={{ p: 0 }}>
+          {error && (
+            <Alert severity="error" onClose={() => setError("")} sx={{ borderRadius: 0, py: 0.25 }}>
+              {error}
+            </Alert>
+          )}
+          {bulkEditRows.some((row) => row.is_edit_locked) && (
+            <MDBox px={1.5} py={0.75} sx={{ backgroundColor: "#fef3c7", borderBottom: "1px solid #fcd34d" }}>
+              <MDTypography variant="caption" fontWeight="medium" sx={{ color: "#92400e" }}>
+                Some products are locked for 15 days after their last update; their quantity boxes are disabled.
+              </MDTypography>
+            </MDBox>
+          )}
           {bulkEditLoading && (
             <MDBox px={1.5} py={1} sx={{ backgroundColor: "#eff6ff", borderBottom: "1px solid #bfdbfe" }}>
               <MDTypography variant="caption" color="info" fontWeight="medium">
@@ -1321,8 +1348,8 @@ function PhysicalStock() {
                   ["6", "MRP", (item) => unitFormat(item.mrp)],
                   ["", "Price/Pcs", (item) => unitFormat(item.price_per_piece)],
                   ["", "STOCK UPDATE DATE", (item) => formatExpiredStockDate(item.stock_update_date), "date"],
-                  ["", "Current Stock In Case", (item, index) => <MDInput type="number" inputProps={{ min: 0, step: "any" }} value={item.physicalStockInCase} onChange={(event) => updateBulkEditRow(index, "physicalStockInCase", event.target.value)} sx={{ minWidth: 82, "& .MuiInputBase-root": { height: 28, fontSize: "0.75rem" } }} />, "input"],
-                  ["", "Current Stock In Pcs", (item, index) => <MDInput type="number" inputProps={{ min: 0, step: "any" }} value={item.physicalStockInPcs} onChange={(event) => updateBulkEditRow(index, "physicalStockInPcs", event.target.value)} sx={{ minWidth: 82, "& .MuiInputBase-root": { height: 28, fontSize: "0.75rem" } }} />, "input"],
+                  ["", "Current Stock In Case", (item, index) => <MDInput type="number" disabled={Boolean(item.is_edit_locked)} title={item.is_edit_locked ? "Locked for 15 days after its last update" : undefined} inputProps={{ min: 0, step: "any" }} value={item.physicalStockInCase} onChange={(event) => updateBulkEditRow(index, "physicalStockInCase", event.target.value)} sx={{ minWidth: 82, "& .MuiInputBase-root": { height: 28, fontSize: "0.75rem" } }} />, "input"],
+                  ["", "Current Stock In Pcs", (item, index) => <MDInput type="number" disabled={Boolean(item.is_edit_locked)} title={item.is_edit_locked ? "Locked for 15 days after its last update" : undefined} inputProps={{ min: 0, step: "any" }} value={item.physicalStockInPcs} onChange={(event) => updateBulkEditRow(index, "physicalStockInPcs", event.target.value)} sx={{ minWidth: 82, "& .MuiInputBase-root": { height: 28, fontSize: "0.75rem" } }} />, "input"],
                   ["", "TOTAL CURRENT QTY", (item) => unitFormat(calcPhysicalTotals(item, item).totalPhysicalStockInPcs)],
                   ["", "CURRENT STOCK (B/F-CF)", () => "", "date"],
                   ["", "Total Value", (item) => money(calcPhysicalTotals(item, item).totalValue || 0), "total"],

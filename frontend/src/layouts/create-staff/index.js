@@ -35,6 +35,13 @@ import MDBox from "components/MDBox";
 import MDTypography from "components/MDTypography";
 import MDInput from "components/MDInput";
 import MDButton from "components/MDButton";
+import {
+  STAFF_PERMISSION_GROUPS,
+  BAWARCHEE_ROLE_OPTIONS,
+  BAWARCHEE_ROLE_PRESETS,
+  bawarcheeRoleLabel,
+  normalizeStaffPermissions,
+} from "utils/staffPermissions";
 
 // Material Dashboard 2 React example components
 import DashboardLayout from "examples/LayoutContainers/DashboardLayout";
@@ -96,6 +103,8 @@ const createEmptyFormData = () => ({
   selectedCompanies: [],
   staffCategory: "company_staff",
   staffType: "distributor",
+  bawarcheeRole: "",
+  permissions: [],
   assignments: createEmptyAssignments(),
 });
 
@@ -168,6 +177,20 @@ function DocumentPreview({ title, url }) {
   );
 }
 
+const getStaffTypeLabel = (staff) => {
+  if (!staff) return "—";
+  if (staff.staff_category === "bawarchee_staff") return bawarcheeRoleLabel(staff.bawarchee_role) || "—";
+  return (staff.staff_type || "distributor") === "cnf" ? "CNF" : "Distributor";
+};
+
+const copyToClipboard = async (text) => {
+  try {
+    await navigator.clipboard.writeText(String(text || ""));
+  } catch (error) {
+    console.error("Copy failed:", error);
+  }
+};
+
 function CreateStaff() {
   const [staffList, setStaffList] = useState([]);
   const [staffTypeFilter, setStaffTypeFilter] = useState("all");
@@ -186,6 +209,9 @@ function CreateStaff() {
   const [loginId, setLoginId] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [savingCredentials, setSavingCredentials] = useState(false);
+  const [createdCredentials, setCreatedCredentials] = useState(null);
+  const [viewCredentials, setViewCredentials] = useState(null);
+  const [showViewPassword, setShowViewPassword] = useState(false);
 
   const [formData, setFormData] = useState(createEmptyFormData());
 
@@ -286,6 +312,34 @@ function CreateStaff() {
     }));
   };
 
+  const handleBawarcheeRoleChange = (event) => {
+    const bawarcheeRole = event.target.value;
+    setFormData((prev) => ({
+      ...prev,
+      bawarcheeRole,
+      permissions: normalizeStaffPermissions(BAWARCHEE_ROLE_PRESETS[bawarcheeRole] || []),
+    }));
+  };
+
+  const togglePermission = (key, checked) => {
+    setFormData((prev) => {
+      const next = checked
+        ? [...prev.permissions, key]
+        : prev.permissions.filter((permission) => permission !== key);
+      return { ...prev, permissions: normalizeStaffPermissions(next) };
+    });
+  };
+
+  const toggleGroupPermissions = (group, checked) => {
+    const keys = group.items.map(([key]) => key);
+    setFormData((prev) => {
+      const next = checked
+        ? [...prev.permissions, ...keys]
+        : prev.permissions.filter((permission) => !keys.includes(permission));
+      return { ...prev, permissions: normalizeStaffPermissions(next) };
+    });
+  };
+
   const handleStaffTypeChange = (e) => {
     const staffType = e.target.value;
 
@@ -305,7 +359,9 @@ function CreateStaff() {
   const filteredStaffList =
     staffList.filter((staff) => {
       const matchesType =
-        staffTypeFilter === "all" || (staff.staff_type || "distributor") === staffTypeFilter;
+        staffTypeFilter === "all" ||
+        (staff.staff_category !== "bawarchee_staff" &&
+          (staff.staff_type || "distributor") === staffTypeFilter);
       const searchText = employeeSearchInput.trim().toLowerCase();
       const matchesSearch =
         !searchText ||
@@ -385,7 +441,20 @@ function CreateStaff() {
       const response = await fetch(`${API}/staff/${staff.id}`);
       const data = await response.json();
       setSelectedStaffDetails(data);
+      setViewCredentials(null);
+      setShowViewPassword(false);
       setViewModalOpen(true);
+      try {
+        const credResponse = await fetch(`${API}/staff/${staff.id}/credentials`);
+        const credData = await credResponse.json().catch(() => ({}));
+        setViewCredentials(
+          credResponse.ok
+            ? { loginId: credData.loginId || null, password: credData.password || null }
+            : { loginId: data.login_id || null, password: null, error: credData.error }
+        );
+      } catch (credError) {
+        setViewCredentials({ loginId: data.login_id || null, password: null });
+      }
     } catch (error) {
       console.error("Error fetching staff details:", error);
       alert("Error loading staff details.");
@@ -395,6 +464,8 @@ function CreateStaff() {
   const handleCloseView = () => {
     setViewModalOpen(false);
     setSelectedStaffDetails(null);
+    setViewCredentials(null);
+    setShowViewPassword(false);
   };
 
   // Edit Staff
@@ -432,6 +503,8 @@ function CreateStaff() {
         })),
         staffCategory: data.staff_category || "company_staff",
         staffType: data.staff_type || "distributor",
+        bawarcheeRole: data.bawarchee_role || "",
+        permissions: Array.isArray(data.permissions) ? data.permissions : [],
         assignments: {
           ...createEmptyAssignments(),
           ...(data.assignments || {}),
@@ -471,13 +544,8 @@ function CreateStaff() {
       return;
     }
 
-    if (!formData.contactNo.trim()) {
-      alert("Please enter contact number.");
-      return;
-    }
-
-    if (formData.staffCategory === "company_staff" && formData.selectedCompanies.length === 0) {
-      alert("Please select at least one company.");
+    if (formData.staffCategory === "bawarchee_staff" && !formData.bawarcheeRole) {
+      alert("Please choose a staff type: Admin, Manager, Accountant or Operator.");
       return;
     }
 
@@ -506,17 +574,21 @@ function CreateStaff() {
         },
         body: JSON.stringify({
           name: formData.name.trim(),
-          contactNo: formData.contactNo,
+          contactNo: formData.contactNo || null,
           whatsappNumber: formData.whatsappSameAsContact
             ? formData.contactNo
-            : formData.whatsappNumber,
+            : formData.whatsappNumber || null,
           email: formData.email.trim() || null,
           dob: formData.dob || null,
           aadharNo: formData.aadharNo || null,
           aadharDocumentUrl: formData.aadharNo ? formData.aadharDocumentUrl || null : null,
           pccCertificateUrl: formData.pccCertificateUrl || null,
-          staffType: formData.staffType,
+          staffType: formData.staffCategory === "bawarchee_staff" ? null : formData.staffType,
           staffCategory: formData.staffCategory,
+          bawarcheeRole:
+            formData.staffCategory === "bawarchee_staff" ? formData.bawarcheeRole : null,
+          permissions:
+            formData.staffCategory === "bawarchee_staff" ? formData.permissions : null,
           companyNames,
           companyIds,
           companyName: companyNames.join(", "),
@@ -526,9 +598,13 @@ function CreateStaff() {
       const responseData = await response.json().catch(() => ({}));
       if (response.ok) {
         if (!editingStaffId && responseData.credentials) {
-          alert(
-            `Staff created successfully!\n\nLogin ID: ${responseData.credentials.loginId}\nPassword: ${responseData.credentials.password}\n\nSave these credentials now; the password is shown only once.`
-          );
+          setCreatedCredentials({
+            name: formData.name.trim(),
+            loginId: responseData.credentials.loginId,
+            password: responseData.credentials.password,
+          });
+        } else if (!editingStaffId) {
+          alert("Staff created successfully!");
         } else {
           alert("Staff updated successfully!");
         }
@@ -709,13 +785,13 @@ function CreateStaff() {
                               align="center"
                               sx={{ ...tableBodySx, borderBottom: "1px solid #e5e7eb", fontSize: "0.875rem", color: "#374151" }}
                             >
-                              {(staff.staff_type || "distributor") === "cnf" ? "CNF" : "Distributor"}
+                              {getStaffTypeLabel(staff)}
                             </TableCell>
                             <TableCell
                               align="center"
                               sx={{ ...tableBodySx, borderBottom: "1px solid #e5e7eb", fontSize: "0.875rem", color: "#374151" }}
                             >
-                              {staff.contact_no}
+                              {staff.contact_no || "—"}
                             </TableCell>
                             <TableCell
                               align="left"
@@ -780,6 +856,62 @@ function CreateStaff() {
       </MDBox>
 
       <Footer />
+
+      <Dialog open={Boolean(createdCredentials)} onClose={() => setCreatedCredentials(null)} fullWidth maxWidth="xs">
+        <DialogTitle sx={{ fontWeight: "bold", color: "#344767" }}>
+          Staff Created Successfully
+        </DialogTitle>
+        <DialogContent dividers>
+          <MDTypography variant="body2" color="text" mb={2}>
+            Login credentials for {createdCredentials?.name || "staff"}
+          </MDTypography>
+          {[
+            ["Login ID", createdCredentials?.loginId],
+            ["Password", createdCredentials?.password],
+          ].map(([label, value]) => (
+            <MDBox
+              key={label}
+              mb={1.5}
+              p={1.5}
+              display="flex"
+              alignItems="center"
+              justifyContent="space-between"
+              sx={{ border: "1px solid #e2e8f0", borderRadius: "10px", backgroundColor: "#f8fafc" }}
+            >
+              <MDBox>
+                <MDTypography variant="caption" color="text" display="block">
+                  {label}
+                </MDTypography>
+                <MDTypography variant="body2" fontWeight="bold" sx={{ fontFamily: "monospace" }}>
+                  {value || "—"}
+                </MDTypography>
+              </MDBox>
+              <MDButton size="small" variant="text" color="info" onClick={() => copyToClipboard(value)}>
+                <Icon>content_copy</Icon>&nbsp;Copy
+              </MDButton>
+            </MDBox>
+          ))}
+          <MDTypography variant="caption" color="text">
+            You can view these anytime from the staff details (eye icon).
+          </MDTypography>
+        </DialogContent>
+        <DialogActions sx={{ px: 3, py: 2 }}>
+          <MDButton
+            variant="outlined"
+            color="info"
+            onClick={() =>
+              copyToClipboard(
+                `Login ID: ${createdCredentials?.loginId}\nPassword: ${createdCredentials?.password}`
+              )
+            }
+          >
+            Copy Both
+          </MDButton>
+          <MDButton variant="gradient" color="info" onClick={() => setCreatedCredentials(null)}>
+            Done
+          </MDButton>
+        </DialogActions>
+      </Dialog>
 
       <Dialog open={credentialsModalOpen} onClose={closeCredentialsModal} fullWidth maxWidth="xs">
         <DialogTitle sx={{ fontWeight: "bold", color: "#344767" }}>
@@ -854,6 +986,7 @@ function CreateStaff() {
                   </RadioGroup>
                 </FormControl>
               </Grid>
+              {formData.staffCategory !== "bawarchee_staff" && (
               <Grid item xs={12} md={4}>
                 <FormControl fullWidth size="small">
                   <InputLabel id="staff-type-label">Staff Type</InputLabel>
@@ -869,6 +1002,27 @@ function CreateStaff() {
                   </Select>
                 </FormControl>
               </Grid>
+              )}
+              {formData.staffCategory === "bawarchee_staff" && (
+                <Grid item xs={12} md={4}>
+                  <FormControl fullWidth size="small">
+                    <InputLabel id="bawarchee-role-label">Staff Type</InputLabel>
+                    <Select
+                      labelId="bawarchee-role-label"
+                      value={formData.bawarcheeRole}
+                      label="Staff Type"
+                      onChange={handleBawarcheeRoleChange}
+                      sx={{ minHeight: 44 }}
+                    >
+                      {BAWARCHEE_ROLE_OPTIONS.map(([value, label]) => (
+                        <MenuItem key={value} value={value}>
+                          {label}
+                        </MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
+                </Grid>
+              )}
               {formData.staffCategory === "company_staff" && (
                 <Grid item xs={12} md={8}>
                   <Autocomplete
@@ -970,10 +1124,74 @@ function CreateStaff() {
                   value={formData.email}
                   onChange={handleInputChange}
                   inputProps={{ maxLength: 255, autoComplete: "email" }}
-                  helperText="Optional"
                 />
               </Grid>
             </Grid>
+
+            {formData.staffCategory === "bawarchee_staff" && (
+              <>
+                <Divider sx={{ mb: 3 }} />
+                <MDBox display="flex" alignItems="center" justifyContent="space-between" mb={1}>
+                  <MDTypography sx={{ ...sectionLabelSx, mb: 0 }}>Permissions</MDTypography>
+                  <MDTypography variant="caption" color="text">
+                    {formData.bawarcheeRole
+                      ? `${formData.permissions.filter((key) => key !== "dms").length} pages selected`
+                      : "Choose a staff type to fill in its default permissions"}
+                  </MDTypography>
+                </MDBox>
+                <Grid container spacing={2} mb={3}>
+                  {STAFF_PERMISSION_GROUPS.map((group) => {
+                    const keys = group.items.map(([key]) => key);
+                    const selectedCount = keys.filter((key) => formData.permissions.includes(key)).length;
+                    return (
+                      <Grid item xs={12} sm={6} md={4} key={group.key}>
+                        <MDBox
+                          p={1.5}
+                          sx={{ border: "1px solid #e2e8f0", borderRadius: "10px", height: "100%" }}
+                        >
+                          <FormControlLabel
+                            control={
+                              <Checkbox
+                                size="small"
+                                checked={selectedCount === keys.length}
+                                indeterminate={selectedCount > 0 && selectedCount < keys.length}
+                                onChange={(e) => toggleGroupPermissions(group, e.target.checked)}
+                              />
+                            }
+                            label={
+                              <MDTypography variant="button" fontWeight="bold">
+                                {group.label}
+                              </MDTypography>
+                            }
+                          />
+                          <MDBox pl={2} display="flex" flexDirection="column">
+                            {group.items.map(([key, label]) => (
+                              <FormControlLabel
+                                key={key}
+                                sx={{ my: -0.25 }}
+                                control={
+                                  <Checkbox
+                                    size="small"
+                                    checked={formData.permissions.includes(key)}
+                                    disabled={key === "overdue_7_days" && !formData.permissions.includes("add_sales")}
+                                    onChange={(e) => togglePermission(key, e.target.checked)}
+                                  />
+                                }
+                                label={
+                                  <MDTypography variant="caption" color="text">
+                                    {label}
+                                  </MDTypography>
+                                }
+                              />
+                            ))}
+                          </MDBox>
+                        </MDBox>
+                      </Grid>
+                    );
+                  })}
+                </Grid>
+              </>
+            )}
 
             <Divider sx={{ mb: 3 }} />
 
@@ -988,7 +1206,7 @@ function CreateStaff() {
                   value={formData.aadharNo}
                   onChange={handleInputChange}
                   inputProps={{ maxLength: 12 }}
-                  helperText="12 digit Aadhar number (optional)"
+                  helperText="12 digit Aadhar number"
                 />
               </Grid>
               {formData.aadharNo ? (
@@ -1136,7 +1354,7 @@ function CreateStaff() {
                 <Grid item xs={12} sm={6}>
                   <MDTypography variant="caption" color="text">Type</MDTypography>
                   <MDTypography variant="body2" fontWeight="medium">
-                    {(selectedStaffDetails.staff_type || "distributor") === "cnf" ? "CNF" : "Distributor"}
+                    {getStaffTypeLabel(selectedStaffDetails)}
                   </MDTypography>
                 </Grid>
                 <Grid item xs={12} sm={6}>
@@ -1147,7 +1365,7 @@ function CreateStaff() {
                 </Grid>
                 <Grid item xs={12} sm={6}>
                   <MDTypography variant="caption" color="text">Contact No</MDTypography>
-                  <MDTypography variant="body2" fontWeight="medium">{selectedStaffDetails.contact_no}</MDTypography>
+                  <MDTypography variant="body2" fontWeight="medium">{selectedStaffDetails.contact_no || "—"}</MDTypography>
                 </Grid>
                 <Grid item xs={12} sm={6}>
                   <MDTypography variant="caption" color="text">WhatsApp No</MDTypography>
@@ -1168,6 +1386,88 @@ function CreateStaff() {
                   </MDTypography>
                 </Grid>
               </Grid>
+
+              <Divider sx={{ my: 2 }} />
+
+              <MDTypography variant="subtitle2" fontWeight="bold" mb={1.5}>
+                Login Credentials
+              </MDTypography>
+              <Grid container spacing={2} mb={2}>
+                <Grid item xs={12} sm={6}>
+                  <MDTypography variant="caption" color="text">Login ID</MDTypography>
+                  <MDBox display="flex" alignItems="center" gap={1}>
+                    <MDTypography variant="body2" fontWeight="medium">
+                      {viewCredentials
+                        ? viewCredentials.loginId || selectedStaffDetails.login_id || "—"
+                        : "Loading..."}
+                    </MDTypography>
+                    {viewCredentials?.loginId && (
+                      <Icon
+                        fontSize="small"
+                        sx={{ cursor: "pointer", color: "#64748b" }}
+                        onClick={() => copyToClipboard(viewCredentials.loginId)}
+                        titleAccess="Copy Login ID"
+                      >
+                        content_copy
+                      </Icon>
+                    )}
+                  </MDBox>
+                </Grid>
+                <Grid item xs={12} sm={6}>
+                  <MDTypography variant="caption" color="text">Password</MDTypography>
+                  <MDBox display="flex" alignItems="center" gap={1}>
+                    {!viewCredentials ? (
+                      <MDTypography variant="body2" fontWeight="medium">Loading...</MDTypography>
+                    ) : viewCredentials.password ? (
+                      <>
+                        <MDTypography variant="body2" fontWeight="medium" sx={{ fontFamily: "monospace" }}>
+                          {showViewPassword ? viewCredentials.password : "••••••••"}
+                        </MDTypography>
+                        <Icon
+                          fontSize="small"
+                          sx={{ cursor: "pointer", color: "#64748b" }}
+                          onClick={() => setShowViewPassword((prev) => !prev)}
+                          titleAccess={showViewPassword ? "Hide password" : "Show password"}
+                        >
+                          {showViewPassword ? "visibility_off" : "visibility"}
+                        </Icon>
+                        <Icon
+                          fontSize="small"
+                          sx={{ cursor: "pointer", color: "#64748b" }}
+                          onClick={() => copyToClipboard(viewCredentials.password)}
+                          titleAccess="Copy password"
+                        >
+                          content_copy
+                        </Icon>
+                      </>
+                    ) : (
+                      <MDTypography variant="caption" color="text">
+                        {viewCredentials.error ||
+                          "Not available. Set a new password from Update Credentials to view it here."}
+                      </MDTypography>
+                    )}
+                  </MDBox>
+                </Grid>
+              </Grid>
+
+              {selectedStaffDetails.staff_category === "bawarchee_staff" && (
+                <>
+                  <Divider sx={{ my: 2 }} />
+                  <MDTypography variant="subtitle2" fontWeight="bold" mb={1.5}>
+                    Permissions
+                  </MDTypography>
+                  <MDBox display="flex" flexWrap="wrap" gap={0.75} mb={2}>
+                    {STAFF_PERMISSION_GROUPS.flatMap((group) => group.items)
+                      .filter(([key]) => (selectedStaffDetails.permissions || []).includes(key))
+                      .map(([key, label]) => (
+                        <Chip key={key} label={label} size="small" sx={{ fontSize: "0.7rem" }} />
+                      ))}
+                    {!(selectedStaffDetails.permissions || []).some((key) => key !== "dms") && (
+                      <MDTypography variant="body2" color="text">No permissions given yet.</MDTypography>
+                    )}
+                  </MDBox>
+                </>
+              )}
 
               <Divider sx={{ my: 2 }} />
 

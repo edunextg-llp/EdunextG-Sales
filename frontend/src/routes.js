@@ -19,6 +19,7 @@ import AddSales from "layouts/add-sales";
 import PurchaseRequisition from "layouts/purchase-requisition";
 import BelowTargetApprovals from "layouts/below-target-approvals";
 import OverdueRequests from "layouts/overdue-requests";
+import StaffOverdueResponses from "layouts/overdue-requests/StaffResponses";
 import SuspenseRequests from "layouts/suspense-requests";
 import OtherDayRequests from "layouts/other-day-requests";
 import CancellationRequests from "layouts/cancellation-requests";
@@ -61,7 +62,7 @@ const routes = [
     icon: <Icon fontSize="small">dashboard</Icon>,
     route: "/dashboard",
     component: <Dashboard />,
-    allowedRoles: ["admin", "packaging_staff", "delivery_boy"],
+    allowedRoles: ["admin", "packaging_staff", "bawarchee_staff", "delivery_boy"],
     requiredPermission: "dashboard",
   },
   {
@@ -80,7 +81,7 @@ const routes = [
     icon: <Icon fontSize="small">waving_hand</Icon>,
     route: "/welcome",
     component: <Welcome />,
-    allowedRoles: ["packaging_staff", "delivery_boy"],
+    allowedRoles: ["packaging_staff", "bawarchee_staff", "delivery_boy"],
     hideWhenPermissionsAssigned: true,
   },
   // {
@@ -96,7 +97,7 @@ const routes = [
     name: "DMS",
     key: "dms",
     icon: <Icon fontSize="small">inventory</Icon>,
-    allowedRoles: ["admin", "packaging_staff", "delivery_boy"],
+    allowedRoles: ["admin", "packaging_staff", "bawarchee_staff", "delivery_boy"],
     requiredPermission: "dms",
     collapse: [
       {
@@ -106,7 +107,7 @@ const routes = [
         icon: <Icon fontSize="small">storefront</Icon>,
         route: "/add-seller",
         component: <AddSeller />,
-        allowedRoles: ["admin", "packaging_staff", "delivery_boy"],
+        allowedRoles: ["admin", "packaging_staff", "bawarchee_staff", "delivery_boy"],
         requiredPermission: "add_seller",
       },
       {
@@ -116,7 +117,7 @@ const routes = [
         icon: <Icon fontSize="small">category</Icon>,
         route: "/add-item",
         component: <AddItem />,
-        allowedRoles: ["admin", "packaging_staff", "delivery_boy"],
+        allowedRoles: ["admin", "packaging_staff", "bawarchee_staff", "delivery_boy"],
         requiredPermission: "add_item",
       },
       {
@@ -126,7 +127,7 @@ const routes = [
         icon: <Icon fontSize="small">inventory_2</Icon>,
         route: "/dms-stock",
         component: <DmsStock />,
-        allowedRoles: ["admin", "packaging_staff", "delivery_boy"],
+        allowedRoles: ["admin", "packaging_staff", "bawarchee_staff", "delivery_boy"],
         requiredPermission: "item_list",
       },
 
@@ -137,7 +138,7 @@ const routes = [
         icon: <Icon fontSize="small">history</Icon>,
         route: "/dms-purchase-history",
         component: <DmsPurchaseHistory />,
-        allowedRoles: ["admin", "packaging_staff", "delivery_boy"],
+        allowedRoles: ["admin", "packaging_staff", "bawarchee_staff", "delivery_boy"],
         requiredPermission: "purchase_history",
       },
 
@@ -150,7 +151,7 @@ const routes = [
         icon: <Icon fontSize="small">warehouse</Icon>,
         route: "/physical-stock",
         component: <PhysicalStock />,
-        allowedRoles: ["admin", "packaging_staff", "delivery_boy"],
+        allowedRoles: ["admin", "packaging_staff", "bawarchee_staff", "delivery_boy"],
         requiredPermission: "physical_stock",
       },
       {
@@ -160,7 +161,7 @@ const routes = [
         icon: <Icon fontSize="small">fact_check</Icon>,
         route: "/current-stock",
         component: <CurrentStock />,
-        allowedRoles: ["admin", "packaging_staff", "delivery_boy"],
+        allowedRoles: ["admin", "packaging_staff", "bawarchee_staff", "delivery_boy"],
         requiredPermission: "current_stock",
       },
       {
@@ -170,7 +171,7 @@ const routes = [
         icon: <Icon fontSize="small">event_busy</Icon>,
         route: "/expiry-items",
         component: <ExpiryItems />,
-        allowedRoles: ["admin", "packaging_staff", "delivery_boy"],
+        allowedRoles: ["admin", "packaging_staff", "bawarchee_staff", "delivery_boy"],
         requiredPermission: "expiry_items",
       },
       {
@@ -180,7 +181,7 @@ const routes = [
         icon: <Icon fontSize="small">event_note</Icon>,
         route: "/expiry-list",
         component: <ExpiryList />,
-        allowedRoles: ["admin", "packaging_staff", "delivery_boy"],
+        allowedRoles: ["admin", "packaging_staff", "bawarchee_staff", "delivery_boy"],
         requiredPermission: "expiry_list",
       },
       {
@@ -190,7 +191,7 @@ const routes = [
         icon: <Icon fontSize="small">broken_image</Icon>,
         route: "/damage-list",
         component: <ExpiryList mode="damage" />,
-        allowedRoles: ["admin", "packaging_staff", "delivery_boy"],
+        allowedRoles: ["admin", "packaging_staff", "bawarchee_staff", "delivery_boy"],
         requiredPermission: "damage_list",
       },
       {
@@ -200,7 +201,7 @@ const routes = [
         icon: <Icon fontSize="small">receipt_long</Icon>,
         route: "/purchase",
         component: <Purchase />,
-        allowedRoles: ["admin", "packaging_staff", "delivery_boy"],
+        allowedRoles: ["admin", "packaging_staff", "bawarchee_staff", "delivery_boy"],
         requiredPermission: "purchase",
       },
 
@@ -235,7 +236,7 @@ const routes = [
     name: "Staff Management",
     key: "staff-management",
     icon: <Icon fontSize="small">people</Icon>,
-    allowedRoles: ["admin", "packaging_staff", "delivery_boy", "staff"],
+    allowedRoles: ["admin", "packaging_staff", "bawarchee_staff", "delivery_boy", "staff"],
     collapse: [
       {
         type: "collapse",
@@ -270,7 +271,7 @@ const routes = [
         icon: <Icon fontSize="small">person_add</Icon>,
         route: "/create-staff",
         component: <CreateStaff />,
-        allowedRoles: ["admin", "packaging_staff", "delivery_boy"],
+        allowedRoles: ["admin", "packaging_staff", "bawarchee_staff", "delivery_boy"],
         requiredPermission: "create_staff",
       },
       {
@@ -280,7 +281,7 @@ const routes = [
         icon: <Icon fontSize="small">location_on</Icon>,
         route: "/location-assignments",
         component: <LocationAssignments />,
-        allowedRoles: ["admin", "packaging_staff", "delivery_boy", "staff"],
+        allowedRoles: ["admin", "packaging_staff", "bawarchee_staff", "delivery_boy", "staff"],
         requiredPermission: "location_assignments",
       },
       {
@@ -301,7 +302,7 @@ const routes = [
     icon: <Icon fontSize="small">store</Icon>,
     route: "/add-outlet",
     component: <AddCounter />,
-    allowedRoles: ["admin", "packaging_staff", "delivery_boy", "staff"],
+    allowedRoles: ["admin", "packaging_staff", "bawarchee_staff", "delivery_boy", "staff"],
     requiredPermission: "add_outlet",
   },
   {
@@ -315,10 +316,19 @@ const routes = [
   },
   {
     type: "collapse",
+    name: "Overdue Requests",
+    key: "overdue-responses",
+    icon: <Icon fontSize="small">assignment_late</Icon>,
+    route: "/overdue-responses",
+    component: <StaffOverdueResponses />,
+    allowedRoles: ["staff"],
+  },
+  {
+    type: "collapse",
     name: "Approvals",
     key: "approvals",
     icon: <Icon fontSize="small">verified</Icon>,
-    allowedRoles: ["admin", "packaging_staff", "delivery_boy"],
+    allowedRoles: ["admin", "packaging_staff", "bawarchee_staff", "delivery_boy"],
     collapse: [
       {
         type: "collapse",
@@ -327,7 +337,7 @@ const routes = [
         icon: <Icon fontSize="small">approval</Icon>,
         route: "/requisition-approvals",
         component: <PurchaseRequisition />,
-        allowedRoles: ["admin", "packaging_staff", "delivery_boy"],
+        allowedRoles: ["admin", "packaging_staff", "bawarchee_staff", "delivery_boy"],
         requiredPermission: "requisition_approval",
       },
       {
@@ -337,7 +347,7 @@ const routes = [
         icon: <Icon fontSize="small">trending_down</Icon>,
         route: "/below-target-approvals",
         component: <BelowTargetApprovals />,
-        allowedRoles: ["admin", "packaging_staff", "delivery_boy"],
+        allowedRoles: ["admin", "packaging_staff", "bawarchee_staff", "delivery_boy"],
         requiredPermission: "requisition_target_approval",
       },
       {
@@ -347,7 +357,8 @@ const routes = [
         icon: <Icon fontSize="small">assignment_late</Icon>,
         route: "/overdue-requests",
         component: <OverdueRequests />,
-        allowedRoles: ["admin"],
+        allowedRoles: ["admin", "packaging_staff", "bawarchee_staff", "delivery_boy"],
+        requiredPermission: "overdue_approval",
       },
       {
         type: "collapse",
@@ -394,7 +405,7 @@ const routes = [
     icon: <Icon fontSize="small">payments</Icon>,
     route: "/add-sales",
     component: <AddSales />,
-    allowedRoles: ["admin", "packaging_staff", "delivery_boy"],
+    allowedRoles: ["admin", "packaging_staff", "bawarchee_staff", "delivery_boy"],
     requiredPermission: "add_sales",
   },
   {
@@ -402,7 +413,7 @@ const routes = [
     name: "Delivery Manager",
     key: "delivery-management",
     icon: <Icon fontSize="small">local_shipping</Icon>,
-    allowedRoles: ["admin", "packaging_staff", "delivery_boy"],
+    allowedRoles: ["admin", "packaging_staff", "bawarchee_staff", "delivery_boy"],
     collapse: [
       {
         type: "collapse",
@@ -411,7 +422,7 @@ const routes = [
         icon: <Icon fontSize="small">inventory_2</Icon>,
         route: "/packaging",
         component: <Packaging />,
-        allowedRoles: ["admin", "packaging_staff", "delivery_boy"],
+        allowedRoles: ["admin", "packaging_staff", "bawarchee_staff", "delivery_boy"],
         requiredPermission: "packaging",
       },
       {
@@ -421,7 +432,7 @@ const routes = [
         icon: <Icon fontSize="small">local_shipping</Icon>,
         route: "/delivery",
         component: <Delivery />,
-        allowedRoles: ["admin", "packaging_staff", "delivery_boy"],
+        allowedRoles: ["admin", "packaging_staff", "bawarchee_staff", "delivery_boy"],
         requiredPermission: "delivery",
       },
       {
@@ -431,7 +442,7 @@ const routes = [
         icon: <Icon fontSize="small">summarize</Icon>,
         route: "/delivery-report",
         component: <DeliveryReport />,
-        allowedRoles: ["admin", "packaging_staff", "delivery_boy"],
+        allowedRoles: ["admin", "packaging_staff", "bawarchee_staff", "delivery_boy"],
         requiredPermission: "delivery_report",
       },
       {
@@ -441,7 +452,7 @@ const routes = [
         icon: <Icon fontSize="small">verified</Icon>,
         route: "/delivered",
         component: <Delivered />,
-        allowedRoles: ["admin", "packaging_staff", "delivery_boy"],
+        allowedRoles: ["admin", "packaging_staff", "bawarchee_staff", "delivery_boy"],
         requiredPermission: "delivered",
       },
     ],
@@ -451,7 +462,7 @@ const routes = [
     name: "Chalan",
     key: "chalan",
     icon: <Icon fontSize="small">description</Icon>,
-    allowedRoles: ["admin", "packaging_staff", "delivery_boy"],
+    allowedRoles: ["admin", "packaging_staff", "bawarchee_staff", "delivery_boy"],
     collapse: [
       {
         type: "collapse",
@@ -460,7 +471,7 @@ const routes = [
         icon: <Icon fontSize="small">payments</Icon>,
         route: "/chalan-add-sales",
         component: <ChalanAddSales />,
-        allowedRoles: ["admin", "packaging_staff", "delivery_boy"],
+        allowedRoles: ["admin", "packaging_staff", "bawarchee_staff", "delivery_boy"],
         requiredPermission: "chalan_add_sales",
       },
       {
@@ -470,7 +481,7 @@ const routes = [
         icon: <Icon fontSize="small">inventory_2</Icon>,
         route: "/chalan-packaging-delivery",
         component: <ChalanPackagingDelivery />,
-        allowedRoles: ["admin", "packaging_staff", "delivery_boy"],
+        allowedRoles: ["admin", "packaging_staff", "bawarchee_staff", "delivery_boy"],
         requiredPermission: "chalan_packaging",
       },
       {
@@ -480,7 +491,7 @@ const routes = [
         icon: <Icon fontSize="small">local_shipping</Icon>,
         route: "/chalan-delivery",
         component: <ChalanDelivery />,
-        allowedRoles: ["admin", "packaging_staff", "delivery_boy"],
+        allowedRoles: ["admin", "packaging_staff", "bawarchee_staff", "delivery_boy"],
         requiredPermission: "chalan_delivery",
       },
       {
@@ -490,7 +501,7 @@ const routes = [
         icon: <Icon fontSize="small">verified</Icon>,
         route: "/chalan-delivered",
         component: <ChalanDelivered />,
-        allowedRoles: ["admin", "packaging_staff", "delivery_boy"],
+        allowedRoles: ["admin", "packaging_staff", "bawarchee_staff", "delivery_boy"],
         requiredPermission: "chalan_delivered",
       },
       {
@@ -500,7 +511,7 @@ const routes = [
         icon: <Icon fontSize="small">keyboard_return</Icon>,
         route: "/chalan-return",
         component: <ChalanReturn />,
-        allowedRoles: ["admin", "packaging_staff", "delivery_boy"],
+        allowedRoles: ["admin", "packaging_staff", "bawarchee_staff", "delivery_boy"],
         requiredPermission: "chalan_return",
       },
     ],
@@ -513,7 +524,7 @@ const routes = [
     route: "/invoice-lookup",
     component: <InvoiceLookup />,
     // Marketing staff see only their own invoices (enforced by the API).
-    allowedRoles: ["admin", "packaging_staff", "delivery_boy", "staff"],
+    allowedRoles: ["admin", "packaging_staff", "bawarchee_staff", "delivery_boy", "staff"],
     requiredPermission: "invoice_lookup",
   },
   {
@@ -523,7 +534,7 @@ const routes = [
     icon: <Icon fontSize="small">edit_note</Icon>,
     route: "/update-payment",
     component: <UpdatePayment />,
-    allowedRoles: ["admin", "packaging_staff", "delivery_boy"],
+    allowedRoles: ["admin", "packaging_staff", "bawarchee_staff", "delivery_boy"],
     requiredPermission: "update_payment",
   },
   {
@@ -533,7 +544,7 @@ const routes = [
     icon: <Icon fontSize="small">payments</Icon>,
     route: "/db-collection",
     component: <DBCollection />,
-    allowedRoles: ["admin", "packaging_staff", "delivery_boy"],
+    allowedRoles: ["admin", "packaging_staff", "bawarchee_staff", "delivery_boy"],
     requiredPermission: "db_collection",
   },
 
@@ -544,7 +555,7 @@ const routes = [
     icon: <Icon fontSize="small">price_change</Icon>,
     route: "/credits",
     component: <Credits />,
-    allowedRoles: ["admin", "packaging_staff", "delivery_boy"],
+    allowedRoles: ["admin", "packaging_staff", "bawarchee_staff", "delivery_boy"],
     requiredPermission: "credits",
   },
   {
@@ -554,7 +565,7 @@ const routes = [
     icon: <Icon fontSize="small">receipt_long</Icon>,
     route: "/out-bill",
     component: <OutBill />,
-    allowedRoles: ["admin", "packaging_staff", "delivery_boy"],
+    allowedRoles: ["admin", "packaging_staff", "bawarchee_staff", "delivery_boy"],
     requiredPermission: "out_bill",
   },
   {
@@ -564,7 +575,7 @@ const routes = [
     icon: <Icon fontSize="small">account_balance</Icon>,
     route: "/bank-deposit",
     component: <BankDeposit />,
-    allowedRoles: ["admin", "packaging_staff", "delivery_boy"],
+    allowedRoles: ["admin", "packaging_staff", "bawarchee_staff", "delivery_boy"],
     requiredPermission: "bank_deposit",
   },
   // {

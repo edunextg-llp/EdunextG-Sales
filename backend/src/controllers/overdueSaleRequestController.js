@@ -1,9 +1,17 @@
 import DeliveryBoyModel from '../models/deliveryBoyModel.js';
 import StaffModel from '../models/staffModel.js';
-import OverdueSaleRequestModel, { cleanSaleForRequest, getOverdueOutlets } from '../models/overdueSaleRequestModel.js';
+import OverdueSaleRequestModel, { cleanSaleForRequest, getOverdueOutlets, SELF_APPROVE_OVERDUE_DAYS } from '../models/overdueSaleRequestModel.js';
 
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
-const STATUSES = ['pending', 'approved', 'rejected', 'used', 'open', 'all'];
+const STATUSES = ['awaiting_staff', 'pending', 'approved', 'rejected', 'used', 'open', 'all'];
+
+// Which 14+ day overdue requests this login can approve. Admin can review everything.
+const approvalLevelsFor = (user) => {
+    if (user?.role === 'bawarchee_staff' && user.bawarcheeRole === 'manager') return ['up_to_2000'];
+    return user?.permissions?.includes('overdue_approval') ? ['up_to_1000'] : [];
+};
+const canReviewRequest = (user, request) => user?.role === 'admin'
+    || (Boolean(request.approval_level) && approvalLevelsFor(user).includes(request.approval_level));
 
 const parseOutletIds = (value) => {
     const list = Array.isArray(value) ? value : String(value || '').split(',');
@@ -13,6 +21,16 @@ const parseOutletIds = (value) => {
 export async function getRequester(user) {
     if (user?.role === 'admin') {
         return { role: 'admin', id: user.id || null, name: user.username || user.email || `Admin #${user.id}` };
+    }
+    if (user?.role === 'bawarchee_staff') {
+        const staffId = user.staffId || user.id || null;
+        let staffName = '';
+        try {
+            staffName = (await StaffModel.getDetails(staffId))?.name || '';
+        } catch {
+            staffName = '';
+        }
+        return { role: 'bawarchee_staff', id: staffId, name: staffName || user.loginId || `Staff #${staffId}` };
     }
     const deliveryBoyId = user?.deliveryBoyId || user?.id || null;
     let name = '';
@@ -50,6 +68,9 @@ export const createOverdueRequest = async (req, res) => {
         if (!overdueOutlets.length) {
             return res.status(400).json({ error: 'These outlets have no overdue credit. You can add the sales directly.' });
         }
+        if (overdueOutlets.some((outlet) => Number(outlet.maxOverdueDays) > SELF_APPROVE_OVERDUE_DAYS)) {
+            return res.status(409).json({ error: `Outlets overdue by more than ${SELF_APPROVE_OVERDUE_DAYS} days cannot be sent to admin. Cancel the invoice from Add Sales.` });
+        }
 
         // Save the exact invoices being requested, so the approval covers only those.
         const salesPayloadByOutlet = {};
@@ -82,6 +103,82 @@ export const createOverdueRequest = async (req, res) => {
     }
 };
 
+// POST /api/staff/overdue-requests/send-to-staff
+// From Add Sales: 14+ days overdue goes to the outlet's marketing staff for a reason and days to pay.
+export const sendToMarketingStaff = async (req, res) => {
+    try {
+        const staffId = Number(req.body.staffId);
+        const saleDate = String(req.body.saleDate || '').trim();
+        const outletIds = parseOutletIds(req.body.outletIds);
+        if (!Number.isInteger(staffId) || staffId <= 0) return res.status(400).json({ error: 'Select a staff first.' });
+        if (!DATE_PATTERN.test(saleDate)) return res.status(400).json({ error: 'Sale date is invalid.' });
+        if (!outletIds.length) return res.status(400).json({ error: 'Select at least one outlet.' });
+
+        const overdue = (await getOverdueOutlets(outletIds))
+            .filter((outlet) => Number(outlet.maxOverdueDays) > SELF_APPROVE_OVERDUE_DAYS);
+        if (overdue.length !== outletIds.length) {
+            return res.status(409).json({ error: `Only outlets overdue by more than ${SELF_APPROVE_OVERDUE_DAYS} days can be sent to marketing staff. Save the sale again.` });
+        }
+
+        const payload = req.body.salesPayload && typeof req.body.salesPayload === 'object' ? req.body.salesPayload : {};
+        const sales = Array.isArray(payload.sales) ? payload.sales.slice(0, 100) : [];
+        const salesPayloadByOutlet = {};
+        const outlets = [];
+        for (const outlet of overdue) {
+            const outletSales = sales.filter((sale) => Number(sale?.outletId) === outlet.outletId).map(cleanSaleForRequest);
+            if (!outletSales.length) return res.status(400).json({ error: 'Enter the invoice before sending it.' });
+            salesPayloadByOutlet[outlet.outletId] = { companyName: String(payload.companyName || '').trim(), sales: outletSales };
+            const counter = await StaffModel.getCounterById(outlet.outletId);
+            outlets.push({ outlet, marketingStaffId: counter.staff_id });
+        }
+
+        const requests = await OverdueSaleRequestModel.createAwaitingStaff({
+            staffId, saleDate, outlets, salesPayloadByOutlet, requester: await getRequester(req.user),
+        });
+        return res.status(201).json({ message: 'Sent to marketing staff.', requests });
+    } catch (error) {
+        console.error('Error sending overdue request to marketing staff:', error);
+        return res.status(500).json({ error: 'Unable to send this to marketing staff.' });
+    }
+};
+
+// GET /api/staff/overdue-requests/my (also the staff app): requests for this marketing staff member.
+export const listMyOverdueRequests = async (req, res) => {
+    try {
+        if (req.user?.role !== 'staff') return res.status(403).json({ error: 'Only marketing staff have this list.' });
+        return res.json({ requests: await OverdueSaleRequestModel.listForMarketingStaff(Number(req.user.staffId)) });
+    } catch (error) {
+        console.error('Error listing marketing staff overdue requests:', error);
+        return res.status(500).json({ error: 'Unable to load overdue requests.' });
+    }
+};
+
+// PUT /api/staff/overdue-requests/:id/respond { reason, paymentDays } (also the staff app)
+export const respondToOverdueRequest = async (req, res) => {
+    try {
+        if (req.user?.role !== 'staff') return res.status(403).json({ error: 'Only marketing staff can respond.' });
+        const id = Number(req.params.id);
+        const reason = String(req.body.reason || '').trim();
+        const paymentDays = Number(req.body.paymentDays);
+        if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ error: 'Invalid request.' });
+        if (!reason) return res.status(400).json({ error: 'Enter the reason for the overdue.' });
+        if (reason.length > 1000) return res.status(400).json({ error: 'Reason must be 1000 characters or less.' });
+        if (!Number.isInteger(paymentDays) || paymentDays < 1 || paymentDays > 7) {
+            return res.status(400).json({ error: 'Days to complete payment must be from 1 to 7.' });
+        }
+        const [request] = await OverdueSaleRequestModel.getByIds([id]);
+        if (!request) return res.status(404).json({ error: 'Request not found.' });
+        const [outlet] = await getOverdueOutlets([request.outlet_id]);
+        const saved = await OverdueSaleRequestModel.recordStaffResponse(id, Number(req.user.staffId), { reason, paymentDays, outlet });
+        if (!saved) return res.status(409).json({ error: 'This request is not waiting for your response.' });
+        const [updated] = await OverdueSaleRequestModel.getByIds([id]);
+        return res.json({ message: 'Submitted for approval.', request: updated });
+    } catch (error) {
+        console.error('Error saving marketing staff overdue response:', error);
+        return res.status(500).json({ error: 'Unable to submit your response.' });
+    }
+};
+
 // GET /api/staff/overdue-requests
 // Admin: list by status. Add Sales users: own requests, or status for one staff + date + outlets.
 export const listOverdueRequests = async (req, res) => {
@@ -102,6 +199,11 @@ export const listOverdueRequests = async (req, res) => {
 
         // Admin sees every request; other Add Sales users see only the ones they raised.
         const status = STATUSES.includes(req.query.status) ? req.query.status : 'pending';
+        if (req.query.scope === 'approver' && req.user?.role !== 'admin') {
+            const approvalLevels = approvalLevelsFor(req.user);
+            if (!approvalLevels.length) return res.status(403).json({ error: 'You do not review overdue requests.' });
+            return res.json(await OverdueSaleRequestModel.list({ status, limit: req.query.limit, approvalLevels }));
+        }
         let requestedBy = null;
         if (req.user?.role !== 'admin') {
             const requester = await getRequester(req.user);
@@ -192,6 +294,7 @@ export const createSalesForRequest = async (req, res) => {
         if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ error: 'Invalid request.' });
         const [request] = await OverdueSaleRequestModel.getByIds([id]);
         if (!request) return res.status(404).json({ error: 'Request not found.' });
+        if (!canReviewRequest(req.user, request)) return res.status(403).json({ error: 'You cannot act on this request.' });
         if (request.status !== 'approved') return res.status(409).json({ error: 'Only approved requests that have no sales yet can create sales.' });
         const result = await createSalesFromRequest(request);
         const [updated] = await OverdueSaleRequestModel.getByIds([id]);
@@ -214,16 +317,22 @@ export const reviewOverdueRequest = async (req, res) => {
         if (!['approve', 'reject'].includes(action)) return res.status(400).json({ error: 'Action must be approve or reject.' });
         if (action === 'reject' && !note) return res.status(400).json({ error: 'Reason is required to reject a request.' });
 
-        const admin = await getRequester(req.user);
+        const [existing] = await OverdueSaleRequestModel.getByIds([id]);
+        if (!existing) return res.status(404).json({ error: 'Request not found.' });
+        if (!canReviewRequest(req.user, existing)) {
+            return res.status(403).json({ error: 'This overdue amount needs a different approver.' });
+        }
+        const reviewer = await getRequester(req.user);
         const updated = await OverdueSaleRequestModel.review(id, {
             approve: action === 'approve',
             note,
-            adminId: admin.id,
-            adminName: admin.name,
+            adminId: req.user?.role === 'admin' ? reviewer.id : null,
+            adminName: reviewer.name,
         });
         if (!updated) return res.status(409).json({ error: 'This request has already been reviewed.' });
         let [request] = await OverdueSaleRequestModel.getByIds([id]);
-        if (action === 'approve' && req.body.createSales === true) {
+        // Requests from marketing staff always create the sale on approval.
+        if (action === 'approve' && (req.body.createSales === true || existing.approval_level)) {
             const result = await createSalesFromRequest(request);
             [request] = await OverdueSaleRequestModel.getByIds([id]);
             return res.json({

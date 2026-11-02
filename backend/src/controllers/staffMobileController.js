@@ -3,6 +3,8 @@ import jwt from 'jsonwebtoken';
 import StaffModel from '../models/staffModel.js';
 import StaffPortalModel, { INVOICE_STATUSES } from '../models/staffPortalModel.js';
 import { validateNumeric, validatePositiveInteger } from '../utils/validation.js';
+import { normalizeAreaName } from '../migrations/migrateAreas.js';
+import { saveDayAreas, staffRouteDays } from './staffController.js';
 
 const TOKEN_AUDIENCE = 'staff-mobile';
 const TOKEN_EXPIRES_IN = '30d';
@@ -381,6 +383,57 @@ export const getOutlets = async (req, res) => {
         return res.status(200).json(await StaffPortalModel.getOutlets(req.staffId));
     } catch (error) {
         console.error('Error fetching staff outlets:', error);
+        return res.status(500).json({ error: 'Internal server error' });
+    }
+};
+
+// Day-wise areas for the signed-in staff, with outlet counts per area.
+export const getDayAreas = async (req, res) => {
+    try {
+        const staff = await StaffModel.getDetails(req.staffId);
+        if (!staff) return res.status(404).json({ error: 'Staff not found' });
+        const [locations, directory, outlets] = await Promise.all([
+            StaffModel.getAllLocations(req.staffId),
+            StaffModel.getAreaDirectory(),
+            StaffPortalModel.getOutlets(req.staffId),
+        ]);
+        const days = staffRouteDays(staff);
+        const assignments = Object.fromEntries(days.map(day => [day, []]));
+        for (const location of locations) {
+            if (assignments[location.day]) assignments[location.day].push(normalizeAreaName(location.location_name));
+        }
+        const outletIds = {};
+        for (const outlet of outlets) {
+            const area = normalizeAreaName(outlet.location_name);
+            if (area) (outletIds[area] = outletIds[area] || new Set()).add(outlet.outlet_erp_id || outlet.id);
+        }
+        const outletCounts = Object.fromEntries(Object.entries(outletIds).map(([area, ids]) => [area, ids.size]));
+        return res.status(200).json({ days, assignments, areas: directory.map(area => area.name), outletCounts });
+    } catch (error) {
+        console.error('Error fetching staff day areas:', error);
+        return res.status(500).json({ error: 'Internal server error' });
+    }
+};
+
+// Saves the signed-in staff's day-wise areas; each area's outlets move to its new day.
+export const updateDayAreas = async (req, res) => {
+    try {
+        const staff = await StaffModel.getDetails(req.staffId);
+        if (!staff) return res.status(404).json({ error: 'Staff not found' });
+        const submitted = req.body?.assignments;
+        if (!submitted || typeof submitted !== 'object' || Array.isArray(submitted)) {
+            return res.status(400).json({ error: 'Assignments are required.' });
+        }
+        const assignments = {};
+        for (const [day, areas] of Object.entries(submitted)) {
+            if (!Array.isArray(areas)) return res.status(400).json({ error: `Areas for ${day} must be a list.` });
+            assignments[day] = areas.map(locationName => ({ locationName: typeof locationName === 'string' ? locationName : '' }));
+        }
+        const saved = await saveDayAreas(staff, assignments);
+        if (saved.error) return res.status(400).json({ error: saved.error });
+        return res.status(200).json({ message: 'Areas saved', ...saved });
+    } catch (error) {
+        console.error('Error updating staff day areas:', error);
         return res.status(500).json({ error: 'Internal server error' });
     }
 };

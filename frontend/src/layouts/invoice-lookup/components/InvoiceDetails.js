@@ -210,6 +210,16 @@ function InvoiceDetails({ details, embedded = false }) {
         <MDTypography variant="h6" fontWeight="medium" mb={2}>
           Invoice Journey
         </MDTypography>
+        {currentStatus === "cancelled" && (
+          <MDBox mb={2} px={2} py={1.25} borderRadius="md" sx={{ backgroundColor: "#fef2f2", border: "1px solid #fecaca" }}>
+            <MDTypography variant="button" fontWeight="bold" color="error" display="block">
+              Invoice Cancelled
+            </MDTypography>
+            {sale.cancellation_reason && (
+              <MDTypography variant="caption" color="error">Reason: {sale.cancellation_reason}</MDTypography>
+            )}
+          </MDBox>
+        )}
         <Stepper activeStep={activeStep >= 0 ? activeStep : 0} alternativeLabel sx={{ mb: 3 }}>
           {STATUS_ORDER.map((status) => (
             <Step key={status} completed={STATUS_ORDER.indexOf(status) <= activeStep}>
@@ -244,6 +254,11 @@ function InvoiceDetails({ details, embedded = false }) {
                       <MDTypography variant="caption" color="text" display="block">
                         {ACTION_LABELS[entry.status] || ""}
                       </MDTypography>
+                      {entry.remarks && (
+                        <MDTypography variant="caption" color="error" display="block">
+                          {entry.remarks}
+                        </MDTypography>
+                      )}
                       {isAdmin && <ActorCell actor={journeyActor(entry, sale)} />}
                     </TableCell>
                   </TableRow>

@@ -52,6 +52,7 @@ import { FaRegEdit } from "react-icons/fa";
 import { MdCancel, MdCheckCircle, MdUndo } from "react-icons/md";
 import CompanyTypeSelect from "components/CompanyFilter/CompanyTypeSelect";
 import { useCompanyTypeLookup } from "utils/companyTypes";
+import { useAuth } from "context/AuthContext";
 
 const tableActionBoxSx = {
   flexWrap: "nowrap",
@@ -69,6 +70,8 @@ function escapeHtml(value) {
 }
 
 function Delivered() {
+  const { user } = useAuth();
+  const isAdmin = user?.role === "admin";
   const [salesData, setSalesData] = useState([]);
   const [cancelledSalesData, setCancelledSalesData] = useState([]);
   const [searchQuery, setSearchQuery] = useState("");
@@ -781,6 +784,44 @@ function Delivered() {
     }
   };
 
+  const handleReturnCancelled = async (row) => {
+    if (updatingSaleIds.has(row.id)) return;
+    const input = window.prompt(`Enter the reason for returning invoice ${row.invoice_number || row.sticker_number} to Pending Deliveries:`);
+    if (input === null) return;
+    const reason = input.trim();
+    if (!reason) {
+      alert("Return reason is required.");
+      return;
+    }
+
+    setUpdatingSaleIds((prev) => new Set(prev).add(row.id));
+    try {
+      const response = await fetch(`${API}/staff/sales/${row.id}/undo-cancel`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ reason }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (response.ok) {
+        setCancelledSalesData((prev) => prev.filter((sale) => sale.id !== row.id));
+        fetchSales({ silent: true });
+        alert(data.message || "Invoice returned.");
+      } else {
+        alert(data.error || "Unable to return this invoice.");
+        fetchCancelledSales({ silent: true });
+      }
+    } catch (error) {
+      console.error("Error returning cancelled invoice:", error);
+      alert("Unable to return this invoice.");
+    } finally {
+      setUpdatingSaleIds((prev) => {
+        const next = new Set(prev);
+        next.delete(row.id);
+        return next;
+      });
+    }
+  };
+
   return (
     <DashboardLayout>
       <DashboardNavbar />
@@ -1281,7 +1322,9 @@ function Delivered() {
                             <TableCell align="center" sx={paginatedTableHeadCellErrorSx}>Invoice Date</TableCell>
                             <TableCell align="center" sx={paginatedTableHeadCellErrorSx}>Cancel Date</TableCell>
                             <TableCell align="right" sx={paginatedTableHeadCellErrorSx}>Cancel Amount</TableCell>
+                            <TableCell sx={paginatedTableHeadCellErrorSx}>Reason</TableCell>
                             <TableCell align="center" sx={paginatedTableHeadCellErrorSx}>Status</TableCell>
+                            {isAdmin && <TableCell align="center" sx={paginatedTableHeadCellErrorSx}>Action</TableCell>}
                           </TableRow>
                         </TableHead>
                         <TableBody>
@@ -1324,14 +1367,35 @@ function Delivered() {
                                 <TableCell align="right" sx={{ borderBottom: "1px solid #fecaca", py: 2, fontWeight: "bold" }}>
                                   ₹{Number(row.price || 0).toFixed(2)}
                                 </TableCell>
+                                <TableCell sx={{ borderBottom: "1px solid #fecaca", py: 2 }}>
+                                  {row.cancellation_reason || "—"}
+                                </TableCell>
                                 <TableCell align="center" sx={{ borderBottom: "1px solid #fecaca", py: 2 }}>
                                   <Chip label="Cancelled" color="error" variant="outlined" size="small" />
                                 </TableCell>
+                                {isAdmin && (
+                                  <TableCell align="center" sx={{ borderBottom: "1px solid #fecaca", py: 2 }}>
+                                    <Tooltip title="Return to Pending Deliveries">
+                                      <span>
+                                        <MDButton
+                                          color="dark"
+                                          variant="outlined"
+                                          size="small"
+                                          disabled={updatingSaleIds.has(row.id)}
+                                          onClick={() => handleReturnCancelled(row)}
+                                        >
+                                          <MdUndo size={16} style={{ marginRight: 4 }} />
+                                          Return
+                                        </MDButton>
+                                      </span>
+                                    </Tooltip>
+                                  </TableCell>
+                                )}
                               </TableRow>
                             ))
                           ) : (
                             <TableRow>
-                              <TableCell colSpan={11} align="center" sx={{ py: 3, borderBottom: 0 }}>
+                              <TableCell colSpan={isAdmin ? 14 : 13} align="center" sx={{ py: 3, borderBottom: 0 }}>
                                 <MDTypography variant="body2" color="text">
                                   No cancelled delivered items found.
                                 </MDTypography>

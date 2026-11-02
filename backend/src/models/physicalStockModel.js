@@ -647,7 +647,7 @@ class PhysicalStockModel {
         };
     }
 
-    static async deductStockForCompany(connection, companyName, lineItems = []) {
+    static async deductStockForCompany(connection, companyName, lineItems = [], sourceLabel = 'Sales Deduction') {
         const name = String(companyName || '').trim();
         if (!name || !Array.isArray(lineItems) || !lineItems.length) {
             return;
@@ -745,7 +745,7 @@ class PhysicalStockModel {
                     total_value: totalValue,
                 },
                 sourceType: 'sale',
-                sourceLabel: 'Sales Deduction',
+                sourceLabel,
                 changeType: 'deduct',
             });
 

@@ -10,7 +10,7 @@ const money = (value) => Number(value || 0).toLocaleString("en-IN", {
 });
 
 /** Today's requisition target (e.g. SIL Rs. 11,250) for the logged-in staff member. */
-function TargetProgress({ targets, onFinalSubmit, submitting = false }) {
+function TargetProgress({ targets, onOpenQueue }) {
   if (!Array.isArray(targets) || !targets.length) return null;
   return (
     <MDBox display="flex" flexDirection="column" gap={1.5} mb={2}>
@@ -44,32 +44,17 @@ function TargetProgress({ targets, onFinalSubmit, submitting = false }) {
             />
             <MDTypography variant="caption" color="text" display="block">
               Done today: ₹{money(target.achieved)} from {target.requisitionCount} requisition
-              {target.requisitionCount === 1 ? "" : "s"}. Requisitions are saved as drafts until you Final Submit.
-              {target.completed ? "" : " If you Final Submit below the target, Admin has to approve them."}
+              {target.requisitionCount === 1 ? "" : "s"}. New requisitions wait in your Queue until you Final Submit them.
             </MDTypography>
-            {target.draftCount > 0 ? (
+            {target.draftCount > 0 && (
               <MDBox display="flex" justifyContent="space-between" alignItems="center" flexWrap="wrap" gap={1} mt={1.5}>
                 <MDTypography variant="button" fontWeight="medium">
-                  {target.draftCount} draft{target.draftCount === 1 ? "" : "s"} not submitted · ₹{money(target.draftTotal)}
+                  {target.draftCount} in queue, not submitted · ₹{money(target.draftTotal)}
                 </MDTypography>
-                {onFinalSubmit && (
-                  <MDButton
-                    color={target.completed ? "success" : "warning"}
-                    variant="gradient"
-                    size="small"
-                    disabled={submitting}
-                    onClick={() => onFinalSubmit(target)}
-                  >
-                    <Icon sx={{ mr: 0.5 }}>task_alt</Icon> Final Submit
-                  </MDButton>
-                )}
+                <MDButton onClick={onOpenQueue} color="info" variant="outlined" size="small">
+                  <Icon sx={{ mr: 0.5 }}>playlist_add_check</Icon> Open Queue
+                </MDButton>
               </MDBox>
-            ) : (
-              target.requisitionCount > 0 && (
-                <MDTypography variant="caption" color="success" fontWeight="medium" display="block" mt={1}>
-                  All of today&apos;s requisitions are submitted.
-                </MDTypography>
-              )
             )}
           </MDBox>
         );

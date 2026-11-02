@@ -35,8 +35,12 @@ const receiveDocument = (req, res, next) => documentUpload(req, res, (error) => 
 // Overdue credit sale requests (must stay above the '/:id' routes).
 router.get('/overdue-requests', overdueSaleRequestController.listOverdueRequests);
 router.post('/overdue-requests', overdueSaleRequestController.createOverdueRequest);
-router.put('/overdue-requests/:id/review', requireRole('admin'), overdueSaleRequestController.reviewOverdueRequest);
-router.post('/overdue-requests/:id/create-sales', requireRole('admin'), overdueSaleRequestController.createSalesForRequest);
+router.post('/overdue-requests/send-to-staff', overdueSaleRequestController.sendToMarketingStaff);
+router.get('/overdue-requests/my', overdueSaleRequestController.listMyOverdueRequests);
+router.put('/overdue-requests/:id/respond', overdueSaleRequestController.respondToOverdueRequest);
+// Admin, or the approver for this overdue amount (checked in the controller).
+router.put('/overdue-requests/:id/review', overdueSaleRequestController.reviewOverdueRequest);
+router.post('/overdue-requests/:id/create-sales', overdueSaleRequestController.createSalesForRequest);
 
 // Suspense requests: raised from Move to Suspense, approved by admin.
 router.get('/suspense-requests', suspenseRequestController.listSuspenseRequests);
@@ -60,12 +64,12 @@ router.post('/upload-document', receiveDocument, staffController.uploadStaffDocu
 router.get('/', staffController.getStaff);
 router.get('/search', staffController.searchStaff);
 router.get('/areas', verifyTokenMiddleware, requireRole('admin'), staffController.getAreaDirectory);
-router.get('/areas/options', verifyTokenMiddleware, requireRole('admin', 'packaging_staff', 'delivery_boy', 'staff'), staffController.getAreaOptions);
+router.get('/areas/options', verifyTokenMiddleware, requireRole('admin', 'packaging_staff', 'delivery_boy', 'bawarchee_staff', 'staff'), staffController.getAreaOptions);
 router.post('/areas', verifyTokenMiddleware, requireRole('admin'), staffController.createArea);
 router.delete('/areas', verifyTokenMiddleware, requireRole('admin'), staffController.deleteArea);
 router.put('/areas/holiday', verifyTokenMiddleware, requireRole('admin'), staffController.updateAreaHoliday);
 router.get('/areas/export', verifyTokenMiddleware, requireRole('admin'), staffController.exportAreaDirectory);
-router.get('/routes', verifyTokenMiddleware, requireRole('admin', 'packaging_staff', 'delivery_boy'), routeController.getRoutes);
+router.get('/routes', verifyTokenMiddleware, requireRole('admin', 'packaging_staff', 'delivery_boy', 'bawarchee_staff'), routeController.getRoutes);
 router.post('/routes', verifyTokenMiddleware, requireRole('admin'), routeController.createRoute);
 router.put('/routes/:id', verifyTokenMiddleware, requireRole('admin'), routeController.updateRoute);
 router.delete('/routes/:id', verifyTokenMiddleware, requireRole('admin'), routeController.deleteRoute);
@@ -116,6 +120,8 @@ router.post('/purchase-requisitions/final-submit', purchaseRequisitionController
 router.get('/purchase-requisitions', purchaseRequisitionController.list);
 router.put('/purchase-requisitions/:id/status', purchaseRequisitionController.review);
 router.delete('/purchase-requisitions/:id', purchaseRequisitionController.removePending);
+router.get('/purchase-requisitions/queue', purchaseRequisitionController.getQueue);
+router.get('/purchase-requisitions/outlet-overdue', purchaseRequisitionController.getOutletOverdue);
 router.get('/purchase-requisitions/target', purchaseRequisitionController.getTargetProgress);
 router.get('/purchase-requisitions/target-requests', purchaseRequisitionController.listTargetRequests);
 router.post('/purchase-requisitions/target-requests', purchaseRequisitionController.createTargetRequest);
@@ -155,6 +161,7 @@ router.get('/outlets-template', staffController.downloadOutletUploadTemplate);
 router.get('/:id', staffController.getStaffFullDetails);
 router.put('/:id', staffController.updateStaff);
 router.post('/:id/generate-credentials', staffController.generateStaffCredentials);
+router.get('/:id/credentials', verifyTokenMiddleware, requireRole('admin'), staffController.getStaffCredentials);
 router.put('/:id/credentials', verifyTokenMiddleware, requireRole('admin'), staffController.updateStaffCredentials);
 router.put('/:id/toggle-active', staffController.toggleStaffActive);
 router.get('/:id/locations', staffController.getStaffLocations);
@@ -165,6 +172,7 @@ router.get('/:id/outlets-by-day', staffController.getOutletsByStaffAndDayName);
 router.post('/:id/outlets-upload', upload.single('file'), staffController.uploadOutletsExcel);
 router.post('/:id/counters', staffController.addCounter);
 router.post('/:id/sales', staffController.recordSales);
+router.post('/:id/sales/cancel-overdue', staffController.cancelOverdueSale);
 router.get('/:id/next-bill-number', staffController.getNextBillNumber);
 router.get('/:id/sales-by-date', staffController.fetchSalesByDate);
 router.put('/counter/:counterId', staffController.editCounter);
@@ -182,6 +190,7 @@ router.delete('/sales/:saleId/payments/:paymentId', staffController.deleteSalePa
 router.put('/sales/:saleId', staffController.updateSale);
 router.delete('/sales/:saleId', staffController.deleteSale);
 router.put('/sales/:saleId/packaging', staffController.updatePackagingStatus);
+router.post('/sales/:saleId/undo-cancel', requireRole('admin'), staffController.undoSaleCancellation);
 router.get('/sales/:saleId/packaging-remarks', staffController.getPackagingRemarks);
 router.post('/sales/:saleId/packaging-remarks', staffController.savePackagingRemarks);
 router.post('/sales/:saleId/cancel-log', staffController.logOrderCancellation);

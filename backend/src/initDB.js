@@ -80,8 +80,8 @@ async function initDB() {
         CREATE TABLE IF NOT EXISTS staff (
             id INT AUTO_INCREMENT PRIMARY KEY,
             name VARCHAR(255) NOT NULL,
-            contact_no VARCHAR(20) NOT NULL,
-            staff_type ENUM('distributor', 'cnf') NOT NULL DEFAULT 'distributor',
+            contact_no VARCHAR(20) NULL,
+            staff_type ENUM('distributor', 'cnf') NULL DEFAULT NULL,
             company_id INT NULL,
             dob DATE NULL,
             whatsapp_number VARCHAR(20) NULL,
@@ -92,6 +92,9 @@ async function initDB() {
             staff_category ENUM('company_staff', 'bawarchee_staff', 'operator') NOT NULL DEFAULT 'company_staff',
             login_id VARCHAR(100) NULL UNIQUE,
             password_hash VARCHAR(255) NULL,
+            password_encrypted VARCHAR(512) NULL,
+            bawarchee_role VARCHAR(20) NULL,
+            permissions TEXT NULL,
             is_active TINYINT(1) NOT NULL DEFAULT 1,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE SET NULL

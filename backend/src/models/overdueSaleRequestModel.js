@@ -128,6 +128,8 @@ const REQUEST_SELECT = `
            r.sales_summary, r.sales_payload, r.request_note, r.requested_by_role, r.requested_by_id, r.requested_by_name,
            r.status, r.reviewed_by_admin_id, r.reviewed_by_name, r.review_note, r.reviewed_at,
            r.used_at, r.created_at, r.updated_at, r.self_approved,
+           r.marketing_staff_id, r.overdue_amount, r.approval_level, r.payment_days, r.staff_responded_at,
+           marketing.name AS marketing_staff_name,
            COALESCE(
                (SELECT GROUP_CONCAT(c.name ORDER BY c.name SEPARATOR ', ')
                 FROM staff_companies sc INNER JOIN companies c ON c.id = sc.company_id
@@ -135,7 +137,18 @@ const REQUEST_SELECT = `
                (SELECT c.name FROM companies c WHERE c.id = s.company_id)
            ) AS staff_company_names
     FROM overdue_sale_requests r
-    LEFT JOIN staff s ON s.id = r.staff_id`;
+    LEFT JOIN staff s ON s.id = r.staff_id
+    LEFT JOIN staff marketing ON marketing.id = r.marketing_staff_id`;
+
+// Who approves a 14+ day overdue request, by the outlet's overdue amount.
+export const approvalLevelForAmount = (amount) => {
+    if (amount <= 1000) return 'up_to_1000';
+    return amount <= 2000 ? 'up_to_2000' : 'above_2000';
+};
+
+export const outletOverdueAmount = (outlet) => Math.round(
+    (outlet?.credits || []).reduce((total, credit) => total + (Number(credit.balanceAmount) || 0), 0) * 100
+) / 100;
 
 export default class OverdueSaleRequestModel {
     // One request per staff + date + outlet. A pending request is updated with the latest
@@ -181,6 +194,71 @@ export default class OverdueSaleRequestModel {
         return this.getByIds(ids);
     }
 
+    // 14+ days overdue: waits for the outlet's marketing staff. A request already waiting for them
+    // gets the latest invoice details; one already further along is returned as-is.
+    static async createAwaitingStaff({ staffId, saleDate, outlets, salesPayloadByOutlet, requester }) {
+        const ids = [];
+        for (const { outlet, marketingStaffId } of outlets) {
+            const payload = salesPayloadByOutlet[outlet.outletId];
+            const summary = summarizeSales(payload.sales);
+            const [existing] = await db.execute(
+                `SELECT id, status FROM overdue_sale_requests
+                 WHERE staff_id = ? AND sale_date = ? AND outlet_id = ? AND status IN ('awaiting_staff', 'pending', 'approved')
+                 ORDER BY id DESC LIMIT 1`,
+                [staffId, saleDate, outlet.outletId]
+            );
+            if (existing.length) {
+                if (existing[0].status === 'awaiting_staff') {
+                    await db.execute(
+                        'UPDATE overdue_sale_requests SET sales_payload = ?, sales_summary = ? WHERE id = ?',
+                        [JSON.stringify(payload), JSON.stringify(summary), existing[0].id]
+                    );
+                }
+                ids.push(existing[0].id);
+                continue;
+            }
+            const [result] = await db.execute(
+                `INSERT INTO overdue_sale_requests (
+                    staff_id, sale_date, outlet_id, outlet_erp_id, outlet_name, max_overdue_days,
+                    overdue_details, sales_summary, sales_payload, request_note, requested_by_role, requested_by_id, requested_by_name,
+                    status, marketing_staff_id, overdue_amount
+                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'Sent to marketing staff', ?, ?, ?, 'awaiting_staff', ?, ?)`,
+                [
+                    staffId, saleDate, outlet.outletId, outlet.outletErpId || '', outlet.outletName || null,
+                    outlet.maxOverdueDays || 0, JSON.stringify(outlet.credits || []),
+                    JSON.stringify(summary), JSON.stringify(payload),
+                    requester.role, requester.id || null, requester.name || null,
+                    marketingStaffId, outletOverdueAmount(outlet),
+                ]
+            );
+            ids.push(result.insertId);
+        }
+        return this.getByIds(ids);
+    }
+
+    // Marketing staff's answer: the figures are worked out again now, as payments may have come in.
+    static async recordStaffResponse(id, marketingStaffId, { reason, paymentDays, outlet }) {
+        const amount = outlet ? outletOverdueAmount(outlet) : 0;
+        const fresh = outlet ? [outlet.maxOverdueDays || 0, JSON.stringify(outlet.credits || [])] : [0, '[]'];
+        const [result] = await db.execute(
+            `UPDATE overdue_sale_requests
+             SET status = 'pending', request_note = ?, payment_days = ?, overdue_amount = ?, approval_level = ?,
+                 max_overdue_days = ?, overdue_details = ?, staff_responded_at = NOW()
+             WHERE id = ? AND marketing_staff_id = ? AND status = 'awaiting_staff'`,
+            [reason, paymentDays, amount, approvalLevelForAmount(amount), ...fresh, id, marketingStaffId]
+        );
+        return result.affectedRows > 0;
+    }
+
+    static async listForMarketingStaff(marketingStaffId) {
+        const [rows] = await db.execute(
+            `${REQUEST_SELECT} WHERE r.marketing_staff_id = ?
+             ORDER BY (r.status = 'awaiting_staff') DESC, r.created_at DESC LIMIT 200`,
+            [marketingStaffId]
+        );
+        return rows.map(mapRequest);
+    }
+
     static async getByIds(ids = []) {
         const list = toIds(ids);
         if (!list.length) return [];
@@ -206,12 +284,13 @@ export default class OverdueSaleRequestModel {
         return [...latest.values()].map(mapRequest);
     }
 
-    // requestedBy limits the list to one user's own requests (non-admin users).
-    static async list({ status = 'pending', limit = 200, requestedBy = null } = {}) {
+    // requestedBy limits the list to one user's own requests (non-admin users);
+    // approvalLevels limits it to what an approver can review.
+    static async list({ status = 'pending', limit = 200, requestedBy = null, approvalLevels = null } = {}) {
         const params = [];
         const conditions = [];
         if (status === 'open') {
-            conditions.push("r.status IN ('pending', 'approved')");
+            conditions.push("r.status IN ('awaiting_staff', 'pending', 'approved')");
         } else if (status === 'self_approved') {
             conditions.push('r.self_approved = 1');
         } else if (status && status !== 'all') {
@@ -222,6 +301,11 @@ export default class OverdueSaleRequestModel {
             conditions.push('r.requested_by_role = ? AND r.requested_by_id = ?');
             params.push(requestedBy.role, requestedBy.id);
         }
+        const levelClause = approvalLevels ? `r.approval_level IN (${approvalLevels.map(() => '?').join(', ')})` : '';
+        if (approvalLevels) {
+            conditions.push(levelClause);
+            params.push(...approvalLevels);
+        }
         const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
         const safeLimit = Math.min(Math.max(Number(limit) || 200, 1), 500);
         const [rows] = await db.execute(
@@ -229,11 +313,14 @@ export default class OverdueSaleRequestModel {
             params
         );
         const [[counts]] = await db.execute(
-            `SELECT SUM(r.status = 'pending') AS pending, SUM(r.status = 'approved') AS approved,
+            `SELECT SUM(r.status = 'awaiting_staff') AS awaiting_staff,
+                    SUM(r.status = 'pending') AS pending, SUM(r.status = 'approved') AS approved,
                     SUM(r.status = 'rejected') AS rejected, SUM(r.status = 'used') AS used,
                     SUM(r.self_approved = 1) AS self_approved
-             FROM overdue_sale_requests r ${requestedBy ? 'WHERE r.requested_by_role = ? AND r.requested_by_id = ?' : ''}`,
-            requestedBy ? [requestedBy.role, requestedBy.id] : []
+             FROM overdue_sale_requests r
+             ${requestedBy ? 'WHERE r.requested_by_role = ? AND r.requested_by_id = ?' : ''}
+             ${approvalLevels ? `WHERE ${levelClause}` : ''}`,
+            [...(requestedBy ? [requestedBy.role, requestedBy.id] : []), ...(approvalLevels || [])]
         );
         return {
             requests: rows.map(mapRequest),

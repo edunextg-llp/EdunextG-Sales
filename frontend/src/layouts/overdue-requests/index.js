@@ -15,6 +15,7 @@ import {
   Tooltip,
 } from "@mui/material";
 
+import { useAuth } from "context/AuthContext";
 import MDBox from "components/MDBox";
 import MDBadge from "components/MDBadge";
 import MDTypography from "components/MDTypography";
@@ -30,16 +31,24 @@ import ReviewDialog, {
 
 const API = (process.env.REACT_APP_API_URL);
 
+const APPROVER_LABEL = {
+  up_to_1000: "Up to ₹1,000: Tanushree",
+  up_to_2000: "₹1,001–₹2,000: Manager",
+  above_2000: "Above ₹2,000: Admin",
+};
+
 const STATUS_OPTIONS = [
+  { value: "awaiting_staff", label: "With marketing staff", adminOnly: true },
   { value: "pending", label: "Pending" },
   { value: "approved", label: "Approved (not used yet)" },
   { value: "used", label: "Approved & sales created" },
   { value: "rejected", label: "Rejected" },
-  { value: "self_approved", label: "Staff added with reason (7-day permission)" },
+  { value: "self_approved", label: "Staff added with reason (7-day permission)", adminOnly: true },
   { value: "all", label: "All" },
 ];
 
 const STATUS_BADGE = {
+  awaiting_staff: { label: "With marketing staff", color: "info" },
   pending: { label: "Pending", color: "warning" },
   approved: { label: "Approved", color: "success" },
   used: { label: "Sales created", color: "info" },
@@ -58,6 +67,8 @@ const headSx = {
 const cellSx = { px: 2, py: 1.5, verticalAlign: "top", fontSize: "0.8rem" };
 
 function OverdueRequests() {
+  const { user } = useAuth();
+  const isAdmin = user?.role === "admin";
   const [status, setStatus] = useState("pending");
   const [requests, setRequests] = useState([]);
   const [counts, setCounts] = useState({});
@@ -93,7 +104,8 @@ function OverdueRequests() {
     async (silent = false) => {
       if (!silent) setLoading(true);
       try {
-        const response = await fetch(`${API}/staff/overdue-requests?status=${status}`);
+        const scope = isAdmin ? "" : "&scope=approver";
+        const response = await fetch(`${API}/staff/overdue-requests?status=${status}${scope}`);
         const data = await response.json().catch(() => ({}));
         if (!response.ok) throw new Error(data.error || "Unable to load requests.");
         setRequests(data.requests || []);
@@ -105,7 +117,7 @@ function OverdueRequests() {
         if (!silent) setLoading(false);
       }
     },
-    [status]
+    [status, isAdmin]
   );
 
   useEffect(() => {
@@ -123,15 +135,17 @@ function OverdueRequests() {
             <MDBox>
               <MDTypography variant="h6">Overdue Sale Requests</MDTypography>
               <MDTypography variant="caption" color="text">
-                Requests to add sales for outlets with credit overdue by more than 3 days.
+                {isAdmin
+                  ? "Requests to add sales for outlets with credit overdue by more than 3 days."
+                  : "Outlets overdue by 14 days or more that you can approve. Approving creates the sale."}
                 {counts.pending ? ` ${counts.pending} waiting for review.` : ""}
-                {counts.self_approved ? ` ${counts.self_approved} added by staff with the 7-day permission.` : ""}
+                {isAdmin && counts.self_approved ? ` ${counts.self_approved} added by staff with the 7-day permission.` : ""}
               </MDTypography>
             </MDBox>
             <MDBox display="flex" gap={1} alignItems="center">
               <FormControl size="small" sx={{ minWidth: 220 }}>
                 <Select value={status} onChange={(e) => setStatus(e.target.value)} sx={{ height: 40 }}>
-                  {STATUS_OPTIONS.map((option) => (
+                  {STATUS_OPTIONS.filter((option) => isAdmin || !option.adminOnly).map((option) => (
                     <MenuItem key={option.value} value={option.value}>
                       {option.label}
                       {option.value !== "all" && counts[option.value] ? ` (${counts[option.value]})` : ""}
@@ -229,8 +243,19 @@ function OverdueRequests() {
                       </TableCell>
                       <TableCell sx={{ ...cellSx, maxWidth: 260 }}>
                         <strong>{request.requested_by_name || "—"}</strong>
+                        {request.marketing_staff_name && <> · Marketing: <strong>{request.marketing_staff_name}</strong></>}
                         <br />
                         {request.request_note}
+                        {request.payment_days && (
+                          <MDTypography variant="caption" display="block" fontWeight="bold" color="text">
+                            Pay within {request.payment_days} day(s)
+                          </MDTypography>
+                        )}
+                        {APPROVER_LABEL[request.approval_level] && (
+                          <MDTypography variant="caption" display="block" color="text">
+                            {APPROVER_LABEL[request.approval_level]}
+                          </MDTypography>
+                        )}
                       </TableCell>
                       <TableCell sx={cellSx}>
                         <MDBadge badgeContent={badge.label} color={badge.color} variant="gradient" size="sm" container />

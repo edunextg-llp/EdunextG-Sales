@@ -1,8 +1,11 @@
 import db from '../config/db.js';
+import { parseStoredPermissions, withRolePermissions } from '../utils/permissionKeys.js';
 import { normalizeAreaName, normalizeHolidayDays } from '../migrations/migrateAreas.js';
 import { formatStickerNumber } from '../utils/stickerNumber.js';
 import { getCompanyBillPrefix, normalizeInvoiceNumber } from '../utils/invoiceNumber.js';
 import PhysicalStockModel from './physicalStockModel.js';
+
+export const OVERDUE_CANCEL_REASON = 'Cancelled due to overdue';
 import { actorNameSql, actorParams } from '../utils/requestContext.js';
 
 class StaffModel {
@@ -90,13 +93,15 @@ class StaffModel {
             aadharDocumentUrl = null,
             pccCertificateUrl = null,
             staffCategory = 'company_staff',
+            bawarcheeRole = null,
+            permissions = null,
         } = profile;
 
         const [result] = await db.execute(
             `INSERT INTO staff (
                 name, contact_no, company_id, staff_type, staff_category, dob, whatsapp_number,
-                email, aadhar_no, aadhar_document_url, pcc_certificate_url
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                email, aadhar_no, aadhar_document_url, pcc_certificate_url, bawarchee_role, permissions
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
             [
                 name,
                 contactNo,
@@ -109,22 +114,47 @@ class StaffModel {
                 aadharNo,
                 aadharDocumentUrl,
                 pccCertificateUrl,
+                bawarcheeRole,
+                permissions ? JSON.stringify(permissions) : null,
             ]
         );
         return result.insertId;
     }
 
-    static async setLoginCredentials(staffId, loginId, passwordHash) {
+    static async setLoginCredentials(staffId, loginId, passwordHash, passwordEncrypted = null) {
         await db.execute(
-            'UPDATE staff SET login_id = ?, password_hash = ? WHERE id = ?',
-            [loginId, passwordHash, staffId]
+            'UPDATE staff SET login_id = ?, password_hash = ?, password_encrypted = ? WHERE id = ?',
+            [loginId, passwordHash, passwordEncrypted, staffId]
         );
+    }
+
+    // Bawarchee Staff web login: role and permissions read fresh on every request.
+    static async getCurrentWebAccess(staffId) {
+        const [rows] = await db.execute(
+            'SELECT is_active, staff_category, bawarchee_role, permissions FROM staff WHERE id = ?',
+            [staffId]
+        );
+        const row = rows[0];
+        if (!row) return null;
+        return {
+            isActive: Number(row.is_active) === 1 && row.staff_category === 'bawarchee_staff',
+            bawarcheeRole: row.bawarchee_role || null,
+            permissions: withRolePermissions(parseStoredPermissions(row.permissions), row.bawarchee_role),
+        };
+    }
+
+    static async getLoginCredentials(staffId) {
+        const [rows] = await db.execute(
+            'SELECT id, name, login_id, password_encrypted FROM staff WHERE id = ?',
+            [staffId]
+        );
+        return rows[0] || null;
     }
 
     static async findByLoginId(loginId) {
         const [rows] = await db.execute(
             `SELECT s.id, s.name, s.contact_no, s.staff_type, s.staff_category,
-                    s.login_id, s.password_hash, s.is_active,
+                    s.login_id, s.password_hash, s.is_active, s.bawarchee_role, s.permissions,
                     GROUP_CONCAT(DISTINCT sc.company_id ORDER BY sc.company_id) AS company_ids,
                     GROUP_CONCAT(DISTINCT c.name ORDER BY sc.company_id SEPARATOR ', ') AS company_names
              FROM staff s
@@ -199,6 +229,7 @@ class StaffModel {
     static async getDetails(id) {
         const [rows] = await db.execute(
             `SELECT s.id, s.name, s.contact_no, s.company_id, s.staff_type, s.staff_category, s.login_id, s.is_active,
+                    s.bawarchee_role, s.permissions,
                     s.dob, s.whatsapp_number, s.email, s.aadhar_no, s.aadhar_document_url, s.pcc_certificate_url,
                     COALESCE(sc.company_names, c.name) AS company_name,
                     sc.company_ids
@@ -430,12 +461,15 @@ class StaffModel {
             aadharDocumentUrl = null,
             pccCertificateUrl = null,
             staffCategory = 'company_staff',
+            bawarcheeRole = null,
+            permissions = null,
         } = profile;
 
         await db.execute(
             `UPDATE staff
              SET name = ?, contact_no = ?, company_id = ?, staff_type = ?, staff_category = ?,
-                 dob = ?, whatsapp_number = ?, email = ?, aadhar_no = ?, aadhar_document_url = ?, pcc_certificate_url = ?
+                 dob = ?, whatsapp_number = ?, email = ?, aadhar_no = ?, aadhar_document_url = ?, pcc_certificate_url = ?,
+                 bawarchee_role = ?, permissions = ?
              WHERE id = ?`,
             [
                 name,
@@ -449,6 +483,8 @@ class StaffModel {
                 aadharNo,
                 aadharDocumentUrl,
                 pccCertificateUrl,
+                bawarcheeRole,
+                permissions ? JSON.stringify(permissions) : null,
                 id,
             ]
         );
@@ -611,7 +647,7 @@ class StaffModel {
         }
         const whereClause = filters.length ? `WHERE ${filters.join(' AND ')}` : '';
         const [rows] = await db.execute(
-            `SELECT s.id, s.name, s.contact_no, s.email, s.company_id, s.staff_type, s.staff_category, s.login_id, s.is_active,
+            `SELECT s.id, s.name, s.contact_no, s.email, s.company_id, s.staff_type, s.staff_category, s.login_id, s.is_active, s.bawarchee_role,
                     COALESCE(sc.company_names, c.name) AS company_name,
                     sc.company_ids
              FROM staff s
@@ -1303,6 +1339,7 @@ class StaffModel {
         const [rows] = await db.execute(
             `SELECT ss.id,
                     ${createdBy.columns},
+                    ss.cancellation_reason,
                     ss.credit_photo_url,
                     DATE_FORMAT(ss.credit_photo_at, '%Y-%m-%d %H:%i:%s') AS credit_photo_at,
                     ${photoBy.columns},
@@ -1484,6 +1521,154 @@ class StaffModel {
         return rows[0] ? rows[0].packaging_status : null;
     }
 
+    static async getSaleItemsByCompany(connection, saleId) {
+        const [saleRows] = await connection.execute(
+            `SELECT COALESCE(c.name, '') AS company_name
+             FROM staff_sales ss
+             LEFT JOIN staff s ON s.id = ss.staff_id
+             LEFT JOIN companies c ON c.id = s.company_id
+             WHERE ss.id = ? LIMIT 1`,
+            [saleId]
+        );
+        const [saleItems] = await connection.execute(
+            `SELECT product_erp_id, product_name, product_division, variant_name, qty, rate
+             FROM staff_sale_items WHERE sale_id = ? ORDER BY sort_order ASC, id ASC`,
+            [saleId]
+        );
+
+        const itemsByCompany = new Map();
+        for (const item of saleItems) {
+            const companyName = String(item.product_division || saleRows[0]?.company_name || '').trim();
+            if (!companyName) {
+                throw new Error(`Company could not be determined for cancelled product ${item.product_erp_id}.`);
+            }
+            if (!itemsByCompany.has(companyName)) itemsByCompany.set(companyName, []);
+            itemsByCompany.get(companyName).push(item);
+        }
+        return itemsByCompany;
+    }
+
+    // Reverses a mistaken full-bill cancellation. A bill that had been packed
+    // goes to Pending Deliveries; one cancelled before packing goes back to
+    // Packaging. Stock is only taken again if that cancellation put it back:
+    // cancels made from the delivery apps do not restore stock.
+    // Records an invoice that was never billed because the outlet's overdue is too old. It is
+    // cancelled from the start, so no stock is deducted and any requisition stays unused.
+    static async saveOverdueCancelledSale(staffId, date, sale) {
+        const connection = await db.getConnection();
+        try {
+            await connection.beginTransaction();
+            const stickerNumber = await StaffModel.getNextStickerNumber(connection);
+            const [result] = await connection.execute(
+                `INSERT INTO staff_sales
+                 (staff_id, outlet_id, sale_date, item_count, packed_item_count, invoice_number, price, sticker_number,
+                  payment_mode, paid_amount, balance_amount, packaging_status, cancellation_reason, created_by_type, created_by_id)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'cash', 0, ?, 'cancelled', ?, ?, ?)`,
+                [
+                    staffId, sale.outletId, date, sale.itemCount, sale.itemCount, sale.invoiceNumber, sale.price,
+                    stickerNumber, sale.price, OVERDUE_CANCEL_REASON, ...actorParams(),
+                ]
+            );
+            const saleId = result.insertId;
+            await StaffModel.saveSaleItems(connection, saleId, sale.lineItems);
+            await connection.execute(
+                `INSERT INTO staff_sale_status_history (sale_id, status, changed_at, changed_by_type, changed_by_id, remarks)
+                 VALUES (?, 'cancelled', NOW(), ?, ?, ?)`,
+                [saleId, ...actorParams(), `Cancellation reason: ${OVERDUE_CANCEL_REASON}`]
+            );
+            await connection.commit();
+            return { saleId, stickerNumber, invoiceNumber: sale.invoiceNumber };
+        } catch (error) {
+            await connection.rollback();
+            throw error;
+        } finally {
+            connection.release();
+        }
+    }
+
+    static async undoSaleCancellation(saleId, reason) {
+        const connection = await db.getConnection();
+        try {
+            await connection.beginTransaction();
+            const [sales] = await connection.execute(
+                'SELECT packaging_status, packed_by_id, cancellation_reason FROM staff_sales WHERE id = ? FOR UPDATE',
+                [saleId]
+            );
+            const sale = sales[0];
+            if (!sale) {
+                await connection.rollback();
+                return null;
+            }
+            if (sale.packaging_status !== 'cancelled') {
+                await connection.rollback();
+                return { conflict: true, currentStatus: sale.packaging_status };
+            }
+
+            const restoreLabel = `Full Bill Cancellation #${saleId}`;
+            const undoLabel = `Cancellation Undo #${saleId}`;
+            const [stockRows] = await connection.execute(
+                `SELECT COALESCE(SUM(source_label = ?), 0) AS restored, COALESCE(SUM(source_label = ?), 0) AS undone
+                 FROM physical_stock_item_history WHERE source_label IN (?, ?)`,
+                [restoreLabel, undoLabel, restoreLabel, undoLabel]
+            );
+            // An invoice cancelled for overdue never took stock, so returning it takes it now. It uses
+            // its own label so it doesn't cancel out a later "Full Bill Cancellation" restore.
+            const neverDeducted = sale.cancellation_reason === OVERDUE_CANCEL_REASON;
+            if (neverDeducted || Number(stockRows[0].restored) > Number(stockRows[0].undone)) {
+                const itemsByCompany = await StaffModel.getSaleItemsByCompany(connection, saleId);
+                for (const [companyName, items] of itemsByCompany.entries()) {
+                    try {
+                        await PhysicalStockModel.deductStockForCompany(
+                            connection,
+                            companyName,
+                            items,
+                            neverDeducted ? `Overdue Cancellation Return #${saleId}` : undoLabel
+                        );
+                    } catch (error) {
+                        // Database errors carry a code; the rest are stock messages for the user.
+                        if (!error.code) error.code = 'STOCK_UNAVAILABLE';
+                        throw error;
+                    }
+                }
+            }
+
+            const [packedRows] = await connection.execute(
+                `SELECT id FROM staff_sale_status_history WHERE sale_id = ? AND status = 'packing_done' LIMIT 1`,
+                [saleId]
+            );
+            const status = sale.packed_by_id || packedRows.length ? 'packing_done' : 'not_packing';
+            // The invoice's cancellation reason is cleared below, so keep it on the history row.
+            if (sale.cancellation_reason) {
+                await connection.execute(
+                    `UPDATE staff_sale_status_history SET remarks = ?
+                     WHERE sale_id = ? AND status = 'cancelled' AND remarks IS NULL
+                     ORDER BY changed_at DESC, id DESC LIMIT 1`,
+                    [`Cancellation reason: ${sale.cancellation_reason}`, saleId]
+                );
+            }
+            await connection.execute(
+                `UPDATE staff_sales
+                 SET packaging_status = ?, cancellation_reason = NULL,
+                     in_suspense = 0, suspense_at = NULL, suspense_reason = NULL,
+                     delivery_boy_id = NULL, delivery_staff_id = NULL, vehicle_no = NULL, delivery_date = NULL
+                 WHERE id = ?`,
+                [status, saleId]
+            );
+            await connection.execute(
+                `INSERT INTO staff_sale_status_history (sale_id, status, changed_at, changed_by_type, changed_by_id, remarks)
+                 VALUES (?, ?, NOW(), ?, ?, ?)`,
+                [saleId, status, ...actorParams(), `Returned after cancellation: ${reason}`]
+            );
+            await connection.commit();
+            return { status };
+        } catch (error) {
+            await connection.rollback();
+            throw error;
+        } finally {
+            connection.release();
+        }
+    }
+
     static async updatePackagingStatus(
         saleId,
         status,
@@ -1510,30 +1695,7 @@ class StaffModel {
 
             if (status === 'cancelled') {
                 if (currentStatus !== 'cancelled') {
-                    const [saleRows] = await connection.execute(
-                        `SELECT COALESCE(c.name, '') AS company_name
-                         FROM staff_sales ss
-                         LEFT JOIN staff s ON s.id = ss.staff_id
-                         LEFT JOIN companies c ON c.id = s.company_id
-                         WHERE ss.id = ? LIMIT 1`,
-                        [saleId]
-                    );
-                    const [saleItems] = await connection.execute(
-                        `SELECT product_erp_id, product_name, product_division, variant_name, qty, rate
-                         FROM staff_sale_items WHERE sale_id = ? ORDER BY sort_order ASC, id ASC`,
-                        [saleId]
-                    );
-
-                    const itemsByCompany = new Map();
-                    for (const item of saleItems) {
-                        const companyName = String(item.product_division || saleRows[0]?.company_name || '').trim();
-                        if (!companyName) {
-                            throw new Error(`Company could not be determined for cancelled product ${item.product_erp_id}.`);
-                        }
-                        if (!itemsByCompany.has(companyName)) itemsByCompany.set(companyName, []);
-                        itemsByCompany.get(companyName).push(item);
-                    }
-
+                    const itemsByCompany = await StaffModel.getSaleItemsByCompany(connection, saleId);
                     for (const [companyName, items] of itemsByCompany.entries()) {
                         await PhysicalStockModel.restoreStockForCompany(
                             connection,
@@ -1636,7 +1798,7 @@ class StaffModel {
         const [rows] = await db.execute(
             `SELECT ss.id,
                     ss.staff_id, ss.outlet_id, ss.sale_date, ss.item_count, ss.packed_item_count, ss.box_count, ss.packet_count,
-                    ss.price, ss.invoice_number, ss.sticker_number, ss.packaging_status,
+                    ss.price, ss.invoice_number, ss.sticker_number, ss.packaging_status, ss.cancellation_reason,
                     DATE_FORMAT(
                         COALESCE(cancel_hist.cancel_date, legacy_cancel.status_updated_at),
                         '%Y-%m-%d %H:%i:%s'
@@ -1685,7 +1847,7 @@ class StaffModel {
 
         const changedBy = actorNameSql('h', 'changed_by');
         const [history] = await db.execute(
-            `SELECT h.id, h.status, DATE_FORMAT(h.changed_at, '%Y-%m-%d %H:%i:%s') AS changed_at,
+            `SELECT h.id, h.status, DATE_FORMAT(h.changed_at, '%Y-%m-%d %H:%i:%s') AS changed_at, h.remarks,
                     ${changedBy.columns}
              FROM staff_sale_status_history h
              ${changedBy.joins}

@@ -11,6 +11,8 @@ export const PERMISSION_KEYS = [
     // Approvals > Below Target Approvals page: approve staff days that are below the
     // company's daily requisition target (e.g. SIL Rs. 11,250) instead of Admin.
     'requisition_target_approval',
+    // Approvals > Overdue Requests: approve 14+ day overdue requests up to Rs. 1,000.
+    'overdue_approval',
 ];
 
 // Extra options that only make sense together with a page permission.
@@ -41,9 +43,44 @@ export const NEW_PERMISSION_COLUMNS = [
     ['delivery_report', 'delivery'],
     ['overdue_7_days', null],
     ['requisition_target_approval', null],
+    ['overdue_approval', null],
 ];
 
 export const permissionColumnsSql = (alias = 'p') =>
     PERMISSION_KEYS.map((key) => `COALESCE(${alias}.can_${key}, 0) AS can_${key}`).join(',\n                    ');
 
 export const permissionsFromRow = (row) => PERMISSION_KEYS.filter((key) => Boolean(Number(row?.[`can_${key}`])));
+
+// Roles a Bawarchee Staff login can have. The role is a label plus a starting set
+// of permissions; the admin can tick or untick individual pages afterwards.
+export const BAWARCHEE_ROLES = ['admin', 'manager', 'accountant', 'operator'];
+
+// A Bawarchee manager always reviews overdue requests, whatever pages are ticked for them.
+export const withRolePermissions = (permissions, bawarcheeRole) => (
+    bawarcheeRole === 'manager' && !permissions.includes('overdue_approval')
+        ? [...permissions, 'overdue_approval']
+        : permissions
+);
+
+// Cleans a submitted permission list: drops unknown keys, drops sub-options whose
+// page is not granted, and adds the DMS menu when any DMS page is granted.
+export const normalizePermissionList = (list) => {
+    const requested = [...new Set((Array.isArray(list) ? list : []).filter((key) => PERMISSION_KEYS.includes(key)))];
+    const normalized = requested.filter(
+        (key) => !PERMISSION_REQUIRES[key] || requested.includes(PERMISSION_REQUIRES[key])
+    );
+    if (normalized.some((key) => DMS_PERMISSION_KEYS.includes(key)) && !normalized.includes('dms')) {
+        normalized.push('dms');
+    }
+    return normalized;
+};
+
+export const parseStoredPermissions = (value) => {
+    if (!value) return [];
+    try {
+        const parsed = typeof value === 'string' ? JSON.parse(value) : value;
+        return Array.isArray(parsed) ? parsed.filter((key) => PERMISSION_KEYS.includes(key)) : [];
+    } catch {
+        return [];
+    }
+};

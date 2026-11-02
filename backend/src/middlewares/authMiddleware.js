@@ -1,6 +1,7 @@
 import jwt from 'jsonwebtoken';
 import UserModel from '../models/userModel.js';
 import DeliveryBoyModel from '../models/deliveryBoyModel.js';
+import StaffModel from '../models/staffModel.js';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'super_secret_key_12345';
 
@@ -49,6 +50,21 @@ export const verifyTokenMiddleware = async (req, res, next) => {
         }
     }
 
+    // Bawarchee Staff (staff table) web logins: same fresh permission read.
+    if (decoded.role === 'bawarchee_staff' && decoded.staffId) {
+        try {
+            const current = await StaffModel.getCurrentWebAccess(decoded.staffId);
+            if (!current?.isActive) {
+                return res.status(401).json({ error: 'This account is inactive. Please contact the admin.' });
+            }
+            decoded.permissions = current.permissions;
+            decoded.bawarcheeRole = current.bawarcheeRole;
+        } catch (error) {
+            console.error('Permission check failed:', error);
+            return res.status(500).json({ error: 'Internal server error' });
+        }
+    }
+
     req.user = decoded;
     return next();
 };
@@ -87,6 +103,9 @@ export const enforceStaffApiScope = (req, res, next) => {
     const ownOperation = ownStaffPath?.[2] || 'details';
     const allowed =
         path.startsWith('/purchase-requisitions')
+        // 14+ day overdue requests: the controller limits these to this staff member's own.
+        || (method === 'GET' && path === '/overdue-requests/my')
+        || (method === 'PUT' && /^\/overdue-requests\/\d+\/respond$/.test(path))
         || (method === 'GET' && path === '/current-stock')
         || (method === 'GET' && path === '/outlets-template')
         // Invoice Lookup: the controller limits results to the staff member's own sales.
@@ -103,7 +122,7 @@ export const enforceStaffApiScope = (req, res, next) => {
 };
 
 export const enforceManagedUserApiScope = (req, res, next) => {
-    if (!['packaging_staff', 'delivery_boy'].includes(req.user?.role)) return next();
+    if (!['packaging_staff', 'delivery_boy', 'bawarchee_staff'].includes(req.user?.role)) return next();
 
     const permissions = new Set(Array.isArray(req.user.permissions) ? req.user.permissions : []);
     const path = req.path;
@@ -181,11 +200,17 @@ export const enforceManagedUserApiScope = (req, res, next) => {
             || (method === 'PUT' && permissions.has('create_staff'));
     } else if (/^\/\d+\/(toggle-active|generate-credentials)$/.test(path)) {
         allowed = permissions.has('create_staff');
-    } else if (/^\/\d+\/sales$/.test(path)) {
+    } else if (/^\/\d+\/sales(?:\/cancel-overdue)?$/.test(path)) {
         allowed = permissions.has('add_sales');
     } else if (path === '/overdue-requests') {
-        // Add Sales users can raise a request and check its status; only admin reviews.
-        allowed = ['GET', 'POST'].includes(method) && permissions.has('add_sales');
+        // Add Sales users can raise a request and check its status; approvers can list what they review.
+        allowed = (['GET', 'POST'].includes(method) && permissions.has('add_sales'))
+            || (method === 'GET' && permissions.has('overdue_approval'));
+    } else if (path === '/overdue-requests/send-to-staff') {
+        allowed = method === 'POST' && permissions.has('add_sales');
+    } else if (/^\/overdue-requests\/\d+\/(review|create-sales)$/.test(path)) {
+        // The controller checks the approver matches this request's overdue amount.
+        allowed = permissions.has('overdue_approval');
     } else if (path === '/other-day-requests') {
         // Add Sales users can ask to bill another day's bit and check status; only admin reviews.
         allowed = ['GET', 'POST'].includes(method) && permissions.has('add_sales');

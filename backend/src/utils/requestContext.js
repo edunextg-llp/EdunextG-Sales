@@ -24,7 +24,7 @@ export function currentActor() {
     if (!req) return { type: null, id: null };
     const user = req.user;
     if (user?.role === 'admin' && Number.isInteger(Number(user.id))) return { type: 'admin', id: Number(user.id) };
-    if (user?.role === 'staff' && Number(user.staffId || user.id)) return { type: 'staff', id: Number(user.staffId || user.id) };
+    if (['staff', 'bawarchee_staff'].includes(user?.role) && Number(user.staffId || user.id)) return { type: 'staff', id: Number(user.staffId || user.id) };
     if ((user?.role === 'delivery_boy' || user?.role === 'packaging_staff') && Number(user.deliveryBoyId || user.id)) {
         return { type: 'delivery_boy', id: Number(user.deliveryBoyId || user.id) };
     }

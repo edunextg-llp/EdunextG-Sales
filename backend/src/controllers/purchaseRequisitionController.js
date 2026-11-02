@@ -3,6 +3,7 @@ import DmsStockModel from '../models/dmsStockModel.js';
 import PhysicalStockModel from '../models/physicalStockModel.js';
 import PurchaseRequisitionModel from '../models/purchaseRequisitionModel.js';
 import StaffModel from '../models/staffModel.js';
+import { getOverdueOutlets } from '../models/overdueSaleRequestModel.js';
 import { buildCurrentStockDiff } from './currentStockController.js';
 
 // Today's date in India (the business day), as YYYY-MM-DD.
@@ -10,8 +11,58 @@ const indiaToday = () => new Intl.DateTimeFormat('en-CA', {
     timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit',
 }).format(new Date());
 
+const indiaWeekday = () => new Intl.DateTimeFormat('en-US', {
+    timeZone: 'Asia/Kolkata', weekday: 'long',
+}).format(new Date());
+
+const isSilCompany = (company) => String(company?.name || '').trim().toUpperCase() === 'SIL';
+
 const canApproveBelowTarget = (user) => user?.role === 'admin'
     || user?.permissions?.includes('requisition_target_approval');
+
+// The approval rule itself is enforced in review(), so a failure here must not undo the change.
+const syncBelowTargetRequest = async (staffId, companyId, date, target, note = null) => {
+    if (!(Number(target) > 0)) return;
+    await PurchaseRequisitionModel.syncTargetRequest(staffId, companyId, date, Number(target), note)
+        .catch((error) => console.error('Could not update below-target request:', error));
+};
+
+// SIL outlets with overdue credit cannot get a requisition until it is cleared.
+// "Overdue" is the same rule Add Sales uses (see OVERDUE_DAYS_LIMIT).
+const findSilOutletOverdue = async (company, outletId) => {
+    if (!isSilCompany(company)) return null;
+    const [outlet] = await getOverdueOutlets([outletId]);
+    if (!outlet) return null;
+    const total = outlet.credits.reduce((sum, credit) => sum + (Number(credit.balanceAmount) || 0), 0);
+    const amount = Math.round(total * 100) / 100;
+    const shownAmount = amount.toLocaleString('en-IN', { maximumFractionDigits: 2 });
+    return {
+        outletId,
+        outletName: outlet.outletName,
+        amount,
+        maxOverdueDays: outlet.maxOverdueDays,
+        message: `Kindly clear the overdue of ${outlet.outletName}: Rs. ${shownAmount}, overdue by ${outlet.maxOverdueDays} days. A requisition cannot be added until it is cleared.`,
+    };
+};
+
+export const getOutletOverdue = async (req, res) => {
+    try {
+        const companyId = Number(req.query.companyId);
+        const outletId = Number(req.query.outletId);
+        const company = await CompanyModel.getById(companyId);
+        if (!company || !outletId) return res.status(400).json({ error: 'Company and outlet are required.' });
+        if (req.user?.role === 'staff') {
+            const outlet = await StaffModel.getCounterById(outletId);
+            if (!req.user.companyIds?.map(Number).includes(companyId) || Number(outlet?.staff_id) !== Number(req.user.staffId)) {
+                return res.status(403).json({ error: 'This outlet is not assigned to you.' });
+            }
+        }
+        return res.status(200).json({ overdue: await findSilOutletOverdue(company, outletId) });
+    } catch (error) {
+        console.error('Error checking outlet overdue:', error);
+        return res.status(500).json({ error: 'Internal server error' });
+    }
+};
 
 export const create = async (req, res) => {
     try {
@@ -32,6 +83,20 @@ export const create = async (req, res) => {
         const outlet = await StaffModel.getCounterById(outletId);
         if (!outlet || Number(outlet.staff_id) !== staffId) {
             return res.status(403).json({ error: 'This outlet is not assigned to the selected staff.' });
+        }
+        // SIL staff can only raise requisitions for today's outlets (C&F staff use their CNF list).
+        if (req.user?.role === 'staff' && isSilCompany(company)) {
+            const allowedDay = sellerType === 'cnf' ? 'CNF' : indiaWeekday();
+            if (outlet.day !== allowedDay) {
+                return res.status(409).json({
+                    code: 'OUTLET_WRONG_DAY',
+                    error: `${outlet.outlet_name} is a ${outlet.day} outlet. SIL requisitions can only be added for ${allowedDay} outlets today.`,
+                });
+            }
+        }
+        const overdue = await findSilOutletOverdue(company, outletId);
+        if (overdue) {
+            return res.status(409).json({ code: 'OUTLET_OVERDUE', error: overdue.message, overdue });
         }
         const dmsImport = await DmsStockModel.getLatestImportByCompanyName(company.name);
         if (!dmsImport) return res.status(400).json({ error: 'No Item List stock found for this company.' });
@@ -77,8 +142,8 @@ export const create = async (req, res) => {
                 gst_percent: gstPercent,
             };
         });
-        // Companies with a daily target (e.g. SIL Rs. 11,250): requisitions are saved as drafts
-        // and go for approval only when the staff member taps Final Submit for the day.
+        // Companies with a daily target (e.g. SIL Rs. 11,250): requisitions wait in the staff member's
+        // Requisition Queue and go for approval only when they Final Submit that date.
         const needsFinalSubmit = Number(company.daily_requisition_target) > 0;
         const requisition = await PurchaseRequisitionModel.create({
             sellerType, companyId, staffId, outletId, outletDay: req.body?.outletDay,
@@ -89,7 +154,7 @@ export const create = async (req, res) => {
         });
         return res.status(201).json({
             message: needsFinalSubmit
-                ? 'Requisition saved as draft. Final Submit when your day is complete.'
+                ? 'Requisition added to your queue. Final Submit it from Requisition Queue.'
                 : 'Purchase requisition created.',
             requisition,
         });
@@ -212,6 +277,11 @@ export const review = async (req, res) => {
                 req.belowTargetDay.staff_id, req.belowTargetDay.company_id, req.belowTargetDay.requisition_date
             ).catch((error) => console.error('Could not close below-target request:', error));
         }
+        if (status === 'cancelled') {
+            await syncBelowTargetRequest(
+                requisition.staff_id, requisition.company_id, requisition.requisition_date, requisition.company_daily_target
+            );
+        }
         return res.json({
             message: status === 'approved' ? 'Requisition approved.' : 'Requisition cancelled.',
             requisition,
@@ -321,9 +391,65 @@ export const reviewTargetRequest = async (req, res) => {
     }
 };
 
-// Staff: Final Submit their draft requisitions for a company. A day that reaches the daily
-// target goes to normal approval. A day below the target needs confirmBelowTarget and then
-// also creates a Below Target approval request for Admin / an assigned approver.
+// Staff: their Requisition Queue, one entry per date and company with a daily target.
+export const getQueue = async (req, res) => {
+    try {
+        if (req.user?.role !== 'staff') {
+            return res.status(403).json({ error: 'Only staff have a Requisition Queue.' });
+        }
+        const staffId = Number(req.user.staffId);
+        const [rows, requests] = await Promise.all([
+            PurchaseRequisitionModel.listByStaff(staffId),
+            PurchaseRequisitionModel.listTargetRequestsForStaff(staffId),
+        ]);
+        const latestRequest = new Map(requests.map((row) => [`${row.request_date}|${row.company_id}`, row]));
+        const groups = new Map();
+        rows.filter((row) => Number(row.company_daily_target) > 0).forEach((row) => {
+            const key = `${row.requisition_date}|${row.company_id}`;
+            if (!groups.has(key)) groups.set(key, []);
+            groups.get(key).push(row);
+        });
+        const days = [...groups.entries()].map(([key, requisitions]) => {
+            const [first] = requisitions;
+            const target = Number(first.company_daily_target);
+            const counted = requisitions.filter((row) => row.status !== 'cancelled');
+            const sum = (list) => Math.round(list.reduce((total, row) => total + Number(row.total_amount || 0), 0) * 100) / 100;
+            const drafts = requisitions.filter((row) => row.status === 'draft');
+            const achieved = sum(counted);
+            const request = latestRequest.get(key) || null;
+            const waiting = requisitions.some((row) => ['open', 'pending'].includes(row.status));
+            let stage = 'done';
+            if (drafts.length) stage = 'queue';
+            else if (waiting && request?.status === 'pending') stage = 'admin';
+            else if (waiting && request?.status === 'rejected') stage = 'rejected';
+            else if (waiting) stage = 'approval';
+            return {
+                key,
+                date: first.requisition_date,
+                companyId: first.company_id,
+                companyName: first.company_name,
+                target,
+                achieved,
+                short: Math.max(0, Math.round((target - achieved) * 100) / 100),
+                belowTarget: achieved < target,
+                draftCount: drafts.length,
+                draftTotal: sum(drafts),
+                stage,
+                reason: request?.note || null,
+                adminNote: request?.review_note || null,
+                requisitions,
+            };
+        }).sort((a, b) => b.date.localeCompare(a.date) || a.companyName.localeCompare(b.companyName));
+        return res.json({ days: days.slice(0, 90) });
+    } catch (error) {
+        console.error('Error loading requisition queue:', error);
+        return res.status(500).json({ error: 'Internal server error' });
+    }
+};
+
+// Staff: Final Submit their queued requisitions for a company, for one date (or all queued dates
+// if none is sent). A day that reaches the daily target goes to normal approval. A day below the
+// target needs confirmBelowTarget and a reason, and waits for Admin / a Below Target approver.
 export const finalSubmit = async (req, res) => {
     try {
         if (req.user?.role !== 'staff') {
@@ -339,9 +465,11 @@ export const finalSubmit = async (req, res) => {
         }
         const company = await CompanyModel.getById(companyId);
         const target = Number(company?.daily_requisition_target) || 0;
-        const draftDays = await PurchaseRequisitionModel.listDraftDays(staffId, companyId);
+        const onlyDate = String(req.body?.date || '').trim();
+        const draftDays = (await PurchaseRequisitionModel.listDraftDays(staffId, companyId))
+            .filter((day) => !onlyDate || day.date === onlyDate);
         if (!draftDays.length) {
-            return res.status(400).json({ error: 'You have no draft requisitions to submit.' });
+            return res.status(400).json({ error: 'You have no queued requisitions to submit.' });
         }
 
         const days = [];
@@ -368,20 +496,17 @@ export const finalSubmit = async (req, res) => {
         }
 
         const note = String(req.body?.note || '').trim().slice(0, 1000);
+        if (below.length && !note) {
+            return res.status(400).json({
+                code: 'REASON_REQUIRED',
+                error: 'Enter the reason for submitting below the daily target.',
+                days,
+            });
+        }
         let submitted = 0;
         for (const day of days) {
             submitted += await PurchaseRequisitionModel.submitDrafts(staffId, companyId, day.date);
-            if (day.belowTarget
-                && !await PurchaseRequisitionModel.getPendingTargetRequest(staffId, companyId, day.date)) {
-                await PurchaseRequisitionModel.createTargetRequest({
-                    staffId,
-                    companyId,
-                    date: day.date,
-                    target,
-                    achieved: day.total,
-                    note: note || 'Final submitted by staff below the daily target.',
-                });
-            }
+            await syncBelowTargetRequest(staffId, companyId, day.date, target, day.belowTarget ? note : null);
         }
 
         return res.json({
@@ -407,6 +532,7 @@ export const removePending = async (req, res) => {
         if (!Number.isInteger(requisitionId) || requisitionId <= 0) {
             return res.status(400).json({ error: 'Invalid requisition ID.' });
         }
+        const existing = await PurchaseRequisitionModel.getById(requisitionId);
         const deleted = await PurchaseRequisitionModel.deletePendingByStaff(
             requisitionId,
             Number(req.user.staffId)
@@ -415,6 +541,12 @@ export const removePending = async (req, res) => {
             return res.status(409).json({
                 error: 'Only your own draft or pending requisition can be deleted. It may already be approved, cancelled, or invoiced.',
             });
+        }
+        // A queued requisition was never submitted, so it has no approval to update.
+        if (existing.status !== 'draft') {
+            await syncBelowTargetRequest(
+                existing.staff_id, existing.company_id, existing.requisition_date, existing.company_daily_target
+            );
         }
         return res.json({ message: 'Pending requisition deleted successfully.' });
     } catch (error) {

@@ -72,6 +72,18 @@ const emptyPermissionDialog = {
   sendingRequest: false,
 };
 
+// Outlet overdue by 14+ days: the invoice can't be billed, only cancelled.
+const emptyOverdueCancelDialog = {
+  open: false,
+  outlets: [],
+  sales: [],
+  pendingPayload: null,
+  lineMapPatch: {},
+  entering: false,
+  saving: false,
+  error: "",
+};
+
 const emptyOtherDayDialog = {
   open: false,
   outlets: [],
@@ -609,6 +621,7 @@ function AddSales() {
 
   // Only today's bit can be billed without admin approval (admin can bill any bit).
   const [otherDayDialog, setOtherDayDialog] = useState(emptyOtherDayDialog);
+  const [overdueCancelDialog, setOverdueCancelDialog] = useState(emptyOverdueCancelDialog);
   const outletDayById = useMemo(() => {
     const map = new Map();
     (allOutlets || []).forEach((outlet) => map.set(Number(outlet.id), outlet.day));
@@ -672,6 +685,19 @@ function AddSales() {
         });
         return false;
       }
+      if (response.status === 409 && err.code === "OVERDUE_CANCEL_REQUIRED") {
+        closePermissionDialog();
+        const blockedIds = new Set((err.overdueOutlets || []).map((outlet) => Number(outlet.outletId)));
+        setOverdueCancelDialog({
+          ...emptyOverdueCancelDialog,
+          open: true,
+          outlets: err.overdueOutlets || [],
+          sales: (payload.sales || []).filter((sale) => blockedIds.has(Number(sale.outletId))),
+          pendingPayload: payload,
+          lineMapPatch,
+        });
+        return false;
+      }
       if (response.status === 409 && err.code === "OVERDUE_PERMISSION_REQUIRED") {
         setPermissionDialog({
           ...emptyPermissionDialog,
@@ -697,6 +723,96 @@ function AddSales() {
       return false;
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const handleCancelOverdueInvoices = async () => {
+    const { sales, pendingPayload, lineMapPatch } = overdueCancelDialog;
+    if (sales.some((sale) => !String(sale.invoiceNumber || "").trim())) {
+      setOverdueCancelDialog((prev) => ({ ...prev, error: "Enter the invoice number." }));
+      return;
+    }
+    setOverdueCancelDialog((prev) => ({ ...prev, saving: true, error: "" }));
+    const cancelled = [];
+    let failure = "";
+    for (const sale of sales) {
+      try {
+        const response = await fetch(`${API}/staff/${selectedStaff.id}/sales/cancel-overdue`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            date: pendingPayload.date,
+            outletId: sale.outletId,
+            invoiceNumber: String(sale.invoiceNumber).trim(),
+            itemCount: sale.itemCount,
+            price: sale.price,
+            lineItems: sale.lineItems || [],
+          }),
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(data.error || "Unable to cancel this invoice.");
+        cancelled.push(sale);
+      } catch (error) {
+        failure = `Invoice ${sale.invoiceNumber}: ${error.message}`;
+        break;
+      }
+    }
+
+    // Finished ones leave the list, so a retry only sends what is still waiting.
+    const remaining = sales.filter((sale) => !cancelled.includes(sale));
+    const cancelledOutletIds = cancelled
+      .map((sale) => Number(sale.outletId))
+      .filter((outletId) => !remaining.some((sale) => Number(sale.outletId) === outletId));
+    if (cancelled.length) await applySalesSuccess(cancelledOutletIds, lineMapPatch);
+    if (failure) {
+      setOverdueCancelDialog((prev) => ({ ...prev, sales: remaining, saving: false, error: failure }));
+      return;
+    }
+
+    setOverdueCancelDialog(emptyOverdueCancelDialog);
+    alert(`${cancelled.length} invoice(s) cancelled due to overdue. See Delivered → Cancelled Items.`);
+    await submitOtherOutlets(pendingPayload, sales, lineMapPatch);
+  };
+
+  // Other outlets from the same save still need to go through.
+  const submitOtherOutlets = async (pendingPayload, handledSales, lineMapPatch) => {
+    const handledIds = new Set(handledSales.map((sale) => Number(sale.outletId)));
+    const otherSales = (pendingPayload.sales || []).filter((sale) => !handledIds.has(Number(sale.outletId)));
+    if (otherSales.length) {
+      await submitSalesPayload(
+        { ...pendingPayload, sales: otherSales },
+        [...new Set(otherSales.map((sale) => Number(sale.outletId)))],
+        { lineMapPatch }
+      );
+    }
+  };
+
+  // 14+ days overdue: the outlet's marketing staff gives the reason and days to pay, then it
+  // goes for approval. The sale is created automatically once it is approved.
+  const handleSendOverdueToStaff = async () => {
+    const { sales, pendingPayload, lineMapPatch } = overdueCancelDialog;
+    const outletIds = [...new Set(sales.map((sale) => Number(sale.outletId)))];
+    setOverdueCancelDialog((prev) => ({ ...prev, saving: true, error: "" }));
+    try {
+      const response = await fetch(`${API}/staff/overdue-requests/send-to-staff`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          staffId: selectedStaff.id,
+          saleDate: pendingPayload.date,
+          outletIds,
+          salesPayload: { companyName: pendingPayload.companyName || selectedCompanyName || "", sales },
+        }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || "Unable to send this to marketing staff.");
+      await applySalesSuccess(outletIds, lineMapPatch);
+      loadPendingRequests();
+      setOverdueCancelDialog(emptyOverdueCancelDialog);
+      alert("Sent to marketing staff. The sale is created automatically once it is approved.");
+      await submitOtherOutlets(pendingPayload, sales, lineMapPatch);
+    } catch (error) {
+      setOverdueCancelDialog((prev) => ({ ...prev, saving: false, error: error.message }));
     }
   };
 
@@ -2298,6 +2414,107 @@ function AddSales() {
             >
               {submitting ? "Saving..." : permissionDialog.selfApproval ? "Add Sales with Reason" : "Grant Permission & Save"}
             </MDButton>
+          )}
+        </DialogActions>
+      </Dialog>
+
+      <Dialog
+        open={overdueCancelDialog.open}
+        onClose={overdueCancelDialog.saving ? undefined : () => setOverdueCancelDialog(emptyOverdueCancelDialog)}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle>
+          {overdueCancelDialog.entering ? "Cancel Invoice — Enter Invoice Number" : "Outlet Overdue by More Than 13 Days"}
+        </DialogTitle>
+        <DialogContent dividers>
+          {overdueCancelDialog.outlets.map((outlet) => (
+            <MDBox
+              key={outlet.outletId}
+              mb={2}
+              p={2}
+              sx={{ backgroundColor: "#fff7f7", border: "1px solid #fecaca", borderRadius: "8px" }}
+            >
+              <MDTypography variant="button" fontWeight="bold" color="error" display="block">
+                ERP: {outlet.outletErpId} — {outlet.outletName}
+              </MDTypography>
+              <MDTypography variant="caption" display="block" color="text">
+                Overdue {outlet.maxOverdueDays} day(s) · ₹
+                {(outlet.credits || [])
+                  .reduce((total, credit) => total + (Number(credit.balanceAmount) || 0), 0)
+                  .toLocaleString("en-IN", { maximumFractionDigits: 2 })}
+              </MDTypography>
+            </MDBox>
+          ))}
+          {overdueCancelDialog.entering ? (
+            <>
+              <MDTypography variant="body2" color="text" mb={2}>
+                The invoice goes to Delivered → Cancelled Items with the reason &quot;Cancelled due to overdue&quot;.
+                No stock is taken.
+              </MDTypography>
+              {overdueCancelDialog.sales.map((sale, index) => (
+                <MDBox key={`${sale.outletId}-${index}`} mb={2}>
+                  <MDInput
+                    label="Invoice number *"
+                    fullWidth
+                    value={sale.invoiceNumber || ""}
+                    onChange={(event) => {
+                      const { value } = event.target;
+                      setOverdueCancelDialog((prev) => ({
+                        ...prev,
+                        sales: prev.sales.map((row, rowIndex) => (rowIndex === index ? { ...row, invoiceNumber: value } : row)),
+                      }));
+                    }}
+                  />
+                  <MDTypography variant="caption" color="text">
+                    Amount ₹{Number(sale.price || 0).toFixed(2)} · {sale.itemCount} item(s)
+                  </MDTypography>
+                </MDBox>
+              ))}
+            </>
+          ) : (
+            <MDTypography variant="body2" color="text">
+              This invoice cannot be billed. Choose what to do with it.
+            </MDTypography>
+          )}
+          {overdueCancelDialog.error && (
+            <MDTypography variant="caption" color="error" display="block" mt={1}>
+              {overdueCancelDialog.error}
+            </MDTypography>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <MDButton
+            color="secondary"
+            variant="outlined"
+            disabled={overdueCancelDialog.saving}
+            onClick={() => setOverdueCancelDialog(emptyOverdueCancelDialog)}
+          >
+            Close
+          </MDButton>
+          {overdueCancelDialog.entering ? (
+            <MDButton color="error" variant="gradient" disabled={overdueCancelDialog.saving} onClick={handleCancelOverdueInvoices}>
+              {overdueCancelDialog.saving ? "Cancelling..." : "Confirm Cancel"}
+            </MDButton>
+          ) : (
+            <>
+              <MDButton
+                color="info"
+                variant="outlined"
+                disabled={overdueCancelDialog.saving}
+                onClick={handleSendOverdueToStaff}
+              >
+                {overdueCancelDialog.saving ? "Sending..." : "Send to Marketing Staff"}
+              </MDButton>
+              <MDButton
+                color="error"
+                variant="gradient"
+                disabled={overdueCancelDialog.saving}
+                onClick={() => setOverdueCancelDialog((prev) => ({ ...prev, entering: true, error: "" }))}
+              >
+                Cancel Invoice
+              </MDButton>
+            </>
           )}
         </DialogActions>
       </Dialog>

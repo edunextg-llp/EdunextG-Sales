@@ -458,6 +458,15 @@ export async function ensureSchema() {
                 await connection.query(`UPDATE delivery_user_permissions SET can_${key} = can_${copyFrom}`);
             }
             console.log(`can_${key} on delivery_user_permissions`);
+            // Tanushree reviews overdue requests up to Rs. 1,000. Seeded once, when the column is added.
+            if (key === 'overdue_approval') {
+                await connection.query(
+                    `UPDATE delivery_user_permissions p
+                     INNER JOIN delivery_boys d ON d.id = p.delivery_boy_id
+                     SET p.can_overdue_approval = 1
+                     WHERE UPPER(TRIM(d.name)) = 'TANUSHREE' AND d.is_active = 1`
+                );
+            }
         }
 
         await connection.query(`
@@ -1121,6 +1130,12 @@ export async function ensureSchema() {
         await tryQuery(connection, `ALTER TABLE staff ADD COLUMN login_id VARCHAR(100) NULL`, 'login_id on staff');
         await tryQuery(connection, `ALTER TABLE staff ADD COLUMN password_hash VARCHAR(255) NULL`, 'password_hash on staff');
         await tryQuery(connection, `CREATE UNIQUE INDEX uq_staff_login_id ON staff(login_id)`, 'unique staff login_id');
+        await tryQuery(connection, `ALTER TABLE staff ADD COLUMN password_encrypted VARCHAR(512) NULL`, 'password_encrypted on staff');
+        await tryQuery(connection, `ALTER TABLE staff ADD COLUMN bawarchee_role VARCHAR(20) NULL`, 'bawarchee_role on staff');
+        await tryQuery(connection, `ALTER TABLE staff ADD COLUMN permissions TEXT NULL`, 'permissions on staff');
+        await tryQuery(connection, `ALTER TABLE staff MODIFY COLUMN staff_type ENUM('distributor', 'cnf') NULL DEFAULT NULL`, 'staff_type nullable on staff');
+        await tryQuery(connection, `ALTER TABLE staff MODIFY COLUMN contact_no VARCHAR(20) NULL`, 'contact_no optional on staff');
+        await tryQuery(connection, `UPDATE staff SET staff_type = NULL WHERE staff_category = 'bawarchee_staff'`, 'clear staff_type for Bawarchee staff');
         await tryQuery(
             connection,
             // 'draft': saved by staff of a company with a daily target, not yet Final Submitted.
@@ -1542,6 +1557,7 @@ export async function ensureSchema() {
 
         await tryQuery(connection, 'ALTER TABLE staff_sale_status_history ADD COLUMN changed_by_type VARCHAR(20) NULL', 'who changed invoice status (type)');
         await tryQuery(connection, 'ALTER TABLE staff_sale_status_history ADD COLUMN changed_by_id INT NULL', 'who changed invoice status (id)');
+        await tryQuery(connection, 'ALTER TABLE staff_sale_status_history ADD COLUMN remarks TEXT NULL', 'invoice status change remarks');
 
         await tryQuery(
             connection,
@@ -1982,6 +1998,15 @@ export async function ensureSchema() {
         await tryQuery(connection, `ALTER TABLE overdue_sale_requests ADD COLUMN sales_payload LONGTEXT NULL AFTER sales_summary`, 'Overdue request invoice details');
         // 1 = added by staff with the "7 days overdue" permission (reason given, no admin approval needed).
         await tryQuery(connection, `ALTER TABLE overdue_sale_requests ADD COLUMN self_approved TINYINT(1) NOT NULL DEFAULT 0`, 'Overdue sales allowed by 7-day permission');
+        // 14+ days overdue: the outlet's marketing staff gives the reason and days to pay, then the
+        // overdue amount decides who approves.
+        await tryQuery(connection, `ALTER TABLE overdue_sale_requests MODIFY COLUMN status ENUM('awaiting_staff', 'pending', 'approved', 'rejected', 'used') NOT NULL DEFAULT 'pending'`, 'Overdue requests waiting for marketing staff');
+        await tryQuery(connection, `ALTER TABLE overdue_sale_requests ADD COLUMN marketing_staff_id INT NULL`, 'Overdue request marketing staff');
+        await tryQuery(connection, `ALTER TABLE overdue_sale_requests ADD COLUMN overdue_amount DECIMAL(12, 2) NULL`, 'Overdue request amount');
+        await tryQuery(connection, `ALTER TABLE overdue_sale_requests ADD COLUMN approval_level VARCHAR(20) NULL`, 'Overdue request approval level');
+        await tryQuery(connection, `ALTER TABLE overdue_sale_requests ADD COLUMN payment_days INT NULL`, 'Overdue request days to pay');
+        await tryQuery(connection, `ALTER TABLE overdue_sale_requests ADD COLUMN staff_responded_at DATETIME NULL`, 'Overdue request staff response time');
+        await tryQuery(connection, `ALTER TABLE overdue_sale_requests ADD INDEX idx_overdue_sale_requests_marketing (marketing_staff_id, status)`, 'Overdue request marketing staff index');
         console.log('overdue_sale_requests table verified');
 
         // Add Sales users can bill only today's bit (outlets whose route day is today's weekday).

@@ -9,6 +9,7 @@ import MDTypography from "components/MDTypography";
 import { formatDate, formatDateTime, money, overdueBalance } from "layouts/overdue-requests/components/ReviewDialog";
 
 const STATUS = {
+  awaiting_staff: { label: "With marketing staff", accent: "#2563eb", bg: "#eff6ff", text: "#1d4ed8" },
   pending: { label: "Pending", accent: "#f59e0b", bg: "#fffbeb", text: "#b45309" },
   approved: { label: "Approved", accent: "#16a34a", bg: "#f0fdf4", text: "#15803d" },
 };

@@ -4,6 +4,7 @@ import { authorizeCreditPhoto, receiveCreditPhoto, saveCreditPhoto, getCreditPho
 import express from 'express';
 import * as staffMobile from '../controllers/staffMobileController.js';
 import * as purchaseRequisitions from '../controllers/purchaseRequisitionController.js';
+import * as overdueRequests from '../controllers/overdueSaleRequestController.js';
 import { getCurrentStock } from '../controllers/currentStockController.js';
 
 const router = express.Router();
@@ -20,6 +21,8 @@ router.get('/credit/outlets', auth, staffMobile.getCreditByOutlet);
 router.get('/out-bills', auth, staffMobile.getOutBills);
 router.post('/out-bills/:saleId/payments', auth, requireCreditPhoto, staffMobile.submitOutBillPayment);
 router.get('/collections', auth, staffMobile.getCollections);
+router.get('/areas', auth, staffMobile.getDayAreas);
+router.put('/areas', auth, staffMobile.updateDayAreas);
 router.get('/outlets', auth, staffMobile.getOutlets);
 router.post('/outlets', auth, staffMobile.createOutlet);
 router.put('/outlets/:outletId/location', auth, staffMobile.updateOutletLocation);
@@ -28,6 +31,10 @@ router.put('/outlets/:outletId/contact', auth, staffMobile.updateOutletContact);
 // Purchase requisitions reuse the web rules (stock limits, pricing, numbering, approval flow).
 router.get('/requisitions/options', ...asStaff, staffMobile.getRequisitionOptions);
 router.get('/requisitions/stock', ...asStaff, getCurrentStock);
+router.get('/overdue-requests', ...asStaff, overdueRequests.listMyOverdueRequests);
+router.put('/overdue-requests/:id/respond', ...asStaff, overdueRequests.respondToOverdueRequest);
+router.get('/requisitions/queue', ...asStaff, purchaseRequisitions.getQueue);
+router.get('/requisitions/outlet-overdue', ...asStaff, purchaseRequisitions.getOutletOverdue);
 router.get('/requisitions/target', ...asStaff, purchaseRequisitions.getTargetProgress);
 router.get('/requisitions', ...asStaff, purchaseRequisitions.list);
 router.post('/requisitions', ...asStaff, staffMobile.prepareRequisitionBody, purchaseRequisitions.create);

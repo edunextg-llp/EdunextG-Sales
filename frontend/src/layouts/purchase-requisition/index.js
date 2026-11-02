@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  Autocomplete, Card, Checkbox, FormControl, Grid, Icon, MenuItem, Select,
+  Alert, Autocomplete, Card, Checkbox, Chip, Dialog, DialogActions, DialogContent, DialogTitle,
+  Divider, FormControl, Grid, Icon, MenuItem, Select, Tab, Tabs,
   Table, TableBody, TableCell, TableContainer, TableHead, TableRow,
 } from "@mui/material";
 
@@ -18,6 +19,7 @@ import {
 import { useAuth } from "context/AuthContext";
 import { COMPANY_TYPES } from "utils/companyTypes";
 import ApprovalQueue from "./ApprovalQueue";
+import RequisitionQueue from "./RequisitionQueue";
 import TargetProgress from "./TargetProgress";
 
 const API = (process.env.REACT_APP_API_URL);
@@ -89,8 +91,8 @@ function PurchaseRequisition() {
   // Approving a day below the company's daily target (e.g. SIL Rs. 11,250).
   const canApproveBelowTarget = user?.role === "admin"
     || user?.permissions?.includes("requisition_target_approval");
+  const [staffTab, setStaffTab] = useState("new");
   const [targets, setTargets] = useState([]);
-  const [finalSubmitting, setFinalSubmitting] = useState(false);
   const [targetRequests, setTargetRequests] = useState([]);
   const isAdmin = user?.role === "admin";
   const [sellerType, setSellerType] = useState("");
@@ -101,6 +103,7 @@ function PurchaseRequisition() {
   const [day, setDay] = useState("");
   const [outlets, setOutlets] = useState([]);
   const [outletId, setOutletId] = useState("");
+  const [overdueInfo, setOverdueInfo] = useState(null);
   const [stock, setStock] = useState([]);
   const [selectedItem, setSelectedItem] = useState(null);
   const [quantity, setQuantity] = useState("");
@@ -202,43 +205,6 @@ function PurchaseRequisition() {
       .catch(() => setTargets([]));
   }, [isStaff, savedRequisitions]);
 
-  // Staff: Final Submit today's draft requisitions for a company with a daily target.
-  const finalSubmit = async (target, confirmBelowTarget = false, note = "") => {
-    if (!confirmBelowTarget && !window.confirm(
-      `Final Submit your ${target.companyName} draft requisitions for approval?`
-    )) return;
-    setFinalSubmitting(true);
-    try {
-      const response = await fetch(`${API}/staff/purchase-requisitions/final-submit`, {
-        method: "POST",
-        headers: { ...auth(), "Content-Type": "application/json" },
-        body: JSON.stringify({ companyId: target.companyId, confirmBelowTarget, note }),
-      });
-      const data = await response.json().catch(() => ({}));
-      if (response.status === 409 && data.code === "BELOW_TARGET") {
-        const shortBy = (data.days || []).map((day) => `${day.date}: short ₹${Number(day.short || 0).toFixed(2)}`).join("\n");
-        const reason = window.prompt(
-          `${data.error}\n\n${shortBy}\n\nReason for Admin (optional). Press OK to submit for Admin approval:`,
-          ""
-        );
-        if (reason === null) return;
-        setFinalSubmitting(false);
-        await finalSubmit(target, true, reason);
-        return;
-      }
-      if (!response.ok) {
-        alert(data.error || "Unable to Final Submit.");
-        return;
-      }
-      alert(data.message || "Submitted.");
-      await fetchHistory(staffId, historyCompanyId, historyDateFilter);
-    } catch (error) {
-      alert(error.message || "Unable to Final Submit.");
-    } finally {
-      setFinalSubmitting(false);
-    }
-  };
-
   // Below Target approval requests (approvers only).
   const loadTargetRequests = useCallback(async () => {
     if (isStaff || !(canApproveRequisitions || canApproveBelowTarget)) return;
@@ -308,19 +274,25 @@ function PurchaseRequisition() {
     if (failures.length) alert(failures.slice(0, 5).join("\n"));
   };
 
+  // Staff see queued requisitions in the Queue tab, not under Submitted.
+  const historyRows = useMemo(
+    () => savedRequisitions.filter((row) => !isStaff || row.status !== "draft"),
+    [savedRequisitions, isStaff]
+  );
+
   const groupedHistory = useMemo(() => {
     const groups = new Map();
-    savedRequisitions.forEach((row) => {
+    historyRows.forEach((row) => {
       const key = toDateInputValue(row.created_at) || "unknown";
       if (!groups.has(key)) groups.set(key, []);
       groups.get(key).push(row);
     });
     return [...groups.entries()].sort((a, b) => b[0].localeCompare(a[0]));
-  }, [savedRequisitions]);
+  }, [historyRows]);
 
   const visibleRequisitionIds = useMemo(
-    () => savedRequisitions.map((row) => String(row.id || row.requisition_number)),
-    [savedRequisitions]
+    () => historyRows.map((row) => String(row.id || row.requisition_number)),
+    [historyRows]
   );
   const allVisibleSelected = visibleRequisitionIds.length > 0
     && visibleRequisitionIds.every((id) => selectedRequisitionIds.includes(id));
@@ -363,11 +335,42 @@ function PurchaseRequisition() {
     setStock((data.items || []).filter((item) => Number(item.total_current_stock_in_pcs) > 0));
   };
 
-  const loadOutlets = async (selectedStaffId, selectedDay) => {
+  const loadOutlets = useCallback(async (selectedStaffId, selectedDay) => {
     if (!selectedStaffId || !selectedDay) return setOutlets([]);
     const response = await fetch(`${API}/staff/${selectedStaffId}/outlets-by-day?day=${encodeURIComponent(selectedDay)}`);
-    setOutlets(response.ok ? await response.json() : []);
-  };
+    return setOutlets(response.ok ? await response.json() : []);
+  }, []);
+
+  // SIL staff only work today's day and its outlets; the Day field is locked below.
+  const selectedCompanyName = companies.find((row) => String(row.id) === String(companyId))?.name;
+  const isSilCompany = String(selectedCompanyName || "").trim().toUpperCase() === "SIL";
+  useEffect(() => {
+    if (!isStaff || !staffId || !isSilCompany) return;
+    const autoDay = sellerType === "cnf" ? "CNF" : new Date().toLocaleDateString("en-US", { weekday: "long" });
+    setDay(autoDay);
+    setOutletId("");
+    loadOutlets(staffId, autoDay);
+  }, [isStaff, staffId, isSilCompany, sellerType, loadOutlets]);
+
+  // An outlet with overdue credit can't be used: show the amount and clear the selection.
+  // The server decides which companies this applies to, and blocks the save as well.
+  useEffect(() => {
+    if (!isStaff || !companyId || !outletId) return undefined;
+    let stale = false;
+    fetch(`${API}/staff/purchase-requisitions/outlet-overdue?companyId=${companyId}&outletId=${outletId}`, { headers: auth() })
+      .then(async (response) => {
+        if (!response.ok) throw new Error(`Overdue check failed (${response.status})`);
+        const data = await response.json();
+        if (stale || !data.overdue) return;
+        setOverdueInfo(data.overdue);
+        setOutletId("");
+      })
+      .catch((error) => {
+        console.error("Error checking outlet overdue:", error);
+        if (!stale) setOverdueInfo({ message: "Could not check this outlet's overdue. Please select the outlet again." });
+      });
+    return () => { stale = true; };
+  }, [isStaff, companyId, outletId]);
 
   const addItem = () => {
     if (!selectedItem) return alert("Select an available item.");
@@ -417,13 +420,18 @@ function PurchaseRequisition() {
       });
       const data = await response.json();
       if (!response.ok) {
-        alert(data.error || "Unable to create requisition.");
+        if (data.overdue) {
+          setOverdueInfo(data.overdue);
+          setOutletId("");
+        } else {
+          alert(data.error || "Unable to create requisition.");
+        }
         return;
       }
 
       const requisition = data.requisition;
       setResult(requisition.status === "draft"
-        ? `${requisition.requisition_number} (saved as draft — Final Submit when your day is complete)`
+        ? `${requisition.requisition_number} (added to your Queue — Final Submit it there)`
         : requisition.requisition_number);
       setItems([]);
       setSelectedItem(null);
@@ -537,17 +545,47 @@ function PurchaseRequisition() {
     </>
   );
 
+  const queuedCount = targets.reduce((sum, target) => sum + (Number(target.draftCount) || 0), 0);
+
   return (
     <DashboardLayout>
       <DashboardNavbar />
       <MDBox py={3}>
-        {isStaff && <Card>
-          <MDBox p={3}>
-            <MDTypography variant="h5" fontWeight="bold">Purchase Requisition</MDTypography>
-            <MDBox mt={1.5}>
-              <TargetProgress targets={targets} onFinalSubmit={(target) => finalSubmit(target)} submitting={finalSubmitting} />
+        {isStaff && (
+          <Card sx={{ mb: 3 }}>
+            <MDBox px={3} pt={3}>
+              <MDTypography variant="h4" fontWeight="bold">Purchase Requisition</MDTypography>
+              <MDTypography variant="button" color="text" display="block" mb={2}>
+                Add requisitions one by one, then Final Submit each date from the Queue.
+              </MDTypography>
+              <TargetProgress targets={targets} onOpenQueue={() => setStaffTab("queue")} />
+              <Tabs
+                value={staffTab}
+                onChange={(_, value) => setStaffTab(value)}
+                sx={{ maxWidth: 640, "& .MuiTab-root": { textTransform: "none", fontWeight: 600 } }}
+              >
+                <Tab value="new" label="New Requisition" />
+                <Tab value="queue" label={`Queue (${queuedCount})`} />
+                <Tab value="submitted" label="Submitted" />
+              </Tabs>
             </MDBox>
-            <Grid container spacing={2} mt={0.5}>
+          </Card>
+        )}
+
+        {isStaff && staffTab === "queue" && (
+          <RequisitionQueue
+            refreshKey={savedRequisitions}
+            onChanged={() => fetchHistory(staffId, historyCompanyId, historyDateFilter)}
+          />
+        )}
+
+        {isStaff && staffTab === "new" && <Card>
+          <MDBox p={3}>
+            <MDBox display="flex" alignItems="center" gap={1} mb={2}>
+              <Icon color="info">storefront</Icon>
+              <MDTypography variant="h6" fontWeight="medium">Outlet details</MDTypography>
+            </MDBox>
+            <Grid container spacing={2}>
               {[
                 ["Seller Type", sellerType, (v) => { setSellerType(v); setCompanyId(""); }, [
                   { id: "distributor", name: "Distributor" }, { id: "cnf", name: "CNF" },
@@ -563,7 +601,7 @@ function PurchaseRequisition() {
                     <Select
                       value={value}
                       displayEmpty
-                      disabled={isStaff && ["Seller Type", "Staff"].includes(label)}
+                      disabled={isStaff && (["Seller Type", "Staff"].includes(label) || (label === "Day" && isSilCompany))}
                       onChange={(e) => change(e.target.value)}
                       sx={{ height: 48 }}
                     >
@@ -575,8 +613,13 @@ function PurchaseRequisition() {
               ))}
             </Grid>
 
-            <Grid container spacing={2} mt={1} alignItems="flex-end">
-              <Grid item xs={12} md={2}>
+            <Divider sx={{ my: 3 }} />
+            <MDBox display="flex" alignItems="center" gap={1} mb={2}>
+              <Icon color="info">inventory_2</Icon>
+              <MDTypography variant="h6" fontWeight="medium">Add products</MDTypography>
+            </MDBox>
+            <Grid container spacing={2} alignItems="flex-end">
+              <Grid item xs={12} md={5}>
                 <MDTypography variant="caption" fontWeight="bold">Product</MDTypography>
                 <Autocomplete
                   options={availableStock}
@@ -594,38 +637,10 @@ function PurchaseRequisition() {
                   renderInput={(params) => <MDInput {...params} placeholder="Search product" />}
                 />
               </Grid>
-              <Grid item xs={12} md={2}>
-                <MDInput
-                  label="Variant"
-                  value={selectedItem?.variant_name || ""}
-                  InputProps={{ readOnly: true }}
-                />
-              </Grid>
-              <Grid item xs={12} md={2}>
-                <MDInput
-                  label="Product ERP ID"
-                  value={selectedItem?.product_erp_id || ""}
-                  InputProps={{ readOnly: true }}
-                />
-              </Grid>
               <Grid item xs={6} md={2}>
-                <MDInput
-                  label="Available Stock"
-                  value={selectedItem ? selectedItem.total_current_stock_in_pcs : ""}
-                  InputProps={{ readOnly: true }}
-                />
+                <MDInput label="Quantity" type="number" fullWidth value={quantity} onChange={(e) => setQuantity(e.target.value)} />
               </Grid>
-              <Grid item xs={6} md={1}>
-                <MDInput
-                  label="MRP"
-                  value={selectedItem ? selectedItem.mrp : ""}
-                  InputProps={{ readOnly: true }}
-                />
-              </Grid>
-              <Grid item xs={6} md={1}>
-                <MDInput label="Quantity" type="number" value={quantity} onChange={(e) => setQuantity(e.target.value)} />
-              </Grid>
-              <Grid item xs={6} md={1}>
+              <Grid item xs={6} md={3}>
                 <FormControl fullWidth>
                   <Select value={priceType} onChange={(e) => setPriceType(e.target.value)} sx={{ height: 44 }}>
                     <MenuItem value="retail">Retail Price</MenuItem>
@@ -633,25 +648,28 @@ function PurchaseRequisition() {
                   </Select>
                 </FormControl>
               </Grid>
-              <Grid item xs={12} md={1}>
-                <MDButton
-                  color="info"
-                  variant="gradient"
-                  title="Add item"
-                  aria-label="Add item"
-                  onClick={addItem}
-                >
-                  <Icon fontSize="small">add</Icon>
+              <Grid item xs={12} md={2}>
+                <MDButton color="info" variant="outlined" fullWidth onClick={addItem}>
+                  <Icon sx={{ mr: 0.5 }}>add</Icon> Add Product
                 </MDButton>
               </Grid>
             </Grid>
 
-            <TableContainer sx={{ mt: 3 }}>
-              <Table>
-                <TableHead sx={{ display: "table-header-group" }}>
+            {selectedItem && (
+              <MDBox display="flex" gap={1} flexWrap="wrap" mt={1.5}>
+                <Chip size="small" variant="outlined" label={`ERP ID: ${selectedItem.product_erp_id || "—"}`} />
+                <Chip size="small" variant="outlined" label={`Variant: ${selectedItem.variant_name || "—"}`} />
+                <Chip size="small" variant="outlined" label={`MRP: ${selectedItem.mrp ?? "—"}`} />
+                <Chip size="small" color="success" variant="outlined" label={`In stock: ${selectedItem.total_current_stock_in_pcs}`} />
+              </MDBox>
+            )}
+
+            {items.length > 0 ? <TableContainer sx={{ mt: 3, boxShadow: "none", border: "1px solid #e5e7eb" }}>
+              <Table size="small">
+                <TableHead sx={{ display: "table-header-group", backgroundColor: "#f8fafc" }}>
                   <TableRow>
                     {["Sr", "ERP ID", "Item Name", "Variant", "HSN", "MRP", "Available", "Qty", "Price Type", "Rate", "Amount", "Action"].map((h) => (
-                      <TableCell key={h} sx={{ fontWeight: 700 }}>{h}</TableCell>
+                      <TableCell key={h} sx={{ fontWeight: 700, fontSize: 13 }}>{h}</TableCell>
                     ))}
                   </TableRow>
                 </TableHead>
@@ -684,21 +702,30 @@ function PurchaseRequisition() {
                   ))}
                 </TableBody>
               </Table>
-            </TableContainer>
+            </TableContainer> : (
+              <MDBox mt={3} p={3} textAlign="center" borderRadius="lg" sx={{ border: "1px dashed #cbd5e1" }}>
+                <MDTypography variant="button" color="text">No products added yet.</MDTypography>
+              </MDBox>
+            )}
 
-            <MDBox display="flex" justifyContent="space-between" mt={3}>
-              <MDTypography color="success" fontWeight="bold">
-                {result ? `Requisition Number: ${result}` : ""}
-              </MDTypography>
-              <MDButton
-                color="info"
-                variant="gradient"
-                title={saving ? "Submitting requisition" : "Create requisition"}
-                aria-label={saving ? "Submitting requisition" : "Create requisition"}
-                onClick={save}
-                disabled={saving}
+            {result && (
+              <Alert
+                severity="success"
+                sx={{ mt: 2 }}
+                onClose={() => setResult("")}
               >
-                <Icon fontSize="small">{saving ? "hourglass_top" : "send"}</Icon>
+                Requisition Number: {result}
+              </Alert>
+            )}
+
+            <MDBox display="flex" justifyContent="space-between" alignItems="center" flexWrap="wrap" gap={2} mt={3}>
+              <MDTypography variant="button" fontWeight="medium">
+                {items.length} product{items.length === 1 ? "" : "s"} · {items.reduce((sum, item) => sum + item.quantity, 0)} pcs ·{" "}
+                ₹{items.reduce((sum, item) => sum + item.quantity * item.rate, 0).toLocaleString("en-IN", { maximumFractionDigits: 2 })}
+              </MDTypography>
+              <MDButton color="info" variant="gradient" onClick={save} disabled={saving}>
+                <Icon sx={{ mr: 0.5 }}>{saving ? "hourglass_top" : "playlist_add"}</Icon>
+                {saving ? "Saving..." : targets.some((target) => String(target.companyId) === String(companyId)) ? "Add to Queue" : "Create Requisition"}
               </MDButton>
             </MDBox>
           </MDBox>
@@ -723,8 +750,8 @@ function PurchaseRequisition() {
           </Card>
         )}
 
-        {isStaff && staffId && (
-          <Card sx={{ mt: 3 }}>
+        {isStaff && staffId && staffTab === "submitted" && (
+          <Card>
             <MDBox p={3}>
               <MDBox display="flex" justifyContent="space-between" alignItems="center" flexWrap="wrap" gap={2} mb={2}>
                 <MDBox>
@@ -824,7 +851,7 @@ function PurchaseRequisition() {
                               <TableCell>{Number(row.total_quantity || 0).toFixed(2)}</TableCell>
                               <TableCell>{Number(row.total_amount || 0).toFixed(2)}</TableCell>
                               <TableCell>{getRequisitionTotalPayable(row).toFixed(2)}</TableCell>
-                              <TableCell>{row.status === "draft" ? "draft (not submitted)" : row.status || "open"}</TableCell>
+                              <TableCell>{row.status === "draft" ? "in queue (not submitted)" : row.status || "open"}</TableCell>
                               <TableCell>{row.invoiced_invoice_number || "—"}</TableCell>
                               {isStaff && (
                                 <TableCell sx={{ fontWeight: 700 }}>
@@ -913,6 +940,24 @@ function PurchaseRequisition() {
           </Card>
         )}
       </MDBox>
+      <Dialog open={Boolean(overdueInfo)} onClose={() => setOverdueInfo(null)} fullWidth maxWidth="xs">
+        <DialogTitle>{overdueInfo?.outletName ? "Outlet has overdue" : "Overdue check"}</DialogTitle>
+        <DialogContent dividers>
+          <MDTypography variant="body2">{overdueInfo?.message}</MDTypography>
+          {overdueInfo?.outletName && (
+            <MDBox mt={2}>
+              <MDTypography variant="button" display="block">Outlet: <strong>{overdueInfo.outletName}</strong></MDTypography>
+              <MDTypography variant="button" display="block">Overdue days: <strong>{overdueInfo.maxOverdueDays}</strong></MDTypography>
+              <MDTypography variant="button" display="block" color="error">
+                Overdue amount: <strong>₹{Number(overdueInfo.amount).toLocaleString("en-IN", { maximumFractionDigits: 2 })}</strong>
+              </MDTypography>
+            </MDBox>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <MDButton color="info" size="small" onClick={() => setOverdueInfo(null)}>OK</MDButton>
+        </DialogActions>
+      </Dialog>
       <Footer />
     </DashboardLayout>
   );

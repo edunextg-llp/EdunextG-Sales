@@ -34,7 +34,7 @@ export const formatDateTime = (value) => {
 export const overdueBalance = (request) =>
   (request?.overdue_details || []).reduce((total, credit) => total + (Number(credit.balanceAmount) || 0), 0);
 
-// Approve / reject one overdue sale request (admin only).
+// Approve / reject one overdue sale request (Admin, or the approver for its overdue amount).
 function ReviewDialog({ request = null, action = "approve", onClose, onDone = undefined }) {
   const [note, setNote] = useState("");
   const [saving, setSaving] = useState(false);
@@ -42,6 +42,7 @@ function ReviewDialog({ request = null, action = "approve", onClose, onDone = un
   const open = Boolean(request);
   const approving = action === "approve";
   const hasInvoices = Array.isArray(request?.sales_payload?.sales) && request.sales_payload.sales.length > 0;
+  const fromMarketingStaff = Boolean(request?.approval_level);
 
   useEffect(() => {
     if (open) { setNote(""); setCreateSales(true); }
@@ -89,7 +90,19 @@ function ReviewDialog({ request = null, action = "approve", onClose, onDone = un
             )}
           </MDTypography>
         )}
-        {approving && (
+        {fromMarketingStaff && (
+          <MDTypography variant="body2" color="text" mb={2}>
+            <strong>{request.marketing_staff_name || "Marketing staff"}</strong>: {request.request_note}
+            <br />
+            Will complete payment within <strong>{request.payment_days} day(s)</strong>.
+          </MDTypography>
+        )}
+        {approving && fromMarketingStaff && (
+          <MDTypography variant="caption" color="text" display="block" mb={2}>
+            Approving creates the sale automatically (deducts stock, same as Add Sales).
+          </MDTypography>
+        )}
+        {approving && !fromMarketingStaff && (
           <>
             <FormControlLabel
               control={<Checkbox checked={hasInvoices && createSales} disabled={!hasInvoices || saving} onChange={(e) => setCreateSales(e.target.checked)} />}
@@ -138,6 +151,10 @@ ReviewDialog.propTypes = {
     staff_name: PropTypes.string,
     sale_date: PropTypes.string,
     requested_by_name: PropTypes.string,
+    approval_level: PropTypes.string,
+    marketing_staff_name: PropTypes.string,
+    request_note: PropTypes.string,
+    payment_days: PropTypes.number,
     max_overdue_days: PropTypes.number,
     sales_summary: PropTypes.shape({
       invoiceNumbers: PropTypes.arrayOf(PropTypes.string),
