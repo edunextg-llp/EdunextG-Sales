@@ -3,6 +3,7 @@ import { authorizeCreditPhoto, receiveCreditPhoto, saveCreditPhoto, getCreditPho
 import express from 'express';
 const router = express.Router();
 import * as deliveryBoyController from '../controllers/deliveryBoyController.js';
+import * as documentAssignments from '../controllers/documentAssignmentController.js';
 import jwt from 'jsonwebtoken';
 import { requireAnyPermission, requireRole, verifyTokenMiddleware } from '../middlewares/authMiddleware.js';
 
@@ -32,6 +33,8 @@ function verifyDeliveryBoyToken(req, res, next) {
 
 router.post('/mobile/login', deliveryBoyController.mobileLogin);
 router.get('/mobile/profile', verifyDeliveryBoyToken, deliveryBoyController.getMobileProfile);
+router.get('/mobile/document-assignments', verifyDeliveryBoyToken, documentAssignments.listDeliveryMine);
+router.put('/mobile/document-assignments/:id', verifyDeliveryBoyToken, documentAssignments.updateDeliveryMine);
 router.get('/mobile/items', verifyDeliveryBoyToken, deliveryBoyController.getMobileAssignedItems);
 router.get('/mobile/route/locations', verifyDeliveryBoyToken, deliveryBoyController.getMobileRouteLocations);
 router.put('/mobile/items/:saleId/status', verifyDeliveryBoyToken, deliveryBoyController.updateMobileAssignedItemStatus);

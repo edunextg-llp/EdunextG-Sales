@@ -14,6 +14,7 @@ import * as overdueSaleRequestController from '../controllers/overdueSaleRequest
 import * as suspenseRequestController from '../controllers/suspenseRequestController.js';
 import * as otherDaySaleRequestController from '../controllers/otherDaySaleRequestController.js';
 import * as pincodeController from '../controllers/pincodeController.js';
+import * as documentAssignments from '../controllers/documentAssignmentController.js';
 import { requireRole, verifyTokenMiddleware } from '../middlewares/authMiddleware.js';
 
 const upload = multer({
@@ -26,10 +27,19 @@ const documentUpload = multer({
     storage: multer.memoryStorage(),
     limits: { fileSize: 1024 * 1024, files: 1 },
 }).single('file');
+const assignmentDocumentUpload = multer({
+    storage: multer.memoryStorage(),
+    limits: { fileSize: 25 * 1024 * 1024, files: 1 },
+}).single('file');
 const receiveDocument = (req, res, next) => documentUpload(req, res, (error) => {
     if (!error) return next();
     if (error.code === 'LIMIT_FILE_SIZE') return res.status(413).json({ error: 'File must not be more than 1 MB.' });
     return res.status(400).json({ error: 'Unable to read the uploaded file.' });
+});
+const receiveAssignmentDocument = (req, res, next) => assignmentDocumentUpload(req, res, (error) => {
+    if (!error) return next();
+    if (error.code === 'LIMIT_FILE_SIZE') return res.status(413).json({ error: 'File must not be more than 25 MB.' });
+    return res.status(400).json({ error: 'Unable to read the uploaded document.' });
 });
 
 // Overdue credit sale requests (must stay above the '/:id' routes).
@@ -62,10 +72,13 @@ router.put('/backdated-payment-requests/:id/review', requireRole('admin'), staff
 
 router.post('/', staffController.createStaff);
 router.post('/upload-document', receiveDocument, staffController.uploadStaffDocument);
+router.get('/document-assignments', verifyTokenMiddleware, requireRole('admin'), documentAssignments.listAdmin);
+router.post('/document-assignments', verifyTokenMiddleware, requireRole('admin'), receiveAssignmentDocument, documentAssignments.create);
 router.get('/', staffController.getStaff);
 router.get('/search', staffController.searchStaff);
 router.get('/areas', verifyTokenMiddleware, requireRole('admin'), staffController.getAreaDirectory);
 router.get('/areas/options', verifyTokenMiddleware, requireRole('admin', 'packaging_staff', 'delivery_boy', 'bawarchee_staff', 'staff'), staffController.getAreaOptions);
+router.get('/areas/company/:companyId', verifyTokenMiddleware, requireRole('admin', 'packaging_staff', 'delivery_boy', 'bawarchee_staff', 'staff'), staffController.getCompanyAreaOptions);
 router.post('/areas', verifyTokenMiddleware, requireRole('admin'), staffController.createArea);
 router.delete('/areas', verifyTokenMiddleware, requireRole('admin'), staffController.deleteArea);
 router.put('/areas/holiday', verifyTokenMiddleware, requireRole('admin'), staffController.updateAreaHoliday);

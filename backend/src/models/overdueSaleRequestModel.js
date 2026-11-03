@@ -376,11 +376,11 @@ export default class OverdueSaleRequestModel {
         };
     }
 
-    static async review(id, { approve, note, adminId, adminName }) {
+    static async review(id, { approve, note, adminId, adminName, allowAwaitingStaff = false }) {
         const [result] = await db.execute(
             `UPDATE overdue_sale_requests
              SET status = ?, review_note = ?, reviewed_by_admin_id = ?, reviewed_by_name = ?, reviewed_at = NOW()
-             WHERE id = ? AND status = 'pending'`,
+             WHERE id = ? AND status IN (${allowAwaitingStaff ? "'pending', 'awaiting_staff'" : "'pending'"})`,
             [approve ? 'approved' : 'rejected', note || null, adminId || null, adminName || null, id]
         );
         return result.affectedRows > 0;

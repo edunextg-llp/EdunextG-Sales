@@ -379,6 +379,7 @@ export const reviewOverdueRequest = async (req, res) => {
             note,
             adminId: req.user?.role === 'admin' ? reviewer.id : null,
             adminName: reviewer.name,
+            allowAwaitingStaff: req.user?.role === 'admin',
         });
         if (!updated) return res.status(409).json({ error: 'This request has already been reviewed.' });
         let [request] = await OverdueSaleRequestModel.getByIds([id]);

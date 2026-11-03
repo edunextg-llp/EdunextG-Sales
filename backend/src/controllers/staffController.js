@@ -56,6 +56,19 @@ export const getAreaOptions = async (req, res) => {
     }
 };
 
+export const getCompanyAreaOptions = async (req, res) => {
+    const companyId = Number(req.params.companyId);
+    if (!Number.isInteger(companyId) || companyId <= 0) {
+        return res.status(400).json({ error: 'A valid companyId is required.' });
+    }
+    try {
+        return res.json(await StaffModel.getAreasByCompany(companyId));
+    } catch (error) {
+        console.error('Error loading company areas:', error);
+        return res.status(500).json({ error: 'Unable to load areas for this company.' });
+    }
+};
+
 export const deleteArea = async (req, res) => {
     const name = typeof req.body?.name === 'string' ? normalizeAreaName(req.body.name) : '';
     if (!name || name.length > 255) return res.status(400).json({ error: 'A valid area name is required.' });

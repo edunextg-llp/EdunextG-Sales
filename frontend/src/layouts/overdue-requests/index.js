@@ -300,6 +300,20 @@ function OverdueRequests() {
                             </Tooltip>
                           </>
                         )}
+                        {isAdmin && request.status === "awaiting_staff" && (
+                          <>
+                            <Tooltip title="Admin approve & create sales">
+                              <IconButton size="small" color="success" onClick={() => setReview({ request, action: "approve" })}>
+                                <Icon>check_circle</Icon>
+                              </IconButton>
+                            </Tooltip>
+                            <Tooltip title="Reject request">
+                              <IconButton size="small" color="error" onClick={() => setReview({ request, action: "reject" })}>
+                                <Icon>cancel</Icon>
+                              </IconButton>
+                            </Tooltip>
+                          </>
+                        )}
                       </TableCell>
                     </TableRow>,
                     expanded && (

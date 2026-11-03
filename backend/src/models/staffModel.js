@@ -579,6 +579,28 @@ class StaffModel {
         return [...areas.values()].sort((a, b) => a.name.localeCompare(b.name));
     }
 
+    // Areas used by a company's staff (bit assignments and outlet locations).
+    static async getAreasByCompany(companyId) {
+        const [rows] = await db.execute(
+            `SELECT location_name FROM staff_locations
+             WHERE location_name IS NOT NULL AND TRIM(location_name) <> ''
+               AND staff_id IN (
+                   SELECT s.id FROM staff s WHERE s.company_id = ?
+                   UNION SELECT sc.staff_id FROM staff_companies sc WHERE sc.company_id = ?
+               )
+             UNION
+             SELECT location_name FROM staff_counters
+             WHERE location_name IS NOT NULL AND TRIM(location_name) <> ''
+               AND staff_id IN (
+                   SELECT s.id FROM staff s WHERE s.company_id = ?
+                   UNION SELECT sc.staff_id FROM staff_companies sc WHERE sc.company_id = ?
+               )`,
+            [companyId, companyId, companyId, companyId]
+        );
+        const names = new Set(rows.map(row => normalizeAreaName(row.location_name)).filter(Boolean));
+        return [...names].sort((a, b) => a.localeCompare(b));
+    }
+
     static async getAllAssignedLocationNames() {
         const [rows] = await db.execute(
             `SELECT DISTINCT location_name

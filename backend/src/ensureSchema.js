@@ -73,6 +73,26 @@ export async function ensureSchema() {
             );
         `);
 
+        await connection.query(`
+            CREATE TABLE IF NOT EXISTS document_assignments (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                work_date DATE NOT NULL,
+                assignment_type VARCHAR(30) NOT NULL,
+                company_id INT NOT NULL,
+                area VARCHAR(255) NOT NULL,
+                document_url VARCHAR(1024) NOT NULL,
+                document_name VARCHAR(255) NOT NULL,
+                assignee_type ENUM('staff','delivery_boy') NOT NULL,
+                assignee_id INT NOT NULL,
+                status ENUM('assigned','done','cancelled') NOT NULL DEFAULT 'assigned',
+                created_by INT NULL,
+                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                completed_at DATETIME NULL,
+                INDEX idx_document_assignments_assignee (assignee_type, assignee_id, status),
+                INDEX idx_document_assignments_date (work_date)
+            )
+        `);
+
         await tryQuery(
             connection,
             `ALTER TABLE companies ADD COLUMN type ENUM('distributor', 'cnf') NULL`,

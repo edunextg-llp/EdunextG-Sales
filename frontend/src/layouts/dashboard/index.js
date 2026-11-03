@@ -49,6 +49,7 @@ import ReportsBarChart from "examples/Charts/BarCharts/ReportsBarChart";
 import ComplexStatisticsCard from "examples/Cards/StatisticsCards/ComplexStatisticsCard";
 import CompanyTypeSelect from "components/CompanyFilter/CompanyTypeSelect";
 import { useCompanyTypeLookup } from "utils/companyTypes";
+import AssignDialog from "./AssignDialog";
 
 const API = (process.env.REACT_APP_API_URL);
 
@@ -954,6 +955,7 @@ function Dashboard() {
   const [reportData, setReportData] = useState(emptyReportData);
   const [purchaseReportData, setPurchaseReportData] = useState(emptyPurchaseReportData);
   const [activeDashboardTab, setActiveDashboardTab] = useState("purchase");
+  const [assignDialogOpen, setAssignDialogOpen] = useState(false);
   const [chequeDialogOpen, setChequeDialogOpen] = useState(false);
   const [paidCollectionDialogOpen, setPaidCollectionDialogOpen] = useState(false);
   const [deliveredAmountDialogOpen, setDeliveredAmountDialogOpen] = useState(false);
@@ -1914,7 +1916,7 @@ function Dashboard() {
       <DashboardNavbar />
       <MDBox sx={compactDashboardTextSx}>
 
-      <MDBox pt={3} px={1}>
+      <MDBox pt={3} px={1} display="flex" justifyContent="space-between" alignItems="center" flexWrap="wrap" gap={2}>
         <Card sx={{ display: "inline-flex", p: 0.5, boxShadow: "none", border: "1px solid #e5e7eb" }}>
           <Tabs
             value={activeDashboardTab}
@@ -1936,7 +1938,17 @@ function Dashboard() {
             <Tab value="sales" icon={<Icon>query_stats</Icon>} iconPosition="start" label="Sales Dashboard" />
           </Tabs>
         </Card>
+        <MDButton variant="gradient" color="info" onClick={() => setAssignDialogOpen(true)}>
+          <Icon sx={{ mr: 0.75 }}>assignment_ind</Icon>
+          Assign
+        </MDButton>
       </MDBox>
+
+      <AssignDialog
+        open={assignDialogOpen}
+        onClose={() => setAssignDialogOpen(false)}
+        companies={salesCompanies}
+      />
 
       {activeDashboardTab === "purchase" && (
         <MDBox py={3}>
