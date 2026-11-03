@@ -109,6 +109,11 @@ function ReviewDialog({ request = null, action = "approve", onClose, onDone = un
             Approving creates the sale automatically (deducts stock, same as Add Sales).
           </MDTypography>
         )}
+        {!approving && (fromMarketingStaff || sentToAdmin || request?.marketing_staff_id) && (
+          <MDTypography variant="caption" color="text" display="block" mb={2}>
+            Rejecting moves the invoice to Delivered → Cancelled Items. No stock is taken.
+          </MDTypography>
+        )}
         {approving && !fromMarketingStaff && !sentToAdmin && (
           <>
             <FormControlLabel
@@ -159,6 +164,7 @@ ReviewDialog.propTypes = {
     sale_date: PropTypes.string,
     requested_by_name: PropTypes.string,
     approval_level: PropTypes.string,
+    marketing_staff_id: PropTypes.number,
     marketing_staff_name: PropTypes.string,
     request_note: PropTypes.string,
     payment_days: PropTypes.number,

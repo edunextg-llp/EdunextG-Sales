@@ -1579,7 +1579,7 @@ class StaffModel {
     // cancels made from the delivery apps do not restore stock.
     // Records an invoice that was never billed because the outlet's overdue is too old. It is
     // cancelled from the start, so no stock is deducted and any requisition stays unused.
-    static async saveOverdueCancelledSale(staffId, date, sale) {
+    static async saveOverdueCancelledSale(staffId, date, sale, { remark = '' } = {}) {
         const connection = await db.getConnection();
         try {
             await connection.beginTransaction();
@@ -1599,7 +1599,7 @@ class StaffModel {
             await connection.execute(
                 `INSERT INTO staff_sale_status_history (sale_id, status, changed_at, changed_by_type, changed_by_id, remarks)
                  VALUES (?, 'cancelled', NOW(), ?, ?, ?)`,
-                [saleId, ...actorParams(), `Cancellation reason: ${OVERDUE_CANCEL_REASON}`]
+                [saleId, ...actorParams(), `Cancellation reason: ${OVERDUE_CANCEL_REASON}${remark ? ` | ${remark}` : ''}`]
             );
             await connection.commit();
             return { saleId, stickerNumber, invoiceNumber: sale.invoiceNumber };

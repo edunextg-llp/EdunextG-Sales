@@ -338,6 +338,44 @@ export async function createSalesFromRequest(request) {
     return { created: true, sales: savedSales };
 }
 
+// A rejected 14+ day request: its invoices go to Delivered -> Cancelled Items, the same as
+// "Cancel Invoice" on Add Sales. No stock is taken. An invoice that already exists is left alone.
+async function cancelSalesFromRequest(request, rejectedBy, note) {
+    const sales = request?.sales_payload?.sales;
+    if (!Array.isArray(sales) || !sales.length) {
+        return { cancelled: [], error: 'This request has no invoice details saved, so nothing was added to Cancelled Items.' };
+    }
+    const staffId = Number(request.staff_id);
+    const remark = `Request #${request.id} rejected by ${rejectedBy}: ${note}`;
+    const companyName = String(request.sales_payload.companyName || '').trim();
+    const cancelled = [];
+    const problems = [];
+    const reserved = [];
+    for (const sale of sales) {
+        const given = String(sale.invoiceNumber || '').trim();
+        try {
+            if (given && await StaffModel.findSaleByInvoice(staffId, given)) {
+                problems.push(`Invoice ${given} already exists.`);
+                continue;
+            }
+            const invoiceNumber = given || await StaffModel.generateUniqueBillNumber(staffId, companyName, reserved);
+            reserved.push(invoiceNumber);
+            await StaffModel.saveOverdueCancelledSale(staffId, request.sale_date, {
+                outletId: Number(sale.outletId),
+                invoiceNumber,
+                itemCount: Number(sale.itemCount) || 0,
+                price: Number(sale.price) || 0,
+                lineItems: Array.isArray(sale.lineItems) ? sale.lineItems : [],
+            }, { remark });
+            cancelled.push(invoiceNumber);
+        } catch (error) {
+            console.error('Error cancelling invoice from rejected overdue request:', error);
+            problems.push(`Invoice ${given || '(no number)'} could not be cancelled.`);
+        }
+    }
+    return { cancelled, error: problems.join(' ') || null };
+}
+
 // POST /api/staff/overdue-requests/:id/create-sales — retry for an approved request.
 export const createSalesForRequest = async (req, res) => {
     try {
@@ -394,6 +432,18 @@ export const reviewOverdueRequest = async (req, res) => {
                 request,
                 salesCreated: result.created,
                 salesError: result.created ? null : result.error,
+            });
+        }
+        // Marking it rejected above is what stops a second reject from cancelling the invoices twice.
+        if (action === 'reject' && (existing.approval_level || existing.marketing_staff_id)) {
+            const result = await cancelSalesFromRequest(request, reviewer.name, note);
+            const moved = result.cancelled.length
+                ? `Request rejected. Invoice ${result.cancelled.join(', ')} moved to Delivered -> Cancelled Items.`
+                : 'Request rejected.';
+            return res.json({
+                message: result.error ? `${moved} ${result.error}` : moved,
+                request,
+                salesError: result.error,
             });
         }
         res.json({ message: action === 'approve' ? 'Request approved.' : 'Request rejected.', request });

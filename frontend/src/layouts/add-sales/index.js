@@ -2515,7 +2515,8 @@ function AddSales() {
           ) : overdueCancelDialog.sendingToAdmin ? (
             <>
               <MDTypography variant="body2" color="text" mb={2}>
-                If admin approves, the sale is created automatically (stock is deducted then).
+                If admin approves, the sale is created automatically (stock is deducted then). If admin rejects, the
+                invoice goes to Delivered → Cancelled Items.
               </MDTypography>
               <MDInput
                 label="Reason *"
