@@ -32,6 +32,17 @@ function verifyDeliveryBoyToken(req, res, next) {
 }
 
 router.post('/mobile/login', deliveryBoyController.mobileLogin);
+
+// Web (dashboard) login for delivery / packaging accounts: same data as the mobile
+// endpoints, but authenticated with the normal web token.
+function useWebDeliveryBoy(req, res, next) {
+    if (!req.user?.deliveryBoyId) return res.status(403).json({ error: 'Only delivery accounts can view assigned documents.' });
+    req.deliveryBoyId = req.user.deliveryBoyId;
+    next();
+}
+router.get('/web/document-assignments', verifyTokenMiddleware, requireRole('delivery_boy', 'packaging_staff'), useWebDeliveryBoy, documentAssignments.listDeliveryMine);
+router.put('/web/document-assignments/:id', verifyTokenMiddleware, requireRole('delivery_boy', 'packaging_staff'), useWebDeliveryBoy, documentAssignments.updateDeliveryMine);
+router.get('/mobile/document-assignments/:id/link', verifyDeliveryBoyToken, documentAssignments.fileLinks('delivery_boy'));
 router.get('/mobile/profile', verifyDeliveryBoyToken, deliveryBoyController.getMobileProfile);
 router.get('/mobile/document-assignments', verifyDeliveryBoyToken, documentAssignments.listDeliveryMine);
 router.put('/mobile/document-assignments/:id', verifyDeliveryBoyToken, documentAssignments.updateDeliveryMine);

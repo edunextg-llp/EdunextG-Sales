@@ -20,6 +20,7 @@ router.get('/invoices/cancelled', auth, staffMobile.getCancellations);
 router.get('/invoices/:saleId', auth, staffMobile.getInvoiceDetail);
 router.get('/credit/outlets', auth, staffMobile.getCreditByOutlet);
 router.get('/document-assignments', auth, documentAssignments.listMine);
+router.get('/document-assignments/:id/link', auth, documentAssignments.fileLinks('staff'));
 router.put('/document-assignments/:id', auth, documentAssignments.updateMine);
 router.get('/out-bills', auth, staffMobile.getOutBills);
 router.post('/out-bills/:saleId/payments', auth, requireCreditPhoto, staffMobile.submitOutBillPayment);

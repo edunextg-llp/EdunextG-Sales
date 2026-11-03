@@ -69,6 +69,19 @@ export const getCompanyAreaOptions = async (req, res) => {
     }
 };
 
+export const getStaffAreaOptions = async (req, res) => {
+    const staffId = Number(req.params.staffId);
+    if (!Number.isInteger(staffId) || staffId <= 0) {
+        return res.status(400).json({ error: 'A valid staffId is required.' });
+    }
+    try {
+        return res.json(await StaffModel.getAreasByStaff(staffId));
+    } catch (error) {
+        console.error('Error loading staff areas:', error);
+        return res.status(500).json({ error: 'Unable to load areas for this staff member.' });
+    }
+};
+
 export const deleteArea = async (req, res) => {
     const name = typeof req.body?.name === 'string' ? normalizeAreaName(req.body.name) : '';
     if (!name || name.length > 255) return res.status(400).json({ error: 'A valid area name is required.' });

@@ -601,6 +601,20 @@ class StaffModel {
         return [...names].sort((a, b) => a.localeCompare(b));
     }
 
+    // Areas one staff member works in (bit assignments and outlet locations).
+    static async getAreasByStaff(staffId) {
+        const [rows] = await db.execute(
+            `SELECT location_name FROM staff_locations
+             WHERE staff_id = ? AND location_name IS NOT NULL AND TRIM(location_name) <> ''
+             UNION
+             SELECT location_name FROM staff_counters
+             WHERE staff_id = ? AND location_name IS NOT NULL AND TRIM(location_name) <> ''`,
+            [staffId, staffId]
+        );
+        const names = new Set(rows.map(row => normalizeAreaName(row.location_name)).filter(Boolean));
+        return [...names].sort((a, b) => a.localeCompare(b));
+    }
+
     static async getAllAssignedLocationNames() {
         const [rows] = await db.execute(
             `SELECT DISTINCT location_name

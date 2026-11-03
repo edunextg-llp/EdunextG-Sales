@@ -27,6 +27,7 @@ import createCache from "@emotion/cache";
 // Material Dashboard 2 React routes
 import routes from "routes";
 import ProtectedRoute from "components/ProtectedRoute";
+import MyDocumentAssignments from "components/MyDocumentAssignments";
 import SignIn from "layouts/authentication/sign-in";
 import LandingPage from "layouts/landing";
 import PrivacyPolicy from "layouts/privacy-policy";
@@ -180,6 +181,7 @@ export default function App() {
               onMouseLeave={handleOnMouseLeave}
             />
             <Configurator />
+            <MyDocumentAssignments />
             {/* {configsButton} */}
           </>
         )}
@@ -241,6 +243,7 @@ export default function App() {
             onMouseLeave={handleOnMouseLeave}
           />
           <Configurator />
+          <MyDocumentAssignments />
           {/* {configsButton} */}
         </>
       )}

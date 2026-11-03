@@ -95,6 +95,18 @@ export async function ensureSchema() {
 
         await tryQuery(
             connection,
+            `ALTER TABLE document_assignments ADD COLUMN marketing_staff_id INT NULL AFTER company_id`,
+            'marketing person on document assignments'
+        );
+
+        await tryQuery(
+            connection,
+            `ALTER TABLE document_assignments ADD COLUMN remarks TEXT NULL`,
+            'remarks on document assignments'
+        );
+
+        await tryQuery(
+            connection,
             `ALTER TABLE companies ADD COLUMN type ENUM('distributor', 'cnf') NULL`,
             'type on companies'
         );

@@ -34,6 +34,7 @@ import BankDeposit from "layouts/bank-deposit";
 import Packaging from "layouts/packaging";
 import Delivery from "layouts/delivery";
 import DeliveryReport from "layouts/delivery-report";
+import AssignTask from "layouts/assign-task";
 import Delivered from "layouts/delivered";
 import DBCollection from "layouts/db-collection";
 import ChalanAddSales from "layouts/chalan/add-sales";
@@ -407,6 +408,15 @@ const routes = [
     component: <AddSales />,
     allowedRoles: ["admin", "packaging_staff", "bawarchee_staff", "delivery_boy"],
     requiredPermission: "add_sales",
+  },
+  {
+    type: "collapse",
+    name: "Assign Task",
+    key: "assign-task",
+    icon: <Icon fontSize="small">assignment_ind</Icon>,
+    route: "/assign-task",
+    component: <AssignTask />,
+    allowedRoles: ["packaging_staff", "delivery_boy", "staff"],
   },
   {
     type: "collapse",
