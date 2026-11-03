@@ -35,6 +35,7 @@ const APPROVER_LABEL = {
   up_to_1000: "Up to ₹1,000: Tanushree",
   up_to_2000: "₹1,001–₹2,000: Manager",
   above_2000: "Above ₹2,000: Admin",
+  admin: "Sent directly to Admin",
 };
 
 const STATUS_OPTIONS = [

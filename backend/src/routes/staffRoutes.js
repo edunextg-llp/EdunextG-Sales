@@ -36,6 +36,7 @@ const receiveDocument = (req, res, next) => documentUpload(req, res, (error) => 
 router.get('/overdue-requests', overdueSaleRequestController.listOverdueRequests);
 router.post('/overdue-requests', overdueSaleRequestController.createOverdueRequest);
 router.post('/overdue-requests/send-to-staff', overdueSaleRequestController.sendToMarketingStaff);
+router.post('/overdue-requests/send-to-admin', overdueSaleRequestController.sendToAdmin);
 router.get('/overdue-requests/my', overdueSaleRequestController.listMyOverdueRequests);
 router.put('/overdue-requests/:id/respond', overdueSaleRequestController.respondToOverdueRequest);
 // Admin, or the approver for this overdue amount (checked in the controller).

@@ -80,6 +80,8 @@ const emptyOverdueCancelDialog = {
   pendingPayload: null,
   lineMapPatch: {},
   entering: false,
+  sendingToAdmin: false,
+  adminNote: "",
   saving: false,
   error: "",
 };
@@ -810,6 +812,40 @@ function AddSales() {
       loadPendingRequests();
       setOverdueCancelDialog(emptyOverdueCancelDialog);
       alert("Sent to marketing staff. The sale is created automatically once it is approved.");
+      await submitOtherOutlets(pendingPayload, sales, lineMapPatch);
+    } catch (error) {
+      setOverdueCancelDialog((prev) => ({ ...prev, saving: false, error: error.message }));
+    }
+  };
+
+  // 14+ days overdue, straight to Admin with a reason. The sale is created once Admin approves.
+  const handleSendOverdueToAdmin = async () => {
+    const { sales, pendingPayload, lineMapPatch, adminNote } = overdueCancelDialog;
+    const note = String(adminNote || "").trim();
+    if (!note) {
+      setOverdueCancelDialog((prev) => ({ ...prev, error: "Enter the reason for sending this to admin." }));
+      return;
+    }
+    const outletIds = [...new Set(sales.map((sale) => Number(sale.outletId)))];
+    setOverdueCancelDialog((prev) => ({ ...prev, saving: true, error: "" }));
+    try {
+      const response = await fetch(`${API}/staff/overdue-requests/send-to-admin`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          staffId: selectedStaff.id,
+          saleDate: pendingPayload.date,
+          outletIds,
+          note,
+          salesPayload: { companyName: pendingPayload.companyName || selectedCompanyName || "", sales },
+        }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || "Unable to send this to admin.");
+      await applySalesSuccess(outletIds, lineMapPatch);
+      loadPendingRequests();
+      setOverdueCancelDialog(emptyOverdueCancelDialog);
+      alert("Sent to admin. The sale is created automatically once admin approves it.");
       await submitOtherOutlets(pendingPayload, sales, lineMapPatch);
     } catch (error) {
       setOverdueCancelDialog((prev) => ({ ...prev, saving: false, error: error.message }));
@@ -2425,7 +2461,11 @@ function AddSales() {
         fullWidth
       >
         <DialogTitle>
-          {overdueCancelDialog.entering ? "Cancel Invoice — Enter Invoice Number" : "Outlet Overdue by More Than 13 Days"}
+          {overdueCancelDialog.entering
+            ? "Cancel Invoice — Enter Invoice Number"
+            : overdueCancelDialog.sendingToAdmin
+              ? "Send to Admin — Enter Reason"
+              : "Outlet Overdue by More Than 13 Days"}
         </DialogTitle>
         <DialogContent dividers>
           {overdueCancelDialog.outlets.map((outlet) => (
@@ -2472,6 +2512,23 @@ function AddSales() {
                 </MDBox>
               ))}
             </>
+          ) : overdueCancelDialog.sendingToAdmin ? (
+            <>
+              <MDTypography variant="body2" color="text" mb={2}>
+                If admin approves, the sale is created automatically (stock is deducted then).
+              </MDTypography>
+              <MDInput
+                label="Reason *"
+                fullWidth
+                multiline
+                rows={2}
+                value={overdueCancelDialog.adminNote}
+                onChange={(event) => {
+                  const { value } = event.target;
+                  setOverdueCancelDialog((prev) => ({ ...prev, adminNote: value }));
+                }}
+              />
+            </>
           ) : (
             <MDTypography variant="body2" color="text">
               This invoice cannot be billed. Choose what to do with it.
@@ -2483,7 +2540,7 @@ function AddSales() {
             </MDTypography>
           )}
         </DialogContent>
-        <DialogActions>
+        <DialogActions sx={{ flexWrap: "wrap", rowGap: 1 }}>
           <MDButton
             color="secondary"
             variant="outlined"
@@ -2496,6 +2553,10 @@ function AddSales() {
             <MDButton color="error" variant="gradient" disabled={overdueCancelDialog.saving} onClick={handleCancelOverdueInvoices}>
               {overdueCancelDialog.saving ? "Cancelling..." : "Confirm Cancel"}
             </MDButton>
+          ) : overdueCancelDialog.sendingToAdmin ? (
+            <MDButton color="info" variant="gradient" disabled={overdueCancelDialog.saving} onClick={handleSendOverdueToAdmin}>
+              {overdueCancelDialog.saving ? "Sending..." : "Confirm Send to Admin"}
+            </MDButton>
           ) : (
             <>
               <MDButton
@@ -2505,6 +2566,14 @@ function AddSales() {
                 onClick={handleSendOverdueToStaff}
               >
                 {overdueCancelDialog.saving ? "Sending..." : "Send to Marketing Staff"}
+              </MDButton>
+              <MDButton
+                color="info"
+                variant="gradient"
+                disabled={overdueCancelDialog.saving}
+                onClick={() => setOverdueCancelDialog((prev) => ({ ...prev, sendingToAdmin: true, error: "" }))}
+              >
+                Send to Admin
               </MDButton>
               <MDButton
                 color="error"

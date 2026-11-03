@@ -42,7 +42,9 @@ function ReviewDialog({ request = null, action = "approve", onClose, onDone = un
   const open = Boolean(request);
   const approving = action === "approve";
   const hasInvoices = Array.isArray(request?.sales_payload?.sales) && request.sales_payload.sales.length > 0;
-  const fromMarketingStaff = Boolean(request?.approval_level);
+  // 14+ day requests always create the sale on approval, so there is no choice to offer.
+  const sentToAdmin = request?.approval_level === "admin";
+  const fromMarketingStaff = Boolean(request?.approval_level) && !sentToAdmin;
 
   useEffect(() => {
     if (open) { setNote(""); setCreateSales(true); }
@@ -97,12 +99,17 @@ function ReviewDialog({ request = null, action = "approve", onClose, onDone = un
             Will complete payment within <strong>{request.payment_days} day(s)</strong>.
           </MDTypography>
         )}
-        {approving && fromMarketingStaff && (
+        {sentToAdmin && (
+          <MDTypography variant="body2" color="text" mb={2}>
+            <strong>Reason</strong>: {request.request_note}
+          </MDTypography>
+        )}
+        {approving && (fromMarketingStaff || sentToAdmin) && (
           <MDTypography variant="caption" color="text" display="block" mb={2}>
             Approving creates the sale automatically (deducts stock, same as Add Sales).
           </MDTypography>
         )}
-        {approving && !fromMarketingStaff && (
+        {approving && !fromMarketingStaff && !sentToAdmin && (
           <>
             <FormControlLabel
               control={<Checkbox checked={hasInvoices && createSales} disabled={!hasInvoices || saving} onChange={(e) => setCreateSales(e.target.checked)} />}

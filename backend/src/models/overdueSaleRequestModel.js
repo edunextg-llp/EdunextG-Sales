@@ -140,6 +140,9 @@ const REQUEST_SELECT = `
     LEFT JOIN staff s ON s.id = r.staff_id
     LEFT JOIN staff marketing ON marketing.id = r.marketing_staff_id`;
 
+// Sent straight to Admin from Add Sales, skipping marketing staff. Only Admin can review these.
+export const ADMIN_APPROVAL_LEVEL = 'admin';
+
 // Who approves a 14+ day overdue request, by the outlet's overdue amount.
 export const approvalLevelForAmount = (amount) => {
     if (amount <= 1000) return 'up_to_1000';
@@ -229,6 +232,51 @@ export default class OverdueSaleRequestModel {
                     JSON.stringify(summary), JSON.stringify(payload),
                     requester.role, requester.id || null, requester.name || null,
                     marketingStaffId, outletOverdueAmount(outlet),
+                ]
+            );
+            ids.push(result.insertId);
+        }
+        return this.getByIds(ids);
+    }
+
+    // 14+ days overdue, sent straight to Admin. A request still waiting for marketing staff moves to
+    // Admin and leaves their list; one already with Admin gets the latest invoice details.
+    static async createForAdmin({ staffId, saleDate, overdueOutlets, note, salesPayloadByOutlet, requester }) {
+        const ids = [];
+        for (const outlet of overdueOutlets) {
+            const payload = salesPayloadByOutlet[outlet.outletId];
+            const summary = summarizeSales(payload.sales);
+            const [existing] = await db.execute(
+                `SELECT id FROM overdue_sale_requests
+                 WHERE staff_id = ? AND sale_date = ? AND outlet_id = ?
+                   AND (status = 'awaiting_staff' OR (status = 'pending' AND approval_level = ?))
+                 ORDER BY id DESC LIMIT 1`,
+                [staffId, saleDate, outlet.outletId, ADMIN_APPROVAL_LEVEL]
+            );
+            if (existing.length) {
+                await db.execute(
+                    `UPDATE overdue_sale_requests
+                     SET status = 'pending', approval_level = ?, marketing_staff_id = NULL, request_note = ?,
+                         sales_payload = ?, sales_summary = ?, overdue_details = ?, max_overdue_days = ?, overdue_amount = ?
+                     WHERE id = ?`,
+                    [ADMIN_APPROVAL_LEVEL, note, JSON.stringify(payload), JSON.stringify(summary),
+                        JSON.stringify(outlet.credits || []), outlet.maxOverdueDays || 0, outletOverdueAmount(outlet), existing[0].id]
+                );
+                ids.push(existing[0].id);
+                continue;
+            }
+            const [result] = await db.execute(
+                `INSERT INTO overdue_sale_requests (
+                    staff_id, sale_date, outlet_id, outlet_erp_id, outlet_name, max_overdue_days,
+                    overdue_details, sales_summary, sales_payload, request_note, requested_by_role, requested_by_id, requested_by_name,
+                    status, overdue_amount, approval_level
+                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?)`,
+                [
+                    staffId, saleDate, outlet.outletId, outlet.outletErpId || '', outlet.outletName || null,
+                    outlet.maxOverdueDays || 0, JSON.stringify(outlet.credits || []),
+                    JSON.stringify(summary), JSON.stringify(payload), note,
+                    requester.role, requester.id || null, requester.name || null,
+                    outletOverdueAmount(outlet), ADMIN_APPROVAL_LEVEL,
                 ]
             );
             ids.push(result.insertId);

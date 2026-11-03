@@ -916,7 +916,10 @@ class StaffModel {
              ) tl ON tl.sale_id = ss.id` : '';
         let query = `
             SELECT ss.id,${timelineSelect}
-                    ss.staff_id, ss.outlet_id, ss.sale_date, ss.item_count, ss.packed_item_count, ss.box_count, ss.packet_count, ss.price,
+                    ss.staff_id, ss.outlet_id,
+                    -- Plain text: a raw DATE becomes the previous day in UTC when sent as JSON from an India-time server.
+                    DATE_FORMAT(ss.sale_date, '%Y-%m-%d') AS sale_date,
+                    ss.item_count, ss.packed_item_count, ss.box_count, ss.packet_count, ss.price,
                     COALESCE(cancelled.total_amount, 0) AS cancelled_amount,
                     GREATEST(0, ss.price - COALESCE(cancelled.total_amount, 0)) AS effective_price,
                     ss.invoice_number,

@@ -206,7 +206,7 @@ export const enforceManagedUserApiScope = (req, res, next) => {
         // Add Sales users can raise a request and check its status; approvers can list what they review.
         allowed = (['GET', 'POST'].includes(method) && permissions.has('add_sales'))
             || (method === 'GET' && permissions.has('overdue_approval'));
-    } else if (path === '/overdue-requests/send-to-staff') {
+    } else if (path === '/overdue-requests/send-to-staff' || path === '/overdue-requests/send-to-admin') {
         allowed = method === 'POST' && permissions.has('add_sales');
     } else if (/^\/overdue-requests\/\d+\/(review|create-sales)$/.test(path)) {
         // The controller checks the approver matches this request's overdue amount.

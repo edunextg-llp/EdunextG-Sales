@@ -1,6 +1,6 @@
 import DeliveryBoyModel from '../models/deliveryBoyModel.js';
 import StaffModel from '../models/staffModel.js';
-import OverdueSaleRequestModel, { cleanSaleForRequest, getOverdueOutlets, SELF_APPROVE_OVERDUE_DAYS } from '../models/overdueSaleRequestModel.js';
+import OverdueSaleRequestModel, { ADMIN_APPROVAL_LEVEL, cleanSaleForRequest, getOverdueOutlets, SELF_APPROVE_OVERDUE_DAYS } from '../models/overdueSaleRequestModel.js';
 
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 const STATUSES = ['awaiting_staff', 'pending', 'approved', 'rejected', 'used', 'open', 'all'];
@@ -103,31 +103,82 @@ export const createOverdueRequest = async (req, res) => {
     }
 };
 
+// Checks a 14+ day overdue send from Add Sales, whoever it is going to. The overdue list is worked
+// out again here. Returns the sale details, or { status, error } when it can't be sent.
+const readTooOldOverdueSend = async (body) => {
+    const staffId = Number(body.staffId);
+    const saleDate = String(body.saleDate || '').trim();
+    const outletIds = parseOutletIds(body.outletIds);
+    if (!Number.isInteger(staffId) || staffId <= 0) return { status: 400, error: 'Select a staff first.' };
+    if (!DATE_PATTERN.test(saleDate)) return { status: 400, error: 'Sale date is invalid.' };
+    if (!outletIds.length) return { status: 400, error: 'Select at least one outlet.' };
+
+    const overdue = (await getOverdueOutlets(outletIds))
+        .filter((outlet) => Number(outlet.maxOverdueDays) > SELF_APPROVE_OVERDUE_DAYS);
+    if (overdue.length !== outletIds.length) {
+        return { status: 409, error: `Only outlets overdue by more than ${SELF_APPROVE_OVERDUE_DAYS} days can be sent this way. Save the sale again.` };
+    }
+
+    const payload = body.salesPayload && typeof body.salesPayload === 'object' ? body.salesPayload : {};
+    const sales = Array.isArray(payload.sales) ? payload.sales.slice(0, 100) : [];
+    const salesPayloadByOutlet = {};
+    for (const outlet of overdue) {
+        const outletSales = sales.filter((sale) => Number(sale?.outletId) === outlet.outletId).map(cleanSaleForRequest);
+        if (!outletSales.length) return { status: 400, error: 'Enter the invoice before sending it.' };
+        salesPayloadByOutlet[outlet.outletId] = { companyName: String(payload.companyName || '').trim(), sales: outletSales };
+    }
+    return { staffId, saleDate, outletIds, overdue, salesPayloadByOutlet };
+};
+
+// POST /api/staff/overdue-requests/send-to-admin
+// From Add Sales: 14+ days overdue goes straight to Admin with a reason. Approving creates the sale.
+export const sendToAdmin = async (req, res) => {
+    try {
+        const note = String(req.body.note || '').trim();
+        if (!note) return res.status(400).json({ error: 'Enter the reason for sending this to admin.' });
+        if (note.length > 1000) return res.status(400).json({ error: 'Reason must be 1000 characters or less.' });
+
+        const send = await readTooOldOverdueSend(req.body);
+        if (send.error) return res.status(send.status).json({ error: send.error });
+        const { staffId, saleDate, outletIds, overdue, salesPayloadByOutlet } = send;
+
+        // Already with another approver, or approved: leave it there rather than have two open requests.
+        const latest = await OverdueSaleRequestModel.getLatestForSale({ staffId, saleDate, outletIds });
+        const taken = latest.find((request) => request.status === 'approved'
+            || (request.status === 'pending' && request.approval_level !== ADMIN_APPROVAL_LEVEL));
+        if (taken) {
+            return res.status(409).json({
+                error: taken.status === 'approved'
+                    ? `${taken.outlet_name} is already approved for this date. Save the sale again.`
+                    : `${taken.outlet_name} is already waiting for approval (request #${taken.id}).`,
+            });
+        }
+
+        const requests = await OverdueSaleRequestModel.createForAdmin({
+            staffId,
+            saleDate,
+            overdueOutlets: overdue,
+            note,
+            salesPayloadByOutlet,
+            requester: await getRequester(req.user),
+        });
+        return res.status(201).json({ message: 'Sent to admin for approval.', requests });
+    } catch (error) {
+        console.error('Error sending overdue request to admin:', error);
+        return res.status(500).json({ error: 'Unable to send this to admin.' });
+    }
+};
+
 // POST /api/staff/overdue-requests/send-to-staff
 // From Add Sales: 14+ days overdue goes to the outlet's marketing staff for a reason and days to pay.
 export const sendToMarketingStaff = async (req, res) => {
     try {
-        const staffId = Number(req.body.staffId);
-        const saleDate = String(req.body.saleDate || '').trim();
-        const outletIds = parseOutletIds(req.body.outletIds);
-        if (!Number.isInteger(staffId) || staffId <= 0) return res.status(400).json({ error: 'Select a staff first.' });
-        if (!DATE_PATTERN.test(saleDate)) return res.status(400).json({ error: 'Sale date is invalid.' });
-        if (!outletIds.length) return res.status(400).json({ error: 'Select at least one outlet.' });
+        const send = await readTooOldOverdueSend(req.body);
+        if (send.error) return res.status(send.status).json({ error: send.error });
+        const { staffId, saleDate, overdue, salesPayloadByOutlet } = send;
 
-        const overdue = (await getOverdueOutlets(outletIds))
-            .filter((outlet) => Number(outlet.maxOverdueDays) > SELF_APPROVE_OVERDUE_DAYS);
-        if (overdue.length !== outletIds.length) {
-            return res.status(409).json({ error: `Only outlets overdue by more than ${SELF_APPROVE_OVERDUE_DAYS} days can be sent to marketing staff. Save the sale again.` });
-        }
-
-        const payload = req.body.salesPayload && typeof req.body.salesPayload === 'object' ? req.body.salesPayload : {};
-        const sales = Array.isArray(payload.sales) ? payload.sales.slice(0, 100) : [];
-        const salesPayloadByOutlet = {};
         const outlets = [];
         for (const outlet of overdue) {
-            const outletSales = sales.filter((sale) => Number(sale?.outletId) === outlet.outletId).map(cleanSaleForRequest);
-            if (!outletSales.length) return res.status(400).json({ error: 'Enter the invoice before sending it.' });
-            salesPayloadByOutlet[outlet.outletId] = { companyName: String(payload.companyName || '').trim(), sales: outletSales };
             const counter = await StaffModel.getCounterById(outlet.outletId);
             outlets.push({ outlet, marketingStaffId: counter.staff_id });
         }
@@ -331,7 +382,7 @@ export const reviewOverdueRequest = async (req, res) => {
         });
         if (!updated) return res.status(409).json({ error: 'This request has already been reviewed.' });
         let [request] = await OverdueSaleRequestModel.getByIds([id]);
-        // Requests from marketing staff always create the sale on approval.
+        // 14+ day requests (from marketing staff or sent straight to Admin) always create the sale on approval.
         if (action === 'approve' && (req.body.createSales === true || existing.approval_level)) {
             const result = await createSalesFromRequest(request);
             [request] = await OverdueSaleRequestModel.getByIds([id]);
