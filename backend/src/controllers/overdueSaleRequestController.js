@@ -422,7 +422,7 @@ export const reviewOverdueRequest = async (req, res) => {
         if (!updated) return res.status(409).json({ error: 'This request has already been reviewed.' });
         let [request] = await OverdueSaleRequestModel.getByIds([id]);
         // 14+ day requests (from marketing staff or sent straight to Admin) always create the sale on approval.
-        if (action === 'approve' && (req.body.createSales === true || existing.approval_level)) {
+        if (action === 'approve' && existing.status !== 'awaiting_staff' && (req.body.createSales === true || existing.approval_level)) {
             const result = await createSalesFromRequest(request);
             [request] = await OverdueSaleRequestModel.getByIds([id]);
             return res.json({

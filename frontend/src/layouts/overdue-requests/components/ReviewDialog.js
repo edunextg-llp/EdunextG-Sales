@@ -42,13 +42,14 @@ function ReviewDialog({ request = null, action = "approve", onClose, onDone = un
   const open = Boolean(request);
   const approving = action === "approve";
   const hasInvoices = Array.isArray(request?.sales_payload?.sales) && request.sales_payload.sales.length > 0;
+  const adminOverride = request?.status === "awaiting_staff";
   // 14+ day requests always create the sale on approval, so there is no choice to offer.
   const sentToAdmin = request?.approval_level === "admin";
   const fromMarketingStaff = Boolean(request?.approval_level) && !sentToAdmin;
 
   useEffect(() => {
-    if (open) { setNote(""); setCreateSales(true); }
-  }, [open, request?.id, action]);
+    if (open) { setNote(""); setCreateSales(!adminOverride); }
+  }, [open, request?.id, action, adminOverride]);
 
   const submit = async () => {
     const trimmed = note.trim();
@@ -114,7 +115,12 @@ function ReviewDialog({ request = null, action = "approve", onClose, onDone = un
             Rejecting moves the invoice to Delivered → Cancelled Items. No stock is taken.
           </MDTypography>
         )}
-        {approving && !fromMarketingStaff && !sentToAdmin && (
+        {approving && adminOverride && (
+          <MDTypography variant="caption" color="text" display="block" mb={2}>
+            This request is still assigned to marketing staff. Admin approval will approve it now; create the saved sales separately from the Approved list.
+          </MDTypography>
+        )}
+        {approving && !adminOverride && !fromMarketingStaff && !sentToAdmin && (
           <>
             <FormControlLabel
               control={<Checkbox checked={hasInvoices && createSales} disabled={!hasInvoices || saving} onChange={(e) => setCreateSales(e.target.checked)} />}
@@ -146,7 +152,7 @@ function ReviewDialog({ request = null, action = "approve", onClose, onDone = un
           onClick={submit}
           disabled={saving || (!approving && !note.trim())}
         >
-          {saving ? "Saving..." : approving ? (hasInvoices && createSales ? "Approve & create sales" : "Approve") : "Reject"}
+          {saving ? "Saving..." : approving ? (adminOverride ? "Approve request" : hasInvoices && createSales ? "Approve & create sales" : "Approve") : "Reject"}
         </MDButton>
       </DialogActions>
     </Dialog>
