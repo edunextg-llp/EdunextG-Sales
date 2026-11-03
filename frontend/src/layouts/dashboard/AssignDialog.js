@@ -43,7 +43,7 @@ const newRow = () => {
 const headCellSx = { fontWeight: 700, fontSize: "0.75rem", backgroundColor: "#f3f4f6", py: 1 };
 const cellSx = { py: 1, verticalAlign: "top" };
 const selectSx = { minWidth: 150, height: 38, fontSize: "0.8rem", width: "100%" };
-const MAX_DOCUMENT_SIZE = 25 * 1024 * 1024;
+const MAX_DOCUMENT_SIZE = 19 * 1024 * 1024;
 
 function AssignDialog({ open, onClose, companies }) {
   const [rows, setRows] = useState(() => [newRow()]);
@@ -203,7 +203,7 @@ function AssignDialog({ open, onClose, companies }) {
                           onChange={(e) => {
                             const file = e.target.files?.[0] || null;
                             if (file && file.size > MAX_DOCUMENT_SIZE) {
-                              setMessage({ type: "error", text: "Document must not be larger than 25 MB." });
+                              setMessage({ type: "error", text: "Document must not be larger than 19 MB." });
                               e.target.value = "";
                               return;
                             }

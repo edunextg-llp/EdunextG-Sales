@@ -29,7 +29,8 @@ const documentUpload = multer({
 }).single('file');
 const assignmentDocumentUpload = multer({
     storage: multer.memoryStorage(),
-    limits: { fileSize: 25 * 1024 * 1024, files: 1 },
+    // Keep the file below the deployment's 20 MB Nginx request-body limit.
+    limits: { fileSize: 19 * 1024 * 1024, files: 1 },
 }).single('file');
 const receiveDocument = (req, res, next) => documentUpload(req, res, (error) => {
     if (!error) return next();
@@ -38,7 +39,7 @@ const receiveDocument = (req, res, next) => documentUpload(req, res, (error) => 
 });
 const receiveAssignmentDocument = (req, res, next) => assignmentDocumentUpload(req, res, (error) => {
     if (!error) return next();
-    if (error.code === 'LIMIT_FILE_SIZE') return res.status(413).json({ error: 'File must not be more than 25 MB.' });
+    if (error.code === 'LIMIT_FILE_SIZE') return res.status(413).json({ error: 'File must not be more than 19 MB.' });
     return res.status(400).json({ error: 'Unable to read the uploaded document.' });
 });
 
