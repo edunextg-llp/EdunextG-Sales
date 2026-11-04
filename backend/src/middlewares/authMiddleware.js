@@ -244,6 +244,9 @@ export const enforceManagedUserApiScope = (req, res, next) => {
         allowed = permissions.has('update_payment') || permissions.has('out_bill');
     } else if (/^\/sales\/\d+\/cancel-log$/.test(path)) {
         allowed = permissions.has('update_payment');
+    } else if (/^\/sales\/\d+\/cancellation-requests$/.test(path)) {
+        // Cancel Product on Update Payment: raises a request that the admin approves.
+        allowed = method === 'POST' && permissions.has('update_payment');
     } else if (/^\/sales\/\d+\/items$/.test(path)) {
         allowed = permissions.has('update_payment') || (isGet && permissions.has('delivery_report'));
     } else if (/^\/purchase-requisitions\/target-requests(?:\/\d+)?$/.test(path)) {
