@@ -7,6 +7,7 @@ import * as purchaseRequisitions from '../controllers/purchaseRequisitionControl
 import * as overdueRequests from '../controllers/overdueSaleRequestController.js';
 import { getCurrentStock } from '../controllers/currentStockController.js';
 import * as documentAssignments from '../controllers/documentAssignmentController.js';
+import * as takenBillRequests from '../controllers/takenBillRequestController.js';
 
 const router = express.Router();
 const auth = staffMobile.verifyStaffMobileToken;
@@ -22,6 +23,10 @@ router.get('/credit/outlets', auth, staffMobile.getCreditByOutlet);
 router.get('/document-assignments', auth, documentAssignments.listMine);
 router.get('/document-assignments/:id/link', auth, documentAssignments.fileLinks('staff'));
 router.put('/document-assignments/:id', auth, documentAssignments.updateMine);
+router.get('/credit-bills', auth, takenBillRequests.getCreditBills);
+router.post('/credit-bills/:saleId/take', auth, takenBillRequests.requestTake);
+router.get('/out-bills/requests', auth, takenBillRequests.getOutBillStatus);
+router.post('/out-bills/:saleId/return', auth, takenBillRequests.requestReturn);
 router.get('/out-bills', auth, staffMobile.getOutBills);
 router.post('/out-bills/:saleId/payments', auth, requireCreditPhoto, staffMobile.submitOutBillPayment);
 router.get('/collections', auth, staffMobile.getCollections);

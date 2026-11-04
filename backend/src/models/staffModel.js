@@ -2094,6 +2094,14 @@ class StaffModel {
             'INSERT INTO taken_bills (payment_id, staff_id, taken_date, collector_type, delivery_boy_id) VALUES ?',
             [values]
         );
+        // The office assigned the bill directly, so a staff app request for it no longer applies.
+        await db.query(
+            `UPDATE taken_bill_requests r
+             INNER JOIN sale_payments sp ON sp.sale_id = r.sale_id
+             SET r.status = 'rejected', r.review_note = 'Bill was assigned directly from the Out Bill page', r.reviewed_at = NOW()
+             WHERE r.request_type = 'take' AND r.status = 'pending' AND sp.id IN (?)`,
+            [uniqueIds]
+        );
     }
 
     static async returnTakenBills(takenBillIds) {
@@ -2108,6 +2116,23 @@ class StaffModel {
              SET returned_at = NOW()
              WHERE id IN (${placeholders}) AND returned_at IS NULL`,
             uniqueIds
+        );
+        // The office returned the bill directly, so a pending staff app return request is finished.
+        await db.query(
+            `UPDATE taken_bill_requests r
+             SET r.status = 'approved', r.review_note = 'Returned directly from the Out Bill page', r.reviewed_at = NOW()
+             WHERE r.request_type = 'return' AND r.status = 'pending'
+               AND r.sale_id IN (
+                   SELECT sp.sale_id FROM taken_bills tb
+                   INNER JOIN sale_payments sp ON sp.id = tb.payment_id
+                   WHERE tb.id IN (?)
+               )
+               AND NOT EXISTS (
+                   SELECT 1 FROM taken_bills active
+                   INNER JOIN sale_payments active_sp ON active_sp.id = active.payment_id
+                   WHERE active_sp.sale_id = r.sale_id AND active.staff_id = r.staff_id AND active.returned_at IS NULL
+               )`,
+            [uniqueIds]
         );
         return result.affectedRows;
     }

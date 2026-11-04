@@ -15,6 +15,7 @@ import * as suspenseRequestController from '../controllers/suspenseRequestContro
 import * as otherDaySaleRequestController from '../controllers/otherDaySaleRequestController.js';
 import * as pincodeController from '../controllers/pincodeController.js';
 import * as documentAssignments from '../controllers/documentAssignmentController.js';
+import * as takenBillRequests from '../controllers/takenBillRequestController.js';
 import { requireRole, verifyTokenMiddleware } from '../middlewares/authMiddleware.js';
 
 const upload = multer({
@@ -103,6 +104,8 @@ router.put('/damage-list/:id', staffController.updateDamageListItem);
 router.post('/credits/take', staffController.recordTakenBills);
 router.post('/credits/return', staffController.returnTakenBills);
 router.get('/credits/taken', staffController.getTakenBillsReport);
+router.get('/credits/requests', takenBillRequests.listPending);
+router.put('/credits/requests/:id/review', takenBillRequests.review);
 router.get('/credits/:paymentId/remarks', staffController.getCreditRemarks);
 router.put('/credits/:paymentId/remarks', staffController.updateCreditRemarks);
 router.get('/bank-deposits', staffController.getBankDeposits);

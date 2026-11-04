@@ -273,6 +273,9 @@ export const submitOutBillPayment = async (req, res) => {
         }
         return res.status(200).json({ message: 'Payment submitted to D.B. Collection for settlement', ...result });
     } catch (error) {
+        if (error.message === 'RETURN_PENDING') {
+            return res.status(409).json({ error: 'This bill has a return request waiting for approval.' });
+        }
         if (error.message === 'PAYMENT_ALREADY_PENDING') {
             return res.status(409).json({ error: `Rs. ${Number(error.pendingAmount).toFixed(2)} for this bill is already waiting in D.B. Collection. It can be collected again only after the office settles or removes that entry.` });
         }

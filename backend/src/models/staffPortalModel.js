@@ -17,9 +17,9 @@ export const INVOICE_STATUSES = [
 ];
 export const PACKAGING_STATUSES = ['not_packing', 'packing', 'packing_done'];
 
-const PAID_SQL = `SELECT sale_id, SUM(amount) AS total FROM sale_payments
+export const PAID_SQL = `SELECT sale_id, SUM(amount) AS total FROM sale_payments
                   WHERE payment_mode IN ('cash','upi','cheque') GROUP BY sale_id`;
-const CANCELLED_SQL = `SELECT sale_id, SUM(amount) AS total FROM order_cancellations GROUP BY sale_id`;
+export const CANCELLED_SQL = `SELECT sale_id, SUM(amount) AS total FROM order_cancellations GROUP BY sale_id`;
 const CREDIT_DUE_SQL = `
     SELECT credit.sale_id,
            SUM(GREATEST(0, credit.amount - COALESCE(child.paid, 0))) AS credit_amount,
@@ -34,8 +34,8 @@ const CREDIT_DUE_SQL = `
     ) child ON child.parent_credit_payment_id = credit.id
     WHERE credit.payment_mode = 'credit'
     GROUP BY credit.sale_id`;
-const BALANCE_SQL = 'GREATEST(0, ss.price - COALESCE(cancelled.total, 0) - COALESCE(paid.total, 0))';
-const PENDING_SQL = `SELECT sale_id,
+export const BALANCE_SQL = 'GREATEST(0, ss.price - COALESCE(cancelled.total, 0) - COALESCE(paid.total, 0))';
+export const PENDING_SQL = `SELECT sale_id,
                             SUM(CASE WHEN payment_mode IN ('cash','upi','cheque') THEN amount ELSE 0 END) AS pending_amount,
                             COUNT(*) AS pending_count
                      FROM delivery_boy_collections WHERE settled_at IS NULL GROUP BY sale_id`;
@@ -297,6 +297,12 @@ class StaffPortalModel {
         try {
             await connection.beginTransaction();
             await connection.execute('SELECT id FROM staff_sales WHERE id = ? FOR UPDATE', [saleId]);
+            const [returnRequests] = await connection.execute(
+                `SELECT id FROM taken_bill_requests
+                 WHERE sale_id = ? AND staff_id = ? AND request_type = 'return' AND status = 'pending' LIMIT 1`,
+                [saleId, staffId]
+            );
+            if (returnRequests.length > 0) throw new Error('RETURN_PENDING');
             const bill = (await StaffPortalModel.getOutBills(staffId, connection))
                 .find((row) => Number(row.sale_id) === Number(saleId));
             if (!bill) {

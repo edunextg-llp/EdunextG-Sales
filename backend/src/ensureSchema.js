@@ -1932,6 +1932,30 @@ export async function ensureSchema() {
             `ALTER TABLE taken_bills ADD COLUMN returned_at DATETIME NULL`,
             'returned_at on taken_bills'
         );
+        // Staff app requests to take or return an Out Bill, waiting for office approval.
+        await connection.query(`
+            CREATE TABLE IF NOT EXISTS taken_bill_requests (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                request_type VARCHAR(10) NOT NULL,
+                sale_id INT NOT NULL,
+                staff_id INT NOT NULL,
+                status VARCHAR(20) NOT NULL DEFAULT 'pending',
+                review_note VARCHAR(500) NULL,
+                reviewed_by VARCHAR(255) NULL,
+                reviewed_at DATETIME NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (sale_id) REFERENCES staff_sales(id) ON DELETE CASCADE,
+                FOREIGN KEY (staff_id) REFERENCES staff(id) ON DELETE CASCADE,
+                INDEX idx_taken_bill_requests_status (status),
+                INDEX idx_taken_bill_requests_sale (sale_id, request_type, status),
+                INDEX idx_taken_bill_requests_staff (staff_id, request_type, status)
+            );
+        `);
+        await tryQuery(
+            connection,
+            `ALTER TABLE taken_bill_requests ADD COLUMN remarks VARCHAR(500) NULL`,
+            'remarks on taken_bill_requests'
+        );
 
         await tryQuery(
             connection,

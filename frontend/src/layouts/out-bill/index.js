@@ -24,6 +24,7 @@ import {
   Tab,
 } from "@mui/material";
 
+import AppRequestsPanel from "layouts/out-bill/AppRequestsPanel";
 import MDBox from "components/MDBox";
 import CompanyFilter from "components/CompanyFilter";
 import { matchesSaleCompany } from "utils/companyFilter";
@@ -55,8 +56,9 @@ function OutBillPage() {
   const [page, setPage] = useState(1);
   const [rowsPerPage, setRowsPerPage] = useState(ROWS_PER_PAGE);
 
-  // Tab State: 'pending' or 'taken'
+  // Tab State: 'pending', 'taken' or 'requests'
   const [activeTab, setActiveTab] = useState("pending");
+  const [appRequests, setAppRequests] = useState([]);
 
   // Take Bill Dialog State
   const [isTakeDialogOpen, setIsTakeDialogOpen] = useState(false);
@@ -132,9 +134,26 @@ function OutBillPage() {
     }
   }, [API, reportStartDate, reportEndDate]);
 
+  const fetchAppRequests = useCallback(async () => {
+    try {
+      const response = await fetch(`${API}/staff/credits/requests`);
+      if (response.ok) {
+        setAppRequests(await response.json());
+      } else {
+        console.error("Failed to fetch app requests");
+      }
+    } catch (error) {
+      console.error("Error fetching app requests:", error);
+    }
+  }, [API]);
+
   useEffect(() => {
     fetchCredits();
   }, [fetchCredits]);
+
+  useEffect(() => {
+    fetchAppRequests();
+  }, [fetchAppRequests]);
 
   useEffect(() => {
     const fetchCollectorOptions = async () => {
@@ -657,6 +676,7 @@ function OutBillPage() {
                   >
                     <Tab label="Pending Credits" value="pending" />
                     <Tab label={`Taken Bills Report (${takenBills.length})`} value="taken" />
+                    <Tab label={`App Requests (${appRequests.length})`} value="requests" />
                   </Tabs>
                 </MDBox>
 
@@ -684,7 +704,18 @@ function OutBillPage() {
                 )}
               </MDBox>
 
-              {/* Filters and Summary Row */}
+              {activeTab === "requests" ? (
+                <MDBox pb={3} px={3}>
+                  <AppRequestsPanel
+                    apiUrl={API}
+                    onReviewed={async () => {
+                      await Promise.all([fetchAppRequests(), fetchCredits(), fetchTakenBills()]);
+                    }}
+                    requests={appRequests}
+                  />
+                </MDBox>
+              ) : (
+              /* Filters and Summary Row */
               <MDBox pb={3} px={3}>
                 <Grid container spacing={3} mb={3}>
                   {activeTab === "pending" ? (
@@ -1006,6 +1037,7 @@ function OutBillPage() {
                   </TableContainer>
                 )}
               </MDBox>
+              )}
             </Card>
           </Grid>
         </Grid>
