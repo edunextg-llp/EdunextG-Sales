@@ -142,11 +142,26 @@ function AssignDialog({ open, onClose, companies }) {
   const handleMarketingChange = (key, marketingStaffId) => {
     // The area list depends on the marketing person.
     updateRow(key, { marketingStaffId, area: "" });
-    if (!marketingStaffId || areasByStaff[marketingStaffId]) return;
+    const companyId = rows.find((row) => row.key === key)?.companyId;
+    const areaCacheKey = `${marketingStaffId}:${companyId}`;
+    if (!marketingStaffId || Array.isArray(areasByStaff[areaCacheKey])) return;
     fetch(`${API}/staff/areas/staff/${marketingStaffId}`, { headers: authHeaders() })
-      .then((res) => (res.ok ? res.json() : []))
-      .then((data) => setAreasByStaff((prev) => ({ ...prev, [marketingStaffId]: Array.isArray(data) ? data : [] })))
-      .catch(() => setAreasByStaff((prev) => ({ ...prev, [marketingStaffId]: [] })));
+      .then(async (res) => {
+        if (!res.ok) throw new Error("Could not load this marketing person's areas.");
+        const data = await res.json();
+        const staffAreas = Array.isArray(data) ? data : [];
+        if (staffAreas.length || !companyId) return staffAreas;
+        // Some marketing staff have no personal area rows; offer the company's existing areas.
+        const companyResponse = await fetch(`${API}/staff/areas/company/${companyId}`, { headers: authHeaders() });
+        if (!companyResponse.ok) throw new Error("Could not load areas for this company.");
+        const companyAreas = await companyResponse.json();
+        return Array.isArray(companyAreas) ? companyAreas : [];
+      })
+      .then((areas) => setAreasByStaff((prev) => ({ ...prev, [areaCacheKey]: areas })))
+      .catch((error) => {
+        setAreasByStaff((prev) => ({ ...prev, [areaCacheKey]: [] }));
+        setMessage({ type: "error", text: error.message || "Could not load area options." });
+      });
   };
 
   const addRow = () => setRows((prev) => [...prev, newRow()]);
@@ -212,7 +227,7 @@ function AssignDialog({ open, onClose, companies }) {
             <TableBody>
               {rows.map((row) => {
                 const companyMarketing = row.companyId ? staffByCompany[row.companyId] : null;
-                const areas = row.marketingStaffId ? areasByStaff[row.marketingStaffId] : null;
+                const areas = row.marketingStaffId ? areasByStaff[`${row.marketingStaffId}:${row.companyId}`] : null;
                 const marketingStaff = staffByCompany.all || [];
                 return (
                   <TableRow key={row.key}>
