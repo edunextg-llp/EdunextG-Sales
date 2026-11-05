@@ -174,16 +174,16 @@ function AssignDialog({ open, onClose, companies }) {
   };
 
   const handleSave = async () => {
-    const incomplete = rows.findIndex((r) => !r.workDate || !r.type || !r.companyId || !r.marketingStaffId || !r.area || !r.invoiceFile || !(r.assignTo || defaultAssignee));
+    const incomplete = rows.findIndex((r) => !r.workDate || !r.type || !r.companyId || !r.marketingStaffId || !r.area || !(r.assignTo || defaultAssignee));
     if (incomplete !== -1) {
-      setMessage({ type: "error", text: `Row ${incomplete + 1}: please fill Date, Type, Company, Marketing Person, Area, Document and Assign To.` });
+      setMessage({ type: "error", text: `Row ${incomplete + 1}: please fill Date, Type, Company, Marketing Person, Area and Assign To.` });
       return;
     }
     setSaving(true);
     try {
       for (const row of rows) {
         const form = new FormData();
-        form.append("file", row.invoiceFile);
+        if (row.invoiceFile) form.append("file", row.invoiceFile);
         form.append("workDate", row.workDate);
         form.append("type", row.type);
         form.append("companyId", row.companyId);
@@ -218,7 +218,7 @@ function AssignDialog({ open, onClose, companies }) {
                 <TableCell sx={headCellSx}>Company</TableCell>
                 <TableCell sx={headCellSx}>Marketing Person</TableCell>
                 <TableCell sx={headCellSx}>Area</TableCell>
-                <TableCell sx={headCellSx}>Invoice</TableCell>
+                <TableCell sx={headCellSx}>Invoice (Optional)</TableCell>
                 <TableCell sx={headCellSx}>Assign To</TableCell>
                 <TableCell sx={headCellSx}>Remarks</TableCell>
                 <TableCell sx={{ ...headCellSx, width: 48 }} />
@@ -298,7 +298,7 @@ function AssignDialog({ open, onClose, companies }) {
                     </TableCell>
                     <TableCell sx={cellSx}>
                       <MDButton component="label" variant="outlined" color="info" size="small" sx={{ whiteSpace: "nowrap" }}>
-                        <Icon sx={{ mr: 0.5 }}>upload_file</Icon> Upload invoice
+                        <Icon sx={{ mr: 0.5 }}>upload_file</Icon> Upload invoice (optional)
                         <input
                           hidden
                           type="file"
@@ -382,7 +382,7 @@ function AssignDialog({ open, onClose, companies }) {
             <TableBody>{assignments.map((item, index) => <TableRow key={item.id} hover>
               <TableCell sx={{ py: 1.25, whiteSpace: "nowrap", color: "#6b7280" }}>{index + 1}</TableCell>
               <TableCell sx={{ py: 1.25, whiteSpace: "nowrap" }}>{String(item.work_date).slice(0, 10)}</TableCell>
-              <TableCell sx={{ py: 1.25, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}><a href="#view" title={item.document_name} onClick={(e) => { e.preventDefault(); viewAssignmentFile("admin", item.id).catch((err) => setMessage({ type: "error", text: err.message })); }} style={{ color: "#1976d2", fontWeight: 600 }}>{item.document_name}</a></TableCell>
+              <TableCell sx={{ py: 1.25, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.document_name ? <a href="#view" title={item.document_name} onClick={(e) => { e.preventDefault(); viewAssignmentFile("admin", item.id).catch((err) => setMessage({ type: "error", text: err.message })); }} style={{ color: "#1976d2", fontWeight: 600 }}>{item.document_name}</a> : <MDTypography variant="caption" color="text">No invoice attached</MDTypography>}</TableCell>
               <TableCell sx={{ py: 1.25 }}>{item.company_name || "—"}{item.area ? ` · ${item.area}` : ""}</TableCell>
               <TableCell sx={{ py: 1.25 }}>{item.marketing_staff_name || "—"}</TableCell>
               <TableCell sx={{ py: 1.25 }}>{item.assignee_name || "—"}</TableCell>

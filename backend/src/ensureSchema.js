@@ -80,8 +80,8 @@ export async function ensureSchema() {
                 assignment_type VARCHAR(30) NOT NULL,
                 company_id INT NOT NULL,
                 area VARCHAR(255) NOT NULL,
-                document_url VARCHAR(1024) NOT NULL,
-                document_name VARCHAR(255) NOT NULL,
+                document_url VARCHAR(1024) NULL,
+                document_name VARCHAR(255) NULL,
                 assignee_type ENUM('staff','delivery_boy') NOT NULL,
                 assignee_id INT NOT NULL,
                 status ENUM('assigned','done','cancelled') NOT NULL DEFAULT 'assigned',
@@ -92,6 +92,9 @@ export async function ensureSchema() {
                 INDEX idx_document_assignments_date (work_date)
             )
         `);
+
+        await tryQuery(connection, `ALTER TABLE document_assignments MODIFY COLUMN document_url VARCHAR(1024) NULL`, 'Optional document assignment file URL');
+        await tryQuery(connection, `ALTER TABLE document_assignments MODIFY COLUMN document_name VARCHAR(255) NULL`, 'Optional document assignment file name');
 
         await tryQuery(
             connection,

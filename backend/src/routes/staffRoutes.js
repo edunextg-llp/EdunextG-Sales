@@ -16,7 +16,7 @@ import * as otherDaySaleRequestController from '../controllers/otherDaySaleReque
 import * as pincodeController from '../controllers/pincodeController.js';
 import * as documentAssignments from '../controllers/documentAssignmentController.js';
 import * as takenBillRequests from '../controllers/takenBillRequestController.js';
-import { requireRole, verifyTokenMiddleware } from '../middlewares/authMiddleware.js';
+import { requireAnyPermission, requireRole, verifyTokenMiddleware } from '../middlewares/authMiddleware.js';
 
 const upload = multer({
     storage: multer.memoryStorage(),
@@ -83,7 +83,7 @@ router.get('/search', staffController.searchStaff);
 router.get('/areas', verifyTokenMiddleware, requireRole('admin'), staffController.getAreaDirectory);
 router.get('/areas/options', verifyTokenMiddleware, requireRole('admin', 'packaging_staff', 'delivery_boy', 'bawarchee_staff', 'staff'), staffController.getAreaOptions);
 router.get('/areas/company/:companyId', verifyTokenMiddleware, requireRole('admin', 'packaging_staff', 'delivery_boy', 'bawarchee_staff', 'staff'), staffController.getCompanyAreaOptions);
-router.get('/areas/staff/:staffId', verifyTokenMiddleware, requireRole('admin'), staffController.getStaffAreaOptions);
+router.get('/areas/staff/:staffId', verifyTokenMiddleware, requireAnyPermission('dashboard'), staffController.getStaffAreaOptions);
 router.post('/areas', verifyTokenMiddleware, requireRole('admin'), staffController.createArea);
 router.delete('/areas', verifyTokenMiddleware, requireRole('admin'), staffController.deleteArea);
 router.put('/areas/holiday', verifyTokenMiddleware, requireRole('admin'), staffController.updateAreaHoliday);

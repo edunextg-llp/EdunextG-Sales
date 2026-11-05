@@ -5,7 +5,7 @@ export async function create(req, res) {
   try {
     const { workDate, type, companyId, marketingStaffId, area, assignTo } = req.body || {};
     if (!/^\d{4}-\d{2}-\d{2}$/.test(String(workDate || ''))) return res.status(400).json({ error: 'Choose a valid date.' });
-    if (!['pending', 'printing', 'add_sales', 'pending_works', 'others'].includes(type) || !companyId || !marketingStaffId || !area || !assignTo || !req.file) return res.status(400).json({ error: 'Complete all fields and upload a document.' });
+    if (!['pending', 'printing', 'add_sales', 'pending_works', 'others'].includes(type) || !companyId || !marketingStaffId || !area || !assignTo) return res.status(400).json({ error: 'Complete all required assignment fields.' });
     const remarks = String(req.body?.remarks || '').trim();
     if (remarks.length > 500) return res.status(400).json({ error: 'Remarks must be 500 characters or less.' });
     const [marketingPerson] = await db.query(`SELECT s.id FROM staff s
@@ -20,15 +20,21 @@ export async function create(req, res) {
     const categoryCondition = kind === 'staff' ? " AND staff_category='company_staff'" : '';
     const [eligible] = await db.query(`SELECT id FROM ${table} WHERE id=? AND is_active=1${categoryCondition} LIMIT 1`, [assigneeId]);
     if (!eligible.length) return res.status(400).json({ error: 'Choose an active person.' });
-    if (!isCloudinaryConfigured()) return res.status(503).json({ error: 'Document storage is not configured.' });
-    // Images keep 'auto'; PDFs and other documents are stored as 'raw' so Cloudinary's
-    // "block PDF delivery" setting cannot stop them from opening.
-    const isImage = String(req.file.mimetype || '').startsWith('image/');
-    const extension = (String(req.file.originalname || '').match(/\.([a-z0-9]{1,8})$/i)?.[1] || (req.file.mimetype === 'application/pdf' ? 'pdf' : '')).toLowerCase();
-    const publicId = `assignment_${Date.now()}${!isImage && extension ? `.${extension}` : ''}`;
-    const uploaded = await uploadBufferToCloudinary(req.file.buffer, { folder: 'staff-assignments', resourceType: isImage ? 'auto' : 'raw', uploadOptions: { public_id: publicId } });
+    let documentUrl = null;
+    let documentName = null;
+    if (req.file) {
+      if (!isCloudinaryConfigured()) return res.status(503).json({ error: 'Document storage is not configured.' });
+      // Images keep 'auto'; PDFs and other documents are stored as 'raw' so Cloudinary's
+      // "block PDF delivery" setting cannot stop them from opening.
+      const isImage = String(req.file.mimetype || '').startsWith('image/');
+      const extension = (String(req.file.originalname || '').match(/\.([a-z0-9]{1,8})$/i)?.[1] || (req.file.mimetype === 'application/pdf' ? 'pdf' : '')).toLowerCase();
+      const publicId = `assignment_${Date.now()}${!isImage && extension ? `.${extension}` : ''}`;
+      const uploaded = await uploadBufferToCloudinary(req.file.buffer, { folder: 'staff-assignments', resourceType: isImage ? 'auto' : 'raw', uploadOptions: { public_id: publicId } });
+      documentUrl = uploaded.secure_url;
+      documentName = req.file.originalname;
+    }
     const [result] = await db.query(`INSERT INTO document_assignments (work_date, assignment_type, company_id, marketing_staff_id, area, document_url, document_name, assignee_type, assignee_id, status, created_by, remarks)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'assigned', ?, ?)`, [workDate, type, Number(companyId), Number(marketingStaffId), area, uploaded.secure_url, req.file.originalname, kind, assigneeId, req.user?.id || null, remarks || null]);
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'assigned', ?, ?)`, [workDate, type, Number(companyId), Number(marketingStaffId), area, documentUrl, documentName, kind, assigneeId, req.user?.id || null, remarks || null]);
     return res.status(201).json({ id: result.insertId, message: 'Document assigned.' });
   } catch (error) {
     console.error('Create document assignment failed:', error);
@@ -97,6 +103,7 @@ export function fileLinks(scope) {
       else if (scope === 'staff') { where += " AND assignee_type='staff' AND assignee_id=?"; params.push(req.staffId); }
       const [rows] = await db.query(`SELECT document_url, document_name FROM document_assignments WHERE ${where} LIMIT 1`, params);
       if (!rows.length) return res.status(404).json({ error: 'Document not found.' });
+      if (!rows[0].document_url) return res.status(404).json({ error: 'No invoice was attached to this task.' });
       const { viewUrl, downloadUrl } = cloudinaryFileLinks(rows[0].document_url);
       return res.json({ viewUrl, downloadUrl, name: rows[0].document_name });
     } catch (error) {
