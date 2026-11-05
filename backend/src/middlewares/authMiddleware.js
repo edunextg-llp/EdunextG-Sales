@@ -133,8 +133,10 @@ export const enforceManagedUserApiScope = (req, res, next) => {
     const isGet = method === 'GET';
 
     let allowed = false;
-    if (/^\/areas\/(?:staff|company)\/\d+$/.test(path)) {
-        // Dashboard users need marketing-person/company areas in the Assign dialog.
+    if (/^\/document-assignments(?:\/\d+\/link)?$/.test(path) || path === '/document-assignment-delivery-boys') {
+        allowed = (method === 'GET' || method === 'POST') && permissions.has('dashboard');
+    } else if (/^\/areas\/(?:staff|company)\/\d+$/.test(path)) {
+        // Dashboard users need the Assign dialog's queues, assignee options and area lists.
         allowed = isGet && permissions.has('dashboard');
     } else if (path === '/reports' || path === '/reports/payments' || path === '/reports/payments/export' || path === '/purchase-reports' || path === '/' || path === '/search') {
         allowed = (method === 'GET' && (

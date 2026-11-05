@@ -74,9 +74,10 @@ router.put('/backdated-payment-requests/:id/review', requireRole('admin'), staff
 
 router.post('/', staffController.createStaff);
 router.post('/upload-document', receiveDocument, staffController.uploadStaffDocument);
-router.get('/document-assignments', verifyTokenMiddleware, requireRole('admin'), documentAssignments.listAdmin);
-router.post('/document-assignments', verifyTokenMiddleware, requireRole('admin'), receiveAssignmentDocument, documentAssignments.create);
-router.get('/document-assignments/:id/link', verifyTokenMiddleware, requireRole('admin'), documentAssignments.fileLinks('admin'));
+router.get('/document-assignments', verifyTokenMiddleware, requireAnyPermission('dashboard'), documentAssignments.listAdmin);
+router.get('/document-assignment-delivery-boys', verifyTokenMiddleware, requireAnyPermission('dashboard'), documentAssignments.listDeliveryBoyOptions);
+router.post('/document-assignments', verifyTokenMiddleware, requireAnyPermission('dashboard'), receiveAssignmentDocument, documentAssignments.create);
+router.get('/document-assignments/:id/link', verifyTokenMiddleware, requireAnyPermission('dashboard'), documentAssignments.fileLinks('admin'));
 router.put('/document-assignments/:id/reopen', verifyTokenMiddleware, requireRole('admin'), documentAssignments.reopen);
 router.get('/', staffController.getStaff);
 router.get('/search', staffController.searchStaff);

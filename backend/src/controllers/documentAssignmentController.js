@@ -54,6 +54,16 @@ export async function listAdmin(_req, res) {
   } catch (error) { console.error(error); return res.status(500).json({ error: 'Unable to load assignments.' }); }
 }
 
+export async function listDeliveryBoyOptions(_req, res) {
+  try {
+    const [rows] = await db.query(`SELECT id, name FROM delivery_boys WHERE is_active=1 ORDER BY name`);
+    return res.json(rows);
+  } catch (error) {
+    console.error('Load delivery boy assignment options failed:', error);
+    return res.status(500).json({ error: 'Unable to load delivery boy options.' });
+  }
+}
+
 export async function listMine(req, res) {
   try {
     const [rows] = await db.query(`SELECT a.*, DATE_FORMAT(a.work_date, '%Y-%m-%d') AS work_date, c.name AS company_name, m.name AS marketing_staff_name FROM document_assignments a

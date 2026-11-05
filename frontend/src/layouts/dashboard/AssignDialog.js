@@ -103,7 +103,7 @@ function AssignDialog({ open, onClose, companies }) {
   useEffect(() => {
     if (!open) return;
     fetch(`${API}/staff/document-assignments`, { headers: authHeaders() }).then((res) => res.ok ? res.json() : []).then((data) => setAssignments(Array.isArray(data) ? data : [])).catch(() => setAssignments([]));
-    fetch(`${API}/delivery-boy`, { headers: authHeaders() }).then((res) => res.ok ? res.json() : []).then((data) => setDeliveryBoys(Array.isArray(data) ? data : [])).catch(() => setDeliveryBoys([]));
+    fetch(`${API}/staff/document-assignment-delivery-boys`, { headers: authHeaders() }).then((res) => res.ok ? res.json() : []).then((data) => setDeliveryBoys(Array.isArray(data) ? data : [])).catch(() => setDeliveryBoys([]));
     fetch(`${API}/staff`, { headers: authHeaders() })
       .then((res) => (res.ok ? res.json() : []))
       .then((data) => setStaffByCompany((prev) => ({ ...prev, all: (Array.isArray(data) ? data : []).filter((s) => !s.staff_category || s.staff_category === "company_staff") })))
@@ -193,7 +193,7 @@ function AssignDialog({ open, onClose, companies }) {
         form.append("remarks", row.remarks);
         const response = await fetch(`${API}/staff/document-assignments`, { method: "POST", headers: authHeaders(), body: form });
         const data = await response.json().catch(() => ({}));
-        if (!response.ok) throw new Error(data.error || "Unable to assign document.");
+        if (!response.ok) throw new Error(data.error || (response.status === 413 ? "The server rejected this file size. Keep the invoice under 19 MB." : "Unable to assign document."));
       }
       const response = await fetch(`${API}/staff/document-assignments`, { headers: authHeaders() });
       setAssignments(response.ok ? await response.json() : []);
