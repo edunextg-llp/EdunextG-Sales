@@ -218,7 +218,7 @@ function AssignDialog({ open, onClose, companies }) {
                 <TableCell sx={headCellSx}>Company</TableCell>
                 <TableCell sx={headCellSx}>Marketing Person</TableCell>
                 <TableCell sx={headCellSx}>Area</TableCell>
-                <TableCell sx={headCellSx}>Invoice (Optional)</TableCell>
+                <TableCell sx={headCellSx}>Invoice</TableCell>
                 <TableCell sx={headCellSx}>Assign To</TableCell>
                 <TableCell sx={headCellSx}>Remarks</TableCell>
                 <TableCell sx={{ ...headCellSx, width: 48 }} />
@@ -298,7 +298,7 @@ function AssignDialog({ open, onClose, companies }) {
                     </TableCell>
                     <TableCell sx={cellSx}>
                       <MDButton component="label" variant="outlined" color="info" size="small" sx={{ whiteSpace: "nowrap" }}>
-                        <Icon sx={{ mr: 0.5 }}>upload_file</Icon> Upload invoice (optional)
+                        <Icon sx={{ mr: 0.5 }}>upload_file</Icon> Upload invoice
                         <input
                           hidden
                           type="file"
@@ -343,7 +343,7 @@ function AssignDialog({ open, onClose, companies }) {
                         size="small"
                         multiline
                         maxRows={3}
-                        placeholder="Optional"
+                        placeholder="Add remarks"
                         value={row.remarks}
                         inputProps={{ maxLength: 500, "aria-label": "Remarks" }}
                         onChange={(e) => updateRow(row.key, { remarks: e.target.value })}
