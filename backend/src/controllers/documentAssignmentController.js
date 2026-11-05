@@ -54,8 +54,8 @@ export async function create(req, res) {
     }
     if (req.file) {
       if (!isCloudinaryConfigured()) return res.status(503).json({ error: 'Document storage is not configured.' });
-      // Images keep 'auto'; PDFs and other documents are stored as 'raw' so Cloudinary's
-      // "block PDF delivery" setting cannot stop them from opening.
+      // Images keep 'auto'; PDFs and other documents are stored as 'raw' to preserve
+      // the uploaded file. PDF viewing is handled with a short-lived signed link below.
       const isImage = String(req.file.mimetype || '').startsWith('image/');
       const extension = (String(req.file.originalname || '').match(/\.([a-z0-9]{1,8})$/i)?.[1] || (req.file.mimetype === 'application/pdf' ? 'pdf' : '')).toLowerCase();
       const publicId = `assignment_${Date.now()}${!isImage && extension ? `.${extension}` : ''}`;

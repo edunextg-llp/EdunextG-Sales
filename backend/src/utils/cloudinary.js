@@ -116,8 +116,11 @@ export function cloudinaryFileLinks(deliveryUrl) {
     const { resourceType, type, publicId, format } = parsed;
     const expiresAt = Math.floor(Date.now() / 1000) + 60 * 60;
     const signed = (attachment) => cloudinary.utils.private_download_url(publicId, format, { resource_type: resourceType, type, attachment, expires_at: expiresAt });
-    // Old PDFs stored as "image" can be blocked on the public link, so view them via the signed link.
-    const blockedPdf = resourceType === 'image' && format.toLowerCase() === 'pdf';
+    // Cloudinary can block public PDF delivery (especially on free product
+    // environments). Use its signed download endpoint with attachment=false
+    // for viewing, for both legacy image PDFs and PDFs stored as raw files.
+    const rawPdf = resourceType === 'raw' && publicId.toLowerCase().endsWith('.pdf');
+    const blockedPdf = (resourceType === 'image' && format.toLowerCase() === 'pdf') || rawPdf;
     return { viewUrl: blockedPdf ? signed(false) : deliveryUrl, downloadUrl: signed(true) };
 }
 
