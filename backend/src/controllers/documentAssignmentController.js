@@ -1,5 +1,22 @@
 import db from '../config/db.js';
-import { uploadBufferToCloudinary, isCloudinaryConfigured, cloudinaryFileLinks } from '../utils/cloudinary.js';
+import { uploadBufferToCloudinary, isCloudinaryConfigured, cloudinaryFileLinks, createAssignmentUploadSignature, verifyAssignmentUpload } from '../utils/cloudinary.js';
+
+export async function signAssignmentUpload(req, res) {
+  try {
+    const fileName = String(req.body?.fileName || '').trim();
+    const mimeType = String(req.body?.mimeType || '').trim().toLowerCase();
+    if (!fileName || fileName.length > 255 || !(/\.(pdf|png|jpe?g|webp)$/i.test(fileName))) {
+      return res.status(400).json({ error: 'Choose a PDF, PNG, JPG or WebP file.' });
+    }
+    if (!mimeType || !(mimeType === 'application/pdf' || mimeType.startsWith('image/'))) {
+      return res.status(400).json({ error: 'Unsupported invoice file type.' });
+    }
+    return res.json(createAssignmentUploadSignature({ fileName, mimeType }));
+  } catch (error) {
+    console.error('Sign assignment upload failed:', error);
+    return res.status(503).json({ error: 'Direct document upload is unavailable.' });
+  }
+}
 
 export async function create(req, res) {
   try {
@@ -22,6 +39,19 @@ export async function create(req, res) {
     if (!eligible.length) return res.status(400).json({ error: 'Choose an active person.' });
     let documentUrl = null;
     let documentName = null;
+    const signedUrl = String(req.body?.documentUrl || '').trim();
+    if (signedUrl) {
+      const validUpload = verifyAssignmentUpload({
+        documentUrl: signedUrl,
+        publicId: String(req.body?.uploadPublicId || ''),
+        resourceType: String(req.body?.uploadResourceType || ''),
+        timestamp: req.body?.uploadTimestamp,
+        signature: String(req.body?.uploadSignature || ''),
+      });
+      if (!validUpload) return res.status(400).json({ error: 'The uploaded invoice could not be verified. Please upload it again.' });
+      documentUrl = signedUrl;
+      documentName = String(req.body?.documentName || '').trim().slice(0, 255) || null;
+    }
     if (req.file) {
       if (!isCloudinaryConfigured()) return res.status(503).json({ error: 'Document storage is not configured.' });
       // Images keep 'auto'; PDFs and other documents are stored as 'raw' so Cloudinary's

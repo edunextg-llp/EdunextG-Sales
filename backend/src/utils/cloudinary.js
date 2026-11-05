@@ -1,4 +1,5 @@
 import { v2 as cloudinary } from 'cloudinary';
+import { randomUUID, timingSafeEqual } from 'node:crypto';
 import dotenv from 'dotenv';
 import { fileURLToPath } from 'node:url';
 
@@ -47,6 +48,47 @@ export function uploadBufferToCloudinary(buffer, options = {}) {
 
         uploadStream.end(buffer);
     });
+}
+
+export function createAssignmentUploadSignature({ fileName, mimeType }) {
+    ensureCloudinaryConfigured();
+    const isImage = String(mimeType || '').startsWith('image/');
+    const extension = String(fileName || '').match(/\.([a-z0-9]{1,8})$/i)?.[1]?.toLowerCase() || '';
+    const publicId = `assignment_${randomUUID()}${!isImage && extension ? `.${extension}` : ''}`;
+    const timestamp = Math.floor(Date.now() / 1000);
+    const params = { folder: 'staff-assignments', public_id: publicId, timestamp };
+    return {
+        ...params,
+        signature: cloudinary.utils.api_sign_request(params, process.env.CLOUDINARY_API_SECRET),
+        apiKey: process.env.CLOUDINARY_API_KEY,
+        cloudName: process.env.CLOUDINARY_CLOUD_NAME,
+        resourceType: isImage ? 'image' : 'raw',
+    };
+}
+
+export function verifyAssignmentUpload({ documentUrl, publicId, resourceType, timestamp, signature }) {
+    if (!isCloudinaryConfigured() || !documentUrl || !publicId || !['image', 'raw'].includes(resourceType)) return false;
+    const numericTimestamp = Number(timestamp);
+    if (!Number.isInteger(numericTimestamp) || Math.abs(Math.floor(Date.now() / 1000) - numericTimestamp) > 60 * 60) return false;
+    const params = { folder: 'staff-assignments', public_id: publicId, timestamp: numericTimestamp };
+    const expected = cloudinary.utils.api_sign_request(params, process.env.CLOUDINARY_API_SECRET);
+    const expectedBuffer = Buffer.from(expected);
+    const providedBuffer = Buffer.from(String(signature || ''));
+    if (expectedBuffer.length !== providedBuffer.length || !timingSafeEqual(expectedBuffer, providedBuffer)) return false;
+    try {
+        const parsed = new URL(documentUrl);
+        const expectedPath = `/${process.env.CLOUDINARY_CLOUD_NAME}/${resourceType}/upload/`;
+        const uploadedName = decodeURIComponent(parsed.pathname).split('/').at(-1);
+        const publicIdMatches = resourceType === 'image'
+            ? uploadedName === publicId || uploadedName.startsWith(`${publicId}.`)
+            : uploadedName === publicId;
+        return parsed.hostname === 'res.cloudinary.com'
+            && parsed.pathname.includes(expectedPath)
+            && decodeURIComponent(parsed.pathname).includes('/staff-assignments/')
+            && publicIdMatches;
+    } catch {
+        return false;
+    }
 }
 
 function parseDeliveryUrl(deliveryUrl) {

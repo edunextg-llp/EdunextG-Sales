@@ -76,6 +76,7 @@ router.post('/', staffController.createStaff);
 router.post('/upload-document', receiveDocument, staffController.uploadStaffDocument);
 router.get('/document-assignments', verifyTokenMiddleware, requireAnyPermission('dashboard'), documentAssignments.listAdmin);
 router.get('/document-assignment-delivery-boys', verifyTokenMiddleware, requireAnyPermission('dashboard'), documentAssignments.listDeliveryBoyOptions);
+router.post('/document-assignments/upload-signature', verifyTokenMiddleware, requireAnyPermission('dashboard'), documentAssignments.signAssignmentUpload);
 router.post('/document-assignments', verifyTokenMiddleware, requireAnyPermission('dashboard'), receiveAssignmentDocument, documentAssignments.create);
 router.get('/document-assignments/:id/link', verifyTokenMiddleware, requireAnyPermission('dashboard'), documentAssignments.fileLinks('admin'));
 router.put('/document-assignments/:id/reopen', verifyTokenMiddleware, requireRole('admin'), documentAssignments.reopen);

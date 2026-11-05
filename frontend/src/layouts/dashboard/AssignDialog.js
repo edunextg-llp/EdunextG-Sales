@@ -182,8 +182,35 @@ function AssignDialog({ open, onClose, companies }) {
     setSaving(true);
     try {
       for (const row of rows) {
+        let uploadedDocument = null;
+        if (row.invoiceFile) {
+          const signatureResponse = await fetch(`${API}/staff/document-assignments/upload-signature`, {
+            method: "POST",
+            headers: { ...authHeaders(), "Content-Type": "application/json" },
+            body: JSON.stringify({ fileName: row.invoiceFile.name, mimeType: row.invoiceFile.type }),
+          });
+          const signature = await signatureResponse.json().catch(() => ({}));
+          if (!signatureResponse.ok) throw new Error(signature.error || "Unable to prepare the invoice upload.");
+          const cloudinaryForm = new FormData();
+          cloudinaryForm.append("file", row.invoiceFile);
+          cloudinaryForm.append("api_key", signature.apiKey);
+          cloudinaryForm.append("timestamp", String(signature.timestamp));
+          cloudinaryForm.append("signature", signature.signature);
+          cloudinaryForm.append("folder", signature.folder);
+          cloudinaryForm.append("public_id", signature.public_id);
+          const cloudinaryResponse = await fetch(`https://api.cloudinary.com/v1_1/${signature.cloudName}/${signature.resourceType}/upload`, { method: "POST", body: cloudinaryForm });
+          const cloudinaryData = await cloudinaryResponse.json().catch(() => ({}));
+          if (!cloudinaryResponse.ok || !cloudinaryData.secure_url) throw new Error(cloudinaryData.error?.message || "Invoice upload failed. Please retry.");
+          uploadedDocument = {
+            documentUrl: cloudinaryData.secure_url,
+            documentName: row.invoiceFile.name,
+            uploadPublicId: signature.public_id,
+            uploadResourceType: signature.resourceType,
+            uploadTimestamp: String(signature.timestamp),
+            uploadSignature: signature.signature,
+          };
+        }
         const form = new FormData();
-        if (row.invoiceFile) form.append("file", row.invoiceFile);
         form.append("workDate", row.workDate);
         form.append("type", row.type);
         form.append("companyId", row.companyId);
@@ -191,6 +218,7 @@ function AssignDialog({ open, onClose, companies }) {
         form.append("area", row.area);
         form.append("assignTo", row.assignTo || defaultAssignee);
         form.append("remarks", row.remarks);
+        if (uploadedDocument) Object.entries(uploadedDocument).forEach(([key, value]) => form.append(key, value));
         const response = await fetch(`${API}/staff/document-assignments`, { method: "POST", headers: authHeaders(), body: form });
         const data = await response.json().catch(() => ({}));
         if (!response.ok) throw new Error(data.error || (response.status === 413 ? "The server rejected this file size. Keep the invoice under 19 MB." : "Unable to assign document."));

@@ -133,7 +133,7 @@ export const enforceManagedUserApiScope = (req, res, next) => {
     const isGet = method === 'GET';
 
     let allowed = false;
-    if (/^\/document-assignments(?:\/\d+\/link)?$/.test(path) || path === '/document-assignment-delivery-boys') {
+    if (/^\/document-assignments(?:\/upload-signature|\/\d+\/link)?$/.test(path) || path === '/document-assignment-delivery-boys') {
         allowed = (method === 'GET' || method === 'POST') && permissions.has('dashboard');
     } else if (/^\/areas\/(?:staff|company)\/\d+$/.test(path)) {
         // Dashboard users need the Assign dialog's queues, assignee options and area lists.
