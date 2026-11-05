@@ -104,9 +104,25 @@ export const AuthProvider = ({ children }) => {
     window.fetch = async function (...args) {
       let [resource, config] = args;
       const url = typeof resource === "string" ? resource : resource?.url || "";
+      let requestUrl;
+      let apiBaseUrl;
+      try {
+        requestUrl = new URL(url, window.location.origin);
+        apiBaseUrl = new URL(API_BASE, window.location.origin);
+      } catch (_error) {
+        requestUrl = null;
+        apiBaseUrl = null;
+      }
+      const apiBasePath = apiBaseUrl?.pathname.replace(/\/+$/, "") || "";
+      const isConfiguredApiUrl = Boolean(
+        requestUrl
+        && apiBaseUrl
+        && requestUrl.origin === apiBaseUrl.origin
+        && (requestUrl.pathname === apiBasePath || requestUrl.pathname.startsWith(`${apiBasePath}/`))
+      );
 
       let currentToken = getStoredValue(AUTH_KEYS.token);
-      const isApiCall = url.includes(API_BASE) && !url.includes("/api/auth/");
+      const isApiCall = isConfiguredApiUrl && !requestUrl.pathname.startsWith(`${apiBasePath}/auth/`);
 
       // Renew the token shortly before it expires instead of waiting for a 401.
       if (isApiCall && currentToken) {
@@ -116,7 +132,7 @@ export const AuthProvider = ({ children }) => {
           if (freshToken) currentToken = freshToken;
         }
       }
-      if (url.includes(API_BASE) && !url.includes("/api/auth/")) {
+      if (isConfiguredApiUrl && !requestUrl.pathname.startsWith(`${apiBasePath}/auth/`)) {
         config = config || {};
         config.headers = config.headers || {};
         if (currentToken) {
