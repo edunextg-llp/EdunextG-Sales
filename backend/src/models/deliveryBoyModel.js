@@ -286,7 +286,8 @@ class DeliveryBoyModel {
     }
 
     static async getAssignedSales(deliveryBoyId, { status = '', date = '' } = {}) {
-        const params = [deliveryBoyId];
+        // First for the material-report subquery, second for the WHERE clause.
+        const params = [deliveryBoyId, deliveryBoyId];
         let where = `WHERE ss.delivery_boy_id = ?`;
 
         if (status) {
@@ -324,7 +325,15 @@ class DeliveryBoyModel {
                              SELECT 1 FROM delivery_boy_collections submitted
                              WHERE submitted.sale_id = ss.id
                          )
-                         THEN 1 ELSE 0 END AS can_update_payment
+                         THEN 1 ELSE 0 END AS can_update_payment,
+                    -- Extra / less material can be reported for 24 hours after delivery.
+                    CASE WHEN ss.packaging_status = 'delivered'
+                         AND ssh.delivered_at > NOW() - INTERVAL 1 DAY
+                         AND ssh.delivered_at <= NOW()
+                         THEN 1 ELSE 0 END AS can_report_material,
+                    COALESCE(dmr.extra_reported, 0) AS extra_reported,
+                    dmr.less_amount AS less_reported_amount,
+                    dmr.less_status AS less_review_status
              FROM staff_sales ss
              LEFT JOIN staff_counters sc ON ss.outlet_id = sc.id
              LEFT JOIN staff s ON ss.staff_id = s.id
@@ -335,6 +344,15 @@ class DeliveryBoyModel {
                  FROM staff_sale_status_history
                  GROUP BY sale_id
              ) ssh ON ssh.sale_id = ss.id
+             LEFT JOIN (
+                 SELECT sale_id,
+                        MAX(report_type = 'extra') AS extra_reported,
+                        MAX(CASE WHEN report_type = 'less' AND review_status <> 'rejected' THEN amount END) AS less_amount,
+                        SUBSTRING_INDEX(GROUP_CONCAT(CASE WHEN report_type = 'less' THEN review_status END ORDER BY id DESC), ',', 1) AS less_status
+                 FROM delivery_material_reports
+                 WHERE delivery_boy_id = ?
+                 GROUP BY sale_id
+             ) dmr ON dmr.sale_id = ss.id
              ${where}
              ORDER BY ss.delivery_date DESC, ss.id DESC`,
             params

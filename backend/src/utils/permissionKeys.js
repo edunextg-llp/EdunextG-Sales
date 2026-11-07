@@ -13,6 +13,9 @@ export const PERMISSION_KEYS = [
     'requisition_target_approval',
     // Approvals > Overdue Requests: approve 14+ day overdue requests up to Rs. 1,000.
     'overdue_approval',
+    // Approvals > Material Reports: review "less material" reports from delivery boys
+    // (seeded for SUNANDA BISWAS). Admin can always review.
+    'material_report_review',
 ];
 
 // Extra options that only make sense together with a page permission.
@@ -44,6 +47,7 @@ export const NEW_PERMISSION_COLUMNS = [
     ['overdue_7_days', null],
     ['requisition_target_approval', null],
     ['overdue_approval', null],
+    ['material_report_review', null],
 ];
 
 export const permissionColumnsSql = (alias = 'p') =>

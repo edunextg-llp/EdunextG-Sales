@@ -4,6 +4,7 @@ import express from 'express';
 const router = express.Router();
 import * as deliveryBoyController from '../controllers/deliveryBoyController.js';
 import * as documentAssignments from '../controllers/documentAssignmentController.js';
+import * as materialReports from '../controllers/materialReportController.js';
 import jwt from 'jsonwebtoken';
 import { requireAnyPermission, requireRole, verifyTokenMiddleware } from '../middlewares/authMiddleware.js';
 
@@ -59,6 +60,11 @@ router.post('/mobile/credit-dues/:saleId/payments', verifyDeliveryBoyToken, requ
 router.get('/mobile/pending-collections', verifyDeliveryBoyToken, deliveryBoyController.getMobilePendingCollections);
 router.put('/mobile/pending-collections/:collectionId', verifyDeliveryBoyToken, requireCreditPhoto, deliveryBoyController.editMobilePendingCollection);
 router.put('/mobile/items/:saleId/collection', verifyDeliveryBoyToken, requireCreditPhoto, deliveryBoyController.updateMobileCollection);
+// Extra / less material found after delivery.
+router.get('/mobile/stars', verifyDeliveryBoyToken, materialReports.getMobileStars);
+router.get('/mobile/items/:saleId/material-reports', verifyDeliveryBoyToken, materialReports.getMobileSaleReports);
+router.post('/mobile/items/:saleId/material-reports/extra', verifyDeliveryBoyToken, receiveCreditPhoto, materialReports.submitMobileExtra);
+router.post('/mobile/items/:saleId/material-reports/less', verifyDeliveryBoyToken, materialReports.submitMobileLess);
 router.get('/permissions', verifyTokenMiddleware, requireRole('admin'), deliveryBoyController.getPermissionUsers);
 router.put('/:id/permissions', verifyTokenMiddleware, requireRole('admin'), deliveryBoyController.updatePermissionUser);
 router.post('/', verifyTokenMiddleware, requireRole('admin'), deliveryBoyController.createDeliveryBoy);

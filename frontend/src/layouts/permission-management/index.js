@@ -65,6 +65,11 @@ const PERMISSIONS = [
     "Overdue Approval (up to ₹1,000)",
     "Open Approvals > Overdue Requests and approve or reject outlets overdue by 14 days or more when the overdue amount is ₹1,000 or less. Approving creates the sale.",
   ],
+  [
+    "material_report_review",
+    "Material Report Review",
+    "Open Material Reports and approve or reject 'less material' reports from delivery boys. Rejecting adds the amount back to the bill.",
+  ],
 ];
 // Extra options shown under a page, only while that page is switched on.
 const SUB_OPTIONS = { add_sales: ["overdue_7_days"] };
@@ -74,7 +79,7 @@ const PERMISSION_FOLDERS = [
   { key: "delivery_manager", label: "Delivery Manager", icon: "local_shipping", description: "Packaging, delivery, report and delivered orders.", children: ["packaging", "delivery", "delivery_report", "delivered"] },
   { key: "staff_management", label: "Staff Management", icon: "badge", description: "Create staff, locations and outlets.", children: ["create_staff", "location_assignments", "add_outlet"] },
   { key: "chalan", label: "Chalan", icon: "receipt_long", description: "The full Chalan workflow.", children: ["chalan_add_sales", "chalan_packaging", "chalan_delivery", "chalan_delivered", "chalan_return"] },
-  { key: "approvals", label: "Approvals", icon: "verified", description: "Requisition, Below Target and Overdue approvals.", children: ["requisition_approval", "requisition_target_approval", "overdue_approval"] },
+  { key: "approvals", label: "Approvals", icon: "verified", description: "Requisition, Below Target and Overdue approvals.", children: ["requisition_approval", "requisition_target_approval", "overdue_approval", "material_report_review"] },
 ];
 const FOLDER_KEYS = PERMISSION_FOLDERS.flatMap((folder) => [folder.key, ...folder.children]);
 const GENERAL_GROUP = {

@@ -1188,6 +1188,32 @@ function UpdatePayment() {
     return Math.max(0, Math.round((creditAmount - paidAgainstCredit) * 100) / 100);
   };
 
+  // Open balance this payment is measured against (editing adds back the payment's old amount).
+  const getFormRemainingBalance = () => {
+    let remaining = paymentSummary?.balanceAmount ?? getRemainingBalance(paymentDialogSale);
+    if (editingPaymentId) {
+      const oldPayment = payments.find((p) => p.id === editingPaymentId);
+      if (oldPayment && ["cash", "upi", "cheque"].includes(oldPayment.payment_mode)) {
+        remaining += parseFloat(oldPayment.amount) || 0;
+      }
+    }
+    return Math.round((Number(remaining) || 0) * 100) / 100;
+  };
+  const editingPayment = editingPaymentId ? payments.find((p) => p.id === editingPaymentId) : null;
+  const formAmount = parseFloat(paymentForm.amount);
+  const formRemaining = paymentDialogSale ? getFormRemainingBalance() : 0;
+  // Collecting less than the balance leaves the rest due, so the invoice photo is required
+  // (same as Credit). Paying off an existing credit entry is exempt: its photo already exists.
+  const isPartialPayment =
+    Boolean(paymentDialogSale) &&
+    ["cash", "upi", "cheque"].includes(paymentForm.paymentMode) &&
+    !activeCreditPayment &&
+    !editingPayment?.parent_credit_payment_id &&
+    Number.isFinite(formAmount) &&
+    formAmount > 0 &&
+    formRemaining - formAmount > 0.001;
+  const needsInvoicePhoto = paymentForm.paymentMode === "credit" || isPartialPayment;
+
   const validatePaymentForm = () => {
     const amount = parseFloat(paymentForm.amount);
 
@@ -1248,6 +1274,15 @@ function UpdatePayment() {
 
     if (paymentForm.paymentMode === "cheque" && !paymentForm.referenceNo.trim()) {
       alert("Please enter cheque number.");
+      return null;
+    }
+
+    if (needsInvoicePhoto && photoSaleId !== Number(paymentDialogSale?.id)) {
+      alert(
+        paymentForm.paymentMode === "credit"
+          ? "Upload a credit photo before submitting Credit."
+          : `Amount is less than the balance (₹${formRemaining.toFixed(2)}). Upload the invoice photo first.`
+      );
       return null;
     }
 
@@ -2448,13 +2483,18 @@ function UpdatePayment() {
                       The full remaining balance is placed on credit for up to 14 days. Balance stays the same until paid by cash, UPI, or cheque.
                     </MDTypography>
                   )}
-                  {paymentForm.paymentMode === "credit" && paymentDialogSale && <CreditPhoto key={paymentDialogSale.id} api={API} saleId={Number(paymentDialogSale.id)} disabled={addingPayment || photoBusy} onBusyChange={setPhotoBusy} onPhotoReady={setPhotoSaleId} />}
+                  {isPartialPayment && (
+                    <MDTypography variant="caption" color="warning" display="block" mt={1}>
+                      Amount is less than the balance (₹{formRemaining.toFixed(2)}). The rest stays due, so upload the invoice photo.
+                    </MDTypography>
+                  )}
+                  {needsInvoicePhoto && paymentDialogSale && <CreditPhoto key={paymentDialogSale.id} api={API} saleId={Number(paymentDialogSale.id)} disabled={addingPayment || photoBusy} onBusyChange={setPhotoBusy} onPhotoReady={setPhotoSaleId} />}
                   <MDBox mt={2} display="flex" gap={1} flexWrap="wrap">
                     <MDButton
                       variant="gradient"
                       color="info"
                       onClick={handleSavePayment}
-                      disabled={addingPayment || photoBusy || (paymentForm.paymentMode === "credit" && photoSaleId !== Number(paymentDialogSale?.id))}
+                      disabled={addingPayment || photoBusy || (needsInvoicePhoto && photoSaleId !== Number(paymentDialogSale?.id))}
                     >
                       <Icon sx={{ mr: 1 }}>{editingPaymentId ? "save" : "add"}</Icon>
                       {addingPayment

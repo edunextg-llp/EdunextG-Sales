@@ -19,6 +19,7 @@ import AddSales from "layouts/add-sales";
 import PurchaseRequisition from "layouts/purchase-requisition";
 import BelowTargetApprovals from "layouts/below-target-approvals";
 import OverdueRequests from "layouts/overdue-requests";
+import MaterialReports from "layouts/material-reports";
 import StaffOverdueResponses from "layouts/overdue-requests/StaffResponses";
 import SuspenseRequests from "layouts/suspense-requests";
 import OtherDayRequests from "layouts/other-day-requests";
@@ -398,6 +399,17 @@ const routes = [
         allowedRoles: ["admin"],
       },
     ],
+  },
+  {
+    // Extra / less material reported by delivery boys. Packaging staff see the invoices they
+    // packed and give the reason; the reviewer (material_report_review) approves less material.
+    type: "collapse",
+    name: "Material Reports",
+    key: "material-reports",
+    icon: <Icon fontSize="small">inventory</Icon>,
+    route: "/material-reports",
+    component: <MaterialReports />,
+    allowedRoles: ["admin", "packaging_staff"],
   },
   {
     type: "collapse",

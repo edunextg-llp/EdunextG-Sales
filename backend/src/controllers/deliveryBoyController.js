@@ -1,6 +1,7 @@
 import DeliveryBoyModel from '../models/deliveryBoyModel.js';
 import StaffModel from '../models/staffModel.js';
 import DeliveryCollectionModel from '../models/deliveryCollectionModel.js';
+import MaterialReportModel from '../models/materialReportModel.js';
 import { DMS_PERMISSION_KEYS, PERMISSION_KEYS, PERMISSION_REQUIRES } from '../utils/permissionKeys.js';
 import CompanyModel from '../models/companyModel.js';
 import {
@@ -365,6 +366,8 @@ export const getMobileProfile = async (req, res) => {
             delivery_login_id: deliveryBoy.delivery_login_id,
             company_name: deliveryBoy.company_name,
             company_ids: deliveryBoy.company_ids,
+            // 1 star for every extra material reported after delivery.
+            stars: await MaterialReportModel.getStars(deliveryBoy.id).catch(() => 0),
         });
     } catch (error) {
         console.error('Error fetching delivery boy mobile profile:', error);

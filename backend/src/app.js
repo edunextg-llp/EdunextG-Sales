@@ -8,6 +8,7 @@ import staffMobileRoutes from './routes/staffMobileRoutes.js';
 import chalanRoutes from './routes/chalanRoutes.js';
 import authRoutes from './routes/authRoutes.js';
 import auditRoutes from './routes/auditRoutes.js';
+import materialReportRoutes from './routes/materialReportRoutes.js';
 import { auditStaffChanges } from './middlewares/auditMiddleware.js';
 import { requestContextMiddleware } from './utils/requestContext.js';
 import {
@@ -42,6 +43,7 @@ app.use(
 );
 app.use('/api/audit-logs', verifyTokenMiddleware, requireRole('admin'), auditRoutes);
 app.use('/api/delivery-boy', deliveryBoyRoutes);
+app.use('/api/material-reports', verifyTokenMiddleware, requireRole('admin', 'packaging_staff', 'delivery_boy', 'bawarchee_staff'), materialReportRoutes);
 app.use('/api/my-document-assignments', myDocumentAssignmentRoutes);
 app.use('/api/staff-mobile', staffMobileRoutes);
 app.use('/api/chalan', verifyTokenMiddleware, requireAnyPermission(

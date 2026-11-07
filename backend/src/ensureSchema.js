@@ -493,6 +493,15 @@ export async function ensureSchema() {
                 await connection.query(`UPDATE delivery_user_permissions SET can_${key} = can_${copyFrom}`);
             }
             console.log(`can_${key} on delivery_user_permissions`);
+            // SUNANDA BISWAS reviews "less material" delivery reports. Seeded once, when the column is added.
+            if (key === 'material_report_review') {
+                await connection.query(
+                    `INSERT INTO delivery_user_permissions (delivery_boy_id, can_material_report_review)
+                     SELECT d.id, 1 FROM delivery_boys d
+                     WHERE UPPER(TRIM(d.name)) = 'SUNANDA BISWAS' AND d.is_active = 1
+                     ON DUPLICATE KEY UPDATE can_material_report_review = 1`
+                );
+            }
             // Tanushree reviews overdue requests up to Rs. 1,000. Seeded once, when the column is added.
             if (key === 'overdue_approval') {
                 await connection.query(
@@ -2179,6 +2188,38 @@ export async function ensureSchema() {
             );
         `);
         console.log('delivery_transfers table verified');
+
+        // After delivery a delivery boy can report extra material (photo, earns 1 star) or
+        // less material (amount is taken off the bill at once and reviewed by the reviewer).
+        // The packaging staff who packed the invoice gives the reason for every report.
+        await connection.query(`
+            CREATE TABLE IF NOT EXISTS delivery_material_reports (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                sale_id INT NOT NULL,
+                delivery_boy_id INT NOT NULL,
+                report_type ENUM('extra', 'less') NOT NULL,
+                photo_url VARCHAR(1024) NULL,
+                amount DECIMAL(10, 2) NULL,
+                remarks TEXT NULL,
+                star_awarded TINYINT(1) NOT NULL DEFAULT 0,
+                packed_by_id INT NULL,
+                packer_reason TEXT NULL,
+                packer_reason_at DATETIME NULL,
+                cancellation_id INT NULL,
+                review_status ENUM('not_required', 'pending', 'approved', 'rejected') NOT NULL DEFAULT 'not_required',
+                review_remarks TEXT NULL,
+                reviewed_by_type VARCHAR(20) NULL,
+                reviewed_by_id INT NULL,
+                reviewed_at DATETIME NULL,
+                created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                INDEX idx_material_reports_sale (sale_id),
+                INDEX idx_material_reports_delivery_boy (delivery_boy_id),
+                INDEX idx_material_reports_packer (packed_by_id),
+                INDEX idx_material_reports_review (report_type, review_status),
+                FOREIGN KEY (sale_id) REFERENCES staff_sales(id) ON DELETE CASCADE
+            );
+        `);
+        console.log('delivery_material_reports table verified');
 
         console.log('Database schema verified');
     } finally {
