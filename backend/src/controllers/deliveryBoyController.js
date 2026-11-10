@@ -496,6 +496,7 @@ export const updateMobileCollection = async (req, res) => {
             collection,
         });
     } catch (error) {
+        if (error.message === 'PAYMENT_ALREADY_PENDING') return sendMobilePaymentError(res, error, 'Error updating delivery boy collection:');
         console.error('Error updating delivery boy collection:', error);
         res.status(500).json({ error: 'Internal server error' });
     }
@@ -542,6 +543,7 @@ export function sendMobilePaymentError(res, error, fallback) {
     if (error.message === 'TAKEN_BILL_ALREADY_CREDIT') return res.status(400).json({ error: 'This Out Bill is already on credit. Select cash, UPI, or cheque.' });
     if (error.message === 'FULL_CREDIT_BALANCE_REQUIRED') return res.status(400).json({ error: 'Use the full outstanding balance when extending existing credit' });
     if (error.message === 'EXISTING_CREDIT_DUE') return res.status(400).json({ error: 'Credit is unavailable because this outlet already has a credit due' });
+    if (error.message === 'PAYMENT_FINAL_SUBMITTED') return res.status(409).json({ error: 'This payment was already final-submitted and can no longer be changed. D.B. Collection will settle it.' });
     if (error.message === 'PAYMENT_ALREADY_PENDING') return res.status(409).json({ error: `Rs. ${Number(error.pendingAmount).toFixed(2)} for this bill is already waiting in D.B. Collection. It can be collected again only after the office settles or removes that entry.` });
     if (['EXCEEDS_BALANCE', 'EXCEEDS_CREDIT_BALANCE'].includes(error.message)) return res.status(400).json({ error: `Amount exceeds remaining balance of ${error.remaining}` });
     console.error(fallback, error);
@@ -585,6 +587,18 @@ export const editMobilePendingCollection = async (req, res) => {
         res.status(200).json({ message: 'Payment updated. D.B. Collection will settle the new details.', ...result });
     } catch (error) {
         return sendMobilePaymentError(res, error, 'Error editing mobile pending collection:');
+    }
+};
+
+export const finalSubmitMobilePendingCollection = async (req, res) => {
+    try {
+        const collectionId = Number(req.params.collectionId);
+        if (!Number.isInteger(collectionId) || collectionId <= 0) return res.status(400).json({ error: 'Invalid payment' });
+        const result = await DeliveryCollectionModel.finalSubmitPendingCollection(req.deliveryBoyId, collectionId);
+        if (!result) return res.status(409).json({ error: 'This payment was already settled by the office and can no longer be changed' });
+        res.status(200).json({ message: 'Payment final-submitted. D.B. Collection will settle it.', ...result });
+    } catch (error) {
+        return sendMobilePaymentError(res, error, 'Error final-submitting mobile pending collection:');
     }
 };
 

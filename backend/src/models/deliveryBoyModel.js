@@ -346,7 +346,7 @@ class DeliveryBoyModel {
              ) ssh ON ssh.sale_id = ss.id
              LEFT JOIN (
                  SELECT sale_id,
-                        MAX(report_type = 'extra') AS extra_reported,
+                        MAX(report_type = 'extra' AND review_status <> 'rejected') AS extra_reported,
                         MAX(CASE WHEN report_type = 'less' AND review_status <> 'rejected' THEN amount END) AS less_amount,
                         SUBSTRING_INDEX(GROUP_CONCAT(CASE WHEN report_type = 'less' THEN review_status END ORDER BY id DESC), ',', 1) AS less_status
                  FROM delivery_material_reports

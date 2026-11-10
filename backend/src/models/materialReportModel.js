@@ -5,10 +5,11 @@ import { getPendingCollectedAmount } from './staffPortalModel.js';
 import { currentActor } from '../utils/requestContext.js';
 
 // Extra / less material found by the delivery boy after delivery.
-//  - extra: delivery boy uploads a photo and earns 1 star.
-//  - less:  the amount is taken off the bill at once (an order_cancellations row), and the
-//           reviewer (material_report_review permission, e.g. SUNANDA BISWAS) approves or
-//           rejects it. Rejecting adds the amount back to the bill.
+//  - extra: product name + quantity (photo optional); the delivery boy earns 1 star at once.
+//           Reviewers approve it, or reject it and the star is taken back.
+//  - less:  the amount is taken off the bill at once (an order_cancellations row). Reviewers
+//           approve it, or reject it and the amount is added back to the bill.
+// Reviewers have the material_report_review permission (DEEP and SUNANDA BISWAS); admin sees everything.
 // Both go to the packaging staff who packed the invoice for a reason.
 
 export const LESS_MATERIAL_PRODUCT = 'Less material (delivery report)';
@@ -23,6 +24,7 @@ function reportError(code, extra = {}) {
 
 const REPORT_SELECT = `
     SELECT r.id, r.sale_id, CONCAT('BP', r.sale_id) AS bp_sale_id, r.report_type, r.photo_url, r.amount, r.remarks,
+           r.product_name, r.product_qty,
            r.star_awarded, r.packed_by_id, r.packer_reason,
            DATE_FORMAT(r.packer_reason_at, '%Y-%m-%d %H:%i:%s') AS packer_reason_at,
            r.review_status, r.review_remarks,
@@ -51,6 +53,7 @@ function mapReport(row) {
     return {
         ...row,
         amount: row.amount == null ? null : Number(row.amount),
+        product_qty: row.product_qty == null ? null : Number(row.product_qty),
         price: row.price == null ? null : Number(row.price),
         star_awarded: Number(row.star_awarded) === 1,
     };
@@ -95,7 +98,7 @@ class MaterialReportModel {
         return rows.length > 0;
     }
 
-    static async createExtra(deliveryBoyId, saleId, { photoUrl, remarks }) {
+    static async createExtra(deliveryBoyId, saleId, { productName, productQty, photoUrl, remarks }) {
         const connection = await db.getConnection();
         try {
             await connection.beginTransaction();
@@ -103,9 +106,9 @@ class MaterialReportModel {
             if (await this.hasActiveReport(connection, saleId, 'extra')) throw reportError('ALREADY_REPORTED');
             const [result] = await connection.execute(
                 `INSERT INTO delivery_material_reports
-                 (sale_id, delivery_boy_id, report_type, photo_url, remarks, star_awarded, packed_by_id, review_status)
-                 VALUES (?, ?, 'extra', ?, ?, 1, ?, 'not_required')`,
-                [saleId, deliveryBoyId, photoUrl, remarks || null, sale.packed_by_id || null]
+                 (sale_id, delivery_boy_id, report_type, product_name, product_qty, photo_url, remarks, star_awarded, packed_by_id, review_status)
+                 VALUES (?, ?, 'extra', ?, ?, ?, ?, 1, ?, 'pending')`,
+                [saleId, deliveryBoyId, productName, productQty, photoUrl || null, remarks || null, sale.packed_by_id || null]
             );
             await connection.commit();
             return result.insertId;
@@ -165,18 +168,13 @@ class MaterialReportModel {
     /**
      * Reports for the web page.
      *  scope 'all'     -> admin: everything
-     *  scope 'review'  -> reviewer: less-material reports
+     *  scope 'review'  -> reviewer: extra and less reports
      *  scope 'packer'  -> packaging staff: reports on invoices they packed
      */
     static async list({ scope, packerId, type = '', status = '', fromDate = '', toDate = '', search = '' }) {
         const where = [];
         const params = [];
         if (scope === 'packer') { where.push('r.packed_by_id = ?'); params.push(packerId); }
-        if (scope === 'review') where.push(`r.report_type = 'less'`);
-        if (scope === 'reviewer_or_packer') {
-            where.push(`(r.report_type = 'less' OR r.packed_by_id = ?)`);
-            params.push(packerId);
-        }
         if (type) { where.push('r.report_type = ?'); params.push(type); }
         if (status === 'reason_pending') where.push(`(r.packer_reason IS NULL OR TRIM(r.packer_reason) = '')`);
         else if (status) { where.push('r.review_status = ?'); params.push(status); }
@@ -231,20 +229,32 @@ class MaterialReportModel {
         return result.affectedRows > 0;
     }
 
-    // Approve keeps the deduction; reject removes it so the amount is due again.
+    // Less: approve keeps the deduction; reject removes it so the amount is due again.
+    // Extra: approve keeps the star; reject takes the star back.
     static async review(id, { approve, remarks }) {
         const connection = await db.getConnection();
         try {
             await connection.beginTransaction();
             const [rows] = await connection.execute(
-                `SELECT id, sale_id, cancellation_id, review_status FROM delivery_material_reports
-                 WHERE id = ? AND report_type = 'less' FOR UPDATE`,
+                `SELECT id, sale_id, report_type, cancellation_id, review_status FROM delivery_material_reports
+                 WHERE id = ? FOR UPDATE`,
                 [id]
             );
             const report = rows[0];
             if (!report) { await connection.rollback(); return null; }
             if (report.review_status !== 'pending') throw reportError('ALREADY_REVIEWED');
             const actor = currentActor();
+            if (report.report_type === 'extra') {
+                await connection.execute(
+                    `UPDATE delivery_material_reports
+                     SET review_status = ?, review_remarks = ?, reviewed_by_type = ?, reviewed_by_id = ?, reviewed_at = NOW(),
+                         star_awarded = ?
+                     WHERE id = ?`,
+                    [approve ? 'approved' : 'rejected', remarks || null, actor.type, actor.id, approve ? 1 : 0, id]
+                );
+                await connection.commit();
+                return true;
+            }
             if (report.cancellation_id) {
                 if (approve) {
                     await connection.execute(

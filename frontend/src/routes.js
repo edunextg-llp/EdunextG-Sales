@@ -402,7 +402,8 @@ const routes = [
   },
   {
     // Extra / less material reported by delivery boys. Packaging staff see the invoices they
-    // packed and give the reason; the reviewer (material_report_review) approves less material.
+    // packed and give the reason; reviewers (material_report_review: DEEP, SUNANDA BISWAS)
+    // approve or reject extra and less product.
     type: "collapse",
     name: "Material Reports",
     key: "material-reports",

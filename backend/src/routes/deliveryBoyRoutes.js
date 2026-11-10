@@ -59,6 +59,7 @@ router.get('/mobile/credit-dues', verifyDeliveryBoyToken, deliveryBoyController.
 router.post('/mobile/credit-dues/:saleId/payments', verifyDeliveryBoyToken, requireCreditPhoto, deliveryBoyController.collectMobileCreditDue);
 router.get('/mobile/pending-collections', verifyDeliveryBoyToken, deliveryBoyController.getMobilePendingCollections);
 router.put('/mobile/pending-collections/:collectionId', verifyDeliveryBoyToken, requireCreditPhoto, deliveryBoyController.editMobilePendingCollection);
+router.post('/mobile/pending-collections/:collectionId/final-submit', verifyDeliveryBoyToken, deliveryBoyController.finalSubmitMobilePendingCollection);
 router.put('/mobile/items/:saleId/collection', verifyDeliveryBoyToken, requireCreditPhoto, deliveryBoyController.updateMobileCollection);
 // Extra / less material found after delivery.
 router.get('/mobile/stars', verifyDeliveryBoyToken, materialReports.getMobileStars);

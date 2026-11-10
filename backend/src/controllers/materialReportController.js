@@ -51,26 +51,40 @@ export async function getMobileStars(req, res) {
     } catch (error) { return sendError(res, error, 'Stars load failed:'); }
 }
 
-// Multipart: file (photo) + optional remarks. Photo is checked before it is stored.
+// JSON or multipart: productName + productQty, optional remarks and optional photo (file).
 export async function submitMobileExtra(req, res) {
     const saleId = parseSaleId(req, res);
     if (!saleId) return undefined;
+    const productName = cleanText(req.body?.productName, 255);
+    if (productName.length < 2) return res.status(400).json({ error: 'Enter the extra product name.' });
+    const qtyResult = validateNumeric(req.body?.productQty, 'Quantity');
+    const productQty = qtyResult.value;
+    if (!qtyResult.valid || !Number.isFinite(productQty) || productQty <= 0 || productQty > 100000
+        || Math.abs(productQty * 100 - Math.round(productQty * 100)) > 0.000001) {
+        return res.status(400).json({ error: 'Enter a quantity greater than 0 (at most two decimal places).' });
+    }
     try {
         // Check access first so nothing is uploaded for a sale the delivery boy can't report.
         await MaterialReportModel.getReportableSale(db, req.deliveryBoyId, saleId);
-        if (!isCreditPhoto(req.file?.buffer)) return res.status(400).json({ error: 'Take a photo of the extra material (JPG, PNG, or WebP).' });
-        if (!isCloudinaryConfigured()) return res.status(503).json({ error: 'Photo storage is not configured. Please contact your administrator.' });
-        const photo = await compressPhoto(req.file.buffer, { targetBytes: MOBILE_TARGET_PHOTO_BYTES });
-        if (photo.bytes > MOBILE_MAX_PHOTO_BYTES) return res.status(413).json({ error: MOBILE_PHOTO_TOO_LARGE });
-        const upload = await uploadBufferToCloudinary(photo.buffer, {
-            folder: 'material-reports', resourceType: 'image', uploadOptions: { format: 'jpg' },
-        });
+        let photoUrl = null;
+        if (req.file?.buffer) {
+            if (!isCreditPhoto(req.file.buffer)) return res.status(400).json({ error: 'The photo must be JPG, PNG, or WebP.' });
+            if (!isCloudinaryConfigured()) return res.status(503).json({ error: 'Photo storage is not configured. Please contact your administrator.' });
+            const photo = await compressPhoto(req.file.buffer, { targetBytes: MOBILE_TARGET_PHOTO_BYTES });
+            if (photo.bytes > MOBILE_MAX_PHOTO_BYTES) return res.status(413).json({ error: MOBILE_PHOTO_TOO_LARGE });
+            const upload = await uploadBufferToCloudinary(photo.buffer, {
+                folder: 'material-reports', resourceType: 'image', uploadOptions: { format: 'jpg' },
+            });
+            photoUrl = upload.secure_url;
+        }
         const id = await MaterialReportModel.createExtra(req.deliveryBoyId, saleId, {
-            photoUrl: upload.secure_url,
+            productName,
+            productQty,
+            photoUrl,
             remarks: cleanText(req.body?.remarks),
         });
         const stars = await MaterialReportModel.getStars(req.deliveryBoyId);
-        return res.status(201).json({ message: 'Extra material reported. You earned 1 star!', id, stars });
+        return res.status(201).json({ message: 'Extra product reported. You earned 1 star! It has gone for review.', id, stars });
     } catch (error) { return sendError(res, error, 'Extra material report failed:'); }
 }
 
@@ -109,7 +123,6 @@ export async function listWebReports(req, res) {
         const search = cleanText(req.query.search, 100);
         let scope;
         if (isAdmin(req)) scope = 'all';
-        else if (canReview(req) && packerId(req)) scope = 'reviewer_or_packer';
         else if (canReview(req)) scope = 'review';
         else if (packerId(req)) scope = 'packer';
         else return res.status(403).json({ error: 'You do not have access to material reports.' });
@@ -148,12 +161,12 @@ export async function reviewWebReport(req, res) {
     if (action === 'reject' && remarks.length < 3) return res.status(400).json({ error: 'Enter why the report is rejected.' });
     try {
         const done = await MaterialReportModel.review(id, { approve: action === 'approve', remarks });
-        if (!done) return res.status(404).json({ error: 'Less material report not found.' });
-        return res.json({
-            message: action === 'approve'
-                ? 'Approved. The amount stays taken off the bill.'
-                : 'Rejected. The amount was added back to the bill.',
-            report: await MaterialReportModel.getById(id),
-        });
+        if (!done) return res.status(404).json({ error: 'Material report not found.' });
+        const report = await MaterialReportModel.getById(id);
+        const isExtra = report?.report_type === 'extra';
+        let message;
+        if (action === 'approve') message = isExtra ? 'Approved. The delivery boy keeps the star.' : 'Approved. The amount stays taken off the bill.';
+        else message = isExtra ? 'Rejected. The star was taken back.' : 'Rejected. The amount was added back to the bill.';
+        return res.json({ message, report });
     } catch (error) { return sendError(res, error, 'Material report review failed:'); }
 }

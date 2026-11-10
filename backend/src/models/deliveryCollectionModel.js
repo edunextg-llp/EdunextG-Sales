@@ -38,6 +38,10 @@ class DeliveryCollectionModel {
 
         const cashDetails = data.cashDetails ? JSON.stringify(data.cashDetails) : null;
 
+        // One payment per bill until the office settles it: no second entry while one is waiting.
+        const pendingAmount = await getPendingCollectedAmount(db, saleId);
+        if (pendingAmount > 0.001) throw Object.assign(new Error('PAYMENT_ALREADY_PENDING'), { pendingAmount });
+
         await db.execute(
             `INSERT INTO delivery_boy_collections
                 (sale_id, delivery_boy_id, sale_payment_id, payment_mode, amount, cash_details,
@@ -150,12 +154,12 @@ class DeliveryCollectionModel {
              ) credit_due ON credit_due.sale_id = ss.id
              WHERE (assigned_bill.sale_id IS NOT NULL OR ss.packaging_status = 'delivered')
                AND GREATEST(0, ss.price - COALESCE(cancelled.total, 0) - COALESCE(paid.total, 0)) > 0
-               -- A taken bill always shows to the person who took it; a recent delivery
-               -- drops off once a payment for it is waiting in D.B. Collection.
-               AND (assigned_bill.sale_id IS NOT NULL OR NOT EXISTS (
+               -- Once a payment for the bill is waiting in D.B. Collection (taken bill or recent
+               -- delivery), it drops off this list: only that payment can be edited, then final-submitted.
+               AND NOT EXISTS (
                     SELECT 1 FROM delivery_boy_collections pending
                     WHERE pending.sale_id = ss.id AND pending.settled_at IS NULL
-               ))
+               )
                AND (assigned_bill.sale_id IS NOT NULL OR (
                     ss.${companyStaff ? 'delivery_staff_id' : 'delivery_boy_id'} = ? AND NOT EXISTS (
                         SELECT 1 FROM delivery_boy_collections submitted
@@ -224,6 +228,7 @@ class DeliveryCollectionModel {
             `SELECT dbc.id AS collection_id, dbc.sale_id, dbc.payment_mode, dbc.amount,
                     dbc.reference_no, DATE_FORMAT(dbc.reference_date, '%Y-%m-%d') AS reference_date,
                     dbc.credit_days, COALESCE(dbc.collection_source, 'delivery') AS collection_source,
+                    DATE_FORMAT(dbc.final_submitted_at, '%Y-%m-%d %H:%i:%s') AS final_submitted_at,
                     DATE_FORMAT(dbc.created_at, '%Y-%m-%d %H:%i:%s') AS created_at,
                     DATE_FORMAT(dbc.updated_at, '%Y-%m-%d %H:%i:%s') AS updated_at,
                     DATE_FORMAT(ss.sale_date, '%Y-%m-%d') AS sale_date,
@@ -273,7 +278,7 @@ class DeliveryCollectionModel {
         try {
             await connection.beginTransaction();
             const [rows] = await connection.execute(
-                `SELECT id, sale_id, collection_source FROM delivery_boy_collections
+                `SELECT id, sale_id, collection_source, final_submitted_at FROM delivery_boy_collections
                  WHERE id = ? AND ${companyStaff ? 'staff_id' : 'delivery_boy_id'} = ? AND settled_at IS NULL
                    AND COALESCE(collector_type, 'delivery_boy') = '${companyStaff ? 'company_staff' : 'delivery_boy'}'
                  FOR UPDATE`,
@@ -281,6 +286,7 @@ class DeliveryCollectionModel {
             );
             const collection = rows[0];
             if (!collection) { await connection.rollback(); return null; }
+            if (collection.final_submitted_at) throw new Error('PAYMENT_FINAL_SUBMITTED');
             if (collection.collection_source === 'taken_bill' && data.paymentMode === 'credit') throw new Error('TAKEN_BILL_ALREADY_CREDIT');
             await connection.execute('SELECT id FROM staff_sales WHERE id = ? FOR UPDATE', [collection.sale_id]);
             const price = await PaymentModel.getEffectiveSalePrice(connection, collection.sale_id);
@@ -317,6 +323,25 @@ class DeliveryCollectionModel {
             await connection.rollback();
             throw error;
         } finally { connection.release(); }
+    }
+
+    // Locks a submitted payment: after this the collector can't edit it; only the office settles it.
+    // Returns null when the payment isn't this collector's or was already settled.
+    static async finalSubmitPendingCollection(deliveryBoyId, collectionId, companyStaff = false) {
+        const [rows] = await db.execute(
+            `SELECT id, final_submitted_at FROM delivery_boy_collections
+             WHERE id = ? AND ${companyStaff ? 'staff_id' : 'delivery_boy_id'} = ? AND settled_at IS NULL
+               AND COALESCE(collector_type, 'delivery_boy') = '${companyStaff ? 'company_staff' : 'delivery_boy'}'`,
+            [collectionId, deliveryBoyId]
+        );
+        if (!rows.length) return null;
+        if (rows[0].final_submitted_at) throw new Error('PAYMENT_FINAL_SUBMITTED');
+        const [result] = await db.execute(
+            'UPDATE delivery_boy_collections SET final_submitted_at = NOW() WHERE id = ? AND final_submitted_at IS NULL AND settled_at IS NULL',
+            [collectionId]
+        );
+        if (!result.affectedRows) throw new Error('PAYMENT_FINAL_SUBMITTED');
+        return { id: collectionId };
     }
 
     static async settle(collectionId, chequeDate, details = {}) {

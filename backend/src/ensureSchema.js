@@ -616,6 +616,8 @@ export async function ensureSchema() {
         await tryQuery(connection, `ALTER TABLE delivery_boy_collections ADD COLUMN sale_payment_id INT NULL`, 'sale_payment_id on delivery collections');
         await tryQuery(connection, `ALTER TABLE delivery_boy_collections ADD COLUMN settled_at DATETIME NULL`, 'settled_at on delivery collections');
         await tryQuery(connection, `ALTER TABLE delivery_boy_collections ADD COLUMN collection_source VARCHAR(20) NULL`, 'collection source on delivery collections');
+        // Set when the collector final-submits a payment from the app; it can no longer be edited after that.
+        await tryQuery(connection, `ALTER TABLE delivery_boy_collections ADD COLUMN final_submitted_at DATETIME NULL`, 'final submit time on delivery collections');
         await tryQuery(connection, `ALTER TABLE delivery_boy_collections DROP INDEX uq_delivery_boy_collections_sale_delivery`, 'allow delivery collection history');
         await tryQuery(connection, `ALTER TABLE delivery_boy_collections ADD INDEX idx_delivery_boy_collections_sale_delivery (sale_id, delivery_boy_id)`, 'delivery collection sale lookup');
         // Company staff collect Out Bill payments through the same D.B. Collection settlement queue.
@@ -2220,6 +2222,25 @@ export async function ensureSchema() {
             );
         `);
         console.log('delivery_material_reports table verified');
+        // Extra material is reported as product name + quantity and is reviewed like less material.
+        {
+            const [productColumn] = await connection.query(
+                `SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS
+                 WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'delivery_material_reports' AND COLUMN_NAME = 'product_name'`
+            );
+            if (!productColumn.length) {
+                await connection.query('ALTER TABLE delivery_material_reports ADD COLUMN product_name VARCHAR(255) NULL');
+                await connection.query('ALTER TABLE delivery_material_reports ADD COLUMN product_qty DECIMAL(10, 2) NULL');
+                // DEEP reviews material reports along with SUNANDA BISWAS. Seeded once, when the columns are added.
+                await connection.query(
+                    `INSERT INTO delivery_user_permissions (delivery_boy_id, can_material_report_review)
+                     SELECT d.id, 1 FROM delivery_boys d
+                     WHERE UPPER(TRIM(d.name)) IN ('DEEP', 'SUNANDA BISWAS') AND d.is_active = 1
+                     ON DUPLICATE KEY UPDATE can_material_report_review = 1`
+                );
+                console.log('product_name / product_qty on delivery_material_reports (DEEP + SUNANDA BISWAS reviewers)');
+            }
+        }
 
         console.log('Database schema verified');
     } finally {

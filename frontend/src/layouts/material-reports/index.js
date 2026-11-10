@@ -36,21 +36,22 @@ const API = process.env.REACT_APP_API_URL;
 
 const TYPE_OPTIONS = [
   { value: "", label: "Extra & less" },
-  { value: "extra", label: "Extra material" },
-  { value: "less", label: "Less material" },
+  { value: "extra", label: "Extra product" },
+  { value: "less", label: "Less product" },
 ];
 const STATUS_OPTIONS = [
   { value: "", label: "All" },
   { value: "reason_pending", label: "Packer reason pending" },
-  { value: "pending", label: "Less: waiting for review" },
-  { value: "approved", label: "Less: approved" },
-  { value: "rejected", label: "Less: rejected" },
+  { value: "pending", label: "Waiting for review" },
+  { value: "approved", label: "Approved" },
+  { value: "rejected", label: "Rejected" },
 ];
 const REVIEW_BADGE = {
   pending: { label: "Waiting for review", color: "warning" },
   approved: { label: "Approved", color: "success" },
-  rejected: { label: "Rejected · added back", color: "error" },
+  rejected: { label: "Rejected", color: "error" },
 };
+const qtyText = (value) => (value == null ? "" : String(Number(value)));
 
 const headSx = {
   color: "#6b7280",
@@ -65,7 +66,8 @@ const cellSx = { px: 2, py: 1.5, verticalAlign: "top", fontSize: "0.8rem" };
 
 // Extra / less material reported by delivery boys after delivery.
 //  - Packaging staff: reports on invoices they packed; they must give the reason.
-//  - Reviewer (material_report_review, e.g. SUNANDA BISWAS): approves / rejects less material.
+//  - Reviewers (material_report_review: DEEP and SUNANDA BISWAS): approve / reject extra and less.
+//    Rejecting less adds the amount back to the bill; rejecting extra takes the star back.
 //  - Admin: every report and each delivery boy's stars.
 function MaterialReports() {
   const [type, setType] = useState("");
@@ -172,7 +174,7 @@ function MaterialReports() {
   const subtitle = access.isAdmin
     ? "Every extra / less material report from delivery boys, with packer reasons and reviews."
     : access.canReview
-    ? "Review less material reports. Rejecting adds the amount back to the bill."
+    ? "Review extra and less product reports. Rejecting less adds the amount back to the bill; rejecting extra takes the star back."
     : "Reports on invoices you packed. Give the reason for each one.";
 
   return (
@@ -285,12 +287,17 @@ function MaterialReports() {
                       </TableCell>
                       <TableCell sx={cellSx}>
                         <MDBadge
-                          badgeContent={isLess ? `Less ${money(report.amount)}` : "Extra"}
+                          badgeContent={isLess ? `Less ${money(report.amount)}` : "Extra product"}
                           color={isLess ? "warning" : "success"}
                           variant="gradient"
                           size="sm"
                           container
                         />
+                        {!isLess && report.product_name && (
+                          <MDTypography variant="caption" display="block" fontWeight="medium" mt={0.5}>
+                            {report.product_name} · Qty {qtyText(report.product_qty)}
+                          </MDTypography>
+                        )}
                         {report.photo_url && (
                           <MDBox mt={0.5}>
                             <Link href={report.photo_url} target="_blank" rel="noopener noreferrer" variant="caption">
@@ -307,6 +314,9 @@ function MaterialReports() {
                         {report.star_awarded && (
                           <MDTypography variant="caption" display="block" color="text">⭐ 1 star</MDTypography>
                         )}
+                        {!isLess && report.review_status === "rejected" && (
+                          <MDTypography variant="caption" display="block" color="error">Star taken back</MDTypography>
+                        )}
                       </TableCell>
                       <TableCell sx={cellSx}>{report.packed_by_name || "Not recorded"}</TableCell>
                       <TableCell sx={{ ...cellSx, maxWidth: 260 }}>
@@ -322,7 +332,7 @@ function MaterialReports() {
                         )}
                       </TableCell>
                       <TableCell sx={cellSx}>
-                        {isLess && badge ? (
+                        {badge ? (
                           <>
                             <MDBadge badgeContent={badge.label} color={badge.color} variant="gradient" size="sm" container />
                             {report.reviewed_by_name && (
@@ -346,14 +356,14 @@ function MaterialReports() {
                             </IconButton>
                           </Tooltip>
                         )}
-                        {access.canReview && isLess && report.review_status === "pending" && (
+                        {access.canReview && report.review_status === "pending" && (
                           <>
-                            <Tooltip title="Approve (amount stays off the bill)">
+                            <Tooltip title={isLess ? "Approve (amount stays off the bill)" : "Approve (keeps the star)"}>
                               <IconButton size="small" color="success" onClick={() => openDialog(report, "approve")}>
                                 <Icon>check_circle</Icon>
                               </IconButton>
                             </Tooltip>
-                            <Tooltip title="Reject (adds the amount back to the bill)">
+                            <Tooltip title={isLess ? "Reject (adds the amount back to the bill)" : "Reject (takes the star back)"}>
                               <IconButton size="small" color="error" onClick={() => openDialog(report, "reject")}>
                                 <Icon>cancel</Icon>
                               </IconButton>
@@ -373,7 +383,7 @@ function MaterialReports() {
           <Card sx={{ mt: 3 }}>
             <MDBox p={2}>
               <MDTypography variant="h6">Delivery boy stars</MDTypography>
-              <MDTypography variant="caption" color="text">1 star for every extra material reported (all time).</MDTypography>
+              <MDTypography variant="caption" color="text">1 star for every extra product reported (all time, rejected ones removed).</MDTypography>
             </MDBox>
             <TableContainer sx={{ boxShadow: "none" }}>
               <Table>
@@ -404,16 +414,21 @@ function MaterialReports() {
       <Dialog open={Boolean(dialog)} onClose={() => !saving && setDialog(null)} fullWidth maxWidth="sm">
         <DialogTitle>
           {dialog?.kind === "reason" && "Reason for the material difference"}
-          {dialog?.kind === "approve" && "Approve less material"}
-          {dialog?.kind === "reject" && "Reject less material"}
+          {dialog?.kind === "approve" && `Approve ${dialog.report.report_type === "less" ? "less" : "extra"} product`}
+          {dialog?.kind === "reject" && `Reject ${dialog.report.report_type === "less" ? "less" : "extra"} product`}
         </DialogTitle>
         <DialogContent>
           {dialog && (
             <MDTypography variant="caption" color="text" display="block" mb={2}>
               {dialog.report.invoice_number} · {dialog.report.outlet_name} ·{" "}
-              {dialog.report.report_type === "less" ? `Less ${money(dialog.report.amount)}` : "Extra material"} · reported by{" "}
-              {dialog.report.delivery_boy_name}
-              {dialog.kind === "reject" && ". Rejecting adds the amount back to the bill."}
+              {dialog.report.report_type === "less"
+                ? `Less ${money(dialog.report.amount)}`
+                : `Extra: ${dialog.report.product_name || "product"} · Qty ${qtyText(dialog.report.product_qty)}`}{" "}
+              · reported by {dialog.report.delivery_boy_name}
+              {dialog.kind === "reject" &&
+                (dialog.report.report_type === "less"
+                  ? ". Rejecting adds the amount back to the bill."
+                  : ". Rejecting takes the delivery boy's star back.")}
             </MDTypography>
           )}
           <MDInput
