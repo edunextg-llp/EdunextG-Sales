@@ -68,7 +68,7 @@ const PERMISSIONS = [
   [
     "material_report_review",
     "Material Report Review",
-    "Open Material Reports and approve or reject 'less material' reports from delivery boys. Rejecting adds the amount back to the bill.",
+    "Open Material Reports and approve or reject extra and less material reports from delivery boys. Rejecting a less report adds the amount back to the bill; rejecting an extra report takes back its star.",
   ],
 ];
 // Extra options shown under a page, only while that page is switched on.

@@ -410,7 +410,8 @@ const routes = [
     icon: <Icon fontSize="small">inventory</Icon>,
     route: "/material-reports",
     component: <MaterialReports />,
-    allowedRoles: ["admin", "packaging_staff"],
+    allowedRoles: ["admin", "packaging_staff", "delivery_boy"],
+    requiredPermission: "material_report_review",
   },
   {
     type: "collapse",

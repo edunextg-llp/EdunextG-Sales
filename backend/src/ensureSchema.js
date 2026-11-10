@@ -2231,15 +2231,16 @@ export async function ensureSchema() {
             if (!productColumn.length) {
                 await connection.query('ALTER TABLE delivery_material_reports ADD COLUMN product_name VARCHAR(255) NULL');
                 await connection.query('ALTER TABLE delivery_material_reports ADD COLUMN product_qty DECIMAL(10, 2) NULL');
-                // DEEP reviews material reports along with SUNANDA BISWAS. Seeded once, when the columns are added.
-                await connection.query(
-                    `INSERT INTO delivery_user_permissions (delivery_boy_id, can_material_report_review)
-                     SELECT d.id, 1 FROM delivery_boys d
-                     WHERE UPPER(TRIM(d.name)) IN ('DEEP', 'SUNANDA BISWAS') AND d.is_active = 1
-                     ON DUPLICATE KEY UPDATE can_material_report_review = 1`
-                );
-                console.log('product_name / product_qty on delivery_material_reports (DEEP + SUNANDA BISWAS reviewers)');
+                console.log('product_name / product_qty on delivery_material_reports');
             }
+            // Ensure DEEP and SUNANDA BISWAS can review material reports on every startup,
+            // including databases where the product columns were added by an earlier migration.
+            await connection.query(
+                `INSERT INTO delivery_user_permissions (delivery_boy_id, can_material_report_review)
+                 SELECT d.id, 1 FROM delivery_boys d
+                 WHERE UPPER(TRIM(d.name)) IN ('DEEP', 'SUNANDA BISWAS') AND d.is_active = 1
+                 ON DUPLICATE KEY UPDATE can_material_report_review = 1`
+            );
         }
 
         console.log('Database schema verified');
