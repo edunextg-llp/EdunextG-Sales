@@ -2,7 +2,7 @@ import db from '../config/db.js';
 import PaymentModel from './paymentModel.js';
 import OrderCancellationModel from './orderCancellationModel.js';
 import { getPendingCollectedAmount } from './staffPortalModel.js';
-import { currentActor } from '../utils/requestContext.js';
+import { actorNameSql, currentActor } from '../utils/requestContext.js';
 
 // Extra / less material found by the delivery boy after delivery.
 //  - extra: product name + quantity (photo optional); the delivery boy earns 1 star at once.
@@ -211,6 +211,52 @@ class MaterialReportModel {
             less_count: Number(row.less_count) || 0,
             less_amount: Number(row.less_amount) || 0,
         }));
+    }
+
+    // Deliveries marked Cancelled (delivery app, staff app or web), newest first, with the reason
+    // and who cancelled it. Shown to reviewers (DEEP, SUNANDA BISWAS) and admin.
+    static async listCancelledDeliveries({ fromDate = '', toDate = '', search = '' } = {}) {
+        const actor = actorNameSql('h', 'changed_by');
+        const where = [`ss.packaging_status = 'cancelled'`];
+        const params = [];
+        if (fromDate) { where.push('DATE(h.changed_at) >= ?'); params.push(fromDate); }
+        if (toDate) { where.push('DATE(h.changed_at) <= ?'); params.push(toDate); }
+        if (search) {
+            where.push(`(ss.invoice_number LIKE ? OR sc.outlet_name LIKE ? OR sc.outlet_erp_id LIKE ? OR dboy.name LIKE ?
+                        OR dstaff.name LIKE ? OR ss.cancellation_reason LIKE ? OR CONCAT('BP', ss.id) LIKE ?)`);
+            const like = `%${search}%`;
+            params.push(like, like, like, like, like, like, like);
+        }
+        const [rows] = await db.execute(
+            `SELECT ss.id AS sale_id, CONCAT('BP', ss.id) AS bp_sale_id, ss.invoice_number, ss.price, ss.item_count,
+                    ss.cancellation_reason,
+                    DATE_FORMAT(ss.sale_date, '%Y-%m-%d') AS sale_date,
+                    DATE_FORMAT(ss.delivery_date, '%Y-%m-%d') AS delivery_date,
+                    DATE_FORMAT(h.changed_at, '%Y-%m-%d %H:%i:%s') AS cancelled_at,
+                    sc.outlet_name, sc.outlet_erp_id, sc.location_name, c.name AS company_name,
+                    s.name AS staff_name,
+                    COALESCE(dboy.name, dstaff.name) AS delivery_person_name,
+                    ${actor.columns}
+             FROM staff_sales ss
+             LEFT JOIN (
+                 SELECT hh.* FROM staff_sale_status_history hh
+                 INNER JOIN (
+                     SELECT sale_id, MAX(id) AS id FROM staff_sale_status_history
+                     WHERE status = 'cancelled' GROUP BY sale_id
+                 ) last_cancel ON last_cancel.id = hh.id
+             ) h ON h.sale_id = ss.id
+             ${actor.joins}
+             LEFT JOIN staff_counters sc ON sc.id = ss.outlet_id
+             LEFT JOIN staff s ON s.id = ss.staff_id
+             LEFT JOIN companies c ON c.id = s.company_id
+             LEFT JOIN delivery_boys dboy ON dboy.id = ss.delivery_boy_id
+             LEFT JOIN staff dstaff ON dstaff.id = ss.delivery_staff_id
+             WHERE ${where.join(' AND ')}
+             ORDER BY h.changed_at DESC, ss.id DESC
+             LIMIT 1000`,
+            params
+        );
+        return rows.map((row) => ({ ...row, price: row.price == null ? null : Number(row.price) }));
     }
 
     static async getById(id) {

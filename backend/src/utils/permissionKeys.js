@@ -8,6 +8,9 @@ export const PERMISSION_KEYS = [
     'chalan_add_sales', 'chalan_packaging', 'chalan_delivery', 'chalan_delivered', 'chalan_return',
     // Not a page: lets an Add Sales user bill an outlet overdue by up to 13 days with a reason (14+ needs admin).
     'overdue_7_days',
+    // Not a page: in Add Sales, bill an outlet overdue by 14+ days on the user's own permission
+    // with a reason (no admin approval). Every use is listed for admin under Overdue Requests.
+    'overdue_own_permission',
     // Approvals > Below Target Approvals page: approve staff days that are below the
     // company's daily requisition target (e.g. SIL Rs. 11,250) instead of Admin.
     'requisition_target_approval',
@@ -21,6 +24,7 @@ export const PERMISSION_KEYS = [
 // Extra options that only make sense together with a page permission.
 export const PERMISSION_REQUIRES = {
     overdue_7_days: 'add_sales',
+    overdue_own_permission: 'add_sales',
 };
 
 // DMS pages: granting any of them also grants the DMS menu itself.
@@ -48,6 +52,7 @@ export const NEW_PERMISSION_COLUMNS = [
     ['requisition_target_approval', null],
     ['overdue_approval', null],
     ['material_report_review', null],
+    ['overdue_own_permission', null],
 ];
 
 export const permissionColumnsSql = (alias = 'p') =>

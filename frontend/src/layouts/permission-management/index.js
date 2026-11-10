@@ -56,6 +56,11 @@ const PERMISSIONS = [
     "Add sales for an outlet whose credit is overdue by up to 13 days by giving a reason (admin can see it). 14 days or more still needs admin approval.",
   ],
   [
+    "overdue_own_permission",
+    "Own Permission (14+ Days Overdue)",
+    "In Add Sales, an outlet overdue by 14 days or more gets an Own Permission option: give a reason and the sale is created without admin approval. Admin sees every one under Overdue Requests.",
+  ],
+  [
     "requisition_target_approval",
     "Below Target Approvals",
     "Open Approvals > Below Target Approvals and approve or reject days where a staff member's requisitions are below the company's daily target (e.g. SIL ₹11,250), instead of Admin.",
@@ -72,7 +77,7 @@ const PERMISSIONS = [
   ],
 ];
 // Extra options shown under a page, only while that page is switched on.
-const SUB_OPTIONS = { add_sales: ["overdue_7_days"] };
+const SUB_OPTIONS = { add_sales: ["overdue_7_days", "overdue_own_permission"] };
 const SUB_OPTION_KEYS = Object.values(SUB_OPTIONS).flat();
 const PERMISSION_FOLDERS = [
   { key: "dms", label: "DMS", icon: "inventory_2", description: "Sellers, items, stock, expiry and purchases.", children: ["add_seller", "add_item", "item_list", "purchase_history", "physical_stock", "current_stock", "expiry_items", "expiry_list", "damage_list", "purchase"] },

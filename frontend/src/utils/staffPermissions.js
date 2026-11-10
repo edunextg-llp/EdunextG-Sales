@@ -12,6 +12,7 @@ export const STAFF_PERMISSION_GROUPS = [
       ["credits", "Give Credit"],
       ["add_sales", "Add Sales"],
       ["overdue_7_days", "7 Days Overdue (with Add Sales)"],
+      ["overdue_own_permission", "Own Permission, 14+ Days Overdue (with Add Sales)"],
       ["invoice_lookup", "Invoice Lookup"],
       ["out_bill", "Out Bill"],
     ],
@@ -117,7 +118,10 @@ export const BAWARCHEE_ROLE_PRESETS = {
 // Mirrors the backend clean-up: DMS pages need the DMS menu, sub-options need their page.
 export const normalizeStaffPermissions = (list = []) => {
   const set = new Set(list);
-  if (!set.has("add_sales")) set.delete("overdue_7_days");
+  if (!set.has("add_sales")) {
+    set.delete("overdue_7_days");
+    set.delete("overdue_own_permission");
+  }
   const hasDmsPage = DMS_PAGE_KEYS.some((key) => set.has(key));
   if (hasDmsPage) set.add("dms");
   else set.delete("dms");

@@ -341,6 +341,8 @@ export default class OverdueSaleRequestModel {
             conditions.push("r.status IN ('awaiting_staff', 'pending', 'approved')");
         } else if (status === 'self_approved') {
             conditions.push('r.self_approved = 1');
+        } else if (status === 'own_permission') {
+            conditions.push('r.self_approved = 2');
         } else if (status && status !== 'all') {
             conditions.push('r.status = ?');
             params.push(status);
@@ -364,7 +366,8 @@ export default class OverdueSaleRequestModel {
             `SELECT SUM(r.status = 'awaiting_staff') AS awaiting_staff,
                     SUM(r.status = 'pending') AS pending, SUM(r.status = 'approved') AS approved,
                     SUM(r.status = 'rejected') AS rejected, SUM(r.status = 'used') AS used,
-                    SUM(r.self_approved = 1) AS self_approved
+                    SUM(r.self_approved = 1) AS self_approved,
+                    SUM(r.self_approved = 2) AS own_permission
              FROM overdue_sale_requests r
              ${requestedBy ? 'WHERE r.requested_by_role = ? AND r.requested_by_id = ?' : ''}
              ${approvalLevels ? `WHERE ${levelClause}` : ''}`,
@@ -401,21 +404,27 @@ export default class OverdueSaleRequestModel {
 
     // Sales added with the 7-day overdue permission: saved as already used, so admin sees them
     // in the Overdue Requests list ("Staff approved") without having to act on them.
-    static async recordSelfApproved({ staffId, saleDate, outlet, note, salesPayload, requester }) {
+    // kind '7day': overdue up to SELF_APPROVE_OVERDUE_DAYS with the 7-day permission (self_approved = 1).
+    // kind 'own':  overdue 14+ days on the user's own permission (self_approved = 2).
+    static async recordSelfApproved({ staffId, saleDate, outlet, note, salesPayload, requester, kind = '7day' }) {
+        const own = kind === 'own';
         const summary = salesPayload ? summarizeSales(salesPayload.sales || []) : null;
         const [result] = await db.execute(
             `INSERT INTO overdue_sale_requests (
                 staff_id, sale_date, outlet_id, outlet_erp_id, outlet_name, max_overdue_days,
                 overdue_details, sales_summary, sales_payload, request_note, requested_by_role, requested_by_id, requested_by_name,
                 status, reviewed_by_name, review_note, reviewed_at, used_at, self_approved
-             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'used', ?, ?, NOW(), NOW(), 1)`,
+             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'used', ?, ?, NOW(), NOW(), ?)`,
             [
                 staffId, saleDate, outlet.outletId, outlet.outletErpId || '', outlet.outletName || null,
                 outlet.maxOverdueDays || 0, JSON.stringify(outlet.credits || []),
                 summary ? JSON.stringify(summary) : null, salesPayload ? JSON.stringify(salesPayload) : null, note,
                 requester.role, requester.id || null, requester.name || null,
-                `${requester.name || 'Staff'} (7-day overdue permission)`,
-                `Allowed without admin approval: overdue ${outlet.maxOverdueDays} day(s), within ${SELF_APPROVE_OVERDUE_DAYS} days.`,
+                own ? `${requester.name || 'Staff'} (own permission)` : `${requester.name || 'Staff'} (7-day overdue permission)`,
+                own
+                    ? `Added on own permission without admin approval: overdue ${outlet.maxOverdueDays} day(s).`
+                    : `Allowed without admin approval: overdue ${outlet.maxOverdueDays} day(s), within ${SELF_APPROVE_OVERDUE_DAYS} days.`,
+                own ? 2 : 1,
             ]
         );
         return result.insertId;

@@ -45,6 +45,7 @@ const STATUS_OPTIONS = [
   { value: "used", label: "Approved & sales created" },
   { value: "rejected", label: "Rejected" },
   { value: "self_approved", label: "Staff added with reason (7-day permission)", adminOnly: true },
+  { value: "own_permission", label: "Added on own permission (14+ days)", adminOnly: true },
   { value: "all", label: "All" },
 ];
 
@@ -141,6 +142,7 @@ function OverdueRequests() {
                   : "Outlets overdue by 14 days or more that you can approve. Approving creates the sale."}
                 {counts.pending ? ` ${counts.pending} waiting for review.` : ""}
                 {isAdmin && counts.self_approved ? ` ${counts.self_approved} added by staff with the 7-day permission.` : ""}
+                {isAdmin && counts.own_permission ? ` ${counts.own_permission} added on own permission (14+ days).` : ""}
               </MDTypography>
             </MDBox>
             <MDBox display="flex" gap={1} alignItems="center">
@@ -201,9 +203,12 @@ function OverdueRequests() {
                   </TableRow>
                 )}
                 {requests.map((request, index) => {
-                  const badge = Number(request.self_approved)
-                    ? { label: "7-day permission", color: "warning" }
-                    : STATUS_BADGE[request.status] || { label: request.status, color: "secondary" };
+                  const selfKind = Number(request.self_approved);
+                  const badge = selfKind === 2
+                    ? { label: "Own permission", color: "error" }
+                    : selfKind === 1
+                      ? { label: "7-day permission", color: "warning" }
+                      : STATUS_BADGE[request.status] || { label: request.status, color: "secondary" };
                   const expanded = expandedId === request.id;
                   return [
                     <TableRow key={request.id}>

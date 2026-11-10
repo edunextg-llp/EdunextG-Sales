@@ -82,6 +82,10 @@ const emptyOverdueCancelDialog = {
   entering: false,
   sendingToAdmin: false,
   adminNote: "",
+  // "Own permission": the user adds the sale with a reason, no admin approval (admin sees it).
+  canOwnPermission: false,
+  ownPermission: false,
+  ownNote: "",
   saving: false,
   error: "",
 };
@@ -647,7 +651,7 @@ function AddSales() {
   const submitSalesPayload = async (
     payload,
     submittedOutletIds = [],
-    { permissionGranted = false, permissionNote = "", lineMapPatch = {} } = {}
+    { permissionGranted = false, permissionNote = "", ownPermission = false, lineMapPatch = {} } = {}
   ) => {
     setSubmitting(true);
     try {
@@ -660,6 +664,7 @@ function AddSales() {
           ...payload,
           permissionGranted,
           permissionNote,
+          ownPermission,
         }),
       });
 
@@ -697,6 +702,7 @@ function AddSales() {
           sales: (payload.sales || []).filter((sale) => blockedIds.has(Number(sale.outletId))),
           pendingPayload: payload,
           lineMapPatch,
+          canOwnPermission: Boolean(err.canOwnPermission),
         });
         return false;
       }
@@ -850,6 +856,32 @@ function AddSales() {
     } catch (error) {
       setOverdueCancelDialog((prev) => ({ ...prev, saving: false, error: error.message }));
     }
+  };
+
+  // 14+ days overdue on the user's own permission: give a reason and the sale is created now.
+  // Admin sees every one under Overdue Requests -> "Own permission (14+ days)".
+  const handleOwnPermissionSave = async () => {
+    const { sales, pendingPayload, lineMapPatch, ownNote } = overdueCancelDialog;
+    const note = String(ownNote || "").trim();
+    if (!note) {
+      setOverdueCancelDialog((prev) => ({ ...prev, error: "Enter the reason for your own permission." }));
+      return;
+    }
+    const outletIds = [...new Set(sales.map((sale) => Number(sale.outletId)))];
+    setOverdueCancelDialog((prev) => ({ ...prev, saving: true, error: "" }));
+    const saved = await submitSalesPayload({ ...pendingPayload, sales }, outletIds, {
+      ownPermission: true,
+      permissionNote: note,
+      lineMapPatch,
+    });
+    if (!saved) {
+      // Keep the typed reason so the user can retry.
+      setOverdueCancelDialog((prev) => ({ ...prev, saving: false }));
+      return;
+    }
+    setOverdueCancelDialog(emptyOverdueCancelDialog);
+    alert("Sales added on your own permission. Admin can see the reason under Overdue Requests.");
+    await submitOtherOutlets(pendingPayload, sales, lineMapPatch);
   };
 
   const handleGrantPermissionAndSave = async () => {
@@ -2438,7 +2470,7 @@ function AddSales() {
                 disabled={submitting || !allRequestsApproved}
               >
                 <Icon sx={{ mr: 0.75 }}>{allRequestsApproved ? "check_circle" : "lock"}</Icon>
-                {submitting ? "Saving..." : "Create Sales"}
+                {overdueCancelDialog.saving ? "Saving..." : "Create Sales"}
               </MDButton>
             </>
           ) : (
@@ -2465,7 +2497,9 @@ function AddSales() {
             ? "Cancel Invoice — Enter Invoice Number"
             : overdueCancelDialog.sendingToAdmin
               ? "Send to Admin — Enter Reason"
-              : "Outlet Overdue by More Than 13 Days"}
+              : overdueCancelDialog.ownPermission
+                ? "Own Permission — Enter Reason"
+                : "Outlet Overdue by More Than 13 Days"}
         </DialogTitle>
         <DialogContent dividers>
           {overdueCancelDialog.outlets.map((outlet) => (
@@ -2530,6 +2564,24 @@ function AddSales() {
                 }}
               />
             </>
+          ) : overdueCancelDialog.ownPermission ? (
+            <>
+              <MDTypography variant="body2" color="text" mb={2}>
+                The sale is created now on your own permission, without admin approval (stock is deducted). Admin
+                will see your name and this reason under Overdue Requests.
+              </MDTypography>
+              <MDInput
+                label="Reason for own permission *"
+                fullWidth
+                multiline
+                rows={2}
+                value={overdueCancelDialog.ownNote}
+                onChange={(event) => {
+                  const { value } = event.target;
+                  setOverdueCancelDialog((prev) => ({ ...prev, ownNote: value, error: "" }));
+                }}
+              />
+            </>
           ) : (
             <MDTypography variant="body2" color="text">
               This invoice cannot be billed. Choose what to do with it.
@@ -2558,6 +2610,10 @@ function AddSales() {
             <MDButton color="info" variant="gradient" disabled={overdueCancelDialog.saving} onClick={handleSendOverdueToAdmin}>
               {overdueCancelDialog.saving ? "Sending..." : "Confirm Send to Admin"}
             </MDButton>
+          ) : overdueCancelDialog.ownPermission ? (
+            <MDButton color="success" variant="gradient" disabled={overdueCancelDialog.saving} onClick={handleOwnPermissionSave}>
+              {overdueCancelDialog.saving ? "Saving..." : "Create Sales"}
+            </MDButton>
           ) : (
             <>
               <MDButton
@@ -2576,6 +2632,16 @@ function AddSales() {
               >
                 Send to Admin
               </MDButton>
+              {overdueCancelDialog.canOwnPermission && (
+                <MDButton
+                  color="success"
+                  variant="gradient"
+                  disabled={overdueCancelDialog.saving}
+                  onClick={() => setOverdueCancelDialog((prev) => ({ ...prev, ownPermission: true, error: "" }))}
+                >
+                  Own Permission
+                </MDButton>
+              )}
               <MDButton
                 color="error"
                 variant="gradient"

@@ -382,7 +382,7 @@ const routes = [
       },
       {
         type: "collapse",
-        name: "Backdated Payment Approvals",
+        name: "Backdated Approvals",
         key: "backdated-payment-requests",
         icon: <Icon fontSize="small">history</Icon>,
         route: "/backdated-payment-requests",

@@ -136,6 +136,17 @@ export async function listWebReports(req, res) {
     } catch (error) { return sendError(res, error, 'Material reports list failed:'); }
 }
 
+// Cancelled deliveries tab: reviewers (DEEP, SUNANDA BISWAS) and admin only.
+export async function listWebCancelledDeliveries(req, res) {
+    if (!canReview(req)) return res.status(403).json({ error: 'You do not have access to cancelled deliveries.' });
+    try {
+        const fromDate = isIsoDate(String(req.query.fromDate || '')) ? req.query.fromDate : '';
+        const toDate = isIsoDate(String(req.query.toDate || '')) ? req.query.toDate : '';
+        const search = cleanText(req.query.search, 100);
+        return res.json({ deliveries: await MaterialReportModel.listCancelledDeliveries({ fromDate, toDate, search }) });
+    } catch (error) { return sendError(res, error, 'Cancelled deliveries list failed:'); }
+}
+
 export async function saveWebReason(req, res) {
     const id = Number(req.params.id);
     if (!Number.isSafeInteger(id) || id <= 0) return res.status(400).json({ error: 'Invalid report.' });

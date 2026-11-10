@@ -3,7 +3,7 @@ import StaffModel from '../models/staffModel.js';
 import OverdueSaleRequestModel, { ADMIN_APPROVAL_LEVEL, cleanSaleForRequest, getOverdueOutlets, SELF_APPROVE_OVERDUE_DAYS } from '../models/overdueSaleRequestModel.js';
 
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
-const STATUSES = ['awaiting_staff', 'pending', 'approved', 'rejected', 'used', 'open', 'all'];
+const STATUSES = ['awaiting_staff', 'pending', 'approved', 'rejected', 'used', 'open', 'self_approved', 'own_permission', 'all'];
 
 // Which 14+ day overdue requests this login can approve. Admin can review everything.
 const approvalLevelsFor = (user) => {

@@ -7,6 +7,7 @@ import * as materialReports from '../controllers/materialReportController.js';
 const router = express.Router();
 
 router.get('/', materialReports.listWebReports);
+router.get('/cancelled-deliveries', materialReports.listWebCancelledDeliveries);
 router.put('/:id/reason', materialReports.saveWebReason);
 router.put('/:id/review', materialReports.reviewWebReport);
 
