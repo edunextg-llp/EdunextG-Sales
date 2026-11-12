@@ -1,6 +1,7 @@
 import DmsStockModel from '../models/dmsStockModel.js';
 import PhysicalStockModel from '../models/physicalStockModel.js';
 import { calculateAvailableStockPieces } from '../utils/stockCalculations.js';
+import { lotPrices, reconcileLots } from '../utils/stockLots.js';
 
 const roundMoney = (value) => Math.round((Number(value) + Number.EPSILON) * 100) / 100;
 const roundQuantity = (value) => Math.round((Number(value) + Number.EPSILON) * 10000) / 10000;
@@ -22,6 +23,7 @@ const zeroStock = () => ({
     wholesale_price: 0,
     hsn_code: '',
     total_value: 0,
+    price_lines: [],
 });
 
 const pickPhysical = (item = {}) => ({
@@ -38,6 +40,7 @@ const pickPhysical = (item = {}) => ({
     total_value: item.total_value || 0,
     expired_stock_date: item.expired_stock_date || null,
     approved_as_current_stock: item.approved_as_current_stock === true,
+    mrp_lines: Array.isArray(item.mrp_lines) ? item.mrp_lines : [],
 });
 
 const pickDms = (item = {}) => ({
@@ -54,7 +57,10 @@ const pickDms = (item = {}) => ({
     total_value: roundMoney((item.total_current_stock_in_pcs || 0) * (item.price_per_piece || 0)),
     retail_price: item.retail_price || 0,
     wholesale_price: item.wholesale_price || 0,
+    gst_percent: Number(item.gst_percent) || 0,
     hsn_code: item.hsn_code || '',
+    // Each MRP the item was bought at on its latest invoice (see DmsStockModel.getLatestItemsByCompanyId).
+    price_lines: Array.isArray(item.price_lines) ? item.price_lines : [],
 });
 
 export function buildCurrentStockDiff(physicalItems = [], dmsItems = []) {
@@ -90,6 +96,12 @@ export function buildCurrentStockDiff(physicalItems = [], dmsItems = []) {
             approvedAsCurrentStock
         );
         const pricePerPiece = physical.price_per_piece || dms.price_per_piece || 0;
+        const mrp = physical.mrp || dms.mrp || 0;
+        // The item's MRP lots in selling order (earliest expiry, then lowest MRP), each with
+        // its own selling prices. They add up to the current stock.
+        const prices = { mrp, retail_price: dms.retail_price, wholesale_price: dms.wholesale_price, price_lines: dms.price_lines };
+        const lots = reconcileLots(physical.mrp_lines, totalCurrentStockInPcs, mrp)
+            .map((lot) => ({ ...lot, ...lotPrices(lot, prices) }));
 
         return {
             product_erp_id: physical.product_erp_id || dms.product_erp_id,
@@ -111,7 +123,10 @@ export function buildCurrentStockDiff(physicalItems = [], dmsItems = []) {
             mrp: physical.mrp || dms.mrp || 0,
             retail_price: dms.retail_price || 0,
             wholesale_price: dms.wholesale_price || 0,
+            gst_percent: dms.gst_percent || 5,
             hsn_code: dms.hsn_code || '',
+            price_lines: dms.price_lines || [],
+            lots,
             total_value: roundMoney(totalCurrentStockInPcs * pricePerPiece),
         };
     });

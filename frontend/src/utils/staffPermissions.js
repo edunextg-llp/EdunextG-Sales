@@ -25,6 +25,7 @@ export const STAFF_PERMISSION_GROUPS = [
       ["add_item", "Add Item"],
       ["item_list", "Item List"],
       ["purchase_history", "Purchase History"],
+      ["seller_ledger", "Seller Ledger"],
       ["physical_stock", "Physical Stock"],
       ["current_stock", "Current Stock"],
       ["expiry_items", "Expiry Items"],
@@ -106,7 +107,7 @@ export const BAWARCHEE_ROLE_PRESETS = {
   ],
   accountant: [
     "dashboard", "update_payment", "bank_deposit", "db_collection", "credits",
-    "out_bill", "invoice_lookup", "dms", "purchase_history", "purchase",
+    "out_bill", "invoice_lookup", "dms", "purchase_history", "seller_ledger", "purchase",
   ],
   operator: [
     "dashboard", "add_sales", "invoice_lookup",

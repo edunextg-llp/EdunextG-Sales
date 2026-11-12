@@ -19,14 +19,16 @@ Coded by www.creative-tim.com
  * You can customized the colors for the entire Material Dashboard 2 React using thie file.
  */
 
+// DMS look (same as dms/src/index.css "dms" theme): royal blue on white, pale-blue page,
+// navy sidebar, flat (no gradients: each gradient's two stops are the same colour).
 const colors = {
   background: {
-    default: "#f0f2f5",
+    default: "#f5f8fd",
   },
 
   text: {
-    main: "#7b809a",
-    focus: "#7b809a",
+    main: "#5b6b85",
+    focus: "#5b6b85",
   },
 
   transparent: {
@@ -39,102 +41,103 @@ const colors = {
   },
 
   black: {
-    light: "#000000",
+    light: "#0f1d33",
     main: "#000000",
     focus: "#000000",
   },
 
   primary: {
-    main: "#e91e63",
-    focus: "#e91e63",
+    main: "#1d4ed8",
+    focus: "#1e40af",
   },
 
   secondary: {
-    main: "#7b809a",
-    focus: "#8f93a9",
+    main: "#64748b",
+    focus: "#475569",
   },
 
   info: {
-    main: "#1A73E8",
-    focus: "#1662C4",
+    main: "#1d4ed8",
+    focus: "#1e40af",
   },
 
   success: {
-    main: "#4CAF50",
-    focus: "#67bb6a",
+    main: "#15803d",
+    focus: "#166534",
   },
 
   warning: {
-    main: "#fb8c00",
-    focus: "#fc9d26",
+    main: "#d97706",
+    focus: "#b45309",
   },
 
   error: {
-    main: "#F44335",
-    focus: "#f65f53",
+    main: "#dc2626",
+    focus: "#b91c1c",
   },
 
   light: {
-    main: "#f0f2f5",
-    focus: "#f0f2f5",
+    main: "#f5f8fd",
+    focus: "#eef3fa",
   },
 
   dark: {
-    main: "#344767",
-    focus: "#2c3c58",
+    main: "#0f1d33",
+    focus: "#0f2a5a",
   },
 
   grey: {
-    100: "#f8f9fa",
-    200: "#f0f2f5",
-    300: "#dee2e6",
-    400: "#ced4da",
-    500: "#adb5bd",
-    600: "#6c757d",
-    700: "#495057",
-    800: "#343a40",
-    900: "#212529",
+    100: "#f5f8fd",
+    200: "#eef3fa",
+    300: "#dfe6f2",
+    400: "#cdd7e6",
+    500: "#9aa8bf",
+    600: "#5b6b85",
+    700: "#3b4a63",
+    800: "#1f2d45",
+    900: "#0f1d33",
   },
 
   gradients: {
     primary: {
-      main: "#EC407A",
-      state: "#D81B60",
+      main: "#1d4ed8",
+      state: "#1d4ed8",
     },
 
     secondary: {
-      main: "#747b8a",
-      state: "#495361",
+      main: "#64748b",
+      state: "#64748b",
     },
 
     info: {
-      main: "#49a3f1",
-      state: "#1A73E8",
+      main: "#1d4ed8",
+      state: "#1d4ed8",
     },
 
     success: {
-      main: "#66BB6A",
-      state: "#43A047",
+      main: "#15803d",
+      state: "#15803d",
     },
 
     warning: {
-      main: "#FFA726",
-      state: "#FB8C00",
+      main: "#d97706",
+      state: "#d97706",
     },
 
     error: {
-      main: "#EF5350",
-      state: "#E53935",
+      main: "#dc2626",
+      state: "#dc2626",
     },
 
     light: {
-      main: "#EBEFF4",
-      state: "#CED4DA",
+      main: "#eef3fa",
+      state: "#eef3fa",
     },
 
+    // Sidebar and dark headers: the DMS navy.
     dark: {
-      main: "#42424a",
-      state: "#191919",
+      main: "#0f2a5a",
+      state: "#0f2a5a",
     },
   },
 
@@ -202,58 +205,59 @@ const colors = {
 
   badgeColors: {
     primary: {
-      background: "#f8b3ca",
-      text: "#cc084b",
+      background: "#dbe6fd",
+      text: "#1d4ed8",
     },
 
     secondary: {
-      background: "#d7d9e1",
-      text: "#6c757d",
+      background: "#e5eaf2",
+      text: "#475569",
     },
 
     info: {
-      background: "#aecef7",
-      text: "#095bc6",
+      background: "#dbe6fd",
+      text: "#1d4ed8",
     },
 
     success: {
-      background: "#bce2be",
-      text: "#339537",
+      background: "#dcf3e3",
+      text: "#15803d",
     },
 
     warning: {
-      background: "#ffd59f",
-      text: "#c87000",
+      background: "#fdecd2",
+      text: "#b45309",
     },
 
     error: {
-      background: "#fcd3d0",
-      text: "#f61200",
+      background: "#fde0e0",
+      text: "#dc2626",
     },
 
     light: {
       background: "#ffffff",
-      text: "#c7d3de",
+      text: "#9aa8bf",
     },
 
     dark: {
-      background: "#8097bf",
-      text: "#1e2e4a",
+      background: "#dfe6f2",
+      text: "#0f2a5a",
     },
   },
 
   coloredShadows: {
-    primary: "#e91e62",
-    secondary: "#110e0e",
-    info: "#00bbd4",
-    success: "#4caf4f",
-    warning: "#ff9900",
-    error: "#f44336",
-    light: "#adb5bd",
-    dark: "#404040",
+    primary: "#1d4ed8",
+    secondary: "#64748b",
+    info: "#1d4ed8",
+    success: "#15803d",
+    warning: "#d97706",
+    error: "#dc2626",
+    light: "#cdd7e6",
+    dark: "#0f2a5a",
   },
 
-  inputBorderColor: "#d2d6da",
+  // Field borders: light blue-grey, blue when focused (as in the DMS).
+  inputBorderColor: "#cdd7e6",
 
   tabs: {
     indicator: { boxShadow: "#ddd" },

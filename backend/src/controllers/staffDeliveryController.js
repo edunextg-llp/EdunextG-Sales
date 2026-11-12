@@ -77,6 +77,58 @@ export async function collect(req, res) {
     } catch (error) { return sendMobilePaymentError(res, error, 'Staff delivery payment:'); }
 }
 
+const money = (value) => {
+    if (value == null || value === '') return 0;
+    const amount = Number(value);
+    if (!Number.isFinite(amount) || amount < 0 || Math.abs(amount * 100 - Math.round(amount * 100)) > 0.000001) return NaN;
+    return Math.round(amount * 100) / 100;
+};
+
+// Body: { cash, upi, upiReference, cheque, chequeNo, creditDays }. Any unpaid rest goes on credit.
+function parseSplitPayment(body = {}) {
+    const cash = money(body.cash), upi = money(body.upi), cheque = money(body.cheque);
+    if ([cash, upi, cheque].some(Number.isNaN)) return { error: 'Enter amounts with at most two decimal places.' };
+    const chequeNo = String(body.chequeNo || '').trim();
+    if (cheque > 0 && !chequeNo) return { error: 'Enter the cheque number.' };
+    let creditDays = null;
+    if (body.creditDays != null && body.creditDays !== '') {
+        creditDays = Number(body.creditDays);
+        if (!Number.isInteger(creditDays) || creditDays < 1 || creditDays > 14) return { error: 'Credit days must be between 1 and 14' };
+    }
+    const parts = [];
+    if (cash > 0) parts.push({ paymentMode: 'cash', amount: cash });
+    if (upi > 0) parts.push({ paymentMode: 'upi', amount: upi, referenceNo: String(body.upiReference || '').trim() || null });
+    if (cheque > 0) parts.push({ paymentMode: 'cheque', amount: cheque, referenceNo: chequeNo });
+    return { parts, creditDays };
+}
+
+function splitHandler(companyStaff, replace = false) {
+    return async (req, res) => {
+        try {
+            const saleId = Number(req.params.saleId);
+            if (!Number.isSafeInteger(saleId) || saleId <= 0) return res.status(400).json({ error: 'Invalid invoice.' });
+            const parsed = parseSplitPayment(req.body || {});
+            if (parsed.error) return res.status(400).json({ error: parsed.error });
+            const collectorId = companyStaff ? req.staffId : req.deliveryBoyId;
+            const result = await DeliveryCollectionModel.collectSplitPayment(collectorId, saleId, parsed.parts, parsed.creditDays, companyStaff, replace);
+            if (!result) {
+                return res.status(409).json({ error: replace
+                    ? 'This payment is unavailable or already settled. Refresh the list.'
+                    : 'Payment is unavailable, already submitted, or outside the 24-hour delivery window.' });
+            }
+            return res.json({ message: replace ? 'Payment updated for settlement.' : 'Payment submitted to D.B. Collection.', ...result });
+        } catch (error) { return sendMobilePaymentError(res, error, 'Split payment:'); }
+    };
+}
+
+/** Company staff doing deliveries (staff app). */
+export const collectSplit = splitHandler(true);
+/** Delivery boys (Bawarchee delivery app). */
+export const collectSplitForDeliveryBoy = splitHandler(false);
+/** Edit a submitted (not final-submitted, not settled) payment as one split. */
+export const editSplit = splitHandler(true, true);
+export const editSplitForDeliveryBoy = splitHandler(false, true);
+
 export async function editCollection(req, res) {
     try {
         const id = Number(req.params.collectionId);

@@ -541,6 +541,8 @@ export function parseMobilePayment(body = {}) {
 
 export function sendMobilePaymentError(res, error, fallback) {
     if (error.message === 'TAKEN_BILL_ALREADY_CREDIT') return res.status(400).json({ error: 'This Out Bill is already on credit. Select cash, UPI, or cheque.' });
+    if (error.message === 'INVOICE_PHOTO_REQUIRED') return res.status(400).json({ error: 'The rest of this bill goes on credit. Take or upload the invoice photo first.', code: 'INVOICE_PHOTO_REQUIRED' });
+    if (error.message === 'CREDIT_DAYS_REQUIRED') return res.status(400).json({ error: 'Credit days must be between 1 and 14' });
     if (error.message === 'FULL_CREDIT_BALANCE_REQUIRED') return res.status(400).json({ error: 'Use the full outstanding balance when extending existing credit' });
     if (error.message === 'EXISTING_CREDIT_DUE') return res.status(400).json({ error: 'Credit is unavailable because this outlet already has a credit due' });
     if (error.message === 'PAYMENT_FINAL_SUBMITTED') return res.status(409).json({ error: 'This payment was already final-submitted and can no longer be changed. D.B. Collection will settle it.' });
@@ -678,6 +680,37 @@ export const getMobileTransferTargets = async (req, res) => {
     }
 };
 
+// Hand an out-for-delivery bill to the marketing staff who made the order.
+export const assignMobileItemToMarketingStaff = async (req, res) => {
+    try {
+        const saleId = Number(req.params.saleId);
+        const reason = String(req.body?.reason || '').trim().slice(0, 1000);
+        if (!Number.isSafeInteger(saleId) || saleId <= 0) {
+            return res.status(400).json({ error: 'Invalid invoice.' });
+        }
+        if (!reason) {
+            return res.status(400).json({ error: 'Reason is required.' });
+        }
+        const result = await DeliveryBoyModel.assignSaleToMarketingStaff(req.deliveryBoyId, saleId, reason);
+        if (!result) {
+            return res.status(404).json({ error: 'This invoice is not assigned to you.' });
+        }
+        if (result.locked) {
+            return res.status(409).json({ error: 'Only invoices that are still out for delivery can be handed over.', packaging_status: result.packaging_status });
+        }
+        if (result.noStaff) {
+            return res.status(400).json({ error: 'This order has no active marketing staff. Transfer it to a delivery boy instead.' });
+        }
+        return res.json({
+            message: `Invoice handed to ${result.to_staff_name} (marketing staff).`,
+            transfer: result,
+        });
+    } catch (error) {
+        console.error('Error assigning invoice to marketing staff:', error);
+        return res.status(500).json({ error: 'Unable to hand this invoice to the marketing staff.' });
+    }
+};
+
 export const transferMobileAssignedItem = async (req, res) => {
     try {
         const saleId = Number(req.params.saleId);
@@ -728,6 +761,7 @@ export const settleDeliveryBoyCollection = async (req, res) => {
             UPI_REFERENCE_REQUIRED: 'Enter a UPI number (up to 255 characters) before settlement',
             INVALID_SETTLE_MODE: 'Only UPI or cheque collections can be settled as cash',
             INVALID_AMOUNT: 'Enter a valid amount greater than zero with at most two decimal places',
+            SETTLE_PAYMENTS_BEFORE_CREDIT: 'Settle the cash, UPI and cheque parts of this bill before its credit part',
         };
         if (settlementErrors[error.message]) return res.status(400).json({ error: settlementErrors[error.message] });
         console.error('Error settling collection:', error);

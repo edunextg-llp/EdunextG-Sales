@@ -7,8 +7,13 @@ import * as staffController from '../controllers/staffController.js';
 import * as routeController from '../controllers/routeController.js';
 import * as bitMailController from '../controllers/bitMailController.js';
 import * as dmsStockController from '../controllers/dmsStockController.js';
+import * as sellerLedgerController from '../controllers/sellerLedgerController.js';
 import * as currentStockController from '../controllers/currentStockController.js';
 import * as physicalStockController from '../controllers/physicalStockController.js';
+import * as physicalStockAssignments from '../controllers/physicalStockAssignmentController.js';
+import * as distributors from '../controllers/distributorController.js';
+import * as freeGoods from '../controllers/freeGoodsController.js';
+import * as dmsSales from '../controllers/dmsSalesController.js';
 import * as purchaseRequisitionController from '../controllers/purchaseRequisitionController.js';
 import * as overdueSaleRequestController from '../controllers/overdueSaleRequestController.js';
 import * as suspenseRequestController from '../controllers/suspenseRequestController.js';
@@ -152,8 +157,14 @@ router.put('/purchase-requisitions/target-requests/:id', purchaseRequisitionCont
 router.get('/purchase-requisitions/:number', purchaseRequisitionController.getByNumber);
 router.get('/dms-stock', dmsStockController.getLatestDmsStock);
 router.get('/dms-stock/imports', dmsStockController.getDmsStockImports);
+router.get('/seller-ledger/summary', sellerLedgerController.getSellerLedgerSummary);
+router.get('/seller-ledger/:sellerId', sellerLedgerController.getSellerLedger);
+router.post('/seller-ledger/entries', sellerLedgerController.createSellerLedgerEntry);
+router.put('/seller-ledger/entries/:entryId', sellerLedgerController.updateSellerLedgerEntry);
+router.delete('/seller-ledger/entries/:entryId', sellerLedgerController.deleteSellerLedgerEntry);
 router.get('/dms-stock/product-search', dmsStockController.searchDmsStockProducts);
 router.get('/dms-stock/product-lookup', dmsStockController.lookupDmsStockProduct);
+router.get('/dms-stock/last-sale-prices', dmsStockController.getLastDmsSalePrices);
 router.post('/dms-stock/upload', upload.single('file'), dmsStockController.uploadDmsStock);
 router.post('/dms-stock/manual', dmsStockController.createManualDmsStock);
 router.post('/dms-stock/manual-upload', upload.single('file'), dmsStockController.uploadManualDmsStock);
@@ -171,6 +182,34 @@ router.post('/physical-stock/manual', physicalStockController.createManualPhysic
 router.post('/physical-stock/final-submit', physicalStockController.finalizePhysicalStock);
 router.post('/physical-stock/approve', physicalStockController.approvePhysicalStockFromDms);
 router.post('/physical-stock/set-current', physicalStockController.approvePhysicalStockAsCurrentStock);
+// DMS Physical Stock assignments: admin assigns a company's count; the assignee can mark it done.
+// DMS Sales > Create Sales (admin only).
+router.get('/dms-sales/outlets', requireRole('admin'), dmsSales.listOutlets);
+router.get('/dms-sales', requireRole('admin'), dmsSales.listSales);
+router.get('/dms-sales/:id', requireRole('admin'), dmsSales.getSale);
+router.post('/dms-sales', requireRole('admin'), dmsSales.createSale);
+router.post('/dms-sales/:id/payments', requireRole('admin'), dmsSales.addPayment);
+router.post('/dms-sales/:id/cancel', requireRole('admin'), dmsSales.cancelSale);
+// DMS Sales > Free Goods (setting schemes: admin only; Add Sales reads the running ones).
+router.get('/free-goods/active', freeGoods.getActiveSchemes);
+router.get('/free-goods/items', requireRole('admin'), freeGoods.getItems);
+router.get('/free-goods', requireRole('admin'), freeGoods.listSchemes);
+router.post('/free-goods', requireRole('admin'), freeGoods.createScheme);
+router.put('/free-goods/:id', requireRole('admin'), freeGoods.updateScheme);
+router.put('/free-goods/:id/active', requireRole('admin'), freeGoods.setSchemeActive);
+// DMS Sales > Add Distributor (admin only; must stay above the '/:id' routes).
+router.get('/distributors', requireRole('admin'), distributors.listDistributors);
+router.post('/distributors', requireRole('admin'), distributors.createDistributor);
+router.put('/distributors/:id', requireRole('admin'), distributors.updateDistributor);
+router.get('/distributors/:id/credentials', requireRole('admin'), distributors.getDistributorCredentials);
+router.post('/distributors/:id/reset-password', requireRole('admin'), distributors.resetDistributorPassword);
+router.put('/distributors/:id/active', requireRole('admin'), distributors.setDistributorActive);
+router.get('/physical-stock/assignments', physicalStockAssignments.listAssignments);
+router.get('/physical-stock/assignments/all', physicalStockAssignments.listAllAssignments);
+router.get('/physical-stock/assignees', requireRole('admin'), physicalStockAssignments.getAssignees);
+router.post('/physical-stock/assignments', requireRole('admin'), physicalStockAssignments.createAssignment);
+router.put('/physical-stock/assignments/:id', requireRole('admin'), physicalStockAssignments.updateAssignment);
+router.post('/physical-stock/assignments/:id/close', physicalStockAssignments.closeAssignment);
 router.get('/sales/by-date', staffController.getAllSalesByDate);
 router.get('/sales/lookup', staffController.lookupSaleByInvoice);
 router.get('/sales/lookup/outlets', staffController.searchLookupOutlets);

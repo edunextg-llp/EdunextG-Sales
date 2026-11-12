@@ -28,6 +28,7 @@ import createCache from "@emotion/cache";
 import routes from "routes";
 import ProtectedRoute from "components/ProtectedRoute";
 import MyDocumentAssignments from "components/MyDocumentAssignments";
+import MyPhysicalStockAssignments from "components/MyPhysicalStockAssignments";
 import SignIn from "layouts/authentication/sign-in";
 import LandingPage from "layouts/landing";
 import PrivacyPolicy from "layouts/privacy-policy";
@@ -79,6 +80,7 @@ export default function App() {
     }, []);
 
   const visibleRoutes = filterRoutesByRole(routes);
+  const sidenavRoutes = visibleRoutes.filter((route) => !route.hideInSidenav);
   const isPrivacyPolicyPage = pathname === "/privacy-policy";
 
   // Cache for the rtl
@@ -176,12 +178,13 @@ export default function App() {
               color={sidenavColor}
               brand={(transparentSidenav && !darkMode) || whiteSidenav ? brandDark : brandWhite}
               brandName="Material Dashboard 2"
-              routes={visibleRoutes}
+              routes={sidenavRoutes}
               onMouseEnter={handleOnMouseEnter}
               onMouseLeave={handleOnMouseLeave}
             />
             <Configurator />
             <MyDocumentAssignments />
+            <MyPhysicalStockAssignments />
             {/* {configsButton} */}
           </>
         )}
@@ -238,12 +241,13 @@ export default function App() {
             color={sidenavColor}
             brand={(transparentSidenav && !darkMode) || whiteSidenav ? brandDark : brandWhite}
             brandName="Material Dashboard 2"
-            routes={visibleRoutes}
+            routes={sidenavRoutes}
             onMouseEnter={handleOnMouseEnter}
             onMouseLeave={handleOnMouseLeave}
           />
           <Configurator />
           <MyDocumentAssignments />
+          <MyPhysicalStockAssignments />
           {/* {configsButton} */}
         </>
       )}

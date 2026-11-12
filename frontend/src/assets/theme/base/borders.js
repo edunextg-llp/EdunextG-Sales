@@ -39,13 +39,14 @@ const borders = {
     5: pxToRem(5),
   },
 
+  // DMS corners: fields 0.3rem, boxes 0.4rem.
   borderRadius: {
     xs: pxToRem(1.6),
     sm: pxToRem(2),
-    md: pxToRem(6),
-    lg: pxToRem(8),
-    xl: pxToRem(12),
-    xxl: pxToRem(16),
+    md: pxToRem(4.8),
+    lg: pxToRem(6.4),
+    xl: pxToRem(6.4),
+    xxl: pxToRem(8),
     section: pxToRem(160),
   },
 };

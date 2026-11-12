@@ -2,6 +2,7 @@ import mysql from 'mysql2/promise';
 import dotenv from 'dotenv';
 import bcrypt from 'bcryptjs';
 import { NEW_PERMISSION_COLUMNS } from './utils/permissionKeys.js';
+import { assignMissingItemCodes } from './utils/itemCode.js';
 import { migrateStaffSalesUniqueIndex } from './migrations/migrateStaffSalesUniqueIndex.js';
 import { migrateDeliveryOutletLocation } from './migrations/migrateDeliveryOutletLocation.js';
 import { migrateAreas } from './migrations/migrateAreas.js';
@@ -118,6 +119,13 @@ export async function ensureSchema() {
             connection,
             `ALTER TABLE companies ADD COLUMN about TEXT NULL`,
             'about on companies'
+        );
+
+        // Whether sale bills are made for the company (Add Sales). Existing companies: yes.
+        await tryQuery(
+            connection,
+            `ALTER TABLE companies ADD COLUMN creates_sale_bill TINYINT(1) NOT NULL DEFAULT 1`,
+            'creates_sale_bill on companies'
         );
 
         await connection.query(`
@@ -988,6 +996,51 @@ export async function ensureSchema() {
         );
         await tryQuery(connection, `ALTER TABLE seller_items ADD COLUMN pcs_per_box DECIMAL(14, 4) NULL`, 'pcs_per_box on seller_items');
 
+        // Seller ledger: payments, debit notes, credit adjustments and opening balances.
+        // Purchases come from dms_stock_imports; see models/sellerLedgerModel.js.
+        await connection.query(`
+            CREATE TABLE IF NOT EXISTS seller_ledger_entries (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                seller_id INT NOT NULL,
+                company_id INT NULL,
+                entry_type ENUM('payment', 'debit_note', 'credit_note', 'opening') NOT NULL,
+                entry_date DATE NOT NULL,
+                amount DECIMAL(14, 2) NOT NULL,
+                payment_mode VARCHAR(20) NULL,
+                reference VARCHAR(100) NULL,
+                note VARCHAR(500) NULL,
+                created_by INT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                FOREIGN KEY (seller_id) REFERENCES purchase_sellers(id) ON DELETE CASCADE,
+                FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE SET NULL,
+                INDEX idx_seller_ledger_seller_date (seller_id, entry_date)
+            );
+        `);
+
+        // DMS item code (BFPDI000001...). Existing items get codes here once, ordered
+        // EVEREST, EVEREST (NEEVAN), L'OREAL, SIL, SALONI, ASSAM TEA, then the rest.
+        await tryQuery(
+            connection,
+            `ALTER TABLE seller_items ADD COLUMN item_code VARCHAR(20) NULL UNIQUE AFTER seller_id`,
+            'item_code on seller_items'
+        );
+        await connection.query(`
+            CREATE TABLE IF NOT EXISTS item_code_sequence (
+                id INT PRIMARY KEY,
+                seq_value INT NOT NULL DEFAULT 0
+            );
+        `);
+        try {
+            await connection.beginTransaction();
+            const assigned = await assignMissingItemCodes(connection);
+            await connection.commit();
+            if (assigned) console.log(`Assigned item codes to ${assigned} seller item(s)`);
+        } catch (err) {
+            await connection.rollback();
+            console.warn('Schema step skipped (item codes):', err.message);
+        }
+
         await connection.query(`
             CREATE TABLE IF NOT EXISTS company_item_sequence (
                 company_id INT PRIMARY KEY,
@@ -1333,6 +1386,231 @@ export async function ensureSchema() {
             connection,
             `UPDATE physical_stock_items SET stock_update_date = expired_stock_date WHERE stock_update_date IS NULL AND expired_stock_date IS NOT NULL`,
             'backfill stock_update_date on physical_stock_items'
+        );
+
+        // DMS Sales > Add Distributor. Each distributor gets a login ID (BFPDD001, ...) and a
+        // password made for them: stored as a bcrypt hash (for login) and AES-256-GCM encrypted
+        // (utils/passwordCipher.js) so the admin can view it again.
+        await connection.query(`
+            CREATE TABLE IF NOT EXISTS distributors (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                login_id VARCHAR(30) NULL,
+                distributor_name VARCHAR(255) NOT NULL,
+                contact_person VARCHAR(255) NULL,
+                contact_no VARCHAR(20) NOT NULL,
+                email VARCHAR(255) NULL,
+                company_id INT NULL,
+                address TEXT NULL,
+                city VARCHAR(100) NULL,
+                district VARCHAR(100) NULL,
+                state VARCHAR(100) NULL,
+                pin_code VARCHAR(10) NULL,
+                has_gst TINYINT(1) NOT NULL DEFAULT 0,
+                gstin VARCHAR(20) NULL,
+                password_hash VARCHAR(255) NULL,
+                password_encrypted TEXT NULL,
+                is_active TINYINT(1) NOT NULL DEFAULT 1,
+                created_by_name VARCHAR(255) NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                UNIQUE KEY uq_distributor_login_id (login_id),
+                FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE SET NULL
+            );
+        `);
+
+        // DMS Sales > Create Sales: a bill to a distributor / CNF (made on Add Distributor) or to an
+        // outlet. Prices are GST-inclusive (as entered on purchases); stock comes off lot by lot.
+        await connection.query(`
+            CREATE TABLE IF NOT EXISTS dms_sales (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                invoice_number VARCHAR(50) NOT NULL,
+                sale_date DATE NOT NULL,
+                company_id INT NOT NULL,
+                buyer_type ENUM('distributor', 'outlet') NOT NULL,
+                distributor_id INT NULL,
+                outlet_id INT NULL,
+                buyer_name VARCHAR(255) NOT NULL,
+                buyer_code VARCHAR(50) NULL,
+                buyer_contact VARCHAR(30) NULL,
+                buyer_address TEXT NULL,
+                buyer_gstin VARCHAR(20) NULL,
+                item_count INT NOT NULL DEFAULT 0,
+                total_qty DECIMAL(14, 2) NOT NULL DEFAULT 0,
+                taxable_amount DECIMAL(14, 2) NOT NULL DEFAULT 0,
+                gst_amount DECIMAL(14, 2) NOT NULL DEFAULT 0,
+                round_off DECIMAL(8, 2) NOT NULL DEFAULT 0,
+                total_amount DECIMAL(14, 2) NOT NULL DEFAULT 0,
+                paid_amount DECIMAL(14, 2) NOT NULL DEFAULT 0,
+                balance_amount DECIMAL(14, 2) NOT NULL DEFAULT 0,
+                remarks VARCHAR(1000) NULL,
+                status ENUM('active', 'cancelled') NOT NULL DEFAULT 'active',
+                cancel_reason VARCHAR(500) NULL,
+                created_by_name VARCHAR(255) NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                UNIQUE KEY uq_dms_sales_invoice (company_id, invoice_number),
+                INDEX idx_dms_sales_buyer (buyer_type, distributor_id, outlet_id),
+                FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE CASCADE
+            );
+        `);
+        await connection.query(`
+            CREATE TABLE IF NOT EXISTS dms_sale_items (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                sale_id INT NOT NULL,
+                product_erp_id VARCHAR(100) NOT NULL,
+                item_code VARCHAR(30) NULL,
+                product_name VARCHAR(255) NULL,
+                variant_name VARCHAR(255) NULL,
+                hsn_code VARCHAR(20) NULL,
+                mrp DECIMAL(10, 2) NULL,
+                batch_number VARCHAR(100) NULL,
+                expiry_date DATE NULL,
+                qty DECIMAL(14, 2) NOT NULL DEFAULT 0,
+                rate DECIMAL(12, 2) NOT NULL DEFAULT 0,
+                gst_percent DECIMAL(5, 2) NOT NULL DEFAULT 5,
+                taxable_amount DECIMAL(14, 2) NOT NULL DEFAULT 0,
+                gst_amount DECIMAL(14, 2) NOT NULL DEFAULT 0,
+                amount DECIMAL(14, 2) NOT NULL DEFAULT 0,
+                is_free TINYINT(1) NOT NULL DEFAULT 0,
+                free_note VARCHAR(255) NULL,
+                sort_order INT NOT NULL DEFAULT 0,
+                FOREIGN KEY (sale_id) REFERENCES dms_sales(id) ON DELETE CASCADE,
+                INDEX idx_dms_sale_items_sale (sale_id)
+            );
+        `);
+        await connection.query(`
+            CREATE TABLE IF NOT EXISTS dms_sale_payments (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                sale_id INT NOT NULL,
+                payment_date DATE NOT NULL,
+                amount DECIMAL(14, 2) NOT NULL,
+                payment_mode VARCHAR(20) NOT NULL DEFAULT 'cash',
+                reference VARCHAR(255) NULL,
+                created_by_name VARCHAR(255) NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (sale_id) REFERENCES dms_sales(id) ON DELETE CASCADE,
+                INDEX idx_dms_sale_payments_sale (sale_id)
+            );
+        `);
+
+        // DMS Sales > Free Goods: buy X pcs of an item, get Y pcs (same or another item) free.
+        await connection.query(`
+            CREATE TABLE IF NOT EXISTS free_goods_schemes (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                company_id INT NOT NULL,
+                product_erp_id VARCHAR(100) NOT NULL,
+                item_name VARCHAR(255) NULL,
+                buy_qty INT NOT NULL,
+                free_qty INT NOT NULL,
+                free_product_erp_id VARCHAR(100) NULL,
+                free_item_name VARCHAR(255) NULL,
+                valid_from DATE NULL,
+                valid_to DATE NULL,
+                note VARCHAR(500) NULL,
+                is_active TINYINT(1) NOT NULL DEFAULT 1,
+                created_by_name VARCHAR(255) NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                INDEX idx_free_goods_company (company_id, is_active),
+                FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE CASCADE
+            );
+        `);
+
+        // A distributor login is made under one company, as a Distributor or a CNF.
+        await tryQuery(
+            connection,
+            `ALTER TABLE distributors ADD COLUMN seller_type ENUM('distributor', 'cnf') NOT NULL DEFAULT 'distributor' AFTER id`,
+            'seller_type on distributors'
+        );
+
+        // DMS Physical Stock: a company's count assigned to one person (admin, delivery /
+        // packaging user or Bawarchee staff). Items saved while it is open are logged in
+        // physical_stock_assignment_items, so the page can show updated (green) vs not (red).
+        await connection.query(`
+            CREATE TABLE IF NOT EXISTS physical_stock_assignments (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                company_id INT NOT NULL,
+                assignee_type VARCHAR(20) NOT NULL,
+                assignee_id INT NOT NULL,
+                assignee_name VARCHAR(255) NULL,
+                due_date DATE NULL,
+                note VARCHAR(500) NULL,
+                status ENUM('open', 'done', 'cancelled') NOT NULL DEFAULT 'open',
+                assigned_by_type VARCHAR(20) NULL,
+                assigned_by_id INT NULL,
+                assigned_by_name VARCHAR(255) NULL,
+                closed_by_name VARCHAR(255) NULL,
+                closed_at DATETIME NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE CASCADE,
+                INDEX idx_psa_company_status (company_id, status),
+                INDEX idx_psa_assignee (assignee_type, assignee_id, status)
+            );
+        `);
+        // The days the assignee may fill entries (a single day is start = end).
+        await tryQuery(connection, `ALTER TABLE physical_stock_assignments ADD COLUMN start_date DATE NULL`, 'start_date on physical_stock_assignments');
+        await tryQuery(connection, `ALTER TABLE physical_stock_assignments ADD COLUMN end_date DATE NULL`, 'end_date on physical_stock_assignments');
+        await tryQuery(
+            connection,
+            `UPDATE physical_stock_assignments
+             SET start_date = DATE(created_at), end_date = COALESCE(due_date, DATE(created_at))
+             WHERE start_date IS NULL`,
+            'backfill dates on physical_stock_assignments'
+        );
+        // Assign ID: one per company + assigned dates (PSA000001, ...). Staff on the same company
+        // for the same From–To share it. Older assignments get theirs here, in the order made.
+        await tryQuery(connection, `ALTER TABLE physical_stock_assignments ADD COLUMN assign_code VARCHAR(20) NULL`, 'assign_code on physical_stock_assignments');
+        await tryQuery(connection, `ALTER TABLE physical_stock_assignments ADD INDEX idx_psa_assign_code (assign_code)`, 'assign_code index on physical_stock_assignments');
+        // An earlier version made assign_code unique; staff of one company + dates share it.
+        await tryQuery(connection, `ALTER TABLE physical_stock_assignments DROP INDEX uq_psa_assign_code`, 'drop unique assign_code on physical_stock_assignments');
+        {
+            const [missing] = await connection.query(
+                `SELECT id, company_id, DATE_FORMAT(start_date, '%Y-%m-%d') AS s, DATE_FORMAT(end_date, '%Y-%m-%d') AS e
+                 FROM physical_stock_assignments WHERE assign_code IS NULL ORDER BY id`
+            );
+            if (missing.length) {
+                const [[{ last }]] = await connection.query(
+                    `SELECT COALESCE(MAX(CAST(SUBSTRING(assign_code, 4) AS UNSIGNED)), 0) AS last
+                     FROM physical_stock_assignments WHERE assign_code LIKE 'PSA%'`
+                );
+                let next = Number(last) || 0;
+                const byGroup = new Map();
+                for (const row of missing) {
+                    const key = `${row.company_id}|${row.s}|${row.e}`;
+                    if (!byGroup.has(key)) byGroup.set(key, `PSA${String(++next).padStart(6, '0')}`);
+                    await connection.query('UPDATE physical_stock_assignments SET assign_code = ? WHERE id = ?', [byGroup.get(key), row.id]);
+                }
+                console.log(`assign_code backfilled on ${missing.length} physical_stock_assignments`);
+            }
+        }
+        // Admin names on assignments show as "Admin", not the admin's login username.
+        await tryQuery(
+            connection,
+            `UPDATE physical_stock_assignments
+             SET assigned_by_name = CASE WHEN assigned_by_type = 'admin' OR assigned_by_name IN (SELECT username FROM admins)
+                                         THEN 'Admin' ELSE assigned_by_name END,
+                 closed_by_name = CASE WHEN closed_by_name IN (SELECT username FROM admins) THEN 'Admin' ELSE closed_by_name END,
+                 assignee_name = CASE WHEN assignee_type = 'admin' THEN 'Admin' ELSE assignee_name END`,
+            'admin names on physical_stock_assignments'
+        );
+        await connection.query(`
+            CREATE TABLE IF NOT EXISTS physical_stock_assignment_items (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                assignment_id INT NOT NULL,
+                product_erp_id VARCHAR(100) NOT NULL,
+                counted_by_name VARCHAR(255) NULL,
+                counted_at DATETIME NOT NULL,
+                UNIQUE KEY uq_psa_item (assignment_id, product_erp_id),
+                FOREIGN KEY (assignment_id) REFERENCES physical_stock_assignments(id) ON DELETE CASCADE
+            );
+        `);
+
+        await tryQuery(
+            connection,
+            `UPDATE physical_stock_assignment_items SET counted_by_name = 'Admin'
+             WHERE counted_by_name IN (SELECT username FROM admins)`,
+            'admin names on physical_stock_assignment_items'
         );
 
         await connection.query(`
@@ -1822,6 +2100,31 @@ export async function ensureSchema() {
             );
         `);
 
+        // What each purchase invoice has added to stock, per item and MRP lot (MRP + batch +
+        // expiry). Saving or editing the invoice changes stock only by the difference.
+        await connection.query(`
+            CREATE TABLE IF NOT EXISTS purchase_stock_lots (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                dms_import_id INT NOT NULL,
+                product_erp_id VARCHAR(100) NOT NULL,
+                lot_key VARCHAR(255) NOT NULL,
+                mrp DECIMAL(10, 2) NOT NULL DEFAULT 0,
+                batch_number VARCHAR(100) NULL,
+                mfg_date DATE NULL,
+                expiry_date DATE NULL,
+                received_date DATE NULL,
+                pcs DECIMAL(14, 4) NOT NULL DEFAULT 0,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                UNIQUE KEY uq_purchase_stock_lot (dms_import_id, product_erp_id, lot_key),
+                FOREIGN KEY (dms_import_id) REFERENCES dms_stock_imports(id) ON DELETE CASCADE
+            );
+        `);
+
+        // The MRP lot a sale line was taken from (same item at several MRPs / batches).
+        await tryQuery(connection, `ALTER TABLE staff_sale_items ADD COLUMN mrp DECIMAL(10, 2) NULL`, 'mrp on staff_sale_items');
+        await tryQuery(connection, `ALTER TABLE staff_sale_items ADD COLUMN batch_number VARCHAR(100) NULL`, 'batch_number on staff_sale_items');
+        await tryQuery(connection, `ALTER TABLE staff_sale_items ADD COLUMN expiry_date DATE NULL`, 'expiry_date on staff_sale_items');
+
         await connection.query(`
             CREATE TABLE IF NOT EXISTS taken_bills (
                 id INT AUTO_INCREMENT PRIMARY KEY,
@@ -2190,6 +2493,10 @@ export async function ensureSchema() {
             );
         `);
         console.log('delivery_transfers table verified');
+        // A delivery boy can also hand the bill to the order's own marketing staff (their
+        // Deliveries screen in the app): to_staff_id is set and to_delivery_boy_id is empty.
+        await tryQuery(connection, `ALTER TABLE delivery_transfers MODIFY to_delivery_boy_id INT NULL`, 'to_delivery_boy_id nullable on delivery_transfers');
+        await tryQuery(connection, `ALTER TABLE delivery_transfers ADD COLUMN to_staff_id INT NULL AFTER to_delivery_boy_id`, 'to_staff_id on delivery_transfers');
 
         // After delivery a delivery boy can report extra material (photo, earns 1 star) or
         // less material (amount is taken off the bill at once and reviewed by the reviewer).

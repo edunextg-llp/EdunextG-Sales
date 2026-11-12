@@ -1,0 +1,94 @@
+@import "tailwindcss";
+@plugin "daisyui" {
+  themes: false;
+}
+
+/* DMS theme: royal blue on white, pale-blue page, orange accent. Flat, tight corners.
+   Keep in step with the MUI theme in main.jsx and the sidebar in components/Sidebar.jsx. */
+@plugin "daisyui/theme" {
+  name: "dms";
+  default: true;
+  color-scheme: light;
+
+  --color-base-100: #ffffff;
+  --color-base-200: #f5f8fd;
+  --color-base-300: #dfe6f2;
+  --color-base-content: #0f1d33;
+
+  --color-primary: #1d4ed8;
+  --color-primary-content: #ffffff;
+  /* Orange for small text: deep enough to read on white. */
+  --color-secondary: #c2410c;
+  --color-secondary-content: #ffffff;
+  --color-accent: #f97316;
+  --color-accent-content: #1f1300;
+  --color-neutral: #0f2a5a;
+  --color-neutral-content: #eef3fc;
+
+  --color-info: #0369a1;
+  --color-info-content: #ffffff;
+  --color-success: #15803d;
+  --color-success-content: #ffffff;
+  --color-warning: #d97706;
+  --color-warning-content: #1f1300;
+  --color-error: #dc2626;
+  --color-error-content: #ffffff;
+
+  --radius-selector: 0.25rem;
+  --radius-field: 0.3rem;
+  --radius-box: 0.4rem;
+  --size-selector: 0.25rem;
+  --size-field: 0.25rem;
+  --border: 1px;
+  --depth: 0;
+  --noise: 0;
+}
+
+/* Field borders: light blue-grey normally, blue when focused. Never dark/black. */
+:root {
+  --field-border: #cdd7e6;
+}
+.input,
+.select,
+.textarea,
+.field-border {
+  --input-color: var(--field-border);
+  border-color: var(--field-border);
+}
+.input:focus,
+.input:focus-within,
+.select:focus,
+.select:focus-within,
+.textarea:focus {
+  --input-color: var(--color-primary);
+  outline: none;
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--color-primary) 14%, transparent);
+}
+.input input:focus,
+.select select:focus {
+  outline: none;
+}
+/* Keyboard focus on buttons / toggles / tabs: blue, not black. */
+.btn:focus-visible,
+.toggle:focus-visible,
+.tab:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+.toggle:not(:checked) {
+  border-color: var(--field-border);
+  color: #9aa8bf;
+}
+
+/* Disabled buttons: daisyUI fades them to 20% (ghost ones vanish completely).
+   Keep them readable: grey fill, grey border, mid-grey text. */
+.btn:is(.btn-disabled, :disabled, [disabled], [aria-disabled="true"]) {
+  color: color-mix(in oklab, var(--color-base-content) 45%, transparent);
+  background-color: var(--color-base-200);
+  border-color: var(--color-base-300);
+}
+.btn-ghost:is(.btn-disabled, :disabled, [disabled], [aria-disabled="true"]) {
+  background-color: transparent;
+  border-color: transparent;
+}

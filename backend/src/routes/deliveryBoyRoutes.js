@@ -5,6 +5,7 @@ const router = express.Router();
 import * as deliveryBoyController from '../controllers/deliveryBoyController.js';
 import * as documentAssignments from '../controllers/documentAssignmentController.js';
 import * as materialReports from '../controllers/materialReportController.js';
+import { collectSplitForDeliveryBoy, editSplitForDeliveryBoy } from '../controllers/staffDeliveryController.js';
 import jwt from 'jsonwebtoken';
 import { requireAnyPermission, requireRole, verifyTokenMiddleware } from '../middlewares/authMiddleware.js';
 
@@ -53,10 +54,14 @@ router.put('/mobile/items/:saleId/status', verifyDeliveryBoyToken, deliveryBoyCo
 router.put('/mobile/items/:saleId/location', verifyDeliveryBoyToken, deliveryBoyController.updateMobileAssignedItemLocation);
 router.get('/mobile/transfer-targets', verifyDeliveryBoyToken, deliveryBoyController.getMobileTransferTargets);
 router.post('/mobile/items/:saleId/transfer', verifyDeliveryBoyToken, deliveryBoyController.transferMobileAssignedItem);
+// Or to the order's own marketing staff (their Deliveries screen).
+router.post('/mobile/items/:saleId/assign-staff', verifyDeliveryBoyToken, deliveryBoyController.assignMobileItemToMarketingStaff);
 router.put('/mobile/items/:saleId/contact', verifyDeliveryBoyToken, deliveryBoyController.updateMobileAssignedItemContact);
 router.get('/mobile/collections', verifyDeliveryBoyToken, deliveryBoyController.getMobileCollections);
 router.get('/mobile/credit-dues', verifyDeliveryBoyToken, deliveryBoyController.getMobileCreditDues);
 router.post('/mobile/credit-dues/:saleId/payments', verifyDeliveryBoyToken, requireCreditPhoto, deliveryBoyController.collectMobileCreditDue);
+router.post('/mobile/credit-dues/:saleId/split-payments', verifyDeliveryBoyToken, collectSplitForDeliveryBoy);
+router.put('/mobile/credit-dues/:saleId/split-payments', verifyDeliveryBoyToken, editSplitForDeliveryBoy);
 router.get('/mobile/pending-collections', verifyDeliveryBoyToken, deliveryBoyController.getMobilePendingCollections);
 router.put('/mobile/pending-collections/:collectionId', verifyDeliveryBoyToken, requireCreditPhoto, deliveryBoyController.editMobilePendingCollection);
 router.post('/mobile/pending-collections/:collectionId/final-submit', verifyDeliveryBoyToken, deliveryBoyController.finalSubmitMobilePendingCollection);

@@ -2,7 +2,7 @@
 // Each key is stored as a can_<key> column in delivery_user_permissions.
 export const PERMISSION_KEYS = [
     'dashboard', 'dms', 'add_seller', 'add_item', 'item_list',
-    'purchase_history', 'physical_stock', 'current_stock', 'expiry_items', 'expiry_list', 'damage_list', 'purchase',
+    'purchase_history', 'seller_ledger', 'physical_stock', 'current_stock', 'expiry_items', 'expiry_list', 'damage_list', 'purchase',
     'update_payment', 'bank_deposit', 'db_collection', 'credits', 'create_staff', 'add_outlet', 'location_assignments', 'add_sales',
     'packaging', 'delivery', 'delivery_report', 'delivered', 'out_bill', 'requisition_approval', 'invoice_lookup',
     'chalan_add_sales', 'chalan_packaging', 'chalan_delivery', 'chalan_delivered', 'chalan_return',
@@ -29,7 +29,7 @@ export const PERMISSION_REQUIRES = {
 
 // DMS pages: granting any of them also grants the DMS menu itself.
 export const DMS_PERMISSION_KEYS = [
-    'add_seller', 'add_item', 'item_list', 'purchase_history', 'physical_stock',
+    'add_seller', 'add_item', 'item_list', 'purchase_history', 'seller_ledger', 'physical_stock',
     'current_stock', 'expiry_items', 'expiry_list', 'damage_list', 'purchase',
 ];
 
@@ -53,6 +53,8 @@ export const NEW_PERMISSION_COLUMNS = [
     ['overdue_approval', null],
     ['material_report_review', null],
     ['overdue_own_permission', null],
+    // Seller Ledger: whoever could see Purchase History starts with it.
+    ['seller_ledger', 'purchase_history'],
 ];
 
 export const permissionColumnsSql = (alias = 'p') =>

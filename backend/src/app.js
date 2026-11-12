@@ -4,6 +4,7 @@ import bodyParser from 'body-parser';
 import staffRoutes from './routes/staffRoutes.js';
 import deliveryBoyRoutes from './routes/deliveryBoyRoutes.js';
 import myDocumentAssignmentRoutes from './routes/myDocumentAssignmentRoutes.js';
+import myPhysicalStockRoutes from './routes/myPhysicalStockRoutes.js';
 import staffMobileRoutes from './routes/staffMobileRoutes.js';
 import chalanRoutes from './routes/chalanRoutes.js';
 import authRoutes from './routes/authRoutes.js';
@@ -45,6 +46,7 @@ app.use('/api/audit-logs', verifyTokenMiddleware, requireRole('admin'), auditRou
 app.use('/api/delivery-boy', deliveryBoyRoutes);
 app.use('/api/material-reports', verifyTokenMiddleware, requireRole('admin', 'packaging_staff', 'delivery_boy', 'bawarchee_staff'), materialReportRoutes);
 app.use('/api/my-document-assignments', myDocumentAssignmentRoutes);
+app.use('/api/my-physical-stock', myPhysicalStockRoutes);
 app.use('/api/staff-mobile', staffMobileRoutes);
 app.use('/api/chalan', verifyTokenMiddleware, requireAnyPermission(
     'chalan_add_sales', 'chalan_packaging', 'chalan_delivery', 'chalan_delivered', 'chalan_return'

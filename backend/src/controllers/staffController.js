@@ -1663,6 +1663,13 @@ export const recordSales = async (req, res) => {
                 .find(Boolean) ||
             '';
 
+        if (resolvedCompanyName) {
+            const company = await CompanyModel.getByName(resolvedCompanyName);
+            if (company && Number(company.creates_sale_bill) === 0) {
+                return res.status(400).json({ error: `Sale bills are turned off for ${company.name}.` });
+            }
+        }
+
         const deliveryBoyCache = new Map();
         const validatedSales = [];
         const invoiceNumbers = new Set();
@@ -4416,7 +4423,8 @@ export const logOrderCancellation = async (req, res) => {
             let saleItem = null;
             if (saleItemId) {
                 const [itemRows] = await connection.execute(
-                    `SELECT id, sale_id, product_erp_id, product_name, product_division, variant_name, qty, rate
+                    `SELECT id, sale_id, product_erp_id, product_name, product_division, variant_name, qty, rate,
+                            mrp, batch_number, DATE_FORMAT(expiry_date, '%Y-%m-%d') AS expiry_date
                      FROM staff_sale_items WHERE id = ? AND sale_id = ? LIMIT 1`,
                     [saleItemId, saleId]
                 );
@@ -4854,6 +4862,14 @@ function parseDailyRequisitionTarget(body) {
     return { valid: true, provided: true, value: amount > 0 ? Math.round(amount * 100) / 100 : null };
 }
 
+// "Create sale bills?" from a company form. Returns undefined when not sent.
+function parseCreatesSaleBill(body) {
+    if (!Object.prototype.hasOwnProperty.call(body || {}, 'createsSaleBill')) return undefined;
+    const raw = body.createsSaleBill;
+    if (typeof raw === 'string') return !['0', 'false', 'no', ''].includes(raw.trim().toLowerCase());
+    return Boolean(raw);
+}
+
 export const createCompany = async (req, res) => {
     try {
         const name = String(req.body.name || '').trim();
@@ -4885,12 +4901,14 @@ export const createCompany = async (req, res) => {
             return res.status(400).json({ error: targetValidation.error });
         }
 
+        const createsSaleBill = parseCreatesSaleBill(req.body) ?? true;
         const { id, code } = await CompanyModel.create(
-            name, type, about || null, emailsValidation.value, targetValidation.value ?? null
+            name, type, about || null, emailsValidation.value, targetValidation.value ?? null, createsSaleBill
         );
         res.status(201).json({
             id, code, name, type, about, emails: emailsValidation.value,
             daily_requisition_target: targetValidation.value ?? null,
+            creates_sale_bill: createsSaleBill ? 1 : 0,
         });
     } catch (error) {
         if (error.code === 'ER_DUP_ENTRY') {
@@ -4949,6 +4967,7 @@ export const updateCompany = async (req, res) => {
             about: about || null,
             emails: emailsProvided ? emails : undefined,
             dailyRequisitionTarget: targetValidation.provided ? targetValidation.value : undefined,
+            createsSaleBill: parseCreatesSaleBill(req.body),
         });
         if (affectedRows === 0) {
             return res.status(404).json({ error: 'Company not found.' });
@@ -4964,6 +4983,9 @@ export const updateCompany = async (req, res) => {
             daily_requisition_target: targetValidation.provided
                 ? targetValidation.value
                 : existing.daily_requisition_target ?? null,
+            creates_sale_bill: parseCreatesSaleBill(req.body) === undefined
+                ? existing.creates_sale_bill
+                : (parseCreatesSaleBill(req.body) ? 1 : 0),
         });
     } catch (error) {
         if (error.code === 'ER_DUP_ENTRY') {

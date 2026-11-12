@@ -221,6 +221,86 @@ class DeliveryCollectionModel {
         } finally { connection.release(); }
     }
 
+    // One delivery paid several ways at once (e.g. 1000 cash + 500 UPI on a 2000 bill).
+    // Each part becomes its own D.B. Collection entry; whatever is left unpaid is
+    // automatically submitted as Credit, which requires the invoice photo.
+    // With replace = true this edits a submitted payment: every unsettled entry of the bill
+    // (all parts of the split) is swapped for the new split, as long as none is final-submitted.
+    static async collectSplitPayment(collectorId, saleId, parts, creditDays, companyStaff = false, replace = false) {
+        const connection = await db.getConnection();
+        try {
+            await connection.beginTransaction();
+            const [saleRows] = await connection.execute('SELECT id, credit_photo_url FROM staff_sales WHERE id = ? FOR UPDATE', [saleId]);
+            if (!saleRows.length) { await connection.rollback(); return null; }
+            let due;
+            if (replace) {
+                const [existing] = await connection.execute(
+                    `SELECT id, ${companyStaff ? 'staff_id' : 'delivery_boy_id'} AS collector_id,
+                            COALESCE(collector_type, 'delivery_boy') AS collector_type,
+                            COALESCE(collection_source, 'delivery') AS collection_source, final_submitted_at
+                     FROM delivery_boy_collections WHERE sale_id = ? AND settled_at IS NULL FOR UPDATE`,
+                    [saleId]
+                );
+                const mine = (row) => Number(row.collector_id) === Number(collectorId)
+                    && row.collector_type === (companyStaff ? 'company_staff' : 'delivery_boy');
+                if (!existing.length || !existing.every(mine)) { await connection.rollback(); return null; }
+                if (existing.some((row) => row.final_submitted_at)) throw new Error('PAYMENT_FINAL_SUBMITTED');
+                const [creditRows] = await connection.execute(
+                    `SELECT COALESCE(SUM(GREATEST(0, sp.amount - COALESCE(child.paid, 0))), 0) AS credit_amount
+                     FROM sale_payments sp
+                     LEFT JOIN (SELECT parent_credit_payment_id, SUM(amount) AS paid FROM sale_payments
+                                WHERE parent_credit_payment_id IS NOT NULL AND payment_mode IN ('cash','upi','cheque')
+                                GROUP BY parent_credit_payment_id) child ON child.parent_credit_payment_id = sp.id
+                     WHERE sp.sale_id = ? AND sp.payment_mode = 'credit'`,
+                    [saleId]
+                );
+                due = { collection_source: existing[0].collection_source, credit_amount: Number(creditRows[0]?.credit_amount) || 0 };
+                await connection.execute(
+                    `DELETE FROM delivery_boy_collections WHERE sale_id = ? AND settled_at IS NULL AND id IN (${existing.map(() => '?').join(',')})`,
+                    [saleId, ...existing.map((row) => row.id)]
+                );
+            } else {
+                due = (await this.getOutstandingSalesForDeliveryBoy(collectorId, connection, companyStaff))
+                    .find((row) => Number(row.sale_id) === Number(saleId));
+                if (!due) { await connection.rollback(); return null; }
+            }
+            const price = await PaymentModel.getEffectiveSalePrice(connection, saleId);
+            const paid = await PaymentModel.getTotalPaid(connection, saleId);
+            const pendingAmount = await getPendingCollectedAmount(connection, saleId);
+            const remaining = Math.max(0, Math.round((price - paid - pendingAmount) * 100) / 100);
+            if (remaining <= 0.001) throw Object.assign(new Error('PAYMENT_ALREADY_PENDING'), { pendingAmount });
+            const collected = Math.round(parts.reduce((sum, part) => sum + part.amount, 0) * 100) / 100;
+            if (collected > remaining + 0.001) throw Object.assign(new Error('EXCEEDS_BALANCE'), { remaining });
+            const creditAmount = Math.round((remaining - collected) * 100) / 100;
+            // An Out Bill, or a bill that already carries credit, keeps the shortfall as plain balance.
+            const autoCredit = creditAmount > 0.001 && due.collection_source !== 'taken_bill' && !(due.credit_amount > 0);
+            // Only a photo already saved on the server counts.
+            if (creditAmount > 0.001 && !String(saleRows[0].credit_photo_url || '').trim()) throw new Error('INVOICE_PHOTO_REQUIRED');
+            if (autoCredit && !creditDays) throw new Error('CREDIT_DAYS_REQUIRED');
+
+            const rows = [...parts];
+            if (autoCredit) rows.push({ paymentMode: 'credit', amount: creditAmount, creditDays });
+            if (!rows.length) throw Object.assign(new Error('EXCEEDS_BALANCE'), { remaining });
+            const ids = [];
+            for (const row of rows) {
+                const [result] = await connection.execute(
+                    `INSERT INTO delivery_boy_collections
+                     (sale_id, ${companyStaff ? 'staff_id' : 'delivery_boy_id'}, collector_type, payment_mode, amount, cash_details, reference_no, reference_date, credit_days, remarks, collection_source, settled_at)
+                     VALUES (?, ?, '${companyStaff ? 'company_staff' : 'delivery_boy'}', ?, ?, NULL, ?, NULL, ?, ?, ?, NULL)`,
+                    [saleId, collectorId, row.paymentMode, row.amount, row.referenceNo ?? null,
+                     row.paymentMode === 'credit' ? row.creditDays : null,
+                     `Mobile split payment for BP${saleId}`, due.collection_source]
+                );
+                ids.push(result.insertId);
+            }
+            await connection.commit();
+            return { collectionIds: ids, collected, creditAmount: autoCredit ? creditAmount : 0, remainingBalance: remaining };
+        } catch (error) {
+            await connection.rollback();
+            throw error;
+        } finally { connection.release(); }
+    }
+
     // Payments this delivery boy submitted from the app that the office has not settled yet.
     // These stay visible in the app so the mode or amount can still be corrected.
     static async getPendingCollectionsForDeliveryBoy(deliveryBoyId, executor = db, companyStaff = false) {
@@ -291,7 +371,13 @@ class DeliveryCollectionModel {
             await connection.execute('SELECT id FROM staff_sales WHERE id = ? FOR UPDATE', [collection.sale_id]);
             const price = await PaymentModel.getEffectiveSalePrice(connection, collection.sale_id);
             const paid = await PaymentModel.getTotalPaid(connection, collection.sale_id);
-            const remaining = Math.max(0, price - paid);
+            // Other unsettled parts of the same bill (a split payment) are already spoken for.
+            const [siblingRows] = await connection.execute(
+                `SELECT COALESCE(SUM(amount), 0) AS amount FROM delivery_boy_collections
+                 WHERE sale_id = ? AND id <> ? AND settled_at IS NULL`,
+                [collection.sale_id, collectionId]
+            );
+            const remaining = Math.max(0, Math.round((price - paid - (Number(siblingRows[0]?.amount) || 0)) * 100) / 100);
             if (!Number.isFinite(data.amount) || data.amount <= 0 || data.amount > remaining + 0.001) {
                 throw Object.assign(new Error('EXCEEDS_BALANCE'), { remaining });
             }
@@ -474,6 +560,14 @@ class DeliveryCollectionModel {
             let amountToApply = amount;
             let lastPaymentId = null;
             if (collection.payment_mode === 'credit') {
+                // Split payment: settle the cash/UPI/cheque parts first, otherwise they
+                // would be booked as repayments of this brand-new credit.
+                const [openParts] = await connection.execute(
+                    `SELECT COUNT(*) AS count FROM delivery_boy_collections
+                     WHERE sale_id = ? AND id <> ? AND settled_at IS NULL AND payment_mode IN ('cash','upi','cheque')`,
+                    [collection.sale_id, collectionId]
+                );
+                if (Number(openParts[0]?.count) > 0) throw new Error('SETTLE_PAYMENTS_BEFORE_CREDIT');
                 const [existingCredits] = await connection.execute(
                     `SELECT sp.id, GREATEST(0, sp.amount - COALESCE(child.paid, 0)) AS balance
                      FROM sale_payments sp

@@ -3,7 +3,7 @@ import UserModel from '../models/userModel.js';
 import DeliveryBoyModel from '../models/deliveryBoyModel.js';
 import StaffModel from '../models/staffModel.js';
 
-const JWT_SECRET = process.env.JWT_SECRET || 'super_secret_key_12345';
+const JWT_SECRET = process.env.JWT_SECRET;
 
 export const verifyTokenMiddleware = async (req, res, next) => {
     const token = req.headers['authorization'];
@@ -170,6 +170,9 @@ export const enforceManagedUserApiScope = (req, res, next) => {
         allowed = dms('expiry_list');
     } else if (path.startsWith('/damage-list')) {
         allowed = dms('damage_list');
+    } else if (path === '/free-goods/active') {
+        // Add Sales adds the free lines of running free goods schemes.
+        allowed = isGet && (permissions.has('add_sales') || hasDms);
     } else if (path.startsWith('/physical-stock')) {
         allowed = dms('physical_stock');
     } else if (path === '/current-stock') {
@@ -177,6 +180,8 @@ export const enforceManagedUserApiScope = (req, res, next) => {
         allowed = isGet && (dms('current_stock') || permissions.has('add_sales'));
     } else if (path === '/purchases' || path.startsWith('/purchases/')) {
         allowed = dms('purchase');
+    } else if (path.startsWith('/seller-ledger')) {
+        allowed = dms('seller_ledger');
     } else if (path.startsWith('/purchase-sellers')) {
         allowed = dms('add_seller')
             || (isGet && dms('add_item', 'item_list', 'purchase_history', 'expiry_list', 'damage_list', 'purchase'));

@@ -588,6 +588,54 @@ class DeliveryBoyModel {
         }
     }
 
+    /**
+     * Gives one out-for-delivery bill back to the marketing staff who made the order: it
+     * moves to their Deliveries screen in the app (delivery_staff_id) and is logged.
+     * Returns null (not this boy's bill), { locked } (no longer out for delivery),
+     * { noStaff } (the order has no active marketing staff) or the transfer.
+     */
+    static async assignSaleToMarketingStaff(fromDeliveryBoyId, saleId, reason = null) {
+        const connection = await db.getConnection();
+        try {
+            await connection.beginTransaction();
+            const [rows] = await connection.execute(
+                `SELECT ss.id, ss.packaging_status, ss.staff_id, DATE_FORMAT(ss.delivery_date, '%Y-%m-%d') AS delivery_date,
+                        s.name AS staff_name, s.is_active AS staff_active
+                 FROM staff_sales ss
+                 LEFT JOIN staff s ON s.id = ss.staff_id
+                 WHERE ss.id = ? AND ss.delivery_boy_id = ? FOR UPDATE`,
+                [saleId, fromDeliveryBoyId]
+            );
+            const sale = rows[0];
+            if (!sale) { await connection.rollback(); return null; }
+            if (sale.packaging_status !== 'out_for_delivery') {
+                await connection.rollback();
+                return { locked: true, packaging_status: sale.packaging_status };
+            }
+            if (!sale.staff_id || Number(sale.staff_active) !== 1) {
+                await connection.rollback();
+                return { noStaff: true };
+            }
+            await connection.execute(
+                `UPDATE staff_sales SET delivery_boy_id = NULL, delivery_staff_id = ?
+                 WHERE id = ? AND delivery_boy_id = ? AND packaging_status = 'out_for_delivery'`,
+                [sale.staff_id, saleId, fromDeliveryBoyId]
+            );
+            await connection.execute(
+                `INSERT INTO delivery_transfers (sale_id, from_delivery_boy_id, to_delivery_boy_id, to_staff_id, delivery_date, reason)
+                 VALUES (?, ?, NULL, ?, ?, ?)`,
+                [saleId, fromDeliveryBoyId, sale.staff_id, sale.delivery_date || null, reason]
+            );
+            await connection.commit();
+            return { id: saleId, to_staff_id: sale.staff_id, to_staff_name: sale.staff_name };
+        } catch (error) {
+            await connection.rollback();
+            throw error;
+        } finally {
+            connection.release();
+        }
+    }
+
     /** Transfer log for the admin report, filtered on the transfer date. */
     static async getTransfers({ from = null, to = null } = {}) {
         const conditions = [];
@@ -599,7 +647,7 @@ class DeliveryBoyModel {
                     DATE_FORMAT(dt.transferred_at, '%Y-%m-%d %H:%i') AS transferred_at,
                     DATE_FORMAT(dt.delivery_date, '%Y-%m-%d') AS delivery_date,
                     from_boy.name AS from_delivery_boy_name,
-                    to_boy.name AS to_delivery_boy_name,
+                    COALESCE(to_boy.name, CONCAT(to_staff.name, ' (marketing staff)')) AS to_delivery_boy_name,
                     ss.invoice_number, ss.price, ss.packaging_status,
                     GREATEST(0, ss.price - COALESCE(cancelled.total_amount, 0)) AS effective_price,
                     sc.outlet_name, sc.location_name,
@@ -608,6 +656,7 @@ class DeliveryBoyModel {
              INNER JOIN staff_sales ss ON ss.id = dt.sale_id
              LEFT JOIN delivery_boys from_boy ON from_boy.id = dt.from_delivery_boy_id
              LEFT JOIN delivery_boys to_boy ON to_boy.id = dt.to_delivery_boy_id
+             LEFT JOIN staff to_staff ON to_staff.id = dt.to_staff_id
              LEFT JOIN staff_counters sc ON sc.id = ss.outlet_id
              LEFT JOIN staff s ON s.id = ss.staff_id
              LEFT JOIN companies c ON c.id = s.company_id

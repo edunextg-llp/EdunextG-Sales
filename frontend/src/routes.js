@@ -95,9 +95,22 @@ const routes = [
   //   component: <Reports />,
   // },
   {
+    // Opens the separate DMS app (dms/ folder), served at /dms/ on the same site.
     type: "collapse",
     name: "DMS",
+    key: "dms-site",
+    icon: <Icon fontSize="small">inventory</Icon>,
+    href: "/dms/",
+    sameTab: true,
+    allowedRoles: ["admin", "packaging_staff", "bawarchee_staff", "delivery_boy"],
+    requiredPermission: "dms",
+  },
+  {
+    // Old DMS pages: still reachable by URL, but no longer shown in the sidebar.
+    type: "collapse",
+    name: "DMS (old pages)",
     key: "dms",
+    hideInSidenav: true,
     icon: <Icon fontSize="small">inventory</Icon>,
     allowedRoles: ["admin", "packaging_staff", "bawarchee_staff", "delivery_boy"],
     requiredPermission: "dms",

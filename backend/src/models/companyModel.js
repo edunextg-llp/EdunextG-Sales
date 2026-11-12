@@ -71,7 +71,7 @@ class CompanyModel {
     }
 
     static async getAll(type = null) {
-        const baseSql = `SELECT c.id, c.code, c.name, c.type, c.about, c.daily_requisition_target, c.created_at, ce.emails
+        const baseSql = `SELECT c.id, c.code, c.name, c.type, c.about, c.daily_requisition_target, c.creates_sale_bill, c.created_at, ce.emails
              FROM companies c ${EMAILS_SUBQUERY}`;
         if (type) {
             const [rows] = await db.execute(`${baseSql} WHERE c.type = ? ORDER BY c.name`, [type]);
@@ -83,7 +83,7 @@ class CompanyModel {
 
     static async getById(id) {
         const [rows] = await db.execute(
-            `SELECT c.id, c.code, c.name, c.type, c.about, c.daily_requisition_target, c.created_at, ce.emails
+            `SELECT c.id, c.code, c.name, c.type, c.about, c.daily_requisition_target, c.creates_sale_bill, c.created_at, ce.emails
              FROM companies c ${EMAILS_SUBQUERY}
              WHERE c.id = ?`,
             [id]
@@ -91,14 +91,22 @@ class CompanyModel {
         return withEmailList(rows[0]) || null;
     }
 
-    static async create(name, type, about, emails = [], dailyRequisitionTarget = null) {
+    static async getByName(name) {
+        const [rows] = await db.execute(
+            'SELECT id, name, type, creates_sale_bill FROM companies WHERE LOWER(TRIM(name)) = LOWER(TRIM(?)) LIMIT 1',
+            [String(name || '')]
+        );
+        return rows[0] || null;
+    }
+
+    static async create(name, type, about, emails = [], dailyRequisitionTarget = null, createsSaleBill = true) {
         const connection = await db.getConnection();
         try {
             await connection.beginTransaction();
             const code = await CompanyModel.getNextCompanyCode(connection);
             const [result] = await connection.execute(
-                'INSERT INTO companies (name, type, about, code, daily_requisition_target) VALUES (?, ?, ?, ?, ?)',
-                [name, type || null, about || null, code, dailyRequisitionTarget ?? null]
+                'INSERT INTO companies (name, type, about, code, daily_requisition_target, creates_sale_bill) VALUES (?, ?, ?, ?, ?, ?)',
+                [name, type || null, about || null, code, dailyRequisitionTarget ?? null, createsSaleBill ? 1 : 0]
             );
             await CompanyModel.setEmails(result.insertId, emails, connection);
             await connection.commit();
@@ -111,7 +119,7 @@ class CompanyModel {
         }
     }
 
-    static async updateById(id, { name, type, about, emails, dailyRequisitionTarget }) {
+    static async updateById(id, { name, type, about, emails, dailyRequisitionTarget, createsSaleBill }) {
         const connection = await db.getConnection();
         try {
             await connection.beginTransaction();
@@ -124,6 +132,12 @@ class CompanyModel {
                 await connection.execute(
                     'UPDATE companies SET daily_requisition_target = ? WHERE id = ?',
                     [dailyRequisitionTarget, id]
+                );
+            }
+            if (result.affectedRows > 0 && createsSaleBill !== undefined) {
+                await connection.execute(
+                    'UPDATE companies SET creates_sale_bill = ? WHERE id = ?',
+                    [createsSaleBill ? 1 : 0, id]
                 );
             }
             // Only replace emails when the caller sent them

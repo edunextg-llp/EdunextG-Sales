@@ -25,90 +25,34 @@ import colors from "assets/theme/base/colors";
 // Material Dashboard 2 React Helper Functions
 import boxShadow from "assets/theme/functions/boxShadow";
 
-const { black, white, tabs, coloredShadows } = colors;
+const { tabs, coloredShadows } = colors;
+
+// DMS look is flat: hairline shadows only (cards get a border instead), no coloured glow.
+const ink = "#0f1d33";
+const coloredShadow = (color) => `${boxShadow([0, 1], [2, 0], ink, 0.06)}, ${boxShadow([0, 1], [3, 0], color, 0.18)}`;
 
 const boxShadows = {
-  xs: boxShadow([0, 2], [9, -5], black.main, 0.15),
-  sm: boxShadow([0, 5], [10, 0], black.main, 0.12),
-  md: `${boxShadow([0, 4], [6, -1], black.main, 0.1)}, ${boxShadow(
-    [0, 2],
-    [4, -1],
-    black.main,
-    0.06
-  )}`,
-  lg: `${boxShadow([0, 10], [15, -3], black.main, 0.1)}, ${boxShadow(
-    [0, 4],
-    [6, -2],
-    black.main,
-    0.05
-  )}`,
-  xl: `${boxShadow([0, 20], [25, -5], black.main, 0.1)}, ${boxShadow(
-    [0, 10],
-    [10, -5],
-    black.main,
-    0.04
-  )}`,
-  xxl: boxShadow([0, 20], [27, 0], black.main, 0.05),
-  inset: boxShadow([0, 1], [2, 0], black.main, 0.075, "inset"),
+  xs: boxShadow([0, 1], [2, 0], ink, 0.05),
+  sm: boxShadow([0, 1], [2, 0], ink, 0.06),
+  md: boxShadow([0, 1], [3, 0], ink, 0.07),
+  lg: boxShadow([0, 2], [6, 0], ink, 0.08),
+  xl: boxShadow([0, 6], [16, -2], ink, 0.12),
+  xxl: boxShadow([0, 10], [24, -4], ink, 0.12),
+  inset: boxShadow([0, 1], [2, 0], ink, 0.05, "inset"),
   colored: {
-    primary: `${boxShadow([0, 4], [20, 0], black.main, 0.14)}, ${boxShadow(
-      [0, 7],
-      [10, -5],
-      coloredShadows.primary,
-      0.4
-    )}`,
-    secondary: `${boxShadow([0, 4], [20, 0], black.main, 0.14)}, ${boxShadow(
-      [0, 7],
-      [10, -5],
-      coloredShadows.secondary,
-      0.4
-    )}`,
-    info: `${boxShadow([0, 4], [20, 0], black.main, 0.14)}, ${boxShadow(
-      [0, 7],
-      [10, -5],
-      coloredShadows.info,
-      0.4
-    )}`,
-    success: `${boxShadow([0, 4], [20, 0], black.main, 0.14)}, ${boxShadow(
-      [0, 7],
-      [10, -5],
-      coloredShadows.success,
-      0.4
-    )}`,
-    warning: `${boxShadow([0, 4], [20, 0], black.main, 0.14)}, ${boxShadow(
-      [0, 7],
-      [10, -5],
-      coloredShadows.warning,
-      0.4
-    )}`,
-    error: `${boxShadow([0, 4], [20, 0], black.main, 0.14)}, ${boxShadow(
-      [0, 7],
-      [10, -5],
-      coloredShadows.error,
-      0.4
-    )}`,
-    light: `${boxShadow([0, 4], [20, 0], black.main, 0.14)}, ${boxShadow(
-      [0, 7],
-      [10, -5],
-      coloredShadows.light,
-      0.4
-    )}`,
-    dark: `${boxShadow([0, 4], [20, 0], black.main, 0.14)}, ${boxShadow(
-      [0, 7],
-      [10, -5],
-      coloredShadows.dark,
-      0.4
-    )}`,
+    primary: coloredShadow(coloredShadows.primary),
+    secondary: coloredShadow(coloredShadows.secondary),
+    info: coloredShadow(coloredShadows.info),
+    success: coloredShadow(coloredShadows.success),
+    warning: coloredShadow(coloredShadows.warning),
+    error: coloredShadow(coloredShadows.error),
+    light: coloredShadow(coloredShadows.light),
+    dark: coloredShadow(coloredShadows.dark),
   },
 
-  navbarBoxShadow: `${boxShadow([0, 0], [1, 1], white.main, 0.9, "inset")}, ${boxShadow(
-    [0, 20],
-    [27, 0],
-    black.main,
-    0.05
-  )}`,
+  navbarBoxShadow: boxShadow([0, 1], [0, 0], "#dfe6f2", 1),
   sliderBoxShadow: {
-    thumb: boxShadow([0, 1], [13, 0], black.main, 0.2),
+    thumb: boxShadow([0, 1], [4, 0], ink, 0.2),
   },
   tabsBoxShadow: {
     indicator: boxShadow([0, 1], [5, 1], tabs.indicator.boxShadow, 1),
