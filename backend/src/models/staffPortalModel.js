@@ -209,7 +209,7 @@ class StaffPortalModel {
             [saleId]
         );
         const [items] = await db.execute(
-            `SELECT product_name, variant_name, qty, rate, line_total
+            `SELECT product_name, variant_name, qty, rate, line_total, mrp, batch_number
              FROM staff_sale_items WHERE sale_id = ?
              ORDER BY sort_order ASC, id ASC`,
             [saleId]

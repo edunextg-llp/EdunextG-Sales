@@ -137,12 +137,33 @@ function EmailList({ emails }) {
   );
 }
 
+// "Create sale bills?" Yes / No, used in the add form and the edit dialog.
+function SaleBillSelect({ id, value, onChange }) {
+  return (
+    <FormControl fullWidth size="small">
+      <InputLabel id={id}>Create sale bills? *</InputLabel>
+      <Select
+        labelId={id}
+        value={value ? "yes" : "no"}
+        label="Create sale bills? *"
+        onChange={(e) => onChange(e.target.value === "yes")}
+        sx={{ minHeight: 48, height: 48 }}
+      >
+        <MenuItem value="yes">Yes, make sale bills</MenuItem>
+        <MenuItem value="no">No sale bills</MenuItem>
+      </Select>
+    </FormControl>
+  );
+}
+
+const createsSaleBill = (company) => Number(company?.creates_sale_bill ?? 1) !== 0;
+
 function countWords(text) {
   return text.trim() ? text.trim().split(/\s+/).length : 0;
 }
 
 function AddCompany() {
-  const [form, setForm] = useState({ type: "", name: "", about: "", emails: [] });
+  const [form, setForm] = useState({ type: "", name: "", about: "", emails: [], createsSaleBill: true });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
@@ -154,7 +175,7 @@ function AddCompany() {
 
   const [editModalOpen, setEditModalOpen] = useState(false);
   const [editingId, setEditingId] = useState(null);
-  const [editForm, setEditForm] = useState({ type: "", name: "", about: "", code: "", emails: [], dailyRequisitionTarget: "" });
+  const [editForm, setEditForm] = useState({ type: "", name: "", about: "", code: "", emails: [], dailyRequisitionTarget: "", createsSaleBill: true });
   const [editError, setEditError] = useState("");
   const [savingEdit, setSavingEdit] = useState(false);
 
@@ -215,6 +236,7 @@ function AddCompany() {
       dailyRequisitionTarget: company.daily_requisition_target != null && Number(company.daily_requisition_target) > 0
         ? String(Number(company.daily_requisition_target))
         : "",
+      createsSaleBill: createsSaleBill(company),
     });
     setEditError("");
     setEditModalOpen(true);
@@ -223,7 +245,7 @@ function AddCompany() {
   const closeEditModal = () => {
     setEditModalOpen(false);
     setEditingId(null);
-    setEditForm({ type: "", name: "", about: "", code: "", emails: [], dailyRequisitionTarget: "" });
+    setEditForm({ type: "", name: "", about: "", code: "", emails: [], dailyRequisitionTarget: "", createsSaleBill: true });
     setEditError("");
   };
 
@@ -246,6 +268,7 @@ function AddCompany() {
           name: form.name.trim(),
           about: form.about.trim(),
           emails: form.emails,
+          createsSaleBill: form.createsSaleBill,
         }),
       });
       const data = await res.json();
@@ -254,7 +277,7 @@ function AddCompany() {
       } else {
         const codeLabel = data.code ? ` (Code: ${data.code})` : "";
         setSuccess(`Company "${form.name.trim()}" added successfully${codeLabel}.`);
-        setForm({ type: "", name: "", about: "", emails: [] });
+        setForm({ type: "", name: "", about: "", emails: [], createsSaleBill: true });
         fetchCompanies();
       }
     } catch {
@@ -283,6 +306,7 @@ function AddCompany() {
           about: editForm.about.trim(),
           emails: editForm.emails,
           dailyRequisitionTarget: String(editForm.dailyRequisitionTarget || "").trim(),
+          createsSaleBill: editForm.createsSaleBill,
         }),
       });
       const data = await res.json();
@@ -379,7 +403,7 @@ function AddCompany() {
 
               <MDBox p={3}>
                 <Grid container spacing={2.5}>
-                  <Grid item xs={12} sm={4}>
+                  <Grid item xs={12} sm={3}>
                     <FormControl fullWidth size="small">
                       <InputLabel id="company-type-label">Company Type *</InputLabel>
                       <Select
@@ -395,12 +419,20 @@ function AddCompany() {
                     </FormControl>
                   </Grid>
 
-                  <Grid item xs={12} sm={8}>
+                  <Grid item xs={12} sm={5}>
                     <MDInput
                       label="Company Name *"
                       fullWidth
                       value={form.name}
                       onChange={(e) => handleChange("name", e.target.value)}
+                    />
+                  </Grid>
+
+                  <Grid item xs={12} sm={4}>
+                    <SaleBillSelect
+                      id="company-sale-bill-label"
+                      value={form.createsSaleBill}
+                      onChange={(v) => handleChange("createsSaleBill", v)}
                     />
                   </Grid>
 
@@ -541,6 +573,7 @@ function AddCompany() {
                           <TableCell sx={{ ...tableHeadSx, width: "20%" }}>Company Name</TableCell>
                           <TableCell sx={{ ...tableHeadSx, width: "22%" }}>Email IDs</TableCell>
                           <TableCell sx={{ ...tableHeadSx, width: "10%" }}>Daily Target</TableCell>
+                          <TableCell sx={{ ...tableHeadSx, width: "9%" }}>Sale Bills</TableCell>
                           <TableCell sx={{ ...tableHeadSx }}>About</TableCell>
                           <TableCell sx={{ ...tableHeadSx, width: "12%", textAlign: "center" }}>Action</TableCell>
                         </TableRow>
@@ -570,6 +603,19 @@ function AddCompany() {
                               {Number(company.daily_requisition_target) > 0
                                 ? `₹${Number(company.daily_requisition_target).toLocaleString("en-IN")}`
                                 : <span style={{ fontStyle: "italic", color: "#d1d5db" }}>—</span>}
+                            </TableCell>
+                            <TableCell sx={{ ...tableBodySx, borderBottom: "1px solid #e5e7eb" }}>
+                              <Chip
+                                label={createsSaleBill(company) ? "Yes" : "No"}
+                                size="small"
+                                sx={{
+                                  fontSize: "0.7rem",
+                                  fontWeight: 600,
+                                  border: "none",
+                                  backgroundColor: createsSaleBill(company) ? "#dcfce7" : "#fee2e2",
+                                  color: createsSaleBill(company) ? "#15803d" : "#b91c1c",
+                                }}
+                              />
                             </TableCell>
                             <TableCell
                               sx={{
@@ -664,6 +710,17 @@ function AddCompany() {
                   value={editForm.name}
                   onChange={(e) => handleEditChange("name", e.target.value)}
                 />
+              </Grid>
+
+              <Grid item xs={12} sm={6}>
+                <SaleBillSelect
+                  id="edit-company-sale-bill-label"
+                  value={editForm.createsSaleBill}
+                  onChange={(v) => handleEditChange("createsSaleBill", v)}
+                />
+                <MDTypography variant="caption" color="text" display="block" mt={0.5}>
+                  No: the company is hidden in Add Sales and its sale bills can&apos;t be saved.
+                </MDTypography>
               </Grid>
 
               <Grid item xs={12} sm={6}>

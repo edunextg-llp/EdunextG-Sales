@@ -221,13 +221,19 @@ class DmsStockModel {
         if (!Number.isFinite(company) || company <= 0) return [];
 
         const numericLimit = Math.min(Math.max(parseInt(limit, 10) || 2000, 1), 2000);
+        // Each item's latest invoice, with ALL of that item's lines on it (an invoice can
+        // carry the same item at two MRPs). The lines are added up into one row below.
         const [rows] = await db.execute(
             `SELECT dsi.id, dsi.import_id, dsi.product_erp_id, dsi.product_name,
                     dsi.product_division, dsi.variant_name, dsi.pcs_per_box,
                     dsi.current_stock_in_case, dsi.current_stock_in_pcs,
                     dsi.total_current_stock_in_pcs, dsi.price_per_piece, dsi.mrp,
                     dsi.total_value, dsi.dp_price, dsi.retail_price,
-                    dsi.wholesale_price, si.hsn_code
+                    dsi.wholesale_price, dsi.gst_percent,
+                    (SELECT si.hsn_code FROM seller_items si
+                      WHERE si.company_id = i.company_id
+                        AND LOWER(TRIM(si.product_erp_id)) = LOWER(TRIM(dsi.product_erp_id))
+                      LIMIT 1) AS hsn_code
              FROM dms_stock_items dsi
              INNER JOIN dms_stock_imports i ON i.id = dsi.import_id
              INNER JOIN (
@@ -239,20 +245,61 @@ class DmsStockModel {
                    AND dsi2.product_erp_id IS NOT NULL
                    AND TRIM(dsi2.product_erp_id) <> ''
                  GROUP BY LOWER(TRIM(dsi2.product_erp_id))
-             ) latest ON latest.latest_item_id = dsi.id
-             LEFT JOIN seller_items si
-                ON si.company_id = i.company_id
-               AND LOWER(TRIM(si.product_erp_id)) = LOWER(TRIM(dsi.product_erp_id))
+             ) latest ON latest.erp_key = LOWER(TRIM(dsi.product_erp_id))
+             INNER JOIN dms_stock_items latest_row
+                ON latest_row.id = latest.latest_item_id
+               AND latest_row.import_id = dsi.import_id
              WHERE i.company_id = ?
-             ORDER BY dsi.product_erp_id ASC
-             LIMIT ${numericLimit}`,
+             ORDER BY dsi.product_erp_id ASC, dsi.id ASC`,
             [company, company]
         );
 
-        return rows.map((row) => ({
-            ...DmsStockModel.normalizeProductItem(row),
-            product_division: row.product_division || '',
-            hsn_code: row.hsn_code || '',
+        const byItem = new Map();
+        rows.forEach((row) => {
+            const item = {
+                ...DmsStockModel.normalizeProductItem(row),
+                product_division: row.product_division || '',
+                hsn_code: row.hsn_code || '',
+            };
+            const key = String(item.product_erp_id).trim().toLowerCase();
+            const prev = byItem.get(key);
+            // One entry per line, so pages can show every price the item was bought at.
+            const priceLine = {
+                mrp: item.mrp,
+                dp_price: item.dp_price,
+                price_per_piece: item.price_per_piece,
+                retail_price: item.retail_price,
+                wholesale_price: item.wholesale_price,
+                pcs: item.total_current_stock_in_pcs,
+            };
+            if (!prev) {
+                byItem.set(key, {
+                    ...item,
+                    price_lines: [priceLine],
+                    cost_total: item.total_current_stock_in_pcs * item.price_per_piece,
+                });
+                return;
+            }
+            // Latest line wins for names, MRP and prices; quantities and value add up.
+            byItem.set(key, {
+                ...prev,
+                ...item,
+                hsn_code: item.hsn_code || prev.hsn_code,
+                current_stock_in_case: prev.current_stock_in_case + item.current_stock_in_case,
+                current_stock_in_pcs: prev.current_stock_in_pcs + item.current_stock_in_pcs,
+                total_current_stock_in_pcs: prev.total_current_stock_in_pcs + item.total_current_stock_in_pcs,
+                total_value: prev.total_value + item.total_value,
+                cost_total: prev.cost_total + item.total_current_stock_in_pcs * item.price_per_piece,
+                price_lines: [...prev.price_lines, priceLine],
+            });
+        });
+
+        return [...byItem.values()].slice(0, numericLimit).map(({ cost_total: costTotal, ...item }) => ({
+            ...item,
+            // Average cost over the item's lines.
+            price_per_piece: item.total_current_stock_in_pcs
+                ? Math.round((costTotal / item.total_current_stock_in_pcs) * 10000) / 10000
+                : item.price_per_piece,
         }));
     }
 
@@ -342,12 +389,14 @@ class DmsStockModel {
             await connection.beginTransaction();
 
             for (const row of rows) {
+                // The same item at a different MRP is kept as its own line.
                 const [existingRows] = await connection.execute(
                     `SELECT id
                      FROM dms_stock_items
                      WHERE import_id = ? AND LOWER(TRIM(product_erp_id)) = LOWER(?)
+                       AND ROUND(COALESCE(mrp, 0), 2) = ROUND(?, 2)
                      LIMIT 1`,
-                    [importId, String(row.productErpId || '').trim()]
+                    [importId, String(row.productErpId || '').trim(), Number(row.mrp) || 0]
                 );
                 const existing = existingRows[0];
 
@@ -511,6 +560,27 @@ class DmsStockModel {
         return rows[0]?.name || null;
     }
 
+    /** Latest non-zero retail/wholesale price per ERP id for a company (keys lower-cased). */
+    static async getLastSalePrices(companyId, productErpIds = []) {
+        const keys = [...new Set(productErpIds.map((id) => String(id || '').trim().toLowerCase()).filter(Boolean))];
+        const prices = new Map();
+        if (!companyId || !keys.length) return prices;
+        const [rows] = await db.query(
+            `SELECT LOWER(TRIM(dsi.product_erp_id)) AS erp_key, dsi.retail_price, dsi.wholesale_price
+             FROM dms_stock_items dsi
+             INNER JOIN dms_stock_imports i ON i.id = dsi.import_id
+             WHERE i.company_id = ?
+               AND LOWER(TRIM(dsi.product_erp_id)) IN (?)
+               AND (dsi.retail_price > 0 OR dsi.wholesale_price > 0)
+             ORDER BY i.upload_date DESC, dsi.id DESC`,
+            [companyId, keys]
+        );
+        rows.forEach((row) => {
+            if (!prices.has(row.erp_key)) prices.set(row.erp_key, row);
+        });
+        return prices;
+    }
+
     static async getItemById(itemId) {
         const [rows] = await db.execute(
             `SELECT dsi.*, DATE_FORMAT(dsi.mfg_date, '%Y-%m-%d') AS mfg_date,
@@ -536,17 +606,21 @@ class DmsStockModel {
                      dp_price = ?, discount_percent = ?, gst_percent = ?,
                      cgst_amount = ?, sgst_amount = ?, total_value = ?,
                      retail_price = ?, wholesale_price = ?,
-                     retail_margin = ?, wholesale_margin = ?
+                     retail_margin = ?, wholesale_margin = ?,
+                     raw_data = COALESCE(?, raw_data)
                  WHERE id = ?`,
                 [
                     row.batchNumber || null, row.mfgDate || null, row.expiryDate || null,
                     row.currentStockInCase, row.currentStockInPcs,
                     row.totalPieces, row.totalPieces,
-                    row.mrp, row.dpPrice, row.dpPrice, row.dpPrice,
-                    row.dpPrice, row.discountPercent, 5,
+                    // MRP-priced lines send their own cost per piece and GST %; DP lines use DP and 5%.
+                    row.mrp, row.purchasePrice ?? row.dpPrice, row.purchasePrice ?? row.dpPrice,
+                    row.purchasePrice ?? row.dpPrice,
+                    row.dpPrice, row.discountPercent, row.gstPercent ?? 5,
                     row.cgstAmount, row.sgstAmount, row.totalValue,
                     row.retailPrice, row.wholesalePrice,
                     row.retailMargin, row.wholesaleMargin,
+                    row.rawData ? JSON.stringify(row.rawData) : null,
                     itemId,
                 ]
             );

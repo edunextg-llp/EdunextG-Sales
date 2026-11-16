@@ -11,4 +11,26 @@ module.exports = function setupProxy(app) {
       changeOrigin: true,
     })
   );
+
+  // The DMS app (../dms, run with "npm run dev" on port 3001) is served at
+  // /dms/ on this same origin so it shares this site's login.
+  // The path filter is passed to the proxy (not app.use) so that only /dms
+  // websocket upgrades go to the DMS dev server, not this site's own /ws.
+  app.use(
+    createProxyMiddleware("/dms", {
+      target: "https://dms.edunextg.in",
+      changeOrigin: true,
+      ws: true,
+    })
+  );
+
+  // The Distributor Portal (../distributor, "npm run dev" on port 3002) is served at
+  // /distributor/ on this same origin so distributors sign in on this site's sign-in page.
+  app.use(
+    createProxyMiddleware("/distributor", {
+      target: "https://distributor.edunextg.in",
+      changeOrigin: true,
+      ws: true,
+    })
+  );
 };

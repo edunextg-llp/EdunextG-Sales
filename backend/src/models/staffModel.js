@@ -1461,6 +1461,12 @@ class StaffModel {
             qty,
             rate,
             lineTotal: Number.isFinite(lineTotal) && lineTotal > 0 ? lineTotal : computedTotal,
+            // MRP lot the line is sold from (see utils/stockLots.js).
+            mrp: Number(line.mrp) > 0 ? Math.round(Number(line.mrp) * 100) / 100 : null,
+            batchNumber: String(line.batchNumber || line.batch_number || '').trim().slice(0, 100) || null,
+            expiryDate: /^\d{4}-\d{2}-\d{2}$/.test(String(line.expiryDate || line.expiry_date || '').slice(0, 10))
+                ? String(line.expiryDate || line.expiry_date).slice(0, 10)
+                : null,
         };
     }
 
@@ -1475,8 +1481,9 @@ class StaffModel {
             const line = normalized[index];
             await connection.execute(
                 `INSERT INTO staff_sale_items
-                 (sale_id, product_erp_id, product_name, product_division, variant_name, qty, rate, line_total, sort_order)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                 (sale_id, product_erp_id, product_name, product_division, variant_name, qty, rate, line_total, sort_order,
+                  mrp, batch_number, expiry_date)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
                 [
                     saleId,
                     line.productErpId,
@@ -1487,6 +1494,9 @@ class StaffModel {
                     line.rate,
                     line.lineTotal,
                     index,
+                    line.mrp,
+                    line.batchNumber,
+                    line.expiryDate,
                 ]
             );
         }
@@ -1495,7 +1505,8 @@ class StaffModel {
     static async getSaleItemsBySaleId(saleId) {
         const [rows] = await db.execute(
             `SELECT id, sale_id, product_erp_id, product_name, product_division, variant_name,
-                    qty, rate, line_total
+                    qty, rate, line_total, mrp, batch_number,
+                    DATE_FORMAT(expiry_date, '%Y-%m-%d') AS expiry_date
              FROM staff_sale_items
              WHERE sale_id = ?
              ORDER BY sort_order ASC, id ASC`,
@@ -1570,7 +1581,8 @@ class StaffModel {
             [saleId]
         );
         const [saleItems] = await connection.execute(
-            `SELECT product_erp_id, product_name, product_division, variant_name, qty, rate
+            `SELECT product_erp_id, product_name, product_division, variant_name, qty, rate,
+                    mrp, batch_number, DATE_FORMAT(expiry_date, '%Y-%m-%d') AS expiry_date
              FROM staff_sale_items WHERE sale_id = ? ORDER BY sort_order ASC, id ASC`,
             [saleId]
         );

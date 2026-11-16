@@ -18,10 +18,8 @@ import colors from "assets/theme/base/colors";
 import borders from "assets/theme/base/borders";
 import boxShadows from "assets/theme/base/boxShadows";
 
-// Material Dashboard 2 React Helper Function
-import rgba from "assets/theme/functions/rgba";
 
-const { black, white } = colors;
+const { white, grey } = colors;
 const { borderWidth, borderRadius } = borders;
 const { md } = boxShadows;
 
@@ -35,7 +33,8 @@ const card = {
       wordWrap: "break-word",
       backgroundColor: white.main,
       backgroundClip: "border-box",
-      border: `${borderWidth[0]} solid ${rgba(black.main, 0.125)}`,
+      // DMS boxes: a hairline border instead of a shadow.
+      border: `${borderWidth[1]} solid ${grey[300]}`,
       borderRadius: borderRadius.xl,
       boxShadow: md,
       overflow: "visible",

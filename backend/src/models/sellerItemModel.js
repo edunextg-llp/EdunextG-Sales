@@ -1,4 +1,5 @@
 import db from '../config/db.js';
+import { assignMissingItemCodes } from '../utils/itemCode.js';
 
 const ITEM_COLUMNS = `
     si.id,
@@ -7,6 +8,7 @@ const ITEM_COLUMNS = `
     si.seller_id,
     ps.seller_code,
     ps.seller_name,
+    si.item_code,
     si.product_erp_id,
     si.sku_name,
     si.variant_name,
@@ -57,6 +59,8 @@ class SellerItemModel {
                 if (result.affectedRows === 1) inserted += 1;
                 else updated += 1;
             }
+            // New rows were inserted without a code; existing rows keep theirs.
+            await assignMissingItemCodes(connection);
             await connection.commit();
             return { inserted, updated };
         } catch (error) {
@@ -68,26 +72,39 @@ class SellerItemModel {
     }
 
     static async create(data) {
-        const [result] = await db.execute(
-            `INSERT INTO seller_items (
-                company_id, seller_id, product_erp_id, sku_name, variant_name, hsn_code,
-                gst_percent, cgst_percent, sgst_percent, pcs_per_box
-             )
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-            [
-                data.companyId,
-                data.sellerId,
-                data.productErpId,
-                data.skuName,
-                data.variantName || null,
-                data.hsnCode || null,
-                data.gstPercent,
-                data.cgstPercent,
-                data.sgstPercent,
-                data.pcsPerBox,
-            ]
-        );
-        return SellerItemModel.getById(result.insertId);
+        const connection = await db.getConnection();
+        let insertId;
+        try {
+            await connection.beginTransaction();
+            const [result] = await connection.execute(
+                `INSERT INTO seller_items (
+                    company_id, seller_id, product_erp_id, sku_name, variant_name, hsn_code,
+                    gst_percent, cgst_percent, sgst_percent, pcs_per_box
+                 )
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                [
+                    data.companyId,
+                    data.sellerId,
+                    data.productErpId,
+                    data.skuName,
+                    data.variantName || null,
+                    data.hsnCode || null,
+                    data.gstPercent,
+                    data.cgstPercent,
+                    data.sgstPercent,
+                    data.pcsPerBox,
+                ]
+            );
+            insertId = result.insertId;
+            await assignMissingItemCodes(connection);
+            await connection.commit();
+        } catch (error) {
+            await connection.rollback();
+            throw error;
+        } finally {
+            connection.release();
+        }
+        return SellerItemModel.getById(insertId);
     }
 
     static async updateById(id, data) {

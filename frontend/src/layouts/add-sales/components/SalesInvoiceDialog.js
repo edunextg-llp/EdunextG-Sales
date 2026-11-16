@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { lotKey, lotLabel, lotPrice, remainingLots, takeFromLots } from "utils/stockLots";
 import {
   Dialog,
   DialogTitle,
@@ -131,7 +132,7 @@ const lineItemTableHeadRowSx = {
 const LINE_ITEM_COLUMNS = [
   { label: "#", align: "center", width: "4%" },
   { label: "Item Name", align: "left", width: "22%" },
-  { label: "Unit", align: "center", width: "6%" },
+  { label: "MRP", align: "center", width: "6%" },
   { label: "HSN", align: "center", width: "6%" },
   { label: "Qty", align: "center", width: "6%" },
   { label: "Rate", align: "center", width: "8%" },
@@ -190,6 +191,11 @@ const emptyLineItem = {
   priceType: "retail",
   retailPrice: 0,
   wholesalePrice: 0,
+  // MRP lot of the line (same item at several MRPs / batches).
+  mrp: "",
+  batchNumber: "",
+  expiryDate: "",
+  rateEdited: false,
 };
 
 function fmt(v, d = 2) {
@@ -344,6 +350,60 @@ export default function SalesInvoiceDialog({
     return undefined;
   }, [open, fetchCurrentStock]);
 
+  /* Free goods (DMS Sales > Free Goods): running schemes of this company. */
+  const [freeSchemes, setFreeSchemes] = useState([]);
+  useEffect(() => {
+    if (!open || !String(companyName || "").trim()) {
+      setFreeSchemes([]);
+      return;
+    }
+    fetch(`${API}/staff/free-goods/active?${new URLSearchParams({ companyName })}`)
+      .then((res) => (res.ok ? res.json() : { schemes: [] }))
+      .then((data) => setFreeSchemes(Array.isArray(data.schemes) ? data.schemes : []))
+      .catch(() => setFreeSchemes([]));
+  }, [open, companyName]);
+
+  // Free lines follow the paid lines: for every full "buy" qty of an item, its free pieces
+  // are added at rate 0 (taken from stock lot by lot; only what is in stock).
+  useEffect(() => {
+    if (!open || editMode) return;
+    const paid = lineItems.filter((it) => !it.isFree);
+    const bought = new Map();
+    paid.forEach((it) => bought.set(it.productErpId, (bought.get(it.productErpId) || 0) + (Number(it.qty) || 0)));
+    const free = [];
+    freeSchemes.forEach((scheme) => {
+      const qty = bought.get(scheme.product_erp_id) || 0;
+      const sets = scheme.buy_qty > 0 ? Math.floor(qty / scheme.buy_qty) : 0;
+      if (sets <= 0) return;
+      const freeErp = scheme.free_product_erp_id || scheme.product_erp_id;
+      const product = stockItems.find((x) => x.product_erp_id === freeErp);
+      if (!product) return;
+      const lots = remainingLots(product, [...paid, ...free]);
+      const wanted = sets * scheme.free_qty;
+      const parts = lots.length ? takeFromLots(lots, wanted).taken : [{ lot: { mrp: product.mrp }, qty: wanted }];
+      parts.forEach(({ lot, qty: freeQty }) => free.push({
+        ...emptyLineItem,
+        productErpId: product.product_erp_id,
+        productName: product.product_name || "",
+        productDivision: product.product_division || "",
+        variantName: product.variant_name || "",
+        availableStock: Number(product.total_current_stock_in_pcs) || 0,
+        qty: String(freeQty),
+        rate: "0",
+        priceType: "free",
+        mrp: lot.mrp || "",
+        batchNumber: lot.batchNumber || "",
+        expiryDate: lot.expiryDate || "",
+        isFree: true,
+        freeNote: `Buy ${scheme.buy_qty} get ${scheme.free_qty} free`,
+      }));
+    });
+    const sig = (list) => list.map((it) => `${it.productErpId}|${lotKey(it)}|${it.qty}`).join(",");
+    const current = lineItems.filter((it) => it.isFree);
+    if (sig(current) === sig(free)) return;
+    setLineItems([...paid, ...free]);
+  }, [open, editMode, lineItems, freeSchemes, stockItems]);
+
   /* ── derived strings ── */
   // const saleTo  = outlet ? `${outlet.outlet_name || ""}${outlet.outlet_erp_id ? `, Class: 0 Section: 0 Adm. No. : ${outlet.outlet_erp_id}` : ""}` : "";
   const address = outlet
@@ -406,11 +466,22 @@ export default function SalesInvoiceDialog({
 
   const draftCalc = calcLine(draft);
 
+  // The selected product's lots still free on this bill, in selling order.
+  const draftLots = useMemo(() => {
+    const p = stockItems.find((x) => x.product_erp_id === draft.productErpId);
+    return p ? remainingLots(p, lineItems, editingIdx).filter((l) => Number(l.pcs) > 0) : [];
+  }, [draft.productErpId, stockItems, lineItems, editingIdx]);
+
   const editPopupStock = useMemo(() => {
     const { draft: editDraft, index: editIndex } = editPopup;
     if (!editDraft.productErpId) return 0;
     const p = stockItems.find((x) => x.product_erp_id === editDraft.productErpId);
     if (!p) return Number(editDraft.availableStock) || 0;
+    // A line of one MRP lot can take only what is left of that lot.
+    if (Number(editDraft.mrp) > 0 && p.lots?.length) {
+      const lot = remainingLots(p, lineItems, editIndex).find((l) => lotKey(l) === lotKey(editDraft));
+      return Math.max(0, Number(lot?.pcs) || 0);
+    }
     const orig = Number(p.total_current_stock_in_pcs) || 0;
     const used = lineItems.reduce((s, it, i) => {
       if (i === editIndex) return s;
@@ -426,6 +497,10 @@ export default function SalesInvoiceDialog({
 
   const handleProductChange = (product) => {
     if (!product) { resetDraft(); return; }
+    // The rate shown is the first lot's (earliest expiry, then lowest MRP).
+    const firstLot = remainingLots(product, lineItems, editingIdx).find((l) => Number(l.pcs) > 0);
+    const retail = Number(firstLot?.retail_price) || Number(product.retail_price) || 0;
+    const wholesale = Number(firstLot?.wholesale_price) || Number(product.wholesale_price) || 0;
     setDraft((prev) => ({
       ...prev,
       productErpId: product.product_erp_id || "",
@@ -434,9 +509,10 @@ export default function SalesInvoiceDialog({
       variantName: product.variant_name || "",
       availableStock: Number(product.total_current_stock_in_pcs) || 0,
       priceType: "retail",
-      retailPrice: Number(product.retail_price) || 0,
-      wholesalePrice: Number(product.wholesale_price) || 0,
-      rate: product.retail_price || product.mrp || product.price_per_piece || "",
+      retailPrice: retail,
+      wholesalePrice: wholesale,
+      rate: retail || product.mrp || product.price_per_piece || "",
+      rateEdited: false,
     }));
   };
 
@@ -445,6 +521,7 @@ export default function SalesInvoiceDialog({
       ...prev,
       priceType,
       rate: priceType === "wholesale" ? prev.wholesalePrice : prev.retailPrice,
+      rateEdited: false,
     }));
   };
 
@@ -460,10 +537,40 @@ export default function SalesInvoiceDialog({
 
     if (editingIdx != null) {
       setLineItems((prev) => prev.map((it, i) => (i === editingIdx ? payload : it)));
+    } else if (p?.lots?.length) {
+      // Same item at several MRPs: the qty is taken lot by lot (earliest expiry, then lowest
+      // MRP) and each lot becomes its own line at that lot's MRP and rate.
+      const lots = remainingLots(p, lineItems);
+      const { taken, short } = takeFromLots(lots, Number(draft.qty));
+      if (short > 0) return alert("Qty exceeds available stock.");
+      const lines = taken.map(({ lot, qty }) => ({
+        ...payload,
+        qty: String(qty),
+        mrp: lot.mrp,
+        batchNumber: lot.batchNumber || "",
+        expiryDate: lot.expiryDate || "",
+        retailPrice: Number(lot.retail_price) || draft.retailPrice,
+        wholesalePrice: Number(lot.wholesale_price) || draft.wholesalePrice,
+        // A rate typed by hand applies to every lot; otherwise each lot has its own.
+        rate: draft.rateEdited ? draft.rate : String(lotPrice(lot, draft.priceType) || draft.rate),
+      }));
+      setLineItems((prev) => {
+        // A lot already on the bill at the same price type and rate: add to that line.
+        const next = [...prev];
+        lines.forEach((line) => {
+          const same = next.findIndex((it) => it.productErpId === line.productErpId
+            && Number(it.mrp) > 0 && lotKey(it) === lotKey(line)
+            && it.priceType === line.priceType && Number(it.rate) === Number(line.rate));
+          if (same >= 0) next[same] = { ...next[same], qty: String(Number(next[same].qty) + Number(line.qty)) };
+          else next.push(line);
+        });
+        return next;
+      });
     } else {
       setLineItems((prev) => [...prev, payload]);
     }
     resetDraft();
+    return undefined;
   };
 
   const closeEditPopup = () => {
@@ -496,6 +603,9 @@ export default function SalesInvoiceDialog({
         retailPrice: Number(product.retail_price) || 0,
         wholesalePrice: Number(product.wholesale_price) || 0,
         rate: product.retail_price || product.mrp || product.price_per_piece || prev.draft.rate || "",
+        mrp: "",
+        batchNumber: "",
+        expiryDate: "",
       },
     }));
   };
@@ -573,6 +683,11 @@ export default function SalesInvoiceDialog({
         retailPrice: Number(item.retail_price) || 0,
         wholesalePrice: Number(item.wholesale_price) || 0,
         rate: String(item.rate || 0),
+        mrp: Number(item.mrp) || "",
+        batchNumber: item.batch_number || "",
+        expiryDate: item.expiry_date || "",
+        isFree: Boolean(item.is_free),
+        freeNote: item.free_note || "",
         requisitionNumber: data.requisition.requisition_number,
       }));
       const unavailableItem = rows.find((item) => Number(item.qty) > Number(item.availableStock));
@@ -830,7 +945,7 @@ export default function SalesInvoiceDialog({
               type="number"
               inputProps={{ min: 0, step: "0.01" }}
               value={draft.rate}
-              onChange={(e) => setDraft((p) => ({ ...p, rate: e.target.value }))}
+              onChange={(e) => setDraft((p) => ({ ...p, rate: e.target.value, rateEdited: true }))}
               sx={goldInput}
             />
           </Grid>
@@ -888,6 +1003,17 @@ export default function SalesInvoiceDialog({
           </Grid>
 
         </Grid>
+        {draftLots.length > 1 && (
+          <MDTypography sx={{ fontSize: "0.68rem", color: "#475569", mt: 0.75 }}>
+            Sells in this order (earliest expiry, then lowest MRP):{" "}
+            {draftLots.map((lot, i) => (
+              <span key={lotKey(lot)}>
+                {i > 0 ? " → " : ""}
+                <b>{lotLabel(lot)}</b> ({lot.pcs} pcs)
+              </span>
+            ))}
+          </MDTypography>
+        )}
       </MDBox>
 
       {/* ══════════════════════════════════════════════
@@ -950,11 +1076,25 @@ export default function SalesInvoiceDialog({
                       <TableCell align="center" sx={{ ...TD, width: "4%", whiteSpace: "nowrap" }}>
                         {i + 1}
                       </TableCell>
-                      <TableCell align="left" sx={{ ...TD, width: "22%", whiteSpace: "nowrap" }} title={itemName}>
+                      <TableCell align="left" sx={{ ...TD, width: "22%", whiteSpace: "nowrap" }} title={item.isFree ? `${itemName} · ${item.freeNote || "Free"}` : itemName}>
+                        {item.isFree ? (
+                          <span
+                            style={{ background: "#dcf3e3", color: "#15803d", fontWeight: 700, fontSize: "0.62rem", borderRadius: 3, padding: "1px 5px", marginRight: 6 }}
+                          >
+                            FREE
+                          </span>
+                        ) : null}
                         {itemName}
                       </TableCell>
-                      <TableCell align="center" sx={{ ...TD, width: "6%", whiteSpace: "nowrap" }}>
-                        PCS
+                      <TableCell
+                        align="center"
+                        sx={{ ...TD, width: "6%", whiteSpace: "nowrap" }}
+                        title={Number(item.mrp) > 0 ? lotLabel(item) : ""}
+                      >
+                        {Number(item.mrp) > 0 ? `₹${fmt(item.mrp)}` : "—"}
+                        {item.expiryDate ? (
+                          <div style={{ fontSize: "0.62rem", color: "#64748b" }}>exp {formatDisplayDate(item.expiryDate)}</div>
+                        ) : null}
                       </TableCell>
                       <TableCell align="center" sx={{ ...TD, width: "6%", whiteSpace: "nowrap" }}>
                         NA
@@ -978,6 +1118,9 @@ export default function SalesInvoiceDialog({
                         {fmt(c.netTotal)}
                       </TableCell>
                       <TableCell align="center" sx={{ ...TD, width: "12%", whiteSpace: "nowrap" }}>
+                        {item.isFree ? (
+                          <span style={{ fontSize: "0.65rem", color: "#64748b" }} title={item.freeNote || "Free goods"}>auto</span>
+                        ) : (
                         <MDBox display="flex" justifyContent="center" gap={0.5}>
                           <IconButton
                             size="small"
@@ -994,6 +1137,7 @@ export default function SalesInvoiceDialog({
                             <CiTrash size={14} />
                           </IconButton>
                         </MDBox>
+                        )}
                       </TableCell>
                     </TableRow>
                   );

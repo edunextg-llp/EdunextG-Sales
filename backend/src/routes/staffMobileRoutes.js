@@ -57,6 +57,8 @@ router.get('/deliveries', auth, staffDelivery.list);
 router.put('/deliveries/:saleId/location', auth, staffDelivery.updateLocation);
 router.put('/deliveries/:saleId/status', auth, staffDelivery.updateStatus);
 router.post('/deliveries/:saleId/payments', auth, requireCreditPhoto, staffDelivery.collect);
+router.post('/deliveries/:saleId/split-payments', auth, staffDelivery.collectSplit);
+router.put('/deliveries/:saleId/split-payments', auth, staffDelivery.editSplit);
 router.put('/delivery-collections/:collectionId', auth, requireCreditPhoto, staffDelivery.editCollection);
 router.get('/deliveries/:saleId/credit-photo', auth, authorizeCreditPhoto, getCreditPhoto);
 router.post('/deliveries/:saleId/credit-photo', auth, authorizeCreditPhoto, receiveCreditPhoto, saveCreditPhoto);

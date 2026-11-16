@@ -93,7 +93,13 @@ function Basic() {
   };
 
   const finishLogin = (data) => {
-    login(data.user, data.token, data.refreshToken, rememberMe);
+    // Distributors stay signed in (even after closing the browser) until 1 day without use.
+    login(data.user, data.token, data.refreshToken, rememberMe || data.user?.role === "distributor");
+    // Distributor / CNF logins go to the Distributor Portal (a separate app at /distributor/).
+    if (data.user?.role === "distributor") {
+      window.location.replace("/distributor/");
+      return;
+    }
     const permissions = Array.isArray(data.user?.permissions) ? data.user.permissions : [];
     const destination =
       data.user?.role === "staff"

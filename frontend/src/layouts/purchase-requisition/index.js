@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { lotKey, lotLabel, lotPrice, takeFromLots } from "utils/stockLots";
 import {
   Alert, Autocomplete, Card, Checkbox, Chip, Dialog, DialogActions, DialogContent, DialogTitle,
   Divider, FormControl, Grid, Icon, MenuItem, Select, Tab, Tabs,
@@ -379,7 +380,7 @@ function PurchaseRequisition() {
       return alert(`Quantity cannot exceed current stock (${selectedItem.total_current_stock_in_pcs}).`);
     }
     const rate = priceType === "wholesale" ? selectedItem.wholesale_price : selectedItem.retail_price;
-    setItems((prev) => [...prev.filter((row) => row.productErpId !== selectedItem.product_erp_id), {
+    const base = {
       productErpId: selectedItem.product_erp_id,
       productName: selectedItem.product_name,
       variantName: selectedItem.variant_name,
@@ -387,10 +388,24 @@ function PurchaseRequisition() {
       mrp: selectedItem.mrp,
       gstPercent: selectedItem.gst_percent || 5,
       available: selectedItem.total_current_stock_in_pcs,
-      quantity: qty,
       priceType,
-      rate: Number(rate || 0),
-    }]);
+    };
+    // Same item at several MRPs: the qty is taken lot by lot (earliest expiry, then lowest
+    // MRP), one line per lot at that lot's MRP and rate.
+    const lots = (selectedItem.lots || []).map((lot) => ({ ...lot }));
+    const { taken } = takeFromLots(lots, qty);
+    const lines = taken.length
+      ? taken.map(({ lot, qty: lotQty }) => ({
+        ...base,
+        mrp: lot.mrp,
+        batchNumber: lot.batchNumber || "",
+        expiryDate: lot.expiryDate || "",
+        quantity: lotQty,
+        rate: Number(lotPrice(lot, priceType) || rate || 0),
+        fromLot: true,
+      }))
+      : [{ ...base, quantity: qty, rate: Number(rate || 0) }];
+    setItems((prev) => [...prev.filter((row) => row.productErpId !== selectedItem.product_erp_id), ...lines]);
     setSelectedItem(null);
     setQuantity("");
   };
@@ -415,6 +430,10 @@ function PurchaseRequisition() {
             productErpId: item.productErpId,
             quantity: item.quantity,
             priceType: item.priceType,
+            // The lot this line is for; the server takes it first.
+            mrp: item.fromLot ? item.mrp : undefined,
+            batchNumber: item.batchNumber,
+            expiryDate: item.expiryDate,
           })),
         }),
       });
@@ -661,6 +680,17 @@ function PurchaseRequisition() {
                 <Chip size="small" variant="outlined" label={`Variant: ${selectedItem.variant_name || "—"}`} />
                 <Chip size="small" variant="outlined" label={`MRP: ${selectedItem.mrp ?? "—"}`} />
                 <Chip size="small" color="success" variant="outlined" label={`In stock: ${selectedItem.total_current_stock_in_pcs}`} />
+                {(selectedItem.lots || []).length > 1 && (
+                  <MDTypography variant="caption" color="text" sx={{ width: "100%" }}>
+                    Sells in this order (earliest expiry, then lowest MRP):{" "}
+                    {selectedItem.lots.map((lot, i) => (
+                      <span key={lotKey(lot)}>
+                        {i > 0 ? " → " : ""}
+                        <b>{lotLabel(lot)}</b> ({lot.pcs} pcs)
+                      </span>
+                    ))}
+                  </MDTypography>
+                )}
               </MDBox>
             )}
 
@@ -675,13 +705,20 @@ function PurchaseRequisition() {
                 </TableHead>
                 <TableBody>
                   {items.map((item, i) => (
-                    <TableRow key={item.productErpId}>
+                    <TableRow key={`${item.productErpId}|${lotKey(item)}`}>
                       <TableCell>{i + 1}</TableCell>
                       <TableCell>{item.productErpId}</TableCell>
                       <TableCell>{item.productName}</TableCell>
                       <TableCell>{item.variantName}</TableCell>
                       <TableCell>{item.hsnCode}</TableCell>
-                      <TableCell>{item.mrp}</TableCell>
+                      <TableCell>
+                        {item.mrp}
+                        {item.expiryDate ? (
+                          <div style={{ fontSize: 11, color: "#64748b" }}>
+                            exp {String(item.expiryDate).slice(0, 10).split("-").reverse().join("/")}
+                          </div>
+                        ) : null}
+                      </TableCell>
                       <TableCell>{item.available}</TableCell>
                       <TableCell>{item.quantity}</TableCell>
                       <TableCell>{item.priceType}</TableCell>

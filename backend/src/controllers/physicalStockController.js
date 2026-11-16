@@ -3,6 +3,8 @@ import xlsx from 'xlsx';
 import db from '../config/db.js';
 import PhysicalStockModel from '../models/physicalStockModel.js';
 import DmsStockModel from '../models/dmsStockModel.js';
+import { recordAssignmentProgress } from './physicalStockAssignmentController.js';
+import { lotKey } from '../utils/stockLots.js';
 
 
 const HEADER_ALIASES = {
@@ -243,7 +245,7 @@ export const lookupPhysicalStockProduct = async (req, res) => {
     }
 };
 
-async function buildPhysicalRowFromDmsProduct(dmsImportId, item) {
+async function buildPhysicalRowFromDmsProduct(dmsImportId, item, previousLines = []) {
     const erpId = String(item?.productErpId || '').trim();
     if (!erpId) {
         const error = new Error('Product ERP ID is required.');
@@ -271,21 +273,63 @@ async function buildPhysicalRowFromDmsProduct(dmsImportId, item) {
         throw error;
     }
 
+    // DMS Physical Stock can count one item at several MRPs (mrpLines). Stock is kept per
+    // item, so the lines add up into one row; the split is kept in raw_data.mrpLines.
+    const pcsPerBox = toNumber(product.pcs_per_box);
+    const mrpLines = Array.isArray(item.mrpLines)
+        ? item.mrpLines
+            .map((line) => {
+                const boxes = Math.max(0, toNumber(line.physicalStockInCase));
+                const loose = Math.max(0, toNumber(line.physicalStockInPcs));
+                return {
+                    mrp: roundMoney(toNumber(line.mrp)),
+                    batchNumber: textValue(line.batchNumber).slice(0, 100),
+                    mfgDate: /^\d{4}-\d{2}-\d{2}$/.test(textValue(line.mfgDate)) ? textValue(line.mfgDate) : '',
+                    expiryDate: /^\d{4}-\d{2}-\d{2}$/.test(textValue(line.expiryDate)) ? textValue(line.expiryDate) : '',
+                    boxes,
+                    loose,
+                    pcs: roundQuantity(boxes * pcsPerBox + loose),
+                };
+            })
+            // A recounted lot keeps the date it was received (from purchases).
+            .map((line) => ({
+                ...line,
+                receivedDate: previousLines.find((prev) => lotKey(prev) === lotKey(line))?.receivedDate || '',
+            }))
+        : [];
+    if (mrpLines.some((line) => line.mrp <= 0)) {
+        const error = new Error(`Enter a valid MRP for ${erpId}.`);
+        error.statusCode = 400;
+        throw error;
+    }
+    if (mrpLines.some((line) => line.mfgDate && line.expiryDate && line.mfgDate > line.expiryDate)) {
+        const error = new Error(`${erpId}: expiry date must be after MFG date.`);
+        error.statusCode = 400;
+        throw error;
+    }
+    const sum = (key) => roundQuantity(mrpLines.reduce((total, line) => total + line[key], 0));
+    const physicalStockInCase = mrpLines.length ? sum('boxes') : (item.physicalStockInCase ?? 0);
+    const physicalStockInPcs = mrpLines.length ? sum('loose') : (item.physicalStockInPcs ?? 0);
+    const mrp = mrpLines.length
+        ? mrpLines[mrpLines.length - 1].mrp
+        : (toNumber(item.mrp) || product.mrp || 0);
+
     const physicalRow = normalizePhysicalStockRow({
         'Product ERP ID': product.product_erp_id,
         'SKU Name': product.product_name,
         'Product Division': product.product_division,
         'Variant Name': product.variant_name,
         'Pcs/Box': product.pcs_per_box,
-        'Physical Stock In Case': item.physicalStockInCase ?? 0,
-        'Physical Stock In Pcs': item.physicalStockInPcs ?? 0,
+        'Physical Stock In Case': physicalStockInCase,
+        'Physical Stock In Pcs': physicalStockInPcs,
         'Price/Pcs': product.price_per_piece || 0,
-        MRP: product.mrp || 0,
+        MRP: mrp,
         'Stock Update Date': item.stockUpdateDate || '',
     });
     physicalRow.rawData = {
         ...physicalRow.rawData,
         approvedAsCurrentStock: true,
+        ...(mrpLines.length ? { mrpLines } : {}),
     };
     return physicalRow;
 }
@@ -323,7 +367,8 @@ export const getPhysicalStockForCompany = async (req, res) => {
 
         // 1. Get ALL products from master item list (seller_items) for this company
         const [sellerItemsRows] = await db.execute(
-            `SELECT si.product_erp_id, si.sku_name AS product_name, si.variant_name, si.pcs_per_box, c.name AS company_name
+            `SELECT si.product_erp_id, si.sku_name AS product_name, si.variant_name, si.pcs_per_box,
+                    si.hsn_code, si.item_code, c.name AS company_name
              FROM seller_items si
              LEFT JOIN companies c ON c.id = si.company_id
              WHERE si.company_id = ?`,
@@ -395,6 +440,8 @@ export const getPhysicalStockForCompany = async (req, res) => {
                 product_erp_id: s.product_erp_id,
                 product_name: s.product_name,
                 variant_name: s.variant_name || '',
+                hsn_code: s.hsn_code || '',
+                item_code: s.item_code || '',
                 pcs_per_box: Number(s.pcs_per_box) || 0,
                 current_stock_in_case: 0,
                 current_stock_in_pcs: 0,
@@ -421,7 +468,10 @@ export const getPhysicalStockForCompany = async (req, res) => {
         );
 
         // 5. Get physical stock items tied to the latest dmsImportId
-        const physicalItems = await PhysicalStockModel.getMergedItemsByDmsImportId(dmsImportId, 2000);
+        // companyWide=1 (DMS Physical Stock): latest count of each item across all the
+        // company's DMS imports, not only the latest one.
+        const companyWide = String(req.query.companyWide || '') === '1';
+        const physicalItems = await PhysicalStockModel.getMergedItemsByDmsImportId(dmsImportId, 2000, companyWide);
 
         const physicalByErp = new Map(
             physicalItems.map((item) => [
@@ -596,9 +646,12 @@ export const createManualPhysicalStock = async (req, res) => {
             return res.status(400).json({ error: 'Please select a product.' });
         }
 
+        const previous = await PhysicalStockModel.getMergedItemsByDmsImportId(dmsImportId, 2000, true);
+        const previousByErp = new Map(previous.map((row) => [String(row.product_erp_id || '').trim().toLowerCase(), row.mrp_lines]));
         const rows = [];
         for (const item of items) {
-            rows.push(await buildPhysicalRowFromDmsProduct(dmsImportId, item));
+            const key = String(item?.productErpId || '').trim().toLowerCase();
+            rows.push(await buildPhysicalRowFromDmsProduct(dmsImportId, item, previousByErp.get(key) || []));
         }
 
         const existingImport = await PhysicalStockModel.getManualImportByDmsImportId(dmsImportId);
@@ -616,6 +669,9 @@ export const createManualPhysicalStock = async (req, res) => {
                 rows,
             });
         }
+
+        // Mark these items as updated on the company's open Physical Stock assignment.
+        await recordAssignmentProgress(dmsResult?.import?.company_id, rows.map((row) => row.productErpId), req.user);
 
         return res.status(201).json({
             message: existingImport

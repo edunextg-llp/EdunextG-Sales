@@ -4,6 +4,7 @@ import crypto from 'crypto';
 import UserModel from '../models/userModel.js';
 import StaffModel from '../models/staffModel.js';
 import DeliveryBoyModel from '../models/deliveryBoyModel.js';
+import db from '../config/db.js';
 import { PERMISSION_KEYS, parseStoredPermissions, withRolePermissions } from '../utils/permissionKeys.js';
 import {
     OTP_RESEND_COOLDOWN_MS,
@@ -24,6 +25,9 @@ const captchaStore = new Map();
 const ACCESS_TOKEN_EXPIRES_IN = '15m';
 const SESSION_REFRESH_TOKEN_EXPIRES_IN = '7h';
 const REMEMBER_REFRESH_TOKEN_EXPIRES_IN = '30d';
+// Distributor Portal: no 5-minute idle logout. The session ends after 1 day without use;
+// every refresh gives a new 1-day refresh token, so a portal in use stays signed in.
+const DISTRIBUTOR_REFRESH_TOKEN_EXPIRES_IN = '1d';
 
 function cleanupExpiredCaptchas() {
     const now = Date.now();
@@ -85,9 +89,22 @@ function adminSession(admin) {
     };
 }
 
+// Distributor login IDs look like BFPDD001 (see distributorController.formatDistributorLoginId).
+async function findDistributorByLoginId(identifier) {
+    const loginId = String(identifier || '').trim().toUpperCase();
+    if (!/^[A-Z0-9]{3,30}$/.test(loginId)) return null;
+    const [rows] = await db.execute(
+        'SELECT id, login_id, distributor_name, password_hash, is_active FROM distributors WHERE UPPER(login_id) = ? LIMIT 1',
+        [loginId]
+    );
+    return rows[0] || null;
+}
+
 function sendLoginTokens(res, tokenPayload, user, rememberMe) {
     const token = jwt.sign(tokenPayload, JWT_SECRET, { expiresIn: ACCESS_TOKEN_EXPIRES_IN });
-    const refreshExpiresIn = rememberMe ? REMEMBER_REFRESH_TOKEN_EXPIRES_IN : SESSION_REFRESH_TOKEN_EXPIRES_IN;
+    const refreshExpiresIn = tokenPayload.role === 'distributor'
+        ? DISTRIBUTOR_REFRESH_TOKEN_EXPIRES_IN
+        : rememberMe ? REMEMBER_REFRESH_TOKEN_EXPIRES_IN : SESSION_REFRESH_TOKEN_EXPIRES_IN;
     const refreshToken = jwt.sign(tokenPayload, JWT_REFRESH_SECRET, { expiresIn: refreshExpiresIn });
 
     return res.status(200).json({
@@ -120,6 +137,7 @@ export const login = async (req, res) => {
         const admin = await UserModel.findByEmail(identifier);
         let tokenPayload;
         let user;
+        let distributor;
 
         if (admin && await bcrypt.compare(password, admin.password)) {
             // Admins must confirm a one-time password sent to their email
@@ -197,6 +215,28 @@ export const login = async (req, res) => {
                         name: companyNames[index] || `Company ${id}`,
                         type: staff.staff_type,
                     })),
+                };
+            } else if ((distributor = await findDistributorByLoginId(identifier))
+                && distributor.password_hash
+                && await bcrypt.compare(password, distributor.password_hash)) {
+                // Distributor / CNF (DMS > Add Distributor): same sign-in page, then the
+                // Distributor Portal (/distributor/). Its token only works on /api/distributor.
+                if (!Number(distributor.is_active)) {
+                    return res.status(403).json({ error: 'This account is inactive. Please contact the company.' });
+                }
+                tokenPayload = {
+                    id: distributor.id,
+                    distributorId: distributor.id,
+                    loginId: distributor.login_id,
+                    role: 'distributor',
+                };
+                user = {
+                    id: distributor.id,
+                    distributorId: distributor.id,
+                    username: distributor.distributor_name,
+                    loginId: distributor.login_id,
+                    role: 'distributor',
+                    permissions: [],
                 };
             } else {
                 const deliveryUser = await DeliveryBoyModel.getByLogin(identifier, password);
@@ -311,6 +351,12 @@ export const refreshToken = async (req, res) => {
             permissions = current.permissions;
             companyIds = current.companyIds;
         }
+        if (decoded.role === 'distributor') {
+            const [rows] = await db.execute('SELECT is_active FROM distributors WHERE id = ?', [decoded.distributorId || 0]);
+            if (!rows.length || !Number(rows[0].is_active)) {
+                return res.status(401).json({ error: 'This account is inactive. Please contact the company.' });
+            }
+        }
         let { bawarcheeRole } = decoded;
         if (decoded.role === 'bawarchee_staff' && decoded.staffId) {
             const current = await StaffModel.getCurrentWebAccess(decoded.staffId);
@@ -331,6 +377,7 @@ export const refreshToken = async (req, res) => {
                 staffType: decoded.staffType,
                 companyIds,
                 deliveryBoyId: decoded.deliveryBoyId,
+                distributorId: decoded.distributorId,
                 bawarcheeRole,
                 permissions,
                 tv,
@@ -343,6 +390,17 @@ export const refreshToken = async (req, res) => {
             message: 'Token refreshed successfully',
             token,
             expiresIn: ACCESS_TOKEN_EXPIRES_IN,
+            // Distributors: a new 1-day refresh token each time (sliding session).
+            ...(decoded.role === 'distributor'
+                ? {
+                    refreshToken: jwt.sign(
+                        { id: decoded.id, distributorId: decoded.distributorId, loginId: decoded.loginId, role: 'distributor' },
+                        JWT_REFRESH_SECRET,
+                        { expiresIn: DISTRIBUTOR_REFRESH_TOKEN_EXPIRES_IN }
+                    ),
+                    refreshExpiresIn: DISTRIBUTOR_REFRESH_TOKEN_EXPIRES_IN,
+                }
+                : {}),
             user: {
                 id: decoded.id,
                 email: decoded.email,
@@ -352,6 +410,7 @@ export const refreshToken = async (req, res) => {
                 staffType: decoded.staffType,
                 companyIds,
                 deliveryBoyId: decoded.deliveryBoyId,
+                distributorId: decoded.distributorId,
                 bawarcheeRole,
                 permissions: permissions || [],
             }

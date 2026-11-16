@@ -11,6 +11,10 @@ const AUTH_KEYS = {
 };
 
 const INACTIVITY_LIMIT_MS = 5 * 60 * 1000;
+// Distributors (Distributor Portal) are not logged out after 5 idle minutes: only after a
+// full day without use. Keep in step with distributor/src/lib/api.js.
+const DISTRIBUTOR_INACTIVITY_LIMIT_MS = 24 * 60 * 60 * 1000;
+const inactivityLimitFor = (role) => (role === "distributor" ? DISTRIBUTOR_INACTIVITY_LIMIT_MS : INACTIVITY_LIMIT_MS);
 const IDLE_CHECK_INTERVAL_MS = 10 * 1000;
 const ACTIVITY_WRITE_INTERVAL_MS = 5 * 1000;
 const ACTIVITY_EVENTS = ["mousemove", "mousedown", "keydown", "wheel", "scroll", "touchstart", "click"];
@@ -80,6 +84,8 @@ export const AuthProvider = ({ children }) => {
           if (!refreshResponse.ok) return null;
           const refreshData = await refreshResponse.json();
           getStorage().setItem(AUTH_KEYS.token, refreshData.token);
+          // Distributor sessions get a new (sliding 1-day) refresh token on every refresh.
+          if (refreshData.refreshToken) getStorage().setItem(AUTH_KEYS.refreshToken, refreshData.refreshToken);
           setToken(refreshData.token);
           // Permissions may have been changed by the admin since login:
           // update the menu without asking the user to log in again.
@@ -200,7 +206,8 @@ export const AuthProvider = ({ children }) => {
   };
 
   // Auto logout after 5 minutes with no mouse, keyboard, touch or scroll activity.
-  // Applies to every login (admin and users), including "Remember me".
+  // Applies to every login (admin and users), including "Remember me" - except
+  // distributors, who are logged out only after 1 day without activity.
   // The last activity time is shared through localStorage, so working in one
   // tab keeps the other open tabs signed in too.
   useEffect(() => {
@@ -218,7 +225,7 @@ export const AuthProvider = ({ children }) => {
     const checkIdle = () => {
       if (!getStoredValue(AUTH_KEYS.token)) return;
       const last = Number(localStorage.getItem(AUTH_KEYS.lastActivity)) || Date.now();
-      if (Date.now() - last >= INACTIVITY_LIMIT_MS) {
+      if (Date.now() - last >= inactivityLimitFor(user?.role)) {
         logout();
         window.location.href = "/authentication/sign-in";
       }
@@ -241,7 +248,7 @@ export const AuthProvider = ({ children }) => {
       document.removeEventListener("visibilitychange", checkIdle);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [token]);
+  }, [token, user?.role]);
 
   return (
     <AuthContext.Provider value={{ user, token, isReady, login, logout }}>

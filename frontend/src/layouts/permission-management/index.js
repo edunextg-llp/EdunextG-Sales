@@ -20,6 +20,7 @@ const PERMISSIONS = [
   ["add_item", "Add Item", "Create and manage products supplied by sellers."],
   ["item_list", "Item List", "View and manage the DMS product and stock item list."],
   ["purchase_history", "Purchase History", "View DMS stock import history by company and seller."],
+  ["seller_ledger", "Seller Ledger", "View each seller's purchases, payments and balance due, and record payments."],
   ["physical_stock", "Physical Stock", "Upload, count, approve and submit physical stock."],
   ["current_stock", "Current Stock", "View current stock levels for each company."],
   ["expiry_items", "Expiry Items", "View DMS items that are expired or close to expiry."],
@@ -80,7 +81,7 @@ const PERMISSIONS = [
 const SUB_OPTIONS = { add_sales: ["overdue_7_days", "overdue_own_permission"] };
 const SUB_OPTION_KEYS = Object.values(SUB_OPTIONS).flat();
 const PERMISSION_FOLDERS = [
-  { key: "dms", label: "DMS", icon: "inventory_2", description: "Sellers, items, stock, expiry and purchases.", children: ["add_seller", "add_item", "item_list", "purchase_history", "physical_stock", "current_stock", "expiry_items", "expiry_list", "damage_list", "purchase"] },
+  { key: "dms", label: "DMS", icon: "inventory_2", description: "Sellers, items, stock, expiry and purchases.", children: ["add_seller", "add_item", "item_list", "purchase_history", "seller_ledger", "physical_stock", "current_stock", "expiry_items", "expiry_list", "damage_list", "purchase"] },
   { key: "delivery_manager", label: "Delivery Manager", icon: "local_shipping", description: "Packaging, delivery, report and delivered orders.", children: ["packaging", "delivery", "delivery_report", "delivered"] },
   { key: "staff_management", label: "Staff Management", icon: "badge", description: "Create staff, locations and outlets.", children: ["create_staff", "location_assignments", "add_outlet"] },
   { key: "chalan", label: "Chalan", icon: "receipt_long", description: "The full Chalan workflow.", children: ["chalan_add_sales", "chalan_packaging", "chalan_delivery", "chalan_delivered", "chalan_return"] },

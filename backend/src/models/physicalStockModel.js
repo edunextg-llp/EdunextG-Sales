@@ -1,6 +1,7 @@
 import db from '../config/db.js';
 import { calculateAvailableStockPieces } from '../utils/stockCalculations.js';
 import DmsStockModel from './dmsStockModel.js';
+import { lotKey, orderLots, reconcileLots, takeFromLots, toMrpLines } from '../utils/stockLots.js';
 
 const toNumber = (value) => {
     const parsed = Number(value);
@@ -29,6 +30,17 @@ const splitTotalPieces = (totalPcs, pcsPerBox) => {
     const cases = Math.floor(total / perBox);
     const loose = roundQuantity(total - (cases * perBox));
     return { cases, loose, total };
+};
+
+// A sale line's MRP lot, when it names one.
+const lineLot = (line) => {
+    const mrp = toNumber(line.mrp);
+    if (mrp <= 0) return null;
+    return {
+        mrp: roundMoney(mrp),
+        batchNumber: String(line.batchNumber || line.batch_number || '').trim(),
+        expiryDate: String(line.expiryDate || line.expiry_date || '').slice(0, 10),
+    };
 };
 
 class PhysicalStockModel {
@@ -567,6 +579,8 @@ class PhysicalStockModel {
             return {
                 ...row,
                 approved_as_current_stock: rawData.approvedAsCurrentStock === true,
+                // Per-MRP split of the count (DMS Physical Stock), when it was entered that way.
+                mrp_lines: Array.isArray(rawData.mrpLines) ? rawData.mrpLines : [],
                 pcs_per_box: toNumber(row.pcs_per_box),
                 physical_stock_in_case: toNumber(row.physical_stock_in_case),
                 physical_stock_in_pcs: toNumber(row.physical_stock_in_pcs),
@@ -683,6 +697,7 @@ class PhysicalStockModel {
         );
 
         const deductions = new Map();
+        const partsByErp = new Map(); // each line's qty and MRP lot, for the per-lot split
         for (const line of lineItems) {
             const erpId = String(line.productErpId || line.product_erp_id || '').trim();
             if (!erpId || erpId === '__existing_sale__') continue;
@@ -690,6 +705,8 @@ class PhysicalStockModel {
             if (qty <= 0) continue;
             const key = erpId.toLowerCase();
             deductions.set(key, roundQuantity((deductions.get(key) || 0) + qty));
+            if (!partsByErp.has(key)) partsByErp.set(key, []);
+            partsByErp.get(key).push({ qty, lot: lineLot(line) });
         }
 
         if (!deductions.size) {
@@ -723,14 +740,26 @@ class PhysicalStockModel {
             const pricePerPiece = toNumber(physicalItem.price_per_piece);
             const totalValue = roundMoney(split.total * pricePerPiece);
 
+            // Take the pieces off the MRP lots too: the line's own lot first, otherwise in
+            // selling order (earliest expiry, then lowest MRP), so Physical Stock's per-MRP
+            // counts stay right.
+            const lots = reconcileLots(
+                physicalItem.mrp_lines,
+                physicalItem.total_physical_stock_in_pcs,
+                physicalItem.mrp
+            );
+            for (const part of partsByErp.get(erpKey) || []) takeFromLots(lots, part.qty, part.lot);
+            const mrpLines = toMrpLines(lots, physicalItem.pcs_per_box);
+
             await connection.execute(
                 `UPDATE physical_stock_items
                  SET physical_stock_in_case = ?,
                      physical_stock_in_pcs = ?,
                      total_physical_stock_in_pcs = ?,
-                     total_value = ?
+                     total_value = ?,
+                     raw_data = JSON_SET(COALESCE(raw_data, JSON_OBJECT()), '$.mrpLines', JSON_EXTRACT(?, '$'))
                  WHERE id = ?`,
-                [split.cases, split.loose, split.total, totalValue, physicalItem.id]
+                [split.cases, split.loose, split.total, totalValue, JSON.stringify(mrpLines), physicalItem.id]
             );
 
             await PhysicalStockModel.logItemHistory(connection, {
@@ -754,6 +783,216 @@ class PhysicalStockModel {
 
         for (const importId of touchedImportIds) {
             await PhysicalStockModel.recalculateImportTotals(connection, importId);
+        }
+    }
+
+    // A purchase invoice ADDS its pieces to the item's stock as date-wise MRP lots (MRP +
+    // batch + expiry, with the received date), on top of what is already there. What the
+    // invoice added is kept in purchase_stock_lots, so editing or deleting an invoice line
+    // changes stock only by the difference.
+    //   items: [{ productErpId, productName, productDivision, variantName, pcsPerBox,
+    //             pricePerPiece, mrp, lots: [{ mrp, batchNumber, mfgDate, expiryDate, pcs }] }]
+    static async applyPurchaseLots({ dmsImportId, companyId, receivedDate, sourceLabel, items }) {
+        if (!items?.length) return;
+        const connection = await db.getConnection();
+        try {
+            await connection.beginTransaction();
+            const touchedImportIds = new Set();
+            let autoImportId = null;
+
+            for (const item of items) {
+                const erpId = String(item.productErpId || '').trim();
+                if (!erpId) continue;
+                const newLots = new Map();
+                (item.lots || []).forEach((lot) => {
+                    const entry = {
+                        mrp: roundMoney(toNumber(lot.mrp)),
+                        batchNumber: String(lot.batchNumber || '').trim(),
+                        mfgDate: String(lot.mfgDate || '').slice(0, 10),
+                        expiryDate: String(lot.expiryDate || '').slice(0, 10),
+                        receivedDate,
+                        pcs: roundQuantity(Math.max(0, toNumber(lot.pcs))),
+                    };
+                    const key = lotKey(entry);
+                    const prev = newLots.get(key);
+                    newLots.set(key, prev ? { ...prev, pcs: roundQuantity(prev.pcs + entry.pcs) } : entry);
+                });
+
+                const [appliedRows] = await connection.execute(
+                    `SELECT lot_key, pcs FROM purchase_stock_lots
+                     WHERE dms_import_id = ? AND LOWER(TRIM(product_erp_id)) = LOWER(TRIM(?))`,
+                    [dmsImportId, erpId]
+                );
+                const applied = new Map(appliedRows.map((row) => [row.lot_key, toNumber(row.pcs)]));
+
+                // The item's live stock row: the newest one across the company.
+                const [stockRows] = await connection.execute(
+                    `SELECT psi.*, p.dms_import_id
+                     FROM physical_stock_items psi
+                     INNER JOIN physical_stock_imports p ON p.id = psi.import_id
+                     INNER JOIN dms_stock_imports d ON d.id = p.dms_import_id
+                     WHERE d.company_id = ? AND LOWER(TRIM(psi.product_erp_id)) = LOWER(TRIM(?))
+                     ORDER BY psi.id DESC
+                     LIMIT 1
+                     FOR UPDATE`,
+                    [companyId, erpId]
+                );
+                let stockRow = stockRows[0] || null;
+                const rawData = parseRawData(stockRow?.raw_data);
+
+                // Invoices saved before this tracking: their old sync row holds the qty the
+                // invoice put in, so count that as already added (at its MRP, no batch / expiry).
+                if (!applied.size) {
+                    const [legacyRows] = await connection.execute(
+                        `SELECT psi.mrp, psi.total_physical_stock_in_pcs, psi.raw_data
+                         FROM physical_stock_items psi
+                         INNER JOIN physical_stock_imports p ON p.id = psi.import_id
+                         WHERE p.dms_import_id = ? AND p.file_name = 'DMS Auto Sync'
+                           AND LOWER(TRIM(psi.product_erp_id)) = LOWER(TRIM(?))
+                         ORDER BY psi.id DESC LIMIT 1`,
+                        [dmsImportId, erpId]
+                    );
+                    const legacy = legacyRows[0];
+                    if (legacy && parseRawData(legacy.raw_data).source === 'dms_auto_sync') {
+                        applied.set(
+                            lotKey({ mrp: legacy.mrp, batchNumber: '', expiryDate: '' }),
+                            toNumber(legacy.total_physical_stock_in_pcs)
+                        );
+                    }
+                }
+
+                const keys = new Set([...applied.keys(), ...newLots.keys()]);
+                const changes = [...keys]
+                    .map((key) => ({ key, lot: newLots.get(key), delta: roundQuantity((newLots.get(key)?.pcs || 0) - (applied.get(key) || 0)) }))
+                    .filter((change) => change.delta !== 0);
+
+                if (changes.length) {
+                    const pcsPerBox = toNumber(stockRow?.pcs_per_box) || toNumber(item.pcsPerBox);
+                    const lots = reconcileLots(
+                        rawData.mrpLines,
+                        stockRow ? stockRow.total_physical_stock_in_pcs : 0,
+                        stockRow ? stockRow.mrp : item.mrp
+                    );
+                    for (const change of changes) {
+                        const home = lots.find((lot) => lotKey(lot) === change.key);
+                        if (change.delta > 0) {
+                            if (home) {
+                                home.pcs = roundQuantity(home.pcs + change.delta);
+                                home.receivedDate = [home.receivedDate, receivedDate].filter(Boolean).sort()[0] || '';
+                            } else {
+                                lots.push({ ...change.lot, pcs: change.delta });
+                            }
+                        } else if (home) {
+                            // Less on the invoice now: take it off that lot (not below zero; what
+                            // was already sold stays sold).
+                            home.pcs = roundQuantity(Math.max(0, home.pcs + change.delta));
+                        }
+                    }
+                    const mrpLines = toMrpLines(orderLots(lots), pcsPerBox);
+                    const total = roundQuantity(mrpLines.reduce((sum, lot) => sum + lot.pcs, 0));
+                    const split = splitTotalPieces(total, pcsPerBox);
+                    const pricePerPiece = toNumber(stockRow?.price_per_piece) || toNumber(item.pricePerPiece);
+                    const mrp = toNumber(item.mrp) || toNumber(stockRow?.mrp);
+                    const totalValue = roundMoney(split.total * pricePerPiece);
+                    // 'purchase_lots': kept by purchase_stock_lots from now on (no longer an old sync row).
+                    const nextRawData = { ...rawData, approvedAsCurrentStock: true, mrpLines, source: 'purchase_lots' };
+
+                    if (stockRow) {
+                        await connection.execute(
+                            `UPDATE physical_stock_items
+                             SET pcs_per_box = ?, physical_stock_in_case = ?, physical_stock_in_pcs = ?,
+                                 total_physical_stock_in_pcs = ?, price_per_piece = ?, mrp = ?, total_value = ?,
+                                 raw_data = ?
+                             WHERE id = ?`,
+                            [pcsPerBox, split.cases, split.loose, split.total, pricePerPiece, mrp, totalValue,
+                                JSON.stringify(nextRawData), stockRow.id]
+                        );
+                    } else {
+                        if (!autoImportId) {
+                            const existing = await PhysicalStockModel.getAutoImportByDmsImportId(dmsImportId);
+                            autoImportId = existing?.id || null;
+                            if (!autoImportId) {
+                                const [importResult] = await connection.execute(
+                                    `INSERT INTO physical_stock_imports
+                                     (dms_import_id, file_name, row_count, total_cases, total_loose_pcs, total_pieces, total_value)
+                                     VALUES (?, 'DMS Auto Sync', 0, 0, 0, 0, 0)`,
+                                    [dmsImportId]
+                                );
+                                autoImportId = importResult.insertId;
+                            }
+                        }
+                        const [insertResult] = await connection.execute(
+                            `INSERT INTO physical_stock_items
+                             (import_id, product_erp_id, product_name, product_division, variant_name,
+                              pcs_per_box, physical_stock_in_case, physical_stock_in_pcs,
+                              total_physical_stock_in_pcs, price_per_piece, mrp, total_value,
+                              stock_update_date, raw_data)
+                             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                            [autoImportId, erpId, item.productName || erpId, item.productDivision || null,
+                                item.variantName || null, pcsPerBox, split.cases, split.loose, split.total,
+                                pricePerPiece, mrp, totalValue, receivedDate || null,
+                                JSON.stringify(nextRawData)]
+                        );
+                        stockRow = {
+                            id: insertResult.insertId,
+                            import_id: autoImportId,
+                            dms_import_id: dmsImportId,
+                            product_erp_id: erpId,
+                            product_name: item.productName || erpId,
+                            product_division: item.productDivision || null,
+                            variant_name: item.variantName || null,
+                        };
+                    }
+
+                    await PhysicalStockModel.logItemHistory(connection, {
+                        dmsImportId: stockRow.dms_import_id,
+                        importId: stockRow.import_id,
+                        itemId: stockRow.id,
+                        row: {
+                            ...stockRow,
+                            pcs_per_box: pcsPerBox,
+                            physical_stock_in_case: split.cases,
+                            physical_stock_in_pcs: split.loose,
+                            total_physical_stock_in_pcs: split.total,
+                            price_per_piece: pricePerPiece,
+                            mrp,
+                            total_value: totalValue,
+                            stock_update_date: receivedDate || null,
+                        },
+                        sourceType: 'upload',
+                        sourceLabel,
+                        changeType: 'update',
+                    });
+                    touchedImportIds.add(stockRow.import_id);
+                }
+
+                // Remember what this invoice has added now.
+                await connection.execute(
+                    `DELETE FROM purchase_stock_lots
+                     WHERE dms_import_id = ? AND LOWER(TRIM(product_erp_id)) = LOWER(TRIM(?))`,
+                    [dmsImportId, erpId]
+                );
+                for (const [key, lot] of newLots.entries()) {
+                    if (lot.pcs <= 0) continue;
+                    await connection.execute(
+                        `INSERT INTO purchase_stock_lots
+                         (dms_import_id, product_erp_id, lot_key, mrp, batch_number, mfg_date, expiry_date, received_date, pcs)
+                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                        [dmsImportId, erpId, key, lot.mrp, lot.batchNumber || null, lot.mfgDate || null,
+                            lot.expiryDate || null, receivedDate || null, lot.pcs]
+                    );
+                }
+            }
+
+            for (const importId of touchedImportIds) {
+                await PhysicalStockModel.recalculateImportTotals(connection, importId);
+            }
+            await connection.commit();
+        } catch (error) {
+            await connection.rollback();
+            throw error;
+        } finally {
+            connection.release();
         }
     }
 
@@ -821,14 +1060,18 @@ class PhysicalStockModel {
             const qty = toNumber(line.qty);
             if (!erpId || erpId === '__existing_sale__' || qty <= 0) continue;
             const key = erpId.toLowerCase();
-            const current = restorations.get(key) || { qty: 0, line };
-            restorations.set(key, { qty: roundQuantity(current.qty + qty), line: current.line });
+            const current = restorations.get(key) || { qty: 0, line, parts: [] };
+            restorations.set(key, {
+                qty: roundQuantity(current.qty + qty),
+                line: current.line,
+                parts: [...current.parts, { qty, lot: lineLot(line) }],
+            });
         }
 
         const touchedImportIds = new Set();
         let fallbackImportId = null;
         for (const [erpKey, restoration] of restorations.entries()) {
-            const { qty, line } = restoration;
+            const { qty, line, parts } = restoration;
             let physicalItem = physicalByErp.get(erpKey);
             if (!physicalItem) {
                 if (!fallbackImportId) {
@@ -890,12 +1133,38 @@ class PhysicalStockModel {
             const split = splitTotalPieces(newTotal, physicalItem.pcs_per_box);
             const totalValue = roundMoney(split.total * toNumber(physicalItem.price_per_piece));
 
+            // Put the pieces back on the lot they were sold from (a new lot if it is gone).
+            // Lines without a lot go to the first lot in selling order.
+            const lots = reconcileLots(
+                physicalItem.mrp_lines,
+                physicalItem.total_physical_stock_in_pcs,
+                physicalItem.mrp
+            );
+            for (const part of parts) {
+                const home = part.lot
+                    ? lots.find((lot) => lotKey(lot) === lotKey(part.lot))
+                    : lots[0];
+                if (home) {
+                    home.pcs = roundQuantity(home.pcs + part.qty);
+                } else {
+                    lots.push({
+                        mrp: part.lot?.mrp || roundMoney(toNumber(physicalItem.mrp)),
+                        batchNumber: part.lot?.batchNumber || '',
+                        mfgDate: '',
+                        expiryDate: /^\d{4}-\d{2}-\d{2}$/.test(part.lot?.expiryDate || '') ? part.lot.expiryDate : '',
+                        pcs: roundQuantity(part.qty),
+                    });
+                }
+            }
+            const mrpLines = toMrpLines(orderLots(lots), physicalItem.pcs_per_box);
+
             await connection.execute(
                 `UPDATE physical_stock_items
                  SET physical_stock_in_case = ?, physical_stock_in_pcs = ?,
-                     total_physical_stock_in_pcs = ?, total_value = ?
+                     total_physical_stock_in_pcs = ?, total_value = ?,
+                     raw_data = JSON_SET(COALESCE(raw_data, JSON_OBJECT()), '$.mrpLines', JSON_EXTRACT(?, '$'))
                  WHERE id = ?`,
-                [split.cases, split.loose, split.total, totalValue, physicalItem.id]
+                [split.cases, split.loose, split.total, totalValue, JSON.stringify(mrpLines), physicalItem.id]
             );
 
             await PhysicalStockModel.logItemHistory(connection, {

@@ -28,6 +28,7 @@ import createCache from "@emotion/cache";
 import routes from "routes";
 import ProtectedRoute from "components/ProtectedRoute";
 import MyDocumentAssignments from "components/MyDocumentAssignments";
+import MyPhysicalStockAssignments from "components/MyPhysicalStockAssignments";
 import SignIn from "layouts/authentication/sign-in";
 import LandingPage from "layouts/landing";
 import PrivacyPolicy from "layouts/privacy-policy";
@@ -79,6 +80,7 @@ export default function App() {
     }, []);
 
   const visibleRoutes = filterRoutesByRole(routes);
+  const sidenavRoutes = visibleRoutes.filter((route) => !route.hideInSidenav);
   const isPrivacyPolicyPage = pathname === "/privacy-policy";
 
   // Cache for the rtl
@@ -106,6 +108,20 @@ export default function App() {
       setOnMouseEnter(false);
     }
   };
+
+  // Distributors (DMS > Add Distributor) sign in here but use the Distributor Portal
+  // (../distributor, served at /distributor/); the main site's pages are not for them.
+  // If this app itself is showing /distributor/..., the portal is not being served there
+  // (dev: frontend not restarted after setupProxy.js changed / portal not running; live:
+  // /distributor/ not set up on the server): say so instead of bouncing between pages.
+  const distributorOpenPages = ["/", "/privacy-policy", "/authentication/sign-in"];
+  const isDistributorOutsidePortal = user?.role === "distributor" && !distributorOpenPages.includes(pathname);
+  const portalNotServed = isDistributorOutsidePortal && pathname.startsWith("/distributor");
+  useEffect(() => {
+    if (isDistributorOutsidePortal && !portalNotServed) {
+      window.location.replace("/distributor/");
+    }
+  }, [isDistributorOutsidePortal, portalNotServed]);
 
   // Setting the dir attribute for the body element
   useEffect(() => {
@@ -166,6 +182,28 @@ export default function App() {
   //   </MDBox>
   // );
 
+  // A distributor never sees the main site's pages (no /welcome flash while leaving).
+  if (isDistributorOutsidePortal) {
+    if (!portalNotServed) return null;
+    return (
+      <div style={{ minHeight: "100vh", display: "grid", placeItems: "center", padding: 24, fontFamily: "Roboto, Arial, sans-serif", textAlign: "center" }}>
+        <div style={{ maxWidth: 420 }}>
+          <h2 style={{ margin: "0 0 8px" }}>Distributor Portal is not available</h2>
+          <p style={{ color: "#555", margin: "0 0 20px" }}>
+            The portal could not be opened right now. Please try again in a few minutes or contact the company.
+          </p>
+          <button
+            type="button"
+            onClick={() => window.location.reload()}
+            style={{ padding: "8px 18px", border: 0, borderRadius: 6, background: "#4338ca", color: "#fff", cursor: "pointer" }}
+          >
+            Try again
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return direction === "rtl" ? (
     <CacheProvider value={rtlCache}>
       <ThemeProvider theme={darkMode ? themeDarkRTL : themeRTL}>
@@ -176,12 +214,13 @@ export default function App() {
               color={sidenavColor}
               brand={(transparentSidenav && !darkMode) || whiteSidenav ? brandDark : brandWhite}
               brandName="Material Dashboard 2"
-              routes={visibleRoutes}
+              routes={sidenavRoutes}
               onMouseEnter={handleOnMouseEnter}
               onMouseLeave={handleOnMouseLeave}
             />
             <Configurator />
             <MyDocumentAssignments />
+            <MyPhysicalStockAssignments />
             {/* {configsButton} */}
           </>
         )}
@@ -238,12 +277,13 @@ export default function App() {
             color={sidenavColor}
             brand={(transparentSidenav && !darkMode) || whiteSidenav ? brandDark : brandWhite}
             brandName="Material Dashboard 2"
-            routes={visibleRoutes}
+            routes={sidenavRoutes}
             onMouseEnter={handleOnMouseEnter}
             onMouseLeave={handleOnMouseLeave}
           />
           <Configurator />
           <MyDocumentAssignments />
+          <MyPhysicalStockAssignments />
           {/* {configsButton} */}
         </>
       )}

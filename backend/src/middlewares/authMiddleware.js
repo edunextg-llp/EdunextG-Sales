@@ -3,7 +3,7 @@ import UserModel from '../models/userModel.js';
 import DeliveryBoyModel from '../models/deliveryBoyModel.js';
 import StaffModel from '../models/staffModel.js';
 
-const JWT_SECRET = process.env.JWT_SECRET || 'super_secret_key_12345';
+const JWT_SECRET = process.env.JWT_SECRET;
 
 export const verifyTokenMiddleware = async (req, res, next) => {
     const token = req.headers['authorization'];
@@ -17,6 +17,13 @@ export const verifyTokenMiddleware = async (req, res, next) => {
         decoded = jwt.verify(token.split(' ')[1], JWT_SECRET);
     } catch (error) {
         return res.status(401).json({ error: 'Invalid or expired token.' });
+    }
+
+    // Distributor logins (made on DMS > Add Distributor) may only use the Distributor Portal
+    // API (/api/distributor, checked by distributorPortalController.requireDistributor), never
+    // the main site's APIs.
+    if (decoded.role === 'distributor') {
+        return res.status(403).json({ error: 'Distributor accounts can only use the Distributor Portal.' });
     }
 
     // Admin tokens carry a session version (tv). If the admin used
@@ -170,6 +177,9 @@ export const enforceManagedUserApiScope = (req, res, next) => {
         allowed = dms('expiry_list');
     } else if (path.startsWith('/damage-list')) {
         allowed = dms('damage_list');
+    } else if (path === '/free-goods/active') {
+        // Add Sales adds the free lines of running free goods schemes.
+        allowed = isGet && (permissions.has('add_sales') || hasDms);
     } else if (path.startsWith('/physical-stock')) {
         allowed = dms('physical_stock');
     } else if (path === '/current-stock') {
@@ -177,6 +187,8 @@ export const enforceManagedUserApiScope = (req, res, next) => {
         allowed = isGet && (dms('current_stock') || permissions.has('add_sales'));
     } else if (path === '/purchases' || path.startsWith('/purchases/')) {
         allowed = dms('purchase');
+    } else if (path.startsWith('/seller-ledger')) {
+        allowed = dms('seller_ledger');
     } else if (path.startsWith('/purchase-sellers')) {
         allowed = dms('add_seller')
             || (isGet && dms('add_item', 'item_list', 'purchase_history', 'expiry_list', 'damage_list', 'purchase'));

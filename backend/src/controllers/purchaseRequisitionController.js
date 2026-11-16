@@ -5,6 +5,8 @@ import PurchaseRequisitionModel from '../models/purchaseRequisitionModel.js';
 import StaffModel from '../models/staffModel.js';
 import { getOverdueOutlets } from '../models/overdueSaleRequestModel.js';
 import { buildCurrentStockDiff } from './currentStockController.js';
+import { takeFromLots } from '../utils/stockLots.js';
+import { activeSchemesFor, freeFor } from './freeGoodsController.js';
 
 // Today's date in India (the business day), as YYYY-MM-DD.
 const indiaToday = () => new Intl.DateTimeFormat('en-CA', {
@@ -103,45 +105,91 @@ export const create = async (req, res) => {
         const dms = await DmsStockModel.getLatestItemsByCompanyId(companyId, 2000);
         const physical = await PhysicalStockModel.getCurrentItemsByDmsImportId(dmsImport.id);
         const stock = buildCurrentStockDiff(physical, dms);
-        const items = requested.map((entry) => {
-            const product = stock.find((row) =>
-                String(row.product_erp_id || '').trim().toLowerCase()
-                === String(entry.productErpId || '').trim().toLowerCase()
-            );
+        // Each requested item is taken lot by lot (earliest expiry, then lowest MRP; a lot the
+        // staff picked goes first) and becomes one line per MRP lot, each at that lot's rate.
+        const lotsByErp = new Map();
+        const items = requested.flatMap((entry) => {
+            const key = String(entry.productErpId || '').trim().toLowerCase();
+            const product = stock.find((row) => String(row.product_erp_id || '').trim().toLowerCase() === key);
             const quantity = Number(entry.quantity);
-            if (!product || quantity <= 0 || quantity > Number(product.total_current_stock_in_pcs)) {
+            if (!product || !(quantity > 0)) {
+                const error = new Error(`Invalid or unavailable quantity for ${entry.productErpId}.`);
+                error.statusCode = 400;
+                throw error;
+            }
+            if (!lotsByErp.has(key)) lotsByErp.set(key, (product.lots || []).map((lot) => ({ ...lot })));
+            const preferred = Number(entry.mrp) > 0
+                ? { mrp: entry.mrp, batchNumber: entry.batchNumber, expiryDate: entry.expiryDate }
+                : null;
+            const { taken, short } = takeFromLots(lotsByErp.get(key), quantity, preferred);
+            if (short > 0) {
                 const error = new Error(`Invalid or unavailable quantity for ${entry.productErpId}.`);
                 error.statusCode = 400;
                 throw error;
             }
             const priceType = entry.priceType === 'wholesale' ? 'wholesale' : 'retail';
-            const preferredRate = priceType === 'wholesale'
-                ? Number(product.wholesale_price)
-                : Number(product.retail_price);
-            const alternateRate = priceType === 'wholesale'
-                ? Number(product.retail_price)
-                : Number(product.wholesale_price);
-            const rate = preferredRate
-                || alternateRate
-                || Number(product.price_per_piece)
-                || Number(product.dp_price)
-                || 0;
-            if (rate <= 0) {
-                const error = new Error(`Selling price is missing for ${entry.productErpId}. Update this product in DMS Entry before submitting.`);
-                error.statusCode = 400;
-                throw error;
-            }
-            const amount = quantity * rate;
-            const gstPercent = Number(product.gst_percent) || 5;
-            return {
-                ...product,
-                quantity,
-                priceType,
-                rate,
-                amount,
-                gst_percent: gstPercent,
-            };
+            return taken.map(({ lot, qty }) => {
+                const preferredRate = priceType === 'wholesale' ? Number(lot.wholesale_price) : Number(lot.retail_price);
+                const alternateRate = priceType === 'wholesale' ? Number(lot.retail_price) : Number(lot.wholesale_price);
+                const rate = preferredRate
+                    || alternateRate
+                    || Number(product.price_per_piece)
+                    || Number(product.dp_price)
+                    || 0;
+                if (rate <= 0) {
+                    const error = new Error(`Selling price is missing for ${entry.productErpId}. Update this product in DMS Entry before submitting.`);
+                    error.statusCode = 400;
+                    throw error;
+                }
+                const { lots: _lots, price_lines: _priceLines, ...productFields } = product;
+                return {
+                    ...productFields,
+                    mrp: lot.mrp,
+                    batch_number: lot.batchNumber || '',
+                    expiry_date: lot.expiryDate || '',
+                    retail_price: Number(lot.retail_price) || product.retail_price,
+                    wholesale_price: Number(lot.wholesale_price) || product.wholesale_price,
+                    quantity: qty,
+                    priceType,
+                    rate,
+                    amount: qty * rate,
+                    gst_percent: Number(product.gst_percent) || 5,
+                };
+            });
         });
+        // Free goods: each running scheme adds its free pieces as lines at rate 0 (taken from
+        // stock lot by lot like the rest; only what is in stock).
+        const schemes = await activeSchemesFor(companyId);
+        if (schemes.size) {
+            const bought = new Map();
+            items.forEach((item) => {
+                const key = String(item.product_erp_id || '').trim().toLowerCase();
+                bought.set(key, (bought.get(key) || 0) + Number(item.quantity || 0));
+            });
+            for (const { scheme, freeErpId, freeQty } of freeFor(schemes, bought)) {
+                const key = String(freeErpId || '').trim().toLowerCase();
+                const product = stock.find((row) => String(row.product_erp_id || '').trim().toLowerCase() === key);
+                if (!product) continue;
+                if (!lotsByErp.has(key)) lotsByErp.set(key, (product.lots || []).map((lot) => ({ ...lot })));
+                const { taken } = takeFromLots(lotsByErp.get(key), freeQty);
+                const { lots: _lots, price_lines: _priceLines, ...productFields } = product;
+                taken.forEach(({ lot, qty }) => items.push({
+                    ...productFields,
+                    mrp: lot.mrp,
+                    batch_number: lot.batchNumber || '',
+                    expiry_date: lot.expiryDate || '',
+                    quantity: qty,
+                    priceType: 'free',
+                    rate: 0,
+                    amount: 0,
+                    gst_percent: Number(product.gst_percent) || 5,
+                    is_free: true,
+                    free_scheme_id: scheme.id,
+                    free_note: `Buy ${scheme.buy_qty} get ${scheme.free_qty} free`,
+                }));
+            }
+        }
+
         // Companies with a daily target (e.g. SIL Rs. 11,250): requisitions wait in the staff member's
         // Requisition Queue and go for approval only when they Final Submit that date.
         const needsFinalSubmit = Number(company.daily_requisition_target) > 0;

@@ -97,6 +97,84 @@ const isSalePriceInvalid = (price, dpPrice, discountPercent, optional) => {
 const saleMargin = (price, dpPrice, discountPercent) =>
     (price > 0 ? roundRate(price - getDpPriceAfterDiscount(dpPrice, discountPercent)) : 0);
 
+// DMS Add Purchase lines: margin = sale price - DP amt, where DP amt = DP + GST per piece.
+const dpAmtOf = (calc) => roundRate(calc.dpPrice * (1 + calc.gstPercent / 100));
+const dpAmtMargin = (price, calc) => (price > 0 ? roundRate(price - dpAmtOf(calc)) : 0);
+
+// Wholesale / retail typed on a DMS line can't be below DP amt. Blank prices are not
+// checked (they fall back to the last known price). Returns an error or ''.
+const salePriceBelowDpAmt = (item, calc, label = '') => {
+    const dpAmt = dpAmtOf(calc);
+    for (const [key, name] of [['wholesalePrice', 'Wholesale'], ['retailPrice', 'Retail']]) {
+        const raw = item?.[key];
+        if (raw === undefined || raw === null || String(raw).trim() === '') continue;
+        if (roundRate(toNumber(raw)) < dpAmt) {
+            return `${label}${name} price ₹${roundRate(toNumber(raw))} can't be below DP amt ₹${dpAmt} (DP + GST).`;
+        }
+    }
+    return '';
+};
+
+// ---- DMS "Add Purchase" pricing (lines sent with pricingMode: 'mrp') ----
+// Net = DP x qty. Discount % is Trade + Primary + Cash when those are sent (EVEREST),
+// otherwise the single Discount %. GST (item's rate, split CGST/SGST) goes on top of
+// Net - discount. Cost per piece = taxable / qty, stored as the purchase price.
+// MRP is stored for reference. Lines saved before DP was added carry no DP: their
+// MRP was the base rate, so it is used instead (dp_price already holds it).
+// The mode keeps the name 'mrp' so lines already saved with it still match.
+// Keep in sync with dms/src/utils/purchaseCalc.js.
+const SPLIT_DISCOUNT_KEYS = ['tradeDiscountPercent', 'primaryDiscountPercent', 'cashDiscountPercent'];
+const clampPercent = (value) => Math.max(0, Math.min(100, roundRate(toNumber(value))));
+const isMrpPricing = (item) => item?.pricingMode === 'mrp';
+
+const parseRawData = (raw) => {
+    if (!raw) return {};
+    if (typeof raw !== 'string') return raw;
+    try {
+        return JSON.parse(raw);
+    } catch {
+        return {};
+    }
+};
+
+function calcMrpLine(item, totalPieces) {
+    const mrp = roundRate(toNumber(item.mrp));
+    const dpPrice = roundRate(toNumber(item.dpPrice) || mrp);
+    const hasSplit = SPLIT_DISCOUNT_KEYS.some((key) => textValue(item[key]) !== '');
+    const discountPercent = clampPercent(hasSplit
+        ? SPLIT_DISCOUNT_KEYS.reduce((sum, key) => sum + toNumber(item[key]), 0)
+        : item.discountPercent);
+    const gstPercent = textValue(item.gstPercent) === '' ? 5 : clampPercent(item.gstPercent);
+    const price = roundRate(dpPrice * totalPieces);
+    const discountAmount = roundRate(price * discountPercent / 100);
+    const taxableAmount = roundRate(price - discountAmount);
+    const cgstAmount = roundRate(taxableAmount * gstPercent / 200);
+    const sgstAmount = roundRate(taxableAmount * gstPercent / 200);
+    const costPerPiece = totalPieces
+        ? roundRate(taxableAmount / totalPieces)
+        : roundRate(dpPrice * (1 - discountPercent / 100));
+    return {
+        mrp,
+        dpPrice,
+        discountPercent,
+        gstPercent,
+        price,
+        discountAmount,
+        taxableAmount,
+        cgstAmount,
+        sgstAmount,
+        totalValue: roundRate(taxableAmount + cgstAmount + sgstAmount),
+        costPerPiece,
+        rawFields: {
+            'Pricing Mode': 'mrp',
+            'Trade Discount %': hasSplit ? clampPercent(item.tradeDiscountPercent) : '',
+            'Primary Discount %': hasSplit ? clampPercent(item.primaryDiscountPercent) : '',
+            'Cash Discount %': hasSplit ? clampPercent(item.cashDiscountPercent) : '',
+            'GST %': gstPercent,
+        },
+    };
+}
+
 export function parseRows(file) {
     const extension = (file.originalname.split('.').pop() || '').toLowerCase();
 
@@ -241,7 +319,111 @@ function normalizeUploadDate(value) {
     return `${year}-${month}-${day}`;
 }
 
+// An invoice can hold the same item on several lines (e.g. two MRPs). Stock is kept
+// per item, so before syncing, every line of each touched item is reloaded from the
+// invoice and added up into one row. An item with no lines left is removed.
+const itemKey = (value) => String(value || '').trim().toLowerCase();
+
+const combineInvoiceRowsByItem = (rows) => {
+    const byItem = new Map();
+    rows.forEach((row) => {
+        const key = itemKey(row.productErpId);
+        const pcs = Math.max(0, toNumber(row.totalCurrentStockInPcs));
+        const rate = toNumber(row.pricePerPiece || row.dpPrice);
+        const current = byItem.get(key);
+        if (!current) {
+            byItem.set(key, { ...row, totalCurrentStockInPcs: pcs, costTotal: pcs * rate, lastRate: rate });
+            return;
+        }
+        // Names, box size and MRP come from the latest line; quantity is the sum.
+        byItem.set(key, {
+            ...current,
+            ...row,
+            totalCurrentStockInPcs: current.totalCurrentStockInPcs + pcs,
+            costTotal: current.costTotal + pcs * rate,
+            lastRate: rate,
+        });
+    });
+    return [...byItem.values()].map((row) => ({
+        ...row,
+        // Average purchase cost across the item's lines.
+        pricePerPiece: row.totalCurrentStockInPcs
+            ? roundRate(row.costTotal / row.totalCurrentStockInPcs)
+            : row.lastRate,
+    }));
+};
+
+// A purchase invoice (seller / invoice entry), as opposed to a DMS stock file upload.
+const isPurchaseInvoice = (imp) => Boolean(imp && (imp.seller_id || imp.invoice_number || imp.file_name === 'Manual Entry'));
+
+// Purchase invoices ADD to stock as date-wise MRP lots (see PhysicalStockModel.applyPurchaseLots):
+// earlier stock stays, and editing / deleting an invoice line changes stock only by the difference.
+const addPurchaseToStock = async (result, keys) => {
+    const imp = result.import;
+    const items = [...keys].map((key) => {
+        const lines = (result.items || []).filter((item) => itemKey(item.product_erp_id) === key);
+        const first = lines[lines.length - 1] || {};
+        return {
+            productErpId: first.product_erp_id || key,
+            productName: first.product_name,
+            productDivision: first.product_division,
+            variantName: first.variant_name,
+            pcsPerBox: first.pcs_per_box,
+            pricePerPiece: first.purchase_price ?? first.price_per_piece,
+            mrp: first.mrp,
+            lots: lines.map((line) => ({
+                mrp: line.mrp,
+                batchNumber: line.batch_number,
+                mfgDate: line.mfg_date,
+                expiryDate: line.expiry_date,
+                pcs: line.total_current_stock_in_pcs,
+            })),
+        };
+    });
+    await PhysicalStockModel.applyPurchaseLots({
+        dmsImportId: imp.id,
+        companyId: imp.company_id,
+        receivedDate: imp.upload_date,
+        sourceLabel: `Purchase ${imp.invoice_number || imp.entry_code || `#${imp.id}`}`,
+        items,
+    });
+    return null;
+};
+
 const syncDmsRowsToPhysicalAndCurrent = async (dmsImportId, rows, stockUpdateDate) => {
+    const keys = new Set(rows.map((row) => itemKey(row.productErpId)).filter(Boolean));
+    if (!keys.size) return null;
+    const result = await DmsStockModel.getImportById(dmsImportId);
+    if (isPurchaseInvoice(result?.import)) {
+        // Lines removed from the invoice keep their key here with no lines: their lots come off.
+        return addPurchaseToStock(result, keys);
+    }
+    const invoiceRows = (result?.items || [])
+        .filter((item) => keys.has(itemKey(item.product_erp_id)))
+        .sort((a, b) => a.id - b.id)
+        .map((item) => ({
+            productErpId: item.product_erp_id,
+            productName: item.product_name,
+            productDivision: item.product_division,
+            variantName: item.variant_name,
+            pcsPerBox: item.pcs_per_box,
+            totalCurrentStockInPcs: item.total_current_stock_in_pcs,
+            pricePerPiece: item.purchase_price ?? item.price_per_piece,
+            mrp: item.mrp,
+        }));
+    const combined = combineInvoiceRowsByItem(invoiceRows);
+    const remaining = new Set(combined.map((row) => itemKey(row.productErpId)));
+    for (const key of keys) {
+        if (!remaining.has(key)) {
+            const original = rows.find((row) => itemKey(row.productErpId) === key);
+            await PhysicalStockModel.deleteAutoSyncedItem(dmsImportId, original.productErpId);
+        }
+    }
+    if (!combined.length) return null;
+    return writePhysicalRows(dmsImportId, combined, stockUpdateDate);
+};
+
+const writePhysicalRows = async (dmsImportId, rows, stockUpdateDate) => {
     const physicalRows = rows.map((row) => {
         const pcsPerBox = Math.max(0, toNumber(row.pcsPerBox));
         const totalPcs = Math.max(0, toNumber(row.totalCurrentStockInPcs));
@@ -496,6 +678,26 @@ export const searchDmsStockProducts = async (req, res) => {
     }
 };
 
+// Last wholesale / retail price saved for an item (prefills DMS Add Purchase).
+export const getLastDmsSalePrices = async (req, res) => {
+    try {
+        const companyId = parseInt(req.query.companyId, 10);
+        const erpId = String(req.query.erpId || '').trim();
+        if (!Number.isFinite(companyId) || companyId <= 0 || !erpId) {
+            return res.status(400).json({ error: 'Company and product ERP ID are required.' });
+        }
+        const prices = await DmsStockModel.getLastSalePrices(companyId, [erpId]);
+        const last = prices.get(erpId.toLowerCase()) || {};
+        res.status(200).json({
+            retailPrice: toNumber(last.retail_price) || null,
+            wholesalePrice: toNumber(last.wholesale_price) || null,
+        });
+    } catch (error) {
+        console.error('Error fetching last sale prices:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+};
+
 export const lookupDmsStockProduct = async (req, res) => {
     try {
         const companyId = parseInt(req.query.companyId, 10);
@@ -569,8 +771,10 @@ export const createManualDmsStock = async (req, res) => {
                 && (!Number.isFinite(Number(item.dpPrice)) || Number(item.dpPrice) < 0))
             || !Number.isFinite(Number(item?.mrp))
             || Number(item.mrp) <= 0
-            || isSalePriceInvalid(item?.retailPrice, item?.dpPrice, item?.discountPercent, salePriceOptional)
-            || isSalePriceInvalid(item?.wholesalePrice, item?.dpPrice, item?.discountPercent, salePriceOptional)
+            || (!isMrpPricing(item) && (
+                isSalePriceInvalid(item?.retailPrice, item?.dpPrice, item?.discountPercent, salePriceOptional)
+                || isSalePriceInvalid(item?.wholesalePrice, item?.dpPrice, item?.discountPercent, salePriceOptional)
+            ))
         ));
         if (invalidItem) {
             const { item, rowNumber } = invalidItem;
@@ -587,10 +791,50 @@ export const createManualDmsStock = async (req, res) => {
             });
         }
 
+        for (const [index, item] of items.entries()) {
+            if (!isMrpPricing(item)) continue;
+            const problem = salePriceBelowDpAmt(item, calcMrpLine(item, 0), `${textValue(item.productErpId) || `Row ${index + 1}`}: `);
+            if (problem) return res.status(400).json({ error: problem });
+        }
+
         const productDivision = String(company.name || '').trim();
+        // Wholesale / retail left blank on the form: reuse the item's last known prices.
+        const lastSalePrices = await DmsStockModel.getLastSalePrices(
+            companyId,
+            items.filter(isMrpPricing).map((item) => item.productErpId)
+        );
         const rows = items
             .map((item) => {
                 const row = normalizeStockRow(manualItemToRow(item));
+                if (isMrpPricing(item)) {
+                    const calc = calcMrpLine(item, row.totalPieces);
+                    const last = lastSalePrices.get(textValue(item.productErpId).toLowerCase()) || {};
+                    const retailPrice = roundRate(toNumber(item.retailPrice) || toNumber(last.retail_price));
+                    const wholesalePrice = roundRate(toNumber(item.wholesalePrice) || toNumber(last.wholesale_price));
+                    return {
+                        ...row,
+                        rawData: { ...row.rawData, ...calc.rawFields },
+                        pricePerPiece: calc.costPerPiece,
+                        dpPerUnitStock: calc.costPerPiece,
+                        purchasePrice: calc.costPerPiece,
+                        totalValue: calc.totalValue,
+                        batchNumber: textValue(item.batchNumber),
+                        mfgDate: textValue(item.mfgDate),
+                        expiryDate: textValue(item.expiryDate),
+                        dpPrice: calc.dpPrice,
+                        price: calc.price,
+                        discountPercent: calc.discountPercent,
+                        discountAmount: calc.discountAmount,
+                        gstPercent: calc.gstPercent,
+                        cgstAmount: calc.cgstAmount,
+                        sgstAmount: calc.sgstAmount,
+                        taxableAmount: calc.taxableAmount,
+                        retailPrice,
+                        wholesalePrice,
+                        retailMargin: dpAmtMargin(retailPrice, calc),
+                        wholesaleMargin: dpAmtMargin(wholesalePrice, calc),
+                    };
+                }
                 const dpPrice = roundRate(toNumber(item.dpPrice));
                 const discountPercent = Math.max(0, Math.min(100, roundRate(toNumber(item.discountPercent))));
                 const gstPercent = 5;
@@ -691,8 +935,64 @@ export const updateDmsStockItem = async (req, res) => {
         const taxableAmount = roundRate(dpPrice * totalPieces * (1 - discountPercent / 100));
         const cgstAmount = roundRate(taxableAmount * 0.025);
         const sgstAmount = roundRate(taxableAmount * 0.025);
-        const retailPrice = roundRate(toNumber(value('retailPrice', existing.retail_price)));
-        const wholesalePrice = roundRate(toNumber(value('wholesalePrice', existing.wholesale_price)));
+        // A blank sale price keeps the one already saved.
+        const salePrice = (key, fallback) => {
+            const raw = req.body?.[key];
+            return raw === undefined || raw === null || String(raw).trim() === '' ? fallback : raw;
+        };
+        const retailPrice = roundRate(toNumber(salePrice('retailPrice', existing.retail_price)));
+        const wholesalePrice = roundRate(toNumber(salePrice('wholesalePrice', existing.wholesale_price)));
+
+        if (isMrpPricing(req.body)) {
+            const calc = calcMrpLine({
+                ...req.body,
+                mrp: value('mrp', existing.mrp),
+                dpPrice: value('dpPrice', existing.dp_price),
+            }, totalPieces);
+            const priceProblem = salePriceBelowDpAmt(req.body, calc);
+            if (priceProblem) return res.status(400).json({ error: priceProblem });
+            const mrpRow = {
+                batchNumber: textValue(value('batchNumber', existing.batch_number)),
+                mfgDate: textValue(value('mfgDate', existing.mfg_date)),
+                expiryDate: textValue(value('expiryDate', existing.expiry_date)),
+                currentStockInCase,
+                currentStockInPcs,
+                totalPieces,
+                mrp: calc.mrp,
+                dpPrice: calc.dpPrice,
+                purchasePrice: calc.costPerPiece,
+                discountPercent: calc.discountPercent,
+                gstPercent: calc.gstPercent,
+                cgstAmount: calc.cgstAmount,
+                sgstAmount: calc.sgstAmount,
+                totalValue: calc.totalValue,
+                retailPrice,
+                wholesalePrice,
+                retailMargin: dpAmtMargin(retailPrice, calc),
+                wholesaleMargin: dpAmtMargin(wholesalePrice, calc),
+                rawData: { ...parseRawData(existing.raw_data), ...calc.rawFields },
+            };
+            const datePattern = /^\d{4}-\d{2}-\d{2}$/;
+            if ((mrpRow.mfgDate && !datePattern.test(mrpRow.mfgDate))
+                || (mrpRow.expiryDate && !datePattern.test(mrpRow.expiryDate))
+                || (mrpRow.mfgDate && mrpRow.expiryDate && mrpRow.mfgDate > mrpRow.expiryDate)
+                || mrpRow.mrp <= 0 || mrpRow.dpPrice <= 0) {
+                return res.status(400).json({ error: 'Enter valid dates, MRP and DP price.' });
+            }
+            const mrpResult = await DmsStockModel.updateInvoiceItem(itemId, mrpRow);
+            await syncDmsRowsToPhysicalAndCurrent(existing.import_id, [{
+                productErpId: existing.product_erp_id,
+                productName: existing.product_name,
+                productDivision: existing.product_division,
+                variantName: existing.variant_name,
+                pcsPerBox,
+                totalCurrentStockInPcs: totalPieces,
+                pricePerPiece: calc.costPerPiece,
+                mrp: calc.mrp,
+            }], new Date().toISOString().slice(0, 10));
+            return res.json({ message: 'Invoice item updated successfully.', ...mrpResult });
+        }
+
         const row = {
             batchNumber: textValue(value('batchNumber', existing.batch_number)),
             mfgDate: textValue(value('mfgDate', existing.mfg_date)),
@@ -749,7 +1049,12 @@ export const deleteDmsStockItem = async (req, res) => {
         const result = await DmsStockModel.deleteInvoiceItem(itemId);
         if (!result) return res.status(404).json({ error: 'Invoice item was not found.' });
         if (existing) {
-            await PhysicalStockModel.deleteAutoSyncedItem(existing.import_id, existing.product_erp_id);
+            // Other lines of the same item (e.g. another MRP) may still be on the invoice.
+            await syncDmsRowsToPhysicalAndCurrent(
+                existing.import_id,
+                [{ productErpId: existing.product_erp_id }],
+                new Date().toISOString().slice(0, 10)
+            );
         }
         res.json({ message: 'Invoice item deleted successfully.', ...result });
     } catch (error) {

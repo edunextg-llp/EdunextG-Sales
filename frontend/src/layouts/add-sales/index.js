@@ -46,6 +46,7 @@ import OtherDayBitDialog, { isTodaysBit, todayDate, todayDayName } from "layouts
 import PendingOverdueRequestsDialog from "layouts/add-sales/components/PendingOverdueRequestsDialog";
 import OtherDayRequestsDialog from "layouts/add-sales/components/OtherDayRequestsDialog";
 import { useAuth } from "context/AuthContext";
+import { useCompanyTypeLookup } from "utils/companyTypes";
 import ReviewDialog from "layouts/overdue-requests/components/ReviewDialog";
 import { getInvoicePrefix, getInvoiceSuffix, buildInvoiceNumber } from "utils/invoicePrefix";
 
@@ -132,6 +133,7 @@ function AddSales() {
   const [staffOptions, setStaffOptions] = useState([]);
   const [selectedStaffType, setSelectedStaffType] = useState("");
   const [selectedCompanyName, setSelectedCompanyName] = useState("");
+  const companyLookup = useCompanyTypeLookup();
   const [selectedStaff, setSelectedStaff] = useState(null);
   const [outlets, setOutlets] = useState([]);
   const [allOutlets, setAllOutlets] = useState([]);
@@ -206,11 +208,18 @@ function AddSales() {
       .map((company) => company.trim())
       .filter(Boolean);
 
+  // Companies set to "No sale bills" in Add Company are left out.
+  const noSaleBillCompanies = new Set(
+    companyLookup.companies
+      .filter((c) => Number(c.creates_sale_bill ?? 1) === 0)
+      .map((c) => String(c.name || "").trim().toLowerCase())
+  );
   const companyOptions = [
     ...new Set(
       staffOptions
         .filter((staff) => !selectedStaffType || (staff.staff_type || "distributor") === selectedStaffType)
         .flatMap(getStaffCompanies)
+        .filter((name) => !noSaleBillCompanies.has(name.toLowerCase()))
     ),
   ].sort((a, b) => a.localeCompare(b));
 
