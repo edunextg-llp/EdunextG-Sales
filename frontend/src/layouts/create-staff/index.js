@@ -1173,7 +1173,7 @@ function CreateStaff() {
                                   <Checkbox
                                     size="small"
                                     checked={formData.permissions.includes(key)}
-                                    disabled={["overdue_7_days", "overdue_own_permission"].includes(key) && !formData.permissions.includes("add_sales")}
+                                    disabled={["overdue_7_days", "overdue_own_permission", "other_day_own_permission"].includes(key) && !formData.permissions.includes("add_sales")}
                                     onChange={(e) => togglePermission(key, e.target.checked)}
                                   />
                                 }

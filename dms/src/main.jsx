@@ -4,6 +4,7 @@ import { BrowserRouter } from "react-router-dom";
 import { ThemeProvider, createTheme } from "@mui/material/styles";
 import CssBaseline from "@mui/material/CssBaseline";
 import App from "./App";
+import SingleTabGuard from "./components/SingleTabGuard";
 import "./index.css";
 
 const theme = createTheme({
@@ -32,7 +33,9 @@ function renderApp() {
     <BrowserRouter basename="/dms">
       <ThemeProvider theme={theme}>
         <CssBaseline />
-        <App />
+        <SingleTabGuard>
+          <App />
+        </SingleTabGuard>
       </ThemeProvider>
     </BrowserRouter>
   </React.StrictMode>

@@ -13,6 +13,7 @@ export const STAFF_PERMISSION_GROUPS = [
       ["add_sales", "Add Sales"],
       ["overdue_7_days", "7 Days Overdue (with Add Sales)"],
       ["overdue_own_permission", "Own Permission, 14+ Days Overdue (with Add Sales)"],
+      ["other_day_own_permission", "Own Permission, Other-Day Bit (with Add Sales)"],
       ["invoice_lookup", "Invoice Lookup"],
       ["out_bill", "Out Bill"],
     ],
@@ -122,6 +123,7 @@ export const normalizeStaffPermissions = (list = []) => {
   if (!set.has("add_sales")) {
     set.delete("overdue_7_days");
     set.delete("overdue_own_permission");
+    set.delete("other_day_own_permission");
   }
   const hasDmsPage = DMS_PAGE_KEYS.some((key) => set.has(key));
   if (hasDmsPage) set.add("dms");

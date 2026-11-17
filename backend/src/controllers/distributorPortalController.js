@@ -49,6 +49,70 @@ const profileOf = (row) => ({
 // Distributors sign in on the main site's sign-in page (authController.login, role
 // 'distributor') and the portal sends that same access token here.
 
+// ---- mobile app login (Bawarchee app) ----
+// POST /api/distributor/mobile/login { loginId, password }. The main sign-in page needs a
+// CAPTCHA, which the app can't show, so the app signs in here instead. Same check as the main
+// login (active distributor, bcrypt password) and the same token shape, so every route below
+// accepts it. Five wrong passwords lock that login ID (from that address) for 15 minutes,
+// like the staff app login.
+const MOBILE_TOKEN_EXPIRES_IN = process.env.DISTRIBUTOR_MOBILE_TOKEN_EXPIRES_IN || '30d';
+const MAX_FAILED_LOGINS = 5;
+const LOGIN_LOCK_MS = 15 * 60 * 1000;
+const failedLogins = new Map();
+const loginKey = (req, loginId) => `${loginId}|${req.ip || ''}`;
+const lockedMinutes = (key) => {
+    const entry = failedLogins.get(key);
+    if (!entry) return 0;
+    if (entry.lockedUntil > Date.now()) return Math.ceil((entry.lockedUntil - Date.now()) / 60_000);
+    if (entry.lockedUntil) failedLogins.delete(key);
+    return 0;
+};
+const recordFailedLogin = (key) => {
+    const entry = failedLogins.get(key) || { count: 0, lockedUntil: 0 };
+    entry.count += 1;
+    if (entry.count >= MAX_FAILED_LOGINS) {
+        entry.lockedUntil = Date.now() + LOGIN_LOCK_MS;
+        entry.count = 0;
+    }
+    failedLogins.set(key, entry);
+};
+
+export const mobileLogin = async (req, res) => {
+    try {
+        const loginId = String(req.body?.loginId || '').trim().toUpperCase();
+        const password = String(req.body?.password || '');
+        if (!loginId || !password) throw httpError(400, 'Login ID and password are required.');
+        if (!/^[A-Z0-9]{3,30}$/.test(loginId)) throw httpError(401, 'Invalid login ID or password.');
+
+        const key = loginKey(req, loginId);
+        const minutes = lockedMinutes(key);
+        if (minutes > 0) throw httpError(429, `Too many failed attempts. Try again in ${minutes} minute${minutes === 1 ? '' : 's'}.`);
+
+        const [rows] = await db.execute(
+            'SELECT id, login_id, password_hash, is_active FROM distributors WHERE UPPER(login_id) = ? LIMIT 1',
+            [loginId]
+        );
+        const row = rows[0];
+        const valid = row && row.password_hash && await bcrypt.compare(password, row.password_hash);
+        if (!valid) {
+            recordFailedLogin(key);
+            throw httpError(401, 'Invalid login ID or password.');
+        }
+        failedLogins.delete(key);
+        if (!Number(row.is_active)) throw httpError(403, 'This account is inactive. Please contact the company.');
+
+        const token = jwt.sign(
+            { id: row.id, distributorId: row.id, loginId: row.login_id, role: 'distributor', client: 'mobile' },
+            SECRET,
+            { expiresIn: MOBILE_TOKEN_EXPIRES_IN }
+        );
+        const [profileRows] = await db.execute(PROFILE_SQL, [row.id]);
+        return res.status(200).json({ message: 'Login successful', token, profile: profileOf(profileRows[0]) });
+    } catch (error) {
+        return sendError(res, error, 'Unable to sign in.');
+    }
+};
+
 // Every route: a valid main-site token of an active distributor.
 export const requireDistributor = async (req, res, next) => {
     try {
@@ -400,6 +464,244 @@ export const deleteDeliveryBoy = async (req, res) => {
         return res.json({ message: 'Removed.' });
     } catch (error) {
         return sendError(res, error, 'Unable to remove the delivery boy.');
+    }
+};
+
+// ---- areas (created first; each outlet picks one) ----
+
+// "  salt   LAKE " -> name "salt LAKE", key "salt lake": one area per key per distributor.
+const areaName = (value) => text(value, 120).replace(/\s+/g, ' ');
+const areaKey = (name) => name.toLowerCase();
+
+const readAreaName = (body) => {
+    const name = areaName(body?.name);
+    if (!name) throw httpError(400, 'Enter the area name.');
+    return name;
+};
+
+const areaDuplicate = async (distributorId, key, exceptId = 0) => {
+    const [rows] = await db.execute(
+        'SELECT name FROM distributor_areas WHERE distributor_id = ? AND name_key = ? AND id <> ?',
+        [distributorId, key, exceptId]
+    );
+    if (rows.length) throw httpError(409, `The area "${rows[0].name}" is already added.`);
+};
+
+// GET /api/distributor/areas  (with how many outlets each has)
+export const listAreas = async (req, res) => {
+    try {
+        const [rows] = await db.execute(
+            `SELECT a.id, a.name, a.created_at, COUNT(o.id) AS outlet_count
+             FROM distributor_areas a LEFT JOIN distributor_outlets o ON o.area_id = a.id
+             WHERE a.distributor_id = ? GROUP BY a.id ORDER BY a.name`,
+            [req.distributorId]
+        );
+        return res.json({ areas: rows.map((r) => ({ id: r.id, name: r.name, outletCount: num(r.outlet_count), createdAt: r.created_at })) });
+    } catch (error) {
+        return sendError(res, error, 'Unable to load areas.');
+    }
+};
+
+// POST /api/distributor/areas  { name }
+export const createArea = async (req, res) => {
+    try {
+        const name = readAreaName(req.body);
+        await areaDuplicate(req.distributorId, areaKey(name));
+        const [result] = await db.execute(
+            'INSERT INTO distributor_areas (distributor_id, name, name_key) VALUES (?, ?, ?)',
+            [req.distributorId, name, areaKey(name)]
+        );
+        return res.status(201).json({ message: `${name} added.`, area: { id: result.insertId, name, outletCount: 0 } });
+    } catch (error) {
+        if (error.code === 'ER_DUP_ENTRY') return res.status(409).json({ error: 'This area is already added.' });
+        return sendError(res, error, 'Unable to add the area.');
+    }
+};
+
+// PUT /api/distributor/areas/:id  { name }  (its outlets keep it, with the new name)
+export const updateArea = async (req, res) => {
+    try {
+        const id = parseId(req.params.id) || 0;
+        const name = readAreaName(req.body);
+        await areaDuplicate(req.distributorId, areaKey(name), id);
+        const [result] = await db.execute(
+            'UPDATE distributor_areas SET name = ?, name_key = ? WHERE id = ? AND distributor_id = ?',
+            [name, areaKey(name), id, req.distributorId]
+        );
+        if (!result.affectedRows) throw httpError(404, 'Area not found.');
+        await db.execute('UPDATE distributor_outlets SET area = ? WHERE area_id = ? AND distributor_id = ?', [name, id, req.distributorId]);
+        return res.json({ message: 'Saved.', area: { id, name } });
+    } catch (error) {
+        if (error.code === 'ER_DUP_ENTRY') return res.status(409).json({ error: 'This area is already added.' });
+        return sendError(res, error, 'Unable to save the area.');
+    }
+};
+
+// DELETE /api/distributor/areas/:id  (only when no outlet uses it)
+export const deleteArea = async (req, res) => {
+    try {
+        const id = parseId(req.params.id) || 0;
+        const [used] = await db.execute('SELECT COUNT(*) AS n FROM distributor_outlets WHERE area_id = ? AND distributor_id = ?', [id, req.distributorId]);
+        const n = num(used[0]?.n);
+        if (n) throw httpError(409, `${n} outlet${n === 1 ? ' is' : 's are'} in this area. Move or remove ${n === 1 ? 'it' : 'them'} first.`);
+        const [result] = await db.execute('DELETE FROM distributor_areas WHERE id = ? AND distributor_id = ?', [id, req.distributorId]);
+        if (!result.affectedRows) throw httpError(404, 'Area not found.');
+        return res.json({ message: 'Removed.' });
+    } catch (error) {
+        return sendError(res, error, 'Unable to remove the area.');
+    }
+};
+
+// ---- outlets (shops the distributor sells to, added by the distributor) ----
+
+const outletOf = (r) => ({
+    id: r.id,
+    code: r.outlet_code || `DOT${String(r.id).padStart(6, '0')}`,
+    name: r.outlet_name,
+    ownerName: r.owner_name,
+    phone: r.contact_number,
+    whatsapp: r.whatsapp_number,
+    areaId: r.area_id || null,
+    area: r.area_name || r.area,
+    address: r.address,
+    pinCode: r.pin_code,
+    district: r.district,
+    state: r.state || 'West Bengal',
+    hasGst: Boolean(Number(r.has_gst)) || Boolean(r.gstin),
+    gstin: r.gstin,
+    googleLocation: r.google_location,
+    isActive: Boolean(Number(r.is_active)),
+    createdAt: r.created_at,
+});
+
+const digitsOnly = (value, max) => text(value, max).replace(/\s+/g, '');
+
+const readOutlet = (body) => {
+    const name = text(body?.name, 255);
+    const phone = digitsOnly(body?.phone, 15);
+    const whatsapp = digitsOnly(body?.whatsapp, 15);
+    const pinCode = digitsOnly(body?.pinCode, 10);
+    const hasGst = Boolean(body?.hasGst);
+    // No GST: any GSTIN typed earlier is dropped.
+    const gstin = hasGst ? text(body?.gstin, 20).toUpperCase() : '';
+    const googleLocation = text(body?.googleLocation, 500);
+    if (!name) throw httpError(400, 'Enter the outlet name.');
+    if (!/^\d{10}$/.test(phone)) throw httpError(400, 'Enter a 10-digit mobile number.');
+    if (whatsapp && !/^\d{10}$/.test(whatsapp)) throw httpError(400, 'Enter a 10-digit WhatsApp number, or leave it empty.');
+    if (pinCode && !/^\d{6}$/.test(pinCode)) throw httpError(400, 'Enter a 6-digit PIN code, or leave it empty.');
+    if (hasGst && !gstin) throw httpError(400, 'Enter the GSTIN, or switch GST off.');
+    if (gstin && !/^[0-9A-Z]{15}$/.test(gstin)) throw httpError(400, 'A GSTIN has 15 letters and digits.');
+    if (googleLocation && !/^https?:\/\//i.test(googleLocation)) throw httpError(400, 'The map location must be a link (https://...).');
+    const areaId = parseId(body?.areaId);
+    if (!areaId) throw httpError(400, 'Choose the area. Add areas on the Areas page first.');
+    return {
+        name,
+        ownerName: text(body?.ownerName, 120) || null,
+        phone,
+        whatsapp: whatsapp || null,
+        areaId,
+        address: text(body?.address, 500) || null,
+        pinCode: pinCode || null,
+        district: text(body?.district, 120) || null,
+        state: text(body?.state, 80) || 'West Bengal',
+        hasGst,
+        gstin: gstin || null,
+        googleLocation: googleLocation || null,
+    };
+};
+
+// The area must be one of this distributor's areas; its name is also kept on the outlet.
+const areaFor = async (distributorId, areaId) => {
+    const [rows] = await db.execute('SELECT id, name FROM distributor_areas WHERE id = ? AND distributor_id = ?', [areaId, distributorId]);
+    if (!rows.length) throw httpError(400, 'Choose one of your areas.');
+    return rows[0];
+};
+
+const OUTLET_COLUMNS = 'outlet_name = ?, owner_name = ?, contact_number = ?, whatsapp_number = ?, area_id = ?, area = ?, address = ?, pin_code = ?, district = ?, state = ?, has_gst = ?, gstin = ?, google_location = ?';
+const outletValues = (o, area) => [o.name, o.ownerName, o.phone, o.whatsapp, area.id, area.name, o.address, o.pinCode, o.district, o.state, o.hasGst ? 1 : 0, o.gstin, o.googleLocation];
+const OUTLET_SQL = `SELECT o.*, a.name AS area_name FROM distributor_outlets o LEFT JOIN distributor_areas a ON a.id = o.area_id`;
+
+// GET /api/distributor/outlets
+export const listOutlets = async (req, res) => {
+    try {
+        const [rows] = await db.execute(
+            `${OUTLET_SQL} WHERE o.distributor_id = ? ORDER BY o.is_active DESC, o.outlet_name`,
+            [req.distributorId]
+        );
+        return res.json({ outlets: rows.map(outletOf) });
+    } catch (error) {
+        return sendError(res, error, 'Unable to load outlets.');
+    }
+};
+
+// POST /api/distributor/outlets
+export const createOutlet = async (req, res) => {
+    try {
+        const o = readOutlet(req.body);
+        const area = await areaFor(req.distributorId, o.areaId);
+        const [dup] = await db.execute('SELECT id FROM distributor_outlets WHERE distributor_id = ? AND contact_number = ?', [req.distributorId, o.phone]);
+        if (dup.length) throw httpError(409, 'An outlet with this mobile number is already added.');
+        const [result] = await db.execute(
+            `INSERT INTO distributor_outlets SET distributor_id = ?, ${OUTLET_COLUMNS}`,
+            [req.distributorId, ...outletValues(o, area)]
+        );
+        const code = `DOT${String(result.insertId).padStart(6, '0')}`;
+        await db.execute('UPDATE distributor_outlets SET outlet_code = ? WHERE id = ?', [code, result.insertId]);
+        const [rows] = await db.execute(`${OUTLET_SQL} WHERE o.id = ?`, [result.insertId]);
+        return res.status(201).json({ message: `${o.name} added (${code}).`, outlet: outletOf(rows[0]) });
+    } catch (error) {
+        return sendError(res, error, 'Unable to add the outlet.');
+    }
+};
+
+// PUT /api/distributor/outlets/:id
+export const updateOutlet = async (req, res) => {
+    try {
+        const id = parseId(req.params.id) || 0;
+        const o = readOutlet(req.body);
+        const area = await areaFor(req.distributorId, o.areaId);
+        const [dup] = await db.execute(
+            'SELECT id FROM distributor_outlets WHERE distributor_id = ? AND contact_number = ? AND id <> ?',
+            [req.distributorId, o.phone, id]
+        );
+        if (dup.length) throw httpError(409, 'Another outlet has this mobile number.');
+        const [result] = await db.execute(
+            `UPDATE distributor_outlets SET ${OUTLET_COLUMNS} WHERE id = ? AND distributor_id = ?`,
+            [...outletValues(o, area), id, req.distributorId]
+        );
+        if (!result.affectedRows) throw httpError(404, 'Outlet not found.');
+        const [rows] = await db.execute(`${OUTLET_SQL} WHERE o.id = ?`, [id]);
+        return res.json({ message: 'Saved.', outlet: outletOf(rows[0]) });
+    } catch (error) {
+        return sendError(res, error, 'Unable to save the outlet.');
+    }
+};
+
+// PUT /api/distributor/outlets/:id/active  { isActive }
+export const setOutletActive = async (req, res) => {
+    try {
+        const id = parseId(req.params.id) || 0;
+        const active = req.body?.isActive ? 1 : 0;
+        const [result] = await db.execute(
+            'UPDATE distributor_outlets SET is_active = ? WHERE id = ? AND distributor_id = ?',
+            [active, id, req.distributorId]
+        );
+        if (!result.affectedRows) throw httpError(404, 'Outlet not found.');
+        return res.json({ message: active ? 'Marked active.' : 'Marked inactive.' });
+    } catch (error) {
+        return sendError(res, error, 'Unable to change the status.');
+    }
+};
+
+// DELETE /api/distributor/outlets/:id
+export const deleteOutlet = async (req, res) => {
+    try {
+        const id = parseId(req.params.id) || 0;
+        const [result] = await db.execute('DELETE FROM distributor_outlets WHERE id = ? AND distributor_id = ?', [id, req.distributorId]);
+        if (!result.affectedRows) throw httpError(404, 'Outlet not found.');
+        return res.json({ message: 'Removed.' });
+    } catch (error) {
+        return sendError(res, error, 'Unable to remove the outlet.');
     }
 };
 

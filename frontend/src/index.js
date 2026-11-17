@@ -8,6 +8,11 @@ import { MaterialUIControllerProvider } from "context";
 import { AuthProvider } from "context/AuthContext";
 
 const container = document.getElementById("app");
+// A tab that was Sales & Purchase (dms/) and then came back to the main site (logout, sign-in,
+// back link) still carries that tab's window name. Clear it, or the sidebar's Sales & Purchase
+// link would "find" this tab and not open anything.
+if (window.name === "edunextg-sales-purchase") window.name = "";
+
 const root = createRoot(container);
 
 root.render(

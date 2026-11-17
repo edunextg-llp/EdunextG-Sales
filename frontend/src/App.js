@@ -65,7 +65,10 @@ export default function App() {
       const allowedRoles = route.allowedRoles || ["admin"];
       const roleAllowed = allowedRoles.includes(role);
       const permissionAllowed =
-        ["admin", "staff"].includes(role) || !route.requiredPermission || permissions.includes(route.requiredPermission);
+        ["admin", "staff"].includes(role) ||
+        !route.requiredPermission ||
+        // A list means any one of those permissions is enough.
+        [].concat(route.requiredPermission).some((key) => permissions.includes(key));
       const assignmentStateAllowed =
         !route.hideWhenPermissionsAssigned || permissions.length === 0;
       if (!roleAllowed || !permissionAllowed || !assignmentStateAllowed) return visible;

@@ -1,5 +1,5 @@
 // Printable GST invoice for a DMS sale (Sales > Create Sales), in the same layout as the main
-// site's Add Sales "Tax Invoice", sized for A5. Opens in a new window and starts the print
+// site's Add Sales "Tax Invoice", sized for A5 (outlet bills) or A4 (bills to a distributor). Opens in a new window and starts the print
 // dialog; choose "Save as PDF" there for a PDF.
 
 const esc = (v) =>
@@ -48,14 +48,18 @@ const SELLER = {
 };
 const rs = (v) => `Rs. ${money(v)}`;
 
-// Long bills go over several A5 sheets: up to ROWS_PER_PAGE rows on a page, the last page
-// (with the totals and footer) up to LAST_PAGE_ROWS. Each page also shrinks a little if needed.
-const ROWS_PER_PAGE = 15;
-const LAST_PAGE_ROWS = 10;
+// Long bills go over several sheets: up to `rows` rows on a page, the last page (with the
+// totals and footer) up to `lastRows`. Each page also shrinks a little if needed.
+// Bills to a distributor (CNF company bills) print on A4 portrait; outlet bills on A5 landscape.
+const PAPER = {
+  a5: { label: "A5", desc: "A5 landscape", width: "210mm", height: "148mm", rows: 15, lastRows: 10, font: "9px" },
+  a4: { label: "A4", desc: "A4 portrait", width: "210mm", height: "297mm", rows: 38, lastRows: 30, font: "10px" },
+};
 
 // Same layout as the Add Sales "Tax Invoice" (templates/salesInvoicePrintTemplate.js), on A5
-// landscape sheets (210 × 148 mm), one or more.
+// landscape sheets (outlet bills) or A4 portrait sheets (bills to a distributor), one or more.
 export function printInvoice({ sale, items = [] }) {
+  const paper = sale.buyer_type === "distributor" ? PAPER.a4 : PAPER.a5;
   const cancelled = sale.status === "cancelled";
   const paidQty = items.filter((it) => !it.is_free).reduce((t, it) => t + num(it.qty), 0);
   const freeQty = items.filter((it) => it.is_free).reduce((t, it) => t + num(it.qty), 0);
@@ -80,7 +84,7 @@ export function printInvoice({ sale, items = [] }) {
   });
   const chunks = [];
   const rest = rowHtml.slice();
-  while (rest.length > LAST_PAGE_ROWS) chunks.push(rest.splice(0, ROWS_PER_PAGE));
+  while (rest.length > paper.lastRows) chunks.push(rest.splice(0, paper.rows));
   chunks.push(rest);
   const pageCount = chunks.length;
 
@@ -191,12 +195,12 @@ export function printInvoice({ sale, items = [] }) {
     <meta charset="utf-8" />
     <title>Tax Invoice ${esc(sale.invoice_number)}</title>
     <style>
-      /* A5 landscape sheets (210 × 148 mm), no printer margin: the sheet has its own 4 mm. */
-      @page { size: 210mm 148mm; margin: 0; }
+      /* ${paper.desc} sheets (${paper.width} × ${paper.height}), no printer margin: the sheet has its own 4 mm. */
+      @page { size: ${paper.width} ${paper.height}; margin: 0; }
       * { box-sizing: border-box; }
       html, body { margin: 0; }
-      body { color: #000; font-family: Arial, Helvetica, sans-serif; font-size: 9px; line-height: 1.25; }
-      .sheet { width: 210mm; height: 148mm; padding: 4mm; overflow: hidden; background: #fff; break-after: page; page-break-after: always; }
+      body { color: #000; font-family: Arial, Helvetica, sans-serif; font-size: ${paper.font}; line-height: 1.25; }
+      .sheet { width: ${paper.width}; height: ${paper.height}; padding: 4mm; overflow: hidden; background: #fff; break-after: page; page-break-after: always; }
       .sheet:last-of-type { break-after: auto; page-break-after: auto; }
       .page { height: 100%; border: 1px solid #000; padding: 5px; position: relative; overflow: hidden; }
       .fit { display: flex; flex-direction: column; min-height: 100%; }
@@ -229,10 +233,10 @@ export function printInvoice({ sale, items = [] }) {
     </style>
   </head>
   <body>
-    <div class="noprint"><button onclick="window.print()">Print / Save as PDF (A5)</button> &nbsp;Paper: A5 landscape · Margins: None · Scale: 100%</div>
+    <div class="noprint"><button onclick="window.print()">Print / Save as PDF (${paper.label})</button> &nbsp;Paper: ${paper.desc} · Margins: None · Scale: 100%</div>
     ${pages}
     <script>
-      // Shrink a sheet's content (only if needed) until it fits its A5 page, then print.
+      // Shrink a sheet's content (only if needed) until it fits its page, then print.
       function fitToSheet() {
         document.querySelectorAll(".page").forEach(function (page) {
           var fit = page.querySelector(".fit"), avail = page.clientHeight - 10, zoom = 1;

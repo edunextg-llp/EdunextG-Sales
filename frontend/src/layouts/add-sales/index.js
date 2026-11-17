@@ -100,6 +100,8 @@ const emptyOtherDayDialog = {
   pendingPayload: null,
   submittedOutletIds: [],
   lineMapPatch: {},
+  // other_day_own_permission: the user may bill these outlets with a reason, no admin approval.
+  canOwnPermission: false,
 };
 
 const tableHeadSx = {
@@ -660,7 +662,7 @@ function AddSales() {
   const submitSalesPayload = async (
     payload,
     submittedOutletIds = [],
-    { permissionGranted = false, permissionNote = "", ownPermission = false, lineMapPatch = {} } = {}
+    { permissionGranted = false, permissionNote = "", ownPermission = false, otherDayOwnPermission = false, otherDayNote = "", lineMapPatch = {} } = {}
   ) => {
     setSubmitting(true);
     try {
@@ -674,6 +676,8 @@ function AddSales() {
           permissionGranted,
           permissionNote,
           ownPermission,
+          otherDayOwnPermission,
+          otherDayNote,
         }),
       });
 
@@ -698,6 +702,7 @@ function AddSales() {
           pendingPayload: payload,
           submittedOutletIds,
           lineMapPatch,
+          canOwnPermission: Boolean(err.canOwnPermission),
         });
         return false;
       }
@@ -2677,6 +2682,14 @@ function AddSales() {
         onRetry={() =>
           submitSalesPayload(otherDayDialog.pendingPayload, otherDayDialog.submittedOutletIds, {
             lineMapPatch: otherDayDialog.lineMapPatch || {},
+          })
+        }
+        canOwnPermission={otherDayDialog.canOwnPermission}
+        onOwnPermission={(note) =>
+          submitSalesPayload(otherDayDialog.pendingPayload, otherDayDialog.submittedOutletIds, {
+            lineMapPatch: otherDayDialog.lineMapPatch || {},
+            otherDayOwnPermission: true,
+            otherDayNote: note,
           })
         }
       />

@@ -45,7 +45,6 @@ import MDButton from "components/MDButton";
 import DashboardLayout from "examples/LayoutContainers/DashboardLayout";
 import DashboardNavbar from "examples/Navbars/DashboardNavbar";
 import Footer from "examples/Footer";
-import ReportsBarChart from "examples/Charts/BarCharts/ReportsBarChart";
 import ComplexStatisticsCard from "examples/Cards/StatisticsCards/ComplexStatisticsCard";
 import CompanyTypeSelect from "components/CompanyFilter/CompanyTypeSelect";
 import { useCompanyTypeLookup } from "utils/companyTypes";
@@ -86,27 +85,6 @@ const emptyReportData = {
   staffCollectionByDate: [],
   deliveredCancellationDetails: [],
   deliveredOutstandingDetails: [],
-};
-
-const emptyPurchaseReportData = {
-  summary: {
-    total_purchase: 0,
-    total_gross_amount: 0,
-    total_trader_discount: 0,
-    total_primary_discount: 0,
-    total_secondary_discount: 0,
-    total_cash_discount: 0,
-    total_taxable_value: 0,
-    total_cgst_amount: 0,
-    total_sgst_amount: 0,
-    total_gst_amount: 0,
-    total_invoices: 0,
-    seller_count: 0,
-    average_purchase: 0,
-    today_purchase: 0,
-    today_invoices: 0,
-  },
-  purchasesByPeriod: { monthly: [], yearly: [] },
 };
 
 const modeLabels = {
@@ -884,55 +862,6 @@ function buildMarketingStaffCollectionGroups(details) {
   return [...marketingGroups.values()].sort((a, b) => a.marketingName.localeCompare(b.marketingName));
 }
 
-function PurchasePeriodTable({ title, rows, periodLabel }) {
-  return (
-    <Card sx={{ height: "100%" }}>
-      <MDBox p={3} pb={1}>
-        <MDTypography variant="h6" fontWeight="medium">
-          {title}
-        </MDTypography>
-      </MDBox>
-      <MDBox px={3} pb={3}>
-        <TableContainer component={Paper} sx={{ boxShadow: "none", border: "1px solid #e5e7eb" }}>
-          <Table size="small">
-            <TableHead sx={{ display: "table-header-group", backgroundColor: "#f9fafb" }}>
-              <TableRow>
-                <TableCell sx={{ fontWeight: "bold" }}>{periodLabel}</TableCell>
-                <TableCell align="right" sx={{ fontWeight: "bold" }}>Invoices</TableCell>
-                <TableCell align="right" sx={{ fontWeight: "bold" }}>Purchase</TableCell>
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {rows.map((row) => (
-                <TableRow key={row.period}>
-                  <TableCell>{row.period}</TableCell>
-                  <TableCell align="right">{Number(row.count) || 0}</TableCell>
-                  <TableCell align="right">{money(row.total_purchase)}</TableCell>
-                </TableRow>
-              ))}
-              {rows.length === 0 && (
-                <TableRow>
-                  <TableCell colSpan={3} align="center" sx={{ py: 3 }}>
-                    <MDTypography variant="body2" color="text">
-                      No purchase records found.
-                    </MDTypography>
-                  </TableCell>
-                </TableRow>
-              )}
-            </TableBody>
-          </Table>
-        </TableContainer>
-      </MDBox>
-    </Card>
-  );
-}
-
-PurchasePeriodTable.propTypes = {
-  title: PropTypes.string.isRequired,
-  rows: PropTypes.arrayOf(PropTypes.object).isRequired,
-  periodLabel: PropTypes.string.isRequired,
-};
-
 function Dashboard() {
   const financialYearOptions = useMemo(() => getFinancialYearOptions(), []);
   const [selectedFinancialYear, setSelectedFinancialYear] = useState("");
@@ -953,8 +882,7 @@ function Dashboard() {
     }
   };
   const [reportData, setReportData] = useState(emptyReportData);
-  const [purchaseReportData, setPurchaseReportData] = useState(emptyPurchaseReportData);
-  const [activeDashboardTab, setActiveDashboardTab] = useState("purchase");
+  const [activeDashboardTab, setActiveDashboardTab] = useState("sales");
   const [assignDialogOpen, setAssignDialogOpen] = useState(false);
   const [chequeDialogOpen, setChequeDialogOpen] = useState(false);
   const [paidCollectionDialogOpen, setPaidCollectionDialogOpen] = useState(false);
@@ -1112,26 +1040,6 @@ function Dashboard() {
     }
   };
 
-  const fetchPurchaseReports = async () => {
-    try {
-      const params = new URLSearchParams();
-      if (standardReportStartDate) params.set("startDate", standardReportStartDate);
-      if (standardReportEndDate) params.set("endDate", standardReportEndDate);
-
-      const query = params.toString();
-      const response = await fetch(`${API}/staff/purchase-reports${query ? `?${query}` : ""}`);
-      if (response.ok) {
-        const data = await response.json();
-        setPurchaseReportData({ ...emptyPurchaseReportData, ...data });
-      } else {
-        setPurchaseReportData(emptyPurchaseReportData);
-      }
-    } catch (error) {
-      console.error("Error fetching purchase dashboard reports:", error);
-      setPurchaseReportData(emptyPurchaseReportData);
-    }
-  };
-
   const fetchCollectionDateReport = async (date) => {
     if (!date) {
       return { todayCollection: [], todayCollectionDetails: [], todayCollectionEntries: [], todayCollectionSplit: { new_bill_amount: 0, new_bill_count: 0, old_credit_amount: 0, old_credit_count: 0 } };
@@ -1241,10 +1149,6 @@ function Dashboard() {
     fetchReports();
   }, [fetchReports]);
 
-  useEffect(() => {
-    fetchPurchaseReports();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [standardReportStartDate, standardReportEndDate]);
 
   useEffect(() => {
     let ignore = false;
@@ -1781,28 +1685,6 @@ function Dashboard() {
     [monthlySalesDataset]
   );
 
-  const monthlyPurchaseChart = useMemo(() => {
-    const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-    const purchasesByMonth = monthNames.map(() => 0);
-
-    const monthlyList = purchaseReportData.purchasesByPeriod?.monthly || [];
-    monthlyList.forEach((row) => {
-      const match = String(row.period || "").match(/^(\d{4})-(\d{2})$/);
-      if (match) {
-        const monthIndex = Number(match[2]) - 1;
-        purchasesByMonth[monthIndex] = Number(row.total_purchase) || 0;
-      }
-    });
-
-    return {
-      labels: monthNames,
-      datasets: {
-        label: "Monthly Purchase",
-        data: purchasesByMonth,
-      },
-    };
-  }, [purchaseReportData.purchasesByPeriod?.monthly]);
-
   const monthlyCollectionRows = useMemo(
     () => buildMonthlyCollectionRows(reportData.monthlyCollection, reportStartDate, reportEndDate),
     [reportData.monthlyCollection, reportStartDate, reportEndDate]
@@ -1812,97 +1694,6 @@ function Dashboard() {
     () => buildYearlyCollectionRows(reportData.yearlyCollection),
     [reportData.yearlyCollection]
   );
-
-  // const monthlyPurchaseRows = purchaseReportData.purchasesByPeriod?.monthly || [];
-  // const yearlyPurchaseRows = purchaseReportData.purchasesByPeriod?.yearly || [];
-  const purchaseSummaryCards = [
-    {
-      color: "info",
-      icon: "payments",
-      title: "Total Gross",
-      count: shortMoney(purchaseReportData.summary.total_gross_amount),
-      label: "Gross purchase value",
-    },
-    {
-      color: "error",
-      icon: "local_offer",
-      title: "Trader Discount",
-      count: shortMoney(purchaseReportData.summary.total_trader_discount),
-      label: "Trader discount total",
-    },
-    {
-      color: "error",
-      icon: "discount",
-      title: "Primary Discount",
-      count: shortMoney(purchaseReportData.summary.total_primary_discount),
-      label: "Primary discount total",
-    },
-    {
-      color: "error",
-      icon: "sell",
-      title: "Secondary Discount",
-      count: shortMoney(purchaseReportData.summary.total_secondary_discount),
-      label: "Secondary discount total",
-    },
-    {
-      color: "error",
-      icon: "sell",
-      title: "Total Discount",
-      count: shortMoney(purchaseReportData.summary.total_trader_discount + purchaseReportData.summary.total_primary_discount + purchaseReportData.summary.total_secondary_discount),
-      label: "Trader discount + primary discount + secondary discount total",
-    },
-    {
-      color: "error",
-      icon: "money_off",
-      title: "Cash Discount",
-      count: shortMoney(purchaseReportData.summary.total_cash_discount),
-      label: "Cash discount total",
-    },
-    {
-      color: "warning",
-      icon: "summarize",
-      title: "Taxable Value",
-      count: shortMoney(purchaseReportData.summary.total_taxable_value),
-      label: "After discounts",
-    },
-    {
-      color: "success",
-      icon: "percent",
-      title: "Total SGST",
-      count: shortMoney(purchaseReportData.summary.total_sgst_amount),
-      label: "SGST amount",
-    },
-    {
-      color: "success",
-      icon: "percent",
-      title: "Total CGST",
-      count: shortMoney(purchaseReportData.summary.total_cgst_amount),
-      label: "CGST amount",
-    },
-    {
-      color: "success",
-      icon: "receipt",
-      title: "Total GST",
-      count: shortMoney(purchaseReportData.summary.total_gst_amount),
-      label: "SGST + CGST",
-    },
-    {
-      color: "dark",
-      icon: "receipt_long",
-      title: "Total Amount",
-      count: shortMoney(purchaseReportData.summary.total_purchase),
-      amount: purchaseReportData.summary.total_invoices,
-      label: "purchase invoices",
-    },
-    {
-      color: "dark",
-      icon: "store",
-      title: "Purchase Sellers",
-      count: (purchaseReportData.summary.seller_count),
-      // amount: purchaseReportData.summary.seller_count,
-      label: "Sellers included in the selected period.",
-    }
-  ];
 
   const pendingChequeRows = reportData.pendingChequeReports || [];
   const chequePendingCount = pendingChequeRows.length;
@@ -1934,7 +1725,6 @@ function Dashboard() {
               },
             }}
           >
-            <Tab value="purchase" icon={<Icon>inventory_2</Icon>} iconPosition="start" label="Purchase Dashboard" />
             <Tab value="sales" icon={<Icon>query_stats</Icon>} iconPosition="start" label="Sales Dashboard" />
           </Tabs>
         </Card>
@@ -1950,268 +1740,7 @@ function Dashboard() {
         companies={salesCompanies}
       />
 
-      {activeDashboardTab === "purchase" && (
-        <MDBox py={3}>
-          <MDBox
-            mb={1}
-            display="flex"
-            justifyContent="space-between"
-            alignItems="flex-start"
-            flexWrap="wrap"
-            gap={2}
-          >
-            <MDBox>
-              <MDTypography variant="h4" fontWeight="medium" color="dark">
-                Purchase Dashboard
-              </MDTypography>
-              <MDTypography variant="body2" color="text">
-                Live purchase invoice, taxable value, GST, and seller overview.
-              </MDTypography>
-            </MDBox>
-            <MDBox display="flex" gap={1.5} flexWrap="wrap" alignItems="center" sx={{ ml: { xs: 0, md: "auto" } }}>
-              <FormControl size="small" sx={{ minWidth: 160 }}>
-                <InputLabel id="purchase-dashboard-financial-year-label">Financial Year</InputLabel>
-                <Select
-                  labelId="purchase-dashboard-financial-year-label"
-                  value={selectedFinancialYear}
-                  label="Financial Year"
-                  onChange={(event) => handleFinancialYearChange(event.target.value)}
-                  sx={{ height: 44, backgroundColor: "#fff" }}
-                >
-                  <MenuItem value="">All Years</MenuItem>
-                  {financialYearOptions.map((option) => (
-                    <MenuItem key={option.value} value={option.value}>
-                      {option.label}
-                    </MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
-              <FormControl size="small" sx={{ minWidth: 140 }} disabled={!selectedFinancialYear}>
-                <InputLabel id="purchase-dashboard-month-label">Month</InputLabel>
-                <Select
-                  labelId="purchase-dashboard-month-label"
-                  value={selectedMonth}
-                  label="Month"
-                  onChange={(event) => handleMonthChange(event.target.value)}
-                  sx={{ height: 44, backgroundColor: "#fff" }}
-                >
-                  <MenuItem value="">All Months</MenuItem>
-                  {monthOptions.map((option) => (
-                    <MenuItem key={option.value} value={option.value}>
-                      {option.label}
-                    </MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
-            </MDBox>
-          </MDBox>
-
-          <MDBox mt={4}>
-            <Grid container spacing={3}>
-              {purchaseSummaryCards.map((card) => (
-                <Grid item xs={12} md={6} lg={3} key={card.title}>
-                  <MDBox mb={1.5}>
-                    <ComplexStatisticsCard
-                      color={card.color}
-                      icon={card.icon}
-                      title={card.title}
-                      count={card.count}
-                      percentage={{
-                        color: card.color,
-                        amount: card.amount ?? "",
-                        label: card.label,
-                      }}
-                    />
-                  </MDBox>
-                </Grid>
-              ))}
-              {/* <Grid item xs={12} md={4}>
-            <Card>
-              <MDBox p={3}>
-                <MDTypography variant="h6" fontWeight="medium">
-                  Purchase Sellers
-                </MDTypography>
-                <MDTypography variant="h3" color="success">
-                  {purchaseReportData.summary.seller_count}
-                </MDTypography>
-                <MDTypography variant="body2" color="text">
-                  Sellers included in the selected period.
-                </MDTypography>
-              </MDBox>
-            </Card>
-          </Grid> */}
-              {/* <Grid item xs={12} md={4}>
-            <Card>
-              <MDBox p={3}>
-                <MDTypography variant="h6" fontWeight="medium">
-                  Average Purchase
-                </MDTypography>
-                <MDTypography variant="h3" color="info">
-                  {shortMoney(purchaseReportData.summary.average_purchase)}
-                </MDTypography>
-                <MDTypography variant="body2" color="text">
-                  Average rounded invoice total.
-                </MDTypography>
-              </MDBox>
-            </Card>
-          </Grid> */}
-            </Grid>
-
-          </MDBox>
-
-          <MDBox mt={4.5}>
-            <Grid container spacing={3}>
-              <Grid item xs={12} md={6} lg={4} display="flex">
-                <MDBox mb={3} width="100%" height={380} sx={{ "& > div": { height: "100%" } }}>
-                  <ReportsBarChart
-                    color="info"
-                    title="monthly purchase"
-                    description="Purchase invoice value by month"
-                    date="all records"
-                    chart={monthlyPurchaseChart}
-                  />
-                </MDBox>
-              </Grid>
-              {/* <Grid item xs={12} md={6} lg={4}>
-              <MDBox mb={3}>
-                <ReportsLineChart
-                  color="success"
-                  title="weekly sales"
-                  description="Recent week-wise sales trend"
-                  date="all records"
-                  chart={weeklySalesChart}
-                />
-              </MDBox>
-            </Grid> */}
-              <Grid item xs={12} md={6} lg={4} display="flex">
-                <MDBox mb={3} width="100%" height={380}>
-                  <Card sx={{ height: "100%" }}>
-                    <MDBox p={3}>
-                      <MDBox display="flex" alignItems="center" mb={1.5}>
-                        <MDBox
-                          width="3.25rem"
-                          height="3.25rem"
-                          bgColor="warning"
-                          variant="gradient"
-                          coloredShadow="warning"
-                          borderRadius="xl"
-                          display="flex"
-                          justifyContent="center"
-                          alignItems="center"
-                          color="white"
-                          mr={1.5}
-                        >
-                          <Icon sx={{ fontSize: "1.25rem" }}>receipt</Icon>
-                        </MDBox>
-                        <MDBox>
-                          <MDTypography variant="h6" sx={{ fontSize: "1rem", lineHeight: 1.3 }}>
-                            Purchase Invoices
-                          </MDTypography>
-                          <MDTypography variant="button" color="text" fontWeight="medium" sx={{ fontSize: "0.9rem" }}>
-                            {purchaseReportData.summary.total_invoices} invoices in selected period
-                          </MDTypography>
-                        </MDBox>
-                      </MDBox>
-                      <MDTypography variant="h3" color="dark">
-                        {purchaseReportData.summary.total_invoices}
-                      </MDTypography>
-                      <MDTypography variant="body2" color="text">
-                        Filtered by invoice date, with created date used when invoice date is missing.
-                      </MDTypography>
-                    </MDBox>
-                  </Card>
-                </MDBox>
-              </Grid>
-              <Grid item xs={12} md={6} lg={4} display="flex">
-                <MDBox mb={3} width="100%" height={380}>
-                  <Card sx={{ height: "100%" }}>
-                    <MDBox p={3}>
-                      <MDBox display="flex" alignItems="center" mb={1.5}>
-                        <MDBox
-                          width="3.25rem"
-                          height="3.25rem"
-                          bgColor="success"
-                          variant="gradient"
-                          coloredShadow="success"
-                          borderRadius="xl"
-                          display="flex"
-                          justifyContent="center"
-                          alignItems="center"
-                          color="white"
-                          mr={1.5}
-                        >
-                          <Icon sx={{ fontSize: "1.25rem" }}>store</Icon>
-                        </MDBox>
-                        <MDBox>
-                          <MDTypography variant="h6" sx={{ fontSize: "1rem", lineHeight: 1.3 }}>
-                            Seller Coverage
-                          </MDTypography>
-                          <MDTypography variant="button" color="text" fontWeight="medium" sx={{ fontSize: "0.9rem" }}>
-                            {purchaseReportData.summary.seller_count} sellers with purchases
-                          </MDTypography>
-                        </MDBox>
-                      </MDBox>
-                      <MDTypography variant="h3" color="dark">
-                        {purchaseReportData.summary.seller_count}
-                      </MDTypography>
-                      <MDTypography variant="body2" color="text">
-                        Distinct sellers counted from saved purchase invoices.
-                      </MDTypography>
-                    </MDBox>
-                  </Card>
-                </MDBox>
-              </Grid>
-            </Grid>
-          </MDBox>
-
-          <MDBox mt={1}>
-            {/* <Grid container spacing={3}>
-            <Grid item xs={12} lg={6} display="flex">
-              <MDBox mb={3} width="100%">
-                <PurchasePeriodTable
-                  title="Month Wise Purchase"
-                  rows={monthlyPurchaseRows}
-                  periodLabel="Month"
-                />
-              </MDBox>
-            </Grid>
-           
-            <Grid item xs={12} lg={6} display="flex">
-              <MDBox mb={3} width="100%">
-                <PurchasePeriodTable
-                  title="Year Wise Purchase"
-                  rows={yearlyPurchaseRows}
-                  periodLabel="Year"
-                />
-              </MDBox>
-            </Grid>
-          </Grid> */}
-          </MDBox>
-
-          <Grid container spacing={3}>
-
-            {/* <Grid item xs={12} md={4}>
-            <Card>
-              <MDBox p={3}>
-                <MDTypography variant="h6" fontWeight="medium">
-                  Credit Dues
-                </MDTypography>
-                <MDTypography variant="h3" color={totalCreditDues > 0 ? "error" : "success"}>
-                  {shortMoney(totalCreditDues)}
-                </MDTypography>
-                <MDTypography variant="body2" color="text">
-                  {creditDuesCount} open credit {creditDuesCount === 1 ? "entry" : "entries"} with unpaid balance.
-                </MDTypography>
-              </MDBox>
-            </Card>
-          </Grid> */}
-
-          </Grid>
-        </MDBox>
-      )}
-
-
-
+      {/* Purchase Dashboard moved to Sales & Purchase (dms/src/pages/PurchaseDashboard.jsx). */}
 
       {/* //sales dashboard */}
 

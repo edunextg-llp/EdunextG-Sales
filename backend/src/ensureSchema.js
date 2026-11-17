@@ -1510,6 +1510,68 @@ export async function ensureSchema() {
             );
         `);
 
+        // Distributor Portal / Bawarchee app: outlets (shops) a distributor sells to, added by the
+        // distributor. Code DOT000001... from the id.
+        await connection.query(`
+            CREATE TABLE IF NOT EXISTS distributor_outlets (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                distributor_id INT NOT NULL,
+                outlet_code VARCHAR(20) NULL,
+                outlet_name VARCHAR(255) NOT NULL,
+                owner_name VARCHAR(120) NULL,
+                contact_number VARCHAR(15) NOT NULL,
+                whatsapp_number VARCHAR(15) NULL,
+                area VARCHAR(120) NULL,
+                address VARCHAR(500) NULL,
+                pin_code VARCHAR(10) NULL,
+                gstin VARCHAR(20) NULL,
+                google_location VARCHAR(500) NULL,
+                is_active TINYINT(1) NOT NULL DEFAULT 1,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                UNIQUE KEY uq_distributor_outlet_code (outlet_code),
+                UNIQUE KEY uq_distributor_outlet_phone (distributor_id, contact_number),
+                INDEX idx_distributor_outlets_distributor (distributor_id, is_active),
+                FOREIGN KEY (distributor_id) REFERENCES distributors(id) ON DELETE CASCADE
+            );
+        `);
+
+        // Areas a distributor groups its outlets by (created first, then picked on each outlet).
+        // One name per distributor: name_key is the name lower-cased with single spaces.
+        await connection.query(`
+            CREATE TABLE IF NOT EXISTS distributor_areas (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                distributor_id INT NOT NULL,
+                name VARCHAR(120) NOT NULL,
+                name_key VARCHAR(120) NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE KEY uq_distributor_area_name (distributor_id, name_key),
+                FOREIGN KEY (distributor_id) REFERENCES distributors(id) ON DELETE CASCADE
+            );
+        `);
+        await tryQuery(connection, `ALTER TABLE distributor_outlets ADD COLUMN area_id INT NULL AFTER whatsapp_number`, 'area_id on distributor_outlets');
+        await tryQuery(connection, `ALTER TABLE distributor_outlets ADD INDEX idx_distributor_outlets_area (area_id)`, null);
+        // District / state (pin code lookup fills them; state defaults to West Bengal) and GST yes/no.
+        await tryQuery(connection, `ALTER TABLE distributor_outlets ADD COLUMN district VARCHAR(120) NULL AFTER pin_code`, 'district on distributor_outlets');
+        await tryQuery(connection, `ALTER TABLE distributor_outlets ADD COLUMN state VARCHAR(80) NULL DEFAULT 'West Bengal' AFTER district`, 'state on distributor_outlets');
+        await tryQuery(connection, `ALTER TABLE distributor_outlets ADD COLUMN has_gst TINYINT(1) NOT NULL DEFAULT 0 AFTER state`, 'has_gst on distributor_outlets');
+        await connection.query(`UPDATE distributor_outlets SET has_gst = 1 WHERE has_gst = 0 AND gstin IS NOT NULL AND gstin <> ''`);
+
+        // Outlets saved before areas existed: make an area from each typed area name and link it.
+        await connection.query(`
+            INSERT IGNORE INTO distributor_areas (distributor_id, name, name_key)
+            SELECT distributor_id, MIN(TRIM(area)), LOWER(TRIM(area))
+            FROM distributor_outlets
+            WHERE area_id IS NULL AND area IS NOT NULL AND TRIM(area) <> ''
+            GROUP BY distributor_id, LOWER(TRIM(area))
+        `);
+        await connection.query(`
+            UPDATE distributor_outlets o
+            JOIN distributor_areas a ON a.distributor_id = o.distributor_id AND a.name_key = LOWER(TRIM(o.area))
+            SET o.area_id = a.id
+            WHERE o.area_id IS NULL AND o.area IS NOT NULL AND TRIM(o.area) <> ''
+        `);
+
         // DMS Sales > Free Goods: buy X pcs of an item, get Y pcs (same or another item) free.
         await connection.query(`
             CREATE TABLE IF NOT EXISTS free_goods_schemes (
@@ -2482,6 +2544,9 @@ export async function ensureSchema() {
                 FOREIGN KEY (outlet_id) REFERENCES staff_counters(id) ON DELETE CASCADE
             );
         `);
+        // 1 = billed on the user's own permission (other_day_own_permission): no admin approval,
+        // saved straight as 'used' so admin can see it.
+        await tryQuery(connection, `ALTER TABLE other_day_sale_requests ADD COLUMN own_permission TINYINT(1) NOT NULL DEFAULT 0 AFTER status`, 'own_permission on other_day_sale_requests');
         console.log('other_day_sale_requests table verified');
 
         // Moving bills to Suspense needs a reason and, for non-admin users, admin approval.

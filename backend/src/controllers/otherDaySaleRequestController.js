@@ -2,7 +2,7 @@ import OtherDaySaleRequestModel, { getOtherDayOutlets, todayDate, todayDayName }
 import { getRequester } from './overdueSaleRequestController.js';
 
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
-const STATUSES = ['pending', 'approved', 'rejected', 'used', 'open', 'all'];
+const STATUSES = ['pending', 'approved', 'rejected', 'used', 'open', 'own_permission', 'all'];
 
 const parseOutletIds = (value) => {
     const list = Array.isArray(value) ? value : String(value || '').split(',');

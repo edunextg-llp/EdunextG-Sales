@@ -10,6 +10,7 @@ import {
   Minus,
   Package,
   Plus,
+  Printer,
   Search,
   Send,
   ShoppingCart,
@@ -35,7 +36,9 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { EmptyState, PageHeader } from "@/components/common";
 import { api } from "@/lib/api";
+import { useAuth } from "@/lib/auth";
 import { qty, rupees, showDate } from "@/lib/format";
+import { isCnf, printOrderCopy } from "@/lib/orderCopy";
 
 // Orders. "New order": the company's items in stock (left) and the order being built (right).
 // Items with a free goods offer show it ("Buy 100 pcs, get 30 pcs <item> free"), and the order
@@ -99,8 +102,8 @@ function NewOrder({ onPlaced }) {
   const [onlyOffers, setOnlyOffers] = useState(false);
   const [cart, setCart] = useState({}); // productErpId -> qty string
   const [remarks, setRemarks] = useState("");
-  // Retail or wholesale price for the whole order (must be chosen).
-  const [priceType, setPriceType] = useState("");
+  // Retail or wholesale price for the whole order (Retail unless changed).
+  const [priceType, setPriceType] = useState("retail");
   const [busy, setBusy] = useState(false);
   const cartRef = useRef(null);
 
@@ -421,7 +424,7 @@ function NewOrder({ onPlaced }) {
 // My orders
 // ---------------------------------------------------------------------------
 
-function OrderCard({ order, sr, onCancel }) {
+function OrderCard({ order, sr, onCancel, profile }) {
   const [open, setOpen] = useState(order.status === "pending" || order.status === "approved");
   const st = STATUS[order.status] || { label: order.status, className: "" };
   const freeQty = order.items.filter((it) => it.is_free).reduce((t, it) => t + Number(it.qty || 0), 0);
@@ -501,11 +504,29 @@ function OrderCard({ order, sr, onCancel }) {
             )}
           </ul>
           {order.remarks && <p className="mt-2 text-xs text-muted-foreground">Your note: “{order.remarks}”</p>}
-          {order.status === "pending" && (
-            <div className="mt-3 flex justify-end">
-              <Button variant="destructive" size="sm" onClick={() => onCancel(order)}>
-                Cancel order
-              </Button>
+          {(order.status === "pending" || isCnf(profile)) && (
+            <div className="mt-3 flex flex-wrap justify-end gap-2">
+              {/* A4 order copy: CNF distributors only. */}
+              {isCnf(profile) && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    try {
+                      printOrderCopy(order, profile);
+                    } catch (err) {
+                      toast.error(err.message);
+                    }
+                  }}
+                >
+                  <Printer /> Order copy (A4)
+                </Button>
+              )}
+              {order.status === "pending" && (
+                <Button variant="destructive" size="sm" onClick={() => onCancel(order)}>
+                  Cancel order
+                </Button>
+              )}
             </div>
           )}
         </CardContent>
@@ -515,6 +536,7 @@ function OrderCard({ order, sr, onCancel }) {
 }
 
 function MyOrders({ orders, error, onNew, onCancel }) {
+  const { profile } = useAuth();
   const [filter, setFilter] = useState("");
   const shown = (orders || []).filter((o) => !filter || o.status === filter);
   if (!orders) {
@@ -556,7 +578,7 @@ function MyOrders({ orders, error, onNew, onCancel }) {
           </EmptyState>
         </Card>
       ) : (
-        shown.map((o, i) => <OrderCard key={o.id} order={o} sr={i + 1} onCancel={onCancel} />)
+        shown.map((o, i) => <OrderCard key={o.id} order={o} sr={i + 1} onCancel={onCancel} profile={profile} />)
       )}
     </div>
   );

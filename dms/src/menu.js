@@ -9,8 +9,6 @@ import {
   MdFactCheck,
   MdEventBusy,
   MdEventNote,
-  MdBrokenImage,
-  MdReceiptLong,
   MdAssignmentInd,
   MdShoppingCart,
   MdInventory2,
@@ -20,6 +18,7 @@ import {
   MdPostAdd,
   MdMoveToInbox,
   MdAssignment,
+  MdStore,
 } from "react-icons/md";
 
 // DMS sidebar items. `permission` uses the same permission keys as the main
@@ -49,11 +48,12 @@ const menu = [
   // Orders > Distributor Orders: orders from the Distributor Portal; approve -> requisition
   // number for Create Bill. Admin only.
   { label: "Distributor Orders", icon: MdMoveToInbox, path: "/distributor-orders", permission: "admin_only", group: "orders" },
+  // Orders > Outlet Orders: purchase requisitions from marketing staff (moved here from the
+  // main site's Approvals > Requisition Approvals). Same permission as before.
+  { label: "Outlet Orders", icon: MdStore, path: "/outlet-orders", permission: "requisition_approval", group: "orders" },
   { label: "Stock", icon: MdFactCheck, path: "/stock", permission: "current_stock", group: "stock" },
   { label: "Expiry Items", icon: MdEventBusy, path: "/expiry-items", permission: "expiry_items" },
   { label: "Expiry List", icon: MdEventNote, path: "/expiry-list", permission: "expiry_list" },
-  { label: "Damage List", icon: MdBrokenImage, path: "/damage-list", permission: "damage_list" },
-  { label: "Purchase", icon: MdReceiptLong, path: "/purchase", permission: "purchase" },
 ];
 
 // Sidebar dropdowns.
@@ -76,6 +76,14 @@ export const visibleMenu = (user) =>
   menu.filter((item) => !item.permission || isAdmin(user) || (user?.permissions || []).includes(item.permission));
 
 const PHYSICAL_STOCK = menu.find((item) => item.path === "/physical-stock");
+export const OUTLET_ORDERS = menu.find((item) => item.path === "/outlet-orders");
+
+// Requisition approvers may open Sales & Purchase for Outlet Orders even without the DMS
+// permission (they used to approve on the main site).
+export const canApproveOutletOrders = (user) =>
+  Boolean(user) &&
+  DMS_ROLES.includes(user.role || "admin") &&
+  (isAdmin(user) || (user.permissions || []).includes(OUTLET_ORDERS.permission));
 
 // True when the user opens Physical Stock only because a count is assigned to them
 // (no DMS + Physical Stock permission). The page then works on /api/my-physical-stock.
@@ -83,9 +91,11 @@ export const physicalStockByAssignment = (user) =>
   !(canAccessDms(user) && visibleMenu(user).some((item) => item.path === PHYSICAL_STOCK.path));
 
 // Sidebar / routes. Someone with a physical stock count assigned to them also gets
-// Physical Stock; without DMS access that is the only page (no Dashboard).
+// Physical Stock, and a requisition approver gets Outlet Orders; without DMS access those
+// are the only pages (no Dashboard).
 export const menuFor = (user, hasAssignment) => {
   const list = canAccessDms(user) ? visibleMenu(user) : [];
+  if (canApproveOutletOrders(user) && !list.includes(OUTLET_ORDERS)) list.push(OUTLET_ORDERS);
   if (hasAssignment && !list.some((item) => item.path === PHYSICAL_STOCK.path)) list.push(PHYSICAL_STOCK);
   return list;
 };

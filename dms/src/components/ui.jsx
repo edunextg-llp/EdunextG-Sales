@@ -67,8 +67,9 @@ export function Field({ label, required, hint, className = "", children }) {
   );
 }
 
-/** Company type toggle + company dropdown. Extra controls (e.g. seller) go in children. */
-export function CompanyPicker({ companies, type, onTypeChange, companyId, onCompanyChange, disabledTypes = [], disabledTypeTitle = "", companyClassName = "min-w-64 flex-1 sm:max-w-sm", className = "", children }) {
+/** Company type toggle + company dropdown. Extra controls (e.g. seller) go in children.
+ *  allLabel: text for the empty company choice when it means "every company of this type". */
+export function CompanyPicker({ companies, type, onTypeChange, companyId, onCompanyChange, disabledTypes = [], disabledTypeTitle = "", allLabel = "", companyClassName = "min-w-64 flex-1 sm:max-w-sm", className = "", children }) {
   const ofType = companies.filter((c) => c.type === type);
   return (
     <section className={`mb-5 flex flex-wrap items-end gap-x-6 gap-y-3 rounded-box border border-base-300 bg-base-100 px-4 py-3 ${className}`}>
@@ -98,7 +99,7 @@ export function CompanyPicker({ companies, type, onTypeChange, companyId, onComp
           onChange={(e) => onCompanyChange(e.target.value)}
         >
           <option value="">
-            {!type ? "Choose a type first" : ofType.length ? "Select company" : "No companies of this type"}
+            {!type ? "Choose a type first" : !ofType.length ? "No companies of this type" : allLabel || "Select company"}
           </option>
           {ofType.map((c) => (
             <option key={c.id} value={String(c.id)}>

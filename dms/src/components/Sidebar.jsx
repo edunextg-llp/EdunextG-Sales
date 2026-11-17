@@ -10,6 +10,9 @@ import ListItemText from "@mui/material/ListItemText";
 import Divider from "@mui/material/Divider";
 import { MdArrowBack, MdExpandMore, MdInventory, MdLogout } from "react-icons/md";
 import Typography from "@mui/material/Typography";
+import Button from "@mui/material/Button";
+import CircularProgress from "@mui/material/CircularProgress";
+import Dialog from "@mui/material/Dialog";
 import { logout, MAIN_SITE_URL } from "../auth";
 import { MENU_GROUPS } from "../menu";
 
@@ -105,10 +108,62 @@ const toEntries = (menu) => {
   return entries;
 };
 
+// Logout confirmation (replaces the browser's confirm box). MUI Dialog renders in a portal,
+// so it sits above the sidebar drawer on mobile too.
+function LogoutDialog({ open, busy, onCancel, onConfirm }) {
+  return (
+    <Dialog
+      open={open}
+      onClose={busy ? undefined : onCancel}
+      maxWidth="xs"
+      fullWidth
+      PaperProps={{ sx: { borderRadius: 3, p: 3, textAlign: "center" } }}
+    >
+      <Box
+        sx={{
+          mx: "auto",
+          width: 56,
+          height: 56,
+          borderRadius: "50%",
+          bgcolor: "#fee2e2",
+          color: "#dc2626",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+        }}
+      >
+        <MdLogout size={28} />
+      </Box>
+      <Typography variant="h6" fontWeight={600} mt={2}>
+        Log out?
+      </Typography>
+      <Typography variant="body2" color="text.secondary" mt={0.5}>
+        You will be signed out of Sales &amp; Purchase and the main site. Unsaved changes on open tabs will be lost.
+      </Typography>
+      <Box display="flex" gap={1.5} mt={3}>
+        <Button fullWidth variant="outlined" color="inherit" onClick={onCancel} disabled={busy} sx={{ textTransform: "none", borderColor: "#dfe6f2" }}>
+          Cancel
+        </Button>
+        <Button
+          fullWidth
+          variant="contained"
+          color="error"
+          onClick={onConfirm}
+          disabled={busy}
+          disableElevation
+          startIcon={busy ? <CircularProgress size={16} color="inherit" /> : <MdLogout />}
+          sx={{ textTransform: "none" }}
+        >
+          Log out
+        </Button>
+      </Box>
+    </Dialog>
+  );
+}
+
 function SidebarContent({ menu, onNavigate }) {
-  const confirmLogout = () => {
-    if (window.confirm("Are you sure you want to log out?")) logout();
-  };
+  const [askLogout, setAskLogout] = useState(false);
+  const [leaving, setLeaving] = useState(false);
   const dividerSx = { borderColor: "rgba(226,234,248,0.12)" };
 
   return (
@@ -116,7 +171,7 @@ function SidebarContent({ menu, onNavigate }) {
       <Box sx={{ px: 3, py: 2.5, display: "flex", alignItems: "center", gap: 1.5 }}>
         <MdInventory size={24} color="#f97316" />
         <Typography variant="h6" fontWeight="bold">
-          DMS
+          Sales &amp; Purchase
         </Typography>
       </Box>
       <Divider sx={{ ...dividerSx, mb: 1 }} />
@@ -150,8 +205,18 @@ function SidebarContent({ menu, onNavigate }) {
       <List>
         {/* Plain link: leaves the DMS app and loads the main site */}
         <SidebarItem icon={MdArrowBack} label="Back to Main" component="a" href={MAIN_SITE_URL} />
-        <SidebarItem icon={MdLogout} label="Logout" onClick={confirmLogout} />
+        <SidebarItem icon={MdLogout} label="Logout" onClick={() => setAskLogout(true)} />
       </List>
+
+      <LogoutDialog
+        open={askLogout}
+        busy={leaving}
+        onCancel={() => setAskLogout(false)}
+        onConfirm={() => {
+          setLeaving(true);
+          logout();
+        }}
+      />
     </Box>
   );
 }

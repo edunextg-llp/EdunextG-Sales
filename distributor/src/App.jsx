@@ -11,6 +11,8 @@ import Orders from "@/pages/Orders";
 import Ledger from "@/pages/Ledger";
 import Stock from "@/pages/Stock";
 import DeliveryBoys from "@/pages/DeliveryBoys";
+import Outlets from "@/pages/Outlets";
+import Areas from "@/pages/Areas";
 import Account from "@/pages/Account";
 
 // Sign-in happens on the main site; this app only shows its pages to a signed-in distributor.
@@ -70,6 +72,8 @@ export default function App() {
                 <Route path="ledger" element={<Ledger />} />
                 <Route path="stock" element={<Stock />} />
                 <Route path="delivery-boys" element={<DeliveryBoys />} />
+                <Route path="areas" element={<Areas />} />
+                <Route path="outlets" element={<Outlets />} />
                 <Route path="account" element={<Account />} />
               </Route>
               <Route path="*" element={<Navigate to="/" replace />} />

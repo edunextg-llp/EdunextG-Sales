@@ -1,5 +1,5 @@
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
-import { BookOpenText, Boxes, ChevronsUpDown, KeyRound, LayoutDashboard, LogOut, ReceiptText, ShoppingCart, Truck } from "lucide-react";
+import { BookOpenText, Boxes, ChevronsUpDown, KeyRound, LayoutDashboard, LogOut, MapPin, ReceiptText, ShoppingCart, Store, Truck } from "lucide-react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
   DropdownMenu,
@@ -36,6 +36,8 @@ export const NAV = [
   { to: "/purchases", label: "Purchases", icon: ReceiptText },
   { to: "/ledger", label: "Ledger", icon: BookOpenText },
   { to: "/stock", label: "Stock", icon: Boxes },
+  { to: "/areas", label: "Areas", icon: MapPin },
+  { to: "/outlets", label: "Outlets", icon: Store },
   { to: "/delivery-boys", label: "Delivery Boys", icon: Truck },
 ];
 

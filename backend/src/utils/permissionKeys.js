@@ -11,6 +11,10 @@ export const PERMISSION_KEYS = [
     // Not a page: in Add Sales, bill an outlet overdue by 14+ days on the user's own permission
     // with a reason (no admin approval). Every use is listed for admin under Overdue Requests.
     'overdue_own_permission',
+    // Not a page: in Add Sales, bill an outlet of another day's bit (or another date) on the
+    // user's own permission with a reason (no admin approval). Every use is listed for admin
+    // under Other-day bit requests ("Own permission").
+    'other_day_own_permission',
     // Approvals > Below Target Approvals page: approve staff days that are below the
     // company's daily requisition target (e.g. SIL Rs. 11,250) instead of Admin.
     'requisition_target_approval',
@@ -25,6 +29,7 @@ export const PERMISSION_KEYS = [
 export const PERMISSION_REQUIRES = {
     overdue_7_days: 'add_sales',
     overdue_own_permission: 'add_sales',
+    other_day_own_permission: 'add_sales',
 };
 
 // DMS pages: granting any of them also grants the DMS menu itself.
@@ -53,6 +58,7 @@ export const NEW_PERMISSION_COLUMNS = [
     ['overdue_approval', null],
     ['material_report_review', null],
     ['overdue_own_permission', null],
+    ['other_day_own_permission', null],
     // Seller Ledger: whoever could see Purchase History starts with it.
     ['seller_ledger', 'purchase_history'],
 ];

@@ -25,6 +25,7 @@ const STATUS = {
   approved: { label: "Approved", accent: "#16a34a", bg: "#f0fdf4", text: "#15803d" },
   rejected: { label: "Rejected", accent: "#dc2626", bg: "#fef2f2", text: "#b91c1c" },
   used: { label: "Sale added", accent: "#64748b", bg: "#f1f5f9", text: "#475569" },
+  own_permission: { label: "Own permission", accent: "#0d9488", bg: "#f0fdfa", text: "#0f766e" },
 };
 
 const FILTERS = [
@@ -33,10 +34,15 @@ const FILTERS = [
   { value: "approved", label: "Approved" },
   { value: "rejected", label: "Rejected" },
   { value: "used", label: "Used" },
+  { value: "own_permission", label: "Own permission" },
 ];
 
-const matchesFilter = (request, filter) =>
-  filter === "open" ? ["pending", "approved"].includes(request.status) : request.status === filter;
+const isOwn = (request) => Number(request.own_permission) === 1;
+const matchesFilter = (request, filter) => {
+  if (filter === "open") return ["pending", "approved"].includes(request.status);
+  if (filter === "own_permission") return isOwn(request);
+  return request.status === filter;
+};
 
 function Fact({ label, children }) {
   return (
@@ -54,7 +60,7 @@ function Fact({ label, children }) {
 Fact.propTypes = { label: PropTypes.string.isRequired, children: PropTypes.node.isRequired };
 
 function RequestCard({ request, isAdmin, onReview }) {
-  const status = STATUS[request.status] || STATUS.pending;
+  const status = (isOwn(request) ? STATUS.own_permission : STATUS[request.status]) || STATUS.pending;
   return (
     <MDBox
       sx={{

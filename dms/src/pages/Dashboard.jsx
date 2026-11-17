@@ -30,6 +30,7 @@ import { MdArrowDownward, MdArrowUpward, MdCheckCircle, MdError, MdFileDownload,
 import { downloadExcel } from "../utils/excel";
 import { apiFetch } from "../auth";
 import { COMPANY_TYPES, readJson, useCompanies } from "../components/ui";
+import PurchaseDashboard from "./PurchaseDashboard";
 
 // ---------------------------------------------------------------------------
 // Colours (dataviz reference palette, validated on the card surface).
@@ -250,7 +251,7 @@ const noLegend = { legend: { hidden: true } };
 
 // ---------------------------------------------------------------------------
 
-export default function Dashboard({ user }) {
+function StockDashboard({ user }) {
   const companies = useCompanies();
   const sortedCompanies = useMemo(() => [...companies].sort((a, b) => a.id - b.id), [companies]);
   const { stock, imports, loading, loadedOnce, reload } = useDashboardData(sortedCompanies);
@@ -829,6 +830,43 @@ export default function Dashboard({ user }) {
               </Table>
             </TableContainer>
           </Panel>
+        </Box>
+      )}
+    </Box>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Dashboard tabs: Stock (above) and Purchase (moved from the main site's Dashboard; needs the
+// Dashboard permission, as it did there). Both stay mounted so switching keeps their filters.
+
+const canSeePurchase = (user) => (user?.role || "admin") === "admin" || (user?.permissions || []).includes("dashboard");
+
+export default function Dashboard({ user }) {
+  const showPurchase = canSeePurchase(user);
+  const [tab, setTab] = useState("stock");
+  const current = showPurchase ? tab : "stock";
+
+  return (
+    <Box>
+      {showPurchase && (
+        <Box sx={{ maxWidth: 1400, mx: "auto", mb: 2, borderBottom: "1px solid #dfe6f2" }}>
+          <Tabs
+            value={current}
+            onChange={(_, v) => setTab(v)}
+            sx={{ minHeight: 40, "& .MuiTab-root": { minHeight: 40, textTransform: "none", fontWeight: 600, px: 2 } }}
+          >
+            <Tab value="stock" label="Stock Dashboard" />
+            <Tab value="purchase" label="Purchase Dashboard" />
+          </Tabs>
+        </Box>
+      )}
+      <Box sx={{ display: current === "stock" ? "block" : "none" }}>
+        <StockDashboard user={user} />
+      </Box>
+      {showPurchase && (
+        <Box sx={{ display: current === "purchase" ? "block" : "none" }}>
+          <PurchaseDashboard user={user} />
         </Box>
       )}
     </Box>

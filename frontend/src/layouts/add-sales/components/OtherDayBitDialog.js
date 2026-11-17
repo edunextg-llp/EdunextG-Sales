@@ -37,20 +37,38 @@ const STATUS = {
 /**
  * Shown when Add Sales is blocked because an outlet belongs to another day's bit.
  * The user sends a request; once admin approves every outlet, "Add Sales" retries the save.
+ * With the "Own Permission (Other-Day Bit)" permission the user can instead give a reason and
+ * add the sale straight away (no admin approval); admin sees it under Other-day requests.
  */
-function OtherDayBitDialog({ open, staffId, saleDate, todayDay, reason, outlets, initialRequests, onClose, onRetry, retrying }) {
+function OtherDayBitDialog({
+  open, staffId, saleDate, todayDay, reason, outlets, initialRequests, onClose, onRetry, retrying, canOwnPermission, onOwnPermission,
+}) {
   const [requests, setRequests] = useState([]);
   const [note, setNote] = useState("");
   const [sending, setSending] = useState(false);
   const [error, setError] = useState("");
+  const [ownMode, setOwnMode] = useState(false);
+  const [ownNote, setOwnNote] = useState("");
 
   useEffect(() => {
     if (open) {
       setRequests(initialRequests || []);
       setNote("");
       setError("");
+      setOwnMode(Boolean(canOwnPermission));
+      setOwnNote("");
     }
-  }, [open, initialRequests]);
+  }, [open, initialRequests, canOwnPermission]);
+
+  const addOnOwnPermission = async () => {
+    const text = ownNote.trim();
+    if (!text) {
+      setError("Enter the reason for adding this sale on your own permission.");
+      return;
+    }
+    setError("");
+    await onOwnPermission(text);
+  };
 
   const requestByOutlet = useMemo(() => {
     const map = new Map();
@@ -126,9 +144,41 @@ function OtherDayBitDialog({ open, staffId, saleDate, todayDay, reason, outlets,
   return (
     <Dialog open={open} onClose={sending || retrying ? undefined : onClose} maxWidth="sm" fullWidth>
       <DialogTitle>
-        Admin Approval Required — {reason === "other_date" ? "Other Date" : "Other Day Bit"}
+        {ownMode ? "Add on Your Own Permission" : "Admin Approval Required"} — {reason === "other_date" ? "Other Date" : "Other Day Bit"}
       </DialogTitle>
       <DialogContent dividers>
+        {canOwnPermission && (
+          <MDBox mb={2} display="flex" gap={1} flexWrap="wrap">
+            <MDButton size="small" variant={ownMode ? "gradient" : "outlined"} color="success" onClick={() => { setOwnMode(true); setError(""); }}>
+              <Icon sx={{ mr: 0.5 }}>verified_user</Icon> Own permission
+            </MDButton>
+            <MDButton size="small" variant={ownMode ? "outlined" : "gradient"} color="info" onClick={() => { setOwnMode(false); setError(""); }}>
+              <Icon sx={{ mr: 0.5 }}>send</Icon> Ask admin instead
+            </MDButton>
+          </MDBox>
+        )}
+        {ownMode && (
+          <MDBox mb={2} p={1.5} sx={{ backgroundColor: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: "8px" }}>
+            <MDTypography variant="button" fontWeight="bold" sx={{ color: "#15803d" }} display="block">
+              You can add this sale without admin approval.
+            </MDTypography>
+            <MDTypography variant="caption" color="text" display="block" mb={1.5}>
+              Give the reason below. Admin can see every sale added on own permission (Other-day requests, Own permission).
+            </MDTypography>
+            <MDInput
+              label="Your reason *"
+              fullWidth
+              multiline
+              rows={2}
+              value={ownNote}
+              onChange={(event) => {
+                setOwnNote(event.target.value);
+                setError("");
+              }}
+              placeholder="e.g. Outlet was closed on its bit day, delivery requested today"
+            />
+          </MDBox>
+        )}
         <MDTypography variant="body2" color="text" mb={2}>
           {reason === "other_date" ? (
             <>
@@ -177,7 +227,7 @@ function OtherDayBitDialog({ open, staffId, saleDate, todayDay, reason, outlets,
           );
         })}
 
-        {needsRequest && (
+        {needsRequest && !ownMode && (
           <MDBox mt={2}>
             <MDInput
               label="Reason for request *"
@@ -203,22 +253,30 @@ function OtherDayBitDialog({ open, staffId, saleDate, todayDay, reason, outlets,
         <MDButton variant="outlined" color="secondary" onClick={onClose} disabled={sending || retrying}>
           Close
         </MDButton>
-        {anyPending && (
+        {ownMode ? (
+          <MDButton color="success" variant="gradient" onClick={addOnOwnPermission} disabled={retrying || !ownNote.trim()}>
+            <Icon sx={{ mr: 0.75 }}>verified_user</Icon>
+            {retrying ? "Saving..." : "Add Sales on My Permission"}
+          </MDButton>
+        ) : null}
+        {!ownMode && anyPending && (
           <MDButton variant="outlined" color="info" onClick={refresh} disabled={sending || retrying}>
             <Icon sx={{ mr: 0.75 }}>refresh</Icon>
             Check Status
           </MDButton>
         )}
-        {needsRequest && (
+        {!ownMode && needsRequest && (
           <MDButton color="info" variant="gradient" onClick={sendRequest} disabled={sending || retrying || !note.trim()}>
             <Icon sx={{ mr: 0.75 }}>send</Icon>
             {sending ? "Sending..." : "Send Request"}
           </MDButton>
         )}
-        <MDButton color="success" variant="gradient" onClick={onRetry} disabled={retrying || !allApproved}>
-          <Icon sx={{ mr: 0.75 }}>{allApproved ? "check_circle" : "lock"}</Icon>
-          {retrying ? "Saving..." : "Add Sales"}
-        </MDButton>
+        {!ownMode && (
+          <MDButton color="success" variant="gradient" onClick={onRetry} disabled={retrying || !allApproved}>
+            <Icon sx={{ mr: 0.75 }}>{allApproved ? "check_circle" : "lock"}</Icon>
+            {retrying ? "Saving..." : "Add Sales"}
+          </MDButton>
+        )}
       </DialogActions>
     </Dialog>
   );
@@ -229,6 +287,8 @@ OtherDayBitDialog.defaultProps = {
   reason: "other_day",
   initialRequests: [],
   retrying: false,
+  canOwnPermission: false,
+  onOwnPermission: async () => {},
 };
 
 OtherDayBitDialog.propTypes = {
@@ -242,6 +302,8 @@ OtherDayBitDialog.propTypes = {
   onClose: PropTypes.func.isRequired,
   onRetry: PropTypes.func.isRequired,
   retrying: PropTypes.bool,
+  canOwnPermission: PropTypes.bool,
+  onOwnPermission: PropTypes.func,
 };
 
 export default OtherDayBitDialog;

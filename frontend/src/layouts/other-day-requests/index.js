@@ -36,6 +36,8 @@ const STATUS_OPTIONS = [
   { value: "approved", label: "Approved (not used yet)" },
   { value: "used", label: "Used" },
   { value: "rejected", label: "Rejected" },
+  // Billed with "Own Permission (Other-Day Bit)": no admin approval, reason given by the user.
+  { value: "own_permission", label: "Own permission" },
   { value: "all", label: "All" },
 ];
 const STATUS_BADGE = {
@@ -156,7 +158,9 @@ function OtherDayRequests() {
                   </TableRow>
                 )}
                 {requests.map((request, index) => {
-                  const badge = STATUS_BADGE[request.status] || { label: request.status, color: "secondary" };
+                  const badge = Number(request.own_permission) === 1
+                    ? { label: "Own permission", color: "dark" }
+                    : STATUS_BADGE[request.status] || { label: request.status, color: "secondary" };
                   return (
                     <TableRow key={request.id}>
                       <TableCell sx={cellSx}>{index + 1}</TableCell>

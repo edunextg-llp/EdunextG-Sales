@@ -96,11 +96,32 @@ function Sidenav({ color, brand, brandName, routes, ...rest }) {
     return () => window.removeEventListener("resize", handleMiniSidenav);
   }, [dispatch, location, transparentSidenav, whiteSidenav]);
 
+  // Links with a windowName (Sales & Purchase) reuse their tab: if it is already open it is
+  // focused instead of opening another one. window.open keeps the opener, so a new tab still
+  // gets this tab's sessionStorage login.
+  const openNamedWindow = (event, href, windowName) => {
+    // This tab itself may still carry the name (it was that tab before): open a new one.
+    if (window.name === windowName) window.name = "";
+    const existing = window.open("", windowName);
+    if (!existing) return; // popup blocked: let the link open normally
+    event.preventDefault();
+    let blank = true;
+    try {
+      blank = existing.location.href === "about:blank";
+    } catch (error) {
+      blank = false;
+    }
+    if (blank) existing.location.href = href;
+    existing.focus();
+  };
+
   // Render all the routes from the routes.js (All the visible items on the Sidenav)
-  const renderRoutes = routes.map(({ type, name, icon, title, noCollapse, key, href, sameTab, route, collapse }) => {
+  const renderRoutes = routes.map(({ type, name, icon, title, noCollapse, key, href, sameTab, windowName, route, collapse }) => {
     let returnValue;
 
     if (type === "collapse" && collapse) {
+      // A group whose items are all hidden (e.g. only Requisition Approvals) is not shown.
+      if (collapse.every((item) => item.hidden)) return null;
       returnValue = (
         <SidenavGroup
           key={key}
@@ -116,7 +137,10 @@ function Sidenav({ color, brand, brandName, routes, ...rest }) {
           href={href}
           key={key}
           target={sameTab ? undefined : "_blank"}
-          rel={sameTab ? undefined : "noreferrer"}
+          // Same-site links (e.g. /dms/) keep the opener so the browser copies this tab's
+          // sessionStorage (the login when "Remember me" is off) into the new tab.
+          rel={sameTab ? undefined : href.startsWith("/") ? "opener" : "noreferrer"}
+          onClick={windowName ? (event) => openNamedWindow(event, href, windowName) : undefined}
           sx={{ textDecoration: "none" }}
         >
           <SidenavCollapse

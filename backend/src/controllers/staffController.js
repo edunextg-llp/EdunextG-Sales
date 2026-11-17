@@ -1648,7 +1648,7 @@ export const cancelOverdueSale = async (req, res) => {
 export const recordSales = async (req, res) => {
     try {
         const { id } = req.params;
-        const { date, sales, permissionGranted, permissionNote, ownPermission, companyName: requestCompanyName } = req.body;
+        const { date, sales, permissionGranted, permissionNote, ownPermission, otherDayOwnPermission, otherDayNote, companyName: requestCompanyName } = req.body;
 
         if (!date || !Array.isArray(sales)) {
             return res.status(400).json({ error: 'Date and sales array are required' });
@@ -1781,6 +1781,10 @@ export const recordSales = async (req, res) => {
         // Only today's bit can be billed directly. Another day's outlet needs an admin-approved
         // request for this staff + date + outlet (admin is the approver, so admin can bill directly).
         let otherDayApprovals = [];
+        // "Own permission" (other_day_own_permission): bill other-day outlets with a reason, no admin approval.
+        let otherDayOwn = null;
+        const addSalesPermissions = Array.isArray(req.user?.permissions) ? req.user.permissions : [];
+        const canOwnPermitOtherDay = addSalesPermissions.includes('add_sales') && addSalesPermissions.includes('other_day_own_permission');
         if (!isAdmin) {
             const otherDayOutlets = await getOtherDayOutlets(outletIds, date);
             if (otherDayOutlets.length > 0) {
@@ -1801,7 +1805,16 @@ export const recordSales = async (req, res) => {
                 const missing = otherDayOutlets.filter(
                     (outlet) => !approvalByOutlet.has(outlet.outletId) && !overdueApproved.has(outlet.outletId)
                 );
-                if (missing.length > 0) {
+                if (missing.length > 0 && otherDayOwnPermission && canOwnPermitOtherDay) {
+                    const reason = String(otherDayNote || '').trim();
+                    if (!reason) {
+                        return res.status(400).json({ code: 'OTHER_DAY_NOTE_REQUIRED', error: 'Enter the reason for adding this sale on your own permission.' });
+                    }
+                    if (reason.length > 1000) {
+                        return res.status(400).json({ error: 'Reason must be 1000 characters or less.' });
+                    }
+                    otherDayOwn = { outlets: missing, note: reason, requester: await getRequester(req.user) };
+                } else if (missing.length > 0) {
                     const requests = await OtherDaySaleRequestModel.getLatestForSale({
                         staffId: Number(id), saleDate: date, outletIds: missing.map((outlet) => outlet.outletId),
                     });
@@ -1818,6 +1831,7 @@ export const recordSales = async (req, res) => {
                         todayDate: missing[0].todayDate,
                         otherDayOutlets: missing,
                         requests,
+                        canOwnPermission: canOwnPermitOtherDay,
                     });
                 }
                 otherDayApprovals = otherDayOutlets
@@ -2011,6 +2025,17 @@ export const recordSales = async (req, res) => {
             await OverdueSaleRequestModel.release(claimedRequestIds).catch(() => {});
             await OtherDaySaleRequestModel.release(claimedOtherDayIds).catch(() => {});
             throw saveError;
+        }
+
+        // Other-day outlets billed on the user's own permission: listed for admin (never blocks the sale).
+        if (otherDayOwn) {
+            try {
+                await OtherDaySaleRequestModel.recordOwnPermission({
+                    staffId: Number(id), saleDate: date, outlets: otherDayOwn.outlets, note: otherDayOwn.note, requester: otherDayOwn.requester,
+                });
+            } catch (logError) {
+                console.error('Unable to record other-day own permission:', logError);
+            }
         }
 
         // Keep the permission log (overdue_sale_permissions) as before.

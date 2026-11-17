@@ -95,15 +95,17 @@ const routes = [
   //   component: <Reports />,
   // },
   {
-    // Opens the separate DMS app (dms/ folder), served at /dms/ on the same site.
+    // Opens the separate DMS app (dms/ folder), served at /dms/ on the same site, in a new tab.
     type: "collapse",
-    name: "DMS",
+    name: "Sales & Purchase",
     key: "dms-site",
     icon: <Icon fontSize="small">inventory</Icon>,
     href: "/dms/",
-    sameTab: true,
+    // Same name as dms/src/components/SingleTabGuard.jsx: clicking again focuses the open tab.
+    windowName: "edunextg-sales-purchase",
     allowedRoles: ["admin", "packaging_staff", "bawarchee_staff", "delivery_boy"],
-    requiredPermission: "dms",
+    // Requisition approvers also need it: Outlet Orders (requisition approval) lives there.
+    requiredPermission: ["dms", "requisition_approval"],
   },
   {
     // Old DMS pages: still reachable by URL, but no longer shown in the sidebar.
@@ -349,6 +351,8 @@ const routes = [
         type: "collapse",
         name: "Requisition Approvals",
         key: "requisition-approvals",
+        // Moved to Sales & Purchase > Orders > Outlet Orders; the URL still works.
+        hidden: true,
         icon: <Icon fontSize="small">approval</Icon>,
         route: "/requisition-approvals",
         component: <PurchaseRequisition />,

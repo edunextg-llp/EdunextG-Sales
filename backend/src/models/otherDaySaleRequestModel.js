@@ -51,7 +51,7 @@ const REQUEST_SELECT = `
     SELECT r.id, r.staff_id, s.name AS staff_name, DATE_FORMAT(r.sale_date, '%Y-%m-%d') AS sale_date,
            r.outlet_id, r.outlet_erp_id, r.outlet_name, r.outlet_day, r.request_day, r.request_note,
            r.requested_by_role, r.requested_by_id, r.requested_by_name,
-           r.status, r.reviewed_by_admin_id, r.reviewed_by_name, r.review_note, r.reviewed_at,
+           r.status, r.own_permission, r.reviewed_by_admin_id, r.reviewed_by_name, r.review_note, r.reviewed_at,
            r.used_at, r.created_at, r.updated_at
     FROM other_day_sale_requests r
     LEFT JOIN staff s ON s.id = r.staff_id`;
@@ -125,6 +125,8 @@ export default class OtherDaySaleRequestModel {
         const conditions = [];
         if (status === 'open') {
             conditions.push("r.status IN ('pending', 'approved')");
+        } else if (status === 'own_permission') {
+            conditions.push('r.own_permission = 1');
         } else if (status && status !== 'all') {
             conditions.push('r.status = ?');
             params.push(status);
@@ -141,7 +143,8 @@ export default class OtherDaySaleRequestModel {
         );
         const [[counts]] = await db.execute(
             `SELECT SUM(r.status = 'pending') AS pending, SUM(r.status = 'approved') AS approved,
-                    SUM(r.status = 'rejected') AS rejected, SUM(r.status = 'used') AS used
+                    SUM(r.status = 'rejected') AS rejected, SUM(r.status = 'used') AS used,
+                    SUM(r.own_permission = 1) AS own_permission
              FROM other_day_sale_requests r ${requestedBy ? 'WHERE r.requested_by_role = ? AND r.requested_by_id = ?' : ''}`,
             requestedBy ? [requestedBy.role, requestedBy.id] : []
         );
@@ -172,6 +175,26 @@ export default class OtherDaySaleRequestModel {
             [staffId, saleDate, ...ids]
         );
         return rows;
+    }
+
+    // Billed on the user's own permission (no admin approval): one 'used' row per outlet, so admin
+    // sees who billed which other-day outlet and why.
+    static async recordOwnPermission({ staffId, saleDate, outlets, note, requester }) {
+        for (const outlet of outlets) {
+            await db.execute(
+                `INSERT INTO other_day_sale_requests (
+                    staff_id, sale_date, outlet_id, outlet_erp_id, outlet_name, outlet_day, request_day,
+                    request_note, requested_by_role, requested_by_id, requested_by_name,
+                    status, own_permission, reviewed_by_name, review_note, reviewed_at, used_at
+                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'used', 1, ?, ?, NOW(), NOW())`,
+                [
+                    staffId, saleDate, outlet.outletId, outlet.outletErpId || null, outlet.outletName || null,
+                    outlet.outletDay || null, outlet.todayDay || null, note,
+                    requester.role, requester.id || null, requester.name || null,
+                    `${requester.name || 'User'} (own permission)`, 'Own permission, no admin approval',
+                ]
+            );
+        }
     }
 
     // Each approval allows one save. Returns the ids actually claimed.

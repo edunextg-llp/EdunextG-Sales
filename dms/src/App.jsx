@@ -15,8 +15,11 @@ import AddDistributor from "./pages/AddDistributor";
 import FreeGoods from "./pages/FreeGoods";
 import CreateSales from "./pages/CreateSales";
 import DistributorOrders from "./pages/DistributorOrders";
+import OutletOrders from "./pages/OutletOrders";
+import ExpiryItems from "./pages/ExpiryItems";
+import ExpiryList from "./pages/ExpiryList";
 import { apiFetch, getToken, getUser, startIdleWatch, SIGN_IN_URL, MAIN_SITE_URL } from "./auth";
-import { canAccessDms, menuFor } from "./menu";
+import { canAccessDms, canApproveOutletOrders, menuFor, OUTLET_ORDERS } from "./menu";
 
 // Built pages. Menu items without an entry here show the "coming soon" placeholder.
 const PAGES = {
@@ -32,6 +35,9 @@ const PAGES = {
   "/free-goods": FreeGoods,
   "/create-sales": CreateSales,
   "/distributor-orders": DistributorOrders,
+  "/outlet-orders": OutletOrders,
+  "/expiry-items": ExpiryItems,
+  "/expiry-list": ExpiryList,
 };
 
 const isAdmin = (user) => (user?.role || "admin") === "admin";
@@ -56,7 +62,8 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const allowed = Boolean(token) && (dmsUser || hasAssignment === true);
+  const approver = Boolean(token) && canApproveOutletOrders(user);
+  const allowed = Boolean(token) && (dmsUser || approver || hasAssignment === true);
 
   useEffect(() => {
     if (!token || hasAssignment === null) return undefined;
@@ -82,8 +89,9 @@ export default function App() {
       return [item.path, Page ? <Page user={user} /> : <ComingSoon title={item.label} icon={item.icon} />];
     })
   );
-  // Assignment-only users have no Dashboard: start them on Physical Stock.
-  const home = dmsUser ? null : <Navigate to="/physical-stock" replace />;
+  // Users without DMS access have no Dashboard: start them on Outlet Orders (approvers)
+  // or Physical Stock (assigned a count).
+  const home = dmsUser ? null : <Navigate to={approver ? OUTLET_ORDERS.path : "/physical-stock"} replace />;
 
   return (
     <Routes>
@@ -92,6 +100,7 @@ export default function App() {
         {pages.map((item) => (
           <Route key={item.path} path={item.path} element={null} />
         ))}
+        <Route path="/purchase-dashboard" element={<Navigate to="/" replace />} />
         <Route path="/item-list" element={<Navigate to="/add-purchase" replace />} />
         <Route path="/current-stock" element={<Navigate to="/stock" replace />} />
         <Route path="*" element={<Navigate to="/" replace />} />
