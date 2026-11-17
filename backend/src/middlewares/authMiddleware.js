@@ -229,8 +229,12 @@ export const enforceManagedUserApiScope = (req, res, next) => {
         // The controller checks the approver matches this request's overdue amount.
         allowed = permissions.has('overdue_approval');
     } else if (path === '/other-day-requests') {
-        // Add Sales users can ask to bill another day's bit and check status; only admin reviews.
-        allowed = ['GET', 'POST'].includes(method) && permissions.has('add_sales');
+        // Add Sales users can ask to bill another day's bit and check status; approvers
+        // (other_day_approval) can list every request.
+        allowed = (['GET', 'POST'].includes(method) && permissions.has('add_sales'))
+            || (method === 'GET' && permissions.has('other_day_approval'));
+    } else if (/^\/other-day-requests\/\d+\/review$/.test(path)) {
+        allowed = method === 'PUT' && permissions.has('other_day_approval');
     } else if (['/sales/lookup', '/sales/lookup/outlets', '/sales/lookup/outlet-invoices'].includes(path)) {
         allowed = method === 'GET' && permissions.has('invoice_lookup');
     } else if (path === '/sales/by-date' || /^\/\d+\/sales-by-date$/.test(path)) {

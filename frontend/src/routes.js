@@ -413,7 +413,9 @@ const routes = [
         icon: <Icon fontSize="small">event_busy</Icon>,
         route: "/other-day-requests",
         component: <OtherDayRequests />,
-        allowedRoles: ["admin"],
+        // Admin, or anyone given Other Day Bit Approval in Permissions.
+        allowedRoles: ["admin", "packaging_staff", "bawarchee_staff", "delivery_boy"],
+        requiredPermission: "other_day_approval",
       },
     ],
   },

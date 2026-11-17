@@ -42,7 +42,7 @@ export const createOtherDayRequest = async (req, res) => {
 
 // GET /api/staff/other-day-requests
 // With staffId + saleDate + outletIds: latest request per outlet (Add Sales status).
-// Otherwise: admin sees every request, other users their own.
+// Otherwise: admin and approvers (other_day_approval) see every request, other users their own.
 export const listOtherDayRequests = async (req, res) => {
     try {
         const { staffId, saleDate, outletIds } = req.query;
@@ -59,7 +59,8 @@ export const listOtherDayRequests = async (req, res) => {
 
         const status = STATUSES.includes(req.query.status) ? req.query.status : 'pending';
         let requestedBy = null;
-        if (req.user?.role !== 'admin') {
+        const canReview = req.user?.role === 'admin' || (req.user?.permissions || []).includes('other_day_approval');
+        if (!canReview) {
             const requester = await getRequester(req.user);
             requestedBy = { role: requester.role, id: requester.id };
         }

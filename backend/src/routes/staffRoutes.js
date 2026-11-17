@@ -22,7 +22,7 @@ import * as otherDaySaleRequestController from '../controllers/otherDaySaleReque
 import * as pincodeController from '../controllers/pincodeController.js';
 import * as documentAssignments from '../controllers/documentAssignmentController.js';
 import * as takenBillRequests from '../controllers/takenBillRequestController.js';
-import { requireAnyPermission, requireRole, verifyTokenMiddleware } from '../middlewares/authMiddleware.js';
+import { requireAnyPermission, requirePermission, requireRole, verifyTokenMiddleware } from '../middlewares/authMiddleware.js';
 
 const upload = multer({
     storage: multer.memoryStorage(),
@@ -68,7 +68,8 @@ router.put('/suspense-requests/:id/review', requireRole('admin'), suspenseReques
 // Other-day bit requests: billing an outlet outside today's bit needs admin approval.
 router.get('/other-day-requests', otherDaySaleRequestController.listOtherDayRequests);
 router.post('/other-day-requests', otherDaySaleRequestController.createOtherDayRequest);
-router.put('/other-day-requests/:id/review', requireRole('admin'), otherDaySaleRequestController.reviewOtherDayRequest);
+// Admin, or anyone given Other Day Bit Approval (other_day_approval).
+router.put('/other-day-requests/:id/review', requirePermission('other_day_approval'), otherDaySaleRequestController.reviewOtherDayRequest);
 
 // Cancellation requests: raised from Update Payment, approved by admin (must stay above '/:id').
 router.get('/cancellation-requests', requireRole('admin'), staffController.listCancellationRequests);

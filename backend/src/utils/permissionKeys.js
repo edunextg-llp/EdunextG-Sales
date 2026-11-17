@@ -20,6 +20,8 @@ export const PERMISSION_KEYS = [
     'requisition_target_approval',
     // Approvals > Overdue Requests: approve 14+ day overdue requests up to Rs. 1,000.
     'overdue_approval',
+    // Approvals > Other Day Bit Requests: see every request and approve / reject it, instead of Admin.
+    'other_day_approval',
     // Approvals > Material Reports: review "less material" reports from delivery boys
     // (seeded for SUNANDA BISWAS). Admin can always review.
     'material_report_review',
@@ -59,6 +61,7 @@ export const NEW_PERMISSION_COLUMNS = [
     ['material_report_review', null],
     ['overdue_own_permission', null],
     ['other_day_own_permission', null],
+    ['other_day_approval', null],
     // Seller Ledger: whoever could see Purchase History starts with it.
     ['seller_ledger', 'purchase_history'],
 ];

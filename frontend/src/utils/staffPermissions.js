@@ -72,6 +72,7 @@ export const STAFF_PERMISSION_GROUPS = [
       ["requisition_approval", "Requisition Approval"],
       ["requisition_target_approval", "Below Target Approvals"],
       ["overdue_approval", "Overdue Approval (up to ₹1,000)"],
+      ["other_day_approval", "Other Day Bit Approval"],
     ],
   },
 ];
