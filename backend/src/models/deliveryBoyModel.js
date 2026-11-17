@@ -158,6 +158,7 @@ class DeliveryBoyModel {
         const [rows] = await db.execute(
             `SELECT db.id, db.name, db.role, db.is_active, db.delivery_login_id,
                     db.delivery_passcode, db.delivery_passcode_hash,
+                    p.overdue_from_days, p.overdue_to_days,
                     ${permissionColumnsSql()}
              FROM delivery_boys db
              LEFT JOIN delivery_user_permissions p ON p.delivery_boy_id = db.id
@@ -180,6 +181,14 @@ class DeliveryBoyModel {
         }));
     }
 
+    // Overdue-on-own-reason range (null = off). Saved after setPermissions (the row exists then).
+    static async setOverdueRange(deliveryBoyId, range) {
+        await db.execute(
+            'UPDATE delivery_user_permissions SET overdue_from_days = ?, overdue_to_days = ? WHERE delivery_boy_id = ?',
+            [range ? range.from : null, range ? range.to : null, deliveryBoyId]
+        );
+    }
+
     static async setPermissions(deliveryBoyId, permissions) {
         const columns = PERMISSION_KEYS.map((key) => `can_${key}`);
         await db.execute(
@@ -197,6 +206,7 @@ class DeliveryBoyModel {
             `SELECT db.is_active, db.company_id,
                     (SELECT GROUP_CONCAT(dbc.company_id ORDER BY dbc.company_id)
                      FROM delivery_boy_companies dbc WHERE dbc.delivery_boy_id = db.id) AS company_ids,
+                    p.overdue_from_days, p.overdue_to_days,
                     ${permissionColumnsSql()}
              FROM delivery_boys db
              LEFT JOIN delivery_user_permissions p ON p.delivery_boy_id = db.id
@@ -209,7 +219,10 @@ class DeliveryBoyModel {
         // shows up on their screens without logging in again.
         const companyIds = String(rows[0].company_ids || rows[0].company_id || '')
             .split(',').map(Number).filter((id) => Number.isInteger(id) && id > 0);
-        return { isActive: Number(rows[0].is_active) === 1, permissions: permissionsFromRow(rows[0]), companyIds };
+        const overdueRange = rows[0].overdue_from_days
+            ? { from: Number(rows[0].overdue_from_days), to: rows[0].overdue_to_days == null ? null : Number(rows[0].overdue_to_days) }
+            : null;
+        return { isActive: Number(rows[0].is_active) === 1, permissions: permissionsFromRow(rows[0]), companyIds, overdueRange };
     }
 
     static async update(id, name, contactNo, companyId = null, role = 'delivery_boy', aadharNo = null) {

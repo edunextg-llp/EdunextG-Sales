@@ -134,6 +134,7 @@ import DeliveryCollectionModel from '../models/deliveryCollectionModel.js';
 import ExpiryListModel from '../models/expiryListModel.js';
 import DamageListModel from '../models/damageListModel.js';
 import OverdueSaleRequestModel, { cleanSaleForRequest, getOverdueOutlets, salesMatchApproval, SELF_APPROVE_OVERDUE_DAYS } from '../models/overdueSaleRequestModel.js';
+import { overdueRangeFor, rangeCovers, rangeText } from '../utils/permissionKeys.js';
 import SuspenseRequestModel from '../models/suspenseRequestModel.js';
 import { getRequester } from './overdueSaleRequestController.js';
 import OtherDaySaleRequestModel, { getOtherDayOutlets } from '../models/otherDaySaleRequestModel.js';
@@ -1843,8 +1844,9 @@ export const recordSales = async (req, res) => {
         const overdueOutlets = await getOverdueOutlets(outletIds);
         const userPermissions = Array.isArray(req.user?.permissions) ? req.user.permissions : [];
         // "Own permission": bill a 14+ days overdue outlet with a reason, no admin approval.
-        const canOwnPermitOverdue = isAdmin
-            || (userPermissions.includes('add_sales') && userPermissions.includes('overdue_own_permission'));
+        // Overdue on own reason: the user's range of overdue days (Permissions page).
+        const ownRange = isAdmin ? null : overdueRangeFor(req.user);
+        const inRange = (outlet) => rangeCovers(ownRange, Number(outlet.maxOverdueDays));
         let ownApprovedOutlets = [];
         let ownApproval = null;
 
@@ -1858,6 +1860,8 @@ export const recordSales = async (req, res) => {
                 })).map((request) => Number(request.outlet_id))
             );
             const blocked = tooOldOutlets.filter((outlet) => !alreadyApproved.has(outlet.outletId));
+            // Admin, or every blocked outlet is inside the user's own-reason range.
+            const canOwnPermitOverdue = isAdmin || (blocked.length > 0 && blocked.every(inRange));
             if (blocked.length > 0 && ownPermission && canOwnPermitOverdue) {
                 const reason = String(permissionNote || '').trim();
                 if (!reason) {
@@ -1885,9 +1889,7 @@ export const recordSales = async (req, res) => {
         // Outlets billed with the "7 days overdue" permission (reason given, no admin approval).
         let selfApprovedOutlets = [];
         let selfApproval = null;
-        const canSelfApproveOverdue = !isAdmin
-            && userPermissions.includes('add_sales')
-            && userPermissions.includes('overdue_7_days');
+        const canSelfApproveOverdue = !isAdmin && Boolean(ownRange);
 
         if (overdueOutlets.length > 0) {
             if (isAdmin && permissionGranted) {
@@ -1922,7 +1924,7 @@ export const recordSales = async (req, res) => {
                 if (
                     canSelfApproveOverdue
                     && missing.length > 0
-                    && missing.every((outlet) => Number(outlet.maxOverdueDays) <= SELF_APPROVE_OVERDUE_DAYS)
+                    && missing.every(inRange)
                 ) {
                     const reason = String(permissionNote || '').trim();
                     if (!permissionGranted || !reason) {
@@ -1934,8 +1936,8 @@ export const recordSales = async (req, res) => {
                             approvalRequired: false,
                             selfApproval: true,
                             selfApproveDays: SELF_APPROVE_OVERDUE_DAYS,
-                            error: `Credit is overdue by ${SELF_APPROVE_OVERDUE_DAYS} days or less. `
-                                + 'You have the 7 days overdue permission: give a reason to add the sales. Admin will see it.',
+                            error: `You can bill outlets overdue by ${rangeText(ownRange)} on your own reason. `
+                                + 'Give a reason to add the sales. Admin will see it.',
                             overdueOutlets: missing,
                             requests,
                         });
@@ -1952,22 +1954,21 @@ export const recordSales = async (req, res) => {
                     const requests = await OverdueSaleRequestModel.getLatestForSale({
                         staffId: Number(id), saleDate: date, outletIds: overdueIds,
                     });
-                    const beyondSelfLimit = canSelfApproveOverdue
-                        && missing.some((outlet) => Number(outlet.maxOverdueDays) > SELF_APPROVE_OVERDUE_DAYS);
+                    const beyondSelfLimit = canSelfApproveOverdue && missing.some((outlet) => !inRange(outlet));
                     return res.status(409).json({
                         code: 'OVERDUE_PERMISSION_REQUIRED',
                         approvalRequired: !isAdmin,
                         error: isAdmin
                             ? 'One or more outlets have credit overdue by more than 3 days. Permission is required to add sales.'
                             : beyondSelfLimit
-                                ? `One or more outlets have credit overdue by ${SELF_APPROVE_OVERDUE_DAYS + 1} days or more. `
-                                    + 'Your overdue permission does not cover this. Send a request to admin for these outlets and add the sales after it is approved. '
-                                    + `Outlets overdue by ${SELF_APPROVE_OVERDUE_DAYS} days or less only need your reason.`
+                                ? `Your overdue permission covers ${rangeText(ownRange)} only. `
+                                    + 'Send a request to admin for the outlets outside it and add the sales after it is approved. '
+                                    + 'Outlets inside your range only need your reason.'
                                 : 'One or more outlets have credit overdue by more than 3 days. Send a request to admin and add the sales after it is approved.',
                         // With the permission, only the outlets beyond the limit go to admin;
                         // the rest are added with a reason on the next save.
                         overdueOutlets: beyondSelfLimit
-                            ? missing.filter((outlet) => Number(outlet.maxOverdueDays) > SELF_APPROVE_OVERDUE_DAYS)
+                            ? missing.filter((outlet) => !inRange(outlet))
                             : overdueOutlets.filter((outlet) => !ownApprovedIds.has(outlet.outletId)),
                         requests,
                     });

@@ -486,6 +486,31 @@ export async function ensureSchema() {
             }
         }
 
+        // Overdue on own reason: a per-user range of overdue days (Permissions page). When the
+        // columns are first added, users keep what the old two options gave them.
+        {
+            const [rangeColumn] = await connection.query(
+                `SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS
+                 WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'delivery_user_permissions' AND COLUMN_NAME = 'overdue_from_days'`
+            );
+            if (!rangeColumn.length) {
+                await connection.query('ALTER TABLE delivery_user_permissions ADD COLUMN overdue_from_days INT NULL, ADD COLUMN overdue_to_days INT NULL');
+                const [legacy] = await connection.query(
+                    `SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS
+                     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'delivery_user_permissions' AND COLUMN_NAME = 'can_overdue_own_permission'`
+                );
+                if (legacy.length) {
+                    await connection.query(
+                        `UPDATE delivery_user_permissions
+                         SET overdue_from_days = CASE WHEN can_overdue_7_days = 1 THEN 1 ELSE 14 END,
+                             overdue_to_days = CASE WHEN can_overdue_own_permission = 1 THEN NULL ELSE 13 END
+                         WHERE can_add_sales = 1 AND (can_overdue_7_days = 1 OR can_overdue_own_permission = 1)`
+                    );
+                }
+                console.log('overdue_from_days / overdue_to_days on delivery_user_permissions');
+            }
+        }
+
         // DMS pages, D.B. Collection and Delivery Report got their own permissions.
         for (const [key, copyFrom] of NEW_PERMISSION_COLUMNS) {
             const [existing] = await connection.query(

@@ -2,7 +2,7 @@ import DeliveryBoyModel from '../models/deliveryBoyModel.js';
 import StaffModel from '../models/staffModel.js';
 import DeliveryCollectionModel from '../models/deliveryCollectionModel.js';
 import MaterialReportModel from '../models/materialReportModel.js';
-import { DMS_PERMISSION_KEYS, PERMISSION_KEYS, PERMISSION_REQUIRES } from '../utils/permissionKeys.js';
+import { DMS_PERMISSION_KEYS, PERMISSION_KEYS, PERMISSION_REQUIRES, overdueRangeFor, readOverdueRange } from '../utils/permissionKeys.js';
 import CompanyModel from '../models/companyModel.js';
 import {
     validateRequiredText,
@@ -258,6 +258,11 @@ export const getPermissionUsers = async (req, res) => {
             loginId: user.delivery_login_id,
             hasCredentials: Boolean(user.has_credentials),
             permissions: DELIVERY_PERMISSION_KEYS.filter((key) => Boolean(user[`can_${key}`])),
+            // Overdue on own reason: { from, to } (to null = no limit), or null when off.
+            overdueRange: overdueRangeFor({
+                permissions: PERMISSION_KEYS.filter((key) => Boolean(user[`can_${key}`])),
+                overdueRange: user.overdue_from_days ? { from: user.overdue_from_days, to: user.overdue_to_days } : null,
+            }),
         })));
     } catch (error) {
         console.error('Error fetching permission users:', error);
@@ -289,9 +294,16 @@ export const updatePermissionUser = async (req, res) => {
         ) {
             normalizedPermissions.push('dms');
         }
-        await DeliveryBoyModel.setPermissions(deliveryBoyId, normalizedPermissions);
+        // The overdue range replaces the old two options; it needs Add Sales.
+        const overdueRange = normalizedPermissions.includes('add_sales') ? readOverdueRange(req.body?.overdueRange) : null;
+        const saved = overdueRange
+            ? normalizedPermissions.filter((key) => !['overdue_7_days', 'overdue_own_permission'].includes(key))
+            : normalizedPermissions;
+        await DeliveryBoyModel.setPermissions(deliveryBoyId, saved);
+        await DeliveryBoyModel.setOverdueRange(deliveryBoyId, overdueRange);
         return res.status(200).json({ message: 'Permissions updated successfully.' });
     } catch (error) {
+        if (error.statusCode === 400) return res.status(400).json({ error: error.message });
         console.error('Error updating permissions:', error);
         return res.status(500).json({ error: 'Unable to update permissions.' });
     }

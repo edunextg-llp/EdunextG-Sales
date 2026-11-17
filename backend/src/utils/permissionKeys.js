@@ -69,6 +69,41 @@ export const NEW_PERMISSION_COLUMNS = [
 export const permissionColumnsSql = (alias = 'p') =>
     PERMISSION_KEYS.map((key) => `COALESCE(${alias}.can_${key}, 0) AS can_${key}`).join(',\n                    ');
 
+// Overdue on the user's own reason (Add Sales): a range of overdue days set per user on the
+// Permissions page, e.g. 1-14 or 14-no limit. Outside it the sale needs admin approval.
+// Users without a saved range keep the old options: "7 days overdue" = 1-13,
+// "own permission 14+ days" = 14-no limit, both = 1-no limit.
+export const OWN_REASON_SPLIT_DAYS = 13;
+export const overdueRangeFor = (user) => {
+    const permissions = Array.isArray(user?.permissions) ? user.permissions : [];
+    if (!permissions.includes('add_sales')) return null;
+    const saved = user?.overdueRange;
+    if (saved && Number(saved.from) > 0) {
+        return { from: Number(saved.from), to: saved.to == null ? null : Number(saved.to) };
+    }
+    const upTo13 = permissions.includes('overdue_7_days');
+    const over13 = permissions.includes('overdue_own_permission');
+    if (upTo13 && over13) return { from: 1, to: null };
+    if (upTo13) return { from: 1, to: OWN_REASON_SPLIT_DAYS };
+    if (over13) return { from: OWN_REASON_SPLIT_DAYS + 1, to: null };
+    return null;
+};
+export const rangeCovers = (range, days) => Boolean(range)
+    && Number(days) >= range.from && (range.to == null || Number(days) <= range.to);
+export const rangeText = (range) => (!range ? '' : range.to == null ? `${range.from}+ days` : `${range.from}-${range.to} days`);
+
+// Cleans a submitted range: null to switch it off. to = null means no upper limit.
+export const readOverdueRange = (value) => {
+    if (!value) return null;
+    const from = Number.parseInt(value.from, 10);
+    const toRaw = value.to === '' || value.to == null ? null : Number.parseInt(value.to, 10);
+    if (!Number.isInteger(from) || from < 1 || from > 3650) throw Object.assign(new Error('The From day must be 1 or more.'), { statusCode: 400 });
+    if (toRaw != null && (!Number.isInteger(toRaw) || toRaw < from || toRaw > 3650)) {
+        throw Object.assign(new Error('The To day must be the From day or more (leave it empty for no limit).'), { statusCode: 400 });
+    }
+    return { from, to: toRaw };
+};
+
 export const permissionsFromRow = (row) => PERMISSION_KEYS.filter((key) => Boolean(Number(row?.[`can_${key}`])));
 
 // Roles a Bawarchee Staff login can have. The role is a label plus a starting set

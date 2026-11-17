@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 
 // @mui material components
 import Grid from "@mui/material/Grid";
@@ -659,11 +659,23 @@ function AddSales() {
     loadOtherDayRequests(); // pick up a request sent from the dialog
   };
 
+  // Own-permission reasons given during one save (other-day bit and 14+ days overdue). A save can
+  // need both: after one is given the server asks for the other, and every follow-up save of the
+  // same entry must send both, or the first question comes back. Cleared when a new entry is saved.
+  const ownPermitsRef = useRef({ otherDay: null, overdue: null });
+  const startFreshSave = () => {
+    ownPermitsRef.current = { otherDay: null, overdue: null };
+  };
+
   const submitSalesPayload = async (
     payload,
     submittedOutletIds = [],
     { permissionGranted = false, permissionNote = "", ownPermission = false, otherDayOwnPermission = false, otherDayNote = "", lineMapPatch = {} } = {}
   ) => {
+    if (otherDayOwnPermission) ownPermitsRef.current.otherDay = { note: otherDayNote };
+    if (ownPermission) ownPermitsRef.current.overdue = { note: permissionNote };
+    const carriedOtherDay = ownPermitsRef.current.otherDay;
+    const carriedOverdue = ownPermitsRef.current.overdue;
     setSubmitting(true);
     try {
       const response = await fetch(`${API}/staff/${selectedStaff.id}/sales`, {
@@ -674,10 +686,11 @@ function AddSales() {
         body: JSON.stringify({
           ...payload,
           permissionGranted,
-          permissionNote,
-          ownPermission,
-          otherDayOwnPermission,
-          otherDayNote,
+          // An explicit note (admin / 7-day permission) wins; otherwise the carried own-permission reason.
+          permissionNote: permissionNote || (carriedOverdue ? carriedOverdue.note : ""),
+          ownPermission: ownPermission || Boolean(carriedOverdue),
+          otherDayOwnPermission: Boolean(carriedOtherDay),
+          otherDayNote: carriedOtherDay ? carriedOtherDay.note : "",
         }),
       });
 
@@ -1199,6 +1212,7 @@ function AddSales() {
       return;
     }
 
+    startFreshSave();
     await submitSalesPayload(
       {
         date: selectedDate,
@@ -1389,6 +1403,7 @@ function AddSales() {
     };
 
     setSaleLineItemsMap((prev) => ({ ...prev, ...lineMapPatch }));
+    startFreshSave();
     const success = await submitSalesPayload(payload, [parseInt(outlet.id, 10)], {
       lineMapPatch,
     });

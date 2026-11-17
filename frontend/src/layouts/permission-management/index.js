@@ -88,8 +88,23 @@ const PERMISSIONS = [
   ],
 ];
 // Extra options shown under a page, only while that page is switched on.
-const SUB_OPTIONS = { add_sales: ["overdue_7_days", "overdue_own_permission", "other_day_own_permission"] };
+// The two old overdue options (7 days / 14+ days) are replaced by the overdue range below.
+const SUB_OPTIONS = { add_sales: ["other_day_own_permission"] };
+// Overdue on own reason: a range of overdue days, e.g. 1-14 or 14 with no upper limit.
+const RANGE_OFF = { on: false, from: "1", to: "" };
+const rangeState = (range) => (range && Number(range.from) > 0
+  ? { on: true, from: String(range.from), to: range.to == null ? "" : String(range.to) }
+  : RANGE_OFF);
+const sameRange = (a, b) => a.on === b.on && (!a.on || (String(a.from) === String(b.from) && String(a.to) === String(b.to)));
+const rangeLabel = (r) => (r.on ? `Overdue ${r.from}${r.to ? `-${r.to}` : "+"} days on own reason` : "");
+const RANGE_PRESETS = [
+  { label: "1-13 days", from: "1", to: "13" },
+  { label: "1-14 days", from: "1", to: "14" },
+  { label: "14+ days", from: "14", to: "" },
+  { label: "Any overdue", from: "1", to: "" },
+];
 const SUB_OPTION_KEYS = Object.values(SUB_OPTIONS).flat();
+const LEGACY_OVERDUE_KEYS = ["overdue_7_days", "overdue_own_permission"];
 const PERMISSION_FOLDERS = [
   { key: "dms", label: "DMS", icon: "inventory_2", description: "Sellers, items, stock, expiry and purchases.", children: ["add_seller", "add_item", "item_list", "purchase_history", "seller_ledger", "physical_stock", "current_stock", "expiry_items", "expiry_list", "damage_list", "purchase"] },
   { key: "delivery_manager", label: "Delivery Manager", icon: "local_shipping", description: "Packaging, delivery, report and delivered orders.", children: ["packaging", "delivery", "delivery_report", "delivered"] },
@@ -103,7 +118,8 @@ const GENERAL_GROUP = {
   label: "General Pages",
   icon: "dashboard",
   description: "Individual pages outside a section.",
-  children: PERMISSIONS.filter(([key]) => !FOLDER_KEYS.includes(key) && !SUB_OPTION_KEYS.includes(key)).map(([key]) => key),
+  // The old overdue options are now the overdue range (under Add Sales), so they are not listed.
+  children: PERMISSIONS.filter(([key]) => !FOLDER_KEYS.includes(key) && !SUB_OPTION_KEYS.includes(key) && !LEGACY_OVERDUE_KEYS.includes(key)).map(([key]) => key),
 };
 const DISPLAY_ONLY_FOLDER_KEYS = ["delivery_manager", "staff_management", "chalan", "approvals"];
 // The pages a user can actually be granted (folder keys are just groupings).
@@ -133,6 +149,7 @@ function PermissionManagement() {
   const [roleFilter, setRoleFilter] = useState("all");
   const [confirmSaveOpen, setConfirmSaveOpen] = useState(false);
   const [pendingUserId, setPendingUserId] = useState(null);
+  const [range, setRange] = useState(RANGE_OFF);
 
   const loadUsers = useCallback(async () => {
     setLoading(true);
@@ -155,10 +172,19 @@ function PermissionManagement() {
 
   useEffect(() => {
     setPermissions(selectedUser?.permissions || []);
+    setRange(rangeState(selectedUser?.overdueRange));
     setMessage("");
   }, [selectedId, users]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const dirty = Boolean(selectedUser) && !sameSet(permissions, selectedUser.permissions || []);
+  const dirty = Boolean(selectedUser) && (
+    !sameSet(permissions, selectedUser.permissions || [])
+    || !sameRange(range, rangeState(selectedUser.overdueRange))
+  );
+  const rangeError = range.on && (
+    !(Number(range.from) >= 1) ? "From day must be 1 or more."
+      : range.to !== "" && Number(range.to) < Number(range.from) ? "To day must be the From day or more (empty = no limit)."
+        : ""
+  );
 
   const filteredUsers = useMemo(() => {
     const term = search.trim().toLowerCase();
@@ -199,11 +225,21 @@ function PermissionManagement() {
 
   const grantAll = () => setPermissions([...GENERAL_GROUP.children, ...FOLDER_KEYS]);
   const clearAll = () => setPermissions([]);
-  const resetChanges = () => setPermissions(selectedUser?.permissions || []);
+  const resetChanges = () => {
+    setPermissions(selectedUser?.permissions || []);
+    setRange(rangeState(selectedUser?.overdueRange));
+  };
 
   const savePermissions = async () => {
     if (!selectedUser) return;
     setConfirmSaveOpen(false);
+    if (rangeError) {
+      setError(rangeError);
+      return;
+    }
+    const overdueRange = range.on && permissions.includes("add_sales")
+      ? { from: Number(range.from), to: range.to === "" ? null : Number(range.to) }
+      : null;
     // Folder keys are UI grouping keys. The child menu permissions are what the
     // server persists and enforces, so older assigned permissions remain valid.
     const savedPermissions = permissions.filter((key) => !DISPLAY_ONLY_FOLDER_KEYS.includes(key)
@@ -215,12 +251,12 @@ function PermissionManagement() {
       const response = await fetch(`${API}/delivery-boy/${selectedUser.id}/permissions`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ permissions: savedPermissions }),
+        body: JSON.stringify({ permissions: savedPermissions, overdueRange }),
       });
       const data = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(data.error || "Unable to save permissions.");
       setUsers((current) => current.map((user) => (
-        user.id === selectedUser.id ? { ...user, permissions: savedPermissions } : user
+        user.id === selectedUser.id ? { ...user, permissions: savedPermissions, overdueRange } : user
       )));
       setMessage(`${selectedUser.name}'s permissions were saved. They apply the next time ${selectedUser.name} signs in.`);
     } catch (saveError) {
@@ -231,9 +267,71 @@ function PermissionManagement() {
   };
 
   const groups = [GENERAL_GROUP, ...PERMISSION_FOLDERS];
-  const grantedLabels = [...PAGE_KEYS, ...SUB_OPTION_KEYS]
-    .filter((key) => permissions.includes(key))
-    .map((key) => PERMISSION_MAP[key].label);
+  const grantedLabels = [
+    ...[...PAGE_KEYS, ...SUB_OPTION_KEYS].filter((key) => permissions.includes(key)).map((key) => PERMISSION_MAP[key].label),
+    ...(range.on && permissions.includes("add_sales") ? [rangeLabel(range)] : []),
+  ];
+
+  // Add Sales -> "Overdue on own reason": switch on, then From day and To day (empty = no limit).
+  const renderOverdueRange = () => (
+    <MDBox ml={3} mr={1} mb={1} px={1.25} py={1}
+      sx={{ borderRadius: "8px", borderLeft: "3px solid #f59e0b", backgroundColor: "#fffbeb" }}>
+      <MDBox component="label" display="flex" alignItems="center" gap={1} sx={{ cursor: "pointer" }}>
+        <Icon fontSize="small" sx={{ color: "#d97706" }}>date_range</Icon>
+        <MDBox flexGrow={1} minWidth={0}>
+          <MDTypography variant="button" fontWeight="medium" display="block">Overdue on own reason (day range)</MDTypography>
+          <MDTypography variant="caption" color="text" display="block" sx={{ lineHeight: 1.35 }}>
+            Outlets overdue inside this range can be billed by giving a reason; admin sees each one. Outside it, admin approval is needed.
+          </MDTypography>
+        </MDBox>
+        <Switch checked={range.on} onChange={() => setRange((r) => ({ ...r, on: !r.on }))}
+          inputProps={{ "aria-label": "Overdue on own reason" }} />
+      </MDBox>
+      {range.on && (
+        <MDBox mt={1.25}>
+          <MDBox display="flex" gap={1.5} alignItems="flex-start" flexWrap="wrap">
+            <MDInput
+              label="From day"
+              type="number"
+              size="small"
+              value={range.from}
+              onChange={(e) => setRange((r) => ({ ...r, from: e.target.value.replace(/\D/g, "") }))}
+              inputProps={{ min: 1 }}
+              sx={{ width: 110, backgroundColor: "#fff" }}
+            />
+            <MDInput
+              label="To day"
+              type="number"
+              size="small"
+              placeholder="No limit"
+              value={range.to}
+              onChange={(e) => setRange((r) => ({ ...r, to: e.target.value.replace(/\D/g, "") }))}
+              inputProps={{ min: 1 }}
+              InputLabelProps={{ shrink: true }}
+              sx={{ width: 120, backgroundColor: "#fff" }}
+            />
+            <MDBox display="flex" gap={0.75} flexWrap="wrap" alignItems="center" pt={0.5}>
+              {RANGE_PRESETS.map((preset) => {
+                const active = range.from === preset.from && range.to === preset.to;
+                return (
+                  <Chip
+                    key={preset.label}
+                    size="small"
+                    label={preset.label}
+                    onClick={() => setRange((r) => ({ ...r, from: preset.from, to: preset.to }))}
+                    sx={{ fontWeight: 600, backgroundColor: active ? "#f59e0b" : "#fef3c7", color: active ? "#fff" : "#92400e" }}
+                  />
+                );
+              })}
+            </MDBox>
+          </MDBox>
+          <MDTypography variant="caption" display="block" mt={0.75} sx={{ color: rangeError ? "#b91c1c" : "#92400e" }}>
+            {rangeError || `Own reason for ${range.from || "?"}${range.to ? ` to ${range.to}` : "+"} days overdue${range.to ? "; more needs admin" : ""}. Leave "To day" empty for no limit.`}
+          </MDTypography>
+        </MDBox>
+      )}
+    </MDBox>
+  );
 
   const renderGroup = (group) => {
     const selectedCount = group.children.filter((key) => permissions.includes(key)).length;
@@ -270,6 +368,7 @@ function PermissionManagement() {
                 <Switch checked={permissions.includes(key)} onChange={() => togglePermission(key)}
                   inputProps={{ "aria-label": PERMISSION_MAP[key].label }} />
               </MDBox>
+              {key === "add_sales" && permissions.includes(key) && renderOverdueRange()}
               {permissions.includes(key) && (SUB_OPTIONS[key] || []).map((option) => (
                 <MDBox key={option} component="label" display="flex" alignItems="center" gap={1} ml={3} mr={1} mb={1} px={1.25} py={0.75}
                   sx={{ cursor: "pointer", borderRadius: "8px", borderLeft: "3px solid #f59e0b", backgroundColor: "#fffbeb" }}>
