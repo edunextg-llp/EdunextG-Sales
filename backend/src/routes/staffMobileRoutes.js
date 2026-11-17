@@ -8,6 +8,7 @@ import * as overdueRequests from '../controllers/overdueSaleRequestController.js
 import { getCurrentStock } from '../controllers/currentStockController.js';
 import * as documentAssignments from '../controllers/documentAssignmentController.js';
 import * as takenBillRequests from '../controllers/takenBillRequestController.js';
+import { myPhysicalStockRouter } from './myPhysicalStockRoutes.js';
 
 const router = express.Router();
 const auth = staffMobile.verifyStaffMobileToken;
@@ -15,6 +16,8 @@ const asStaff = [auth, staffMobile.asWebStaffUser];
 
 router.post('/login', staffMobile.login);
 router.get('/profile', auth, staffMobile.getProfile);
+// Physical stock counts assigned to this staff member (DMS > Assign), in the app.
+router.use('/physical-stock', myPhysicalStockRouter(...asStaff));
 router.get('/dashboard', auth, staffMobile.getDashboard);
 router.get('/invoices', auth, staffMobile.getInvoices);
 router.get('/invoices/cancelled', auth, staffMobile.getCancellations);

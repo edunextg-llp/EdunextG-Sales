@@ -6,6 +6,7 @@ import * as deliveryBoyController from '../controllers/deliveryBoyController.js'
 import * as documentAssignments from '../controllers/documentAssignmentController.js';
 import * as materialReports from '../controllers/materialReportController.js';
 import { collectSplitForDeliveryBoy, editSplitForDeliveryBoy } from '../controllers/staffDeliveryController.js';
+import { myPhysicalStockRouter } from './myPhysicalStockRoutes.js';
 import jwt from 'jsonwebtoken';
 import { requireAnyPermission, requireRole, verifyTokenMiddleware } from '../middlewares/authMiddleware.js';
 
@@ -46,6 +47,13 @@ router.get('/web/document-assignments', verifyTokenMiddleware, requireRole('deli
 router.put('/web/document-assignments/:id', verifyTokenMiddleware, requireRole('delivery_boy', 'packaging_staff'), useWebDeliveryBoy, documentAssignments.updateDeliveryMine);
 router.get('/mobile/document-assignments/:id/link', verifyDeliveryBoyToken, documentAssignments.fileLinks('delivery_boy'));
 router.get('/mobile/profile', verifyDeliveryBoyToken, deliveryBoyController.getMobileProfile);
+// Physical stock counts assigned to this delivery / packaging login (DMS > Assign), in the app.
+// req.user like a web delivery login, so the assignment checks find their own assignments.
+const asDeliveryUser = (req, res, next) => {
+    req.user = { id: req.deliveryBoyId, deliveryBoyId: req.deliveryBoyId, role: 'delivery_boy' };
+    next();
+};
+router.use('/mobile/physical-stock', myPhysicalStockRouter(verifyDeliveryBoyToken, asDeliveryUser));
 router.get('/mobile/document-assignments', verifyDeliveryBoyToken, documentAssignments.listDeliveryMine);
 router.put('/mobile/document-assignments/:id', verifyDeliveryBoyToken, documentAssignments.updateDeliveryMine);
 router.get('/mobile/items', verifyDeliveryBoyToken, deliveryBoyController.getMobileAssignedItems);
