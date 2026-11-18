@@ -23,7 +23,7 @@ export const STAFF_PERMISSION_GROUPS = [
   },
   {
     key: "dms",
-    label: "DMS",
+    label: "Sales & Purchase",
     items: [
       ["add_seller", "Add Seller"],
       ["add_item", "Add Item"],
@@ -36,6 +36,9 @@ export const STAFF_PERMISSION_GROUPS = [
       ["expiry_list", "Expiry List"],
       ["damage_list", "Damage List"],
       ["purchase", "Purchase"],
+      ["create_sales", "Create Sales"],
+      ["requisition_approval", "Outlet Order Approval"],
+      ["distributor_orders", "Distributor Order Approval"],
     ],
   },
   {
@@ -77,7 +80,6 @@ export const STAFF_PERMISSION_GROUPS = [
     key: "approvals",
     label: "Approvals",
     items: [
-      ["requisition_approval", "Requisition Approval"],
       ["requisition_target_approval", "Below Target Approvals"],
       ["overdue_approval", "Overdue Approval (up to ₹1,000)"],
       ["other_day_approval", "Other Day Bit Approval"],
@@ -85,9 +87,13 @@ export const STAFF_PERMISSION_GROUPS = [
   },
 ];
 
-export const DMS_PAGE_KEYS = STAFF_PERMISSION_GROUPS.find((group) => group.key === "dms").items.map(
-  ([key]) => key
-);
+// DMS pages that need the DMS menu. Outlet Order Approval (requisition_approval) is listed under
+// DMS but works without it, like on the backend.
+export const DMS_PAGE_KEYS = STAFF_PERMISSION_GROUPS.find((group) => group.key === "dms").items
+  .map(([key]) => key)
+  .filter((key) => key !== "requisition_approval");
+// The new Sales / Order approval pages are not part of any role's starting set.
+const NEW_DMS_KEYS = ["create_sales", "distributor_orders"];
 
 export const ALL_STAFF_PERMISSIONS = [
   "dms",
@@ -108,7 +114,7 @@ export const bawarcheeRoleLabel = (role) =>
 export const BAWARCHEE_ROLE_PRESETS = {
   admin: ALL_STAFF_PERMISSIONS,
   manager: [
-    "dashboard", "dms", ...DMS_PAGE_KEYS,
+    "dashboard", "dms", ...DMS_PAGE_KEYS.filter((key) => !NEW_DMS_KEYS.includes(key)),
     "create_staff", "location_assignments", "add_outlet",
     "add_sales", "invoice_lookup", "out_bill",
     "packaging", "delivery", "delivery_report", "delivered",

@@ -86,8 +86,17 @@ function pricesOf(p) {
     const retail = num(lot.retail_price) || num(p.retail_price);
     const wholesale = num(lot.wholesale_price) || num(p.wholesale_price);
     const last = num(lot.mrp) || num(p.mrp) || num(p.price_per_piece);
-    return { retailPrice: retail || wholesale || last, wholesalePrice: wholesale || retail || last };
+    return {
+        retailPrice: retail || wholesale || last,
+        wholesalePrice: wholesale || retail || last,
+        // MRP per piece (incl. GST): what a CNF company's distributors order at.
+        mrp: num(lot.mrp) || num(p.mrp) || num(p.price_per_piece),
+    };
 }
+
+// A CNF company's distributors do not choose Retail / Wholesale: their orders are at the product MRP.
+const isCnfCompany = (company) => String(company?.type || '').toLowerCase() === 'cnf';
+const PRICE_TYPES = ['retail', 'wholesale', 'mrp'];
 
 // Items of the company with stock now, for the order form.
 async function orderableItems(company) {
@@ -133,7 +142,7 @@ export const portalOrderItems = async (req, res) => {
             sameItem: !sc.free_product_erp_id || erpKey(sc.free_product_erp_id) === erpKey(sc.product_erp_id),
             note: sc.note || '',
         }));
-        return res.json({ companyName: company.name, items, schemes });
+        return res.json({ companyName: company.name, items, schemes, mrpOnly: isCnfCompany(company) });
     } catch (error) {
         return sendError(res, error, 'Unable to load the items.');
     }
@@ -157,8 +166,11 @@ export const portalCreateOrder = async (req, res) => {
     try {
         const { distributor, company } = await distributorOf(req.distributorId);
         const requested = Array.isArray(req.body?.items) ? req.body.items : [];
-        const priceType = req.body?.priceType;
-        if (!['retail', 'wholesale'].includes(priceType)) throw httpError(400, 'Choose Retail or Wholesale price.');
+        // CNF company: always MRP (no Retail / Wholesale choice). Others choose Retail or Wholesale.
+        const priceType = isCnfCompany(company) ? 'mrp' : req.body?.priceType;
+        if (!PRICE_TYPES.includes(priceType) || (priceType === 'mrp' && !isCnfCompany(company))) {
+            throw httpError(400, 'Choose Retail or Wholesale price.');
+        }
         // Same item twice: one line with the total.
         const byErp = new Map();
         requested.forEach((it) => {

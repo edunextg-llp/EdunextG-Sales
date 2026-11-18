@@ -21,6 +21,9 @@ const STATUS = {
   cancelled: "Cancelled",
 };
 
+// Order price: Retail, Wholesale, or MRP (CNF company's distributors).
+export const priceTypeLabel = (type) => (type === "mrp" ? "MRP" : type === "retail" ? "Retail" : "Wholesale");
+
 export const isCnf = (profile) => String(profile?.companyType || "").toLowerCase() === "cnf";
 
 export function orderCopyHtml(order, profile) {
@@ -114,7 +117,7 @@ export function orderCopyHtml(order, profile) {
       <table class="kv">
         ${kv("Order No.", orderNo)}
         ${kv("Order date", day(order.created_at))}
-        ${kv("Price", order.price_type === "retail" ? "Retail price" : "Wholesale price")}
+        ${kv("Price", `${priceTypeLabel(order.price_type)} price`)}
         ${kv("Requisition No.", order.requisition_number)}
         ${kv("Bill No.", order.invoice_number)}
         ${kv("Company", profile?.companyName)}

@@ -490,7 +490,8 @@ export default function SalesInvoiceDialog({
   };
 
   // A distributor's approved order (DMS Sales > Distributor Orders, number DRQ000001...).
-  // Its items fill the bill at the price the distributor chose (retail / wholesale), lot by lot (earliest expiry, then lowest MRP);
+  // Its items fill the bill at the order's price (retail / wholesale, or MRP for a CNF company's
+  // distributors), lot by lot (earliest expiry, then lowest MRP);
   // free goods are then added by the free-goods effect. Items short of stock are added with
   // what is there and listed in an alert.
   const loadDistributorOrder = async (code) => {
@@ -507,7 +508,8 @@ export default function SalesInvoiceDialog({
       const liveStock = await fetchCurrentStock();
       if (!liveStock?.length) throw new Error(`Current stock for ${companyName} could not be loaded. Please retry.`);
       const key = (v) => String(v || "").trim().toLowerCase();
-      // The price the distributor chose on the order (retail / wholesale).
+      // The order's price: retail / wholesale, or MRP (CNF company's distributors).
+      const atMrp = order.price_type === "mrp";
       const pt = order.price_type === "retail" ? "retail" : "wholesale";
       const pick = (retail, wholesale) => (pt === "retail" ? retail || wholesale : wholesale || retail);
       const rows = [];
@@ -536,8 +538,10 @@ export default function SalesInvoiceDialog({
           const qty = Math.min(wanted, Math.max(0, Number(product.total_current_stock_in_pcs) || 0));
           if (qty < wanted) short.push(`${name}: only ${qty} of ${wanted} pcs`);
           if (qty <= 0) return;
-          const price = pick(Number(product.retail_price), Number(product.wholesale_price))
-            || Number(product.mrp) || Number(product.price_per_piece) || 0;
+          const price = atMrp
+            ? Number(product.mrp) || Number(product.price_per_piece) || 0
+            : pick(Number(product.retail_price), Number(product.wholesale_price))
+              || Number(product.mrp) || Number(product.price_per_piece) || 0;
           rows.push({
             ...base,
             qty: String(qty),
@@ -558,8 +562,9 @@ export default function SalesInvoiceDialog({
           retailPrice: Number(lot.retail_price) || Number(product.retail_price) || 0,
           wholesalePrice: Number(lot.wholesale_price) || Number(product.wholesale_price) || 0,
           // Same fallbacks as adding the item by hand: wholesale, retail, then MRP / price per piece.
-          rate: String(
-            lotPrice(lot, pt)
+          rate: String(atMrp
+            ? Number(lot.mrp) || Number(product.mrp) || Number(product.price_per_piece) || 0
+            : lotPrice(lot, pt)
             || pick(Number(product.retail_price), Number(product.wholesale_price))
             || Number(lot.mrp) || Number(product.mrp) || Number(product.price_per_piece) || 0
           ),

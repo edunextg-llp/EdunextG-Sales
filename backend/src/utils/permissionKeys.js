@@ -25,6 +25,10 @@ export const PERMISSION_KEYS = [
     // Approvals > Material Reports: review "less material" reports from delivery boys
     // (seeded for SUNANDA BISWAS). Admin can always review.
     'material_report_review',
+    // DMS > Sales > Create Sales: bill distributors / CNF or outlets (was admin only).
+    'create_sales',
+    // DMS > Orders > Distributor Orders: approve or reject Distributor Portal orders (was admin only).
+    'distributor_orders',
 ];
 
 // Extra options that only make sense together with a page permission.
@@ -38,6 +42,7 @@ export const PERMISSION_REQUIRES = {
 export const DMS_PERMISSION_KEYS = [
     'add_seller', 'add_item', 'item_list', 'purchase_history', 'seller_ledger', 'physical_stock',
     'current_stock', 'expiry_items', 'expiry_list', 'damage_list', 'purchase',
+    'create_sales', 'distributor_orders',
 ];
 
 // New columns and, for existing users, the permission they copy from when the
@@ -64,6 +69,8 @@ export const NEW_PERMISSION_COLUMNS = [
     ['other_day_approval', null],
     // Seller Ledger: whoever could see Purchase History starts with it.
     ['seller_ledger', 'purchase_history'],
+    ['create_sales', null],
+    ['distributor_orders', null],
 ];
 
 export const permissionColumnsSql = (alias = 'p') =>

@@ -38,7 +38,7 @@ import { EmptyState, PageHeader } from "@/components/common";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { qty, rupees, showDate } from "@/lib/format";
-import { isCnf, printOrderCopy } from "@/lib/orderCopy";
+import { isCnf, printOrderCopy, priceTypeLabel } from "@/lib/orderCopy";
 
 // Orders. "New order": the company's items in stock (left) and the order being built (right).
 // Items with a free goods offer show it ("Buy 100 pcs, get 30 pcs <item> free"), and the order
@@ -102,8 +102,9 @@ function NewOrder({ onPlaced }) {
   const [onlyOffers, setOnlyOffers] = useState(false);
   const [cart, setCart] = useState({}); // productErpId -> qty string
   const [remarks, setRemarks] = useState("");
-  // Retail or wholesale price for the whole order (Retail unless changed).
-  const [priceType, setPriceType] = useState("retail");
+  // Retail or wholesale price for the whole order (Retail unless changed). A CNF company's
+  // distributors have no choice: their orders are at the product MRP (data.mrpOnly).
+  const [chosenPrice, setPriceType] = useState("retail");
   const [busy, setBusy] = useState(false);
   const cartRef = useRef(null);
 
@@ -111,7 +112,7 @@ function NewOrder({ onPlaced }) {
     setData(null);
     setError("");
     api("/order-items")
-      .then((d) => setData({ companyName: d.companyName || "", items: d.items || [], schemes: d.schemes || [] }))
+      .then((d) => setData({ companyName: d.companyName || "", items: d.items || [], schemes: d.schemes || [], mrpOnly: Boolean(d.mrpOnly) }))
       .catch((err) => {
         setData({ companyName: "", items: [], schemes: [] });
         setError(err.message);
@@ -120,6 +121,8 @@ function NewOrder({ onPlaced }) {
   useEffect(load, []);
 
   const items = data?.items || [];
+  const mrpOnly = Boolean(data?.mrpOnly);
+  const priceType = mrpOnly ? "mrp" : chosenPrice;
   const schemeOf = useMemo(() => new Map((data?.schemes || []).map((s) => [key(s.productErpId), s])), [data]);
   const itemByKey = useMemo(() => new Map(items.map((it) => [key(it.productErpId), it])), [items]);
 
@@ -148,10 +151,17 @@ function NewOrder({ onPlaced }) {
   );
   const totalPcs = lines.reduce((t, l) => t + l.pcs, 0);
   const totalFree = lines.reduce((t, l) => t + l.free, 0);
-  const priceOf = (it) => (priceType === "retail" ? it.retailPrice : priceType === "wholesale" ? it.wholesalePrice : 0) || 0;
+  const priceOf = (it) =>
+    (priceType === "retail" ? it.retailPrice : priceType === "wholesale" ? it.wholesalePrice : priceType === "mrp" ? it.mrp : 0) || 0;
   // Estimate only: the bill sets the final rates (lot by lot) and free goods.
-  const estTaxable = lines.reduce((t, l) => t + l.pcs * priceOf(l.item), 0);
-  const estGst = lines.reduce((t, l) => t + (l.pcs * priceOf(l.item) * (l.item.gstPercent || 5)) / 100, 0);
+  // Retail / wholesale are before GST; MRP already includes GST.
+  const gross = lines.reduce((t, l) => t + l.pcs * priceOf(l.item), 0);
+  const estGst = lines.reduce((t, l) => {
+    const amount = l.pcs * priceOf(l.item);
+    const rate = (l.item.gstPercent || 5) / 100;
+    return t + (mrpOnly ? amount - amount / (1 + rate) : amount * rate);
+  }, 0);
+  const estTaxable = mrpOnly ? gross - estGst : gross;
 
   const setQty = (erp, v) => setCart((c) => ({ ...c, [erp]: v }));
   const step = (it, by) => {
@@ -197,35 +207,47 @@ function NewOrder({ onPlaced }) {
     <div className="grid items-start gap-4 pb-20 lg:grid-cols-[minmax(0,1fr)_360px] lg:pb-0">
       {/* Products */}
       <div className="grid min-w-0 gap-4">
-        <Card className={`gap-0 py-0 ${priceType ? "" : "ring-2 ring-amber-500/60"}`}>
-          <div className="flex flex-wrap items-center gap-3 p-3">
-            <div className="min-w-0 flex-1">
-              <div className="font-medium">Price</div>
-              <div className="text-xs text-muted-foreground">
-                {priceType ? "The order is billed at this price. Rates are per piece, before GST." : "Choose the price for this order first."}
+        {mrpOnly ? (
+          <Card className="gap-0 py-0">
+            <div className="flex flex-wrap items-center gap-3 p-3">
+              <div className="min-w-0 flex-1">
+                <div className="font-medium">Price</div>
+                <div className="text-xs text-muted-foreground">The order is billed at the product MRP. Rates are per piece, incl. GST.</div>
+              </div>
+              <Badge variant="outline">MRP</Badge>
+            </div>
+          </Card>
+        ) : (
+          <Card className={`gap-0 py-0 ${priceType ? "" : "ring-2 ring-amber-500/60"}`}>
+            <div className="flex flex-wrap items-center gap-3 p-3">
+              <div className="min-w-0 flex-1">
+                <div className="font-medium">Price</div>
+                <div className="text-xs text-muted-foreground">
+                  {priceType ? "The order is billed at this price. Rates are per piece, before GST." : "Choose the price for this order first."}
+                </div>
+              </div>
+              <div className="inline-flex rounded-lg border p-0.5">
+                {[
+                  ["retail", "Retail price"],
+                  ["wholesale", "Wholesale price"],
+                ].map(([value, label]) => (
+                  <Button
+                    key={value}
+                    type="button"
+                    size="sm"
+                    variant={priceType === value ? "default" : "ghost"}
+                    className="rounded-md"
+                    onClick={() => setPriceType(value)}
+                    aria-pressed={priceType === value}
+                  >
+                    {priceType === value && <CheckCircle2 />}
+                    {label}
+                  </Button>
+                ))}
               </div>
             </div>
-            <div className="inline-flex rounded-lg border p-0.5">
-              {[
-                ["retail", "Retail price"],
-                ["wholesale", "Wholesale price"],
-              ].map(([value, label]) => (
-                <Button
-                  key={value}
-                  type="button"
-                  size="sm"
-                  variant={priceType === value ? "default" : "ghost"}
-                  className="rounded-md"
-                  onClick={() => setPriceType(value)}
-                  aria-pressed={priceType === value}
-                >
-                  {priceType === value && <CheckCircle2 />}
-                  {label}
-                </Button>
-              ))}
-            </div>
-          </div>
-        </Card>
+          </Card>
+        )}
         <Card className="gap-0 py-0">
           <div className="flex flex-wrap items-center gap-2 border-b p-3">
             <div className="relative min-w-56 flex-1">
@@ -267,7 +289,7 @@ function NewOrder({ onPlaced }) {
                         <span>In stock {qty(it.available)} pcs</span>
                         {priceType ? (
                           <span className="font-medium text-foreground">
-                            {rupees(priceOf(it))}/pc <span className="font-normal text-muted-foreground">{priceType === "retail" ? "retail" : "wholesale"}</span>
+                            {rupees(priceOf(it))}/pc <span className="font-normal text-muted-foreground">{priceTypeLabel(priceType).toLowerCase()}</span>
                           </span>
                         ) : (
                           <span>
@@ -369,7 +391,7 @@ function NewOrder({ onPlaced }) {
             {priceType && (
               <>
                 <div className="mt-1 flex justify-between border-t pt-1">
-                  <span className="text-muted-foreground">Amount ({priceType === "retail" ? "retail" : "wholesale"}, before GST)</span>
+                  <span className="text-muted-foreground">Amount ({priceTypeLabel(priceType).toLowerCase()}, before GST)</span>
                   <b className="tabular-nums">{rupees(estTaxable)}</b>
                 </div>
                 <div className="flex justify-between">
@@ -453,7 +475,7 @@ function OrderCard({ order, sr, onCancel, profile }) {
             <Badge variant="outline" className={st.className}>
               {st.label}
             </Badge>
-            <Badge variant="outline">{order.price_type === "retail" ? "Retail price" : "Wholesale price"}</Badge>
+            <Badge variant="outline">{priceTypeLabel(order.price_type)} price</Badge>
           </div>
           <div className="text-xs text-muted-foreground">
             {showDate(order.created_at)} · {order.item_count} item{order.item_count === 1 ? "" : "s"} · {qty(order.total_qty)} pcs

@@ -43,11 +43,11 @@ const menu = [
   { label: "Add Distributor", icon: MdGroupAdd, path: "/add-distributor", permission: "admin_only", group: "sales" },
   // Free goods schemes (buy X, get Y free): admin only, like Add Distributor.
   { label: "Free Goods", icon: MdCardGiftcard, path: "/free-goods", permission: "admin_only", group: "sales" },
-  // Bills to distributors / CNF or outlets: admin only, like the rest of Sales.
-  { label: "Create Sales", icon: MdPostAdd, path: "/create-sales", permission: "admin_only", group: "sales" },
+  // Bills to distributors / CNF or outlets (Create Sales permission).
+  { label: "Create Sales", icon: MdPostAdd, path: "/create-sales", permission: "create_sales", group: "sales" },
   // Orders > Distributor Orders: orders from the Distributor Portal; approve -> requisition
-  // number for Create Bill. Admin only.
-  { label: "Distributor Orders", icon: MdMoveToInbox, path: "/distributor-orders", permission: "admin_only", group: "orders" },
+  // number for Create Bill (Distributor Orders permission).
+  { label: "Distributor Orders", icon: MdMoveToInbox, path: "/distributor-orders", permission: "distributor_orders", group: "orders" },
   // Orders > Outlet Orders: purchase requisitions from marketing staff (moved here from the
   // main site's Approvals > Requisition Approvals). Same permission as before.
   { label: "Outlet Orders", icon: MdStore, path: "/outlet-orders", permission: "requisition_approval", group: "orders" },

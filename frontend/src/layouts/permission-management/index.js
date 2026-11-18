@@ -15,15 +15,15 @@ import MDTypography from "components/MDTypography";
 const API = (process.env.REACT_APP_API_URL);
 const PERMISSIONS = [
   ["dashboard", "Dashboard", "View the dashboard, reports, and business summary."],
-  ["dms", "DMS", "Open the DMS section. This is required for DMS-related permissions."],
+  ["dms", "Sales & Purchase", "Open the Sales & Purchase section. This is required for its pages."],
   ["add_seller", "Add Seller", "Create and manage suppliers from whom products are purchased."],
   ["add_item", "Add Item", "Create and manage products supplied by sellers."],
-  ["item_list", "Item List", "View and manage the DMS product and stock item list."],
-  ["purchase_history", "Purchase History", "View DMS stock import history by company and seller."],
+  ["item_list", "Add Purchase", "Add purchases and manage the product and stock item list."],
+  ["purchase_history", "Purchase History", "View stock import history by company and seller."],
   ["seller_ledger", "Seller Ledger", "View each seller's purchases, payments and balance due, and record payments."],
   ["physical_stock", "Physical Stock", "Upload, count, approve and submit physical stock."],
   ["current_stock", "Current Stock", "View current stock levels for each company."],
-  ["expiry_items", "Expiry Items", "View DMS items that are expired or close to expiry."],
+  ["expiry_items", "Expiry Items", "View items that are expired or close to expiry."],
   ["expiry_list", "Expiry List", "Record and manage expired stock returned from outlets."],
   ["damage_list", "Damage List", "Record and manage damaged stock returned from outlets."],
   ["purchase", "Purchase", "Create, edit and delete purchase entries from sellers."],
@@ -42,9 +42,11 @@ const PERMISSIONS = [
   ["delivered", "Delivered", "View delivered or cancelled orders and their delivery details."],
   ["out_bill", "Out Bill", "Assign, track, and return outstanding credit bills."],
   ["approvals", "Approvals", "Grant every Approvals page."],
-  ["requisition_approval", "Requisition Approval", "View, approve, or cancel staff purchase requisitions."],
+  ["requisition_approval", "Outlet Order Approval", "Sales & Purchase > Orders > Outlet Orders: view, approve, or cancel staff purchase requisitions (sales orders) from outlets."],
   ["delivery_manager", "Delivery Manager", "Grant every Delivery Manager submenu."],
   ["payment", "Payment", "Grant every Payment submenu."],
+  ["create_sales", "Create Sales", "Sales & Purchase > Sales > Create Sales: bill distributors / CNF or outlets, add payments and cancel bills."],
+  ["distributor_orders", "Distributor Order Approval", "Sales & Purchase > Orders > Distributor Orders: approve or reject orders from the Distributor Portal (approving gives the requisition number for billing)."],
   ["staff_management", "Staff Management", "Grant every available Staff Management submenu."],
   ["chalan", "Chalan", "Grant every Chalan submenu."],
   ["chalan_add_sales", "Chalan Add Sales", "Create and manage Chalan sales."],
@@ -122,14 +124,28 @@ const rupees = (value) => `₹${Number(value).toLocaleString("en-IN", { maximumF
 const SUB_OPTION_KEYS = Object.values(SUB_OPTIONS).flat();
 const LEGACY_OVERDUE_KEYS = ["overdue_7_days", "overdue_own_permission"];
 const PERMISSION_FOLDERS = [
-  { key: "dms", label: "DMS", icon: "inventory_2", description: "Sellers, items, stock, expiry and purchases.", children: ["add_seller", "add_item", "item_list", "purchase_history", "seller_ledger", "physical_stock", "current_stock", "expiry_items", "expiry_list", "damage_list", "purchase"] },
+  { key: "dms", label: "Sales & Purchase", icon: "inventory_2", description: "Same menus as the Sales & Purchase sidebar.",
+    // Shown in sub-menus like the Sales & Purchase sidebar (dms/src/menu.js); children follow them.
+    sections: [
+      { key: "purchase", label: "Purchase", icon: "shopping_cart", children: ["add_seller", "add_item", "item_list", "purchase_history", "seller_ledger"] },
+      { key: "stock", label: "Stock", icon: "inventory_2", children: ["physical_stock", "current_stock"] },
+      { key: "sales", label: "Sales", icon: "point_of_sale", children: ["create_sales"] },
+      { key: "orders", label: "Orders", icon: "assignment", children: ["distributor_orders", "requisition_approval"] },
+      { key: "expiry", label: "Expiry", icon: "event_busy", children: ["expiry_items", "expiry_list"] },
+      { key: "old", label: "Older pages (main site)", icon: "history", children: ["damage_list", "purchase"] },
+    ],
+  },
   // Folders are listed in sidebar menu order; children follow their submenu order.
   { key: "staff_management", label: "Staff Management", icon: "badge", description: "Create staff, locations and outlets.", children: ["create_staff", "location_assignments", "add_outlet"] },
-  { key: "approvals", label: "Approvals", icon: "verified", description: "Requisition, Below Target, Overdue and Other Day Bit approvals.", children: ["requisition_approval", "requisition_target_approval", "overdue_approval", "other_day_approval"] },
+  { key: "approvals", label: "Approvals", icon: "verified", description: "Below Target, Overdue and Other Day Bit approvals.", children: ["requisition_target_approval", "overdue_approval", "other_day_approval"] },
   { key: "delivery_manager", label: "Delivery Manager", icon: "local_shipping", description: "Add sales, packaging, delivery, report, delivered orders and material reports.", children: ["add_sales", "packaging", "delivery", "delivery_report", "delivered", "material_report_review"] },
   { key: "chalan", label: "Chalan", icon: "receipt_long", description: "The full Chalan workflow.", children: ["chalan_add_sales", "chalan_packaging", "chalan_delivery", "chalan_delivered", "chalan_return"] },
   { key: "payment", label: "Payment", icon: "account_balance_wallet", description: "Update payment, D.B. collection, credit and bank deposit.", children: ["update_payment", "db_collection", "credits", "bank_deposit"] },
 ];
+// A folder with sub-menus lists its pages in sub-menu order.
+PERMISSION_FOLDERS.forEach((folder) => {
+  if (folder.sections) folder.children = folder.sections.flatMap((section) => section.children);
+});
 // Box size per menu: big menus take the full row and lay their pages out in columns,
 // small menus share a row. `grid` is the box width, `columns` the page columns inside it.
 const WIDE_GROUP = { grid: { xs: 12 }, columns: { xs: "1fr", md: "repeat(2, 1fr)", xl: "repeat(3, 1fr)" } };
@@ -270,6 +286,14 @@ function PermissionManagement() {
     return allSelected
       ? current.filter((key) => !removed.includes(key))
       : [...new Set([...current, ...groupKeys])];
+  });
+
+  // One sub-menu of a folder (e.g. Sales & Purchase > Orders): all its pages on or off.
+  const toggleSection = (folder, section) => setPermissions((current) => {
+    const allOn = section.children.every((key) => current.includes(key));
+    if (!allOn) return [...new Set([...current, folder.key, ...section.children])];
+    const next = current.filter((key) => !section.children.includes(key));
+    return folder.children.some((key) => next.includes(key)) ? next : next.filter((key) => key !== folder.key);
   });
 
   const grantAll = () => setPermissions([...GENERAL_GROUP.children, ...FOLDER_KEYS]);
@@ -498,6 +522,43 @@ function PermissionManagement() {
     </MDBox>
   );
 
+  // One page switch (with Add Sales' extra settings when it is on).
+  const renderPage = (key) => (
+    <MDBox key={key}
+      sx={{
+        borderBottom: "1px solid #f1f5f9",
+        // Add Sales with its overdue settings open needs the whole row.
+        ...(key === "add_sales" && permissions.includes(key) ? { gridColumn: "1 / -1" } : {}),
+      }}>
+      <MDBox component="label" display="flex" alignItems="center" gap={1} px={1} py={1}
+        sx={{ cursor: "pointer", borderRadius: "8px", "&:hover": { backgroundColor: "#f8fafc" } }}>
+        <MDBox flexGrow={1} minWidth={0}>
+          <MDTypography variant="button" fontWeight="medium" display="block">{PERMISSION_MAP[key].label}</MDTypography>
+          <MDTypography variant="caption" color="text" display="block" sx={{ lineHeight: 1.35 }}>
+            {PERMISSION_MAP[key].description}
+          </MDTypography>
+        </MDBox>
+        <Switch checked={permissions.includes(key)} onChange={() => togglePermission(key)}
+          inputProps={{ "aria-label": PERMISSION_MAP[key].label }} />
+      </MDBox>
+      {key === "add_sales" && permissions.includes(key) && renderOverdueRange()}
+      {key === "add_sales" && permissions.includes(key) && renderApproverTier()}
+      {permissions.includes(key) && (SUB_OPTIONS[key] || []).map((option) => (
+        <MDBox key={option} component="label" display="flex" alignItems="center" gap={1} ml={3} mr={1} mb={1} px={1.25} py={0.75}
+          sx={{ cursor: "pointer", borderRadius: "8px", borderLeft: "3px solid #f59e0b", backgroundColor: "#fffbeb" }}>
+          <Icon fontSize="small" sx={{ color: "#d97706" }}>schedule</Icon>
+          <MDBox flexGrow={1} minWidth={0}>
+            <MDTypography variant="button" fontWeight="medium" display="block">{PERMISSION_MAP[option].label}</MDTypography>
+            <MDTypography variant="caption" color="text" display="block" sx={{ lineHeight: 1.35 }}>
+              {PERMISSION_MAP[option].description}
+            </MDTypography>
+          </MDBox>
+          <Switch checked={permissions.includes(option)} onChange={() => togglePermission(option)}
+            inputProps={{ "aria-label": PERMISSION_MAP[option].label }} />
+        </MDBox>
+      ))}
+    </MDBox>);
+
   const renderGroup = (group) => {
     const selectedCount = group.children.filter((key) => permissions.includes(key)).length;
     const allSelected = selectedCount === group.children.length;
@@ -518,45 +579,31 @@ function PermissionManagement() {
           <Checkbox size="small" checked={allSelected} indeterminate={selectedCount > 0 && !allSelected}
             onChange={() => toggleGroup(group)} inputProps={{ "aria-label": `Grant all ${group.label}` }} />
         </MDBox>
-        <MDBox px={1} py={0.5} display="grid" columnGap={1.5}
-          sx={{ gridTemplateColumns: (GROUP_LAYOUT[group.key] || HALF_GROUP).columns }}>
-          {group.children.map((key) => (
-            <MDBox key={key}
-              sx={{
-                borderBottom: "1px solid #f1f5f9",
-                // Add Sales with its overdue settings open needs the whole row.
-                ...(key === "add_sales" && permissions.includes(key) ? { gridColumn: "1 / -1" } : {}),
-              }}>
-              <MDBox component="label" display="flex" alignItems="center" gap={1} px={1} py={1}
-                sx={{ cursor: "pointer", borderRadius: "8px", "&:hover": { backgroundColor: "#f8fafc" } }}>
-                <MDBox flexGrow={1} minWidth={0}>
-                  <MDTypography variant="button" fontWeight="medium" display="block">{PERMISSION_MAP[key].label}</MDTypography>
-                  <MDTypography variant="caption" color="text" display="block" sx={{ lineHeight: 1.35 }}>
-                    {PERMISSION_MAP[key].description}
-                  </MDTypography>
-                </MDBox>
-                <Switch checked={permissions.includes(key)} onChange={() => togglePermission(key)}
-                  inputProps={{ "aria-label": PERMISSION_MAP[key].label }} />
+        {group.sections ? group.sections.map((section) => {
+          const onCount = section.children.filter((key) => permissions.includes(key)).length;
+          const allOn = onCount === section.children.length;
+          return (
+            <MDBox key={section.key} px={1} pt={1} pb={0.5}>
+              <MDBox display="flex" alignItems="center" gap={1} px={1} py={0.75}
+                sx={{ backgroundColor: "#f8fafc", borderRadius: "8px", borderLeft: "3px solid #1A73E8" }}>
+                <Icon fontSize="small" sx={{ color: "#1A73E8" }}>{section.icon}</Icon>
+                <MDTypography variant="button" fontWeight="bold" sx={{ flexGrow: 1 }}>{section.label}</MDTypography>
+                <MDTypography variant="caption" color="text">{onCount}/{section.children.length}</MDTypography>
+                <Checkbox size="small" checked={allOn} indeterminate={onCount > 0 && !allOn}
+                  onChange={() => toggleSection(group, section)} inputProps={{ "aria-label": `Grant all ${group.label} > ${section.label}` }} />
               </MDBox>
-              {key === "add_sales" && permissions.includes(key) && renderOverdueRange()}
-              {key === "add_sales" && permissions.includes(key) && renderApproverTier()}
-              {permissions.includes(key) && (SUB_OPTIONS[key] || []).map((option) => (
-                <MDBox key={option} component="label" display="flex" alignItems="center" gap={1} ml={3} mr={1} mb={1} px={1.25} py={0.75}
-                  sx={{ cursor: "pointer", borderRadius: "8px", borderLeft: "3px solid #f59e0b", backgroundColor: "#fffbeb" }}>
-                  <Icon fontSize="small" sx={{ color: "#d97706" }}>schedule</Icon>
-                  <MDBox flexGrow={1} minWidth={0}>
-                    <MDTypography variant="button" fontWeight="medium" display="block">{PERMISSION_MAP[option].label}</MDTypography>
-                    <MDTypography variant="caption" color="text" display="block" sx={{ lineHeight: 1.35 }}>
-                      {PERMISSION_MAP[option].description}
-                    </MDTypography>
-                  </MDBox>
-                  <Switch checked={permissions.includes(option)} onChange={() => togglePermission(option)}
-                    inputProps={{ "aria-label": PERMISSION_MAP[option].label }} />
-                </MDBox>
-              ))}
+              <MDBox pl={2} display="grid" columnGap={1.5}
+                sx={{ gridTemplateColumns: (GROUP_LAYOUT[group.key] || HALF_GROUP).columns }}>
+                {section.children.map(renderPage)}
+              </MDBox>
             </MDBox>
-          ))}
-        </MDBox>
+          );
+        }) : (
+          <MDBox px={1} py={0.5} display="grid" columnGap={1.5}
+            sx={{ gridTemplateColumns: (GROUP_LAYOUT[group.key] || HALF_GROUP).columns }}>
+            {group.children.map(renderPage)}
+          </MDBox>
+        )}
       </Card>
     );
   };

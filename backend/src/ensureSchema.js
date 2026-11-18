@@ -109,6 +109,11 @@ export async function ensureSchema() {
             'remarks on document assignments'
         );
 
+        // Report > Invoice Report: invoice numbers read from the assignment's invoice PDF (read once).
+        await tryQuery(connection, `ALTER TABLE document_assignments ADD COLUMN invoice_numbers JSON NULL`, 'invoice_numbers on document assignments');
+        await tryQuery(connection, `ALTER TABLE document_assignments ADD COLUMN invoice_numbers_error VARCHAR(255) NULL`, 'invoice_numbers_error on document assignments');
+        await tryQuery(connection, `ALTER TABLE document_assignments ADD COLUMN invoice_numbers_read_at DATETIME NULL`, 'invoice_numbers_read_at on document assignments');
+
         await tryQuery(
             connection,
             `ALTER TABLE companies ADD COLUMN type ENUM('distributor', 'cnf') NULL`,
@@ -1676,6 +1681,8 @@ export async function ensureSchema() {
         await connection.query(`UPDATE distributor_orders SET order_number = CONCAT('ORD', LPAD(id, 6, '0')) WHERE order_number IS NULL`);
         // Price the distributor chose for the order; Create Bill loads it at that price.
         await tryQuery(connection, `ALTER TABLE distributor_orders ADD COLUMN price_type ENUM('retail', 'wholesale') NOT NULL DEFAULT 'wholesale' AFTER status`, 'price_type on distributor_orders');
+        // CNF distributors order at the product MRP (no Retail / Wholesale choice).
+        await tryQuery(connection, `ALTER TABLE distributor_orders MODIFY COLUMN price_type ENUM('retail', 'wholesale', 'mrp') NOT NULL DEFAULT 'wholesale'`, 'mrp price_type on distributor_orders');
         // Free goods earned on the order (shown to the distributor; the bill works them out again).
         await tryQuery(connection, `ALTER TABLE distributor_order_items ADD COLUMN is_free TINYINT(1) NOT NULL DEFAULT 0 AFTER qty`, 'is_free on distributor_order_items');
         await tryQuery(connection, `ALTER TABLE distributor_order_items ADD COLUMN free_for_erp_id VARCHAR(100) NULL AFTER is_free`, 'free_for_erp_id on distributor_order_items');

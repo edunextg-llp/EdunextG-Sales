@@ -216,7 +216,7 @@ export default function DistributorOrders() {
                       <td className="text-right font-semibold tabular-nums">{showQty(o.total_qty)}</td>
                       <td>
                         <span className={`badge badge-sm ${STATUS_BADGE[o.status] || ""}`}>{o.status}</span>
-                        <span className="badge badge-sm badge-outline ml-1">{o.price_type === "retail" ? "Retail" : "Wholesale"}</span>
+                        <span className="badge badge-sm badge-outline ml-1">{o.price_type === "mrp" ? "MRP" : o.price_type === "retail" ? "Retail" : "Wholesale"}</span>
                         {o.status === "billed" && o.invoice_number ? <div className="text-xs text-base-content/55">Bill {o.invoice_number}</div> : null}
                         {o.status === "rejected" && o.reject_reason ? (
                           <div className="max-w-48 truncate text-xs text-error" title={o.reject_reason}>

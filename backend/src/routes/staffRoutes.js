@@ -14,6 +14,7 @@ import * as physicalStockAssignments from '../controllers/physicalStockAssignmen
 import * as distributors from '../controllers/distributorController.js';
 import * as freeGoods from '../controllers/freeGoodsController.js';
 import * as dmsSales from '../controllers/dmsSalesController.js';
+import * as invoiceReport from '../controllers/invoiceReportController.js';
 import * as distributorOrders from '../controllers/distributorOrderController.js';
 import * as purchaseRequisitionController from '../controllers/purchaseRequisitionController.js';
 import * as overdueSaleRequestController from '../controllers/overdueSaleRequestController.js';
@@ -87,6 +88,9 @@ router.post('/document-assignments/upload-signature', verifyTokenMiddleware, req
 router.post('/document-assignments', verifyTokenMiddleware, requireAnyPermission('dashboard'), receiveAssignmentDocument, documentAssignments.create);
 router.get('/document-assignments/:id/link', verifyTokenMiddleware, requireAnyPermission('dashboard'), documentAssignments.fileLinks('admin'));
 router.put('/document-assignments/:id/reopen', verifyTokenMiddleware, requireRole('admin'), documentAssignments.reopen);
+// Report > Invoice Report: invoice numbers in the Assign PDFs vs Add Sales (created / delivered / cancelled / paid).
+router.get('/invoice-report', verifyTokenMiddleware, requireAnyPermission('dashboard'), invoiceReport.getInvoiceReport);
+router.post('/invoice-report/:id/reread', verifyTokenMiddleware, requireAnyPermission('dashboard'), invoiceReport.rereadAssignment);
 router.get('/', staffController.getStaff);
 router.get('/search', staffController.searchStaff);
 router.get('/areas', verifyTokenMiddleware, requireRole('admin'), staffController.getAreaDirectory);
@@ -185,14 +189,14 @@ router.post('/physical-stock/final-submit', physicalStockController.finalizePhys
 router.post('/physical-stock/approve', physicalStockController.approvePhysicalStockFromDms);
 router.post('/physical-stock/set-current', physicalStockController.approvePhysicalStockAsCurrentStock);
 // DMS Physical Stock assignments: admin assigns a company's count; the assignee can mark it done.
-// DMS Sales > Create Sales (admin only).
-router.get('/dms-sales/outlets', requireRole('admin'), dmsSales.listOutlets);
-router.get('/dms-sales/next-invoice', requireRole('admin'), dmsSales.nextInvoiceNumber);
-router.get('/dms-sales', requireRole('admin'), dmsSales.listSales);
-router.get('/dms-sales/:id', requireRole('admin'), dmsSales.getSale);
-router.post('/dms-sales', requireRole('admin'), dmsSales.createSale);
-router.post('/dms-sales/:id/payments', requireRole('admin'), dmsSales.addPayment);
-router.post('/dms-sales/:id/cancel', requireRole('admin'), dmsSales.cancelSale);
+// DMS Sales > Create Sales (admin, or the Create Sales permission).
+router.get('/dms-sales/outlets', requirePermission('create_sales'), dmsSales.listOutlets);
+router.get('/dms-sales/next-invoice', requirePermission('create_sales'), dmsSales.nextInvoiceNumber);
+router.get('/dms-sales', requirePermission('create_sales'), dmsSales.listSales);
+router.get('/dms-sales/:id', requirePermission('create_sales'), dmsSales.getSale);
+router.post('/dms-sales', requirePermission('create_sales'), dmsSales.createSale);
+router.post('/dms-sales/:id/payments', requirePermission('create_sales'), dmsSales.addPayment);
+router.post('/dms-sales/:id/cancel', requirePermission('create_sales'), dmsSales.cancelSale);
 // DMS Sales > Free Goods (setting schemes: admin only; Add Sales reads the running ones).
 router.get('/free-goods/active', freeGoods.getActiveSchemes);
 router.get('/free-goods/items', requireRole('admin'), freeGoods.getItems);
@@ -202,12 +206,13 @@ router.put('/free-goods/:id', requireRole('admin'), freeGoods.updateScheme);
 router.put('/free-goods/:id/active', requireRole('admin'), freeGoods.setSchemeActive);
 // DMS Sales > Add Distributor (admin only; must stay above the '/:id' routes).
 // Distributor orders (from the Distributor Portal): approve -> requisition number for Create Bill.
-router.get('/distributor-orders', requireRole('admin'), distributorOrders.listOrders);
-router.get('/distributor-orders/requisition/:code', requireRole('admin'), distributorOrders.getByRequisition);
-router.post('/distributor-orders/:id/approve', requireRole('admin'), distributorOrders.approveOrder);
-router.post('/distributor-orders/:id/reject', requireRole('admin'), distributorOrders.rejectOrder);
+router.get('/distributor-orders', requirePermission('distributor_orders'), distributorOrders.listOrders);
+router.get('/distributor-orders/requisition/:code', requireAnyPermission('create_sales', 'distributor_orders'), distributorOrders.getByRequisition);
+router.post('/distributor-orders/:id/approve', requirePermission('distributor_orders'), distributorOrders.approveOrder);
+router.post('/distributor-orders/:id/reject', requirePermission('distributor_orders'), distributorOrders.rejectOrder);
 
-router.get('/distributors', requireRole('admin'), distributors.listDistributors);
+// Create Sales lists distributors to bill (no passwords in this list).
+router.get('/distributors', requireAnyPermission('create_sales'), distributors.listDistributors);
 router.post('/distributors', requireRole('admin'), distributors.createDistributor);
 router.put('/distributors/:id', requireRole('admin'), distributors.updateDistributor);
 router.get('/distributors/:id/credentials', requireRole('admin'), distributors.getDistributorCredentials);

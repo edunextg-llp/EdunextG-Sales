@@ -52,6 +52,7 @@ import AddSeller from "layouts/add-seller";
 import AddItem from "layouts/add-item";
 import CurrentStock from "layouts/current-stock";
 import PhysicalStock from "layouts/physical-stock";
+import InvoiceReport from "layouts/invoice-report";
 // import ExpiredStock from "layouts/expired-stock";
 // @mui icons
 import Icon from "@mui/material/Icon";
@@ -66,6 +67,27 @@ const routes = [
     component: <Dashboard />,
     allowedRoles: ["admin", "packaging_staff", "bawarchee_staff", "delivery_boy"],
     requiredPermission: "dashboard",
+  },
+  {
+    // Report: invoice PDFs from Dashboard > Assign checked against Add Sales.
+    type: "collapse",
+    name: "Report",
+    key: "report",
+    icon: <Icon fontSize="small">assessment</Icon>,
+    allowedRoles: ["admin", "packaging_staff", "bawarchee_staff", "delivery_boy"],
+    collapse: [
+      {
+        type: "collapse",
+        name: "Invoice Report",
+        key: "invoice-report",
+        icon: <Icon fontSize="small">fact_check</Icon>,
+        route: "/invoice-report",
+        component: <InvoiceReport />,
+        allowedRoles: ["admin", "packaging_staff", "bawarchee_staff", "delivery_boy"],
+        // Same permission as Dashboard > Assign, where the PDFs are uploaded.
+        requiredPermission: "dashboard",
+      },
+    ],
   },
   {
     type: "collapse",
