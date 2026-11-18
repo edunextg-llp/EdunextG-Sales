@@ -44,6 +44,7 @@ const PERMISSIONS = [
   ["approvals", "Approvals", "Grant every Approvals page."],
   ["requisition_approval", "Requisition Approval", "View, approve, or cancel staff purchase requisitions."],
   ["delivery_manager", "Delivery Manager", "Grant every Delivery Manager submenu."],
+  ["payment", "Payment", "Grant every Payment submenu."],
   ["staff_management", "Staff Management", "Grant every available Staff Management submenu."],
   ["chalan", "Chalan", "Grant every Chalan submenu."],
   ["chalan_add_sales", "Chalan Add Sales", "Create and manage Chalan sales."],
@@ -122,11 +123,26 @@ const SUB_OPTION_KEYS = Object.values(SUB_OPTIONS).flat();
 const LEGACY_OVERDUE_KEYS = ["overdue_7_days", "overdue_own_permission"];
 const PERMISSION_FOLDERS = [
   { key: "dms", label: "DMS", icon: "inventory_2", description: "Sellers, items, stock, expiry and purchases.", children: ["add_seller", "add_item", "item_list", "purchase_history", "seller_ledger", "physical_stock", "current_stock", "expiry_items", "expiry_list", "damage_list", "purchase"] },
-  { key: "delivery_manager", label: "Delivery Manager", icon: "local_shipping", description: "Packaging, delivery, report and delivered orders.", children: ["packaging", "delivery", "delivery_report", "delivered"] },
+  // Folders are listed in sidebar menu order; children follow their submenu order.
   { key: "staff_management", label: "Staff Management", icon: "badge", description: "Create staff, locations and outlets.", children: ["create_staff", "location_assignments", "add_outlet"] },
+  { key: "approvals", label: "Approvals", icon: "verified", description: "Requisition, Below Target, Overdue and Other Day Bit approvals.", children: ["requisition_approval", "requisition_target_approval", "overdue_approval", "other_day_approval"] },
+  { key: "delivery_manager", label: "Delivery Manager", icon: "local_shipping", description: "Add sales, packaging, delivery, report, delivered orders and material reports.", children: ["add_sales", "packaging", "delivery", "delivery_report", "delivered", "material_report_review"] },
   { key: "chalan", label: "Chalan", icon: "receipt_long", description: "The full Chalan workflow.", children: ["chalan_add_sales", "chalan_packaging", "chalan_delivery", "chalan_delivered", "chalan_return"] },
-  { key: "approvals", label: "Approvals", icon: "verified", description: "Requisition, Below Target, Overdue and Other Day Bit approvals.", children: ["requisition_approval", "requisition_target_approval", "overdue_approval", "other_day_approval", "material_report_review"] },
+  { key: "payment", label: "Payment", icon: "account_balance_wallet", description: "Update payment, D.B. collection, credit and bank deposit.", children: ["update_payment", "db_collection", "credits", "bank_deposit"] },
 ];
+// Box size per menu: big menus take the full row and lay their pages out in columns,
+// small menus share a row. `grid` is the box width, `columns` the page columns inside it.
+const WIDE_GROUP = { grid: { xs: 12 }, columns: { xs: "1fr", md: "repeat(2, 1fr)", xl: "repeat(3, 1fr)" } };
+const HALF_GROUP = { grid: { xs: 12, lg: 6 }, columns: { xs: "1fr" } };
+const GROUP_LAYOUT = {
+  general: WIDE_GROUP,
+  dms: WIDE_GROUP,
+  staff_management: HALF_GROUP,
+  approvals: HALF_GROUP,
+  delivery_manager: WIDE_GROUP,
+  chalan: HALF_GROUP,
+  payment: HALF_GROUP,
+};
 const FOLDER_KEYS = PERMISSION_FOLDERS.flatMap((folder) => [folder.key, ...folder.children]);
 const GENERAL_GROUP = {
   key: "general",
@@ -136,7 +152,7 @@ const GENERAL_GROUP = {
   // The old overdue options are now the overdue range (under Add Sales), so they are not listed.
   children: PERMISSIONS.filter(([key]) => !FOLDER_KEYS.includes(key) && !SUB_OPTION_KEYS.includes(key) && !LEGACY_OVERDUE_KEYS.includes(key)).map(([key]) => key),
 };
-const DISPLAY_ONLY_FOLDER_KEYS = ["delivery_manager", "staff_management", "chalan", "approvals"];
+const DISPLAY_ONLY_FOLDER_KEYS = ["delivery_manager", "payment", "staff_management", "chalan", "approvals"];
 // The pages a user can actually be granted (folder keys are just groupings).
 const PAGE_KEYS = [...GENERAL_GROUP.children, ...PERMISSION_FOLDERS.flatMap((folder) => folder.children)];
 const PERMISSION_MAP = Object.fromEntries(PERMISSIONS.map(([key, label, description]) => [key, { label, description }]));
@@ -502,10 +518,15 @@ function PermissionManagement() {
           <Checkbox size="small" checked={allSelected} indeterminate={selectedCount > 0 && !allSelected}
             onChange={() => toggleGroup(group)} inputProps={{ "aria-label": `Grant all ${group.label}` }} />
         </MDBox>
-        <MDBox px={1} py={0.5}>
-          {group.children.map((key, index) => (
-            <MDBox key={key}>
-              {index > 0 && <Divider sx={{ my: 0 }} />}
+        <MDBox px={1} py={0.5} display="grid" columnGap={1.5}
+          sx={{ gridTemplateColumns: (GROUP_LAYOUT[group.key] || HALF_GROUP).columns }}>
+          {group.children.map((key) => (
+            <MDBox key={key}
+              sx={{
+                borderBottom: "1px solid #f1f5f9",
+                // Add Sales with its overdue settings open needs the whole row.
+                ...(key === "add_sales" && permissions.includes(key) ? { gridColumn: "1 / -1" } : {}),
+              }}>
               <MDBox component="label" display="flex" alignItems="center" gap={1} px={1} py={1}
                 sx={{ cursor: "pointer", borderRadius: "8px", "&:hover": { backgroundColor: "#f8fafc" } }}>
                 <MDBox flexGrow={1} minWidth={0}>
@@ -647,7 +668,7 @@ function PermissionManagement() {
 
                   <Grid container spacing={2.5}>
                     {groups.map((group) => (
-                      <Grid item xs={12} xl={6} key={group.key}>{renderGroup(group)}</Grid>
+                      <Grid item {...(GROUP_LAYOUT[group.key] || HALF_GROUP).grid} key={group.key}>{renderGroup(group)}</Grid>
                     ))}
                   </Grid>
 

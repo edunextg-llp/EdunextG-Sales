@@ -6,16 +6,19 @@ export const STAFF_PERMISSION_GROUPS = [
     label: "General",
     items: [
       ["dashboard", "Dashboard"],
-      ["update_payment", "Update Payment"],
-      ["bank_deposit", "Bank Deposit"],
-      ["db_collection", "D.B. Collection"],
-      ["credits", "Give Credit"],
-      ["add_sales", "Add Sales"],
-      ["overdue_7_days", "7 Days Overdue (with Add Sales)"],
-      ["overdue_own_permission", "Own Permission, 14+ Days Overdue (with Add Sales)"],
-      ["other_day_own_permission", "Own Permission, Other-Day Bit (with Add Sales)"],
       ["invoice_lookup", "Invoice Lookup"],
       ["out_bill", "Out Bill"],
+    ],
+  },
+  {
+    // Same order as the Payment sidebar menu.
+    key: "payment",
+    label: "Payment",
+    items: [
+      ["update_payment", "Update Payment"],
+      ["db_collection", "D.B. Collection"],
+      ["credits", "Give Credit"],
+      ["bank_deposit", "Bank Deposit"],
     ],
   },
   {
@@ -47,7 +50,12 @@ export const STAFF_PERMISSION_GROUPS = [
   {
     key: "delivery_manager",
     label: "Delivery Manager",
+    // Same order as the Delivery Manager sidebar menu.
     items: [
+      ["add_sales", "Add Sales"],
+      ["overdue_7_days", "7 Days Overdue (with Add Sales)"],
+      ["overdue_own_permission", "Own Permission, 14+ Days Overdue (with Add Sales)"],
+      ["other_day_own_permission", "Own Permission, Other-Day Bit (with Add Sales)"],
       ["packaging", "Packaging"],
       ["delivery", "Delivery"],
       ["delivery_report", "Delivery Report"],

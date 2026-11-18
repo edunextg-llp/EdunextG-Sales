@@ -226,12 +226,38 @@ function Sidenav({ color, brand, brandName, routes, ...rest }) {
         }
       />
       <List>{renderRoutes}</List>
-      <MDBox mt="auto" px={2} pb={2} onClick={handleLogout} sx={{ cursor: "pointer" }}>
-        <SidenavCollapse
-          name="Logout"
-          icon={<Icon fontSize="small">logout</Icon>}
-          noCollapse
-        />
+      <MDBox mt="auto" px={2} pb={2}>
+        <MDBox
+          component="button"
+          type="button"
+          onClick={handleLogout}
+          aria-label="Logout"
+          title="Logout"
+          display="flex"
+          alignItems="center"
+          justifyContent={miniSidenav ? "center" : "flex-start"}
+          gap={1.25}
+          width="100%"
+          px={2}
+          py={1.25}
+          sx={{
+            border: 0,
+            borderRadius: "8px",
+            backgroundColor: "#dc2626",
+            color: "#fff",
+            cursor: "pointer",
+            fontFamily: "inherit",
+            fontSize: "0.875rem",
+            fontWeight: 600,
+            boxShadow: "0 4px 10px rgba(220, 38, 38, 0.35)",
+            transition: "background-color 150ms ease, box-shadow 150ms ease",
+            "&:hover": { backgroundColor: "#b91c1c", boxShadow: "0 6px 14px rgba(185, 28, 28, 0.45)" },
+            "&:focus-visible": { outline: "2px solid #fecaca", outlineOffset: "2px" },
+          }}
+        >
+          <Icon fontSize="small">logout</Icon>
+          {!miniSidenav && "Logout"}
+        </MDBox>
       </MDBox>
       {/* <MDBox p={2} mt="auto">
         <MDButton
