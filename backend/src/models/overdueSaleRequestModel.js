@@ -129,6 +129,7 @@ const REQUEST_SELECT = `
            r.status, r.reviewed_by_admin_id, r.reviewed_by_name, r.review_note, r.reviewed_at,
            r.used_at, r.created_at, r.updated_at, r.self_approved,
            r.marketing_staff_id, r.overdue_amount, r.approval_level, r.payment_days, r.staff_responded_at,
+           r.assigned_approver_id, r.assigned_approver_name,
            marketing.name AS marketing_staff_name,
            COALESCE(
                (SELECT GROUP_CONCAT(c.name ORDER BY c.name SEPARATOR ', ')
@@ -142,6 +143,16 @@ const REQUEST_SELECT = `
 
 // Sent straight to Admin from Add Sales, skipping marketing staff. Only Admin can review these.
 export const ADMIN_APPROVAL_LEVEL = 'admin';
+// Routed by the requester's approver tier (Permissions page) to one Packaging Staff / Delivery Boy
+// login (assigned_approver_id) instead of Admin. Admin can still review them.
+// 'assigned': 14+ day send (the sale is created on approval, cancelled on rejection).
+// 'assigned_add': up to 13 days (once approved, the user adds the sale from Add Sales, like an admin approval).
+export const ASSIGNED_APPROVAL_LEVEL = 'assigned';
+export const ASSIGNED_ADD_APPROVAL_LEVEL = 'assigned_add';
+export const ASSIGNED_LEVELS = [ASSIGNED_APPROVAL_LEVEL, ASSIGNED_ADD_APPROVAL_LEVEL];
+const approverOf = (route) => (route?.to === 'approver'
+    ? { id: route.approverId, name: route.approverName || null }
+    : { id: null, name: null });
 
 // Who approves a 14+ day overdue request, by the outlet's overdue amount.
 export const approvalLevelForAmount = (amount) => {
@@ -156,11 +167,14 @@ export const outletOverdueAmount = (outlet) => Math.round(
 export default class OverdueSaleRequestModel {
     // One request per staff + date + outlet. A pending request is updated with the latest
     // invoice details; an approved one is returned as-is (it must be used first).
-    static async createRequests({ staffId, saleDate, overdueOutlets, note, salesPayloadByOutlet = {}, requester }) {
+    // routeByOutlet: { [outletId]: approvalRouteFor(...) } - 'approver' goes to that login, else Admin.
+    static async createRequests({ staffId, saleDate, overdueOutlets, note, salesPayloadByOutlet = {}, requester, routeByOutlet = {} }) {
         const ids = [];
         for (const outlet of overdueOutlets) {
             const payload = salesPayloadByOutlet[outlet.outletId] || null;
             const summary = payload ? summarizeSales(payload.sales) : null;
+            const approver = approverOf(routeByOutlet[outlet.outletId]);
+            const level = approver.id ? ASSIGNED_ADD_APPROVAL_LEVEL : null;
             const [existing] = await db.execute(
                 `SELECT id, status FROM overdue_sale_requests
                  WHERE staff_id = ? AND sale_date = ? AND outlet_id = ? AND status IN ('pending', 'approved')
@@ -177,19 +191,29 @@ export default class OverdueSaleRequestModel {
                             outlet.maxOverdueDays || 0, existing[0].id]
                     );
                 }
+                if (existing[0].status === 'pending') {
+                    // The new invoice may now belong to the other approver (e.g. the amount changed).
+                    await db.execute(
+                        `UPDATE overdue_sale_requests SET approval_level = ?, assigned_approver_id = ?, assigned_approver_name = ?
+                         WHERE id = ? AND status = 'pending' AND (approval_level IS NULL OR approval_level = ?)`,
+                        [level, approver.id, approver.name, existing[0].id, ASSIGNED_ADD_APPROVAL_LEVEL]
+                    );
+                }
                 ids.push(existing[0].id);
                 continue;
             }
             const [result] = await db.execute(
                 `INSERT INTO overdue_sale_requests (
                     staff_id, sale_date, outlet_id, outlet_erp_id, outlet_name, max_overdue_days,
-                    overdue_details, sales_summary, sales_payload, request_note, requested_by_role, requested_by_id, requested_by_name
-                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                    overdue_details, sales_summary, sales_payload, request_note, requested_by_role, requested_by_id, requested_by_name,
+                    approval_level, assigned_approver_id, assigned_approver_name
+                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
                 [
                     staffId, saleDate, outlet.outletId, outlet.outletErpId || '', outlet.outletName || null,
                     outlet.maxOverdueDays || 0, JSON.stringify(outlet.credits || []),
                     summary ? JSON.stringify(summary) : null, payload ? JSON.stringify(payload) : null, note,
                     requester.role, requester.id || null, requester.name || null,
+                    level, approver.id, approver.name,
                 ]
             );
             ids.push(result.insertId);
@@ -241,26 +265,31 @@ export default class OverdueSaleRequestModel {
 
     // 14+ days overdue, sent straight to Admin. A request still waiting for marketing staff moves to
     // Admin and leaves their list; one already with Admin gets the latest invoice details.
-    static async createForAdmin({ staffId, saleDate, overdueOutlets, note, salesPayloadByOutlet, requester }) {
+    // routeByOutlet: { [outletId]: approvalRouteFor(...) } - 'approver' goes to that login, else Admin.
+    static async createForAdmin({ staffId, saleDate, overdueOutlets, note, salesPayloadByOutlet, requester, routeByOutlet = {} }) {
         const ids = [];
         for (const outlet of overdueOutlets) {
             const payload = salesPayloadByOutlet[outlet.outletId];
             const summary = summarizeSales(payload.sales);
+            const approver = approverOf(routeByOutlet[outlet.outletId]);
+            const level = approver.id ? ASSIGNED_APPROVAL_LEVEL : ADMIN_APPROVAL_LEVEL;
             const [existing] = await db.execute(
                 `SELECT id FROM overdue_sale_requests
                  WHERE staff_id = ? AND sale_date = ? AND outlet_id = ?
-                   AND (status = 'awaiting_staff' OR (status = 'pending' AND approval_level = ?))
+                   AND (status = 'awaiting_staff' OR (status = 'pending' AND approval_level IN (?, ?)))
                  ORDER BY id DESC LIMIT 1`,
-                [staffId, saleDate, outlet.outletId, ADMIN_APPROVAL_LEVEL]
+                [staffId, saleDate, outlet.outletId, ADMIN_APPROVAL_LEVEL, ASSIGNED_APPROVAL_LEVEL]
             );
             if (existing.length) {
                 await db.execute(
                     `UPDATE overdue_sale_requests
                      SET status = 'pending', approval_level = ?, marketing_staff_id = NULL, request_note = ?,
-                         sales_payload = ?, sales_summary = ?, overdue_details = ?, max_overdue_days = ?, overdue_amount = ?
+                         sales_payload = ?, sales_summary = ?, overdue_details = ?, max_overdue_days = ?, overdue_amount = ?,
+                         assigned_approver_id = ?, assigned_approver_name = ?
                      WHERE id = ?`,
-                    [ADMIN_APPROVAL_LEVEL, note, JSON.stringify(payload), JSON.stringify(summary),
-                        JSON.stringify(outlet.credits || []), outlet.maxOverdueDays || 0, outletOverdueAmount(outlet), existing[0].id]
+                    [level, note, JSON.stringify(payload), JSON.stringify(summary),
+                        JSON.stringify(outlet.credits || []), outlet.maxOverdueDays || 0, outletOverdueAmount(outlet),
+                        approver.id, approver.name, existing[0].id]
                 );
                 ids.push(existing[0].id);
                 continue;
@@ -269,14 +298,14 @@ export default class OverdueSaleRequestModel {
                 `INSERT INTO overdue_sale_requests (
                     staff_id, sale_date, outlet_id, outlet_erp_id, outlet_name, max_overdue_days,
                     overdue_details, sales_summary, sales_payload, request_note, requested_by_role, requested_by_id, requested_by_name,
-                    status, overdue_amount, approval_level
-                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?)`,
+                    status, overdue_amount, approval_level, assigned_approver_id, assigned_approver_name
+                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?)`,
                 [
                     staffId, saleDate, outlet.outletId, outlet.outletErpId || '', outlet.outletName || null,
                     outlet.maxOverdueDays || 0, JSON.stringify(outlet.credits || []),
                     JSON.stringify(summary), JSON.stringify(payload), note,
                     requester.role, requester.id || null, requester.name || null,
-                    outletOverdueAmount(outlet), ADMIN_APPROVAL_LEVEL,
+                    outletOverdueAmount(outlet), level, approver.id, approver.name,
                 ]
             );
             ids.push(result.insertId);
@@ -334,7 +363,8 @@ export default class OverdueSaleRequestModel {
 
     // requestedBy limits the list to one user's own requests (non-admin users);
     // approvalLevels limits it to what an approver can review.
-    static async list({ status = 'pending', limit = 200, requestedBy = null, approvalLevels = null } = {}) {
+    // assignedApproverId adds the requests routed to that login by an approver tier.
+    static async list({ status = 'pending', limit = 200, requestedBy = null, approvalLevels = null, assignedApproverId = null } = {}) {
         const params = [];
         const conditions = [];
         if (status === 'open') {
@@ -351,10 +381,21 @@ export default class OverdueSaleRequestModel {
             conditions.push('r.requested_by_role = ? AND r.requested_by_id = ?');
             params.push(requestedBy.role, requestedBy.id);
         }
-        const levelClause = approvalLevels ? `r.approval_level IN (${approvalLevels.map(() => '?').join(', ')})` : '';
-        if (approvalLevels) {
+        const levelParts = [];
+        const levelParams = [];
+        if (approvalLevels?.length) {
+            levelParts.push(`r.approval_level IN (${approvalLevels.map(() => '?').join(', ')})`);
+            levelParams.push(...approvalLevels);
+        }
+        if (assignedApproverId) {
+            levelParts.push(`(r.approval_level IN (${ASSIGNED_LEVELS.map(() => '?').join(', ')}) AND r.assigned_approver_id = ?)`);
+            levelParams.push(...ASSIGNED_LEVELS, assignedApproverId);
+        }
+        const approverScope = Boolean(approvalLevels || assignedApproverId);
+        const levelClause = approverScope ? (levelParts.length ? `(${levelParts.join(' OR ')})` : '1 = 0') : '';
+        if (approverScope) {
             conditions.push(levelClause);
-            params.push(...approvalLevels);
+            params.push(...levelParams);
         }
         const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
         const safeLimit = Math.min(Math.max(Number(limit) || 200, 1), 500);
@@ -370,8 +411,8 @@ export default class OverdueSaleRequestModel {
                     SUM(r.self_approved = 2) AS own_permission
              FROM overdue_sale_requests r
              ${requestedBy ? 'WHERE r.requested_by_role = ? AND r.requested_by_id = ?' : ''}
-             ${approvalLevels ? `WHERE ${levelClause}` : ''}`,
-            [...(requestedBy ? [requestedBy.role, requestedBy.id] : []), ...(approvalLevels || [])]
+             ${approverScope ? `WHERE ${levelClause}` : ''}`,
+            [...(requestedBy ? [requestedBy.role, requestedBy.id] : []), ...(approverScope ? levelParams : [])]
         );
         return {
             requests: rows.map(mapRequest),

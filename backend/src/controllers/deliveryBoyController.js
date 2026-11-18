@@ -2,7 +2,7 @@ import DeliveryBoyModel from '../models/deliveryBoyModel.js';
 import StaffModel from '../models/staffModel.js';
 import DeliveryCollectionModel from '../models/deliveryCollectionModel.js';
 import MaterialReportModel from '../models/materialReportModel.js';
-import { DMS_PERMISSION_KEYS, PERMISSION_KEYS, PERMISSION_REQUIRES, overdueRangeFor, readOverdueRange } from '../utils/permissionKeys.js';
+import { DMS_PERMISSION_KEYS, PERMISSION_KEYS, PERMISSION_REQUIRES, approverRuleFromRow, overdueRangeFor, readApproverRule, readOverdueRange } from '../utils/permissionKeys.js';
 import CompanyModel from '../models/companyModel.js';
 import {
     validateRequiredText,
@@ -263,6 +263,8 @@ export const getPermissionUsers = async (req, res) => {
                 permissions: PERMISSION_KEYS.filter((key) => Boolean(user[`can_${key}`])),
                 overdueRange: user.overdue_from_days ? { from: user.overdue_from_days, to: user.overdue_to_days } : null,
             }),
+            // Overdue approver tier: { from, to, maxAmount, approverId, approverName }, or null when off.
+            overdueApprover: approverRuleFromRow(user),
         })));
     } catch (error) {
         console.error('Error fetching permission users:', error);
@@ -296,11 +298,27 @@ export const updatePermissionUser = async (req, res) => {
         }
         // The overdue range replaces the old two options; it needs Add Sales.
         const overdueRange = normalizedPermissions.includes('add_sales') ? readOverdueRange(req.body?.overdueRange) : null;
+        // Approver tier: outside the own range, these days + bills below the limit go to the chosen
+        // approver instead of Admin. The approver must be another active login with Overdue Approval.
+        const approverRule = normalizedPermissions.includes('add_sales') ? readApproverRule(req.body?.overdueApprover) : null;
+        if (approverRule) {
+            if (approverRule.approverId === deliveryBoyId) {
+                return res.status(400).json({ error: 'Approver tier: a user cannot approve their own requests. Choose someone else.' });
+            }
+            const approver = await DeliveryBoyModel.getCurrentPermissions(approverRule.approverId);
+            if (!approver?.isActive || !approver.permissions.includes('overdue_approval')) {
+                return res.status(400).json({ error: 'Approver tier: the approver must be an active login with the Overdue Approval permission.' });
+            }
+            if (overdueRange && overdueRange.to == null && approverRule.from >= overdueRange.from) {
+                return res.status(400).json({ error: 'Approver tier: the own-reason range has no upper limit, so it already covers these days. Set a To day on the own-reason range first.' });
+            }
+        }
         const saved = overdueRange
             ? normalizedPermissions.filter((key) => !['overdue_7_days', 'overdue_own_permission'].includes(key))
             : normalizedPermissions;
         await DeliveryBoyModel.setPermissions(deliveryBoyId, saved);
         await DeliveryBoyModel.setOverdueRange(deliveryBoyId, overdueRange);
+        await DeliveryBoyModel.setApproverRule(deliveryBoyId, approverRule);
         return res.status(200).json({ message: 'Permissions updated successfully.' });
     } catch (error) {
         if (error.statusCode === 400) return res.status(400).json({ error: error.message });

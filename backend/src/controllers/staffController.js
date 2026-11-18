@@ -134,7 +134,7 @@ import DeliveryCollectionModel from '../models/deliveryCollectionModel.js';
 import ExpiryListModel from '../models/expiryListModel.js';
 import DamageListModel from '../models/damageListModel.js';
 import OverdueSaleRequestModel, { cleanSaleForRequest, getOverdueOutlets, salesMatchApproval, SELF_APPROVE_OVERDUE_DAYS } from '../models/overdueSaleRequestModel.js';
-import { overdueRangeFor, rangeCovers, rangeText } from '../utils/permissionKeys.js';
+import { approvalRouteFor, overdueRangeFor, rangeCovers, rangeText } from '../utils/permissionKeys.js';
 import SuspenseRequestModel from '../models/suspenseRequestModel.js';
 import { getRequester } from './overdueSaleRequestController.js';
 import OtherDaySaleRequestModel, { getOtherDayOutlets } from '../models/otherDaySaleRequestModel.js';
@@ -1849,6 +1849,16 @@ export const recordSales = async (req, res) => {
         const inRange = (outlet) => rangeCovers(ownRange, Number(outlet.maxOverdueDays));
         let ownApprovedOutlets = [];
         let ownApproval = null;
+        // Approver tier (Permissions page): shows Add Sales who each outlet's request will go to.
+        // The send endpoints work it out again; this is only for the screen.
+        const approverRule = isAdmin ? null : req.user?.overdueApproverRule || null;
+        const withApprovalRoute = (outlets) => outlets.map((outlet) => {
+            const bill = Math.round(sales
+                .filter((sale) => Number(sale?.outletId) === Number(outlet.outletId))
+                .reduce((total, sale) => total + (Number(sale?.price) || 0), 0) * 100) / 100;
+            const route = approvalRouteFor(approverRule, outlet.maxOverdueDays, bill);
+            return { ...outlet, billAmount: bill, approvalTo: route.to, approverName: route.approverName || null };
+        });
 
         // 14 days or more overdue: the invoice can't be billed. The user cancels it or sends it for
         // approval, unless Admin already approved this exact sale or the user has the own permission.
@@ -1876,7 +1886,7 @@ export const recordSales = async (req, res) => {
                 return res.status(409).json({
                     code: 'OVERDUE_CANCEL_REQUIRED',
                     error: `Credit is overdue by more than ${SELF_APPROVE_OVERDUE_DAYS} days, so this invoice cannot be billed.`,
-                    overdueOutlets: blocked,
+                    overdueOutlets: withApprovalRoute(blocked),
                     canOwnPermission: canOwnPermitOverdue,
                 });
             }
@@ -1962,14 +1972,14 @@ export const recordSales = async (req, res) => {
                             ? 'One or more outlets have credit overdue by more than 3 days. Permission is required to add sales.'
                             : beyondSelfLimit
                                 ? `Your overdue permission covers ${rangeText(ownRange)} only. `
-                                    + 'Send a request to admin for the outlets outside it and add the sales after it is approved. '
+                                    + 'Send a request for approval for the outlets outside it and add the sales after it is approved. '
                                     + 'Outlets inside your range only need your reason.'
                                 : 'One or more outlets have credit overdue by more than 3 days. Send a request to admin and add the sales after it is approved.',
                         // With the permission, only the outlets beyond the limit go to admin;
                         // the rest are added with a reason on the next save.
-                        overdueOutlets: beyondSelfLimit
+                        overdueOutlets: withApprovalRoute(beyondSelfLimit
                             ? missing.filter((outlet) => !inRange(outlet))
-                            : overdueOutlets.filter((outlet) => !ownApprovedIds.has(outlet.outletId)),
+                            : overdueOutlets.filter((outlet) => !ownApprovedIds.has(outlet.outletId))),
                         requests,
                     });
                 }

@@ -1,6 +1,10 @@
 import DeliveryBoyModel from '../models/deliveryBoyModel.js';
 import StaffModel from '../models/staffModel.js';
-import OverdueSaleRequestModel, { ADMIN_APPROVAL_LEVEL, cleanSaleForRequest, getOverdueOutlets, SELF_APPROVE_OVERDUE_DAYS } from '../models/overdueSaleRequestModel.js';
+import OverdueSaleRequestModel, {
+    ADMIN_APPROVAL_LEVEL, ASSIGNED_ADD_APPROVAL_LEVEL, ASSIGNED_APPROVAL_LEVEL, ASSIGNED_LEVELS,
+    cleanSaleForRequest, getOverdueOutlets, SELF_APPROVE_OVERDUE_DAYS, summarizeSales,
+} from '../models/overdueSaleRequestModel.js';
+import { approvalRouteFor } from '../utils/permissionKeys.js';
 
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 const STATUSES = ['awaiting_staff', 'pending', 'approved', 'rejected', 'used', 'open', 'self_approved', 'own_permission', 'all'];
@@ -10,8 +14,29 @@ const approvalLevelsFor = (user) => {
     if (user?.role === 'bawarchee_staff' && user.bawarcheeRole === 'manager') return ['up_to_2000'];
     return user?.permissions?.includes('overdue_approval') ? ['up_to_1000'] : [];
 };
+// The Packaging Staff / Delivery Boy login id, for requests routed to them by an approver tier.
+const assignedApproverIdOf = (user) => (['packaging_staff', 'delivery_boy'].includes(user?.role)
+    ? Number(user.deliveryBoyId || user.id) || null
+    : null);
 const canReviewRequest = (user, request) => user?.role === 'admin'
-    || (Boolean(request.approval_level) && approvalLevelsFor(user).includes(request.approval_level));
+    || (ASSIGNED_LEVELS.includes(request.approval_level)
+        ? Boolean(assignedApproverIdOf(user)) && Number(request.assigned_approver_id) === assignedApproverIdOf(user)
+        : Boolean(request.approval_level) && approvalLevelsFor(user).includes(request.approval_level));
+
+// Who approves each outlet, from the requester's approver tier (Permissions page): overdue days inside
+// the tier AND that outlet's bill below the limit -> the chosen approver; anything else -> Admin.
+const routesFor = (user, outlets, salesPayloadByOutlet) => {
+    const rule = user?.role === 'admin' ? null : user?.overdueApproverRule || null;
+    return Object.fromEntries(outlets.map((outlet) => {
+        const bill = summarizeSales(salesPayloadByOutlet[outlet.outletId]?.sales || []).totalAmount;
+        return [outlet.outletId, approvalRouteFor(rule, outlet.maxOverdueDays, bill)];
+    }));
+};
+// "Sent to Ravi for approval." / "Sent to admin for approval." / both, when the outlets split.
+const sentMessage = (routes) => {
+    const names = [...new Set(Object.values(routes).map((route) => (route.to === 'approver' ? route.approverName : 'admin')))];
+    return `Sent to ${names.join(' and ')} for approval.`;
+};
 
 const parseOutletIds = (value) => {
     const list = Array.isArray(value) ? value : String(value || '').split(',');
@@ -88,15 +113,18 @@ export const createOverdueRequest = async (req, res) => {
             return res.status(400).json({ error: 'Enter the invoice before sending the request.' });
         }
 
+        const requestedOutlets = overdueOutlets.filter((outlet) => salesPayloadByOutlet[outlet.outletId]);
+        const routeByOutlet = routesFor(req.user, requestedOutlets, salesPayloadByOutlet);
         const requests = await OverdueSaleRequestModel.createRequests({
             staffId,
             saleDate,
-            overdueOutlets: overdueOutlets.filter((outlet) => salesPayloadByOutlet[outlet.outletId]),
+            overdueOutlets: requestedOutlets,
             note,
             salesPayloadByOutlet,
             requester: await getRequester(req.user),
+            routeByOutlet,
         });
-        res.status(201).json({ message: 'Request sent to admin for approval.', requests });
+        res.status(201).json({ message: sentMessage(routeByOutlet), requests });
     } catch (error) {
         console.error('Error creating overdue sale request:', error);
         res.status(500).json({ error: 'Unable to send the request. Please try again.' });
@@ -145,7 +173,7 @@ export const sendToAdmin = async (req, res) => {
         // Already with another approver, or approved: leave it there rather than have two open requests.
         const latest = await OverdueSaleRequestModel.getLatestForSale({ staffId, saleDate, outletIds });
         const taken = latest.find((request) => request.status === 'approved'
-            || (request.status === 'pending' && request.approval_level !== ADMIN_APPROVAL_LEVEL));
+            || (request.status === 'pending' && ![ADMIN_APPROVAL_LEVEL, ASSIGNED_APPROVAL_LEVEL].includes(request.approval_level)));
         if (taken) {
             return res.status(409).json({
                 error: taken.status === 'approved'
@@ -154,6 +182,7 @@ export const sendToAdmin = async (req, res) => {
             });
         }
 
+        const routeByOutlet = routesFor(req.user, overdue, salesPayloadByOutlet);
         const requests = await OverdueSaleRequestModel.createForAdmin({
             staffId,
             saleDate,
@@ -161,8 +190,9 @@ export const sendToAdmin = async (req, res) => {
             note,
             salesPayloadByOutlet,
             requester: await getRequester(req.user),
+            routeByOutlet,
         });
-        return res.status(201).json({ message: 'Sent to admin for approval.', requests });
+        return res.status(201).json({ message: sentMessage(routeByOutlet), requests });
     } catch (error) {
         console.error('Error sending overdue request to admin:', error);
         return res.status(500).json({ error: 'Unable to send this to admin.' });
@@ -252,8 +282,9 @@ export const listOverdueRequests = async (req, res) => {
         const status = STATUSES.includes(req.query.status) ? req.query.status : 'pending';
         if (req.query.scope === 'approver' && req.user?.role !== 'admin') {
             const approvalLevels = approvalLevelsFor(req.user);
-            if (!approvalLevels.length) return res.status(403).json({ error: 'You do not review overdue requests.' });
-            return res.json(await OverdueSaleRequestModel.list({ status, limit: req.query.limit, approvalLevels }));
+            const assignedApproverId = assignedApproverIdOf(req.user);
+            if (!approvalLevels.length && !assignedApproverId) return res.status(403).json({ error: 'You do not review overdue requests.' });
+            return res.json(await OverdueSaleRequestModel.list({ status, limit: req.query.limit, approvalLevels, assignedApproverId }));
         }
         let requestedBy = null;
         if (req.user?.role !== 'admin') {
@@ -422,7 +453,9 @@ export const reviewOverdueRequest = async (req, res) => {
         if (!updated) return res.status(409).json({ error: 'This request has already been reviewed.' });
         let [request] = await OverdueSaleRequestModel.getByIds([id]);
         // 14+ day requests (from marketing staff or sent straight to Admin) always create the sale on approval.
-        if (action === 'approve' && existing.status !== 'awaiting_staff' && (req.body.createSales === true || existing.approval_level)) {
+        // 'assigned_add' (up to 13 days, approver tier) works like an admin approval: the user adds the sale.
+        const createsOnApproval = Boolean(existing.approval_level) && existing.approval_level !== ASSIGNED_ADD_APPROVAL_LEVEL;
+        if (action === 'approve' && existing.status !== 'awaiting_staff' && (req.body.createSales === true || createsOnApproval)) {
             const result = await createSalesFromRequest(request);
             [request] = await OverdueSaleRequestModel.getByIds([id]);
             return res.json({
@@ -435,7 +468,7 @@ export const reviewOverdueRequest = async (req, res) => {
             });
         }
         // Marking it rejected above is what stops a second reject from cancelling the invoices twice.
-        if (action === 'reject' && (existing.approval_level || existing.marketing_staff_id)) {
+        if (action === 'reject' && (createsOnApproval || existing.marketing_staff_id)) {
             const result = await cancelSalesFromRequest(request, reviewer.name, note);
             const moved = result.cancelled.length
                 ? `Request rejected. Invoice ${result.cancelled.join(', ')} moved to Delivered -> Cancelled Items.`

@@ -2,7 +2,7 @@ import { resolveGoogleMapsCoordinates } from '../utils/googleMapsLocation.js';
 import db from '../config/db.js';
 import { actorParams } from '../utils/requestContext.js';
 import bcrypt from 'bcryptjs';
-import { PERMISSION_KEYS, permissionColumnsSql, permissionsFromRow } from '../utils/permissionKeys.js';
+import { PERMISSION_KEYS, approverRuleFromRow, permissionColumnsSql, permissionsFromRow } from '../utils/permissionKeys.js';
 import {
     decryptDeliveryPasscode,
     encryptDeliveryPasscode,
@@ -159,9 +159,12 @@ class DeliveryBoyModel {
             `SELECT db.id, db.name, db.role, db.is_active, db.delivery_login_id,
                     db.delivery_passcode, db.delivery_passcode_hash,
                     p.overdue_from_days, p.overdue_to_days,
+                    p.approver_from_days, p.approver_to_days, p.approver_max_amount, p.approver_delivery_boy_id,
+                    approver.name AS approver_name,
                     ${permissionColumnsSql()}
              FROM delivery_boys db
              LEFT JOIN delivery_user_permissions p ON p.delivery_boy_id = db.id
+             LEFT JOIN delivery_boys approver ON approver.id = p.approver_delivery_boy_id
              WHERE db.is_active = 1
              ORDER BY db.role, db.name`
         );
@@ -189,6 +192,16 @@ class DeliveryBoyModel {
         );
     }
 
+    // Overdue approver tier (null = off: everything outside the own range goes to Admin).
+    static async setApproverRule(deliveryBoyId, rule) {
+        await db.execute(
+            `UPDATE delivery_user_permissions
+             SET approver_from_days = ?, approver_to_days = ?, approver_max_amount = ?, approver_delivery_boy_id = ?
+             WHERE delivery_boy_id = ?`,
+            [rule ? rule.from : null, rule ? rule.to : null, rule ? rule.maxAmount : null, rule ? rule.approverId : null, deliveryBoyId]
+        );
+    }
+
     static async setPermissions(deliveryBoyId, permissions) {
         const columns = PERMISSION_KEYS.map((key) => `can_${key}`);
         await db.execute(
@@ -207,9 +220,12 @@ class DeliveryBoyModel {
                     (SELECT GROUP_CONCAT(dbc.company_id ORDER BY dbc.company_id)
                      FROM delivery_boy_companies dbc WHERE dbc.delivery_boy_id = db.id) AS company_ids,
                     p.overdue_from_days, p.overdue_to_days,
+                    p.approver_from_days, p.approver_to_days, p.approver_max_amount, p.approver_delivery_boy_id,
+                    approver.name AS approver_name,
                     ${permissionColumnsSql()}
              FROM delivery_boys db
              LEFT JOIN delivery_user_permissions p ON p.delivery_boy_id = db.id
+             LEFT JOIN delivery_boys approver ON approver.id = p.approver_delivery_boy_id
              WHERE db.id = ?
              LIMIT 1`,
             [deliveryBoyId]
@@ -222,7 +238,13 @@ class DeliveryBoyModel {
         const overdueRange = rows[0].overdue_from_days
             ? { from: Number(rows[0].overdue_from_days), to: rows[0].overdue_to_days == null ? null : Number(rows[0].overdue_to_days) }
             : null;
-        return { isActive: Number(rows[0].is_active) === 1, permissions: permissionsFromRow(rows[0]), companyIds, overdueRange };
+        return {
+            isActive: Number(rows[0].is_active) === 1,
+            permissions: permissionsFromRow(rows[0]),
+            companyIds,
+            overdueRange,
+            approverRule: approverRuleFromRow(rows[0]),
+        };
     }
 
     static async update(id, name, contactNo, companyId = null, role = 'delivery_boy', aadharNo = null) {

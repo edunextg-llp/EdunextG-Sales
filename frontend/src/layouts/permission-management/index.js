@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Alert, Avatar, Card, Checkbox, Chip, CircularProgress, Dialog, DialogActions, DialogContent,
-  DialogTitle, Divider, Grid, InputAdornment, Switch,
+  DialogTitle, Divider, Grid, InputAdornment, MenuItem, Switch,
 } from "@mui/material";
 import Icon from "@mui/material/Icon";
 import DashboardLayout from "examples/LayoutContainers/DashboardLayout";
@@ -103,6 +103,21 @@ const RANGE_PRESETS = [
   { label: "14+ days", from: "14", to: "" },
   { label: "Any overdue", from: "1", to: "" },
 ];
+// Approver tier: outside the own-reason range, an outlet overdue inside From-To days whose bill is
+// below the amount limit goes to the chosen approver instead of Admin. Anything else goes to Admin.
+const APPROVER_OFF = { on: false, from: "", to: "", maxAmount: "", approverId: "" };
+const approverState = (rule) => (rule && Number(rule.from) > 0 && rule.approverId
+  ? {
+    on: true,
+    from: String(rule.from),
+    to: rule.to == null ? "" : String(rule.to),
+    maxAmount: rule.maxAmount == null ? "" : String(Number(rule.maxAmount)),
+    approverId: String(rule.approverId),
+  }
+  : APPROVER_OFF);
+const sameApprover = (a, b) => a.on === b.on && (!a.on || ["from", "to", "maxAmount", "approverId"]
+  .every((key) => String(a[key]) === String(b[key])));
+const rupees = (value) => `₹${Number(value).toLocaleString("en-IN", { maximumFractionDigits: 2 })}`;
 const SUB_OPTION_KEYS = Object.values(SUB_OPTIONS).flat();
 const LEGACY_OVERDUE_KEYS = ["overdue_7_days", "overdue_own_permission"];
 const PERMISSION_FOLDERS = [
@@ -150,6 +165,7 @@ function PermissionManagement() {
   const [confirmSaveOpen, setConfirmSaveOpen] = useState(false);
   const [pendingUserId, setPendingUserId] = useState(null);
   const [range, setRange] = useState(RANGE_OFF);
+  const [approverTier, setApproverTier] = useState(APPROVER_OFF);
 
   const loadUsers = useCallback(async () => {
     setLoading(true);
@@ -173,17 +189,34 @@ function PermissionManagement() {
   useEffect(() => {
     setPermissions(selectedUser?.permissions || []);
     setRange(rangeState(selectedUser?.overdueRange));
+    setApproverTier(approverState(selectedUser?.overdueApprover));
     setMessage("");
   }, [selectedId, users]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const dirty = Boolean(selectedUser) && (
     !sameSet(permissions, selectedUser.permissions || [])
     || !sameRange(range, rangeState(selectedUser.overdueRange))
+    || !sameApprover(approverTier, approverState(selectedUser.overdueApprover))
   );
   const rangeError = range.on && (
     !(Number(range.from) >= 1) ? "From day must be 1 or more."
       : range.to !== "" && Number(range.to) < Number(range.from) ? "To day must be the From day or more (empty = no limit)."
         : ""
+  );
+
+  // Who can approve: other active logins with the Overdue Approval permission (they see Approvals > Overdue Requests).
+  const approverOptions = useMemo(() => users.filter((user) => user.isActive !== false
+    && String(user.id) !== String(selectedId)
+    && (user.permissions || []).includes("overdue_approval")), [users, selectedId]);
+  const approverName = (id) => users.find((user) => String(user.id) === String(id))?.name || "";
+  const approverError = approverTier.on && (
+    !(Number(approverTier.from) >= 1) ? "Approver tier: From day must be 1 or more."
+      : approverTier.to !== "" && Number(approverTier.to) < Number(approverTier.from) ? "Approver tier: To day must be the From day or more (empty = no limit)."
+        : approverTier.maxAmount !== "" && !(Number(approverTier.maxAmount) > 0) ? "Approver tier: bill amount limit must be more than 0 (empty = any amount)."
+          : !approverTier.approverId ? "Approver tier: choose who approves."
+            : range.on && range.to === "" && Number(approverTier.from) >= Number(range.from)
+              ? "Approver tier: the own-reason range has no upper limit, so it already covers these days. Set its To day first."
+              : ""
   );
 
   const filteredUsers = useMemo(() => {
@@ -228,15 +261,24 @@ function PermissionManagement() {
   const resetChanges = () => {
     setPermissions(selectedUser?.permissions || []);
     setRange(rangeState(selectedUser?.overdueRange));
+    setApproverTier(approverState(selectedUser?.overdueApprover));
   };
 
   const savePermissions = async () => {
     if (!selectedUser) return;
     setConfirmSaveOpen(false);
-    if (rangeError) {
-      setError(rangeError);
+    if (rangeError || approverError) {
+      setError(rangeError || approverError);
       return;
     }
+    const overdueApprover = approverTier.on && permissions.includes("add_sales")
+      ? {
+        from: Number(approverTier.from),
+        to: approverTier.to === "" ? null : Number(approverTier.to),
+        maxAmount: approverTier.maxAmount === "" ? null : Number(approverTier.maxAmount),
+        approverId: Number(approverTier.approverId),
+      }
+      : null;
     const overdueRange = range.on && permissions.includes("add_sales")
       ? { from: Number(range.from), to: range.to === "" ? null : Number(range.to) }
       : null;
@@ -251,12 +293,19 @@ function PermissionManagement() {
       const response = await fetch(`${API}/delivery-boy/${selectedUser.id}/permissions`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ permissions: savedPermissions, overdueRange }),
+        body: JSON.stringify({ permissions: savedPermissions, overdueRange, overdueApprover }),
       });
       const data = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(data.error || "Unable to save permissions.");
       setUsers((current) => current.map((user) => (
-        user.id === selectedUser.id ? { ...user, permissions: savedPermissions, overdueRange } : user
+        user.id === selectedUser.id
+          ? {
+            ...user,
+            permissions: savedPermissions,
+            overdueRange,
+            overdueApprover: overdueApprover ? { ...overdueApprover, approverName: approverName(overdueApprover.approverId) } : null,
+          }
+          : user
       )));
       setMessage(`${selectedUser.name}'s permissions were saved. They apply the next time ${selectedUser.name} signs in.`);
     } catch (saveError) {
@@ -270,7 +319,107 @@ function PermissionManagement() {
   const grantedLabels = [
     ...[...PAGE_KEYS, ...SUB_OPTION_KEYS].filter((key) => permissions.includes(key)).map((key) => PERMISSION_MAP[key].label),
     ...(range.on && permissions.includes("add_sales") ? [rangeLabel(range)] : []),
+    ...(approverTier.on && permissions.includes("add_sales") && approverTier.approverId
+      ? [`Overdue ${approverTier.from}${approverTier.to ? `-${approverTier.to}` : "+"} days${approverTier.maxAmount ? ` below ${rupees(approverTier.maxAmount)}` : ""} → ${approverName(approverTier.approverId)}`]
+      : []),
   ];
+
+  // Turning the tier on starts it the day after the own-reason range ends.
+  const toggleApproverTier = () => setApproverTier((tier) => {
+    if (tier.on) return { ...tier, on: false };
+    const start = range.on && range.to !== "" ? String(Number(range.to) + 1) : tier.from || "1";
+    return { ...tier, on: true, from: tier.from || start };
+  });
+
+  const tierSummary = () => {
+    const days = `${approverTier.from || "?"}${approverTier.to ? `-${approverTier.to}` : "+"} days overdue`;
+    const bill = approverTier.maxAmount ? ` and bill below ${rupees(approverTier.maxAmount)}` : "";
+    const who = approverName(approverTier.approverId) || "the approver";
+    const rest = approverTier.to || approverTier.maxAmount
+      ? ` Anything else (${[approverTier.to && `more than ${approverTier.to} days`, approverTier.maxAmount && `bill ${rupees(approverTier.maxAmount)} or more`].filter(Boolean).join(", or ")}) goes to Admin.`
+      : "";
+    return `${days}${bill} → ${who} approves.${rest}`;
+  };
+
+  // Add Sales -> "Approver tier": days + bill limit + who approves, instead of Admin.
+  const renderApproverTier = () => (
+    <MDBox ml={3} mr={1} mb={1} px={1.25} py={1}
+      sx={{ borderRadius: "8px", borderLeft: "3px solid #6366f1", backgroundColor: "#eef2ff" }}>
+      <MDBox component="label" display="flex" alignItems="center" gap={1} sx={{ cursor: "pointer" }}>
+        <Icon fontSize="small" sx={{ color: "#4f46e5" }}>how_to_reg</Icon>
+        <MDBox flexGrow={1} minWidth={0}>
+          <MDTypography variant="button" fontWeight="medium" display="block">Approver tier (instead of Admin)</MDTypography>
+          <MDTypography variant="caption" color="text" display="block" sx={{ lineHeight: 1.35 }}>
+            Outside the own-reason range: outlets overdue by these days whose bill is below the limit go to the chosen approver. Both must match; anything else goes to Admin.
+          </MDTypography>
+        </MDBox>
+        <Switch checked={approverTier.on} onChange={toggleApproverTier}
+          inputProps={{ "aria-label": "Approver tier" }} />
+      </MDBox>
+      {approverTier.on && (
+        <MDBox mt={1.25}>
+          <MDBox display="flex" gap={1.5} alignItems="flex-start" flexWrap="wrap">
+            <MDInput
+              label="From day"
+              type="number"
+              size="small"
+              value={approverTier.from}
+              onChange={(e) => setApproverTier((t) => ({ ...t, from: e.target.value.replace(/\D/g, "") }))}
+              inputProps={{ min: 1 }}
+              sx={{ width: 110, backgroundColor: "#fff" }}
+            />
+            <MDInput
+              label="To day"
+              type="number"
+              size="small"
+              placeholder="No limit"
+              value={approverTier.to}
+              onChange={(e) => setApproverTier((t) => ({ ...t, to: e.target.value.replace(/\D/g, "") }))}
+              inputProps={{ min: 1 }}
+              InputLabelProps={{ shrink: true }}
+              sx={{ width: 120, backgroundColor: "#fff" }}
+            />
+            <MDInput
+              label="Bill below (₹)"
+              type="number"
+              size="small"
+              placeholder="Any amount"
+              value={approverTier.maxAmount}
+              onChange={(e) => setApproverTier((t) => ({ ...t, maxAmount: e.target.value.replace(/[^\d.]/g, "") }))}
+              inputProps={{ min: 1 }}
+              InputLabelProps={{ shrink: true }}
+              sx={{ width: 150, backgroundColor: "#fff" }}
+            />
+            <MDInput
+              select
+              label="Approver"
+              size="small"
+              value={approverTier.approverId}
+              onChange={(e) => setApproverTier((t) => ({ ...t, approverId: e.target.value }))}
+              InputLabelProps={{ shrink: true }}
+              SelectProps={{ displayEmpty: true }}
+              sx={{ minWidth: 200, backgroundColor: "#fff", "& .MuiSelect-select": { py: "8.5px" } }}
+            >
+              <MenuItem value="" disabled>
+                {approverOptions.length ? "Choose approver" : "No one has Overdue Approval"}
+              </MenuItem>
+              {approverOptions.map((user) => (
+                <MenuItem key={user.id} value={String(user.id)}>{user.name} · {roleLabel(user.role)}</MenuItem>
+              ))}
+            </MDInput>
+          </MDBox>
+          <MDTypography variant="caption" display="block" mt={0.75} sx={{ color: approverError ? "#b91c1c" : "#3730a3" }}>
+            {approverError || tierSummary()}
+          </MDTypography>
+          {!approverOptions.length && (
+            <MDTypography variant="caption" display="block" color="text">
+              Give someone the Approvals → Overdue Approval permission first; only they can be chosen here.
+            </MDTypography>
+          )}
+        </MDBox>
+      )}
+    </MDBox>
+  );
 
   // Add Sales -> "Overdue on own reason": switch on, then From day and To day (empty = no limit).
   const renderOverdueRange = () => (
@@ -369,6 +518,7 @@ function PermissionManagement() {
                   inputProps={{ "aria-label": PERMISSION_MAP[key].label }} />
               </MDBox>
               {key === "add_sales" && permissions.includes(key) && renderOverdueRange()}
+              {key === "add_sales" && permissions.includes(key) && renderApproverTier()}
               {permissions.includes(key) && (SUB_OPTIONS[key] || []).map((option) => (
                 <MDBox key={option} component="label" display="flex" alignItems="center" gap={1} ml={3} mr={1} mb={1} px={1.25} py={0.75}
                   sx={{ cursor: "pointer", borderRadius: "8px", borderLeft: "3px solid #f59e0b", backgroundColor: "#fffbeb" }}>

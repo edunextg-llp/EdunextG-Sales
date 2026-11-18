@@ -104,6 +104,49 @@ export const readOverdueRange = (value) => {
     return { from, to: toRaw };
 };
 
+// Overdue approver tier (Permissions page, under Add Sales): an outlet overdue inside from-to days
+// whose invoice for that outlet is below maxAmount goes to the chosen approver instead of Admin.
+// Both must hold; anything else goes to Admin. to = null: no upper day limit. maxAmount = null: any amount.
+// approverId is a Packaging Staff / Delivery Boy login that has the Overdue Approval permission.
+export const readApproverRule = (value) => {
+    if (!value) return null;
+    const bad = (message) => Object.assign(new Error(message), { statusCode: 400 });
+    const from = Number.parseInt(value.from, 10);
+    const toRaw = value.to === '' || value.to == null ? null : Number.parseInt(value.to, 10);
+    const amountRaw = value.maxAmount === '' || value.maxAmount == null ? null : Number(value.maxAmount);
+    const approverId = Number(value.approverId);
+    if (!Number.isInteger(from) || from < 1 || from > 3650) throw bad('Approver tier: the From day must be 1 or more.');
+    if (toRaw != null && (!Number.isInteger(toRaw) || toRaw < from || toRaw > 3650)) {
+        throw bad('Approver tier: the To day must be the From day or more (leave it empty for no limit).');
+    }
+    if (amountRaw != null && (!Number.isFinite(amountRaw) || amountRaw <= 0 || amountRaw > 100000000)) {
+        throw bad('Approver tier: the bill amount limit must be more than 0 (leave it empty for any amount).');
+    }
+    if (!Number.isInteger(approverId) || approverId <= 0) throw bad('Approver tier: choose who approves.');
+    return { from, to: toRaw, maxAmount: amountRaw == null ? null : Math.round(amountRaw * 100) / 100, approverId };
+};
+
+export const approverRuleFromRow = (row) => (row?.approver_from_days && row?.approver_delivery_boy_id
+    ? {
+        from: Number(row.approver_from_days),
+        to: row.approver_to_days == null ? null : Number(row.approver_to_days),
+        maxAmount: row.approver_max_amount == null ? null : Number(row.approver_max_amount),
+        approverId: Number(row.approver_delivery_boy_id),
+        approverName: row.approver_name || null,
+    }
+    : null);
+
+// Who approves one outlet: { to: 'approver', approverId, approverName } or { to: 'admin' }.
+// billAmount is the total of the invoice(s) for that outlet in this save.
+export const approvalRouteFor = (rule, overdueDays, billAmount) => {
+    const days = Number(overdueDays);
+    const amount = Number(billAmount) || 0;
+    if (rule && rangeCovers(rule, days) && (rule.maxAmount == null || amount < rule.maxAmount)) {
+        return { to: 'approver', approverId: rule.approverId, approverName: rule.approverName || 'the approver' };
+    }
+    return { to: 'admin' };
+};
+
 export const permissionsFromRow = (row) => PERMISSION_KEYS.filter((key) => Boolean(Number(row?.[`can_${key}`])));
 
 // Roles a Bawarchee Staff login can have. The role is a label plus a starting set

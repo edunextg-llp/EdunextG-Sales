@@ -511,6 +511,14 @@ export async function ensureSchema() {
             }
         }
 
+        // Overdue approver tier (Permissions page): outlets overdue inside approver_from-to days whose
+        // invoice is below approver_max_amount go to the chosen approver (approver_delivery_boy_id)
+        // instead of Admin. Everything else still goes to Admin.
+        await tryQuery(connection, 'ALTER TABLE delivery_user_permissions ADD COLUMN approver_from_days INT NULL', 'approver_from_days on delivery_user_permissions');
+        await tryQuery(connection, 'ALTER TABLE delivery_user_permissions ADD COLUMN approver_to_days INT NULL', 'approver_to_days on delivery_user_permissions');
+        await tryQuery(connection, 'ALTER TABLE delivery_user_permissions ADD COLUMN approver_max_amount DECIMAL(12, 2) NULL', 'approver_max_amount on delivery_user_permissions');
+        await tryQuery(connection, 'ALTER TABLE delivery_user_permissions ADD COLUMN approver_delivery_boy_id INT NULL', 'approver_delivery_boy_id on delivery_user_permissions');
+
         // DMS pages, D.B. Collection and Delivery Report got their own permissions.
         for (const [key, copyFrom] of NEW_PERMISSION_COLUMNS) {
             const [existing] = await connection.query(
@@ -2084,7 +2092,9 @@ export async function ensureSchema() {
             WHERE EXISTS (SELECT 1 FROM sale_payments sp WHERE sp.sale_id = ss.id)
         `);
 
-        // Older cancel flow reset delivery cancels to not_packing — keep them out of Packaging.
+        // Older cancel flow reset delivery cancels to not_packing. Only restore the cancelled
+        // state when cancellation is still the latest recorded status; a later Return entry
+        // must not be overwritten every time the API starts.
         await connection.query(`
             UPDATE staff_sales ss
             SET packaging_status = 'cancelled',
@@ -2094,7 +2104,14 @@ export async function ensureSchema() {
             WHERE ss.packaging_status IN ('not_packing', 'packing', 'packing_done')
               AND EXISTS (
                   SELECT 1 FROM staff_sale_status_history h
-                  WHERE h.sale_id = ss.id AND h.status = 'cancelled'
+                  WHERE h.sale_id = ss.id
+                    AND h.status = 'cancelled'
+                    AND NOT EXISTS (
+                        SELECT 1 FROM staff_sale_status_history newer
+                        WHERE newer.sale_id = h.sale_id
+                          AND (newer.changed_at > h.changed_at
+                               OR (newer.changed_at = h.changed_at AND newer.id > h.id))
+                    )
               )
         `);
 
@@ -2537,6 +2554,10 @@ export async function ensureSchema() {
         await tryQuery(connection, `ALTER TABLE overdue_sale_requests ADD COLUMN payment_days INT NULL`, 'Overdue request days to pay');
         await tryQuery(connection, `ALTER TABLE overdue_sale_requests ADD COLUMN staff_responded_at DATETIME NULL`, 'Overdue request staff response time');
         await tryQuery(connection, `ALTER TABLE overdue_sale_requests ADD INDEX idx_overdue_sale_requests_marketing (marketing_staff_id, status)`, 'Overdue request marketing staff index');
+        // approval_level 'assigned' / 'assigned_add': reviewed by this Packaging Staff / Delivery Boy login instead of Admin.
+        await tryQuery(connection, `ALTER TABLE overdue_sale_requests ADD COLUMN assigned_approver_id INT NULL`, 'Overdue request assigned approver');
+        await tryQuery(connection, `ALTER TABLE overdue_sale_requests ADD COLUMN assigned_approver_name VARCHAR(150) NULL`, 'Overdue request assigned approver name');
+        await tryQuery(connection, `ALTER TABLE overdue_sale_requests ADD INDEX idx_overdue_sale_requests_approver (assigned_approver_id, status)`, 'Overdue request assigned approver index');
         console.log('overdue_sale_requests table verified');
 
         // Add Sales users can bill only today's bit (outlets whose route day is today's weekday).
