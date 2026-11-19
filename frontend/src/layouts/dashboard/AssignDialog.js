@@ -41,8 +41,54 @@ const authHeaders = () => ({ Authorization: `Bearer ${localStorage.getItem("toke
 let rowSeq = 0;
 const newRow = () => {
   rowSeq += 1;
-  return { key: rowSeq, workDate: "", type: "", companyId: "", marketingStaffId: "", area: "", invoiceFile: null, assignTo: "", remarks: "" };
+  return {
+    key: rowSeq, workDate: "", type: "", companyId: "", marketingStaffId: "", area: "", invoiceFile: null, assignTo: "", remarks: "",
+    // Add Sales: the PDF is uploaded as soon as it is chosen and read to fill Company / Date / Marketing Person.
+    uploadedDocument: null, reading: false, readInfo: "",
+  };
 };
+
+// Signed direct upload to Cloudinary (the server rejects big files), returns the fields the server verifies.
+async function uploadInvoiceFile(file) {
+  const signatureResponse = await fetch(`${API}/staff/document-assignments/upload-signature`, {
+    method: "POST",
+    headers: { ...authHeaders(), "Content-Type": "application/json" },
+    body: JSON.stringify({ fileName: file.name, mimeType: file.type }),
+  });
+  const signature = await signatureResponse.json().catch(() => ({}));
+  if (!signatureResponse.ok) throw new Error(signature.error || "Unable to prepare the invoice upload.");
+  const cloudinaryForm = new FormData();
+  cloudinaryForm.append("file", file);
+  cloudinaryForm.append("api_key", signature.apiKey);
+  cloudinaryForm.append("timestamp", String(signature.timestamp));
+  cloudinaryForm.append("signature", signature.signature);
+  cloudinaryForm.append("folder", signature.folder);
+  cloudinaryForm.append("public_id", signature.public_id);
+  const cloudinaryResponse = await fetch(`https://api.cloudinary.com/v1_1/${signature.cloudName}/${signature.resourceType}/upload`, { method: "POST", body: cloudinaryForm });
+  const cloudinaryData = await cloudinaryResponse.json().catch(() => ({}));
+  if (!cloudinaryResponse.ok || !cloudinaryData.secure_url) throw new Error(cloudinaryData.error?.message || "Invoice upload failed. Please retry.");
+  return {
+    documentUrl: cloudinaryData.secure_url,
+    documentName: file.name,
+    uploadPublicId: signature.public_id,
+    uploadResourceType: signature.resourceType,
+    uploadTimestamp: String(signature.timestamp),
+    uploadSignature: signature.signature,
+  };
+}
+const isPdfFile = (file) => Boolean(file) && (file.type === "application/pdf" || /\.pdf$/i.test(file.name || ""));
+// Today in India (YYYY-MM-DD). Add Sales can be assigned for today and the next 2 days only.
+const todayIso = () => new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
+const ADD_SALES_FUTURE_DAYS = 2;
+const lastAddSalesDay = () => {
+  const date = new Date(`${todayIso()}T00:00:00Z`);
+  date.setUTCDate(date.getUTCDate() + ADD_SALES_FUTURE_DAYS);
+  return date.toISOString().slice(0, 10);
+};
+const outOfAddSalesRange = (value) => Boolean(value) && (value < todayIso() || value > lastAddSalesDay());
+const addSalesRangeText = () => `Add Sales can be assigned only from ${showIsoDate(todayIso())} to ${showIsoDate(lastAddSalesDay())}.`;
+const isPastForAddSales = (row) => row.type === "add_sales" && outOfAddSalesRange(row.workDate);
+const showIsoDate = (iso) => String(iso || "").split("-").reverse().join("-");
 
 // Assign To starts on this person. Whole-name match, so "Sandeep" or "Pradeep" is never picked.
 const DEFAULT_ASSIGNEE_NAME = "DEEP";
@@ -139,10 +185,10 @@ function AssignDialog({ open, onClose, companies }) {
     loadCompanyData(companyId);
   };
 
-  const handleMarketingChange = (key, marketingStaffId) => {
+  const handleMarketingChange = (key, marketingStaffId, knownCompanyId) => {
     // The area list depends on the marketing person.
     updateRow(key, { marketingStaffId, area: "" });
-    const companyId = rows.find((row) => row.key === key)?.companyId;
+    const companyId = knownCompanyId || rows.find((row) => row.key === key)?.companyId;
     const areaCacheKey = `${marketingStaffId}:${companyId}`;
     if (!marketingStaffId || Array.isArray(areasByStaff[areaCacheKey])) return;
     fetch(`${API}/staff/areas/staff/${marketingStaffId}`, { headers: authHeaders() })
@@ -164,6 +210,51 @@ function AssignDialog({ open, onClose, companies }) {
       });
   };
 
+  // Add Sales + PDF: upload now and read Company, invoice Date and Marketing Person (salesman) from it.
+  const readInvoice = async (key, file) => {
+    if (!isPdfFile(file)) return;
+    updateRow(key, { reading: true, readInfo: "", uploadedDocument: null });
+    try {
+      const uploadedDocument = await uploadInvoiceFile(file);
+      updateRow(key, { uploadedDocument });
+      const res = await fetch(`${API}/staff/document-assignments/read-invoice`, {
+        method: "POST",
+        headers: { ...authHeaders(), "Content-Type": "application/json" },
+        body: JSON.stringify(uploadedDocument),
+      });
+      const info = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(info.error || "The invoice PDF could not be read.");
+      if (info.pastDay) {
+        // Previous day Add Sales is not allowed: the upload is cancelled.
+        updateRow(key, { reading: false, readInfo: "", uploadedDocument: null, invoiceFile: null });
+        setMessage({ type: "error", text: info.error });
+        return;
+      }
+      if (!info.invoiceCount) {
+        updateRow(key, { reading: false, readInfo: "No invoice found in this PDF. Fill the details yourself." });
+        return;
+      }
+      const patch = { reading: false };
+      if (info.invoiceDate) patch.workDate = info.invoiceDate;
+      const companyId = info.companyId ? String(info.companyId) : "";
+      if (companyId) {
+        Object.assign(patch, { companyId, marketingStaffId: "", area: "", assignTo: "" });
+        loadCompanyData(companyId);
+      }
+      patch.readInfo = [
+        `${info.invoiceCount} invoice(s)`,
+        info.invoiceDate ? showIsoDate(info.invoiceDate) : "",
+        info.companyName || "",
+        info.marketingStaffName || (info.salesman ? `salesman "${info.salesman}" not matched` : ""),
+      ].filter(Boolean).join(" · ");
+      updateRow(key, patch);
+      if (companyId && info.marketingStaffId) handleMarketingChange(key, String(info.marketingStaffId), companyId);
+    } catch (error) {
+      updateRow(key, { reading: false, uploadedDocument: null, readInfo: "" });
+      setMessage({ type: "error", text: error.message || "The invoice PDF could not be read." });
+    }
+  };
+
   const addRow = () => setRows((prev) => [...prev, newRow()]);
   const removeRow = (key) => setRows((prev) => (prev.length > 1 ? prev.filter((r) => r.key !== key) : prev));
 
@@ -179,36 +270,23 @@ function AssignDialog({ open, onClose, companies }) {
       setMessage({ type: "error", text: `Row ${incomplete + 1}: please fill Date, Type, Company, Marketing Person, Area and Assign To.` });
       return;
     }
+    const pastRow = rows.findIndex(isPastForAddSales);
+    if (pastRow !== -1) {
+      setMessage({ type: "error", text: `Row ${pastRow + 1}: ${addSalesRangeText()}` });
+      return;
+    }
+    if (rows.some((r) => r.reading)) {
+      setMessage({ type: "error", text: "Wait until the invoice PDF has been read." });
+      return;
+    }
     setSaving(true);
     try {
       for (const row of rows) {
-        let uploadedDocument = null;
-        if (row.invoiceFile) {
-          const signatureResponse = await fetch(`${API}/staff/document-assignments/upload-signature`, {
-            method: "POST",
-            headers: { ...authHeaders(), "Content-Type": "application/json" },
-            body: JSON.stringify({ fileName: row.invoiceFile.name, mimeType: row.invoiceFile.type }),
-          });
-          const signature = await signatureResponse.json().catch(() => ({}));
-          if (!signatureResponse.ok) throw new Error(signature.error || "Unable to prepare the invoice upload.");
-          const cloudinaryForm = new FormData();
-          cloudinaryForm.append("file", row.invoiceFile);
-          cloudinaryForm.append("api_key", signature.apiKey);
-          cloudinaryForm.append("timestamp", String(signature.timestamp));
-          cloudinaryForm.append("signature", signature.signature);
-          cloudinaryForm.append("folder", signature.folder);
-          cloudinaryForm.append("public_id", signature.public_id);
-          const cloudinaryResponse = await fetch(`https://api.cloudinary.com/v1_1/${signature.cloudName}/${signature.resourceType}/upload`, { method: "POST", body: cloudinaryForm });
-          const cloudinaryData = await cloudinaryResponse.json().catch(() => ({}));
-          if (!cloudinaryResponse.ok || !cloudinaryData.secure_url) throw new Error(cloudinaryData.error?.message || "Invoice upload failed. Please retry.");
-          uploadedDocument = {
-            documentUrl: cloudinaryData.secure_url,
-            documentName: row.invoiceFile.name,
-            uploadPublicId: signature.public_id,
-            uploadResourceType: signature.resourceType,
-            uploadTimestamp: String(signature.timestamp),
-            uploadSignature: signature.signature,
-          };
+        let uploadedDocument = row.uploadedDocument || null;
+        // The server accepts an upload signature for one hour: upload again when it is older.
+        if (uploadedDocument && Date.now() / 1000 - Number(uploadedDocument.uploadTimestamp) > 50 * 60) uploadedDocument = null;
+        if (row.invoiceFile && !uploadedDocument) {
+          uploadedDocument = await uploadInvoiceFile(row.invoiceFile);
         }
         const form = new FormData();
         form.append("workDate", row.workDate);
@@ -259,12 +337,25 @@ function AssignDialog({ open, onClose, companies }) {
                 const marketingStaff = staffByCompany.all || [];
                 return (
                   <TableRow key={row.key}>
-                    <TableCell sx={cellSx}><input aria-label="Assignment date" type="date" value={row.workDate} onChange={(e) => updateRow(row.key, { workDate: e.target.value })} style={{ height: 36, border: "1px solid #c8cdd2", borderRadius: 4, padding: "0 8px" }} /></TableCell>
+                    <TableCell sx={cellSx}><input aria-label="Assignment date" type="date" value={row.workDate} min={row.type === "add_sales" ? todayIso() : undefined} max={row.type === "add_sales" ? lastAddSalesDay() : undefined} onChange={(e) => {
+                      const value = e.target.value;
+                      // A typed date can skip the calendar's limit: Add Sales takes today + 2 days only.
+                      if (row.type === "add_sales" && outOfAddSalesRange(value)) {
+                        setMessage({ type: "error", text: addSalesRangeText() });
+                        return;
+                      }
+                      updateRow(row.key, { workDate: value });
+                    }} style={{ height: 36, border: "1px solid #c8cdd2", borderRadius: 4, padding: "0 8px" }} /></TableCell>
                     <TableCell sx={cellSx}>
                       <Select
                         value={row.type}
                         displayEmpty
-                        onChange={(e) => updateRow(row.key, { type: e.target.value })}
+                        onChange={(e) => {
+                          // Switching to Add Sales clears a date outside today + 2 days.
+                          const pastDate = e.target.value === "add_sales" && outOfAddSalesRange(row.workDate);
+                          updateRow(row.key, { type: e.target.value, ...(pastDate ? { workDate: "" } : {}) });
+                          if (e.target.value === "add_sales" && row.invoiceFile && !row.uploadedDocument && !row.reading) readInvoice(row.key, row.invoiceFile);
+                        }}
                         sx={selectSx}
                       >
                         <MenuItem value="" disabled>Select type</MenuItem>
@@ -338,13 +429,23 @@ function AssignDialog({ open, onClose, companies }) {
                               e.target.value = "";
                               return;
                             }
-                            updateRow(row.key, { invoiceFile: file });
+                            updateRow(row.key, { invoiceFile: file, uploadedDocument: null, readInfo: "" });
+                            e.target.value = ""; // the same file can be chosen again after a cancelled upload
+                            if (file && row.type === "add_sales") readInvoice(row.key, file);
                           }}
                         />
                       </MDButton>
                       {row.invoiceFile && (
                         <MDTypography variant="caption" display="block" color="text" sx={{ mt: 0.5, maxWidth: 180, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                           {row.invoiceFile.name}
+                        </MDTypography>
+                      )}
+                      {row.reading && (
+                        <MDTypography variant="caption" display="block" color="info" sx={{ mt: 0.25 }}>Reading the PDF…</MDTypography>
+                      )}
+                      {!row.reading && row.readInfo && (
+                        <MDTypography variant="caption" display="block" sx={{ mt: 0.25, maxWidth: 200, color: "#0f766e", whiteSpace: "normal" }}>
+                          From PDF: {row.readInfo}
                         </MDTypography>
                       )}
                     </TableCell>

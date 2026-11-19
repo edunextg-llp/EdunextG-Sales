@@ -26,6 +26,9 @@ const byType = (staffHandler, deliveryHandler) => (req, res) =>
 
 router.use(verifyTokenMiddleware, resolveAssignee);
 router.get('/', byType(documentAssignments.listMine, documentAssignments.listDeliveryMine));
+// Auto Add Sales invoices waiting for this person's own-permission approval (other-day bit / overdue).
+router.get('/auto-sales-approvals', documentAssignments.listMyAutoSalesApprovals);
+router.post('/auto-sales-approvals', documentAssignments.decideMyAutoSalesApproval);
 router.put('/:id', byType(documentAssignments.updateMine, documentAssignments.updateDeliveryMine));
 router.get('/:id/link', byType(documentAssignments.fileLinks('staff'), documentAssignments.fileLinks('delivery_boy')));
 

@@ -113,6 +113,10 @@ export async function ensureSchema() {
         await tryQuery(connection, `ALTER TABLE document_assignments ADD COLUMN invoice_numbers JSON NULL`, 'invoice_numbers on document assignments');
         await tryQuery(connection, `ALTER TABLE document_assignments ADD COLUMN invoice_numbers_error VARCHAR(255) NULL`, 'invoice_numbers_error on document assignments');
         await tryQuery(connection, `ALTER TABLE document_assignments ADD COLUMN invoice_numbers_read_at DATETIME NULL`, 'invoice_numbers_read_at on document assignments');
+        // Auto Add Sales: each invoice's outlet / date / amount / no. of items read from the PDF,
+        // and what happened when its Add Sales entry was created (created / why not).
+        await tryQuery(connection, `ALTER TABLE document_assignments ADD COLUMN invoice_details JSON NULL`, 'invoice_details on document assignments');
+        await tryQuery(connection, `ALTER TABLE document_assignments ADD COLUMN auto_sales JSON NULL`, 'auto_sales on document assignments');
 
         await tryQuery(
             connection,

@@ -1,4 +1,5 @@
 // Report > Invoice Report.
+// "Add Sales" tasks from Dashboard > Assign show here as soon as the invoice PDF is uploaded.
 // Invoice PDFs uploaded on Dashboard > Assign are read for their invoice numbers (e.g.
 // IN-5125-554 counts as IN5125554). Each number is checked against Add Sales: created or
 // not, delivered / cancelled / returned / pending, and whether its payment is updated.
@@ -88,6 +89,16 @@ const SUMMARY_TILES = [
   ["paymentUpdated", "Payment updated", "payments", "#0369a1", "paid"],
 ];
 
+// Auto Add Sales result of an invoice not created yet.
+const AUTO_WAITING = ["needs_own", "waiting", "waiting_date"];
+const AUTO_LABEL = {
+  needs_own: "Waiting for own approval",
+  waiting: "Waiting for approval",
+  waiting_date: "Waiting for invoice date",
+  failed: "Not auto-created",
+  rejected: "Rejected",
+};
+
 const headSx = { fontWeight: 700, fontSize: "0.72rem", color: "#475569", backgroundColor: "#f8fafc", whiteSpace: "nowrap", py: 1 };
 const cellSx = { fontSize: "0.8rem", py: 0.75 };
 
@@ -172,8 +183,11 @@ function InvoiceReport() {
         <MDBox mb={2.5}>
           <MDTypography variant="h4" fontWeight="bold">Invoice Report</MDTypography>
           <MDTypography variant="button" color="text" fontWeight="regular">
-            Invoice numbers read from the PDFs uploaded on Dashboard &gt; Assign, checked against Add Sales:
-            created or not, delivered, cancelled, and payment updated.
+            Add Sales tasks from Dashboard &gt; Assign, as soon as the invoice PDF is uploaded. Invoice numbers
+            read from the PDF are checked against Add Sales: created or not, delivered, cancelled, and payment updated.
+            Invoices not in Add Sales yet are created automatically from the PDF (invoice no., date, outlet, amount,
+            no. of items) with the Add Sales rules: only today&apos;s invoice date, and another day&apos;s bit or overdue
+            credit needs approval (own permission in the assignee&apos;s portal, else a request). Not for SIL for now.
           </MDTypography>
         </MDBox>
 
@@ -241,7 +255,7 @@ function InvoiceReport() {
             </MDBox>
 
             {!assignments.length && (
-              <Alert severity="info">No invoice PDFs were uploaded on Dashboard &gt; Assign for these dates.</Alert>
+              <Alert severity="info">No Add Sales tasks with an invoice PDF were assigned for these dates.</Alert>
             )}
             {assignments.length > 0 && !shown.length && <Alert severity="info">No invoices match this filter.</Alert>}
 
@@ -270,6 +284,8 @@ function InvoiceReport() {
                       <Chip size="small" label={`${a.summary.delivered} delivered`} sx={{ backgroundColor: "#dcfce7", color: "#15803d" }} />
                       {a.summary.cancelled > 0 && <Chip size="small" label={`${a.summary.cancelled} cancelled`} sx={{ backgroundColor: "#fde2e2", color: "#991b1b" }} />}
                       <Chip size="small" label={`${a.summary.paymentUpdated} paid`} sx={{ backgroundColor: "#e0f2fe", color: "#0369a1" }} />
+                      {a.summary.autoCreated > 0 && <Chip size="small" label={`${a.summary.autoCreated} auto-created`} sx={{ backgroundColor: "#ede9fe", color: "#5b21b6" }} />}
+                      {a.autoSalesOff && <Chip size="small" variant="outlined" label="Auto Add Sales off for SIL" />}
                     </MDBox>
                     <Tooltip title="Open the PDF">
                       <IconButton size="small" onClick={() => openPdf(a)}><Icon>picture_as_pdf</Icon></IconButton>
@@ -314,6 +330,15 @@ function InvoiceReport() {
                                     <Chip size="small" label={inv.duplicates > 1 ? `Created (${inv.duplicates}x)` : "Created"} sx={{ backgroundColor: "#ccfbf1", color: "#0f766e", fontWeight: 700 }} />
                                   ) : (
                                     <Chip size="small" label="Not created" sx={{ backgroundColor: "#fee2e2", color: "#b91c1c", fontWeight: 700 }} />
+                                  )}
+                                  {inv.created && inv.autoCreated && (
+                                    <MDTypography variant="caption" display="block" sx={{ color: "#0f766e", fontWeight: 600 }}>Auto from PDF</MDTypography>
+                                  )}
+                                  {!inv.created && inv.autoError && (
+                                    <MDTypography variant="caption" display="block"
+                                      sx={{ color: AUTO_WAITING.includes(inv.autoStatus) ? "#b45309" : "#b91c1c", maxWidth: 240, whiteSpace: "normal" }}>
+                                      {AUTO_LABEL[inv.autoStatus] || "Auto Add Sales"}: {inv.autoError}
+                                    </MDTypography>
                                   )}
                                 </TableCell>
                                 <TableCell sx={cellSx}>{showDate(inv.saleDate)}</TableCell>

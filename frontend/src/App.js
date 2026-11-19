@@ -28,6 +28,7 @@ import createCache from "@emotion/cache";
 import routes from "routes";
 import ProtectedRoute from "components/ProtectedRoute";
 import MyDocumentAssignments from "components/MyDocumentAssignments";
+import AutoSalesApprovals from "components/AutoSalesApprovals";
 import MyPhysicalStockAssignments from "components/MyPhysicalStockAssignments";
 import SignIn from "layouts/authentication/sign-in";
 import LandingPage from "layouts/landing";
@@ -223,6 +224,7 @@ export default function App() {
             />
             <Configurator />
             <MyDocumentAssignments />
+            <AutoSalesApprovals />
             <MyPhysicalStockAssignments />
             {/* {configsButton} */}
           </>
@@ -286,6 +288,7 @@ export default function App() {
           />
           <Configurator />
           <MyDocumentAssignments />
+          <AutoSalesApprovals />
           <MyPhysicalStockAssignments />
           {/* {configsButton} */}
         </>

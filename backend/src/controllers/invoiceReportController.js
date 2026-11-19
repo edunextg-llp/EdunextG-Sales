@@ -1,6 +1,7 @@
 import db from '../config/db.js';
 import { cloudinaryFileLinks } from '../utils/cloudinary.js';
-import { invoiceMatchKey, invoiceNumbersFromPdf } from '../utils/pdfInvoiceNumbers.js';
+import { autoCreateSales, autoSalesOff } from '../services/autoAddSales.js';
+import { companyInvoiceNo, dropsInPrefix, invoiceDetailsFromPdf, invoiceNumbersFromPdf } from '../utils/pdfInvoiceNumbers.js';
 
 // Report > Invoice Report.
 // Every invoice PDF uploaded on Dashboard > Assign is read once for its invoice numbers
@@ -16,6 +17,13 @@ const sendError = (res, error, fallback) => {
     return res.status(error.statusCode || 500).json({ error: error.statusCode ? error.message : fallback });
 };
 const isPdf = (row) => /\.pdf$/i.test(String(row.document_name || '')) || /\.pdf(\?|$)/i.test(String(row.document_url || ''));
+const parseJson = (value) => {
+    try {
+        return typeof value === 'string' ? JSON.parse(value) : value ?? null;
+    } catch {
+        return null;
+    }
+};
 const parseList = (value) => {
     try {
         const list = typeof value === 'string' ? JSON.parse(value) : value;
@@ -31,24 +39,46 @@ async function readAssignment(row) {
         const { viewUrl } = cloudinaryFileLinks(row.document_url);
         const response = await fetch(viewUrl);
         if (!response.ok) throw new Error(`The PDF could not be downloaded (HTTP ${response.status}).`);
-        const numbers = await invoiceNumbersFromPdf(await response.arrayBuffer());
+        const buffer = await response.arrayBuffer();
+        // pdf.js takes over the buffer it reads, so each reader gets its own copy.
+        const numbers = await invoiceNumbersFromPdf(buffer.slice(0));
+        // Outlet / date / amount / no. of items per invoice, for Auto Add Sales.
+        const details = await invoiceDetailsFromPdf(buffer.slice(0)).catch((error) => {
+            console.error(`Invoice report: reading details of assignment ${row.id} failed:`, error);
+            return [];
+        });
         await db.query(
-            `UPDATE document_assignments SET invoice_numbers = ?, invoice_numbers_error = NULL, invoice_numbers_read_at = NOW() WHERE id = ?`,
-            [JSON.stringify(numbers), row.id]
+            `UPDATE document_assignments SET invoice_numbers = ?, invoice_details = ?, invoice_numbers_error = NULL, invoice_numbers_read_at = NOW() WHERE id = ?`,
+            [JSON.stringify(numbers), JSON.stringify(details), row.id]
         );
         return { numbers, error: null };
     } catch (error) {
         const message = String(error?.message || 'The PDF could not be read.').slice(0, 250);
         console.error(`Invoice report: reading assignment ${row.id} failed:`, error);
         await db.query(
-            `UPDATE document_assignments SET invoice_numbers = NULL, invoice_numbers_error = ?, invoice_numbers_read_at = NOW() WHERE id = ?`,
+            `UPDATE document_assignments SET invoice_numbers = NULL, invoice_details = NULL, invoice_numbers_error = ?, invoice_numbers_read_at = NOW() WHERE id = ?`,
             [message, row.id]
         );
         return { numbers: [], error: message };
     }
 }
 
-// Add Sales invoices for the given match keys (letters + digits, without a leading "IN").
+// Reads an assignment's PDF in the background (right after it is assigned), so the report
+// already has the invoice numbers, then runs Auto Add Sales for it.
+// Never throws; skips PDFs already read.
+export function readAssignmentInBackground(id) {
+    (async () => {
+        const [rows] = await db.query(
+            `SELECT id, document_url, document_name FROM document_assignments
+             WHERE id = ? AND document_url IS NOT NULL AND invoice_numbers IS NULL AND invoice_numbers_error IS NULL`,
+            [Number(id)]
+        );
+        if (rows[0] && isPdf(rows[0])) await readAssignment(rows[0]);
+        await autoCreateSales(id);
+    })().catch((error) => console.error(`Invoice report: background read of assignment ${id} failed:`, error));
+}
+
+// Add Sales invoices keyed by their saved number, normalized (letters + digits only).
 async function salesByKey(keys) {
     const map = new Map();
     if (!keys.length) return map;
@@ -60,7 +90,7 @@ async function salesByKey(keys) {
                    sc.outlet_name, s.name AS staff_name, c.name AS company_name,
                    COALESCE(sp.payment_count, 0) AS payment_count,
                    DATE_FORMAT(sp.last_payment_date, '%Y-%m-%d') AS last_payment_date,
-                   CASE WHEN k.norm REGEXP '^IN[0-9]' THEN SUBSTRING(k.norm, 3) ELSE k.norm END AS match_key
+                   k.norm AS match_key
             FROM staff_sales ss
             JOIN (SELECT id, REGEXP_REPLACE(UPPER(invoice_number), '[^A-Z0-9]', '') AS norm FROM staff_sales) k ON k.id = ss.id
             LEFT JOIN staff_counters sc ON sc.id = ss.outlet_id
@@ -119,10 +149,12 @@ const invoiceRow = (number, sales) => {
 };
 
 // GET /api/staff/invoice-report?from=YYYY-MM-DD&to=YYYY-MM-DD&companyId=
+// Only "Add Sales" assignments are reported, from the moment the invoice PDF is uploaded
+// (no need for the assignee to mark them Done). Cancelled tasks are left out.
 export const getInvoiceReport = async (req, res) => {
     try {
         const { from, to, companyId } = req.query;
-        const where = ['a.document_url IS NOT NULL'];
+        const where = ['a.document_url IS NOT NULL', "a.assignment_type = 'add_sales'", "a.status <> 'cancelled'"];
         const params = [];
         if (from) {
             if (!DATE.test(from)) return res.status(400).json({ error: 'From date is not valid.' });
@@ -141,6 +173,8 @@ export const getInvoiceReport = async (req, res) => {
         const [rows] = await db.query(
             `SELECT a.id, DATE_FORMAT(a.work_date, '%Y-%m-%d') AS work_date, a.assignment_type, a.company_id, a.area,
                     a.document_url, a.document_name, a.status, a.invoice_numbers, a.invoice_numbers_error,
+                    a.invoice_details IS NOT NULL AS has_details, a.marketing_staff_id,
+                    DATE_FORMAT(a.completed_at, '%Y-%m-%d %H:%i') AS completed_at,
                     c.name AS company_name, COALESCE(s.name, d.name) AS assignee_name, m.name AS marketing_staff_name
              FROM document_assignments a
              LEFT JOIN companies c ON c.id = a.company_id
@@ -158,17 +192,49 @@ export const getInvoiceReport = async (req, res) => {
         const read = new Map();
         for (const row of pdfRows) {
             const cached = parseList(row.invoice_numbers);
-            if (cached) read.set(row.id, { numbers: cached, error: null });
-            else if (row.invoice_numbers_error) read.set(row.id, { numbers: [], error: row.invoice_numbers_error });
+            // Read before Auto Add Sales existed (numbers only): read again for the invoice details.
+            const needsDetails = cached && !Number(row.has_details);
+            if (cached && !needsDetails) read.set(row.id, { numbers: cached, error: null });
+            else if (!cached && row.invoice_numbers_error) read.set(row.id, { numbers: [], error: row.invoice_numbers_error });
             else read.set(row.id, await readAssignment(row));
         }
 
-        const allKeys = [...new Set([...read.values()].flatMap((r) => r.numbers.map(invoiceMatchKey)).filter(Boolean))];
+        // Auto Add Sales (creates only the invoices not in Add Sales yet; the rules decide the rest).
+        for (const row of pdfRows) {
+            if (!read.get(row.id).error) {
+                await autoCreateSales(row.id).catch((error) => console.error(`Auto Add Sales: assignment ${row.id} failed:`, error));
+            }
+        }
+        const [autoRows] = pdfRows.length
+            ? await db.query('SELECT id, auto_sales FROM document_assignments WHERE id IN (?)', [pdfRows.map((row) => row.id)])
+            : [[]];
+        const autoOf = new Map(autoRows.map((row) => [row.id, parseJson(row.auto_sales) || {}]));
+
+        // EVEREST / EVEREST (NEEVAN): number without "IN" (an Add Sales entry typed with IN still matches).
+        // Other companies: the full number, IN included.
+        const companyOf = new Map(pdfRows.map((row) => [row.id, row.company_name]));
+        const lookupKeys = (number, companyName) => {
+            const value = companyInvoiceNo(number, companyName);
+            return dropsInPrefix(companyName) && /^\d/.test(value) ? [value, `IN${value}`] : [value];
+        };
+        const allKeys = [...new Set([...read.entries()].flatMap(([id, r]) => r.numbers.flatMap((n) => lookupKeys(n, companyOf.get(id)))).filter(Boolean))];
         const sales = await salesByKey(allKeys);
+        const salesFor = (number, companyName) => lookupKeys(number, companyName).flatMap((key) => sales.get(key) || []);
 
         const assignments = pdfRows.map((row) => {
             const { numbers, error } = read.get(row.id);
-            const invoices = numbers.map((number) => invoiceRow(number, sales.get(invoiceMatchKey(number))));
+            // Same number twice in a PDF (e.g. IN5784885 and 5784885 for EVEREST) is listed once.
+            const shownNumbers = [...new Set(numbers.map((number) => companyInvoiceNo(number, row.company_name)))];
+            const invoices = shownNumbers.map((number) => {
+                const matched = salesFor(number, row.company_name).sort((x, y) => y.id - x.id);
+                const auto = autoOf.get(row.id)?.[number];
+                return {
+                    ...invoiceRow(number, matched.length ? matched : null),
+                    autoCreated: auto?.status === 'created',
+                    autoStatus: auto?.status || null,
+                    autoError: auto && !['created', 'exists'].includes(auto.status) ? auto.reason : null,
+                };
+            });
             const count = (test) => invoices.filter(test).length;
             return {
                 id: row.id,
@@ -180,6 +246,8 @@ export const getInvoiceReport = async (req, res) => {
                 assigneeName: row.assignee_name,
                 marketingStaffName: row.marketing_staff_name,
                 assignmentStatus: row.status,
+                markedAt: row.completed_at,
+                autoSalesOff: autoSalesOff(row.company_name),
                 readError: error,
                 invoices,
                 summary: {
@@ -191,10 +259,14 @@ export const getInvoiceReport = async (req, res) => {
                     returned: count((i) => i.status === 'returned'),
                     pending: count((i) => i.created && !['delivered', 'cancelled', 'returned'].includes(i.status)),
                     paymentUpdated: count((i) => i.paymentUpdated),
+                    autoCreated: count((i) => i.autoCreated),
                 },
             };
         });
-        return res.json({ assignments, skippedNonPdf: rows.length - pdfRows.length });
+        return res.json({
+            assignments,
+            skippedNonPdf: rows.length - pdfRows.length,
+        });
     } catch (error) {
         return sendError(res, error, 'Unable to load the invoice report.');
     }
