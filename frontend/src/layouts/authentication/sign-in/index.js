@@ -1,23 +1,23 @@
+// Sign in: Tailwind CSS (no MUI). Captcha, email OTP step, remember me and the landing page per
+// role are unchanged.
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "context/AuthContext";
 
-// @mui material components
-import Switch from "@mui/material/Switch";
-import Grid from "@mui/material/Grid";
-import Icon from "@mui/material/Icon";
-import Alert from "@mui/material/Alert";
-import IconButton from "@mui/material/IconButton";
-import InputAdornment from "@mui/material/InputAdornment";
-
-// Material Dashboard 2 React components
-import MDBox from "components/MDBox";
-import MDTypography from "components/MDTypography";
-import MDInput from "components/MDInput";
-import MDButton from "components/MDButton";
-
-// Authentication layout components
+// PageLayout tells the app this is a full-screen page (no sidebar / top bar).
 import PageLayout from "examples/LayoutContainers/PageLayout";
+import { Icon } from "components/tw";
+
+const COMPANY_NAME = "Bawarchee Food Packaging";
+const inputClass = "h-11 w-full rounded-xl border border-slate-300 bg-white px-3.5 text-[14px] text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/15";
+const labelClass = "mb-1.5 block text-[12.5px] font-semibold text-slate-700";
+const primaryButton = "inline-flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-blue-600 text-[14px] font-semibold text-white shadow-[0_10px_24px_rgba(37,99,235,0.25)] transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60";
+
+const FEATURES = [
+  ["inventory_2", "Stock & outlets", "Purchase, stock and outlet routes in one place."],
+  ["local_shipping", "Sales & delivery", "Invoices, packing and delivery tracked live."],
+  ["payments", "Collections", "Cash, online, cheque and credit dues at a glance."],
+];
 
 function Basic() {
   const [rememberMe, setRememberMe] = useState(false);
@@ -245,359 +245,185 @@ function Basic() {
 
   return (
     <PageLayout background="white">
-      <Grid
-        container
-        sx={{
-          height: "100dvh",
-          minHeight: 0,
-          maxHeight: "100dvh",
-          m: 0,
-          overflow: "hidden",
-          backgroundColor: "#f8fafc",
-        }}
-      >
-        <Grid
-          item
-          xs={0}
-          md={6}
-          lg={6.5}
-          sx={{
-            display: { xs: "none", md: "flex" },
-            flexDirection: "column",
-            justifyContent: "space-between",
-            position: "relative",
-            overflow: "hidden",
-            p: { md: 4, lg: 5 },
-            color: "white",
-            background: "linear-gradient(145deg, #0f172a 0%, #172554 48%, #1d4ed8 100%)",
-          }}
-        >
-          <MDBox
-            sx={{
-              position: "absolute", width: 420, height: 420, borderRadius: "50%",
-              border: "1px solid rgba(255,255,255,0.13)", top: -150, right: -130,
-            }}
-          />
-          <MDBox
-            sx={{
-              position: "absolute", width: 300, height: 300, borderRadius: "50%",
-              background: "rgba(56,189,248,0.10)", bottom: -120, left: -80,
-            }}
-          />
+      <div className="grid min-h-dvh grid-cols-1 bg-slate-50 font-[Poppins,Roboto,sans-serif] lg:grid-cols-[1.1fr_1fr]">
+        {/* Brand panel */}
+        <aside className="relative hidden overflow-hidden bg-slate-950 p-10 text-white lg:flex lg:flex-col lg:justify-between xl:p-14">
+          <div className="pointer-events-none absolute inset-0 opacity-[0.07] [background-image:linear-gradient(#fff_1px,transparent_1px),linear-gradient(90deg,#fff_1px,transparent_1px)] [background-size:44px_44px]" />
+          <div className="pointer-events-none absolute -right-32 -top-32 size-[420px] rounded-full bg-blue-600/30 blur-3xl" />
+          <div className="pointer-events-none absolute -bottom-40 -left-24 size-[380px] rounded-full bg-sky-500/20 blur-3xl" />
 
-          <MDBox position="relative" zIndex={1} display="flex" alignItems="center" gap={1.5}>
-            <MDBox
-              width={44} height={44} borderRadius="12px" display="flex" alignItems="center"
-              justifyContent="center" sx={{ background: "rgba(255,255,255,0.14)", backdropFilter: "blur(8px)" }}
-            >
-              <MDTypography variant="h5" color="white" fontWeight="bold">E</MDTypography>
-            </MDBox>
-            <MDBox>
-              <MDTypography variant="h5" color="white" fontWeight="bold">EduNextG Sales</MDTypography>
-              <MDTypography variant="caption" sx={{ color: "rgba(255,255,255,0.68)" }}>
-                Business operations, connected
-              </MDTypography>
-            </MDBox>
-          </MDBox>
+          <div className="relative">
+            <p className="m-0 text-[12px] font-semibold uppercase tracking-[0.2em] text-blue-300">Sales ERP</p>
+            <p className="m-0 mt-1 text-[22px] font-bold">{COMPANY_NAME}</p>
+          </div>
 
-          <MDBox position="relative" zIndex={1} maxWidth={580} my={3}>
-            <MDTypography variant="h2" color="white" fontWeight="bold" lineHeight={1.15}>
-              Run every sales operation from one place.
-            </MDTypography>
-            <MDTypography variant="body1" mt={2} sx={{ color: "rgba(255,255,255,0.72)", lineHeight: 1.65 }}>
-              Keep stock, outlets, invoicing, delivery, collections, and reporting aligned with a secure workspace built for your team.
-            </MDTypography>
-            <Grid container spacing={1.5} mt={2}>
-              {["Role-based access", "Real-time operations", "Protected business data"].map((feature) => (
-                <Grid item xs={12} lg={6} key={feature}>
-                  <MDBox display="flex" alignItems="center" gap={1.2}>
-                    <MDBox
-                      width={28} height={28} borderRadius="50%" display="flex" alignItems="center"
-                      justifyContent="center" sx={{ background: "rgba(56,189,248,0.18)" }}
-                    >
-                      <Icon sx={{ color: "#7dd3fc", fontSize: "17px !important" }}>check</Icon>
-                    </MDBox>
-                    <MDTypography variant="button" color="white" fontWeight="medium">{feature}</MDTypography>
-                  </MDBox>
-                </Grid>
+          <div className="relative max-w-xl">
+            <h1 className="m-0 text-[40px] font-bold leading-[1.12] tracking-tight xl:text-[46px]">
+              Every sale, delivery and collection, <span className="text-blue-400">in one place.</span>
+            </h1>
+            <p className="m-0 mt-4 text-[15px] leading-relaxed text-slate-300">
+              A secure workspace for your team to keep stock, outlets, invoicing, delivery, collections and reports in step.
+            </p>
+            <ul className="m-0 mt-8 list-none space-y-3 p-0">
+              {FEATURES.map(([icon, title, text]) => (
+                <li key={title} className="flex items-start gap-3 rounded-2xl border border-white/10 bg-white/[0.04] p-3.5 backdrop-blur">
+                  <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-blue-500/15 text-blue-300"><Icon name={icon} /></span>
+                  <span>
+                    <span className="block text-[14px] font-semibold">{title}</span>
+                    <span className="block text-[13px] text-slate-400">{text}</span>
+                  </span>
+                </li>
               ))}
-            </Grid>
-          </MDBox>
+            </ul>
+          </div>
 
-          <MDTypography variant="caption" position="relative" zIndex={1} sx={{ color: "rgba(255,255,255,0.5)" }}>
-            © {new Date().getFullYear()} EduNextG India LLP. Authorized access only.
-          </MDTypography>
-        </Grid>
+          <div className="relative flex items-center justify-between text-[12px] text-slate-500">
+            <span>© {new Date().getFullYear()} EduNextG India LLP. Authorized access only.</span>
+            <span className="inline-flex items-center gap-1"><Icon name="lock" className="text-[15px]" />Protected connection</span>
+          </div>
+        </aside>
 
-        <Grid
-          item
-          xs={12}
-          md={6}
-          lg={5.5}
-          sx={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            p: { xs: 1.5, sm: 2.5, md: 3, lg: 4 },
-            position: "relative",
-          }}
-        >
-          <MDBox
-            width="100%"
-            maxWidth={470}
-            p={{ xs: 2.25, sm: 3 }}
-            sx={{
-              backgroundColor: "#fff", border: "1px solid #e2e8f0", borderRadius: "20px",
-              boxShadow: "0 24px 60px rgba(15,23,42,0.10)",
-              maxHeight: "calc(100dvh - 24px)",
-            }}
-          >
-            <MDBox display={{ xs: "flex", md: "none" }} alignItems="center" gap={1.25} mb={2}>
-              <MDBox width={38} height={38} borderRadius="10px" display="flex" alignItems="center"
-                justifyContent="center" sx={{ background: "linear-gradient(135deg, #172554, #2563eb)" }}>
-                <MDTypography variant="button" color="white" fontWeight="bold">E</MDTypography>
-              </MDBox>
-              <MDTypography variant="h6" fontWeight="bold">EduNextG Sales</MDTypography>
-            </MDBox>
+        {/* Form */}
+        <main className="flex items-center justify-center bg-white p-6 sm:p-10">
+          <div className="w-full max-w-[420px]">
+            <div className="mb-6 lg:hidden">
+              <p className="m-0 text-[11px] font-semibold uppercase tracking-[0.2em] text-blue-600">Sales ERP</p>
+              <p className="m-0 mt-0.5 text-[19px] font-bold text-slate-900">{COMPANY_NAME}</p>
+            </div>
 
-            <MDBox mb={2}>
-              <MDTypography variant="h3" fontWeight="bold" color="dark" mb={0.75}>
-                Welcome back
-              </MDTypography>
-              {/* <MDTypography variant="body2" color="text" sx={{ lineHeight: 1.6 }}>
-                Sign in with your assigned account to continue to your workspace.
-              </MDTypography> */}
-            </MDBox>
+            <div>
+              {otpStep ? (
+                <form onSubmit={handleVerifyOtp}>
+                  <span className="mb-4 flex size-12 items-center justify-center rounded-2xl bg-blue-50 text-blue-600"><Icon name="mark_email_read" className="text-[24px]" /></span>
+                  <h2 className="m-0 text-[24px] font-bold text-slate-900">Check your email</h2>
+                  <p className="m-0 mt-1.5 text-[13.5px] text-slate-500">
+                    Enter the 6-digit code sent to <b className="text-slate-800">{otpStep.email}</b>.
+                  </p>
 
-            {otpStep ? (
-            <MDBox component="form" role="form" onSubmit={handleVerifyOtp}>
-              <MDBox
-                mb={1.5}
-                p={1.5}
-                sx={{ border: "1px solid #dbe4f0", borderRadius: "12px", backgroundColor: "#f8fafc" }}
-              >
-                <MDBox display="flex" alignItems="center" gap={0.75} mb={0.75}>
-                  <Icon sx={{ color: "#2563eb", fontSize: "17px !important" }}>mark_email_read</Icon>
-                  <MDTypography variant="caption" color="dark" fontWeight="bold">
-                    Email verification
-                  </MDTypography>
-                </MDBox>
-                <MDTypography variant="caption" color="text" display="block">
-                  Enter the 6-digit code sent to <strong>{otpStep.email}</strong>.
-                </MDTypography>
-              </MDBox>
+                  <label htmlFor="otp" className={`${labelClass} mt-6`}>One-time password</label>
+                  {/* eslint-disable-next-line jsx-a11y/no-autofocus */}
+                  <input
+                    id="otp" type="text" inputMode="numeric" maxLength={6} placeholder="••••••" autoFocus required autoComplete="one-time-code"
+                    className={`${inputClass} h-14 text-center font-mono text-[24px] tracking-[0.6em]`}
+                    value={otp} onChange={(e) => setOtp(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                  />
+                  <div className="mt-2 flex items-center justify-between text-[12.5px]">
+                    <span className={`inline-flex items-center gap-1 font-medium ${otpSecondsLeft > 0 ? "text-slate-500" : "text-red-600"}`}>
+                      <Icon name="schedule" className="text-[15px]" />
+                      {otpSecondsLeft > 0 ? `Expires in ${formatTimer(otpSecondsLeft)}` : "OTP expired"}
+                    </span>
+                    <button
+                      type="button" onClick={handleResendOtp} disabled={loading || resendSecondsLeft > 0}
+                      className="font-semibold text-blue-700 hover:text-blue-900 disabled:cursor-not-allowed disabled:text-slate-400"
+                    >
+                      {resendSecondsLeft > 0 ? `Resend in ${resendSecondsLeft}s` : "Resend OTP"}
+                    </button>
+                  </div>
 
-              <MDBox mb={1}>
-                <MDTypography variant="caption" fontWeight="bold" color="dark" display="block" mb={0.75}>
-                  One-time password
-                </MDTypography>
-                <MDInput
-                  type="text"
-                  placeholder="------"
-                  fullWidth
-                  autoFocus
-                  value={otp}
-                  onChange={(e) => setOtp(e.target.value.replace(/\D/g, "").slice(0, 6))}
-                  autoComplete="one-time-code"
-                  inputProps={{ inputMode: "numeric", maxLength: 6, style: { letterSpacing: "0.5em", textAlign: "center", fontSize: "1.2rem" } }}
-                  required
-                  sx={{ "& .MuiInputBase-root": { minHeight: 48, borderRadius: "10px" } }}
-                />
-              </MDBox>
+                  {otpInfo && !error && (
+                    <p role="status" className="m-0 mt-4 flex items-start gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2.5 text-[13px] text-emerald-800">
+                      <Icon name="check_circle" className="text-[18px]" />{otpInfo}
+                    </p>
+                  )}
+                  {error && (
+                    <p role="alert" className="m-0 mt-4 flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 px-3 py-2.5 text-[13px] text-red-800">
+                      <Icon name="error_outline" className="text-[18px]" />{error}
+                    </p>
+                  )}
 
-              <MDBox display="flex" alignItems="center" justifyContent="space-between" mb={1.5}>
-                <MDTypography variant="caption" color={otpSecondsLeft > 0 ? "text" : "error"} fontWeight="medium">
-                  {otpSecondsLeft > 0 ? `Expires in ${formatTimer(otpSecondsLeft)}` : "OTP expired"}
-                </MDTypography>
-                <MDButton
-                  variant="text"
-                  color="info"
-                  size="small"
-                  type="button"
-                  onClick={handleResendOtp}
-                  disabled={loading || resendSecondsLeft > 0}
-                  sx={{ p: 0, minWidth: 0 }}
-                >
-                  {resendSecondsLeft > 0 ? `Resend in ${resendSecondsLeft}s` : "Resend OTP"}
-                </MDButton>
-              </MDBox>
+                  <button type="submit" className={`${primaryButton} mt-6`} disabled={loading || otpSecondsLeft <= 0}>
+                    {loading ? "Verifying..." : "Verify & sign in"}
+                  </button>
+                  <button type="button" onClick={leaveOtpStep} disabled={loading} className="mt-3 inline-flex w-full items-center justify-center gap-1 text-[13px] font-semibold text-slate-600 hover:text-slate-900">
+                    <Icon name="arrow_back" className="text-[17px]" />Back to sign in
+                  </button>
+                </form>
+              ) : (
+                <form onSubmit={handleSubmit}>
+                  <h2 className="m-0 text-[26px] font-bold text-slate-900">Welcome back</h2>
+                  <p className="m-0 mt-1.5 text-[13.5px] text-slate-500">Sign in with your assigned account to continue.</p>
 
-              {otpInfo && !error && (
-                <Alert severity="success" sx={{ mb: 2, borderRadius: "10px", py: 0.5 }}>
-                  {otpInfo}
-                </Alert>
-              )}
-              {error && (
-                <Alert severity="error" sx={{ mb: 2, borderRadius: "10px", py: 0.5 }}>
-                  {error}
-                </Alert>
-              )}
-
-              <MDButton
-                variant="gradient" color="info" fullWidth type="submit" disabled={loading || otpSecondsLeft <= 0} size="large"
-                sx={{ minHeight: 44, borderRadius: "10px", fontSize: "0.82rem", boxShadow: "0 10px 24px rgba(37,99,235,0.22)" }}
-              >
-                {loading ? "Verifying..." : "Verify & sign in"}
-              </MDButton>
-
-              <MDBox mt={1.25} textAlign="center">
-                <MDButton variant="text" color="dark" size="small" type="button" onClick={leaveOtpStep} disabled={loading}>
-                  <Icon fontSize="small" sx={{ mr: 0.5 }}>arrow_back</Icon>
-                  Back to sign in
-                </MDButton>
-              </MDBox>
-            </MDBox>
-            ) : (
-            <MDBox component="form" role="form" onSubmit={handleSubmit}>
-              <MDBox mb={1.5}>
-                <MDTypography variant="caption" fontWeight="bold" color="dark" display="block" mb={0.75}>
-                  Account ID
-                </MDTypography>
-                <MDInput
-                  type="text"
-                  placeholder="Email, staff ID, delivery ID, or login ID"
-                  fullWidth
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  autoComplete="username"
-                  required
-                  sx={{ "& .MuiInputBase-root": { minHeight: 44, borderRadius: "10px" } }}
-                />
-              </MDBox>
-              <MDBox mb={1.5}>
-                <MDTypography variant="caption" fontWeight="bold" color="dark" display="block" mb={0.75}>
-                  Password
-                </MDTypography>
-                <MDInput
-                  type={showPassword ? "text" : "password"}
-                  placeholder="Enter your password"
-                  fullWidth
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  autoComplete="current-password"
-                  required
-                  sx={{ "& .MuiInputBase-root": { minHeight: 44, borderRadius: "10px" } }}
-                  InputProps={{
-                    endAdornment: (
-                      <InputAdornment position="end">
-                        <IconButton
-                          size="small"
-                          edge="end"
-                          aria-label={showPassword ? "Hide password" : "Show password"}
-                          onClick={() => setShowPassword((show) => !show)}
+                  <div className="mt-6 space-y-4">
+                    <div>
+                      <label htmlFor="account-id" className={labelClass}>Account ID</label>
+                      <div className="relative">
+                        <Icon name="person" className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[19px] text-slate-400" />
+                        <input
+                          id="account-id" type="text" required autoComplete="username" placeholder="Email, staff ID, delivery ID, or login ID"
+                          className={`${inputClass} pl-10`} value={email} onChange={(e) => setEmail(e.target.value)}
+                        />
+                      </div>
+                    </div>
+                    <div>
+                      <label htmlFor="password" className={labelClass}>Password</label>
+                      <div className="relative">
+                        <Icon name="lock" className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[19px] text-slate-400" />
+                        <input
+                          id="password" type={showPassword ? "text" : "password"} required autoComplete="current-password" placeholder="Enter your password"
+                          className={`${inputClass} pl-10 pr-11`} value={password} onChange={(e) => setPassword(e.target.value)}
+                        />
+                        <button
+                          type="button" onClick={() => setShowPassword((show) => !show)} aria-label={showPassword ? "Hide password" : "Show password"}
+                          className="absolute right-1.5 top-1/2 inline-flex size-8 -translate-y-1/2 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100 hover:text-slate-800"
                         >
-                          <Icon fontSize="small">{showPassword ? "visibility_off" : "visibility"}</Icon>
-                        </IconButton>
-                      </InputAdornment>
-                    ),
-                  }}
-                />
-              </MDBox>
+                          <Icon name={showPassword ? "visibility_off" : "visibility"} className="text-[19px]" />
+                        </button>
+                      </div>
+                    </div>
 
-              <MDBox
-                mb={1.5}
-                p={1.5}
-                sx={{
-                  border: "1px solid #dbe4f0", borderRadius: "12px", backgroundColor: "#f8fafc",
-                }}
-              >
-                <MDBox mb={1}>
-                  <MDBox display="flex" alignItems="center" gap={0.75}>
-                    <Icon sx={{ color: "#2563eb", fontSize: "17px !important" }}>verified_user</Icon>
-                    <MDTypography variant="caption" color="dark" fontWeight="bold">
-                      Security verification
-                    </MDTypography>
-                  </MDBox>
-                  <MDBox display="flex" alignItems="center" gap={1.25} mt={0.75}>
-                    <MDBox
-                      px={2}
-                      py={0.6}
-                      sx={{
-                        border: "1px dashed #94a3b8", borderRadius: "9px",
-                        background:
-                          "repeating-linear-gradient(135deg, #ffffff, #ffffff 8px, #f1f5f9 8px, #f1f5f9 16px)",
-                        flexGrow: 1, textAlign: "center",
-                      }}
-                    >
-                      <MDTypography
-                        variant="h5"
-                        fontWeight="bold"
-                        color="dark"
-                        sx={{
-                          letterSpacing: "0.22em",
-                          fontFamily: "monospace",
-                          userSelect: "none",
-                        }}
-                      >
-                        {captcha?.question || "......"}
-                      </MDTypography>
-                    </MDBox>
-                    <MDButton
-                      variant="outlined"
-                      color="info"
-                      size="small"
-                      type="button"
-                      aria-label="Refresh security code"
-                      onClick={fetchCaptcha}
-                      sx={{ minWidth: 38, width: 38, height: 38, p: 0, borderRadius: "9px" }}
-                    >
-                      <Icon fontSize="small">refresh</Icon>
-                    </MDButton>
-                  </MDBox>
-                </MDBox>
-                <MDInput
-                  type="text"
-                  placeholder="Enter the code shown above"
-                  fullWidth
-                  value={captchaAnswer}
-                  onChange={(e) => setCaptchaAnswer(e.target.value)}
-                  onPaste={(e) => e.preventDefault()}
-                  onCopy={(e) => e.preventDefault()}
-                  onCut={(e) => e.preventDefault()}
-                  required
-                  autoComplete="off"
-                  sx={{ "& .MuiInputBase-root": { minHeight: 42, borderRadius: "9px", backgroundColor: "#fff" } }}
-                />
-              </MDBox>
+                    <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3.5">
+                      <span className="mb-2 flex items-center gap-1.5 text-[12.5px] font-semibold text-slate-700">
+                        <Icon name="verified_user" className="text-[17px] text-blue-600" />Security verification
+                      </span>
+                      <div className="flex items-center gap-2">
+                        <div className="flex h-11 grow select-none items-center justify-center rounded-xl border border-dashed border-slate-400 bg-[repeating-linear-gradient(135deg,#fff,#fff_8px,#f1f5f9_8px,#f1f5f9_16px)] font-mono text-[20px] font-bold tracking-[0.25em] text-slate-900">
+                          {captcha?.question || "......"}
+                        </div>
+                        <button
+                          type="button" onClick={fetchCaptcha} aria-label="Refresh security code" title="New code"
+                          className="inline-flex size-11 shrink-0 items-center justify-center rounded-xl border border-slate-300 bg-white text-blue-600 transition hover:bg-blue-50"
+                        >
+                          <Icon name="refresh" />
+                        </button>
+                      </div>
+                      <input
+                        type="text" required autoComplete="off" placeholder="Enter the code shown above" aria-label="Security code"
+                        className={`${inputClass} mt-2`} value={captchaAnswer} onChange={(e) => setCaptchaAnswer(e.target.value)}
+                        onPaste={(e) => e.preventDefault()} onCopy={(e) => e.preventDefault()} onCut={(e) => e.preventDefault()}
+                      />
+                    </div>
+                  </div>
 
-              {error && (
-                <Alert severity="error" sx={{ mb: 2.25, borderRadius: "10px", py: 0.5 }}>
-                  {error}
-                </Alert>
-              )}
+                  {error && (
+                    <p role="alert" className="m-0 mt-4 flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 px-3 py-2.5 text-[13px] text-red-800">
+                      <Icon name="error_outline" className="text-[18px]" />{error}
+                    </p>
+                  )}
 
-              <MDBox display="flex" alignItems="center" justifyContent="space-between" mb={1.5}>
-                <MDBox display="flex" alignItems="center" ml={-1}>
-                  <Switch checked={rememberMe} onChange={handleSetRememberMe} />
-                  <MDTypography
-                    variant="button"
-                    fontWeight="regular"
-                    color="text"
-                    onClick={handleSetRememberMe}
-                    sx={{ cursor: "pointer", userSelect: "none", ml: -0.5 }}
-                  >
+                  <label className="mt-4 flex w-fit cursor-pointer select-none items-center gap-2.5 text-[13px] text-slate-600">
+                    <span className="relative inline-flex items-center">
+                      <input type="checkbox" className="peer sr-only" checked={rememberMe} onChange={handleSetRememberMe} />
+                      <span className="h-5 w-9 rounded-full bg-slate-300 transition peer-checked:bg-blue-600 peer-focus-visible:ring-2 peer-focus-visible:ring-blue-500/40" />
+                      <span className="pointer-events-none absolute left-0.5 top-0.5 size-4 rounded-full bg-white shadow transition peer-checked:translate-x-4" />
+                    </span>
                     Remember me
-                  </MDTypography>
-                </MDBox>
-              </MDBox>
+                  </label>
 
-              <MDButton
-                variant="gradient" color="info" fullWidth type="submit" disabled={loading} size="large"
-                sx={{ minHeight: 44, borderRadius: "10px", fontSize: "0.82rem", boxShadow: "0 10px 24px rgba(37,99,235,0.22)" }}
-              >
-                  {loading ? "Signing in..." : "Sign in"}
-              </MDButton>
+                  <button type="submit" className={`${primaryButton} mt-5`} disabled={loading}>
+                    {loading ? "Signing in..." : <>Sign in<Icon name="arrow_forward" className="text-[18px]" /></>}
+                  </button>
 
-              <MDBox mt={1.75} pt={1.5} sx={{ borderTop: "1px solid #e2e8f0" }} textAlign="center">
-                <MDTypography variant="caption" color="text">
-                  Having trouble signing in? Contact your system administrator.
-                </MDTypography>
-              </MDBox>
-            </MDBox>
-            )}
-          </MDBox>
-        </Grid>
-      </Grid>
+                  <p className="m-0 mt-5 border-t border-slate-100 pt-4 text-center text-[12.5px] text-slate-500">
+                    Having trouble signing in? Contact your system administrator.
+                  </p>
+                </form>
+              )}
+            </div>
+
+            <p className="m-0 mt-5 text-center text-[12px] text-slate-400 lg:hidden">© {new Date().getFullYear()} EduNextG India LLP. Authorized access only.</p>
+          </div>
+        </main>
+      </div>
     </PageLayout>
   );
 }
