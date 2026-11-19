@@ -1,58 +1,49 @@
-import { useState, useEffect } from "react";
-
-// react-router components
-import { useLocation } from "react-router-dom";
-
-// prop-types is a library for typechecking of props.
+// Top bar: Tailwind CSS (no MUI, except the admin "Update Login" dialog which is unchanged).
+// Sticky across the page: menu button (small screens), breadcrumb + page title, admin actions,
+// credit-due notifications and the signed-in user. Same logic as before.
+import { useState, useEffect, useRef } from "react";
+import { useLocation, Link } from "react-router-dom";
 import PropTypes from "prop-types";
 
-// @material-ui core components
-import AppBar from "@mui/material/AppBar";
-import Toolbar from "@mui/material/Toolbar";
-import IconButton from "@mui/material/IconButton";
-import Menu from "@mui/material/Menu";
-import MenuItem from "@mui/material/MenuItem";
-import Icon from "@mui/material/Icon";
-import Badge from "@mui/material/Badge";
 import Dialog from "@mui/material/Dialog";
 import DialogActions from "@mui/material/DialogActions";
 import DialogContent from "@mui/material/DialogContent";
 import DialogTitle from "@mui/material/DialogTitle";
-
-// Material Dashboard 2 React components
 import MDBox from "components/MDBox";
-import MDTypography from "components/MDTypography";
 import MDInput from "components/MDInput";
 import MDButton from "components/MDButton";
 
-// Material Dashboard 2 React example components
-import Breadcrumbs from "examples/Breadcrumbs";
-import NotificationItem from "examples/Items/NotificationItem";
-
-// Custom styles for DashboardNavbar
-import {
-  navbar,
-  navbarContainer,
-  navbarRow,
-  navbarIconButton,
-  navbarMobileMenu,
-} from "examples/Navbars/DashboardNavbar/styles";
-
-// Material Dashboard 2 React context
-import {
-  useMaterialUIController,
-  setMiniSidenav,
-  setTransparentNavbar,
-} from "context";
+import { useMaterialUIController, setMiniSidenav } from "context";
 import { useAuth } from "context/AuthContext";
+import { SIDEBAR_MINI_WIDTH, SIDEBAR_WIDTH } from "examples/Sidenav";
 
+const ROLE_LABELS = {
+  admin: "Administrator",
+  staff: "Marketing Staff",
+  packaging_staff: "Packaging Staff",
+  delivery_boy: "Delivery",
+  bawarchee_staff: "Bawarchee Staff",
+  distributor: "Distributor",
+};
+// "invoice-report" -> "Invoice Report"
+const pageTitle = (segment) => String(segment || "dashboard").replace(/[-_]+/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+
+function TopIcon({ name, className }) {
+  return <span className={`material-icons-round leading-none ${className}`} aria-hidden="true">{name}</span>;
+}
+TopIcon.propTypes = { name: PropTypes.string.isRequired, className: PropTypes.string };
+TopIcon.defaultProps = { className: "text-[21px]" };
+
+const iconButton = "relative inline-flex size-9 items-center justify-center rounded-xl text-slate-500 transition hover:bg-slate-100 hover:text-slate-900 disabled:opacity-40";
+
+// eslint-disable-next-line no-unused-vars
 function DashboardNavbar({ absolute, light, isMini }) {
-  const [navbarType, setNavbarType] = useState();
   const [controller, dispatch] = useMaterialUIController();
-  const { transparentNavbar, fixedNavbar, darkMode, miniSidenav } = controller;
+  const { miniSidenav } = controller;
   const { user, token, logout } = useAuth();
-  const [openMenu, setOpenMenu] = useState(false);
-  const route = useLocation().pathname.split("/").slice(1);
+  const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const notificationsRef = useRef(null);
+  const route = useLocation().pathname.split("/").slice(1).filter(Boolean);
   const [notifications, setNotifications] = useState([]);
   const [credentialsDialogOpen, setCredentialsDialogOpen] = useState(false);
   const [loginId, setLoginId] = useState("");
@@ -92,38 +83,25 @@ function DashboardNavbar({ absolute, light, isMini }) {
       }
     };
     fetchPendingCredits();
+    return undefined;
   }, [user?.role]);
 
+  // Close the notifications panel on an outside click or Escape.
   useEffect(() => {
-    // Setting the navbar type
-    if (fixedNavbar) {
-      setNavbarType("sticky");
-    } else {
-      setNavbarType("static");
-    }
-
-    // A function that sets the transparent state of the navbar.
-    function handleTransparentNavbar() {
-      setTransparentNavbar(dispatch, (fixedNavbar && window.scrollY === 0) || !fixedNavbar);
-    }
-
-    /** 
-     The event listener that's calling the handleTransparentNavbar function when 
-     scrolling the window.
-    */
-    window.addEventListener("scroll", handleTransparentNavbar);
-
-    // Call the handleTransparentNavbar function to set the state with the initial value.
-    handleTransparentNavbar();
-
-    // Remove event listener on cleanup
-    return () => window.removeEventListener("scroll", handleTransparentNavbar);
-  }, [dispatch, fixedNavbar]);
+    if (!notificationsOpen) return undefined;
+    const onClick = (event) => {
+      if (notificationsRef.current && !notificationsRef.current.contains(event.target)) setNotificationsOpen(false);
+    };
+    const onKey = (event) => { if (event.key === "Escape") setNotificationsOpen(false); };
+    document.addEventListener("mousedown", onClick);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onClick);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [notificationsOpen]);
 
   const handleMiniSidenav = () => setMiniSidenav(dispatch, !miniSidenav);
-  // const handleConfiguratorOpen = () => setOpenConfigurator(dispatch, !openConfigurator);
-  const handleOpenMenu = (event) => setOpenMenu(event.currentTarget);
-  const handleCloseMenu = () => setOpenMenu(false);
 
   const openCredentialsDialog = () => {
     setLoginId(user?.email || "");
@@ -201,158 +179,114 @@ function DashboardNavbar({ absolute, light, isMini }) {
     }
   };
 
-  const renderMenu = () => (
-    <Menu
-      anchorEl={openMenu}
-      anchorReference={null}
-      anchorOrigin={{
-        vertical: "bottom",
-        horizontal: "left",
-      }}
-      open={Boolean(openMenu)}
-      onClose={handleCloseMenu}
-      sx={{ mt: 2 }}
-    >
-      {notifications.length > 0 ? (
-        notifications.map((notif) => (
-          <MenuItem
-            key={notif.id}
-            sx={{ display: "flex", flexDirection: "column", alignItems: "flex-start", py: 1 }}
-          >
-            <MDBox display="flex" alignItems="center">
-              <Icon color="warning" sx={{ mr: 1 }}>
-                warning
-              </Icon>
-              <MDTypography variant="button" fontWeight="medium">
-                {notif.outlet_name}
-              </MDTypography>
-            </MDBox>
-            <MDBox mt={0.5} ml={4} p={1} bgColor="grey-100" borderRadius="md" minWidth="200px">
-              <MDTypography variant="caption" color="text" display="block">
-                Invoice: <strong>{notif.invoice_number}</strong>
-              </MDTypography>
-              <MDTypography variant="caption" color="error" fontWeight="bold" display="block">
-                Due Amount: ₹{Number(notif.balance_amount).toFixed(2)}
-              </MDTypography>
-            </MDBox>
-          </MenuItem>
-        ))
-      ) : (
-        <NotificationItem
-          icon={<Icon color="success">check_circle</Icon>}
-          title="No credits due tomorrow"
-        />
-      )}
-    </Menu>
-  );
 
-  // Styles for the navbar icons
-  const iconsStyle = ({ palette: { dark, white, text }, functions: { rgba } }) => ({
-    color: () => {
-      let colorValue = light || darkMode ? white.main : dark.main;
-
-      if (transparentNavbar && !light) {
-        colorValue = darkMode ? rgba(text.main, 0.6) : text.main;
-      }
-
-      return colorValue;
-    },
-  });
+  const displayName = user?.name || user?.username || user?.loginId || user?.email || "User";
+  const initials = String(displayName).replace(/[^A-Za-z ]/g, " ").trim().split(/\s+/).slice(0, 2).map((w) => w[0]).join("").toUpperCase() || "U";
+  const title = pageTitle(route[route.length - 1]);
 
   return (
-    <AppBar
-      position={absolute ? "absolute" : navbarType}
-      color="inherit"
-      sx={(theme) => ({
-        ...navbar(theme, { transparentNavbar, absolute, light, darkMode }),
-        backgroundColor: "#C0C0C0 !important", // Gray
-        color: "#fff",
-        boxShadow: "0 4px 20px rgba(131, 125, 125, 0.1)",
-      })}
+    <>
+    {/* Takes the header's place in the page, so content starts below the fixed header. */}
+    <div aria-hidden="true" className="-mx-6 -mt-6 mb-6 h-16" />
+    <header
+      style={{ "--sidebar-w": `${miniSidenav ? SIDEBAR_MINI_WIDTH : SIDEBAR_WIDTH}px` }}
+      className="fixed inset-x-0 top-0 z-[1100] border-b border-slate-200 bg-white/90 px-4 font-[Poppins,Roboto,sans-serif] shadow-[0_1px_3px_rgba(15,23,42,0.06)] backdrop-blur-md transition-[left] duration-200 sm:px-6 xl:left-[var(--sidebar-w)]"
     >
-      <Toolbar sx={(theme) => navbarContainer(theme)}>
-        <MDBox color="inherit" mb={{ xs: 1, md: 0 }} sx={(theme) => navbarRow(theme, { isMini })}>
-          <Breadcrumbs icon="home" title={route[route.length - 1]} route={route} light={light} />
-        </MDBox>
-        {isMini ? null : (
-          <MDBox sx={(theme) => navbarRow(theme, { isMini })}>
-            {/* <MDBox pr={1}>
-              <MDInput label="Search here" />
-            </MDBox> */}
-            <MDBox color={light ? "white" : "inherit"}>
-              {/* <Link to="/authentication/sign-in/basic">
-                <IconButton sx={navbarIconButton} size="small" disableRipple>
-                  <Icon sx={iconsStyle}>account_circle</Icon>
-                </IconButton>
-              </Link> */}
-              {user?.role === "admin" && (
-                <IconButton
-                  size="small"
-                  disableRipple
-                  color="inherit"
-                  sx={navbarIconButton}
-                  aria-label="Update admin credentials"
-                  title="Update Login ID and Password"
-                  onClick={openCredentialsDialog}
-                >
-                  <Icon sx={iconsStyle}>manage_accounts</Icon>
-                </IconButton>
+      <div className="flex h-16 items-center gap-3">
+        <button
+          type="button" onClick={handleMiniSidenav} className={`${iconButton} xl:hidden`}
+          aria-label={miniSidenav ? "Open navigation menu" : "Close navigation menu"} title={miniSidenav ? "Open menu" : "Close menu"}
+        >
+          <TopIcon name="menu" />
+        </button>
+        <button
+          type="button" onClick={handleMiniSidenav} className={`${iconButton} hidden xl:inline-flex`}
+          aria-label={miniSidenav ? "Expand sidebar" : "Collapse sidebar"} title={miniSidenav ? "Expand sidebar" : "Collapse sidebar"}
+        >
+          <TopIcon name={miniSidenav ? "menu_open" : "menu"} />
+        </button>
+
+        <div className="min-w-0 grow">
+          <nav aria-label="Breadcrumb" className="flex items-center gap-1 text-[12px] text-slate-400">
+            <Link to="/" className="inline-flex items-center hover:text-slate-700" aria-label="Home"><TopIcon name="home" className="text-[15px]" /></Link>
+            {route.map((segment, index) => (
+              <span key={`${segment}-${index}`} className="inline-flex items-center gap-1">
+                <TopIcon name="chevron_right" className="text-[15px]" />
+                {index === route.length - 1 ? (
+                  <span className="font-medium text-slate-600">{pageTitle(segment)}</span>
+                ) : (
+                  <Link to={`/${route.slice(0, index + 1).join("/")}`} className="hover:text-slate-700">{pageTitle(segment)}</Link>
+                )}
+              </span>
+            ))}
+          </nav>
+          <h1 className="m-0 truncate text-[17px] font-semibold leading-tight text-slate-900">{title}</h1>
+        </div>
+
+        {!isMini && (
+          <div className="flex items-center gap-1">
+            {user?.role === "admin" && (
+              <button type="button" className={iconButton} aria-label="Update admin credentials" title="Update Login ID and Password" onClick={openCredentialsDialog}>
+                <TopIcon name="manage_accounts" />
+              </button>
+            )}
+            {user?.role === "admin" && (
+              <button type="button" className={iconButton} aria-label="Logout from all devices" title="Logout from all devices" onClick={handleLogoutAllDevices} disabled={loggingOutAll}>
+                <TopIcon name="devices_off" />
+              </button>
+            )}
+
+            <div className="relative" ref={notificationsRef}>
+              <button
+                type="button" className={iconButton} aria-haspopup="true" aria-expanded={notificationsOpen}
+                aria-label={`Notifications${notifications.length ? ` (${notifications.length})` : ""}`} title="Credits due tomorrow"
+                onClick={() => setNotificationsOpen((open) => !open)}
+              >
+                <TopIcon name="notifications" />
+                {notifications.length > 0 && (
+                  <span className="absolute right-1 top-1 flex min-w-4 items-center justify-center rounded-full bg-red-600 px-1 text-[10px] font-bold leading-4 text-white ring-2 ring-white">
+                    {notifications.length}
+                  </span>
+                )}
+              </button>
+              {notificationsOpen && (
+                <div className="absolute right-0 top-11 z-[1300] w-80 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xl">
+                  <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3">
+                    <span className="text-[13.5px] font-semibold text-slate-900">Credits due tomorrow</span>
+                    <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-600">{notifications.length}</span>
+                  </div>
+                  <ul className="m-0 max-h-80 list-none overflow-y-auto p-0">
+                    {notifications.length > 0 ? notifications.map((notif) => (
+                      <li key={notif.id} className="flex gap-3 border-b border-slate-50 px-4 py-3 last:border-0 hover:bg-slate-50">
+                        <span className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-full bg-amber-50 text-amber-600">
+                          <TopIcon name="schedule" className="text-[17px]" />
+                        </span>
+                        <span className="min-w-0">
+                          <span className="block truncate text-[13px] font-semibold text-slate-800">{notif.outlet_name}</span>
+                          <span className="block text-[12px] text-slate-500">Invoice {notif.invoice_number}</span>
+                          <span className="block text-[12px] font-semibold text-red-600">Due ₹{Number(notif.balance_amount).toFixed(2)}</span>
+                        </span>
+                      </li>
+                    )) : (
+                      <li className="flex items-center gap-2 px-4 py-6 text-[13px] text-slate-500">
+                        <TopIcon name="check_circle" className="text-[18px] text-emerald-600" /> No credits due tomorrow
+                      </li>
+                    )}
+                  </ul>
+                </div>
               )}
-              {user?.role === "admin" && (
-                <IconButton
-                  size="small"
-                  disableRipple
-                  color="inherit"
-                  sx={navbarIconButton}
-                  aria-label="Logout from all devices"
-                  title="Logout from all devices"
-                  onClick={handleLogoutAllDevices}
-                  disabled={loggingOutAll}
-                >
-                  <Icon sx={iconsStyle}>devices_off</Icon>
-                </IconButton>
-              )}
-              <IconButton
-                size="small"
-                disableRipple
-                color="inherit"
-                sx={navbarMobileMenu}
-                onClick={handleMiniSidenav}
-                aria-label={miniSidenav ? "Open navigation menu" : "Close navigation menu"}
-                title={miniSidenav ? "Open menu" : "Close menu"}
-              >
-                <Icon sx={iconsStyle} fontSize="medium">
-                  {miniSidenav ? "menu_open" : "menu"}
-                </Icon>
-              </IconButton>
-              {/* <IconButton
-                size="small"
-                disableRipple
-                color="inherit"
-                sx={navbarIconButton}
-                onClick={handleConfiguratorOpen}
-              >
-                <Icon sx={iconsStyle}>settings</Icon>
-              </IconButton> */}
-              <IconButton
-                size="small"
-                disableRipple
-                color="inherit"
-                sx={navbarIconButton}
-                aria-controls="notification-menu"
-                aria-haspopup="true"
-                variant="contained"
-                onClick={handleOpenMenu}
-              >
-                <Badge badgeContent={notifications.length} color="error" size="small">
-                  <Icon sx={iconsStyle}>notifications</Icon>
-                </Badge>
-              </IconButton>
-              {renderMenu()}
-            </MDBox>
-          </MDBox>
+            </div>
+
+            <div className="ml-2 hidden items-center gap-2.5 border-l border-slate-200 pl-3 sm:flex">
+              <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-slate-800 text-[12px] font-bold text-white">{initials}</span>
+              <span className="hidden min-w-0 md:block">
+                <span className="block max-w-40 truncate text-[12.5px] font-semibold text-slate-800">{displayName}</span>
+                <span className="block text-[11px] text-slate-500">{ROLE_LABELS[user?.role] || user?.role || ""}</span>
+              </span>
+            </div>
+          </div>
         )}
-      </Toolbar>
+      </div>
       <Dialog open={credentialsDialogOpen} onClose={closeCredentialsDialog} fullWidth maxWidth="xs">
         <DialogTitle sx={{ fontWeight: "bold", color: "#344767" }}>
           Update Admin Login
@@ -407,7 +341,8 @@ function DashboardNavbar({ absolute, light, isMini }) {
           </MDButton>
         </DialogActions>
       </Dialog>
-    </AppBar>
+    </header>
+    </>
   );
 }
 

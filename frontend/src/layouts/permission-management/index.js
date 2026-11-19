@@ -1,16 +1,14 @@
+// Permissions page: Tailwind CSS (no MUI). The permission logic below the UI helpers is unchanged.
 import { useCallback, useEffect, useMemo, useState } from "react";
-import {
-  Alert, Avatar, Card, Checkbox, Chip, CircularProgress, Dialog, DialogActions, DialogContent,
-  DialogTitle, Divider, Grid, InputAdornment, MenuItem, Switch,
-} from "@mui/material";
-import Icon from "@mui/material/Icon";
 import DashboardLayout from "examples/LayoutContainers/DashboardLayout";
 import DashboardNavbar from "examples/Navbars/DashboardNavbar";
 import Footer from "examples/Footer";
-import MDBox from "components/MDBox";
-import MDButton from "components/MDButton";
-import MDInput from "components/MDInput";
-import MDTypography from "components/MDTypography";
+import { Field, Icon, Modal, Toggle, TriCheck, btn, fieldClass } from "components/tw";
+
+// ---------------------------------------------------------------------------------------------
+// UI helpers
+// Avatar colour by role (same as before: packaging violet, delivery cyan).
+const avatarClass = (role) => (role === "packaging_staff" ? "bg-violet-600" : "bg-cyan-600");
 
 const API = (process.env.REACT_APP_API_URL);
 const PERMISSIONS = [
@@ -383,396 +381,365 @@ function PermissionManagement() {
 
   // Add Sales -> "Approver tier": days + bill limit + who approves, instead of Admin.
   const renderApproverTier = () => (
-    <MDBox ml={3} mr={1} mb={1} px={1.25} py={1}
-      sx={{ borderRadius: "8px", borderLeft: "3px solid #6366f1", backgroundColor: "#eef2ff" }}>
-      <MDBox component="label" display="flex" alignItems="center" gap={1} sx={{ cursor: "pointer" }}>
-        <Icon fontSize="small" sx={{ color: "#4f46e5" }}>how_to_reg</Icon>
-        <MDBox flexGrow={1} minWidth={0}>
-          <MDTypography variant="button" fontWeight="medium" display="block">Approver tier (instead of Admin)</MDTypography>
-          <MDTypography variant="caption" color="text" display="block" sx={{ lineHeight: 1.35 }}>
+    <div className="mb-3 ml-1 mr-1 rounded-xl border border-indigo-200 bg-indigo-50/60 p-3">
+      <label className="flex cursor-pointer items-start gap-2.5">
+        <Icon name="how_to_reg" className="mt-0.5 text-[19px] text-indigo-600" />
+        <span className="min-w-0 grow">
+          <span className="block text-[13px] font-semibold text-slate-800">Approver tier (instead of Admin)</span>
+          <span className="block text-[12px] leading-snug text-slate-500">
             Outside the own-reason range: outlets overdue by these days whose bill is below the limit go to the chosen approver. Both must match; anything else goes to Admin.
-          </MDTypography>
-        </MDBox>
-        <Switch checked={approverTier.on} onChange={toggleApproverTier}
-          inputProps={{ "aria-label": "Approver tier" }} />
-      </MDBox>
+          </span>
+        </span>
+        <Toggle checked={approverTier.on} onChange={toggleApproverTier} label="Approver tier" />
+      </label>
       {approverTier.on && (
-        <MDBox mt={1.25}>
-          <MDBox display="flex" gap={1.5} alignItems="flex-start" flexWrap="wrap">
-            <MDInput
-              label="From day"
-              type="number"
-              size="small"
-              value={approverTier.from}
-              onChange={(e) => setApproverTier((t) => ({ ...t, from: e.target.value.replace(/\D/g, "") }))}
-              inputProps={{ min: 1 }}
-              sx={{ width: 110, backgroundColor: "#fff" }}
-            />
-            <MDInput
-              label="To day"
-              type="number"
-              size="small"
-              placeholder="No limit"
-              value={approverTier.to}
-              onChange={(e) => setApproverTier((t) => ({ ...t, to: e.target.value.replace(/\D/g, "") }))}
-              inputProps={{ min: 1 }}
-              InputLabelProps={{ shrink: true }}
-              sx={{ width: 120, backgroundColor: "#fff" }}
-            />
-            <MDInput
-              label="Bill below (₹)"
-              type="number"
-              size="small"
-              placeholder="Any amount"
-              value={approverTier.maxAmount}
-              onChange={(e) => setApproverTier((t) => ({ ...t, maxAmount: e.target.value.replace(/[^\d.]/g, "") }))}
-              inputProps={{ min: 1 }}
-              InputLabelProps={{ shrink: true }}
-              sx={{ width: 150, backgroundColor: "#fff" }}
-            />
-            <MDInput
-              select
-              label="Approver"
-              size="small"
-              value={approverTier.approverId}
-              onChange={(e) => setApproverTier((t) => ({ ...t, approverId: e.target.value }))}
-              InputLabelProps={{ shrink: true }}
-              SelectProps={{ displayEmpty: true }}
-              sx={{ minWidth: 200, backgroundColor: "#fff", "& .MuiSelect-select": { py: "8.5px" } }}
-            >
-              <MenuItem value="" disabled>
-                {approverOptions.length ? "Choose approver" : "No one has Overdue Approval"}
-              </MenuItem>
-              {approverOptions.map((user) => (
-                <MenuItem key={user.id} value={String(user.id)}>{user.name} · {roleLabel(user.role)}</MenuItem>
-              ))}
-            </MDInput>
-          </MDBox>
-          <MDTypography variant="caption" display="block" mt={0.75} sx={{ color: approverError ? "#b91c1c" : "#3730a3" }}>
+        <div className="mt-3 pl-7">
+          <div className="flex flex-wrap items-end gap-3">
+            <Field label="From day">
+              <input type="number" min={1} className={fieldClass} value={approverTier.from}
+                onChange={(e) => setApproverTier((t) => ({ ...t, from: e.target.value.replace(/\D/g, "") }))} />
+            </Field>
+            <Field label="To day">
+              <input type="number" min={1} placeholder="No limit" className={fieldClass} value={approverTier.to}
+                onChange={(e) => setApproverTier((t) => ({ ...t, to: e.target.value.replace(/\D/g, "") }))} />
+            </Field>
+            <Field label="Bill below (₹)" width="w-36">
+              <input type="number" min={1} placeholder="Any amount" className={fieldClass} value={approverTier.maxAmount}
+                onChange={(e) => setApproverTier((t) => ({ ...t, maxAmount: e.target.value.replace(/[^\d.]/g, "") }))} />
+            </Field>
+            <Field label="Approver" width="w-56">
+              <select className={fieldClass} value={approverTier.approverId}
+                onChange={(e) => setApproverTier((t) => ({ ...t, approverId: e.target.value }))}>
+                <option value="" disabled>{approverOptions.length ? "Choose approver" : "No one has Overdue Approval"}</option>
+                {approverOptions.map((user) => (
+                  <option key={user.id} value={String(user.id)}>{user.name} · {roleLabel(user.role)}</option>
+                ))}
+              </select>
+            </Field>
+          </div>
+          <p className={`m-0 mt-2 text-[12px] ${approverError ? "font-medium text-red-700" : "text-indigo-800"}`}>
             {approverError || tierSummary()}
-          </MDTypography>
+          </p>
           {!approverOptions.length && (
-            <MDTypography variant="caption" display="block" color="text">
+            <p className="m-0 mt-1 text-[12px] text-slate-500">
               Give someone the Approvals → Overdue Approval permission first; only they can be chosen here.
-            </MDTypography>
+            </p>
           )}
-        </MDBox>
+        </div>
       )}
-    </MDBox>
+    </div>
   );
 
   // Add Sales -> "Overdue on own reason": switch on, then From day and To day (empty = no limit).
   const renderOverdueRange = () => (
-    <MDBox ml={3} mr={1} mb={1} px={1.25} py={1}
-      sx={{ borderRadius: "8px", borderLeft: "3px solid #f59e0b", backgroundColor: "#fffbeb" }}>
-      <MDBox component="label" display="flex" alignItems="center" gap={1} sx={{ cursor: "pointer" }}>
-        <Icon fontSize="small" sx={{ color: "#d97706" }}>date_range</Icon>
-        <MDBox flexGrow={1} minWidth={0}>
-          <MDTypography variant="button" fontWeight="medium" display="block">Overdue on own reason (day range)</MDTypography>
-          <MDTypography variant="caption" color="text" display="block" sx={{ lineHeight: 1.35 }}>
+    <div className="mb-2 ml-1 mr-1 rounded-xl border border-amber-200 bg-amber-50/60 p-3">
+      <label className="flex cursor-pointer items-start gap-2.5">
+        <Icon name="date_range" className="mt-0.5 text-[19px] text-amber-600" />
+        <span className="min-w-0 grow">
+          <span className="block text-[13px] font-semibold text-slate-800">Overdue on own reason (day range)</span>
+          <span className="block text-[12px] leading-snug text-slate-500">
             Outlets overdue inside this range can be billed by giving a reason; admin sees each one. Outside it, admin approval is needed.
-          </MDTypography>
-        </MDBox>
-        <Switch checked={range.on} onChange={() => setRange((r) => ({ ...r, on: !r.on }))}
-          inputProps={{ "aria-label": "Overdue on own reason" }} />
-      </MDBox>
+          </span>
+        </span>
+        <Toggle checked={range.on} onChange={() => setRange((r) => ({ ...r, on: !r.on }))} label="Overdue on own reason" />
+      </label>
       {range.on && (
-        <MDBox mt={1.25}>
-          <MDBox display="flex" gap={1.5} alignItems="flex-start" flexWrap="wrap">
-            <MDInput
-              label="From day"
-              type="number"
-              size="small"
-              value={range.from}
-              onChange={(e) => setRange((r) => ({ ...r, from: e.target.value.replace(/\D/g, "") }))}
-              inputProps={{ min: 1 }}
-              sx={{ width: 110, backgroundColor: "#fff" }}
-            />
-            <MDInput
-              label="To day"
-              type="number"
-              size="small"
-              placeholder="No limit"
-              value={range.to}
-              onChange={(e) => setRange((r) => ({ ...r, to: e.target.value.replace(/\D/g, "") }))}
-              inputProps={{ min: 1 }}
-              InputLabelProps={{ shrink: true }}
-              sx={{ width: 120, backgroundColor: "#fff" }}
-            />
-            <MDBox display="flex" gap={0.75} flexWrap="wrap" alignItems="center" pt={0.5}>
+        <div className="mt-3 pl-7">
+          <div className="flex flex-wrap items-end gap-3">
+            <Field label="From day">
+              <input type="number" min={1} className={fieldClass} value={range.from}
+                onChange={(e) => setRange((r) => ({ ...r, from: e.target.value.replace(/\D/g, "") }))} />
+            </Field>
+            <Field label="To day">
+              <input type="number" min={1} placeholder="No limit" className={fieldClass} value={range.to}
+                onChange={(e) => setRange((r) => ({ ...r, to: e.target.value.replace(/\D/g, "") }))} />
+            </Field>
+            <div className="flex flex-wrap gap-1.5 pb-1">
               {RANGE_PRESETS.map((preset) => {
                 const active = range.from === preset.from && range.to === preset.to;
                 return (
-                  <Chip
-                    key={preset.label}
-                    size="small"
-                    label={preset.label}
+                  <button
+                    key={preset.label} type="button"
                     onClick={() => setRange((r) => ({ ...r, from: preset.from, to: preset.to }))}
-                    sx={{ fontWeight: 600, backgroundColor: active ? "#f59e0b" : "#fef3c7", color: active ? "#fff" : "#92400e" }}
-                  />
+                    className={`rounded-full px-3 py-1 text-[12px] font-semibold transition ${active ? "bg-amber-500 text-white" : "bg-amber-100 text-amber-800 hover:bg-amber-200"}`}
+                  >
+                    {preset.label}
+                  </button>
                 );
               })}
-            </MDBox>
-          </MDBox>
-          <MDTypography variant="caption" display="block" mt={0.75} sx={{ color: rangeError ? "#b91c1c" : "#92400e" }}>
+            </div>
+          </div>
+          <p className={`m-0 mt-2 text-[12px] ${rangeError ? "font-medium text-red-700" : "text-amber-800"}`}>
             {rangeError || `Own reason for ${range.from || "?"}${range.to ? ` to ${range.to}` : "+"} days overdue${range.to ? "; more needs admin" : ""}. Leave "To day" empty for no limit.`}
-          </MDTypography>
-        </MDBox>
+          </p>
+        </div>
       )}
-    </MDBox>
+    </div>
   );
 
   // One page switch (with Add Sales' extra settings when it is on).
-  const renderPage = (key) => (
-    <MDBox key={key}
-      sx={{
-        borderBottom: "1px solid #f1f5f9",
-        // Add Sales with its overdue settings open needs the whole row.
-        ...(key === "add_sales" && permissions.includes(key) ? { gridColumn: "1 / -1" } : {}),
-      }}>
-      <MDBox component="label" display="flex" alignItems="center" gap={1} px={1} py={1}
-        sx={{ cursor: "pointer", borderRadius: "8px", "&:hover": { backgroundColor: "#f8fafc" } }}>
-        <MDBox flexGrow={1} minWidth={0}>
-          <MDTypography variant="button" fontWeight="medium" display="block">{PERMISSION_MAP[key].label}</MDTypography>
-          <MDTypography variant="caption" color="text" display="block" sx={{ lineHeight: 1.35 }}>
-            {PERMISSION_MAP[key].description}
-          </MDTypography>
-        </MDBox>
-        <Switch checked={permissions.includes(key)} onChange={() => togglePermission(key)}
-          inputProps={{ "aria-label": PERMISSION_MAP[key].label }} />
-      </MDBox>
-      {key === "add_sales" && permissions.includes(key) && renderOverdueRange()}
-      {key === "add_sales" && permissions.includes(key) && renderApproverTier()}
-      {permissions.includes(key) && (SUB_OPTIONS[key] || []).map((option) => (
-        <MDBox key={option} component="label" display="flex" alignItems="center" gap={1} ml={3} mr={1} mb={1} px={1.25} py={0.75}
-          sx={{ cursor: "pointer", borderRadius: "8px", borderLeft: "3px solid #f59e0b", backgroundColor: "#fffbeb" }}>
-          <Icon fontSize="small" sx={{ color: "#d97706" }}>schedule</Icon>
-          <MDBox flexGrow={1} minWidth={0}>
-            <MDTypography variant="button" fontWeight="medium" display="block">{PERMISSION_MAP[option].label}</MDTypography>
-            <MDTypography variant="caption" color="text" display="block" sx={{ lineHeight: 1.35 }}>
-              {PERMISSION_MAP[option].description}
-            </MDTypography>
-          </MDBox>
-          <Switch checked={permissions.includes(option)} onChange={() => togglePermission(option)}
-            inputProps={{ "aria-label": PERMISSION_MAP[option].label }} />
-        </MDBox>
-      ))}
-    </MDBox>);
+  const renderPage = (key) => {
+    const on = permissions.includes(key);
+    return (
+      <div key={key} className={key === "add_sales" && on ? "col-span-full" : ""}>
+        <label className={`flex cursor-pointer items-center gap-3 rounded-xl px-3 py-2.5 transition ${on ? "bg-blue-50/50" : "hover:bg-slate-50"}`}>
+          <span className="min-w-0 grow">
+            <span className={`block text-[13.5px] font-semibold ${on ? "text-slate-900" : "text-slate-700"}`}>{PERMISSION_MAP[key].label}</span>
+            <span className="block text-[12px] leading-snug text-slate-500">{PERMISSION_MAP[key].description}</span>
+          </span>
+          <Toggle checked={on} onChange={() => togglePermission(key)} label={PERMISSION_MAP[key].label} />
+        </label>
+        {key === "add_sales" && on && renderOverdueRange()}
+        {key === "add_sales" && on && renderApproverTier()}
+        {on && (SUB_OPTIONS[key] || []).map((option) => (
+          <label key={option} className="mb-2 ml-1 mr-1 flex cursor-pointer items-start gap-2.5 rounded-xl border border-amber-200 bg-amber-50/60 p-3">
+            <Icon name="schedule" className="mt-0.5 text-[19px] text-amber-600" />
+            <span className="min-w-0 grow">
+              <span className="block text-[13px] font-semibold text-slate-800">{PERMISSION_MAP[option].label}</span>
+              <span className="block text-[12px] leading-snug text-slate-500">{PERMISSION_MAP[option].description}</span>
+            </span>
+            <Toggle checked={permissions.includes(option)} onChange={() => togglePermission(option)} label={PERMISSION_MAP[option].label} />
+          </label>
+        ))}
+      </div>
+    );
+  };
+
+  // Page columns inside a box: wide menus 1/2/3 columns, small ones a single column.
+  const pageGrid = (group) => ((GROUP_LAYOUT[group.key] || HALF_GROUP) === WIDE_GROUP
+    ? "grid grid-cols-1 gap-x-3 md:grid-cols-2 2xl:grid-cols-3"
+    : "grid grid-cols-1 gap-x-3");
 
   const renderGroup = (group) => {
     const selectedCount = group.children.filter((key) => permissions.includes(key)).length;
     const allSelected = selectedCount === group.children.length;
+    const share = group.children.length ? (selectedCount / group.children.length) * 100 : 0;
     return (
-      <Card key={group.key} sx={{ height: "100%", boxShadow: "none", border: "1px solid #e2e8f0" }}>
-        <MDBox display="flex" alignItems="center" gap={1.25} px={2} py={1.5}
-          sx={{ backgroundColor: selectedCount ? "#eff6ff" : "#f8fafc", borderBottom: "1px solid #e2e8f0", borderRadius: "12px 12px 0 0" }}>
-          <MDBox display="flex" alignItems="center" justifyContent="center"
-            sx={{ width: 34, height: 34, borderRadius: "10px", backgroundColor: selectedCount ? "#1A73E8" : "#cbd5e1", color: "#fff", flexShrink: 0 }}>
-            <Icon fontSize="small">{group.icon}</Icon>
-          </MDBox>
-          <MDBox flexGrow={1} minWidth={0}>
-            <MDTypography variant="button" fontWeight="bold" display="block">{group.label}</MDTypography>
-            <MDTypography variant="caption" color="text" display="block">{group.description}</MDTypography>
-          </MDBox>
-          <Chip size="small" label={`${selectedCount}/${group.children.length}`}
-            sx={{ fontWeight: 600, backgroundColor: selectedCount ? "#dbeafe" : "#e2e8f0", color: selectedCount ? "#1d4ed8" : "#475569" }} />
-          <Checkbox size="small" checked={allSelected} indeterminate={selectedCount > 0 && !allSelected}
-            onChange={() => toggleGroup(group)} inputProps={{ "aria-label": `Grant all ${group.label}` }} />
-        </MDBox>
+      <section key={group.key} className="h-full overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+        <header className="flex items-center gap-3 border-b border-slate-100 px-4 py-3">
+          <span className={`flex size-10 shrink-0 items-center justify-center rounded-xl ${selectedCount ? "bg-blue-600 text-white" : "bg-slate-100 text-slate-500"}`}>
+            <Icon name={group.icon} />
+          </span>
+          <span className="min-w-0 grow">
+            <span className="block text-[14px] font-semibold text-slate-900">{group.label}</span>
+            <span className="block truncate text-[12px] text-slate-500">{group.description}</span>
+          </span>
+          <span className="flex flex-col items-end gap-1">
+            <span className={`rounded-full px-2 py-0.5 text-[11.5px] font-semibold tabular-nums ${selectedCount ? "bg-blue-50 text-blue-700" : "bg-slate-100 text-slate-500"}`}>
+              {selectedCount}/{group.children.length}
+            </span>
+            <span className="h-1 w-14 overflow-hidden rounded-full bg-slate-100"><span className="block h-full rounded-full bg-blue-600" style={{ width: `${share}%` }} /></span>
+          </span>
+          <label className="ml-1 flex items-center gap-1.5 text-[12px] font-medium text-slate-500">
+            <TriCheck checked={allSelected} indeterminate={selectedCount > 0 && !allSelected} onChange={() => toggleGroup(group)} label={`Grant all ${group.label}`} />
+            All
+          </label>
+        </header>
         {group.sections ? group.sections.map((section) => {
           const onCount = section.children.filter((key) => permissions.includes(key)).length;
           const allOn = onCount === section.children.length;
           return (
-            <MDBox key={section.key} px={1} pt={1} pb={0.5}>
-              <MDBox display="flex" alignItems="center" gap={1} px={1} py={0.75}
-                sx={{ backgroundColor: "#f8fafc", borderRadius: "8px", borderLeft: "3px solid #1A73E8" }}>
-                <Icon fontSize="small" sx={{ color: "#1A73E8" }}>{section.icon}</Icon>
-                <MDTypography variant="button" fontWeight="bold" sx={{ flexGrow: 1 }}>{section.label}</MDTypography>
-                <MDTypography variant="caption" color="text">{onCount}/{section.children.length}</MDTypography>
-                <Checkbox size="small" checked={allOn} indeterminate={onCount > 0 && !allOn}
-                  onChange={() => toggleSection(group, section)} inputProps={{ "aria-label": `Grant all ${group.label} > ${section.label}` }} />
-              </MDBox>
-              <MDBox pl={2} display="grid" columnGap={1.5}
-                sx={{ gridTemplateColumns: (GROUP_LAYOUT[group.key] || HALF_GROUP).columns }}>
-                {section.children.map(renderPage)}
-              </MDBox>
-            </MDBox>
+            <div key={section.key} className="px-2 pb-1 pt-2">
+              <div className="mx-1 flex items-center gap-2 rounded-lg bg-slate-50 px-3 py-2">
+                <Icon name={section.icon} className="text-[18px] text-blue-600" />
+                <span className="grow text-[12.5px] font-semibold uppercase tracking-wide text-slate-600">{section.label}</span>
+                <span className="text-[12px] tabular-nums text-slate-500">{onCount}/{section.children.length}</span>
+                <TriCheck checked={allOn} indeterminate={onCount > 0 && !allOn} onChange={() => toggleSection(group, section)} label={`Grant all ${group.label} > ${section.label}`} />
+              </div>
+              <div className={`mt-1 ${pageGrid(group)}`}>{section.children.map(renderPage)}</div>
+            </div>
           );
         }) : (
-          <MDBox px={1} py={0.5} display="grid" columnGap={1.5}
-            sx={{ gridTemplateColumns: (GROUP_LAYOUT[group.key] || HALF_GROUP).columns }}>
-            {group.children.map(renderPage)}
-          </MDBox>
+          <div className={`p-2 ${pageGrid(group)}`}>{group.children.map(renderPage)}</div>
         )}
-      </Card>
+      </section>
     );
+  };
+
+  const allowedCount = pageCount(permissions);
+  const roleCounts = {
+    packaging_staff: users.filter((u) => u.role === "packaging_staff").length,
+    delivery_boy: users.filter((u) => u.role !== "packaging_staff").length,
   };
 
   return (
     <DashboardLayout>
       <DashboardNavbar />
-      <MDBox py={3}>
-        <MDBox mb={3}>
-          <MDTypography variant="h4" fontWeight="bold">Permission Management</MDTypography>
-          <MDTypography variant="button" color="text" fontWeight="regular">
-            Choose a staff member, switch on the pages they can open, then save.
-          </MDTypography>
-        </MDBox>
+      <div className="pb-8 font-[Poppins,Roboto,sans-serif] text-slate-700">
+        <div className="mb-6 flex flex-wrap items-end gap-4">
+          <div className="min-w-0 grow">
+            <h2 className="m-0 text-[22px] font-bold text-slate-900">Permission Management</h2>
+            <p className="m-0 mt-1 text-[13px] text-slate-500">Choose a staff member, switch on the pages they can open, then save.</p>
+          </div>
+          {!loading && users.length > 0 && (
+            <div className="flex gap-2">
+              {[["Staff", users.length, "groups"], ["Packaging", roleCounts.packaging_staff, "inventory"], ["Delivery", roleCounts.delivery_boy, "local_shipping"]].map(([label, value, icon]) => (
+                <div key={label} className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2">
+                  <Icon name={icon} className="text-[18px] text-slate-400" />
+                  <span className="text-[18px] font-bold tabular-nums text-slate-900">{value}</span>
+                  <span className="text-[12px] text-slate-500">{label}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
 
-        {error && <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError("")}>{error}</Alert>}
-        {message && <Alert severity="success" sx={{ mb: 2 }} onClose={() => setMessage("")}>{message}</Alert>}
+        {error && (
+          <div role="alert" className="mb-4 flex items-center gap-2 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-[13px] text-red-800">
+            <Icon name="error_outline" className="text-[19px]" />
+            <span className="grow">{error}</span>
+            <button type="button" aria-label="Close" onClick={() => setError("")} className="text-red-500 hover:text-red-800"><Icon name="close" className="text-[18px]" /></button>
+          </div>
+        )}
+        {message && (
+          <div role="status" className="mb-4 flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-[13px] text-emerald-800">
+            <Icon name="check_circle" className="text-[19px]" />
+            <span className="grow">{message}</span>
+            <button type="button" aria-label="Close" onClick={() => setMessage("")} className="text-emerald-600 hover:text-emerald-900"><Icon name="close" className="text-[18px]" /></button>
+          </div>
+        )}
 
         {loading ? (
-          <MDBox py={8} textAlign="center"><CircularProgress /></MDBox>
+          <div className="flex justify-center py-20"><span className="size-8 animate-spin rounded-full border-[3px] border-slate-200 border-t-blue-600" aria-label="Loading" /></div>
         ) : users.length === 0 ? (
-          <Alert severity="info">Create Packaging Staff or a Delivery Boy first.</Alert>
+          <div className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-[13px] text-blue-800">Create Packaging Staff or a Delivery Boy first.</div>
         ) : (
-          <Grid container spacing={3}>
+          <div className="grid grid-cols-1 gap-5 lg:grid-cols-[300px_minmax(0,1fr)]">
             {/* Staff list */}
-            <Grid item xs={12} md={4} lg={3.5}>
-              <Card sx={{ position: { md: "sticky" }, top: { md: 90 } }}>
-                <MDBox p={2} pb={1}>
-                  <MDTypography variant="h6" mb={1.5}>Staff ({users.length})</MDTypography>
-                  <MDInput fullWidth placeholder="Search name or login ID" value={search}
-                    onChange={(event) => setSearch(event.target.value)}
-                    InputProps={{ startAdornment: <InputAdornment position="start"><Icon fontSize="small">search</Icon></InputAdornment> }} />
-                  <MDBox display="flex" gap={0.75} mt={1.5} flexWrap="wrap">
+            <aside className="lg:sticky lg:top-[88px] lg:self-start">
+              <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+                <div className="space-y-3 border-b border-slate-100 p-4">
+                  <div className="relative">
+                    <Icon name="search" className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-[18px] text-slate-400" />
+                    <input
+                      type="search" placeholder="Search name or login ID" value={search} onChange={(event) => setSearch(event.target.value)}
+                      className="h-9 w-full rounded-lg border border-slate-300 bg-white pl-8 pr-3 text-[13px] text-slate-800 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+                    />
+                  </div>
+                  <div className="flex gap-1 rounded-xl bg-slate-100 p-1">
                     {ROLE_FILTERS.map(([value, label]) => (
-                      <Chip key={value} label={label} size="small" clickable onClick={() => setRoleFilter(value)}
-                        color={roleFilter === value ? "info" : "default"} variant={roleFilter === value ? "filled" : "outlined"} />
+                      <button
+                        key={value} type="button" onClick={() => setRoleFilter(value)}
+                        className={`flex-1 rounded-lg py-1.5 text-[12.5px] font-semibold transition ${roleFilter === value ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-800"}`}
+                      >
+                        {label}
+                      </button>
                     ))}
-                  </MDBox>
-                </MDBox>
-                <Divider sx={{ my: 1 }} />
-                <MDBox px={1} pb={1} sx={{ maxHeight: { md: "calc(100vh - 290px)" }, overflowY: "auto" }}>
+                  </div>
+                </div>
+                <ul className="m-0 max-h-[calc(100vh-300px)] list-none space-y-0.5 overflow-y-auto p-2">
                   {filteredUsers.length === 0 && (
-                    <MDTypography variant="caption" color="text" display="block" textAlign="center" py={3}>No staff match your search.</MDTypography>
+                    <li className="py-8 text-center text-[13px] text-slate-400">No staff match your search.</li>
                   )}
                   {filteredUsers.map((user) => {
                     const active = String(user.id) === String(selectedId);
                     const count = pageCount(user.permissions);
                     return (
-                      <MDBox key={user.id} role="button" tabIndex={0} onClick={() => selectUser(user.id)}
-                        onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") selectUser(user.id); }}
-                        display="flex" alignItems="center" gap={1.25} px={1.25} py={1} mb={0.5}
-                        sx={{
-                          cursor: "pointer", borderRadius: "10px",
-                          backgroundColor: active ? "#eff6ff" : "transparent",
-                          border: `1px solid ${active ? "#93c5fd" : "transparent"}`,
-                          "&:hover": { backgroundColor: active ? "#eff6ff" : "#f8fafc" },
-                        }}>
-                        <Avatar sx={{ width: 36, height: 36, fontSize: "0.8rem", bgcolor: user.role === "packaging_staff" ? "#7c3aed" : "#0891b2" }}>
-                          {initials(user.name)}
-                        </Avatar>
-                        <MDBox flexGrow={1} minWidth={0}>
-                          <MDTypography variant="button" fontWeight={active ? "bold" : "medium"} display="block" noWrap>{user.name}</MDTypography>
-                          <MDTypography variant="caption" color="text" display="block" noWrap>{roleLabel(user.role)}</MDTypography>
-                        </MDBox>
-                        <Chip size="small" label={count ? `${count} page${count === 1 ? "" : "s"}` : "None"}
-                          sx={{ fontSize: "0.7rem", backgroundColor: count ? "#dcfce7" : "#f1f5f9", color: count ? "#166534" : "#64748b" }} />
-                      </MDBox>
+                      <li key={user.id}>
+                        <button
+                          type="button" onClick={() => selectUser(user.id)}
+                          className={`flex w-full items-center gap-3 rounded-xl border px-2.5 py-2 text-left transition ${active ? "border-blue-200 bg-blue-50" : "border-transparent hover:bg-slate-50"}`}
+                        >
+                          <span className={`flex size-9 shrink-0 items-center justify-center rounded-full text-[12px] font-bold text-white ${avatarClass(user.role)}`}>{initials(user.name)}</span>
+                          <span className="min-w-0 grow">
+                            <span className={`block truncate text-[13px] ${active ? "font-bold text-slate-900" : "font-semibold text-slate-700"}`}>{user.name}</span>
+                            <span className="block truncate text-[11.5px] text-slate-500">{roleLabel(user.role)}</span>
+                          </span>
+                          <span className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-semibold ${count ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-500"}`}>
+                            {count ? `${count} page${count === 1 ? "" : "s"}` : "None"}
+                          </span>
+                        </button>
+                      </li>
                     );
                   })}
-                </MDBox>
-              </Card>
-            </Grid>
+                </ul>
+              </div>
+            </aside>
 
             {/* Permissions editor */}
-            <Grid item xs={12} md={8} lg={8.5}>
+            <div className="min-w-0">
               {selectedUser && (
                 <>
-                  <Card sx={{ mb: 3 }}>
-                    <MDBox p={2.5} display="flex" alignItems="center" gap={2} flexWrap="wrap">
-                      <Avatar sx={{ width: 52, height: 52, bgcolor: selectedUser.role === "packaging_staff" ? "#7c3aed" : "#0891b2" }}>
-                        {initials(selectedUser.name)}
-                      </Avatar>
-                      <MDBox flexGrow={1} minWidth={200}>
-                        <MDTypography variant="h5" fontWeight="bold">{selectedUser.name}</MDTypography>
-                        <MDBox display="flex" gap={1} mt={0.5} flexWrap="wrap" alignItems="center">
-                          <Chip size="small" label={roleLabel(selectedUser.role)} variant="outlined" />
-                          <MDTypography variant="caption" color="text">
-                            Login ID: <strong>{selectedUser.loginId || "Not generated"}</strong>
-                          </MDTypography>
-                        </MDBox>
-                      </MDBox>
-                      <MDBox textAlign="right">
-                        <MDTypography variant="h4" fontWeight="bold" color="info">
-                          {pageCount(permissions)}<MDTypography component="span" variant="button" color="text"> / {PAGE_KEYS.length}</MDTypography>
-                        </MDTypography>
-                        <MDTypography variant="caption" color="text">pages allowed</MDTypography>
-                      </MDBox>
-                    </MDBox>
-                    <Divider sx={{ my: 0 }} />
-                    <MDBox px={2.5} py={1.5} display="flex" gap={1} flexWrap="wrap">
-                      <MDButton size="small" variant="outlined" color="info" onClick={grantAll}>
-                        <Icon sx={{ mr: 0.5 }}>done_all</Icon>Allow all pages
-                      </MDButton>
-                      <MDButton size="small" variant="outlined" color="secondary" onClick={clearAll}>
-                        <Icon sx={{ mr: 0.5 }}>block</Icon>Remove all
-                      </MDButton>
-                    </MDBox>
-                  </Card>
+                  <div className="mb-5 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+                    <div className="flex flex-wrap items-center gap-4 p-5">
+                      <span className={`flex size-14 shrink-0 items-center justify-center rounded-full text-[18px] font-bold text-white ${avatarClass(selectedUser.role)}`}>{initials(selectedUser.name)}</span>
+                      <div className="min-w-48 grow">
+                        <h3 className="m-0 text-[19px] font-bold text-slate-900">{selectedUser.name}</h3>
+                        <div className="mt-1 flex flex-wrap items-center gap-2 text-[12.5px] text-slate-500">
+                          <span className="rounded-full border border-slate-300 px-2 py-0.5 font-medium text-slate-600">{roleLabel(selectedUser.role)}</span>
+                          <span>Login ID: <b className="text-slate-700">{selectedUser.loginId || "Not generated"}</b></span>
+                        </div>
+                      </div>
+                      <div className="w-48">
+                        <div className="flex items-baseline justify-end gap-1">
+                          <span className="text-[26px] font-bold tabular-nums text-blue-700">{allowedCount}</span>
+                          <span className="text-[13px] text-slate-500">/ {PAGE_KEYS.length} pages allowed</span>
+                        </div>
+                        <div className="mt-1.5 h-2 overflow-hidden rounded-full bg-slate-100">
+                          <div className="h-full rounded-full bg-blue-600 transition-all" style={{ width: `${(allowedCount / PAGE_KEYS.length) * 100}%` }} />
+                        </div>
+                      </div>
+                    </div>
+                    <div className="flex flex-wrap gap-2 border-t border-slate-100 bg-slate-50/60 px-5 py-3">
+                      <button type="button" className={btn.outline} onClick={grantAll}><Icon name="done_all" className="text-[18px] text-blue-600" />Allow all pages</button>
+                      <button type="button" className={btn.outline} onClick={clearAll}><Icon name="block" className="text-[18px] text-slate-500" />Remove all</button>
+                    </div>
+                  </div>
 
-                  <Grid container spacing={2.5}>
+                  <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
                     {groups.map((group) => (
-                      <Grid item {...(GROUP_LAYOUT[group.key] || HALF_GROUP).grid} key={group.key}>{renderGroup(group)}</Grid>
+                      <div key={group.key} className={(GROUP_LAYOUT[group.key] || HALF_GROUP) === WIDE_GROUP ? "lg:col-span-2" : ""}>{renderGroup(group)}</div>
                     ))}
-                  </Grid>
+                  </div>
 
                   {/* Save bar */}
-                  <Card sx={{ position: "sticky", bottom: 16, mt: 3, zIndex: 2, border: dirty ? "1px solid #fbbf24" : "1px solid #e2e8f0" }}>
-                    <MDBox px={2.5} py={1.5} display="flex" alignItems="center" gap={1.5} flexWrap="wrap">
-                      <Icon sx={{ color: dirty ? "#d97706" : "#16a34a" }}>{dirty ? "edit_note" : "check_circle"}</Icon>
-                      <MDTypography variant="button" fontWeight="medium" sx={{ flexGrow: 1 }}>
-                        {dirty ? "You have unsaved changes" : "All changes saved"}
-                      </MDTypography>
-                      <MDButton variant="text" color="secondary" disabled={!dirty || saving} onClick={resetChanges}>Discard</MDButton>
-                      <MDButton color="info" variant="gradient" disabled={!dirty || saving} onClick={() => setConfirmSaveOpen(true)}>
-                        <Icon sx={{ mr: 0.5 }}>save</Icon>{saving ? "Saving..." : "Save Permissions"}
-                      </MDButton>
-                    </MDBox>
-                  </Card>
+                  <div className={`sticky bottom-4 z-10 mt-5 flex flex-wrap items-center gap-3 rounded-2xl border bg-white/95 px-5 py-3 shadow-lg backdrop-blur ${dirty ? "border-amber-300" : "border-slate-200"}`}>
+                    <Icon name={dirty ? "edit_note" : "check_circle"} className={`text-[22px] ${dirty ? "text-amber-600" : "text-emerald-600"}`} />
+                    <span className="grow text-[13.5px] font-semibold text-slate-800">{dirty ? "You have unsaved changes" : "All changes saved"}</span>
+                    <button type="button" className={btn.ghost} disabled={!dirty || saving} onClick={resetChanges}>Discard</button>
+                    <button type="button" className={btn.primary} disabled={!dirty || saving} onClick={() => setConfirmSaveOpen(true)}>
+                      <Icon name="save" className="text-[18px]" />{saving ? "Saving..." : "Save Permissions"}
+                    </button>
+                  </div>
                 </>
               )}
-            </Grid>
-          </Grid>
+            </div>
+          </div>
         )}
-      </MDBox>
+      </div>
 
-      <Dialog open={confirmSaveOpen} onClose={() => setConfirmSaveOpen(false)} fullWidth maxWidth="xs">
-        <DialogTitle>Save permissions for {selectedUser?.name}?</DialogTitle>
-        <DialogContent>
-          {grantedLabels.length ? (
-            <MDBox display="flex" gap={0.75} flexWrap="wrap">
-              {grantedLabels.map((label) => <Chip key={label} label={label} size="small" color="info" variant="outlined" />)}
-            </MDBox>
-          ) : (
-            <MDTypography variant="button" color="text">No pages selected — this user will not be able to open any page.</MDTypography>
-          )}
-          <MDTypography variant="caption" color="text" display="block" mt={2}>
-            Changes apply the next time this user signs in.
-          </MDTypography>
-        </DialogContent>
-        <DialogActions>
-          <MDButton color="secondary" onClick={() => setConfirmSaveOpen(false)}>Cancel</MDButton>
-          <MDButton color="info" variant="gradient" onClick={savePermissions}>Yes, Save</MDButton>
-        </DialogActions>
-      </Dialog>
+      <Modal
+        open={confirmSaveOpen} onClose={() => setConfirmSaveOpen(false)} title={`Save permissions for ${selectedUser?.name || ""}?`}
+        actions={(
+          <>
+            <button type="button" className={btn.ghost} onClick={() => setConfirmSaveOpen(false)}>Cancel</button>
+            <button type="button" className={btn.primary} onClick={savePermissions}>Yes, Save</button>
+          </>
+        )}
+      >
+        {grantedLabels.length ? (
+          <div className="flex flex-wrap gap-1.5">
+            {grantedLabels.map((label) => (
+              <span key={label} className="rounded-full border border-blue-200 bg-blue-50 px-2.5 py-1 text-[12px] font-medium text-blue-800">{label}</span>
+            ))}
+          </div>
+        ) : (
+          <p className="m-0 text-[13px] text-slate-600">No pages selected — this user will not be able to open any page.</p>
+        )}
+        <p className="m-0 mt-4 text-[12px] text-slate-500">Changes apply the next time this user signs in.</p>
+      </Modal>
 
-      <Dialog open={Boolean(pendingUserId)} onClose={() => setPendingUserId(null)} fullWidth maxWidth="xs">
-        <DialogTitle>Discard unsaved changes?</DialogTitle>
-        <DialogContent>
-          <MDTypography variant="button" color="text">
-            You changed {selectedUser?.name}&apos;s permissions but didn&apos;t save them.
-          </MDTypography>
-        </DialogContent>
-        <DialogActions>
-          <MDButton color="secondary" onClick={() => setPendingUserId(null)}>Keep editing</MDButton>
-          <MDButton color="error" variant="gradient" onClick={() => { setSelectedId(pendingUserId); setPendingUserId(null); }}>
-            Discard
-          </MDButton>
-        </DialogActions>
-      </Dialog>
+      <Modal
+        open={Boolean(pendingUserId)} onClose={() => setPendingUserId(null)} title="Discard unsaved changes?"
+        actions={(
+          <>
+            <button type="button" className={btn.ghost} onClick={() => setPendingUserId(null)}>Keep editing</button>
+            <button type="button" className={btn.danger} onClick={() => { setSelectedId(pendingUserId); setPendingUserId(null); }}>Discard</button>
+          </>
+        )}
+      >
+        <p className="m-0 text-[13px] text-slate-600">You changed {selectedUser?.name}&apos;s permissions but didn&apos;t save them.</p>
+      </Modal>
       <Footer />
     </DashboardLayout>
   );

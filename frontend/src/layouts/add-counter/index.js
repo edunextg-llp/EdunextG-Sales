@@ -1,29 +1,14 @@
+// Add Outlet: Tailwind CSS (no MUI). Staff / day / location selection, new outlets, Excel upload and
+// download, edit and delete logic unchanged.
 import { useState, useEffect, useRef } from "react";
+import PropTypes from "prop-types";
 
-// @mui material components
-import Grid from "@mui/material/Grid";
-import Card from "@mui/material/Card";
-import Icon from "@mui/material/Icon";
-import Autocomplete from "@mui/material/Autocomplete";
-import { Checkbox, Chip, Divider, FormControl, FormControlLabel, FormLabel, IconButton, Radio, RadioGroup } from "@mui/material";
-import InputLabel from "@mui/material/InputLabel";
-import MenuItem from "@mui/material/MenuItem";
-import Select from "@mui/material/Select";
-
-// Material Dashboard 2 React components
-import MDBox from "components/MDBox";
-import MDTypography from "components/MDTypography";
-import MDInput from "components/MDInput";
-import MDButton from "components/MDButton";
-
-// Material Dashboard 2 React example components
 import DashboardLayout from "examples/LayoutContainers/DashboardLayout";
 import DashboardNavbar from "examples/Navbars/DashboardNavbar";
 import Footer from "examples/Footer";
-import { FaRegEdit } from "react-icons/fa";
-import { CiTrash } from "react-icons/ci";
 import { formatGoogleMapsLocation, isValidGoogleMapsShortUrl } from "utils/googleMapsLocation";
 import { useAuth } from "context/AuthContext";
+import { Card, Field, Icon, Modal, PageHeader, SearchSelect, btn, fieldClass } from "components/tw";
 
 const GOOGLE_MAPS_HELPER_TEXT = "Use Google Maps Share link, e.g. https://maps.app.goo.gl/T9zxVHUGoiYcBX2s8";
 
@@ -45,23 +30,6 @@ const parseWeeklySchedule = (value) => {
     const stored = typeof value === "string" ? JSON.parse(value) : value;
     return WEEK_DAYS.reduce((schedule, day) => ({ ...schedule, [day]: { ...schedule[day], ...(stored?.[day] || {}) } }), createWeeklySchedule());
   } catch { return createWeeklySchedule(); }
-};
-
-const sectionLabelSx = {
-  fontSize: "0.7rem",
-  fontWeight: 700,
-  letterSpacing: "0.08em",
-  textTransform: "uppercase",
-  color: "#64748b",
-  mb: 1.5,
-};
-
-const outletCardSx = {
-  border: "1px solid #e2e8f0",
-  borderRadius: "12px",
-  overflow: "hidden",
-  boxShadow: "0 1px 3px rgba(15, 23, 42, 0.06)",
-  backgroundColor: "#fff",
 };
 
 const createEmptyOutlet = () => ({
@@ -93,6 +61,65 @@ const createEmptyEditForm = () => ({
   priorityNumber: "",
   operatingHours: createWeeklySchedule(),
 });
+
+const TIME_FIELDS = [["firstHalfStart", "First start"], ["firstHalfEnd", "First end"], ["secondHalfStart", "Second start"], ["secondHalfEnd", "Second end"]];
+
+function SectionTitle({ children }) {
+  return <h4 className="m-0 mb-3 text-[11.5px] font-bold uppercase tracking-[0.1em] text-slate-500">{children}</h4>;
+}
+SectionTitle.propTypes = { children: PropTypes.node.isRequired };
+
+// Weekly opening hours: per day an Off box and two opening periods.
+function WeeklyHours({ hours, onOff, onTime }) {
+  return (
+    <div className="overflow-x-auto rounded-xl border border-slate-200">
+      <table className="w-full min-w-[640px] border-collapse text-[12.5px]">
+        <thead>
+          <tr className="bg-slate-50 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+            <th className="px-3 py-2">Day</th>
+            <th className="px-3 py-2">Off</th>
+            {TIME_FIELDS.map(([, label]) => <th key={label} className="px-2 py-2">{label}</th>)}
+          </tr>
+        </thead>
+        <tbody>
+          {WEEK_DAYS.map((day) => {
+            const h = hours[day];
+            return (
+              <tr key={day} className={`border-t border-slate-100 ${h.isOff ? "bg-slate-50/70" : ""}`}>
+                <td className="px-3 py-1.5 font-semibold text-slate-700">{day}</td>
+                <td className="px-3 py-1.5">
+                  <input type="checkbox" className="size-4 accent-blue-600" checked={h.isOff} onChange={(e) => onOff(day, e.target.checked)} aria-label={`${day} off`} />
+                </td>
+                {TIME_FIELDS.map(([field, label]) => (
+                  <td key={field} className="px-2 py-1.5">
+                    <input type="time" className={`${fieldClass} h-8`} disabled={h.isOff} value={h[field]} onChange={(e) => onTime(day, field, e.target.value)} aria-label={`${day} ${label}`} />
+                  </td>
+                ))}
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+WeeklyHours.propTypes = { hours: PropTypes.object.isRequired, onOff: PropTypes.func.isRequired, onTime: PropTypes.func.isRequired };
+
+function GstChoice({ value, onChange }) {
+  return (
+    <div className="flex gap-1 rounded-xl bg-slate-100 p-1" role="radiogroup" aria-label="Outlet has GST">
+      {[["yes", "Yes"], ["no", "No"]].map(([v, label]) => (
+        <button
+          key={v} type="button" role="radio" aria-checked={value === v} onClick={() => onChange(v)}
+          className={`rounded-lg px-4 py-1.5 text-[12.5px] font-semibold transition ${value === v ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-800"}`}
+        >
+          {label}
+        </button>
+      ))}
+    </div>
+  );
+}
+GstChoice.propTypes = { value: PropTypes.string.isRequired, onChange: PropTypes.func.isRequired };
 
 function AddCounter() {
   const { user } = useAuth();
@@ -659,871 +686,376 @@ function AddCounter() {
     }
   };
 
+  const editingOutlet = editingOutletId ? outletsAvailableForEditing.find((outlet) => outlet.id === editingOutletId) : null;
+  const sameAsContactBox = (checked, onChange) => (
+    <label className="flex cursor-pointer items-center gap-2 text-[13px] text-slate-600">
+      <input type="checkbox" className="size-4 accent-blue-600" checked={Boolean(checked)} onChange={(e) => onChange(e.target.checked)} />
+      WhatsApp number same as contact number
+    </label>
+  );
+
   return (
     <DashboardLayout>
       <DashboardNavbar />
-      <MDBox pt={6} pb={3}>
-        <Grid container justifyContent="center">
-          <Grid item xs={12}>
-            <Card>
-              <MDBox
-                variant="gradient"
-                bgColor="info"
-                borderRadius="lg"
-                coloredShadow="info"
-                mx={2}
-                mt={-3}
-                p={3}
-                mb={1}
-                textAlign="center"
-              >
-                <MDTypography variant="h4" fontWeight="medium" color="white" mt={1}>
-                  {isSelfService ? "My Day-wise Outlets" : "Add Outlets to Staff"}
-                </MDTypography>
-              </MDBox>
-              <MDBox pt={4} pb={3} px={3}>
-                {!isSelfService && <Grid container spacing={3}>
-                  <Grid item xs={12} md={4}>
-                    <FormControl fullWidth size="small">
-                      <InputLabel id="staff-type-filter-label">Staff Type</InputLabel>
-                      <Select
-                        labelId="staff-type-filter-label"
-                        value={selectedStaffType}
-                        label="Staff Type"
-                        onChange={(e) => setSelectedStaffType(e.target.value)}
-                        sx={{ minHeight: 48, height: 48 }}
-                      >
-                        <MenuItem value="">
-                          <em>Select Staff Type</em>
-                        </MenuItem>
-                        <MenuItem value="distributor">Distributor</MenuItem>
-                        <MenuItem value="cnf">CNF</MenuItem>
-                      </Select>
-                    </FormControl>
-                  </Grid>
+      <div className="pb-8 font-[Poppins,Roboto,sans-serif] text-slate-700">
+        <PageHeader
+          title={isSelfService ? "My Day-wise Outlets" : "Add Outlets to Staff"}
+          description={isSelfService
+            ? "Select a day and one of your saved locations, then add outlets."
+            : "Choose a staff member, the day and the location, then add their outlets one by one or upload an Excel sheet."}
+          actions={(
+            <>
+              <button type="button" className={btn.outline} onClick={downloadOutletTemplate} disabled={downloadingTemplate}>
+                <Icon name="download" className="text-[18px] text-blue-600" />{downloadingTemplate ? "Preparing Template..." : "Add Outlet Template"}
+              </button>
+              {!isSelfService && (
+                <button type="button" className={btn.outline} onClick={downloadOutletsExcel} disabled={exportingOutlets}>
+                  <Icon name="table_view" className="text-[18px] text-emerald-600" />{exportingOutlets ? "Preparing Excel..." : "All Outlets Excel"}
+                </button>
+              )}
+            </>
+          )}
+        />
 
-                  <Grid item xs={12} md={4}>
-                    <FormControl fullWidth size="small" disabled={!selectedStaffType}>
-                      <InputLabel id="company-filter-label">Company Name</InputLabel>
-                      <Select
-                        labelId="company-filter-label"
-                        value={selectedCompanyName}
-                        label="Company Name"
-                        onChange={(e) => setSelectedCompanyName(e.target.value)}
-                        sx={{ minHeight: 48, height: 48 }}
-                      >
-                        <MenuItem value="">
-                          <em>Select Company</em>
-                        </MenuItem>
-                        {companyOptions.map((companyName) => (
-                          <MenuItem key={companyName} value={companyName}>
-                            {companyName}
-                          </MenuItem>
+        {/* Who, which day, which location */}
+        <Card className="mb-5">
+          <div className="grid grid-cols-1 gap-4 p-5 md:grid-cols-3">
+            {!isSelfService && (
+              <>
+                <Field label="1 · Staff type" width="w-full">
+                  <select className={fieldClass} value={selectedStaffType} onChange={(e) => setSelectedStaffType(e.target.value)}>
+                    <option value="">Select staff type</option>
+                    <option value="distributor">Distributor</option>
+                    <option value="cnf">CNF</option>
+                  </select>
+                </Field>
+                <Field label="2 · Company name" width="w-full">
+                  <select className={fieldClass} value={selectedCompanyName} disabled={!selectedStaffType} onChange={(e) => setSelectedCompanyName(e.target.value)}>
+                    <option value="">{selectedStaffType && companyOptions.length === 0 ? `No ${selectedStaffType === "cnf" ? "CNF" : "Distributor"} company found` : "Select company"}</option>
+                    {companyOptions.map((companyName) => <option key={companyName} value={companyName}>{companyName}</option>)}
+                  </select>
+                </Field>
+                <div className="flex flex-col gap-1">
+                  <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">3 · Staff</span>
+                  <SearchSelect
+                    label="Search staff name" placeholder={!selectedStaffType || !selectedCompanyName ? "Choose type and company first" : "Search staff name"}
+                    disabled={!selectedStaffType || !selectedCompanyName}
+                    options={filteredStaffOptions.map((staff) => ({ value: staff.id, label: staff.name || "" }))}
+                    value={selectedStaff?.id ?? null}
+                    onChange={(id) => setSelectedStaff(filteredStaffOptions.find((staff) => staff.id === id) || null)}
+                  />
+                </div>
+              </>
+            )}
+            {isSelfService && selectedStaff && (
+              <div className="md:col-span-3">
+                <span className="block text-[14px] font-semibold text-slate-900">{selectedStaff.name} — {selectedCompanyName}</span>
+                <span className="block text-[12.5px] text-slate-500">Select a day and one of your saved locations, then add outlets.</span>
+              </div>
+            )}
+            {selectedStaff && !isCnfStaff && (
+              <Field label={isSelfService ? "Day" : "4 · Day"} width="w-full">
+                <select className={fieldClass} value={selectedDay} onChange={(e) => setSelectedDay(e.target.value)}>
+                  <option value="">Select day</option>
+                  {days.map((day) => <option key={day} value={day}>{day}</option>)}
+                </select>
+              </Field>
+            )}
+            {selectedStaff && (
+              <Field label={isSelfService ? "Location" : "5 · Location"} width="w-full">
+                <select className={fieldClass} value={selectedLocation} disabled={!routeDay} onChange={(e) => setSelectedLocation(e.target.value)}>
+                  <option value="">
+                    {routeDay && availableLocations.length === 0
+                      ? (isCnfStaff ? "No CNF locations assigned" : "No locations assigned for this day")
+                      : "Select location"}
+                  </option>
+                  {availableLocations.map((loc) => <option key={loc.id} value={loc.location_name}>{loc.location_name}</option>)}
+                </select>
+              </Field>
+            )}
+          </div>
+        </Card>
+
+        {/* New outlets for the chosen location */}
+        {selectedLocation && (
+          <Card className="mb-5">
+            <div className="flex flex-wrap items-center gap-3 border-b border-slate-100 bg-slate-50/60 px-5 py-3">
+              <div className="min-w-0 grow">
+                <h3 className="m-0 text-[15px] font-semibold text-slate-900">Add Outlets</h3>
+                <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[12.5px] text-slate-500">
+                  Location
+                  <span className="inline-flex items-center gap-1 rounded-full border border-blue-200 bg-blue-50 px-2 py-0.5 font-semibold text-blue-800">
+                    <Icon name="place" className="text-[14px]" />{selectedLocation}
+                  </span>
+                  {outlets.length > 0 && (
+                    <span className="rounded-full bg-sky-50 px-2 py-0.5 font-semibold text-sky-700">{outlets.length} outlet{outlets.length > 1 ? "s" : ""}</span>
+                  )}
+                </div>
+              </div>
+              <button type="button" className={btn.outline} onClick={() => outletUploadInputRef.current?.click()} disabled={uploadingOutlets}>
+                <Icon name="upload_file" className="text-[18px] text-blue-600" />{uploadingOutlets ? "Uploading..." : "Upload Excel"}
+              </button>
+              <input ref={outletUploadInputRef} type="file" accept=".xls,.xlsx" hidden onChange={uploadOutletsExcel} />
+              <button type="button" className={btn.primary} onClick={addOutletField}>
+                <Icon name="add" className="text-[18px]" />Add Outlet
+              </button>
+            </div>
+
+            <div className="space-y-5 p-5">
+              {outlets.length === 0 ? (
+                <div className="flex flex-col items-center gap-1 rounded-2xl border-2 border-dashed border-slate-300 bg-slate-50 px-4 py-10 text-center">
+                  <Icon name="storefront" className="text-[38px] text-slate-300" />
+                  <p className="m-0 text-[13.5px] font-semibold text-slate-600">No outlets added yet</p>
+                  <p className="m-0 mb-3 text-[12.5px] text-slate-500">Click &quot;Add Outlet&quot; to start adding outlet details for this location.</p>
+                  <button type="button" className={btn.outline} onClick={addOutletField}><Icon name="add" className="text-[18px]" />Add First Outlet</button>
+                </div>
+              ) : outlets.map((outlet, index) => (
+                // eslint-disable-next-line react/no-array-index-key
+                <div key={index} className="overflow-hidden rounded-2xl border border-slate-200">
+                  <div className="flex items-center gap-2.5 border-b border-slate-200 bg-slate-50 px-4 py-2.5">
+                    <span className="flex size-7 items-center justify-center rounded-lg bg-sky-500 text-[12px] font-bold text-white">{getPendingSerial(index)}</span>
+                    <span className="grow text-[13.5px] font-semibold text-slate-800">Outlet {getPendingSerial(index)}{outlet.outletName ? ` · ${outlet.outletName}` : ""}</span>
+                    <button type="button" className={`${btn.icon} hover:bg-red-50 hover:text-red-600`} onClick={() => removeOutletField(index)} title="Remove outlet" aria-label={`Remove outlet ${getPendingSerial(index)}`}>
+                      <Icon name="delete_outline" className="text-[19px]" />
+                    </button>
+                  </div>
+                  <div className="space-y-5 p-4">
+                    <section>
+                      <SectionTitle>Outlet details</SectionTitle>
+                      <div className="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_2fr]">
+                        <Field label="ERP Id" width="w-full">
+                          <input className={fieldClass} value={outlet.outletErpId} onChange={(e) => handleOutletChange(index, "outletErpId", e.target.value)} />
+                        </Field>
+                        <Field label="Outlet name" width="w-full">
+                          <input className={fieldClass} value={outlet.outletName} onChange={(e) => handleOutletChange(index, "outletName", e.target.value)} />
+                        </Field>
+                      </div>
+                    </section>
+                    <section className="grid grid-cols-1 gap-5 lg:grid-cols-2">
+                      <div>
+                        <SectionTitle>GST</SectionTitle>
+                        <div className="flex flex-wrap items-end gap-3">
+                          <div>
+                            <span className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-slate-500">Outlet has GST?</span>
+                            <GstChoice value={outlet.hasGst} onChange={(v) => handleOutletChange(index, "hasGst", v)} />
+                          </div>
+                          {outlet.hasGst === "yes" && (
+                            <Field label="GST no *" width="w-56">
+                              <input className={fieldClass} value={outlet.gstNumber} onChange={(e) => handleOutletChange(index, "gstNumber", e.target.value)} />
+                            </Field>
+                          )}
+                        </div>
+                      </div>
+                      <div>
+                        <SectionTitle>Contact</SectionTitle>
+                        <div className="grid grid-cols-2 gap-3">
+                          <Field label="Contact number" width="w-full">
+                            <input className={fieldClass} inputMode="numeric" value={outlet.contactNumber} onChange={(e) => handleOutletChange(index, "contactNumber", e.target.value)} />
+                          </Field>
+                          <Field label="WhatsApp number" width="w-full">
+                            <input className={fieldClass} inputMode="numeric" value={outlet.whatsappNumber} disabled={outlet.whatsappSameAsContact} onChange={(e) => handleOutletChange(index, "whatsappNumber", e.target.value)} />
+                          </Field>
+                        </div>
+                        <div className="mt-2">{sameAsContactBox(outlet.whatsappSameAsContact, (checked) => handleWhatsappSameAsContact(index, checked))}</div>
+                      </div>
+                    </section>
+                    <section>
+                      <SectionTitle>Location</SectionTitle>
+                      <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+                        <label className="flex flex-col gap-1">
+                          <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Address</span>
+                          <textarea rows={2} className={`${fieldClass} h-auto py-2`} value={outlet.address} onChange={(e) => handleOutletChange(index, "address", e.target.value)} />
+                        </label>
+                        <Field label="Google location" width="w-full" hint={GOOGLE_MAPS_HELPER_TEXT}>
+                          <input className={fieldClass} value={outlet.googleLocation} onChange={(e) => handleOutletChange(index, "googleLocation", e.target.value)} onBlur={() => handleOutletGoogleLocationBlur(index)} />
+                        </Field>
+                      </div>
+                    </section>
+                    <section>
+                      <SectionTitle>Visit schedule (optional)</SectionTitle>
+                      <Field label="Priority number (optional)" width="w-48">
+                        <input type="number" min={1} className={fieldClass} value={outlet.priorityNumber} onChange={(e) => handleOutletChange(index, "priorityNumber", e.target.value)} />
+                      </Field>
+                    </section>
+                    <section>
+                      <SectionTitle>Weekly outlet timings (optional)</SectionTitle>
+                      <p className="m-0 mb-3 text-[12.5px] text-slate-500">Leave this section blank, or set two opening periods for each day.</p>
+                      <div className="mb-3 flex flex-wrap items-end gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
+                        <span className="w-full text-[12.5px] font-semibold text-slate-700">Timings for all working days</span>
+                        {[["firstHalfStart", "First half start"], ["firstHalfEnd", "First half end"], ["secondHalfStart", "Second half start"], ["secondHalfEnd", "Second half end"]].map(([field, label]) => (
+                          <Field key={field} label={label} width="w-36">
+                            <input type="time" className={fieldClass} value={outlet.timingTemplate?.[field] || ""} onChange={(e) => handleTimingTemplateChange(index, field, e.target.value)} />
+                          </Field>
                         ))}
-                        {selectedStaffType && companyOptions.length === 0 && (
-                          <MenuItem disabled>
-                            No {selectedStaffType === "cnf" ? "CNF" : "Distributor"} company found
-                          </MenuItem>
-                        )}
-                      </Select>
-                    </FormControl>
-                  </Grid>
-
-                  <Grid item xs={12} md={4}>
-                    <MDBox mb={2}>
-                      <Autocomplete
-                        options={filteredStaffOptions}
-                        value={selectedStaff}
-                        getOptionLabel={(option) => option.name}
-                        isOptionEqualToValue={(option, value) => option.id === value.id}
-                        onChange={(event, newValue) => setSelectedStaff(newValue)}
-                        onOpen={() => {
-                          if (staffOptions.length === 0) {
-                            fetchStaffOptions();
-                          }
-                        }}
-                        onInputChange={(event, newInputValue) => fetchStaffOptions(newInputValue)}
-                        disabled={!selectedStaffType || !selectedCompanyName}
-                        renderInput={(params) => (
-                          <MDInput {...params} label="Search Staff Name" fullWidth />
-                        )}
+                        <button type="button" className={btn.outline} onClick={() => applyTimingTemplateToWorkingDays(index)}>
+                          <Icon name="done_all" className="text-[18px] text-blue-600" />Apply to All Days
+                        </button>
+                      </div>
+                      <WeeklyHours
+                        hours={outlet.operatingHours}
+                        onOff={(day, checked) => { const updated = [...outlets]; updated[index].operatingHours[day].isOff = checked; setOutlets(updated); }}
+                        onTime={(day, field, value) => { const updated = [...outlets]; updated[index].operatingHours[day][field] = value; setOutlets(updated); }}
                       />
-                    </MDBox>
-                  </Grid>
-                  {/* {selectedStaff && (
-                    <Grid item xs={12} md={6}>
-                      <MDBox
-                        p={2}
-                        sx={{
-                          backgroundColor: "#f0f2f5",
-                          borderRadius: "10px",
-                          border: "1px solid #ddd",
-                        }}
-                      >
-                        <MDTypography variant="button" fontWeight="bold">
-                          Staff Details:
-                        </MDTypography>
-                        <MDTypography variant="body2">
-                          Company: {selectedStaff.company_name}
-                        </MDTypography>
-                        <MDTypography variant="body2">Name: {selectedStaff.name}</MDTypography>
-                        <MDTypography variant="body2">
-                          Contact: {selectedStaff.contact_no}
-                        </MDTypography>
-                        <MDTypography variant="body2">
-                          Type: {isCnfStaff ? "CNF" : "Distributor"}
-                        </MDTypography>
-                      </MDBox>
-                    </Grid>
-                  )} */}
-                </Grid>}
+                    </section>
+                  </div>
+                </div>
+              ))}
+            </div>
 
-                {isSelfService && selectedStaff && (
-                  <MDBox px={1} mb={2}>
-                    <MDTypography variant="body2" fontWeight="medium">
-                      {selectedStaff.name} — {selectedCompanyName}
-                    </MDTypography>
-                    <MDTypography variant="caption" color="text">
-                      Select a day and one of your saved locations, then add outlets.
-                    </MDTypography>
-                  </MDBox>
-                )}
+            {outlets.length > 0 && (
+              <div className="flex justify-end gap-2 border-t border-slate-100 bg-slate-50/60 px-5 py-3">
+                <button type="button" className={btn.ghost} onClick={() => setOutlets([])}>Clear All</button>
+                <button type="button" className={btn.primary} onClick={handleSubmit}>
+                  <Icon name="save" className="text-[18px]" />Save {outlets.length} Outlet{outlets.length > 1 ? "s" : ""}
+                </button>
+              </div>
+            )}
+          </Card>
+        )}
 
-                <MDBox mt={2} display="flex" justifyContent="flex-end" gap={1} flexWrap="wrap">
-                  <MDButton
-                    variant="outlined"
-                    color="info"
-                    size="small"
-                    onClick={downloadOutletTemplate}
-                    disabled={downloadingTemplate}
-                    startIcon={<Icon>download</Icon>}
-                  >
-                    {downloadingTemplate ? "Preparing Template..." : "Download Add Outlet Template"}
-                  </MDButton>
-                  {!isSelfService && <MDButton
-                    variant="gradient"
-                    color="success"
-                    size="small"
-                    onClick={downloadOutletsExcel}
-                    disabled={exportingOutlets}
-                    startIcon={<Icon>download</Icon>}
-                  >
-                    {exportingOutlets ? "Preparing Excel..." : "Download All Outlets Excel"}
-                  </MDButton>}
-                </MDBox>
-
-                {selectedStaff && (
-                  <MDBox mt={4}>
-                    <Grid container spacing={3}>
-                      {!isCnfStaff && (
-                        <Grid item xs={12} md={6}>
-                          <FormControl fullWidth size="small">
-                            <InputLabel id="select-day-label">Select Day</InputLabel>
-                            <Select
-                              labelId="select-day-label"
-                              id="select-day"
-                              value={selectedDay}
-                              label="Select Day"
-                              onChange={(e) => setSelectedDay(e.target.value)}
-                              sx={{ minHeight: 48, height: 48 }}
-                            >
-                              <MenuItem value="">
-                                <em>None</em>
-                              </MenuItem>
-                              {days.map((day) => (
-                                <MenuItem key={day} value={day}>
-                                  {day}
-                                </MenuItem>
-                              ))}
-                            </Select>
-                          </FormControl>
-                        </Grid>
-                      )}
-                      <Grid item xs={12} md={6}>
-                        <FormControl fullWidth size="small" disabled={!routeDay}>
-                          <InputLabel id="select-location-label">Select Location</InputLabel>
-                          <Select
-                            labelId="select-location-label"
-                            id="select-location"
-                            value={selectedLocation}
-                            label="Select Location"
-                            onChange={(e) => setSelectedLocation(e.target.value)}
-                            sx={{ minHeight: 48 }}
-                          >
-                            <MenuItem value="">
-                              <em>None</em>
-                            </MenuItem>
-                            {availableLocations.map((loc) => (
-                              <MenuItem key={loc.id} value={loc.location_name}>
-                                {loc.location_name}
-                              </MenuItem>
-                            ))}
-                            {routeDay && availableLocations.length === 0 && (
-                              <MenuItem disabled>
-                                {isCnfStaff
-                                  ? "No CNF locations assigned"
-                                  : "No locations assigned for this day"}
-                              </MenuItem>
-                            )}
-                          </Select>
-                        </FormControl>
-                      </Grid>
-                    </Grid>
-                  </MDBox>
-                )}
-
-                {selectedLocation && (
-                  <MDBox mt={4}>
-                    <Card sx={{ boxShadow: "0 4px 6px -1px rgb(0 0 0 / 0.08)", border: "1px solid #e5e7eb" }}>
-                      <MDBox
-                        px={3}
-                        py={2.5}
-                        display="flex"
-                        justifyContent="space-between"
-                        alignItems={{ xs: "flex-start", sm: "center" }}
-                        flexDirection={{ xs: "column", sm: "row" }}
-                        gap={2}
-                        sx={{ borderBottom: "1px solid #e5e7eb", backgroundColor: "#f8fafc" }}
-                      >
-                        <MDBox>
-                          <MDTypography variant="h6" fontWeight="medium" color="dark">
-                            Add Outlets
-                          </MDTypography>
-                          <MDBox display="flex" alignItems="center" gap={1} mt={0.75} flexWrap="wrap">
-                            <MDTypography variant="body2" color="text">
-                              Location:
-                            </MDTypography>
-                            <Chip
-                              icon={<Icon sx={{ fontSize: "16px !important" }}>place</Icon>}
-                              label={selectedLocation}
-                              size="small"
-                              color="info"
-                              variant="outlined"
-                              sx={{ fontWeight: 600 }}
-                            />
-                            {outlets.length > 0 && (
-                              <Chip
-                                label={`${outlets.length} outlet${outlets.length > 1 ? "s" : ""}`}
-                                size="small"
-                                sx={{ backgroundColor: "#e0f2fe", color: "#0369a1", fontWeight: 600 }}
-                              />
-                            )}
-                          </MDBox>
-                        </MDBox>
-                        <MDButton
-                          variant="gradient"
-                          color="dark"
-                          size="small"
-                          onClick={addOutletField}
-                          startIcon={<Icon>add</Icon>}
-                          sx={{ flexShrink: 0 }}
-                        >
-                          Add Outlet
-                        </MDButton>
-                        <MDButton
-                          variant="outlined"
-                          color="info"
-                          size="small"
-                          onClick={() => outletUploadInputRef.current?.click()}
-                          disabled={uploadingOutlets}
-                          startIcon={<Icon>upload_file</Icon>}
-                          sx={{ flexShrink: 0 }}
-                        >
-                          {uploadingOutlets ? "Uploading..." : "Upload Excel"}
-                        </MDButton>
-                        <input
-                          ref={outletUploadInputRef}
-                          type="file"
-                          accept=".xls,.xlsx"
-                          hidden
-                          onChange={uploadOutletsExcel}
-                        />
-                      </MDBox>
-
-                      <MDBox p={3}>
-                        {outlets.length === 0 ? (
-                          <MDBox
-                            py={5}
-                            px={2}
-                            textAlign="center"
-                            sx={{
-                              border: "2px dashed #cbd5e1",
-                              borderRadius: "12px",
-                              backgroundColor: "#f8fafc",
-                            }}
-                          >
-                            <Icon sx={{ fontSize: 40, color: "#94a3b8", mb: 1 }}>storefront</Icon>
-                            <MDTypography variant="body2" color="text" fontWeight="medium">
-                              No outlets added yet
-                            </MDTypography>
-                            <MDTypography variant="caption" color="text" display="block" mt={0.5} mb={2}>
-                              Click &quot;Add Outlet&quot; to start adding outlet details for this location.
-                            </MDTypography>
-                            <MDButton
-                              variant="outlined"
-                              color="info"
-                              size="small"
-                              onClick={addOutletField}
-                              startIcon={<Icon>add</Icon>}
-                            >
-                              Add First Outlet
-                            </MDButton>
-                          </MDBox>
-                        ) : (
-                          outlets.map((outlet, index) => (
-                            <MDBox key={index} mb={index < outlets.length - 1 ? 3 : 0} sx={outletCardSx}>
-                              <MDBox
-                                px={2.5}
-                                py={1.5}
-                                display="flex"
-                                justifyContent="space-between"
-                                alignItems="center"
-                                sx={{ backgroundColor: "#f1f5f9", borderBottom: "1px solid #e2e8f0" }}
-                              >
-                                <MDBox display="flex" alignItems="center" gap={1}>
-                                  <MDBox
-                                    sx={{
-                                      width: 28,
-                                      height: 28,
-                                      borderRadius: "8px",
-                                      backgroundColor: "#0ea5e9",
-                                      color: "#fff",
-                                      display: "flex",
-                                      alignItems: "center",
-                                      justifyContent: "center",
-                                      fontSize: "0.8rem",
-                                      fontWeight: 700,
-                                    }}
-                                  >
-                                    {getPendingSerial(index)}
-                                  </MDBox>
-                                  <MDTypography variant="button" fontWeight="medium" color="dark">
-                                    Outlet {getPendingSerial(index)}
-                                  </MDTypography>
-                                </MDBox>
-                                <IconButton
-                                  size="small"
-                                  color="error"
-                                  onClick={() => removeOutletField(index)}
-                                  title="Remove outlet"
-                                >
-                                  <Icon fontSize="small">delete_outline</Icon>
-                                </IconButton>
-                              </MDBox>
-
-                              <MDBox p={2.5}>
-                                <MDTypography sx={sectionLabelSx}>Outlet Details</MDTypography>
-                                <Grid container spacing={2} mb={2.5}>
-                                  <Grid item xs={12} sm={6} md={4}>
-                                    <MDInput
-                                      label="ERP Id"
-                                      fullWidth
-                                      InputProps={{ sx: { minHeight: 44 } }}
-                                      value={outlet.outletErpId}
-                                      onChange={(e) =>
-                                        handleOutletChange(index, "outletErpId", e.target.value)
-                                      }
-                                    />
-                                  </Grid>
-                                  <Grid item xs={12} sm={6} md={8}>
-                                    <MDInput
-                                      label="Outlet Name"
-                                      fullWidth
-                                      InputProps={{ sx: { minHeight: 44 } }}
-                                      value={outlet.outletName}
-                                      onChange={(e) =>
-                                        handleOutletChange(index, "outletName", e.target.value)
-                                      }
-                                    />
-                                  </Grid>
-                                </Grid>
-
-                                <Divider sx={{ mb: 2.5 }} />
-
-                                <MDTypography sx={sectionLabelSx}>GST</MDTypography>
-                                <Grid container spacing={2} mb={2.5}>
-                                  <Grid item xs={12}>
-                                    <FormControl>
-                                      <MDTypography variant="caption" color="text" display="block" mb={0.5}>
-                                        Outlet has GST?
-                                      </MDTypography>
-                                      <RadioGroup
-                                        row
-                                        value={outlet.hasGst}
-                                        onChange={(e) =>
-                                          handleOutletChange(index, "hasGst", e.target.value)
-                                        }
-                                      >
-                                        <FormControlLabel value="yes" control={<Radio size="small" />} label="Yes" />
-                                        <FormControlLabel value="no" control={<Radio size="small" />} label="No" />
-                                      </RadioGroup>
-                                    </FormControl>
-                                  </Grid>
-                                  {outlet.hasGst === "yes" && (
-                                    <Grid item xs={12} sm={6} md={4}>
-                                      <MDInput
-                                        label="GST No *"
-                                        fullWidth
-                                        InputProps={{ sx: { minHeight: 44 } }}
-                                        value={outlet.gstNumber}
-                                        onChange={(e) =>
-                                          handleOutletChange(index, "gstNumber", e.target.value)
-                                        }
-                                      />
-                                    </Grid>
-                                  )}
-                                </Grid>
-
-                                <Divider sx={{ mb: 2.5 }} />
-
-                                <MDTypography sx={sectionLabelSx}>Contact</MDTypography>
-                                <Grid container spacing={2} mb={1}>
-                                  <Grid item xs={12} sm={6}>
-                                    <MDInput
-                                      label="Contact Number"
-                                      fullWidth
-                                      InputProps={{ sx: { minHeight: 44 } }}
-                                      value={outlet.contactNumber}
-                                      onChange={(e) =>
-                                        handleOutletChange(index, "contactNumber", e.target.value)
-                                      }
-                                    />
-                                  </Grid>
-                                  <Grid item xs={12} sm={6}>
-                                    <MDInput
-                                      label="WhatsApp Number"
-                                      fullWidth
-                                      InputProps={{ sx: { minHeight: 44 } }}
-                                      value={outlet.whatsappNumber}
-                                      disabled={outlet.whatsappSameAsContact}
-                                      onChange={(e) =>
-                                        handleOutletChange(index, "whatsappNumber", e.target.value)
-                                      }
-                                    />
-                                  </Grid>
-                                  <Grid item xs={12}>
-                                    <FormControlLabel
-                                      control={
-                                        <Checkbox
-                                          size="small"
-                                          checked={Boolean(outlet.whatsappSameAsContact)}
-                                          onChange={(e) =>
-                                            handleWhatsappSameAsContact(index, e.target.checked)
-                                          }
-                                        />
-                                      }
-                                      label={
-                                        <MDTypography variant="body2" color="text">
-                                          WhatsApp number same as contact number
-                                        </MDTypography>
-                                      }
-                                      sx={{ ml: 0 }}
-                                    />
-                                  </Grid>
-                                </Grid>
-
-                                <Divider sx={{ mb: 2.5 }} />
-
-                                <MDTypography sx={sectionLabelSx}>Visit Schedule (Optional)</MDTypography>
-                                <Grid container spacing={2} mb={2.5}>
-                                  <Grid item xs={12} sm={6} md={4}>
-                                    <MDInput
-                                      label="Priority Number (Optional)"
-                                      type="number"
-                                      fullWidth
-                                      inputProps={{ min: 1 }}
-                                      InputProps={{ sx: { minHeight: 44 } }}
-                                      value={outlet.priorityNumber}
-                                      onChange={(e) => handleOutletChange(index, "priorityNumber", e.target.value)}
-                                    />
-                                  </Grid>
-                                </Grid>
-
-                                <MDTypography sx={sectionLabelSx}>Weekly Outlet Timings (Optional)</MDTypography>
-                                <MDTypography variant="caption" color="text" display="block" mb={1.5}>
-                                  Leave this section blank, or set two opening periods for each day.
-                                </MDTypography>
-                                <MDBox
-                                  mb={2}
-                                  p={2}
-                                  sx={{ backgroundColor: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: "10px" }}
-                                >
-                                  <MDTypography variant="button" fontWeight="bold" display="block" mb={1.5}>
-                                    Timings for all working days
-                                  </MDTypography>
-                                  <Grid container spacing={1.5} alignItems="center">
-                                    {[["firstHalfStart", "First half start"], ["firstHalfEnd", "First half end"], ["secondHalfStart", "Second half start"], ["secondHalfEnd", "Second half end"]].map(([field, label]) => (
-                                      <Grid item xs={6} sm={3} md={2} key={field}>
-                                        <MDInput
-                                          label={label}
-                                          type="time"
-                                          fullWidth
-                                          InputLabelProps={{ shrink: true }}
-                                          value={outlet.timingTemplate?.[field] || ""}
-                                          onChange={(e) => handleTimingTemplateChange(index, field, e.target.value)}
-                                        />
-                                      </Grid>
-                                    ))}
-                                    <Grid item xs={12} md={4}>
-                                      <MDButton
-                                        color="info"
-                                        variant="outlined"
-                                        fullWidth
-                                        onClick={() => applyTimingTemplateToWorkingDays(index)}
-                                      >
-                                        Apply to All Days
-                                      </MDButton>
-                                    </Grid>
-                                  </Grid>
-                                </MDBox>
-                                {WEEK_DAYS.map((day) => {
-                                  const hours = outlet.operatingHours[day];
-                                  return (
-                                    <Grid container spacing={1.5} alignItems="center" mb={1} key={day}>
-                                      <Grid item xs={12} sm={2}><MDTypography variant="body2" fontWeight="medium">{day}</MDTypography></Grid>
-                                      <Grid item xs={12} sm={2}><FormControlLabel control={<Checkbox size="small" checked={hours.isOff} onChange={(e) => {
-                                        const updated = [...outlets]; updated[index].operatingHours[day].isOff = e.target.checked; setOutlets(updated);
-                                      }} />} label="Off" /></Grid>
-                                      {[["firstHalfStart", "First start"], ["firstHalfEnd", "First end"], ["secondHalfStart", "Second start"], ["secondHalfEnd", "Second end"]].map(([field, label]) => (
-                                        <Grid item xs={6} sm={2} key={field}><MDInput label={label} type="time" fullWidth disabled={hours.isOff} InputLabelProps={{ shrink: true }} value={hours[field]} onChange={(e) => {
-                                          const updated = [...outlets]; updated[index].operatingHours[day][field] = e.target.value; setOutlets(updated);
-                                        }} /></Grid>
-                                      ))}
-                                    </Grid>
-                                  );
-                                })}
-
-                                <Divider sx={{ mb: 2.5 }} />
-
-                                <MDTypography sx={sectionLabelSx}>Location</MDTypography>
-                                <Grid container spacing={2}>
-                                  <Grid item xs={12}>
-                                    <MDInput
-                                      label="Address"
-                                      fullWidth
-                                      multiline
-                                      rows={2}
-                                      value={outlet.address}
-                                      onChange={(e) =>
-                                        handleOutletChange(index, "address", e.target.value)
-                                      }
-                                    />
-                                  </Grid>
-                                  <Grid item xs={12}>
-                                    <MDInput
-                                      label="Google Location"
-                                      fullWidth
-                                      InputProps={{ sx: { minHeight: 44 } }}
-                                      value={outlet.googleLocation}
-                                      onChange={(e) =>
-                                        handleOutletChange(index, "googleLocation", e.target.value)
-                                      }
-                                      onBlur={() => handleOutletGoogleLocationBlur(index)}
-                                      helperText={GOOGLE_MAPS_HELPER_TEXT}
-                                    />
-                                  </Grid>
-                                </Grid>
-                              </MDBox>
-                            </MDBox>
-                          ))
-                        )}
-
-                        {outlets.length > 0 && (
-                          <MDBox mt={3} pt={2.5} display="flex" justifyContent="flex-end" gap={1.5} sx={{ borderTop: "1px solid #e5e7eb" }}>
-                            <MDButton
-                              variant="outlined"
-                              color="dark"
-                              onClick={() => setOutlets([])}
-                            >
-                              Clear All
-                            </MDButton>
-                            <MDButton
-                              variant="gradient"
-                              color="info"
-                              onClick={handleSubmit}
-                              startIcon={<Icon>save</Icon>}
-                            >
-                              Save {outlets.length} Outlet{outlets.length > 1 ? "s" : ""}
-                            </MDButton>
-                          </MDBox>
-                        )}
-                      </MDBox>
-                    </Card>
-                  </MDBox>
-                )}
-
-                {outletsAvailableForEditing.length > 0 && (
-                  <MDBox mt={5}>
-                    <MDBox
-                      display="flex"
-                      justifyContent="space-between"
-                      alignItems={{ xs: "stretch", sm: "center" }}
-                      flexDirection={{ xs: "column", sm: "row" }}
-                      gap={2}
-                      mb={2}
-                    >
-                      <MDTypography variant="h6">
-                        {isSelfService
-                          ? `All My Outlets (${filteredOutletsForEditing.length}/${outletsAvailableForEditing.length})`
-                          : `Saved Outlets for ${isCnfStaff ? "CNF" : selectedDay}${selectedLocation ? ` — ${selectedLocation}` : ""}`}
-                      </MDTypography>
-                      <MDInput
-                        label="Search Outlet Name"
-                        value={outletSearchQuery}
-                        onChange={(event) => setOutletSearchQuery(event.target.value)}
-                        sx={{ width: { xs: "100%", sm: 300 } }}
-                        InputProps={{
-                          endAdornment: <Icon sx={{ color: "#64748b" }}>search</Icon>,
-                        }}
-                      />
-                    </MDBox>
-                    {filteredOutletsForEditing.length === 0 && (
-                      <MDBox py={4} textAlign="center" sx={{ backgroundColor: "#f8fafc", borderRadius: 2 }}>
-                        <MDTypography variant="body2" color="text">
-                          No outlet name matches “{outletSearchQuery}”.
-                        </MDTypography>
-                      </MDBox>
-                    )}
+        {/* Saved outlets */}
+        {outletsAvailableForEditing.length > 0 && (
+          <Card>
+            <div className="flex flex-wrap items-center gap-3 border-b border-slate-100 px-5 py-3">
+              <h3 className="m-0 grow text-[15px] font-semibold text-slate-900">
+                {isSelfService
+                  ? `All My Outlets (${filteredOutletsForEditing.length}/${outletsAvailableForEditing.length})`
+                  : `Saved Outlets for ${isCnfStaff ? "CNF" : selectedDay}${selectedLocation ? ` — ${selectedLocation}` : ""}`}
+              </h3>
+              <div className="relative w-full max-w-xs">
+                <Icon name="search" className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-[18px] text-slate-400" />
+                <input type="search" value={outletSearchQuery} onChange={(event) => setOutletSearchQuery(event.target.value)} placeholder="Search outlet name" aria-label="Search outlet name" className={`${fieldClass} pl-8`} />
+              </div>
+            </div>
+            {filteredOutletsForEditing.length === 0 ? (
+              <p className="m-0 py-12 text-center text-[13px] text-slate-400">No outlet name matches “{outletSearchQuery}”.</p>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[960px] border-collapse text-[13px]">
+                  <thead>
+                    <tr className="bg-slate-50 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                      {isSelfService && <th className="px-4 py-2.5">Day / location</th>}
+                      <th className="px-4 py-2.5">Sr</th>
+                      <th className="px-3 py-2.5">Priority</th>
+                      <th className="px-3 py-2.5">Outlet</th>
+                      <th className="px-3 py-2.5">Contact</th>
+                      <th className="px-3 py-2.5">Address</th>
+                      <th className="px-3 py-2.5">GST</th>
+                      <th className="px-3 py-2.5">Map</th>
+                      <th className="px-4 py-2.5 text-right">Action</th>
+                    </tr>
+                  </thead>
+                  <tbody>
                     {filteredOutletsForEditing.map((saved) => (
-                      <MDBox
-                        key={saved.id}
-                        mb={2}
-                        p={2}
-                        sx={{
-                          backgroundColor: "#f8f9fa",
-                          borderRadius: "10px",
-                          border: "1px solid #e9ecef",
-                        }}
-                      >
-                        {editingOutletId === saved.id ? (
-                          <Grid container spacing={1.5} alignItems="center">
-                            <Grid item xs={12} sm={6} md={1}>
-                              <MDInput
-                                label="Sr No"
-                                fullWidth
-                                type="number"
-                                value={editFormData.serialNo}
-                                onChange={(e) => handleEditFormChange("serialNo", e.target.value)}
-                                inputProps={{ min: 1 }}
-                              />
-                            </Grid>
-                            <Grid item xs={12} sm={6} md={1}>
-                              <MDInput
-                                label="Priority (Optional)"
-                                fullWidth
-                                type="number"
-                                inputProps={{ min: 1 }}
-                                value={editFormData.priorityNumber}
-                                onChange={(e) => handleEditFormChange("priorityNumber", e.target.value)}
-                              />
-                            </Grid>
-                            <Grid item xs={12} sm={6} md={2}>
-                              <MDInput
-                                label="ERP Id"
-                                fullWidth
-                                value={editFormData.outletErpId}
-                                onChange={(e) => handleEditFormChange("outletErpId", e.target.value)}
-                              />
-                            </Grid>
-                            <Grid item xs={12}>
-                              <MDTypography variant="caption" color="text" display="block" mb={0.5}>Weekly outlet timings</MDTypography>
-                              {WEEK_DAYS.map((day) => {
-                                const hours = editFormData.operatingHours[day];
-                                return <Grid container spacing={1} alignItems="center" mb={0.5} key={day}>
-                                  <Grid item xs={12} sm={2}><MDTypography variant="caption">{day}</MDTypography></Grid>
-                                  <Grid item xs={12} sm={2}><FormControlLabel control={<Checkbox size="small" checked={hours.isOff} onChange={(e) => setEditFormData((prev) => ({ ...prev, operatingHours: { ...prev.operatingHours, [day]: { ...prev.operatingHours[day], isOff: e.target.checked } } }))} />} label="Off" /></Grid>
-                                  {[["firstHalfStart", "First start"], ["firstHalfEnd", "First end"], ["secondHalfStart", "Second start"], ["secondHalfEnd", "Second end"]].map(([field, label]) => <Grid item xs={6} sm={2} key={field}><MDInput label={label} type="time" fullWidth disabled={hours.isOff} InputLabelProps={{ shrink: true }} value={hours[field]} onChange={(e) => setEditFormData((prev) => ({ ...prev, operatingHours: { ...prev.operatingHours, [day]: { ...prev.operatingHours[day], [field]: e.target.value } } }))} /></Grid>)}
-                                </Grid>;
-                              })}
-                            </Grid>
-                            <Grid item xs={12} sm={6} md={2}>
-                              <MDInput
-                                label="Outlet Name"
-                                fullWidth
-                                value={editFormData.outletName}
-                                onChange={(e) => handleEditFormChange("outletName", e.target.value)}
-                              />
-                            </Grid>
-                            <Grid item xs={12} sm={6} md={2}>
-                              <MDInput
-                                label="Contact"
-                                fullWidth
-                                value={editFormData.contactNumber}
-                                onChange={(e) => handleEditFormChange("contactNumber", e.target.value)}
-                              />
-                            </Grid>
-                            <Grid item xs={12} sm={6} md={2}>
-                              <MDInput
-                                label="WhatsApp Number"
-                                fullWidth
-                                value={editFormData.whatsappNumber}
-                                disabled={editFormData.whatsappSameAsContact}
-                                onChange={(e) => handleEditFormChange("whatsappNumber", e.target.value)}
-                              />
-                            </Grid>
-                            <Grid item xs={12} sm={6} md={2}>
-                              <MDInput
-                                label="Address"
-                                fullWidth
-                                multiline
-                                rows={2}
-                                value={editFormData.address}
-                                onChange={(e) => handleEditFormChange("address", e.target.value)}
-                              />
-                            </Grid>
-                            <Grid item xs={12} sm={6} md={2}>
-                              <FormControl fullWidth>
-                                <FormLabel sx={{ fontSize: "0.75rem", mb: 0.5 }}>GST?</FormLabel>
-                                <RadioGroup
-                                  row
-                                  value={editFormData.hasGst}
-                                  onChange={(e) => handleEditFormChange("hasGst", e.target.value)}
-                                >
-                                  <FormControlLabel value="yes" control={<Radio size="small" />} label="Yes" />
-                                  <FormControlLabel value="no" control={<Radio size="small" />} label="No" />
-                                </RadioGroup>
-                              </FormControl>
-                            </Grid>
-                            {editFormData.hasGst === "yes" && (
-                              <Grid item xs={12} sm={6} md={2}>
-                                <MDInput
-                                  label="GST No *"
-                                  fullWidth
-                                  value={editFormData.gstNumber}
-                                  onChange={(e) => handleEditFormChange("gstNumber", e.target.value)}
-                                />
-                              </Grid>
-                            )}
-                            <Grid item xs={12} sm={6} md={2}>
-                              <MDInput
-                                label="Google Location"
-                                fullWidth
-                                value={editFormData.googleLocation}
-                                onChange={(e) => handleEditFormChange("googleLocation", e.target.value)}
-                                onBlur={handleEditGoogleLocationBlur}
-                                helperText={GOOGLE_MAPS_HELPER_TEXT}
-                              />
-                            </Grid>
-                            <Grid item xs={12} md={2}>
-                              <MDBox display="flex" gap={1} justifyContent={{ xs: "flex-start", md: "flex-end" }}>
-                                <MDButton color="success" variant="gradient" size="small" onClick={() => handleSaveEdit(saved.id)}>
-                                  Save
-                                </MDButton>
-                                <MDButton color="secondary" variant="gradient" size="small" onClick={handleCancelEdit}>
-                                  Cancel
-                                </MDButton>
-                              </MDBox>
-                            </Grid>
-                            <Grid item xs={12}>
-                              <MDBox display="flex" alignItems="center">
-                                <Checkbox
-                                  checked={Boolean(editFormData.whatsappSameAsContact)}
-                                  onChange={(e) => handleEditWhatsappSameAsContact(e.target.checked)}
-                                />
-                                <MDTypography variant="body2">
-                                  WhatsApp number same as contact number
-                                </MDTypography>
-                              </MDBox>
-                            </Grid>
-                          </Grid>
-                        ) : (
-                          <Grid container spacing={1.5} alignItems="center">
-                            {isSelfService && (
-                              <Grid item xs={12} sm={6} md={2}>
-                                <MDTypography variant="caption" color="text" display="block">
-                                  Day / Location
-                                </MDTypography>
-                                <MDTypography variant="body2" fontWeight="bold">
-                                  {saved.day || "—"} · {saved.location_name || "—"}
-                                </MDTypography>
-                              </Grid>
-                            )}
-                            <Grid item xs={6} sm={4} md={1}>
-                              <MDTypography variant="caption" color="text" display="block">
-                                Sr No
-                              </MDTypography>
-                              <MDTypography variant="body2" fontWeight="bold">
-                                {saved.serial_no || "—"}
-                              </MDTypography>
-                            </Grid>
-                            <Grid item xs={6} sm={4} md={1}>
-                              <MDTypography variant="caption" color="text" display="block">Priority</MDTypography>
-                              <MDTypography variant="body2" fontWeight="bold">{saved.priority_number || "—"}</MDTypography>
-                            </Grid>
-                            <Grid item xs={12} sm={6} md={2}>
-                              <MDTypography variant="body2" fontWeight="medium">
-                                {saved.outlet_erp_id}
-                              </MDTypography>
-                            </Grid>
-                            <Grid item xs={12} sm={6} md={2}>
-                              <MDTypography variant="body2" fontWeight="medium">
-                                {saved.outlet_name}
-                              </MDTypography>
-                            </Grid>
-                            <Grid item xs={12} sm={6} md={2}>
-                              <MDTypography variant="body2" fontWeight="medium">
-                                {saved.contact_number}
-                              </MDTypography>
-                            </Grid>
-                            <Grid item xs={12} sm={6} md={2}>
-                              <MDTypography variant="body2" fontWeight="medium">
-                                WA: {saved.whatsapp_number || saved.contact_number || "-"}
-                              </MDTypography>
-                            </Grid>
-                            <Grid item xs={12} sm={6} md={2}>
-                              <MDTypography variant="body2" fontWeight="medium">
-                                {saved.address || "-"}
-                              </MDTypography>
-                            </Grid>
-                            <Grid item xs={12} sm={6} md={1}>
-                              <MDTypography variant="body2" fontWeight="medium">
-                                GST: {saved.has_gst ? "Yes" : "No"}
-                              </MDTypography>
-                            </Grid>
-                            <Grid item xs={12} sm={6} md={2}>
-                              {saved.google_location ? (
-                                <MDTypography
-                                  component="a"
-                                  href={saved.google_location}
-                                  target="_blank"
-                                  rel="noreferrer"
-                                  variant="body2"
-                                  fontWeight="medium"
-                                  color="info"
-                                >
-                                  <Icon fontSize="small" sx={{ mr: 0.5, verticalAlign: "middle" }}>map</Icon>
-                                  Google Location
-                                </MDTypography>
-                              ) : (
-                                <MDTypography variant="body2" color="text" display="flex" alignItems="center" gap={0.5}>
-                                  <Icon fontSize="small">map</Icon>
-                                  No Google Location
-                                </MDTypography>
-                              )}
-                            </Grid>
-                            <Grid item xs={12} md={2}>
-                              <MDBox display="flex" gap={1} justifyContent={{ xs: "flex-start", md: "flex-end" }}>
-                                {/* <MDButton color="info" variant="text" size="small" onClick={() => handleEditClick(saved)}>
-                                  <Icon>edit</Icon> Edit
-                                </MDButton>
-                                <MDButton color="error" variant="text" size="small" onClick={() => handleDeleteSavedOutlet(saved.id)}>
-                                  <Icon>delete</Icon> Delete
-                                </MDButton> */}
-                                <FaRegEdit onClick={() => handleEditClick(saved)} style={{ cursor: "pointer" }} color="#E0E388" size={20} />
-                                <CiTrash onClick={() => handleDeleteSavedOutlet(saved.id)} style={{ cursor: "pointer" }} color="#FF0000" size={20} />
-                              </MDBox>
-                            </Grid>
-                          </Grid>
-                        )}
-                      </MDBox>
+                      <tr key={saved.id} className={`border-t border-slate-100 align-top hover:bg-slate-50/70 ${editingOutletId === saved.id ? "bg-blue-50/50" : ""}`}>
+                        {isSelfService && <td className="px-4 py-2.5 font-semibold text-slate-700">{saved.day || "—"} · {saved.location_name || "—"}</td>}
+                        <td className="px-4 py-2.5">
+                          <span className="inline-flex size-7 items-center justify-center rounded-lg bg-slate-100 text-[12px] font-bold text-slate-700">{saved.serial_no || "—"}</span>
+                        </td>
+                        <td className="px-3 py-2.5 tabular-nums text-slate-600">{saved.priority_number || "—"}</td>
+                        <td className="px-3 py-2.5">
+                          <span className="block font-semibold text-slate-800">{saved.outlet_name}</span>
+                          <span className="block font-mono text-[11.5px] text-slate-400">{saved.outlet_erp_id}</span>
+                        </td>
+                        <td className="px-3 py-2.5 tabular-nums">
+                          <span className="block text-slate-700">{saved.contact_number}</span>
+                          <span className="block text-[11.5px] text-slate-500">WA: {saved.whatsapp_number || saved.contact_number || "-"}</span>
+                        </td>
+                        <td className="max-w-56 px-3 py-2.5 text-[12.5px] text-slate-500">{saved.address || "-"}</td>
+                        <td className="px-3 py-2.5">
+                          <span className={`rounded-full px-2 py-0.5 text-[11.5px] font-semibold ${saved.has_gst ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-500"}`}>{saved.has_gst ? "Yes" : "No"}</span>
+                        </td>
+                        <td className="px-3 py-2.5">
+                          {saved.google_location ? (
+                            <a href={saved.google_location} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 font-semibold text-blue-700 hover:underline">
+                              <Icon name="map" className="text-[16px]" />Open
+                            </a>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 text-slate-400"><Icon name="map" className="text-[16px]" />None</span>
+                          )}
+                        </td>
+                        <td className="px-4 py-2.5 text-right">
+                          <span className="inline-flex gap-0.5">
+                            <button type="button" className={`${btn.icon} hover:text-amber-700`} onClick={() => handleEditClick(saved)} title="Edit outlet" aria-label={`Edit ${saved.outlet_name}`}>
+                              <Icon name="edit" className="text-[19px]" />
+                            </button>
+                            <button type="button" className={`${btn.icon} hover:bg-red-50 hover:text-red-600`} onClick={() => handleDeleteSavedOutlet(saved.id)} title="Delete outlet" aria-label={`Delete ${saved.outlet_name}`}>
+                              <Icon name="delete_outline" className="text-[19px]" />
+                            </button>
+                          </span>
+                        </td>
+                      </tr>
                     ))}
-                  </MDBox>
-                )}
-              </MDBox>
-            </Card>
-          </Grid>
-        </Grid>
-      </MDBox>
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </Card>
+        )}
+      </div>
+
+      {/* Edit a saved outlet */}
+      <Modal
+        open={Boolean(editingOutletId)} onClose={handleCancelEdit} size="xl" title={`Edit Outlet${editingOutlet ? ` · ${editingOutlet.outlet_name}` : ""}`}
+        actions={(
+          <>
+            <button type="button" className={btn.ghost} onClick={handleCancelEdit}>Cancel</button>
+            <button type="button" className={btn.primary} onClick={() => handleSaveEdit(editingOutletId)}><Icon name="save" className="text-[18px]" />Save</button>
+          </>
+        )}
+      >
+        <div className="space-y-5">
+          <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+            <Field label="Sr no" width="w-full">
+              <input type="number" min={1} className={fieldClass} value={editFormData.serialNo} onChange={(e) => handleEditFormChange("serialNo", e.target.value)} />
+            </Field>
+            <Field label="Priority (optional)" width="w-full">
+              <input type="number" min={1} className={fieldClass} value={editFormData.priorityNumber} onChange={(e) => handleEditFormChange("priorityNumber", e.target.value)} />
+            </Field>
+            <Field label="ERP Id" width="w-full">
+              <input className={fieldClass} value={editFormData.outletErpId} onChange={(e) => handleEditFormChange("outletErpId", e.target.value)} />
+            </Field>
+            <Field label="Outlet name" width="w-full">
+              <input className={fieldClass} value={editFormData.outletName} onChange={(e) => handleEditFormChange("outletName", e.target.value)} />
+            </Field>
+            <Field label="Contact" width="w-full">
+              <input className={fieldClass} inputMode="numeric" value={editFormData.contactNumber} onChange={(e) => handleEditFormChange("contactNumber", e.target.value)} />
+            </Field>
+            <Field label="WhatsApp number" width="w-full">
+              <input className={fieldClass} inputMode="numeric" value={editFormData.whatsappNumber} disabled={editFormData.whatsappSameAsContact} onChange={(e) => handleEditFormChange("whatsappNumber", e.target.value)} />
+            </Field>
+            <div className="col-span-2 self-end pb-2">{sameAsContactBox(editFormData.whatsappSameAsContact, handleEditWhatsappSameAsContact)}</div>
+          </div>
+          <div className="flex flex-wrap items-end gap-3">
+            <div>
+              <span className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-slate-500">GST?</span>
+              <GstChoice value={editFormData.hasGst} onChange={(v) => handleEditFormChange("hasGst", v)} />
+            </div>
+            {editFormData.hasGst === "yes" && (
+              <Field label="GST no *" width="w-56">
+                <input className={fieldClass} value={editFormData.gstNumber} onChange={(e) => handleEditFormChange("gstNumber", e.target.value)} />
+              </Field>
+            )}
+          </div>
+          <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+            <label className="flex flex-col gap-1">
+              <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Address</span>
+              <textarea rows={2} className={`${fieldClass} h-auto py-2`} value={editFormData.address} onChange={(e) => handleEditFormChange("address", e.target.value)} />
+            </label>
+            <Field label="Google location" width="w-full" hint={GOOGLE_MAPS_HELPER_TEXT}>
+              <input className={fieldClass} value={editFormData.googleLocation} onChange={(e) => handleEditFormChange("googleLocation", e.target.value)} onBlur={handleEditGoogleLocationBlur} />
+            </Field>
+          </div>
+          <div>
+            <span className="mb-2 block text-[11px] font-semibold uppercase tracking-wide text-slate-500">Weekly outlet timings</span>
+            <WeeklyHours
+              hours={editFormData.operatingHours}
+              onOff={(day, checked) => setEditFormData((prev) => ({ ...prev, operatingHours: { ...prev.operatingHours, [day]: { ...prev.operatingHours[day], isOff: checked } } }))}
+              onTime={(day, field, value) => setEditFormData((prev) => ({ ...prev, operatingHours: { ...prev.operatingHours, [day]: { ...prev.operatingHours[day], [field]: value } } }))}
+            />
+          </div>
+        </div>
+      </Modal>
       <Footer />
     </DashboardLayout>
   );

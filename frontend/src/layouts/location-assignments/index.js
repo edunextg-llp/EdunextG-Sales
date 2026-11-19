@@ -1,17 +1,11 @@
+// Add Location (day-wise areas per staff): Tailwind CSS (no MUI). Loading and saving logic unchanged.
 import { useEffect, useState } from "react";
-import Card from "@mui/material/Card";
-import Grid from "@mui/material/Grid";
-import Icon from "@mui/material/Icon";
-import { Alert, Autocomplete, FormControl, InputLabel, MenuItem, Select, Tab, Tabs } from "@mui/material";
 
-import MDBox from "components/MDBox";
-import MDButton from "components/MDButton";
-import MDInput from "components/MDInput";
-import MDTypography from "components/MDTypography";
 import DashboardLayout from "examples/LayoutContainers/DashboardLayout";
 import DashboardNavbar from "examples/Navbars/DashboardNavbar";
 import Footer from "examples/Footer";
 import { useAuth } from "context/AuthContext";
+import { Card, Field, Icon, Notice, PageHeader, SearchSelect, Spinner, btn, fieldClass } from "components/tw";
 
 const API = (process.env.REACT_APP_API_URL);
 const normalizeAreaName = (name) => String(name || "").trim().replace(/\s+/g, " ").toUpperCase();
@@ -212,125 +206,146 @@ function LocationAssignments() {
     }
   };
 
+  const currentTab = Math.min(activeTab, days.length - 1);
+  const totalAssigned = days.reduce((sum, day) => sum + (assignments[day] || []).length, 0);
+  const areaOptionsFor = (day, index) => areas.map((area) => ({
+    value: area,
+    label: area,
+    disabled: (assignments[day] || []).some((entry, entryIndex) => entryIndex !== index && normalizeAreaName(entry.locationName) === area),
+  }));
+
   return (
     <DashboardLayout>
       <DashboardNavbar />
-      <MDBox pt={6} pb={3}>
-        <Grid container justifyContent="center">
-          <Grid item xs={12} lg={10}>
-            <Card>
-              <MDBox p={3}>
-                <MDTypography variant="h5" fontWeight="medium" mb={0.5}>
-                  {isSelfService ? "My Day-wise Locations" : "Location Assignments"}
-                </MDTypography>
-                <MDTypography variant="body2" color="text" mb={3}>
-                  {isSelfService
-                    ? "Search and select saved areas for each working day."
-                    : "Choose a staff member, then search and select areas from Create Area for each day. On save, each area's outlets move to the day the area is assigned to."}
-                </MDTypography>
-                {areasError && <Alert severity="error">{areasError} Refresh the page to retry.</Alert>}
+      <div className="pb-8 font-[Poppins,Roboto,sans-serif] text-slate-700">
+        <PageHeader
+          title={isSelfService ? "My Day-wise Locations" : "Location Assignments"}
+          description={isSelfService
+            ? "Search and select saved areas for each working day."
+            : "Choose a staff member, then search and select areas from Create Area for each day. On save, each area's outlets move to the day the area is assigned to."}
+        />
+        {areasError && <Notice tone="error" className="mb-4">{areasError} Refresh the page to retry.</Notice>}
 
-                {!isSelfService && <Grid container spacing={2}>
-                  <Grid item xs={12} md={4}>
-                    <FormControl fullWidth size="small">
-                      <InputLabel id="location-staff-type-label">Staff Type</InputLabel>
-                      <Select
-                        labelId="location-staff-type-label"
-                        value={staffType}
-                        label="Staff Type"
-                        onChange={(event) => selectStaffType(event.target.value)}
-                        sx={{ minHeight: 44 }}
-                      >
-                        <MenuItem value="distributor">Distributor</MenuItem>
-                        <MenuItem value="cnf">CNF</MenuItem>
-                      </Select>
-                    </FormControl>
-                  </Grid>
-                  <Grid item xs={12} md={4}>
-                    <Autocomplete
-                      disabled={!staffType}
-                      options={companies}
-                      value={selectedCompany}
-                      onChange={(_, value) => selectCompany(value)}
-                      getOptionLabel={(option) => option.name || ""}
-                      isOptionEqualToValue={(option, value) => option.id === value.id}
-                      renderInput={(params) => <MDInput {...params} label="Select Company" />}
-                    />
-                  </Grid>
-                  <Grid item xs={12} md={4}>
-                    <Autocomplete
-                      disabled={!selectedCompany}
-                      options={staff}
-                      value={selectedStaff}
-                      onChange={(_, value) => selectStaff(value)}
-                      getOptionLabel={(option) => option.name || ""}
-                      isOptionEqualToValue={(option, value) => option.id === value.id}
-                      renderInput={(params) => <MDInput {...params} label="Select Staff" />}
-                    />
-                  </Grid>
-                </Grid>}
+        {!isSelfService && (
+          <Card className="mb-5">
+            <div className="grid grid-cols-1 gap-4 p-5 md:grid-cols-3">
+              <Field label="1 · Staff type" width="w-full">
+                <select className={fieldClass} value={staffType} onChange={(event) => selectStaffType(event.target.value)}>
+                  <option value="" disabled>Choose staff type</option>
+                  <option value="distributor">Distributor</option>
+                  <option value="cnf">CNF</option>
+                </select>
+              </Field>
+              <div className="flex flex-col gap-1">
+                <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">2 · Company</span>
+                <SearchSelect
+                  label="Select company" placeholder={staffType ? "Select company" : "Choose staff type first"} disabled={!staffType}
+                  options={companies.map((company) => ({ value: company.id, label: company.name || "" }))}
+                  value={selectedCompany?.id ?? null}
+                  onChange={(id) => selectCompany(companies.find((company) => company.id === id) || null)}
+                />
+              </div>
+              <div className="flex flex-col gap-1">
+                <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">3 · Staff</span>
+                <SearchSelect
+                  label="Select staff" placeholder={selectedCompany ? "Select staff" : "Choose company first"} disabled={!selectedCompany}
+                  options={staff.map((employee) => ({ value: employee.id, label: employee.name || "" }))}
+                  value={selectedStaff?.id ?? null}
+                  onChange={(id) => selectStaff(staff.find((employee) => employee.id === id) || null)}
+                  noOptionsText="No staff of this type in the company."
+                />
+              </div>
+            </div>
+          </Card>
+        )}
 
-                {selectedStaff && (
-                  <MDBox mt={3}>
-                    <Tabs
-                      value={Math.min(activeTab, days.length - 1)}
-                      onChange={(_, value) => setActiveTab(value)}
-                      variant="scrollable"
-                      scrollButtons="auto"
-                    >
-                      {days.map((day) => <Tab key={day} label={day} />)}
-                    </Tabs>
+        {!selectedStaff && !isSelfService && (
+          <Card>
+            <div className="flex flex-col items-center gap-2 py-16 text-center">
+              <Icon name="person_search" className="text-[36px] text-slate-300" />
+              <p className="m-0 text-[13px] text-slate-500">Choose a staff type, company and staff member to see their day-wise areas.</p>
+            </div>
+          </Card>
+        )}
 
-                    {!loading && days.map((day, dayIndex) => (
-                      <MDBox key={day} hidden={activeTab !== dayIndex} py={3}>
-                        <MDBox display="flex" justifyContent="space-between" alignItems="center" mb={2}>
-                          <MDTypography variant="subtitle2">Assigned Locations for {day}</MDTypography>
-                          <MDButton size="small" color="dark" variant="gradient" disabled={areasLoading || Boolean(areasError) || saving} onClick={() => addLocation(day)}>
-                            <Icon sx={{ mr: 1 }}>add</Icon>Assign Area
-                          </MDButton>
-                        </MDBox>
+        {selectedStaff && (
+          <Card>
+            <div className="flex flex-wrap items-center gap-3 border-b border-slate-100 px-5 py-3">
+              <span className="flex size-9 items-center justify-center rounded-full bg-slate-800 text-[12px] font-bold text-white">
+                {String(selectedStaff.name || "?").trim().charAt(0).toUpperCase()}
+              </span>
+              <span className="min-w-0 grow">
+                <span className="block text-[14px] font-semibold text-slate-900">{selectedStaff.name}</span>
+                <span className="block text-[12px] text-slate-500">{totalAssigned} area{totalAssigned === 1 ? "" : "s"} across {days.length === 1 ? "CNF" : "the week"}</span>
+              </span>
+            </div>
 
-                        {(assignments[day] || []).length === 0 && (
-                          <MDTypography variant="body2" color="text">No locations assigned.</MDTypography>
-                        )}
-                        {(assignments[day] || []).map((location, index) => (
-                          <MDBox key={`${day}-${index}`} display="flex" gap={2} alignItems="center" mb={2}>
-                            <Autocomplete
-                              fullWidth
-                              options={areas}
-                              loading={areasLoading}
-                              disabled={areasLoading || saving || Boolean(areasError)}
-                              value={normalizeAreaName(location.locationName) || null}
-                              onChange={(_, value) => updateLocation(day, index, value || "")}
-                              getOptionDisabled={(option) => (assignments[day] || []).some((entry, entryIndex) => entryIndex !== index && normalizeAreaName(entry.locationName) === option)}
-                              noOptionsText="No matching areas. Add new areas in Create Area."
-                              renderInput={(params) => <MDInput {...params} label="Search and select area" />}
-                            />
-                            {location.locationName && (
-                              <MDTypography variant="caption" color="text" sx={{ whiteSpace: "nowrap" }}>
-                                {outletCounts[normalizeAreaName(location.locationName)] || 0} outlet(s)
-                              </MDTypography>
-                            )}
-                            <MDButton color="error" variant="text" onClick={() => removeLocation(day, index)}>
-                              <Icon>delete</Icon>
-                            </MDButton>
-                          </MDBox>
-                        ))}
-                      </MDBox>
-                    ))}
+            {/* Day tabs */}
+            <div className="flex gap-1 overflow-x-auto border-b border-slate-100 px-3 pt-2" role="tablist">
+              {days.map((day, dayIndex) => {
+                const count = (assignments[day] || []).length;
+                const on = currentTab === dayIndex;
+                return (
+                  <button
+                    key={day} type="button" role="tab" aria-selected={on} onClick={() => setActiveTab(dayIndex)}
+                    className={`-mb-px flex shrink-0 items-center gap-1.5 border-b-2 px-3.5 py-2.5 text-[13px] font-semibold transition ${on ? "border-blue-600 text-blue-700" : "border-transparent text-slate-500 hover:text-slate-800"}`}
+                  >
+                    {day}
+                    <span className={`rounded-full px-1.5 text-[11px] ${on ? "bg-blue-100 text-blue-700" : "bg-slate-100 text-slate-500"}`}>{count}</span>
+                  </button>
+                );
+              })}
+            </div>
 
-                    <MDBox display="flex" justifyContent="flex-end" mt={2}>
-                      <MDButton color="info" variant="gradient" disabled={loading || saving || areasLoading || Boolean(areasError)} onClick={saveAssignments}>
-                        {saving ? "Saving..." : "Save Assignments"}
-                      </MDButton>
-                    </MDBox>
-                  </MDBox>
+            {loading ? (
+              <div className="flex justify-center py-14"><Spinner className="size-7" /></div>
+            ) : days.map((day, dayIndex) => (
+              <div key={day} hidden={currentTab !== dayIndex} className="p-5">
+                <div className="mb-3 flex items-center justify-between">
+                  <h3 className="m-0 text-[14px] font-semibold text-slate-800">Assigned locations for {day}</h3>
+                  <button type="button" className={btn.outline} disabled={areasLoading || Boolean(areasError) || saving} onClick={() => addLocation(day)}>
+                    <Icon name="add" className="text-[18px]" />Assign Area
+                  </button>
+                </div>
+                {(assignments[day] || []).length === 0 && (
+                  <div className="rounded-xl border border-dashed border-slate-300 py-8 text-center text-[13px] text-slate-400">No locations assigned.</div>
                 )}
-              </MDBox>
-            </Card>
-          </Grid>
-        </Grid>
-      </MDBox>
+                <ol className="m-0 list-none space-y-2 p-0">
+                  {(assignments[day] || []).map((location, index) => (
+                    <li key={`${day}-${index}`} className="flex items-center gap-3 rounded-xl border border-slate-200 bg-slate-50/50 px-3 py-2">
+                      <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-white text-[11.5px] font-bold text-slate-500 ring-1 ring-slate-200">{index + 1}</span>
+                      <div className="min-w-0 grow">
+                        <SearchSelect
+                          label={`Area ${index + 1} for ${day}`} placeholder="Search and select area"
+                          options={areaOptionsFor(day, index)} loading={areasLoading}
+                          disabled={areasLoading || saving || Boolean(areasError)}
+                          value={normalizeAreaName(location.locationName) || null}
+                          onChange={(value) => updateLocation(day, index, value || "")}
+                          noOptionsText="No matching areas. Add new areas in Create Area."
+                        />
+                      </div>
+                      {location.locationName && (
+                        <span className="shrink-0 whitespace-nowrap rounded-full bg-white px-2 py-0.5 text-[11.5px] font-semibold text-slate-600 ring-1 ring-slate-200">
+                          {outletCounts[normalizeAreaName(location.locationName)] || 0} outlet(s)
+                        </span>
+                      )}
+                      <button type="button" className={`${btn.icon} hover:bg-red-50 hover:text-red-600`} onClick={() => removeLocation(day, index)} aria-label={`Remove area ${index + 1}`}>
+                        <Icon name="delete_outline" className="text-[19px]" />
+                      </button>
+                    </li>
+                  ))}
+                </ol>
+              </div>
+            ))}
+
+            <div className="flex justify-end border-t border-slate-100 bg-slate-50/60 px-5 py-3">
+              <button type="button" className={btn.primary} disabled={loading || saving || areasLoading || Boolean(areasError)} onClick={saveAssignments}>
+                <Icon name="save" className="text-[18px]" />{saving ? "Saving..." : "Save Assignments"}
+              </button>
+            </div>
+          </Card>
+        )}
+      </div>
       <Footer />
     </DashboardLayout>
   );

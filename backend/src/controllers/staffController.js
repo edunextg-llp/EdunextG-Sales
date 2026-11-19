@@ -330,14 +330,14 @@ function normalizeStaffCategory(value) {
     return ['bawarchee_staff', 'operator'].includes(value) ? value : 'company_staff';
 }
 
-// Bawarchee staff pick a role (Admin / Manager / Accountant / Operator) and page permissions.
+// Bawarchee staff pick a role (Admin / Manager / Accountant / Operator / HR) and page permissions.
 function resolveBawarcheeAccess(staffCategory, bawarcheeRole, permissions) {
     if (staffCategory !== 'bawarchee_staff') {
         return { bawarcheeRole: null, permissions: null };
     }
     const role = String(bawarcheeRole || '').trim().toLowerCase();
     if (!BAWARCHEE_ROLES.includes(role)) {
-        return { error: 'Please choose a staff type: Admin, Manager, Accountant or Operator.' };
+        return { error: 'Please choose a staff type: Admin, Manager, Accountant, Operator or HR.' };
     }
     if (Array.isArray(permissions) && permissions.some((key) => !PERMISSION_KEYS.includes(key))) {
         return { error: 'One or more permissions are invalid.' };
@@ -3519,6 +3519,35 @@ export const getReports = async (req, res) => {
     } catch (error) {
         console.error('Error fetching reports:', error);
         res.status(500).json({ error: 'Internal server error' });
+    }
+};
+
+// GET /api/staff/reports/outlets?startDate&endDate&companyId&staffId
+// Dashboard > Outlet Analysis: outlet-wise sales, invoices and growth against the previous period.
+export const getOutletAnalysis = async (req, res) => {
+    try {
+        const { startDate, endDate, companyId, staffId } = req.query;
+        const datePattern = /^\d{4}-\d{2}-\d{2}$/;
+        if ((startDate && !datePattern.test(startDate)) || (endDate && !datePattern.test(endDate))) {
+            return res.status(400).json({ error: 'Dates must be YYYY-MM-DD' });
+        }
+        if (startDate && endDate && startDate > endDate) {
+            return res.status(400).json({ error: 'From date must be on or before To date.' });
+        }
+        const parsedCompanyId = companyId ? Number(companyId) : null;
+        const parsedStaffId = staffId ? Number(staffId) : null;
+        if (companyId && (!Number.isInteger(parsedCompanyId) || parsedCompanyId <= 0)) {
+            return res.status(400).json({ error: 'companyId must be a positive integer' });
+        }
+        if (staffId && (!Number.isInteger(parsedStaffId) || parsedStaffId <= 0)) {
+            return res.status(400).json({ error: 'staffId must be a positive integer' });
+        }
+        const analysis = await ReportModel.getOutletAnalysis(startDate || null, endDate || null, parsedCompanyId, parsedStaffId);
+        res.set('Cache-Control', 'no-store');
+        return res.json(analysis);
+    } catch (error) {
+        console.error('Error fetching outlet analysis:', error);
+        return res.status(500).json({ error: 'Unable to load the outlet analysis.' });
     }
 };
 

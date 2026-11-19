@@ -231,6 +231,7 @@ router.get('/sales/lookup/outlets', staffController.searchLookupOutlets);
 router.get('/sales/lookup/outlet-invoices', staffController.getLookupOutletInvoices);
 router.get('/sales/cancelled', staffController.getCancelledDeliverySales);
 router.get('/reports', staffController.getReports);
+router.get('/reports/outlets', staffController.getOutletAnalysis);
 router.get('/reports/payments', staffController.getPaymentDetailsReport);
 router.get('/reports/payments/export', staffController.downloadPaymentDetailsExcel);
 router.get('/outlets-export', staffController.downloadOutletsExcel);

@@ -1,40 +1,8 @@
+// Create Staff (company staff, Bawarchee staff, operators): Tailwind CSS (no MUI).
+// Staff list, create / edit, documents, permissions and credentials logic unchanged.
 import { useState, useEffect } from "react";
+import PropTypes from "prop-types";
 
-// @mui material components
-import Grid from "@mui/material/Grid";
-import Card from "@mui/material/Card";
-import Icon from "@mui/material/Icon";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableContainer,
-  TableHead,
-  TableRow,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  Divider,
-  FormControl,
-  InputLabel,
-  MenuItem,
-  Select,
-  Autocomplete,
-  Checkbox,
-  FormControlLabel,
-  Chip,
-  RadioGroup,
-  Radio,
-  FormLabel,
-  Switch,
-} from "@mui/material";
-
-// Material Dashboard 2 React components
-import MDBox from "components/MDBox";
-import MDTypography from "components/MDTypography";
-import MDInput from "components/MDInput";
-import MDButton from "components/MDButton";
 import {
   STAFF_PERMISSION_GROUPS,
   BAWARCHEE_ROLE_OPTIONS,
@@ -42,43 +10,17 @@ import {
   bawarcheeRoleLabel,
   normalizeStaffPermissions,
 } from "utils/staffPermissions";
-
-// Material Dashboard 2 React example components
 import DashboardLayout from "examples/LayoutContainers/DashboardLayout";
 import DashboardNavbar from "examples/Navbars/DashboardNavbar";
 import Footer from "examples/Footer";
-import { FaEye } from "react-icons/fa";
-import { FaRegEdit } from "react-icons/fa";
 import {
   formatDateLabel,
   isImageDocument,
   uploadStaffDocument,
 } from "utils/uploadStaffDocument";
-
-
-const tableHeadSx = {
-  color: "#6b7280",
-  fontSize: "0.75rem",
-  fontWeight: 600,
-  textTransform: "none",
-  borderBottom: "1px solid #e5e7eb",
-  px: 2,
-  py: 1.5,
-  whiteSpace: "nowrap",
-  verticalAlign: "middle",
-};
-
-const tableBodySx = {
-  px: 2,
-  verticalAlign: "middle",
-  py: 1.5,
-};
-
-const tableHeadRowSx = {
-  display: "table-header-group",
-  backgroundColor: "#f9fafb",
-  "& .MuiTableCell-root": { backgroundColor: "#f9fafb" },
-};
+import {
+  Card, Field, Icon, Modal, PageHeader, StatBox, Toggle, TriCheck, btn, fieldClass, initialsOf, td, th,
+} from "components/tw";
 
 const createEmptyAssignments = () => ({
   Monday: [],
@@ -108,74 +50,59 @@ const createEmptyFormData = () => ({
   assignments: createEmptyAssignments(),
 });
 
-const sectionLabelSx = {
-  fontSize: "0.7rem",
-  fontWeight: 700,
-  letterSpacing: "0.08em",
-  textTransform: "uppercase",
-  color: "#64748b",
-  mb: 1.5,
-};
+function SectionTitle({ children, aside }) {
+  return (
+    <div className="mb-3 flex items-center justify-between gap-3">
+      <h4 className="m-0 text-[11.5px] font-bold uppercase tracking-[0.1em] text-slate-500">{children}</h4>
+      {aside && <span className="text-[12px] text-slate-500">{aside}</span>}
+    </div>
+  );
+}
+SectionTitle.propTypes = { children: PropTypes.node.isRequired, aside: PropTypes.node };
+SectionTitle.defaultProps = { aside: null };
 
 function DocumentPreview({ title, url }) {
   if (!url) {
     return (
-      <MDBox
-        p={2}
-        sx={{
-          border: "1px dashed #cbd5e1",
-          borderRadius: "10px",
-          backgroundColor: "#f8fafc",
-          textAlign: "center",
-        }}
-      >
-        <MDTypography variant="caption" color="text">
-          No {title} uploaded
-        </MDTypography>
-      </MDBox>
+      <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 px-4 py-6 text-center text-[12.5px] text-slate-400">
+        No {title} uploaded
+      </div>
     );
   }
-
   if (isImageDocument(url)) {
     return (
-      <MDBox
-        component="a"
-        href={url}
-        target="_blank"
-        rel="noreferrer"
-        sx={{ display: "block", textDecoration: "none" }}
-      >
-        <MDBox
-          component="img"
-          src={url}
-          alt={title}
-          sx={{
-            width: "100%",
-            maxHeight: 220,
-            objectFit: "cover",
-            borderRadius: "10px",
-            border: "1px solid #e2e8f0",
-          }}
-        />
-      </MDBox>
+      <a href={url} target="_blank" rel="noreferrer" className="block">
+        <img src={url} alt={title} className="max-h-56 w-full rounded-xl border border-slate-200 object-cover" />
+      </a>
     );
   }
-
   return (
-    <MDButton
-      component="a"
-      href={url}
-      target="_blank"
-      rel="noreferrer"
-      variant="outlined"
-      color="info"
-      fullWidth
-      startIcon={<Icon>picture_as_pdf</Icon>}
-    >
-      View {title}
-    </MDButton>
+    <a href={url} target="_blank" rel="noreferrer" className={`${btn.outline} w-full justify-center`}>
+      <Icon name="picture_as_pdf" className="text-[18px] text-red-600" />View {title}
+    </a>
   );
 }
+DocumentPreview.propTypes = { title: PropTypes.string.isRequired, url: PropTypes.string };
+DocumentPreview.defaultProps = { url: "" };
+
+// "Upload" button around a hidden file input.
+function UploadButton({ label, busyLabel, busy, onChange, done }) {
+  return (
+    <div>
+      <label className={`${btn.outline} w-full cursor-pointer justify-center ${busy ? "pointer-events-none opacity-50" : ""}`}>
+        <Icon name="upload_file" className="text-[18px] text-blue-600" />{busy ? busyLabel : label}
+        <input hidden type="file" accept="image/jpeg,image/png,image/webp,application/pdf" onChange={onChange} disabled={busy} />
+      </label>
+      <p className="m-0 mt-1 text-[11.5px] text-slate-500">JPG, PNG, WebP or PDF · max 1 MB</p>
+      {done && <p className="m-0 mt-0.5 flex items-center gap-1 text-[11.5px] font-semibold text-emerald-700"><Icon name="check_circle" className="text-[14px]" />{done}</p>}
+    </div>
+  );
+}
+UploadButton.propTypes = { label: PropTypes.string.isRequired, busyLabel: PropTypes.string.isRequired, busy: PropTypes.bool.isRequired, onChange: PropTypes.func.isRequired, done: PropTypes.string };
+UploadButton.defaultProps = { done: "" };
+
+const CATEGORY_LABELS = { company_staff: "Company Staff", bawarchee_staff: "Bawarchee Staff", operator: "Operator" };
+const categoryTone = (category) => (category === "bawarchee_staff" ? "bg-violet-600" : category === "operator" ? "bg-amber-600" : "bg-blue-600");
 
 const getStaffTypeLabel = (staff) => {
   if (!staff) return "—";
@@ -545,7 +472,7 @@ function CreateStaff() {
     }
 
     if (formData.staffCategory === "bawarchee_staff" && !formData.bawarcheeRole) {
-      alert("Please choose a staff type: Admin, Manager, Accountant or Operator.");
+      alert("Please choose a staff type: Admin, Manager, Accountant, Operator or HR.");
       return;
     }
 
@@ -621,905 +548,472 @@ function CreateStaff() {
     }
   };
 
+  const activeStaff = staffList.filter((staff) => staff.is_active).length;
+  const bawarcheeCount = staffList.filter((staff) => staff.staff_category === "bawarchee_staff").length;
+  const toggleCompany = (company) => setFormData((prev) => ({
+    ...prev,
+    selectedCompanies: prev.selectedCompanies.some((c) => c.id === company.id)
+      ? prev.selectedCompanies.filter((c) => c.id !== company.id)
+      : [...prev.selectedCompanies, company],
+  }));
+  const detail = (label, value, wide) => (
+    <div className={wide ? "sm:col-span-2" : ""}>
+      <span className="block text-[11px] font-semibold uppercase tracking-wide text-slate-400">{label}</span>
+      <span className="block break-all text-[13.5px] font-medium text-slate-800">{value}</span>
+    </div>
+  );
+
   return (
     <DashboardLayout>
       <DashboardNavbar />
+      <div className="pb-8 font-[Poppins,Roboto,sans-serif] text-slate-700">
+        <PageHeader
+          title="Employee List"
+          description="Company staff, Bawarchee staff and operators: their details, documents, login and (for Bawarchee staff) page permissions."
+          actions={(
+            <button type="button" className={btn.primary} onClick={openStaffModal}>
+              <Icon name="person_add" className="text-[18px]" />Create Staff
+            </button>
+          )}
+        />
 
-      <MDBox pt={6} pb={3}>
-        <Grid container spacing={3} justifyContent="center">
-          <Grid item xs={12}>
-            <Card>
-              <MDBox p={3}>
-                <MDBox
-                  display="flex"
-                  flexDirection={{ xs: "column", sm: "row" }}
-                  justifyContent="space-between"
-                  alignItems={{ xs: "stretch", sm: "center" }}
-                  gap={2}
-                  mb={3}
+        <div className="mb-5 flex flex-wrap gap-2">
+          <StatBox label={showInactive ? "Staff (incl. inactive)" : "Staff"} value={staffList.length} icon="groups" />
+          <StatBox label="Active" value={activeStaff} icon="check_circle" />
+          <StatBox label="Bawarchee staff" value={bawarcheeCount} icon="badge" />
+        </div>
+
+        <Card>
+          <div className="flex flex-wrap items-center gap-3 border-b border-slate-100 px-4 py-3">
+            <div className="relative w-full max-w-xs">
+              <Icon name="search" className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-[18px] text-slate-400" />
+              <input
+                type="search" value={employeeSearchInput} onChange={(e) => setEmployeeSearchInput(e.target.value)}
+                placeholder="Search name, company, phone, email" aria-label="Search employee" className={`${fieldClass} pl-8`}
+              />
+            </div>
+            <div className="flex gap-1 rounded-xl bg-slate-100 p-1">
+              {[["all", "All Staff"], ["distributor", "Distributor"], ["cnf", "CNF"]].map(([value, label]) => (
+                <button
+                  key={value} type="button" onClick={() => setStaffTypeFilter(value)}
+                  className={`rounded-lg px-3 py-1.5 text-[12.5px] font-semibold transition ${staffTypeFilter === value ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-800"}`}
                 >
-                  <MDTypography variant="h5" fontWeight="medium">
-                    Employee List
-                  </MDTypography>
+                  {label}
+                </button>
+              ))}
+            </div>
+            <label className="ml-auto flex cursor-pointer items-center gap-2 text-[13px] font-medium text-slate-600">
+              <Toggle checked={showInactive} onChange={(e) => setShowInactive(e.target.checked)} label="Show inactive" />
+              Show inactive
+            </label>
+          </div>
 
-                  <MDBox
-                    display="flex"
-                    flexDirection={{ xs: "column", md: "row" }}
-                    alignItems={{ xs: "stretch", md: "center" }}
-                    gap={1.5}
-                    sx={{ width: { xs: "100%", sm: "auto" } }}
-                  >
-                    <MDButton color="info" variant="gradient" onClick={openStaffModal}>
-                      <Icon sx={{ mr: 1 }}>add</Icon>
-                      Create Staff
-                    </MDButton>
-                    <MDInput
-                      type="text"
-                      label="Search Employee"
-                      value={employeeSearchInput}
-                      onChange={(e) => setEmployeeSearchInput(e.target.value)}
-                      sx={{ minWidth: { xs: "100%", md: 240 } }}
-                    />
-                    <FormControl size="small" sx={{ minWidth: { xs: "100%", md: 220 } }}>
-                      <InputLabel id="staff-type-filter-label">Staff Type</InputLabel>
-                      <Select
-                        labelId="staff-type-filter-label"
-                        value={staffTypeFilter}
-                        label="Staff Type"
-                        onChange={(e) => setStaffTypeFilter(e.target.value)}
-                        sx={{ minHeight: 44 }}
-                      >
-                        <MenuItem value="all">All Staff</MenuItem>
-                        <MenuItem value="distributor">Distributor</MenuItem>
-                        <MenuItem value="cnf">CNF</MenuItem>
-                      </Select>
-                    </FormControl>
-                    <FormControlLabel
-                      control={
-                        <Switch
-                          checked={showInactive}
-                          onChange={(e) => setShowInactive(e.target.checked)}
-                          size="small"
-                        />
-                      }
-                      label={
-                        <MDTypography variant="caption" color="text">
-                          Show Inactive
-                        </MDTypography>
-                      }
-                      sx={{ ml: 0 }}
-                    />
-                  </MDBox>
-                </MDBox>
-
-                {staffList.length === 0 ? (
-                  <MDTypography variant="body2" color="text">
-                    No employees added yet. Click &quot;Create Staff&quot; to add one.
-                  </MDTypography>
-                ) : filteredStaffList.length === 0 ? (
-                  <MDTypography variant="body2" color="text">
-                    No staff found for this search.
-                  </MDTypography>
-                ) : (
-                  <TableContainer
-                    sx={{
-                      boxShadow: "none",
-                      borderTop: "1px solid #e5e7eb",
-                      backgroundColor: "transparent",
-                      mt: 2,
-                      overflowX: "auto",
-                    }}
-                  >
-                    <Table
-                      sx={{
-                        tableLayout: "fixed",
-                        width: "100%",
-                        minWidth: 900,
-                        "& .MuiTableCell-root": { overflow: "hidden" },
-                      }}
-                    >
-                      <colgroup>
-                        <col style={{ width: "6%" }} />
-                        <col style={{ width: "17%" }} />
-                        <col style={{ width: "15%" }} />
-                        <col style={{ width: "8%" }} />
-                        <col style={{ width: "12%" }} />
-                        <col style={{ width: "18%" }} />
-                        <col style={{ width: "12%" }} />
-                        <col style={{ width: "12%" }} />
-                      </colgroup>
-                      <TableHead sx={tableHeadRowSx}>
-                        <TableRow>
-                          <TableCell align="center" sx={{ ...tableHeadSx, width: "6%" }}>
-                            Sr No
-                          </TableCell>
-                          <TableCell align="left" sx={{ ...tableHeadSx, width: "17%" }}>
-                            Company Name
-                          </TableCell>
-                          <TableCell align="left" sx={{ ...tableHeadSx, width: "15%" }}>
-                            Staff Name
-                          </TableCell>
-                          <TableCell align="center" sx={{ ...tableHeadSx, width: "8%" }}>
-                            Type
-                          </TableCell>
-                          <TableCell align="center" sx={{ ...tableHeadSx, width: "12%" }}>
-                            Phone Number
-                          </TableCell>
-                          <TableCell align="left" sx={{ ...tableHeadSx, width: "18%" }}>
-                            Email ID
-                          </TableCell>
-                          <TableCell align="center" sx={{ ...tableHeadSx, width: "12%" }}>
-                            Status
-                          </TableCell>
-                          <TableCell align="center" sx={{ ...tableHeadSx, width: "12%" }}>
-                            Action
-                          </TableCell>
-                        </TableRow>
-                      </TableHead>
-                      <TableBody>
-                        {filteredStaffList.map((staff, index) => (
-                          <TableRow key={staff.id} sx={{ opacity: staff.is_active ? 1 : 0.5 }}>
-                            <TableCell
-                              align="center"
-                              sx={{ ...tableBodySx, borderBottom: "1px solid #e5e7eb", fontSize: "0.875rem", color: "#374151" }}
-                            >
-                              {index + 1}
-                            </TableCell>
-                            <TableCell
-                              align="left"
-                              sx={{ ...tableBodySx, borderBottom: "1px solid #e5e7eb", fontSize: "0.875rem", color: "#374151" }}
-                            >
-                              {staff.staff_category === "bawarchee_staff"
-                                ? "Bawarchee Staff"
-                                : staff.staff_category === "operator"
-                                  ? "Operator"
-                                  : staff.company_name || "—"}
-                            </TableCell>
-                            <TableCell
-                              align="left"
-                              sx={{ ...tableBodySx, borderBottom: "1px solid #e5e7eb", fontSize: "0.875rem", color: "#374151" }}
-                            >
-                              {staff.name}
-                            </TableCell>
-                            <TableCell
-                              align="center"
-                              sx={{ ...tableBodySx, borderBottom: "1px solid #e5e7eb", fontSize: "0.875rem", color: "#374151" }}
-                            >
-                              {getStaffTypeLabel(staff)}
-                            </TableCell>
-                            <TableCell
-                              align="center"
-                              sx={{ ...tableBodySx, borderBottom: "1px solid #e5e7eb", fontSize: "0.875rem", color: "#374151" }}
-                            >
-                              {staff.contact_no || "—"}
-                            </TableCell>
-                            <TableCell
-                              align="left"
-                              title={staff.email || ""}
-                              sx={{
-                                ...tableBodySx,
-                                borderBottom: "1px solid #e5e7eb",
-                                fontSize: "0.875rem",
-                                color: "#374151",
-                                whiteSpace: "nowrap",
-                                textOverflow: "ellipsis",
-                              }}
-                            >
-                              {staff.email || "—"}
-                            </TableCell>
-                            <TableCell align="center" sx={{ ...tableBodySx, borderBottom: "1px solid #e5e7eb" }}>
-                              <MDBox display="flex" alignItems="center" justifyContent="center" gap={0.5}>
-                                <Switch
-                                  checked={Boolean(staff.is_active)}
-                                  onChange={() => handleToggleActive(staff)}
-                                  size="small"
-                                  color={staff.is_active ? "success" : "default"}
-                                />
-                                <Chip
-                                  label={staff.is_active ? "Active" : "Inactive"}
-                                  size="small"
-                                  sx={{
-                                    fontSize: "0.7rem",
-                                    fontWeight: 600,
-                                    backgroundColor: staff.is_active ? "#dcfce7" : "#fee2e2",
-                                    color: staff.is_active ? "#15803d" : "#dc2626",
-                                    border: "none",
-                                  }}
-                                />
-                              </MDBox>
-                            </TableCell>
-                            <TableCell align="center" sx={{ ...tableBodySx, borderBottom: "1px solid #e5e7eb" }}>
-                              <MDBox display="flex" gap={0.5} justifyContent="center" alignItems="center" flexWrap="wrap">
-                                <FaEye onClick={() => handleView(staff)} style={{ cursor: "pointer" }} color="#E0E388" size={20} />
-                                <FaRegEdit onClick={() => handleEdit(staff)} style={{ cursor: "pointer" }} color="#E0E388" size={20} />
-                                <MDButton
-                                  color="info"
-                                  variant="text"
-                                  size="small"
-                                  title="Update Login ID and Password"
-                                  onClick={() => openCredentialsModal(staff)}
-                                >
-                                  <Icon fontSize="small">key</Icon>
-                                </MDButton>
-                              </MDBox>
-                            </TableCell>
-                          </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
-                  </TableContainer>
-                )}
-              </MDBox>
-            </Card>
-          </Grid>
-        </Grid>
-      </MDBox>
+          {staffList.length === 0 ? (
+            <p className="m-0 py-16 text-center text-[13px] text-slate-400">No employees added yet. Click &quot;Create Staff&quot; to add one.</p>
+          ) : filteredStaffList.length === 0 ? (
+            <p className="m-0 py-16 text-center text-[13px] text-slate-400">No staff found for this search.</p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[900px] border-collapse">
+                <thead>
+                  <tr className="bg-slate-50">
+                    <th className={th}>Staff</th>
+                    <th className={th}>Company</th>
+                    <th className={th}>Type</th>
+                    <th className={th}>Phone</th>
+                    <th className={th}>Email ID</th>
+                    <th className={th}>Status</th>
+                    <th className={`${th} text-right`}>Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredStaffList.map((staff) => (
+                    <tr key={staff.id} className={`border-t border-slate-100 hover:bg-slate-50/70 ${staff.is_active ? "" : "opacity-55"}`}>
+                      <td className={td}>
+                        <span className="flex items-center gap-3">
+                          <span className={`flex size-9 shrink-0 items-center justify-center rounded-full text-[12px] font-bold text-white ${categoryTone(staff.staff_category)}`}>
+                            {initialsOf(staff.name)}
+                          </span>
+                          <span className="min-w-0">
+                            <span className="block font-semibold text-slate-800">{staff.name}</span>
+                            <span className="block text-[11.5px] text-slate-500">{CATEGORY_LABELS[staff.staff_category] || "Company Staff"}</span>
+                          </span>
+                        </span>
+                      </td>
+                      <td className={`${td} max-w-56`}>
+                        {staff.staff_category === "bawarchee_staff"
+                          ? "Bawarchee Staff"
+                          : staff.staff_category === "operator"
+                            ? "Operator"
+                            : staff.company_name || "—"}
+                      </td>
+                      <td className={td}>
+                        <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11.5px] font-semibold text-slate-700">{getStaffTypeLabel(staff)}</span>
+                      </td>
+                      <td className={`${td} tabular-nums`}>{staff.contact_no || "—"}</td>
+                      <td className={`${td} max-w-52 truncate`} title={staff.email || ""}>{staff.email || "—"}</td>
+                      <td className={td}>
+                        <label className="flex cursor-pointer items-center gap-2">
+                          <Toggle checked={Boolean(staff.is_active)} onChange={() => handleToggleActive(staff)} label={`${staff.name} active`} />
+                          <span className={`text-[12px] font-semibold ${staff.is_active ? "text-emerald-700" : "text-red-600"}`}>{staff.is_active ? "Active" : "Inactive"}</span>
+                        </label>
+                      </td>
+                      <td className={`${td} text-right`}>
+                        <span className="inline-flex gap-0.5">
+                          <button type="button" className={`${btn.icon} hover:text-blue-700`} title="View details" aria-label={`View ${staff.name}`} onClick={() => handleView(staff)}>
+                            <Icon name="visibility" className="text-[19px]" />
+                          </button>
+                          <button type="button" className={`${btn.icon} hover:text-amber-700`} title="Edit" aria-label={`Edit ${staff.name}`} onClick={() => handleEdit(staff)}>
+                            <Icon name="edit" className="text-[19px]" />
+                          </button>
+                          <button type="button" className={`${btn.icon} hover:text-blue-700`} title="Update Login ID and Password" aria-label="Update Login ID and Password" onClick={() => openCredentialsModal(staff)}>
+                            <Icon name="key" className="text-[19px]" />
+                          </button>
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </Card>
+      </div>
 
       <Footer />
 
-      <Dialog open={Boolean(createdCredentials)} onClose={() => setCreatedCredentials(null)} fullWidth maxWidth="xs">
-        <DialogTitle sx={{ fontWeight: "bold", color: "#344767" }}>
-          Staff Created Successfully
-        </DialogTitle>
-        <DialogContent dividers>
-          <MDTypography variant="body2" color="text" mb={2}>
-            Login credentials for {createdCredentials?.name || "staff"}
-          </MDTypography>
-          {[
-            ["Login ID", createdCredentials?.loginId],
-            ["Password", createdCredentials?.password],
-          ].map(([label, value]) => (
-            <MDBox
-              key={label}
-              mb={1.5}
-              p={1.5}
-              display="flex"
-              alignItems="center"
-              justifyContent="space-between"
-              sx={{ border: "1px solid #e2e8f0", borderRadius: "10px", backgroundColor: "#f8fafc" }}
-            >
-              <MDBox>
-                <MDTypography variant="caption" color="text" display="block">
-                  {label}
-                </MDTypography>
-                <MDTypography variant="body2" fontWeight="bold" sx={{ fontFamily: "monospace" }}>
-                  {value || "—"}
-                </MDTypography>
-              </MDBox>
-              <MDButton size="small" variant="text" color="info" onClick={() => copyToClipboard(value)}>
-                <Icon>content_copy</Icon>&nbsp;Copy
-              </MDButton>
-            </MDBox>
-          ))}
-          <MDTypography variant="caption" color="text">
-            You can view these anytime from the staff details (eye icon).
-          </MDTypography>
-        </DialogContent>
-        <DialogActions sx={{ px: 3, py: 2 }}>
-          <MDButton
-            variant="outlined"
-            color="info"
-            onClick={() =>
-              copyToClipboard(
-                `Login ID: ${createdCredentials?.loginId}\nPassword: ${createdCredentials?.password}`
-              )
-            }
-          >
-            Copy Both
-          </MDButton>
-          <MDButton variant="gradient" color="info" onClick={() => setCreatedCredentials(null)}>
-            Done
-          </MDButton>
-        </DialogActions>
-      </Dialog>
+      {/* New staff: login shown once */}
+      <Modal
+        open={Boolean(createdCredentials)} onClose={() => setCreatedCredentials(null)} title="Staff Created Successfully"
+        actions={(
+          <>
+            <button type="button" className={btn.outline} onClick={() => copyToClipboard(`Login ID: ${createdCredentials?.loginId}\nPassword: ${createdCredentials?.password}`)}>
+              <Icon name="content_copy" className="text-[17px]" />Copy Both
+            </button>
+            <button type="button" className={btn.primary} onClick={() => setCreatedCredentials(null)}>Done</button>
+          </>
+        )}
+      >
+        <p className="m-0 mb-3 text-[13px] text-slate-600">Login credentials for <b>{createdCredentials?.name || "staff"}</b></p>
+        {[["Login ID", createdCredentials?.loginId], ["Password", createdCredentials?.password]].map(([label, value]) => (
+          <div key={label} className="mb-2 flex items-center justify-between rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5">
+            <span>
+              <span className="block text-[11px] font-semibold uppercase tracking-wide text-slate-400">{label}</span>
+              <span className="block font-mono text-[14px] font-bold text-slate-900">{value || "—"}</span>
+            </span>
+            <button type="button" className={btn.ghost} onClick={() => copyToClipboard(value)}><Icon name="content_copy" className="text-[17px]" />Copy</button>
+          </div>
+        ))}
+        <p className="m-0 mt-2 text-[12px] text-slate-500">You can view these anytime from the staff details (eye icon).</p>
+      </Modal>
 
-      <Dialog open={credentialsModalOpen} onClose={closeCredentialsModal} fullWidth maxWidth="xs">
-        <DialogTitle sx={{ fontWeight: "bold", color: "#344767" }}>
-          Update Login ID & Password
-        </DialogTitle>
-        <DialogContent dividers>
-          <MDTypography variant="body2" color="text" mb={2}>
-            {credentialStaff?.name || "Staff"}
-          </MDTypography>
-          <MDBox mb={2}>
-            <MDInput
-              label="Login ID"
-              fullWidth
-              value={loginId}
-              onChange={(e) => setLoginId(e.target.value)}
-              inputProps={{ maxLength: 50, autoComplete: "username" }}
-            />
-          </MDBox>
-          <MDInput
-            type="password"
-            label="New Password"
-            fullWidth
-            value={newPassword}
-            onChange={(e) => setNewPassword(e.target.value)}
-            inputProps={{ minLength: 8, autoComplete: "new-password" }}
-            helperText="Minimum 8 characters"
-          />
-        </DialogContent>
-        <DialogActions sx={{ px: 3, py: 2 }}>
-          <MDButton variant="outlined" color="dark" onClick={closeCredentialsModal} disabled={savingCredentials}>
-            Cancel
-          </MDButton>
-          <MDButton variant="gradient" color="info" onClick={handleUpdateCredentials} disabled={savingCredentials}>
-            {savingCredentials ? "Updating..." : "Update Credentials"}
-          </MDButton>
-        </DialogActions>
-      </Dialog>
+      <Modal
+        open={credentialsModalOpen} onClose={closeCredentialsModal} locked={savingCredentials} title="Update Login ID & Password"
+        actions={(
+          <>
+            <button type="button" className={btn.ghost} onClick={closeCredentialsModal} disabled={savingCredentials}>Cancel</button>
+            <button type="button" className={btn.primary} onClick={handleUpdateCredentials} disabled={savingCredentials}>{savingCredentials ? "Updating..." : "Update Credentials"}</button>
+          </>
+        )}
+      >
+        <p className="m-0 mb-4 text-[13px] font-semibold text-slate-800">{credentialStaff?.name || "Staff"}</p>
+        <div className="space-y-3">
+          <Field label="Login ID" width="w-full">
+            <input className={fieldClass} value={loginId} onChange={(e) => setLoginId(e.target.value)} maxLength={50} autoComplete="username" />
+          </Field>
+          <Field label="New password" width="w-full" hint="Minimum 8 characters">
+            <input type="password" className={fieldClass} value={newPassword} onChange={(e) => setNewPassword(e.target.value)} minLength={8} autoComplete="new-password" />
+          </Field>
+        </div>
+      </Modal>
 
-      <Dialog open={staffModalOpen} onClose={closeStaffModal} fullWidth maxWidth="lg" scroll="paper">
-        <DialogTitle sx={{ fontWeight: "bold", color: "#344767" }}>
-          {editingStaffId ? "Edit Staff" : "Create New Staff"}
-        </DialogTitle>
-        <DialogContent dividers>
-          <MDBox pt={1} component="form" role="form">
-            <MDTypography sx={sectionLabelSx}>Basic Information</MDTypography>
-            <Grid container spacing={2.5} mb={3}>
-              <Grid item xs={12}>
-                <FormControl>
-                  <FormLabel sx={{ fontSize: "0.875rem", color: "#344767", mb: 1 }}>
-                    Staff Category
-                  </FormLabel>
-                  <RadioGroup
-                    row
-                    value={formData.staffCategory}
-                    onChange={handleStaffCategoryChange}
-                  >
-                    <FormControlLabel
-                      value="company_staff"
-                      control={<Radio size="small" />}
-                      label={<MDTypography variant="body2">Company Staff</MDTypography>}
-                    />
-                    <FormControlLabel
-                      value="bawarchee_staff"
-                      control={<Radio size="small" />}
-                      label={<MDTypography variant="body2">Bawarchee Staff</MDTypography>}
-                    />
-                    <FormControlLabel
-                      value="operator"
-                      control={<Radio size="small" />}
-                      label={<MDTypography variant="body2">Operator</MDTypography>}
-                    />
-                  </RadioGroup>
-                </FormControl>
-              </Grid>
-              {formData.staffCategory !== "bawarchee_staff" && (
-              <Grid item xs={12} md={4}>
-                <FormControl fullWidth size="small">
-                  <InputLabel id="staff-type-label">Staff Type</InputLabel>
-                  <Select
-                    labelId="staff-type-label"
-                    value={formData.staffType}
-                    label="Staff Type"
-                    onChange={handleStaffTypeChange}
-                    sx={{ minHeight: 44 }}
-                  >
-                    <MenuItem value="distributor">Distributor</MenuItem>
-                    <MenuItem value="cnf">CNF</MenuItem>
-                  </Select>
-                </FormControl>
-              </Grid>
-              )}
-              {formData.staffCategory === "bawarchee_staff" && (
-                <Grid item xs={12} md={4}>
-                  <FormControl fullWidth size="small">
-                    <InputLabel id="bawarchee-role-label">Staff Type</InputLabel>
-                    <Select
-                      labelId="bawarchee-role-label"
-                      value={formData.bawarcheeRole}
-                      label="Staff Type"
-                      onChange={handleBawarcheeRoleChange}
-                      sx={{ minHeight: 44 }}
-                    >
-                      {BAWARCHEE_ROLE_OPTIONS.map(([value, label]) => (
-                        <MenuItem key={value} value={value}>
-                          {label}
-                        </MenuItem>
-                      ))}
-                    </Select>
-                  </FormControl>
-                </Grid>
+      {/* Create / edit staff */}
+      <Modal
+        open={staffModalOpen} onClose={closeStaffModal} locked={savingStaff} size="xl" title={editingStaffId ? "Edit Staff" : "Create New Staff"}
+        actions={(
+          <>
+            <button type="button" className={btn.ghost} onClick={closeStaffModal} disabled={savingStaff}>Cancel</button>
+            <button type="button" className={btn.primary} onClick={handleSubmit} disabled={savingStaff || uploadingAadhar || uploadingPcc}>
+              <Icon name="save" className="text-[18px]" />{savingStaff ? "Saving..." : editingStaffId ? "Update Staff" : "Save Staff"}
+            </button>
+          </>
+        )}
+      >
+        <form className="space-y-6" onSubmit={(e) => e.preventDefault()}>
+          <section>
+            <SectionTitle>Basic information</SectionTitle>
+            <div className="mb-4 grid grid-cols-1 gap-2 sm:grid-cols-3" role="radiogroup" aria-label="Staff category">
+              {[["company_staff", "Company Staff", "business"], ["bawarchee_staff", "Bawarchee Staff", "badge"], ["operator", "Operator", "support_agent"]].map(([value, label, icon]) => (
+                <button
+                  key={value} type="button" role="radio" aria-checked={formData.staffCategory === value}
+                  onClick={() => handleStaffCategoryChange({ target: { value } })}
+                  className={`flex items-center gap-2 rounded-xl border px-3 py-2.5 text-[13px] font-semibold transition ${formData.staffCategory === value ? "border-blue-500 bg-blue-50 text-blue-800 ring-2 ring-blue-500/20" : "border-slate-200 text-slate-600 hover:bg-slate-50"}`}
+                >
+                  <Icon name={icon} className="text-[19px]" />{label}
+                </button>
+              ))}
+            </div>
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+              {formData.staffCategory !== "bawarchee_staff" ? (
+                <Field label="Staff type" width="w-full">
+                  <select className={fieldClass} value={formData.staffType} onChange={handleStaffTypeChange}>
+                    <option value="distributor">Distributor</option>
+                    <option value="cnf">CNF</option>
+                  </select>
+                </Field>
+              ) : (
+                <Field label="Staff type" width="w-full" hint="Fills in this type's default pages below.">
+                  <select className={fieldClass} value={formData.bawarcheeRole} onChange={handleBawarcheeRoleChange}>
+                    <option value="" disabled>Choose staff type</option>
+                    {BAWARCHEE_ROLE_OPTIONS.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+                  </select>
+                </Field>
               )}
               {formData.staffCategory === "company_staff" && (
-                <Grid item xs={12} md={8}>
-                  <Autocomplete
-                    multiple
-                    options={companyOptions}
-                    value={formData.selectedCompanies}
-                    onChange={(event, newValue) =>
-                      setFormData((prev) => ({ ...prev, selectedCompanies: newValue }))
-                    }
-                    getOptionLabel={(option) => option.name || ""}
-                    isOptionEqualToValue={(option, value) => option.id === value.id}
-                    renderTags={(value, getTagProps) =>
-                      value.map((option, index) => (
-                        <Chip
-                          {...getTagProps({ index })}
-                          key={option.id}
-                          label={option.name}
-                          size="small"
-                        />
-                      ))
-                    }
-                    renderInput={(params) => (
-                      <MDInput
-                        {...params}
-                        label="Choose Company"
-                        placeholder={
-                          companyOptions.length === 0
-                            ? "No companies found. Add companies first."
-                            : "Select company"
-                        }
-                      />
-                    )}
-                  />
-                </Grid>
+                <div className="md:col-span-2">
+                  <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Choose company</span>
+                  <div className="mt-1 max-h-32 overflow-y-auto rounded-lg border border-slate-300 p-1">
+                    {companyOptions.map((company) => {
+                      const on = formData.selectedCompanies.some((c) => c.id === company.id);
+                      return (
+                        <label key={company.id} className={`flex cursor-pointer items-center gap-2.5 rounded-md px-2.5 py-1.5 text-[13px] ${on ? "bg-blue-50 font-semibold text-blue-800" : "text-slate-700 hover:bg-slate-50"}`}>
+                          <input type="checkbox" className="size-4 accent-blue-600" checked={on} onChange={() => toggleCompany(company)} />
+                          {company.name}
+                        </label>
+                      );
+                    })}
+                    {companyOptions.length === 0 && <p className="m-0 px-2.5 py-2 text-[13px] text-slate-400">No companies found. Add companies first.</p>}
+                  </div>
+                  {formData.selectedCompanies.length > 0 && (
+                    <div className="mt-1.5 flex flex-wrap gap-1">
+                      {formData.selectedCompanies.map((company) => (
+                        <span key={company.id} className="inline-flex items-center gap-1 rounded-full bg-blue-50 py-0.5 pl-2.5 pr-1 text-[12px] font-medium text-blue-800">
+                          {company.name}
+                          <button type="button" aria-label={`Remove ${company.name}`} onClick={() => toggleCompany(company)} className="rounded-full p-0.5 text-blue-500 hover:bg-blue-100"><Icon name="close" className="text-[14px]" /></button>
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
               )}
-              <Grid item xs={12} md={4}>
-                <MDInput
-                  type="text"
-                  label="Staff Name"
-                  name="name"
-                  fullWidth
-                  value={formData.name}
-                  onChange={handleInputChange}
-                />
-              </Grid>
-              <Grid item xs={12} md={4}>
-                <MDInput
-                  type="date"
-                  label="Date of Birth"
-                  name="dob"
-                  fullWidth
-                  value={formData.dob}
-                  onChange={handleInputChange}
-                  InputLabelProps={{ shrink: true }}
-                />
-              </Grid>
-              <Grid item xs={12} md={4}>
-                <MDInput
-                  type="text"
-                  label="Contact No"
-                  name="contactNo"
-                  fullWidth
-                  value={formData.contactNo}
-                  onChange={handleInputChange}
-                />
-              </Grid>
-              <Grid item xs={12} md={4}>
-                <MDInput
-                  type="text"
-                  label="WhatsApp Number"
-                  name="whatsappNumber"
-                  fullWidth
-                  value={formData.whatsappNumber}
-                  disabled={formData.whatsappSameAsContact}
-                  onChange={handleInputChange}
-                />
-              </Grid>
-              <Grid item xs={12} md={8}>
-                <FormControlLabel
-                  control={
-                    <Checkbox
-                      checked={Boolean(formData.whatsappSameAsContact)}
-                      onChange={(e) => handleWhatsappSameAsContact(e.target.checked)}
-                    />
-                  }
-                  label={
-                    <MDTypography variant="body2" color="text">
-                      WhatsApp number same as contact number
-                    </MDTypography>
-                  }
-                />
-              </Grid>
-              <Grid item xs={12} md={4}>
-                <MDInput
-                  type="email"
-                  label="Email ID"
-                  name="email"
-                  fullWidth
-                  value={formData.email}
-                  onChange={handleInputChange}
-                  inputProps={{ maxLength: 255, autoComplete: "email" }}
-                />
-              </Grid>
-            </Grid>
+              <Field label="Staff name" width="w-full">
+                <input className={fieldClass} name="name" value={formData.name} onChange={handleInputChange} />
+              </Field>
+              <Field label="Date of birth" width="w-full">
+                <input type="date" className={fieldClass} name="dob" value={formData.dob} onChange={handleInputChange} />
+              </Field>
+              <Field label="Contact no" width="w-full">
+                <input className={fieldClass} inputMode="numeric" name="contactNo" value={formData.contactNo} onChange={handleInputChange} />
+              </Field>
+              <Field label="WhatsApp number" width="w-full">
+                <input className={fieldClass} inputMode="numeric" name="whatsappNumber" value={formData.whatsappNumber} disabled={formData.whatsappSameAsContact} onChange={handleInputChange} />
+              </Field>
+              <Field label="Email ID" width="w-full">
+                <input type="email" className={fieldClass} name="email" value={formData.email} onChange={handleInputChange} maxLength={255} autoComplete="email" />
+              </Field>
+              <label className="flex cursor-pointer items-center gap-2 self-end pb-2 text-[13px] text-slate-600">
+                <input type="checkbox" className="size-4 accent-blue-600" checked={Boolean(formData.whatsappSameAsContact)} onChange={(e) => handleWhatsappSameAsContact(e.target.checked)} />
+                WhatsApp number same as contact number
+              </label>
+            </div>
+          </section>
 
-            {formData.staffCategory === "bawarchee_staff" && (
-              <>
-                <Divider sx={{ mb: 3 }} />
-                <MDBox display="flex" alignItems="center" justifyContent="space-between" mb={1}>
-                  <MDTypography sx={{ ...sectionLabelSx, mb: 0 }}>Permissions</MDTypography>
-                  <MDTypography variant="caption" color="text">
-                    {formData.bawarcheeRole
-                      ? `${formData.permissions.filter((key) => key !== "dms").length} pages selected`
-                      : "Choose a staff type to fill in its default permissions"}
-                  </MDTypography>
-                </MDBox>
-                <Grid container spacing={2} mb={3}>
-                  {STAFF_PERMISSION_GROUPS.map((group) => {
-                    const keys = group.items.map(([key]) => key);
-                    const selectedCount = keys.filter((key) => formData.permissions.includes(key)).length;
-                    return (
-                      <Grid item xs={12} sm={6} md={4} key={group.key}>
-                        <MDBox
-                          p={1.5}
-                          sx={{ border: "1px solid #e2e8f0", borderRadius: "10px", height: "100%" }}
-                        >
-                          <FormControlLabel
-                            control={
-                              <Checkbox
-                                size="small"
-                                checked={selectedCount === keys.length}
-                                indeterminate={selectedCount > 0 && selectedCount < keys.length}
-                                onChange={(e) => toggleGroupPermissions(group, e.target.checked)}
+          {formData.staffCategory === "bawarchee_staff" && (
+            <section className="border-t border-slate-100 pt-5">
+              <SectionTitle aside={formData.bawarcheeRole
+                ? `${formData.permissions.filter((key) => key !== "dms").length} pages selected`
+                : "Choose a staff type to fill in its default permissions"}
+              >
+                Permissions
+              </SectionTitle>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                {STAFF_PERMISSION_GROUPS.map((group) => {
+                  const keys = group.items.map(([key]) => key);
+                  const selectedCount = keys.filter((key) => formData.permissions.includes(key)).length;
+                  return (
+                    <div key={group.key} className={`rounded-xl border p-3 ${selectedCount ? "border-blue-200 bg-blue-50/30" : "border-slate-200"}`}>
+                      <label className="mb-1.5 flex cursor-pointer items-center gap-2">
+                        <TriCheck
+                          checked={selectedCount === keys.length} indeterminate={selectedCount > 0 && selectedCount < keys.length}
+                          onChange={(e) => toggleGroupPermissions(group, e.target.checked)} label={`All ${group.label}`}
+                        />
+                        <span className="grow text-[13px] font-semibold text-slate-800">{group.label}</span>
+                        <span className="text-[11.5px] tabular-nums text-slate-500">{selectedCount}/{keys.length}</span>
+                      </label>
+                      <div className="space-y-0.5 pl-6">
+                        {group.items.map(([key, label]) => {
+                          const locked = ["overdue_7_days", "overdue_own_permission", "other_day_own_permission"].includes(key) && !formData.permissions.includes("add_sales");
+                          return (
+                            <label key={key} className={`flex items-center gap-2 rounded px-1 py-0.5 text-[12.5px] ${locked ? "cursor-not-allowed text-slate-300" : "cursor-pointer text-slate-600 hover:text-slate-900"}`}>
+                              <input
+                                type="checkbox" className="size-3.5 accent-blue-600" checked={formData.permissions.includes(key)} disabled={locked}
+                                onChange={(e) => togglePermission(key, e.target.checked)}
                               />
-                            }
-                            label={
-                              <MDTypography variant="button" fontWeight="bold">
-                                {group.label}
-                              </MDTypography>
-                            }
-                          />
-                          <MDBox pl={2} display="flex" flexDirection="column">
-                            {group.items.map(([key, label]) => (
-                              <FormControlLabel
-                                key={key}
-                                sx={{ my: -0.25 }}
-                                control={
-                                  <Checkbox
-                                    size="small"
-                                    checked={formData.permissions.includes(key)}
-                                    disabled={["overdue_7_days", "overdue_own_permission", "other_day_own_permission"].includes(key) && !formData.permissions.includes("add_sales")}
-                                    onChange={(e) => togglePermission(key, e.target.checked)}
-                                  />
-                                }
-                                label={
-                                  <MDTypography variant="caption" color="text">
-                                    {label}
-                                  </MDTypography>
-                                }
-                              />
-                            ))}
-                          </MDBox>
-                        </MDBox>
-                      </Grid>
-                    );
-                  })}
-                </Grid>
-              </>
+                              {label}
+                            </label>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </section>
+          )}
+
+          <section className="border-t border-slate-100 pt-5">
+            <SectionTitle>Documents</SectionTitle>
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+              <div className="space-y-3 rounded-xl border border-slate-200 p-4">
+                <Field label="Aadhar number" width="w-full" hint="12 digit Aadhar number">
+                  <input className={fieldClass} inputMode="numeric" name="aadharNo" value={formData.aadharNo} onChange={handleInputChange} maxLength={12} />
+                </Field>
+                {formData.aadharNo ? (
+                  <>
+                    <UploadButton
+                      label="Upload Aadhar" busyLabel="Uploading Aadhar..." busy={uploadingAadhar}
+                      onChange={(e) => handleDocumentUpload(e, "aadharDocumentUrl", "aadhar", setUploadingAadhar)}
+                      done={formData.aadharDocumentUrl ? "Aadhar uploaded" : ""}
+                    />
+                    <DocumentPreview title="Aadhar" url={formData.aadharDocumentUrl} />
+                  </>
+                ) : (
+                  <p className="m-0 text-[12px] text-slate-400">Enter the Aadhar number to upload its document.</p>
+                )}
+              </div>
+              <div className="space-y-3 rounded-xl border border-slate-200 p-4">
+                <span className="block text-[11px] font-semibold uppercase tracking-wide text-slate-500">PCC certificate</span>
+                <UploadButton
+                  label="Upload PCC Certificate" busyLabel="Uploading PCC..." busy={uploadingPcc}
+                  onChange={(e) => handleDocumentUpload(e, "pccCertificateUrl", "pcc", setUploadingPcc)}
+                  done={formData.pccCertificateUrl ? "PCC certificate uploaded" : ""}
+                />
+                <DocumentPreview title="PCC Certificate" url={formData.pccCertificateUrl} />
+              </div>
+            </div>
+          </section>
+        </form>
+      </Modal>
+
+      {/* Employee details */}
+      <Modal
+        open={viewModalOpen} onClose={handleCloseView} size="lg" title="Employee Details"
+        actions={<button type="button" className={btn.ghost} onClick={handleCloseView}>Close</button>}
+      >
+        {selectedStaffDetails ? (
+          <div className="space-y-5">
+            <div className="flex items-center gap-3">
+              <span className={`flex size-12 items-center justify-center rounded-full text-[15px] font-bold text-white ${categoryTone(selectedStaffDetails.staff_category)}`}>
+                {initialsOf(selectedStaffDetails.name)}
+              </span>
+              <span className="min-w-0 grow">
+                <span className="block text-[16px] font-bold text-slate-900">{selectedStaffDetails.name}</span>
+                <span className="block text-[12.5px] text-slate-500">{CATEGORY_LABELS[selectedStaffDetails.staff_category] || "Company Staff"} · {getStaffTypeLabel(selectedStaffDetails)}</span>
+              </span>
+              <span className={`rounded-full px-2.5 py-0.5 text-[11.5px] font-semibold ${selectedStaffDetails.is_active ? "bg-emerald-50 text-emerald-700" : "bg-red-50 text-red-700"}`}>
+                {selectedStaffDetails.is_active ? "Active" : "Inactive"}
+              </span>
+            </div>
+
+            <div className="grid grid-cols-1 gap-x-6 gap-y-3 rounded-xl bg-slate-50 p-4 sm:grid-cols-2">
+              {detail("Company", ["bawarchee_staff", "operator"].includes(selectedStaffDetails.staff_category) ? "—" : selectedStaffDetails.company_name || "—")}
+              {detail("Date of birth", formatDateLabel(selectedStaffDetails.dob))}
+              {detail("Contact no", selectedStaffDetails.contact_no || "—")}
+              {detail("WhatsApp no", selectedStaffDetails.whatsapp_number || selectedStaffDetails.contact_no || "—")}
+              {detail("Email ID", selectedStaffDetails.email || "—")}
+              {detail("Aadhar number", selectedStaffDetails.aadhar_no || "—")}
+            </div>
+
+            <div>
+              <SectionTitle>Login credentials</SectionTitle>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <div className="rounded-xl border border-slate-200 px-3 py-2.5">
+                  <span className="block text-[11px] font-semibold uppercase tracking-wide text-slate-400">Login ID</span>
+                  <span className="flex items-center gap-1.5">
+                    <span className="font-mono text-[13.5px] font-semibold text-slate-900">
+                      {viewCredentials ? viewCredentials.loginId || selectedStaffDetails.login_id || "—" : "Loading..."}
+                    </span>
+                    {viewCredentials?.loginId && (
+                      <button type="button" className={btn.icon} title="Copy Login ID" aria-label="Copy Login ID" onClick={() => copyToClipboard(viewCredentials.loginId)}>
+                        <Icon name="content_copy" className="text-[16px]" />
+                      </button>
+                    )}
+                  </span>
+                </div>
+                <div className="rounded-xl border border-slate-200 px-3 py-2.5">
+                  <span className="block text-[11px] font-semibold uppercase tracking-wide text-slate-400">Password</span>
+                  {!viewCredentials ? (
+                    <span className="text-[13px] text-slate-500">Loading...</span>
+                  ) : viewCredentials.password ? (
+                    <span className="flex items-center gap-1.5">
+                      <span className="font-mono text-[13.5px] font-semibold text-slate-900">{showViewPassword ? viewCredentials.password : "••••••••"}</span>
+                      <button type="button" className={btn.icon} title={showViewPassword ? "Hide password" : "Show password"} aria-label={showViewPassword ? "Hide password" : "Show password"} onClick={() => setShowViewPassword((prev) => !prev)}>
+                        <Icon name={showViewPassword ? "visibility_off" : "visibility"} className="text-[16px]" />
+                      </button>
+                      <button type="button" className={btn.icon} title="Copy password" aria-label="Copy password" onClick={() => copyToClipboard(viewCredentials.password)}>
+                        <Icon name="content_copy" className="text-[16px]" />
+                      </button>
+                    </span>
+                  ) : (
+                    <span className="text-[12px] text-slate-500">{viewCredentials.error || "Not available. Set a new password from Update Credentials to view it here."}</span>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {selectedStaffDetails.staff_category === "bawarchee_staff" && (
+              <div>
+                <SectionTitle>Permissions</SectionTitle>
+                <div className="flex flex-wrap gap-1.5">
+                  {STAFF_PERMISSION_GROUPS.flatMap((group) => group.items)
+                    .filter(([key]) => (selectedStaffDetails.permissions || []).includes(key))
+                    .map(([key, label]) => <span key={key} className="rounded-full border border-blue-200 bg-blue-50 px-2.5 py-0.5 text-[12px] font-medium text-blue-800">{label}</span>)}
+                  {!(selectedStaffDetails.permissions || []).some((key) => key !== "dms") && <p className="m-0 text-[13px] text-slate-400">No permissions given yet.</p>}
+                </div>
+              </div>
             )}
 
-            <Divider sx={{ mb: 3 }} />
-
-            <MDTypography sx={sectionLabelSx}>Documents</MDTypography>
-            <Grid container spacing={2.5} mb={3}>
-              <Grid item xs={12} md={4}>
-                <MDInput
-                  type="text"
-                  label="Aadhar Number"
-                  name="aadharNo"
-                  fullWidth
-                  value={formData.aadharNo}
-                  onChange={handleInputChange}
-                  inputProps={{ maxLength: 12 }}
-                  helperText="12 digit Aadhar number"
-                />
-              </Grid>
-              {formData.aadharNo ? (
-                <>
-                  <Grid item xs={12} md={4}>
-                    <MDBox>
-                      <MDButton
-                        component="label"
-                        variant="outlined"
-                        color="info"
-                        fullWidth
-                        disabled={uploadingAadhar}
-                        startIcon={<Icon>upload_file</Icon>}
-                        sx={{ minHeight: 44 }}
-                      >
-                        {uploadingAadhar ? "Uploading Aadhar..." : "Upload Aadhar"}
-                        <input
-                          hidden
-                          type="file"
-                          accept="image/jpeg,image/png,image/webp,application/pdf"
-                          onChange={(e) =>
-                            handleDocumentUpload(e, "aadharDocumentUrl", "aadhar", setUploadingAadhar)
-                          }
-                        />
-                      </MDButton>
-                      <MDTypography variant="caption" color="text" display="block" mt={0.75}>
-                        JPG, PNG, WebP or PDF · max 1 MB
-                      </MDTypography>
-                      {formData.aadharDocumentUrl && (
-                        <MDTypography variant="caption" color="success" display="block" mt={0.75}>
-                          Aadhar uploaded
-                        </MDTypography>
-                      )}
-                    </MDBox>
-                  </Grid>
-                  <Grid item xs={12} md={6}>
-                    <MDTypography variant="caption" color="text" display="block" mb={0.75}>
-                      Aadhar Preview
-                    </MDTypography>
-                    <DocumentPreview title="Aadhar" url={formData.aadharDocumentUrl} />
-                  </Grid>
-                </>
-              ) : null}
-              <Grid item xs={12} md={4}>
-                <MDBox>
-                  <MDButton
-                    component="label"
-                    variant="outlined"
-                    color="info"
-                    fullWidth
-                    disabled={uploadingPcc}
-                    startIcon={<Icon>upload_file</Icon>}
-                    sx={{ minHeight: 44 }}
-                  >
-                    {uploadingPcc ? "Uploading PCC..." : "Upload PCC Certificate"}
-                    <input
-                      hidden
-                      type="file"
-                      accept="image/jpeg,image/png,image/webp,application/pdf"
-                      onChange={(e) =>
-                        handleDocumentUpload(e, "pccCertificateUrl", "pcc", setUploadingPcc)
-                      }
-                    />
-                  </MDButton>
-                  <MDTypography variant="caption" color="text" display="block" mt={0.75}>
-                    JPG, PNG, WebP or PDF · max 1 MB
-                  </MDTypography>
-                  {formData.pccCertificateUrl && (
-                    <MDTypography variant="caption" color="success" display="block" mt={0.75}>
-                      PCC certificate uploaded
-                    </MDTypography>
-                  )}
-                </MDBox>
-              </Grid>
-              <Grid item xs={12} md={6}>
-                <MDTypography variant="caption" color="text" display="block" mb={0.75}>
-                  PCC Preview
-                </MDTypography>
-                <DocumentPreview title="PCC Certificate" url={formData.pccCertificateUrl} />
-              </Grid>
-            </Grid>
-
-          </MDBox>
-        </DialogContent>
-        <DialogActions sx={{ px: 3, py: 2 }}>
-          <MDButton variant="outlined" color="dark" onClick={closeStaffModal} disabled={savingStaff}>
-            Cancel
-          </MDButton>
-          <MDButton
-            variant="gradient"
-            color="info"
-            onClick={handleSubmit}
-            disabled={savingStaff || uploadingAadhar || uploadingPcc}
-          >
-            {savingStaff
-              ? "Saving..."
-              : editingStaffId
-                ? "Update Staff"
-                : "Save Staff"}
-          </MDButton>
-        </DialogActions>
-      </Dialog>
-
-      <Dialog open={viewModalOpen} onClose={handleCloseView} fullWidth maxWidth="md">
-        <DialogTitle>Employee Details</DialogTitle>
-        <DialogContent dividers>
-          {selectedStaffDetails ? (
-            <MDBox>
-              <MDBox display="flex" alignItems="center" gap={1} mb={2}>
-                <Chip
-                  label={selectedStaffDetails.is_active ? "Active" : "Inactive"}
-                  size="small"
-                  sx={{
-                    fontSize: "0.7rem",
-                    fontWeight: 600,
-                    backgroundColor: selectedStaffDetails.is_active ? "#dcfce7" : "#fee2e2",
-                    color: selectedStaffDetails.is_active ? "#15803d" : "#dc2626",
-                  }}
-                />
-              </MDBox>
-
-              <Grid container spacing={2} mb={2}>
-                <Grid item xs={12} sm={6}>
-                  <MDTypography variant="caption" color="text">Name</MDTypography>
-                  <MDTypography variant="body2" fontWeight="medium">{selectedStaffDetails.name}</MDTypography>
-                </Grid>
-                <Grid item xs={12} sm={6}>
-                  <MDTypography variant="caption" color="text">Staff Category</MDTypography>
-                  <MDTypography variant="body2" fontWeight="medium">
-                    {selectedStaffDetails.staff_category === "bawarchee_staff"
-                      ? "Bawarchee Staff"
-                      : selectedStaffDetails.staff_category === "operator"
-                        ? "Operator"
-                        : "Company Staff"}
-                  </MDTypography>
-                </Grid>
-                <Grid item xs={12} sm={6}>
-                  <MDTypography variant="caption" color="text">Company</MDTypography>
-                  <MDTypography variant="body2" fontWeight="medium">
-                    {["bawarchee_staff", "operator"].includes(selectedStaffDetails.staff_category)
-                      ? "—"
-                      : selectedStaffDetails.company_name || "—"}
-                  </MDTypography>
-                </Grid>
-                <Grid item xs={12} sm={6}>
-                  <MDTypography variant="caption" color="text">Type</MDTypography>
-                  <MDTypography variant="body2" fontWeight="medium">
-                    {getStaffTypeLabel(selectedStaffDetails)}
-                  </MDTypography>
-                </Grid>
-                <Grid item xs={12} sm={6}>
-                  <MDTypography variant="caption" color="text">Date of Birth</MDTypography>
-                  <MDTypography variant="body2" fontWeight="medium">
-                    {formatDateLabel(selectedStaffDetails.dob)}
-                  </MDTypography>
-                </Grid>
-                <Grid item xs={12} sm={6}>
-                  <MDTypography variant="caption" color="text">Contact No</MDTypography>
-                  <MDTypography variant="body2" fontWeight="medium">{selectedStaffDetails.contact_no || "—"}</MDTypography>
-                </Grid>
-                <Grid item xs={12} sm={6}>
-                  <MDTypography variant="caption" color="text">WhatsApp No</MDTypography>
-                  <MDTypography variant="body2" fontWeight="medium">
-                    {selectedStaffDetails.whatsapp_number || selectedStaffDetails.contact_no || "—"}
-                  </MDTypography>
-                </Grid>
-                <Grid item xs={12} sm={6}>
-                  <MDTypography variant="caption" color="text">Email ID</MDTypography>
-                  <MDTypography variant="body2" fontWeight="medium" sx={{ wordBreak: "break-all" }}>
-                    {selectedStaffDetails.email || "—"}
-                  </MDTypography>
-                </Grid>
-                <Grid item xs={12} sm={6}>
-                  <MDTypography variant="caption" color="text">Aadhar Number</MDTypography>
-                  <MDTypography variant="body2" fontWeight="medium">
-                    {selectedStaffDetails.aadhar_no || "—"}
-                  </MDTypography>
-                </Grid>
-              </Grid>
-
-              <Divider sx={{ my: 2 }} />
-
-              <MDTypography variant="subtitle2" fontWeight="bold" mb={1.5}>
-                Login Credentials
-              </MDTypography>
-              <Grid container spacing={2} mb={2}>
-                <Grid item xs={12} sm={6}>
-                  <MDTypography variant="caption" color="text">Login ID</MDTypography>
-                  <MDBox display="flex" alignItems="center" gap={1}>
-                    <MDTypography variant="body2" fontWeight="medium">
-                      {viewCredentials
-                        ? viewCredentials.loginId || selectedStaffDetails.login_id || "—"
-                        : "Loading..."}
-                    </MDTypography>
-                    {viewCredentials?.loginId && (
-                      <Icon
-                        fontSize="small"
-                        sx={{ cursor: "pointer", color: "#64748b" }}
-                        onClick={() => copyToClipboard(viewCredentials.loginId)}
-                        titleAccess="Copy Login ID"
-                      >
-                        content_copy
-                      </Icon>
-                    )}
-                  </MDBox>
-                </Grid>
-                <Grid item xs={12} sm={6}>
-                  <MDTypography variant="caption" color="text">Password</MDTypography>
-                  <MDBox display="flex" alignItems="center" gap={1}>
-                    {!viewCredentials ? (
-                      <MDTypography variant="body2" fontWeight="medium">Loading...</MDTypography>
-                    ) : viewCredentials.password ? (
-                      <>
-                        <MDTypography variant="body2" fontWeight="medium" sx={{ fontFamily: "monospace" }}>
-                          {showViewPassword ? viewCredentials.password : "••••••••"}
-                        </MDTypography>
-                        <Icon
-                          fontSize="small"
-                          sx={{ cursor: "pointer", color: "#64748b" }}
-                          onClick={() => setShowViewPassword((prev) => !prev)}
-                          titleAccess={showViewPassword ? "Hide password" : "Show password"}
-                        >
-                          {showViewPassword ? "visibility_off" : "visibility"}
-                        </Icon>
-                        <Icon
-                          fontSize="small"
-                          sx={{ cursor: "pointer", color: "#64748b" }}
-                          onClick={() => copyToClipboard(viewCredentials.password)}
-                          titleAccess="Copy password"
-                        >
-                          content_copy
-                        </Icon>
-                      </>
-                    ) : (
-                      <MDTypography variant="caption" color="text">
-                        {viewCredentials.error ||
-                          "Not available. Set a new password from Update Credentials to view it here."}
-                      </MDTypography>
-                    )}
-                  </MDBox>
-                </Grid>
-              </Grid>
-
-              {selectedStaffDetails.staff_category === "bawarchee_staff" && (
-                <>
-                  <Divider sx={{ my: 2 }} />
-                  <MDTypography variant="subtitle2" fontWeight="bold" mb={1.5}>
-                    Permissions
-                  </MDTypography>
-                  <MDBox display="flex" flexWrap="wrap" gap={0.75} mb={2}>
-                    {STAFF_PERMISSION_GROUPS.flatMap((group) => group.items)
-                      .filter(([key]) => (selectedStaffDetails.permissions || []).includes(key))
-                      .map(([key, label]) => (
-                        <Chip key={key} label={label} size="small" sx={{ fontSize: "0.7rem" }} />
-                      ))}
-                    {!(selectedStaffDetails.permissions || []).some((key) => key !== "dms") && (
-                      <MDTypography variant="body2" color="text">No permissions given yet.</MDTypography>
-                    )}
-                  </MDBox>
-                </>
-              )}
-
-              <Divider sx={{ my: 2 }} />
-
-              <MDTypography variant="subtitle2" fontWeight="bold" mb={1.5}>
-                Documents
-              </MDTypography>
-              <Grid container spacing={2} mb={2}>
+            <div>
+              <SectionTitle>Documents</SectionTitle>
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
                 {selectedStaffDetails.aadhar_no ? (
-                  <Grid item xs={12} md={6}>
-                    <MDTypography variant="caption" color="text" display="block" mb={0.75}>
-                      Aadhar Document
-                    </MDTypography>
+                  <div>
+                    <span className="mb-1 block text-[12px] text-slate-500">Aadhar document</span>
                     <DocumentPreview title="Aadhar" url={selectedStaffDetails.aadhar_document_url} />
-                  </Grid>
+                  </div>
                 ) : null}
-                <Grid item xs={12} md={6}>
-                  <MDTypography variant="caption" color="text" display="block" mb={0.75}>
-                    PCC Certificate
-                  </MDTypography>
+                <div>
+                  <span className="mb-1 block text-[12px] text-slate-500">PCC certificate</span>
                   <DocumentPreview title="PCC Certificate" url={selectedStaffDetails.pcc_certificate_url} />
-                </Grid>
-              </Grid>
+                </div>
+              </div>
+            </div>
 
-              <Divider sx={{ my: 2 }} />
-
-              <MDTypography variant="h6" fontWeight="bold" mb={1}>Assigned Locations</MDTypography>
-              {Object.keys(selectedStaffDetails.assignments || {}).map((day) => {
-                const dayLocs = selectedStaffDetails.assignments[day];
-                if (dayLocs && dayLocs.length > 0) {
+            <div>
+              <SectionTitle>Assigned locations</SectionTitle>
+              <div className="space-y-1.5">
+                {Object.keys(selectedStaffDetails.assignments || {}).map((day) => {
+                  const dayLocs = selectedStaffDetails.assignments[day];
+                  if (!dayLocs || !dayLocs.length) return null;
                   return (
-                    <MDBox key={day} mb={1} display="flex">
-                      <MDTypography variant="button" fontWeight="bold" sx={{ minWidth: 100 }}>{day}: </MDTypography>
-                      <MDTypography variant="button" color="text">
-                        {dayLocs.map(l => l.locationName).join(', ')}
-                      </MDTypography>
-                    </MDBox>
+                    <div key={day} className="flex gap-3 text-[13px]">
+                      <span className="w-24 shrink-0 font-semibold text-slate-800">{day}</span>
+                      <span className="flex flex-wrap gap-1">
+                        {dayLocs.map((l) => <span key={`${day}-${l.locationName}`} className="rounded-full bg-slate-100 px-2 py-0.5 text-[12px] text-slate-700">{l.locationName}</span>)}
+                      </span>
+                    </div>
                   );
-                }
-                return null;
-              })}
-              {Object.values(selectedStaffDetails.assignments || {}).every(locs => !locs || locs.length === 0) && (
-                <MDTypography variant="body2" color="text">No locations assigned to this staff yet.</MDTypography>
-              )}
-            </MDBox>
-          ) : (
-            <MDTypography variant="body2">Loading details...</MDTypography>
-          )}
-        </DialogContent>
-        <DialogActions>
-          <MDButton onClick={handleCloseView} variant="text" color="dark">Close</MDButton>
-        </DialogActions>
-      </Dialog>
+                })}
+                {Object.values(selectedStaffDetails.assignments || {}).every((locs) => !locs || locs.length === 0) && (
+                  <p className="m-0 text-[13px] text-slate-400">No locations assigned to this staff yet.</p>
+                )}
+              </div>
+            </div>
+          </div>
+        ) : (
+          <p className="m-0 text-[13px] text-slate-500">Loading details...</p>
+        )}
+      </Modal>
     </DashboardLayout>
   );
 }

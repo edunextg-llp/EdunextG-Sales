@@ -1,56 +1,12 @@
+// Add Company: Tailwind CSS (no MUI). Add / edit / delete / filter logic unchanged.
 import { useState, useEffect, useCallback } from "react";
-
-import Grid from "@mui/material/Grid";
-import Card from "@mui/material/Card";
-import Icon from "@mui/material/Icon";
-import {
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  FormControl,
-  InputLabel,
-  MenuItem,
-  Select,
-  Table,
-  TableBody,
-  TableCell,
-  TableContainer,
-  TableHead,
-  TableRow,
-  Chip,
-  Autocomplete,
-} from "@mui/material";
-
-import MDBox from "components/MDBox";
-import MDTypography from "components/MDTypography";
-import MDInput from "components/MDInput";
-import MDButton from "components/MDButton";
+import PropTypes from "prop-types";
 import DashboardLayout from "examples/LayoutContainers/DashboardLayout";
 import DashboardNavbar from "examples/Navbars/DashboardNavbar";
 import Footer from "examples/Footer";
+import { Card, Field, Icon, Modal, Notice, PageHeader, Spinner, StatBox, btn, fieldClass, td, th } from "components/tw";
 
 const API = (process.env.REACT_APP_API_URL);
-
-const tableHeadSx = {
-  color: "#6b7280",
-  fontSize: "0.75rem",
-  fontWeight: 600,
-  textTransform: "none",
-  borderBottom: "1px solid #e5e7eb",
-  px: 2,
-  py: 1.5,
-  whiteSpace: "nowrap",
-};
-
-const tableBodySx = {
-  px: 2,
-  py: 1.25,
-  fontSize: "0.875rem",
-  color: "#374151",
-  borderBottom: "none",
-  verticalAlign: "middle",
-};
 
 const MAX_WORDS = 200;
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -75,86 +31,75 @@ function EmailChipsInput({ value, onChange, onError }) {
     setInputValue(invalid.join(", "));
   };
 
+  const remove = (email) => {
+    onError("");
+    onChange(value.filter((item) => item !== email));
+  };
+
   return (
-    <Autocomplete
-      multiple
-      freeSolo
-      autoSelect
-      options={[]}
-      value={value}
-      inputValue={inputValue}
-      onInputChange={(event, newInput, reason) => {
-        if (reason === "reset") return;
-        if (/[,;\s]$/.test(newInput)) {
-          commit([newInput]);
-          return;
-        }
-        setInputValue(newInput);
-      }}
-      onChange={(event, newValue, reason) => {
-        if (reason === "createOption" || reason === "blur") {
-          commit([newValue[newValue.length - 1]]);
-        } else {
-          onError("");
-          onChange(newValue);
-        }
-      }}
-      renderTags={(tags, getTagProps) =>
-        tags.map((email, index) => (
-          <Chip {...getTagProps({ index })} key={email} label={email} size="small" />
-        ))
-      }
-      renderInput={(params) => (
-        <MDInput
-          {...params}
-          type="email"
-          label="Email IDs (optional)"
+    <label className="flex flex-col gap-1">
+      <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Email IDs (optional)</span>
+      <span className="flex min-h-9 flex-wrap items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-2 py-1.5 focus-within:border-blue-500 focus-within:ring-2 focus-within:ring-blue-500/20">
+        {value.map((email) => (
+          <span key={email} className="inline-flex items-center gap-1 rounded-full bg-blue-50 py-0.5 pl-2.5 pr-1 text-[12px] font-medium text-blue-800">
+            {email}
+            <button type="button" onClick={() => remove(email)} aria-label={`Remove ${email}`} className="rounded-full p-0.5 text-blue-500 hover:bg-blue-100 hover:text-blue-800">
+              <Icon name="close" className="text-[14px]" />
+            </button>
+          </span>
+        ))}
+        <input
+          type="email" className="min-w-40 grow border-0 bg-transparent p-0.5 text-[13px] text-slate-800 outline-none placeholder:text-slate-400"
           placeholder={value.length ? "Add another email" : "Type email and press Enter"}
-          helperText="Add as many email IDs as needed — press Enter or comma after each."
+          value={inputValue}
+          onChange={(event) => {
+            const next = event.target.value;
+            if (/[,;\s]$/.test(next)) { commit([next]); return; }
+            setInputValue(next);
+          }}
+          onKeyDown={(event) => {
+            if ((event.key === "Enter" || event.key === "Tab") && inputValue.trim()) {
+              if (event.key === "Enter") event.preventDefault();
+              commit([inputValue]);
+            } else if (event.key === "Backspace" && !inputValue && value.length) {
+              remove(value[value.length - 1]);
+            }
+          }}
+          onBlur={() => { if (inputValue.trim()) commit([inputValue]); }}
         />
-      )}
-    />
+      </span>
+      <span className="text-[11.5px] text-slate-500">Add as many email IDs as needed — press Enter or comma after each.</span>
+    </label>
   );
 }
+EmailChipsInput.propTypes = { value: PropTypes.arrayOf(PropTypes.string).isRequired, onChange: PropTypes.func.isRequired, onError: PropTypes.func.isRequired };
 
 function EmailList({ emails }) {
-  if (!emails || emails.length === 0) {
-    return <span style={{ fontStyle: "italic", color: "#d1d5db" }}>—</span>;
-  }
+  if (!emails || emails.length === 0) return <span className="text-slate-300">—</span>;
   return (
-    <MDBox display="flex" flexDirection="column" gap={0.25}>
+    <span className="flex flex-col gap-0.5">
       {emails.map((email) => (
-        <MDBox
-          key={email}
-          component="a"
-          href={`mailto:${email}`}
-          sx={{ color: "#374151", fontSize: "0.8rem", wordBreak: "break-all", textDecoration: "none", "&:hover": { textDecoration: "underline" } }}
-        >
-          {email}
-        </MDBox>
+        <a key={email} href={`mailto:${email}`} className="break-all text-[12.5px] text-slate-600 hover:text-blue-700 hover:underline">{email}</a>
       ))}
-    </MDBox>
+    </span>
   );
 }
+EmailList.propTypes = { emails: PropTypes.arrayOf(PropTypes.string) };
+EmailList.defaultProps = { emails: [] };
 
 // "Create sale bills?" Yes / No, used in the add form and the edit dialog.
-function SaleBillSelect({ id, value, onChange }) {
+function SaleBillSelect({ value, onChange, hint }) {
   return (
-    <FormControl fullWidth size="small">
-      <InputLabel id={id}>Create sale bills? *</InputLabel>
-      <Select
-        labelId={id}
-        value={value ? "yes" : "no"}
-        label="Create sale bills? *"
-        onChange={(e) => onChange(e.target.value === "yes")}
-        sx={{ minHeight: 48, height: 48 }}
-      >
-        <MenuItem value="yes">Yes, make sale bills</MenuItem>
-        <MenuItem value="no">No sale bills</MenuItem>
-      </Select>
-    </FormControl>
+    <Field label="Create sale bills? *" width="w-full" hint={hint}>
+      <select className={fieldClass} value={value ? "yes" : "no"} onChange={(e) => onChange(e.target.value === "yes")}>
+        <option value="yes">Yes, make sale bills</option>
+        <option value="no">No sale bills</option>
+      </select>
+    </Field>
   );
 }
+SaleBillSelect.propTypes = { value: PropTypes.bool.isRequired, onChange: PropTypes.func.isRequired, hint: PropTypes.node };
+SaleBillSelect.defaultProps = { hint: null };
 
 const createsSaleBill = (company) => Number(company?.creates_sale_bill ?? 1) !== 0;
 
@@ -347,446 +292,193 @@ function AddCompany() {
   };
 
   const typeChip = (type) => {
-    if (type === "cnf") {
-      return (
-        <Chip
-          label="CNF"
-          size="small"
-          sx={{
-            fontSize: "0.7rem",
-            fontWeight: 600,
-            backgroundColor: "#dbeafe",
-            color: "#1d4ed8",
-            border: "none",
-          }}
-        />
-      );
-    }
-    if (type === "distributor") {
-      return (
-        <Chip
-          label="Distributor"
-          size="small"
-          sx={{
-            fontSize: "0.7rem",
-            fontWeight: 600,
-            backgroundColor: "#dcfce7",
-            color: "#15803d",
-            border: "none",
-          }}
-        />
-      );
-    }
-    return (
-      <span style={{ fontStyle: "italic", color: "#d1d5db" }}>—</span>
-    );
+    if (type === "cnf") return <span className="rounded-full bg-blue-50 px-2 py-0.5 text-[11.5px] font-semibold text-blue-700">CNF</span>;
+    if (type === "distributor") return <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[11.5px] font-semibold text-emerald-700">Distributor</span>;
+    return <span className="text-slate-300">—</span>;
   };
+  const aboutField = (value, onChangeText, count, left) => (
+    <label className="flex flex-col gap-1">
+      <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">About (optional, max {MAX_WORDS} words)</span>
+      <textarea rows={4} className={`${fieldClass} h-auto py-2`} value={value} onChange={(e) => onChangeText(e.target.value)} />
+      <span className={`self-end text-[11.5px] ${left < 20 ? "font-semibold text-red-600" : "text-slate-500"}`}>{count} / {MAX_WORDS} words</span>
+    </label>
+  );
+  const typeOptions = (
+    <>
+      <option value="" disabled>Choose type</option>
+      <option value="distributor">Distributor</option>
+      <option value="cnf">CNF</option>
+    </>
+  );
 
   return (
     <DashboardLayout>
       <DashboardNavbar />
-      <MDBox pt={6} pb={3}>
-        <Grid container spacing={3} justifyContent="center">
+      <div className="pb-8 font-[Poppins,Roboto,sans-serif] text-slate-700">
+        <PageHeader
+          title="Companies"
+          description="Companies added here will be available across the app (e.g., Add Sales, Create Staff). A unique company code is auto-generated for each company."
+        />
 
-          {/* ── Add Company Form ── */}
-          <Grid item xs={12} lg={8}>
-            <Card sx={{ boxShadow: "0 4px 6px -1px rgb(0 0 0 / 0.1)" }}>
-              <MDBox p={3} pb={2} borderBottom="1px solid #e5e7eb">
-                <MDTypography variant="h5" fontWeight="medium" color="dark">
-                  Add Company
-                </MDTypography>
-                <MDTypography variant="body2" color="text" mt={0.5}>
-                  Companies added here will be available across the app (e.g., Add Sales, Create Staff).
-                  A unique company code is auto-generated for each company.
-                </MDTypography>
-              </MDBox>
+        <div className="grid grid-cols-1 gap-5 xl:grid-cols-[380px_minmax(0,1fr)]">
+          {/* Add company */}
+          <Card className="xl:sticky xl:top-[88px] xl:self-start">
+            <div className="flex items-center gap-3 border-b border-slate-100 px-5 py-4">
+              <span className="flex size-9 items-center justify-center rounded-xl bg-blue-600 text-white"><Icon name="add_business" className="text-[19px]" /></span>
+              <h3 className="m-0 text-[15px] font-semibold text-slate-900">Add Company</h3>
+            </div>
+            <div className="space-y-4 p-5">
+              <div className="grid grid-cols-2 gap-3">
+                <Field label="Company type *" width="w-full">
+                  <select className={fieldClass} value={form.type} onChange={(e) => handleChange("type", e.target.value)}>{typeOptions}</select>
+                </Field>
+                <SaleBillSelect value={form.createsSaleBill} onChange={(v) => handleChange("createsSaleBill", v)} />
+              </div>
+              <Field label="Company name *" width="w-full">
+                <input className={fieldClass} value={form.name} onChange={(e) => handleChange("name", e.target.value)} />
+              </Field>
+              <EmailChipsInput
+                value={form.emails}
+                onChange={(emails) => { setSuccess(""); setForm((prev) => ({ ...prev, emails })); }}
+                onError={setError}
+              />
+              {aboutField(form.about, (text) => handleChange("about", text), wordCount, wordsLeft)}
+              {error && <Notice tone="error">{error}</Notice>}
+              {success && <Notice tone="success" onClose={() => setSuccess("")}>{success}</Notice>}
+              <button type="button" className={`${btn.primary} w-full justify-center`} disabled={saving} onClick={handleSubmit}>
+                <Icon name="add_business" className="text-[18px]" />{saving ? "Adding..." : "Add Company"}
+              </button>
+            </div>
+          </Card>
 
-              <MDBox p={3}>
-                <Grid container spacing={2.5}>
-                  <Grid item xs={12} sm={3}>
-                    <FormControl fullWidth size="small">
-                      <InputLabel id="company-type-label">Company Type *</InputLabel>
-                      <Select
-                        labelId="company-type-label"
-                        value={form.type}
-                        label="Company Type *"
-                        onChange={(e) => handleChange("type", e.target.value)}
-                        sx={{ minHeight: 48, height: 48 }}
-                      >
-                        <MenuItem value="distributor">Distributor</MenuItem>
-                        <MenuItem value="cnf">CNF</MenuItem>
-                      </Select>
-                    </FormControl>
-                  </Grid>
-
-                  <Grid item xs={12} sm={5}>
-                    <MDInput
-                      label="Company Name *"
-                      fullWidth
-                      value={form.name}
-                      onChange={(e) => handleChange("name", e.target.value)}
-                    />
-                  </Grid>
-
-                  <Grid item xs={12} sm={4}>
-                    <SaleBillSelect
-                      id="company-sale-bill-label"
-                      value={form.createsSaleBill}
-                      onChange={(v) => handleChange("createsSaleBill", v)}
-                    />
-                  </Grid>
-
-                  <Grid item xs={12}>
-                    <EmailChipsInput
-                      value={form.emails}
-                      onChange={(emails) => {
-                        setSuccess("");
-                        setForm((prev) => ({ ...prev, emails }));
-                      }}
-                      onError={setError}
-                    />
-                  </Grid>
-
-                  <Grid item xs={12}>
-                    <MDInput
-                      label={`About (optional, max ${MAX_WORDS} words)`}
-                      fullWidth
-                      multiline
-                      rows={4}
-                      value={form.about}
-                      onChange={(e) => handleChange("about", e.target.value)}
-                    />
-                    <MDTypography
-                      variant="caption"
-                      sx={{
-                        color: wordsLeft < 20 ? "#ef4444" : "#6b7280",
-                        display: "block",
-                        textAlign: "right",
-                        mt: 0.5,
-                      }}
-                    >
-                      {wordCount} / {MAX_WORDS} words
-                    </MDTypography>
-                  </Grid>
-
-                  {error && (
-                    <Grid item xs={12}>
-                      <MDTypography variant="body2" color="error">
-                        {error}
-                      </MDTypography>
-                    </Grid>
-                  )}
-                  {success && (
-                    <Grid item xs={12}>
-                      <MDTypography variant="body2" sx={{ color: "#16a34a" }}>
-                        {success}
-                      </MDTypography>
-                    </Grid>
-                  )}
-
-                  <Grid item xs={12} display="flex" justifyContent="flex-end">
-                    <MDButton
-                      variant="gradient"
-                      color="info"
-                      disabled={saving}
-                      onClick={handleSubmit}
-                      startIcon={<Icon>add_business</Icon>}
-                    >
-                      {saving ? "Adding..." : "Add Company"}
-                    </MDButton>
-                  </Grid>
-                </Grid>
-              </MDBox>
-            </Card>
-          </Grid>
-
-          {/* ── Existing Companies List ── */}
-          <Grid item xs={12} lg={8}>
-            <Card sx={{ boxShadow: "0 4px 6px -1px rgb(0 0 0 / 0.1)" }}>
-              <MDBox
-                p={3}
-                pb={2}
-                borderBottom="1px solid #e5e7eb"
-                display="flex"
-                justifyContent="space-between"
-                alignItems="center"
-                flexWrap="wrap"
-                gap={1}
-              >
-                <MDTypography variant="h6" fontWeight="medium" color="dark">
-                  Existing Companies
-                  {companies.length > 0 && (
-                    <MDTypography
-                      component="span"
-                      variant="caption"
-                      sx={{
-                        ml: 1,
-                        px: 1,
-                        py: 0.25,
-                        borderRadius: "12px",
-                        border: "1px solid #e5e7eb",
-                        backgroundColor: "#f9fafb",
-                        color: "#374151",
-                        fontWeight: 500,
-                      }}
-                    >
-                      {companies.length}
-                    </MDTypography>
-                  )}
-                </MDTypography>
-
-                <FormControl size="small" sx={{ minWidth: 160 }}>
-                  <InputLabel id="filter-type-label">Filter by Type</InputLabel>
-                  <Select
-                    labelId="filter-type-label"
-                    value={filterType}
-                    label="Filter by Type"
-                    onChange={(e) => setFilterType(e.target.value)}
-                    sx={{ height: 40 }}
-                  >
-                    <MenuItem value=""><em>All Types</em></MenuItem>
-                    <MenuItem value="distributor">Distributor</MenuItem>
-                    <MenuItem value="cnf">CNF</MenuItem>
-                  </Select>
-                </FormControl>
-              </MDBox>
-
-              <MDBox>
-                {loadingList ? (
-                  <MDBox p={4} textAlign="center">
-                    <MDTypography variant="body2" color="text">Loading companies...</MDTypography>
-                  </MDBox>
-                ) : companies.length === 0 ? (
-                  <MDBox p={4} textAlign="center">
-                    <MDTypography variant="body2" color="text">
-                      No companies found. Add one above.
-                    </MDTypography>
-                  </MDBox>
-                ) : (
-                  <TableContainer sx={{ boxShadow: "none", backgroundColor: "transparent" }}>
-                    <Table>
-                      <TableHead sx={{ display: "table-header-group", backgroundColor: "#f9fafb" }}>
-                        <TableRow>
-                          <TableCell sx={{ ...tableHeadSx, width: "4%" }}>#</TableCell>
-                          <TableCell sx={{ ...tableHeadSx, width: "12%" }}>Code</TableCell>
-                          <TableCell sx={{ ...tableHeadSx, width: "14%" }}>Type</TableCell>
-                          <TableCell sx={{ ...tableHeadSx, width: "20%" }}>Company Name</TableCell>
-                          <TableCell sx={{ ...tableHeadSx, width: "22%" }}>Email IDs</TableCell>
-                          <TableCell sx={{ ...tableHeadSx, width: "10%" }}>Daily Target</TableCell>
-                          <TableCell sx={{ ...tableHeadSx, width: "9%" }}>Sale Bills</TableCell>
-                          <TableCell sx={{ ...tableHeadSx }}>About</TableCell>
-                          <TableCell sx={{ ...tableHeadSx, width: "12%", textAlign: "center" }}>Action</TableCell>
-                        </TableRow>
-                      </TableHead>
-                      <TableBody>
-                        {companies.map((company, i) => (
-                          <TableRow
-                            key={company.id}
-                            sx={{ backgroundColor: i % 2 !== 0 ? "#fafafa" : "inherit" }}
-                          >
-                            <TableCell sx={{ ...tableBodySx, borderBottom: "1px solid #e5e7eb", color: "#9ca3af" }}>
-                              {i + 1}
-                            </TableCell>
-                            <TableCell sx={{ ...tableBodySx, borderBottom: "1px solid #e5e7eb", fontWeight: 600, color: "#1d4ed8", fontFamily: "monospace" }}>
-                              {company.code || "—"}
-                            </TableCell>
-                            <TableCell sx={{ ...tableBodySx, borderBottom: "1px solid #e5e7eb" }}>
-                              {typeChip(company.type)}
-                            </TableCell>
-                            <TableCell sx={{ ...tableBodySx, borderBottom: "1px solid #e5e7eb", fontWeight: 500 }}>
-                              {company.name}
-                            </TableCell>
-                            <TableCell sx={{ ...tableBodySx, borderBottom: "1px solid #e5e7eb", maxWidth: 220 }}>
-                              <EmailList emails={company.emails} />
-                            </TableCell>
-                            <TableCell sx={{ ...tableBodySx, borderBottom: "1px solid #e5e7eb", fontWeight: 600 }}>
-                              {Number(company.daily_requisition_target) > 0
-                                ? `₹${Number(company.daily_requisition_target).toLocaleString("en-IN")}`
-                                : <span style={{ fontStyle: "italic", color: "#d1d5db" }}>—</span>}
-                            </TableCell>
-                            <TableCell sx={{ ...tableBodySx, borderBottom: "1px solid #e5e7eb" }}>
-                              <Chip
-                                label={createsSaleBill(company) ? "Yes" : "No"}
-                                size="small"
-                                sx={{
-                                  fontSize: "0.7rem",
-                                  fontWeight: 600,
-                                  border: "none",
-                                  backgroundColor: createsSaleBill(company) ? "#dcfce7" : "#fee2e2",
-                                  color: createsSaleBill(company) ? "#15803d" : "#b91c1c",
-                                }}
-                              />
-                            </TableCell>
-                            <TableCell
-                              sx={{
-                                ...tableBodySx,
-                                borderBottom: "1px solid #e5e7eb",
-                                color: "#6b7280",
-                                maxWidth: 240,
-                              }}
-                            >
-                              {company.about
-                                ? company.about.length > 100
-                                  ? company.about.slice(0, 100) + "…"
-                                  : company.about
-                                : <span style={{ fontStyle: "italic", color: "#d1d5db" }}>—</span>}
-                            </TableCell>
-                            <TableCell sx={{ ...tableBodySx, borderBottom: "1px solid #e5e7eb", textAlign: "center" }}>
-                              <MDBox display="flex" alignItems="center" justifyContent="center" gap={0.5}>
-                                <MDButton
-                                  size="small"
-                                  color="info"
-                                  variant="text"
-                                  onClick={() => openEditModal(company)}
-                                  sx={{ minWidth: 0, p: 0.5 }}
-                                  title="Edit company"
-                                >
-                                  <Icon sx={{ fontSize: "1.5rem !important" }}>edit</Icon>
-                                </MDButton>
-                                <MDButton
-                                  size="small"
-                                  color="error"
-                                  variant="text"
-                                  disabled={deletingId === company.id}
-                                  onClick={() => handleDelete(company.id, company.name)}
-                                  sx={{ minWidth: 0, p: 0.5 }}
-                                  title="Delete company"
-                                >
-                                  <Icon sx={{ fontSize: "1.5rem !important" }}>delete_outline</Icon>
-                                </MDButton>
-                              </MDBox>
-                            </TableCell>
-                          </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
-                  </TableContainer>
-                )}
-              </MDBox>
-            </Card>
-          </Grid>
-
-        </Grid>
-      </MDBox>
-
-      <Dialog open={editModalOpen} onClose={closeEditModal} fullWidth maxWidth="sm">
-        <DialogTitle sx={{ fontWeight: "bold", color: "#344767" }}>
-          Edit Company
-        </DialogTitle>
-        <DialogContent dividers>
-          <MDBox pt={1}>
-            {editForm.code && (
-              <MDBox mb={2}>
-                <MDTypography variant="caption" color="text" display="block" mb={0.5}>
-                  Company Code (auto-generated, read-only)
-                </MDTypography>
-                <MDTypography variant="body2" fontWeight="bold" sx={{ color: "#1d4ed8", fontFamily: "monospace" }}>
-                  {editForm.code}
-                </MDTypography>
-              </MDBox>
+          {/* Existing companies */}
+          <div className="min-w-0 space-y-4">
+            {!loadingList && (
+              <div className="flex flex-wrap gap-2">
+                <StatBox label={filterType ? "Shown" : "Companies"} value={companies.length} icon="business" />
+                <StatBox label="Distributor" value={companies.filter((c) => c.type === "distributor").length} icon="local_shipping" />
+                <StatBox label="CNF" value={companies.filter((c) => c.type === "cnf").length} icon="warehouse" />
+                <StatBox label="No sale bills" value={companies.filter((c) => !createsSaleBill(c)).length} icon="receipt_long" />
+              </div>
             )}
-
-            <Grid container spacing={2}>
-              <Grid item xs={12} sm={5}>
-                <FormControl fullWidth size="small">
-                  <InputLabel id="edit-company-type-label">Company Type *</InputLabel>
-                  <Select
-                    labelId="edit-company-type-label"
-                    value={editForm.type}
-                    label="Company Type *"
-                    onChange={(e) => handleEditChange("type", e.target.value)}
-                    sx={{ minHeight: 44 }}
-                  >
-                    <MenuItem value="distributor">Distributor</MenuItem>
-                    <MenuItem value="cnf">CNF</MenuItem>
-                  </Select>
-                </FormControl>
-              </Grid>
-
-              <Grid item xs={12} sm={7}>
-                <MDInput
-                  label="Company Name *"
-                  fullWidth
-                  value={editForm.name}
-                  onChange={(e) => handleEditChange("name", e.target.value)}
-                />
-              </Grid>
-
-              <Grid item xs={12} sm={6}>
-                <SaleBillSelect
-                  id="edit-company-sale-bill-label"
-                  value={editForm.createsSaleBill}
-                  onChange={(v) => handleEditChange("createsSaleBill", v)}
-                />
-                <MDTypography variant="caption" color="text" display="block" mt={0.5}>
-                  No: the company is hidden in Add Sales and its sale bills can&apos;t be saved.
-                </MDTypography>
-              </Grid>
-
-              <Grid item xs={12} sm={6}>
-                <MDInput
-                  label="Daily Requisition Target (₹, optional)"
-                  type="number"
-                  fullWidth
-                  value={editForm.dailyRequisitionTarget}
-                  onChange={(e) => handleEditChange("dailyRequisitionTarget", e.target.value)}
-                  inputProps={{ min: 0, step: "0.01" }}
-                />
-                <MDTypography variant="caption" color="text" display="block" mt={0.5}>
-                  Each staff member&apos;s requisitions for a day must reach this value. Below it, the day
-                  needs Below Target approval. Leave blank for no target.
-                </MDTypography>
-              </Grid>
-
-              <Grid item xs={12}>
-                <EmailChipsInput
-                  value={editForm.emails}
-                  onChange={(emails) => setEditForm((prev) => ({ ...prev, emails }))}
-                  onError={setEditError}
-                />
-              </Grid>
-
-              <Grid item xs={12}>
-                <MDInput
-                  label={`About (optional, max ${MAX_WORDS} words)`}
-                  fullWidth
-                  multiline
-                  rows={4}
-                  value={editForm.about}
-                  onChange={(e) => handleEditChange("about", e.target.value)}
-                />
-                <MDTypography
-                  variant="caption"
-                  sx={{
-                    color: editWordsLeft < 20 ? "#ef4444" : "#6b7280",
-                    display: "block",
-                    textAlign: "right",
-                    mt: 0.5,
-                  }}
-                >
-                  {editWordCount} / {MAX_WORDS} words
-                </MDTypography>
-              </Grid>
-
-              {editError && (
-                <Grid item xs={12}>
-                  <MDTypography variant="body2" color="error">
-                    {editError}
-                  </MDTypography>
-                </Grid>
+            <Card>
+              <div className="flex flex-wrap items-center gap-3 border-b border-slate-100 px-5 py-3">
+                <h3 className="m-0 grow text-[15px] font-semibold text-slate-900">Existing Companies</h3>
+                <div className="flex gap-1 rounded-xl bg-slate-100 p-1">
+                  {[["", "All"], ["distributor", "Distributor"], ["cnf", "CNF"]].map(([value, label]) => (
+                    <button
+                      key={label} type="button" onClick={() => setFilterType(value)}
+                      className={`rounded-lg px-3 py-1.5 text-[12.5px] font-semibold transition ${filterType === value ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-800"}`}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              {loadingList ? (
+                <div className="flex justify-center py-16"><Spinner className="size-7" /></div>
+              ) : companies.length === 0 ? (
+                <p className="m-0 py-16 text-center text-[13px] text-slate-400">No companies found. Add one on the left.</p>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full border-collapse">
+                    <thead>
+                      <tr className="bg-slate-50">
+                        <th className={th}>Company</th>
+                        <th className={th}>Type</th>
+                        <th className={th}>Email IDs</th>
+                        <th className={`${th} text-right`}>Daily target</th>
+                        <th className={th}>Sale bills</th>
+                        <th className={th}>About</th>
+                        <th className={`${th} text-right`}>Action</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {companies.map((company) => (
+                        <tr key={company.id} className="border-t border-slate-100 align-top hover:bg-slate-50/70">
+                          <td className={td}>
+                            <span className="block font-semibold text-slate-800">{company.name}</span>
+                            <span className="block font-mono text-[11.5px] font-semibold text-blue-700">{company.code || "—"}</span>
+                          </td>
+                          <td className={td}>{typeChip(company.type)}</td>
+                          <td className={`${td} max-w-56`}><EmailList emails={company.emails} /></td>
+                          <td className={`${td} text-right tabular-nums font-semibold`}>
+                            {Number(company.daily_requisition_target) > 0
+                              ? `₹${Number(company.daily_requisition_target).toLocaleString("en-IN")}`
+                              : <span className="font-normal text-slate-300">—</span>}
+                          </td>
+                          <td className={td}>
+                            <span className={`rounded-full px-2 py-0.5 text-[11.5px] font-semibold ${createsSaleBill(company) ? "bg-emerald-50 text-emerald-700" : "bg-red-50 text-red-700"}`}>
+                              {createsSaleBill(company) ? "Yes" : "No"}
+                            </span>
+                          </td>
+                          <td className={`${td} max-w-60 text-[12.5px] text-slate-500`}>
+                            {company.about
+                              ? company.about.length > 100 ? `${company.about.slice(0, 100)}…` : company.about
+                              : <span className="text-slate-300">—</span>}
+                          </td>
+                          <td className={`${td} text-right`}>
+                            <span className="inline-flex gap-0.5">
+                              <button type="button" className={`${btn.icon} hover:text-blue-700`} onClick={() => openEditModal(company)} title="Edit company" aria-label={`Edit ${company.name}`}>
+                                <Icon name="edit" className="text-[19px]" />
+                              </button>
+                              <button
+                                type="button" className={`${btn.icon} hover:bg-red-50 hover:text-red-600`} disabled={deletingId === company.id}
+                                onClick={() => handleDelete(company.id, company.name)} title="Delete company" aria-label={`Delete ${company.name}`}
+                              >
+                                <Icon name="delete_outline" className="text-[19px]" />
+                              </button>
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               )}
-            </Grid>
-          </MDBox>
-        </DialogContent>
-        <DialogActions sx={{ px: 3, py: 2 }}>
-          <MDButton variant="outlined" color="dark" onClick={closeEditModal} disabled={savingEdit}>
-            Cancel
-          </MDButton>
-          <MDButton variant="gradient" color="info" onClick={handleUpdate} disabled={savingEdit}>
-            {savingEdit ? "Updating..." : "Update Company"}
-          </MDButton>
-        </DialogActions>
-      </Dialog>
+            </Card>
+          </div>
+        </div>
+      </div>
+
+      <Modal
+        open={editModalOpen} onClose={closeEditModal} locked={savingEdit} size="lg" title="Edit Company"
+        actions={(
+          <>
+            <button type="button" className={btn.ghost} onClick={closeEditModal} disabled={savingEdit}>Cancel</button>
+            <button type="button" className={btn.primary} onClick={handleUpdate} disabled={savingEdit}>{savingEdit ? "Updating..." : "Update Company"}</button>
+          </>
+        )}
+      >
+        <div className="space-y-4">
+          {editForm.code && (
+            <div className="flex items-center gap-2 rounded-xl bg-slate-50 px-3 py-2">
+              <span className="text-[12px] text-slate-500">Company code (auto-generated, read-only)</span>
+              <span className="ml-auto font-mono text-[13px] font-bold text-blue-700">{editForm.code}</span>
+            </div>
+          )}
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-[2fr_3fr]">
+            <Field label="Company type *" width="w-full">
+              <select className={fieldClass} value={editForm.type} onChange={(e) => handleEditChange("type", e.target.value)}>{typeOptions}</select>
+            </Field>
+            <Field label="Company name *" width="w-full">
+              <input className={fieldClass} value={editForm.name} onChange={(e) => handleEditChange("name", e.target.value)} />
+            </Field>
+          </div>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <SaleBillSelect
+              value={editForm.createsSaleBill} onChange={(v) => handleEditChange("createsSaleBill", v)}
+              hint="No: the company is hidden in Add Sales and its sale bills can't be saved."
+            />
+            <Field label="Daily requisition target (₹, optional)" width="w-full" hint="Each staff member's requisitions for a day must reach this value. Below it, the day needs Below Target approval. Leave blank for no target.">
+              <input type="number" min={0} step="0.01" className={fieldClass} value={editForm.dailyRequisitionTarget} onChange={(e) => handleEditChange("dailyRequisitionTarget", e.target.value)} />
+            </Field>
+          </div>
+          <EmailChipsInput value={editForm.emails} onChange={(emails) => setEditForm((prev) => ({ ...prev, emails }))} onError={setEditError} />
+          {aboutField(editForm.about, (text) => handleEditChange("about", text), editWordCount, editWordsLeft)}
+          {editError && <Notice tone="error">{editError}</Notice>}
+        </div>
+      </Modal>
 
       <Footer />
     </DashboardLayout>

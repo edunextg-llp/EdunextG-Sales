@@ -3,30 +3,9 @@
 // Invoice PDFs uploaded on Dashboard > Assign are read for their invoice numbers (e.g.
 // IN-5125-554 counts as IN5125554). Each number is checked against Add Sales: created or
 // not, delivered / cancelled / returned / pending, and whether its payment is updated.
+// UI: Tailwind CSS 4 + daisyUI 5 (no MUI on this page; only the shared layout still uses it).
 import { useCallback, useEffect, useMemo, useState } from "react";
-import Card from "@mui/material/Card";
-import Grid from "@mui/material/Grid";
-import Icon from "@mui/material/Icon";
-import {
-  Alert,
-  Chip,
-  CircularProgress,
-  Collapse,
-  IconButton,
-  MenuItem,
-  Table,
-  TableBody,
-  TableCell,
-  TableContainer,
-  TableHead,
-  TableRow,
-  TextField,
-  Tooltip,
-} from "@mui/material";
-
-import MDBox from "components/MDBox";
-import MDTypography from "components/MDTypography";
-import MDButton from "components/MDButton";
+import PropTypes from "prop-types";
 import DashboardLayout from "examples/LayoutContainers/DashboardLayout";
 import DashboardNavbar from "examples/Navbars/DashboardNavbar";
 import { viewAssignmentFile } from "utils/assignmentFile";
@@ -59,9 +38,35 @@ const STATUS_COLOR = {
   packing: { bg: "#fef3c7", fg: "#b45309" },
   not_packing: { bg: "#f1f5f9", fg: "#475569" },
 };
+// Material Icons font (already loaded by public/index.html), same icons as before.
+function MaterialIcon({ name }) {
+  return <span className="material-icons-round text-[20px] leading-none" aria-hidden="true">{name}</span>;
+}
+MaterialIcon.propTypes = { name: PropTypes.string.isRequired };
+
+// Small coloured badge (was an MUI Chip).
+const PILL_TONES = {
+  grey: "bg-slate-100 text-slate-700",
+  teal: "bg-[#ccfbf1] text-[#0f766e]",
+  red: "bg-[#fee2e2] text-[#b91c1c]",
+  green: "bg-[#dcfce7] text-[#15803d]",
+  rose: "bg-[#fde2e2] text-[#991b1b]",
+  sky: "bg-[#e0f2fe] text-[#0369a1]",
+  violet: "bg-[#ede9fe] text-[#5b21b6]",
+};
+function Pill({ tone, bold, children }) {
+  return <span className={`badge badge-sm whitespace-nowrap border-0 ${PILL_TONES[tone]} ${bold ? "font-bold" : ""}`}>{children}</span>;
+}
+Pill.propTypes = { tone: PropTypes.oneOf(Object.keys(PILL_TONES)), bold: PropTypes.bool, children: PropTypes.node.isRequired };
+Pill.defaultProps = { tone: "grey", bold: false };
+
 const statusChip = (invoice) => {
   const c = STATUS_COLOR[invoice.status] || STATUS_COLOR.not_packing;
-  return <Chip size="small" label={invoice.statusLabel} sx={{ fontWeight: 700, backgroundColor: c.bg, color: c.fg }} />;
+  return (
+    <span className="badge badge-sm whitespace-nowrap border-0 font-bold" style={{ backgroundColor: c.bg, color: c.fg }}>
+      {invoice.statusLabel}
+    </span>
+  );
 };
 
 // Filter chips: [key, label, test].
@@ -98,9 +103,6 @@ const AUTO_LABEL = {
   failed: "Not auto-created",
   rejected: "Rejected",
 };
-
-const headSx = { fontWeight: 700, fontSize: "0.72rem", color: "#475569", backgroundColor: "#f8fafc", whiteSpace: "nowrap", py: 1 };
-const cellSx = { fontSize: "0.8rem", py: 0.75 };
 
 function InvoiceReport() {
   const [from, setFrom] = useState(daysAgo(7));
@@ -179,208 +181,227 @@ function InvoiceReport() {
   return (
     <DashboardLayout>
       <DashboardNavbar />
-      <MDBox py={3}>
-        <MDBox mb={2.5}>
-          <MDTypography variant="h4" fontWeight="bold">Invoice Report</MDTypography>
-          <MDTypography variant="button" color="text" fontWeight="regular">
+      <div className="py-6 text-slate-700">
+        <div className="mb-5">
+          <h1 className="m-0 text-2xl font-bold text-slate-800">Invoice Report</h1>
+          <p className="m-0 mt-1 text-sm text-slate-500">
             Add Sales tasks from Dashboard &gt; Assign, as soon as the invoice PDF is uploaded. Invoice numbers
             read from the PDF are checked against Add Sales: created or not, delivered, cancelled, and payment updated.
             Invoices not in Add Sales yet are created automatically from the PDF (invoice no., date, outlet, amount,
             no. of items) with the Add Sales rules: only today&apos;s invoice date, and another day&apos;s bit or overdue
             credit needs approval (own permission in the assignee&apos;s portal, else a request). Not for SIL for now.
-          </MDTypography>
-        </MDBox>
+          </p>
+        </div>
 
         {/* Filters */}
-        <Card sx={{ mb: 2.5 }}>
-          <MDBox p={2} display="flex" gap={1.5} flexWrap="wrap" alignItems="center">
-            <TextField size="small" type="date" label="From (work date)" value={from} onChange={(e) => setFrom(e.target.value)}
-              InputLabelProps={{ shrink: true }} />
-            <TextField size="small" type="date" label="To" value={to} onChange={(e) => setTo(e.target.value)} InputLabelProps={{ shrink: true }} />
-            <TextField size="small" select label="Company" value={companyId} onChange={(e) => setCompanyId(e.target.value)}
-              sx={{ minWidth: 200 }} SelectProps={{ sx: { height: 40 } }}>
-              <MenuItem value="">All companies</MenuItem>
-              {companies.map((c) => <MenuItem key={c.id} value={String(c.id)}>{c.name}</MenuItem>)}
-            </TextField>
-            <MDButton variant="gradient" color="info" onClick={load} disabled={loading}>
-              {loading ? <CircularProgress size={16} color="inherit" sx={{ mr: 1 }} /> : <Icon sx={{ mr: 0.75 }}>search</Icon>}
+        <div className="card mb-5 bg-white shadow-md">
+          <div className="flex flex-wrap items-end gap-3 p-4">
+            <label className="flex flex-col gap-1 text-xs font-medium text-slate-500">
+              From (work date)
+              <input type="date" className="input input-sm w-40" value={from} onChange={(e) => setFrom(e.target.value)} />
+            </label>
+            <label className="flex flex-col gap-1 text-xs font-medium text-slate-500">
+              To
+              <input type="date" className="input input-sm w-40" value={to} onChange={(e) => setTo(e.target.value)} />
+            </label>
+            <label className="flex flex-col gap-1 text-xs font-medium text-slate-500">
+              Company
+              <select className="select select-sm w-52" value={companyId} onChange={(e) => setCompanyId(e.target.value)}>
+                <option value="">All companies</option>
+                {companies.map((c) => <option key={c.id} value={String(c.id)}>{c.name}</option>)}
+              </select>
+            </label>
+            <button type="button" className="btn btn-sm btn-info text-white" onClick={load} disabled={loading}>
+              {loading ? <span className="loading loading-spinner loading-xs" /> : <MaterialIcon name="search" />}
               Show
-            </MDButton>
-            <MDBox flexGrow={1} />
-            <TextField size="small" label="Search invoice / outlet / staff" value={search} onChange={(e) => setSearch(e.target.value)}
-              sx={{ minWidth: 240 }} />
-          </MDBox>
+            </button>
+            <div className="grow" />
+            <input
+              type="search" className="input input-sm w-64" placeholder="Search invoice / outlet / staff"
+              value={search} onChange={(e) => setSearch(e.target.value)}
+            />
+          </div>
           {loading && (
-            <MDBox px={2} pb={1.5}>
-              <MDTypography variant="caption" color="text">
-                Reading the invoice PDFs. New PDFs are read once, so the first load can take a little while.
-              </MDTypography>
-            </MDBox>
+            <p className="m-0 px-4 pb-3 text-xs text-slate-500">
+              Reading the invoice PDFs. New PDFs are read once, so the first load can take a little while.
+            </p>
           )}
-        </Card>
+        </div>
 
-        {error && <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError("")}>{error}</Alert>}
+        {error && (
+          <div role="alert" className="alert alert-error alert-soft mb-4">
+            <MaterialIcon name="error_outline" />
+            <span className="grow">{error}</span>
+            <button type="button" className="btn btn-ghost btn-xs" aria-label="Close" onClick={() => setError("")}>
+              <MaterialIcon name="close" />
+            </button>
+          </div>
+        )}
 
         {data && (
           <>
             {/* Totals: click a tile to filter */}
-            <Grid container spacing={1.5} mb={2.5}>
+            <div className="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-8">
               {SUMMARY_TILES.map(([key, label, icon, colour, filterKey]) => (
-                <Grid item xs={6} sm={4} md={3} xl={1.5} key={key}>
-                  <Card onClick={() => setFilter(filterKey)}
-                    sx={{
-                      cursor: "pointer", height: "100%", boxShadow: "none",
-                      border: filter === filterKey ? `2px solid ${colour}` : "1px solid #e2e8f0",
-                    }}>
-                    <MDBox p={1.5} display="flex" alignItems="center" gap={1.25}>
-                      <MDBox display="flex" alignItems="center" justifyContent="center"
-                        sx={{ width: 36, height: 36, borderRadius: "10px", backgroundColor: `${colour}1a`, color: colour, flexShrink: 0 }}>
-                        <Icon fontSize="small">{icon}</Icon>
-                      </MDBox>
-                      <MDBox minWidth={0}>
-                        <MDTypography variant="h5" fontWeight="bold" lineHeight={1.1}>{totals[key] || 0}</MDTypography>
-                        <MDTypography variant="caption" color="text" display="block" lineHeight={1.2}>{label}</MDTypography>
-                      </MDBox>
-                    </MDBox>
-                  </Card>
-                </Grid>
+                <button
+                  type="button" key={key} onClick={() => setFilter(filterKey)}
+                  className="card cursor-pointer flex-row items-center gap-2.5 bg-white p-3 text-left"
+                  style={{ border: filter === filterKey ? `2px solid ${colour}` : "1px solid #e2e8f0" }}
+                >
+                  <span
+                    className="flex size-9 shrink-0 items-center justify-center rounded-[10px]"
+                    style={{ backgroundColor: `${colour}1a`, color: colour }}
+                  >
+                    <MaterialIcon name={icon} />
+                  </span>
+                  <span className="min-w-0">
+                    <span className="block text-xl font-bold leading-tight text-slate-800">{totals[key] || 0}</span>
+                    <span className="block text-xs leading-tight text-slate-500">{label}</span>
+                  </span>
+                </button>
               ))}
-            </Grid>
+            </div>
 
-            <MDBox display="flex" gap={0.75} flexWrap="wrap" mb={2}>
+            <div className="mb-4 flex flex-wrap gap-1.5">
               {FILTERS.map(([key, label]) => (
-                <Chip key={key} label={label} size="small" clickable onClick={() => setFilter(key)}
-                  color={filter === key ? "info" : "default"} variant={filter === key ? "filled" : "outlined"} />
+                <button
+                  type="button" key={key} onClick={() => setFilter(key)}
+                  className={`badge cursor-pointer ${filter === key ? "badge-info text-white" : "badge-outline text-slate-600"}`}
+                >
+                  {label}
+                </button>
               ))}
-            </MDBox>
+            </div>
 
             {!assignments.length && (
-              <Alert severity="info">No Add Sales tasks with an invoice PDF were assigned for these dates.</Alert>
+              <div role="alert" className="alert alert-info alert-soft">No Add Sales tasks with an invoice PDF were assigned for these dates.</div>
             )}
-            {assignments.length > 0 && !shown.length && <Alert severity="info">No invoices match this filter.</Alert>}
+            {assignments.length > 0 && !shown.length && (
+              <div role="alert" className="alert alert-info alert-soft">No invoices match this filter.</div>
+            )}
 
             {shown.map((a) => {
               const isOpen = open[a.id] ?? true;
               return (
-                <Card key={a.id} sx={{ mb: 2, boxShadow: "none", border: "1px solid #e2e8f0" }}>
-                  <MDBox display="flex" alignItems="center" gap={1.25} px={2} py={1.25} flexWrap="wrap"
-                    sx={{ backgroundColor: "#f8fafc", borderBottom: isOpen ? "1px solid #e2e8f0" : 0, borderRadius: "12px 12px 0 0" }}>
-                    <IconButton size="small" onClick={() => setOpen((o) => ({ ...o, [a.id]: !isOpen }))}>
-                      <Icon>{isOpen ? "expand_less" : "expand_more"}</Icon>
-                    </IconButton>
-                    <MDBox flexGrow={1} minWidth={0}>
-                      <MDTypography variant="button" fontWeight="bold" display="block">
+                <div key={a.id} className="card mb-4 border border-slate-200 bg-white">
+                  <div className={`flex flex-wrap items-center gap-2.5 rounded-t-xl bg-slate-50 px-4 py-2.5 ${isOpen ? "border-b border-slate-200" : ""}`}>
+                    <button type="button" className="btn btn-ghost btn-sm btn-circle" onClick={() => setOpen((o) => ({ ...o, [a.id]: !isOpen }))}>
+                      <MaterialIcon name={isOpen ? "expand_less" : "expand_more"} />
+                    </button>
+                    <div className="min-w-0 grow">
+                      <div className="text-sm font-bold text-slate-800">
                         {a.companyName} · {showDate(a.workDate)} · {a.area}
-                      </MDTypography>
-                      <MDTypography variant="caption" color="text" display="block">
+                      </div>
+                      <div className="text-xs text-slate-500">
                         {a.documentName}{a.assigneeName ? ` · Assigned to ${a.assigneeName}` : ""}
                         {a.marketingStaffName ? ` · Marketing: ${a.marketingStaffName}` : ""}
-                      </MDTypography>
-                    </MDBox>
-                    <MDBox display="flex" gap={0.5} flexWrap="wrap">
-                      <Chip size="small" label={`${a.summary.total} invoices`} />
-                      <Chip size="small" label={`${a.summary.created} created`} sx={{ backgroundColor: "#ccfbf1", color: "#0f766e" }} />
-                      {a.summary.notCreated > 0 && <Chip size="small" label={`${a.summary.notCreated} not created`} sx={{ backgroundColor: "#fee2e2", color: "#b91c1c" }} />}
-                      <Chip size="small" label={`${a.summary.delivered} delivered`} sx={{ backgroundColor: "#dcfce7", color: "#15803d" }} />
-                      {a.summary.cancelled > 0 && <Chip size="small" label={`${a.summary.cancelled} cancelled`} sx={{ backgroundColor: "#fde2e2", color: "#991b1b" }} />}
-                      <Chip size="small" label={`${a.summary.paymentUpdated} paid`} sx={{ backgroundColor: "#e0f2fe", color: "#0369a1" }} />
-                      {a.summary.autoCreated > 0 && <Chip size="small" label={`${a.summary.autoCreated} auto-created`} sx={{ backgroundColor: "#ede9fe", color: "#5b21b6" }} />}
-                      {a.autoSalesOff && <Chip size="small" variant="outlined" label="Auto Add Sales off for SIL" />}
-                    </MDBox>
-                    <Tooltip title="Open the PDF">
-                      <IconButton size="small" onClick={() => openPdf(a)}><Icon>picture_as_pdf</Icon></IconButton>
-                    </Tooltip>
-                    <Tooltip title="Read the PDF again">
-                      <span>
-                        <IconButton size="small" onClick={() => reread(a)} disabled={rereading === a.id}>
-                          {rereading === a.id ? <CircularProgress size={16} /> : <Icon>refresh</Icon>}
-                        </IconButton>
-                      </span>
-                    </Tooltip>
-                  </MDBox>
-                  <Collapse in={isOpen}>
-                    {a.readError && (
-                      <Alert severity="warning" sx={{ m: 1.5 }}>The PDF could not be read: {a.readError}</Alert>
-                    )}
-                    {!a.readError && !a.invoices.length && (
-                      <Alert severity="info" sx={{ m: 1.5 }}>No invoice numbers were found in this PDF.</Alert>
-                    )}
-                    {a.rows.length > 0 && (
-                      <TableContainer>
-                        <Table size="small">
-                          <TableHead sx={{ display: "table-header-group" }}>
-                            <TableRow>
-                              {["#", "Invoice no.", "Add Sales", "Sale date", "Outlet", "Staff", "Amount", "Status", "Payment", "Paid", "Balance"].map((h) => (
-                                <TableCell key={h} sx={headSx}>{h}</TableCell>
+                      </div>
+                    </div>
+                    <div className="flex flex-wrap gap-1">
+                      <Pill>{`${a.summary.total} invoices`}</Pill>
+                      <Pill tone="teal">{`${a.summary.created} created`}</Pill>
+                      {a.summary.notCreated > 0 && <Pill tone="red">{`${a.summary.notCreated} not created`}</Pill>}
+                      <Pill tone="green">{`${a.summary.delivered} delivered`}</Pill>
+                      {a.summary.cancelled > 0 && <Pill tone="rose">{`${a.summary.cancelled} cancelled`}</Pill>}
+                      <Pill tone="sky">{`${a.summary.paymentUpdated} paid`}</Pill>
+                      {a.summary.autoCreated > 0 && <Pill tone="violet">{`${a.summary.autoCreated} auto-created`}</Pill>}
+                      {a.autoSalesOff && <span className="badge badge-sm badge-outline">Auto Add Sales off for SIL</span>}
+                    </div>
+                    <div className="tooltip" data-tip="Open the PDF">
+                      <button type="button" className="btn btn-ghost btn-sm btn-circle" onClick={() => openPdf(a)}>
+                        <MaterialIcon name="picture_as_pdf" />
+                      </button>
+                    </div>
+                    <div className="tooltip" data-tip="Read the PDF again">
+                      <button type="button" className="btn btn-ghost btn-sm btn-circle" onClick={() => reread(a)} disabled={rereading === a.id}>
+                        {rereading === a.id ? <span className="loading loading-spinner loading-xs" /> : <MaterialIcon name="refresh" />}
+                      </button>
+                    </div>
+                  </div>
+                  {isOpen && (
+                    <>
+                      {a.readError && (
+                        <div role="alert" className="alert alert-warning alert-soft m-3">The PDF could not be read: {a.readError}</div>
+                      )}
+                      {!a.readError && !a.invoices.length && (
+                        <div role="alert" className="alert alert-info alert-soft m-3">No invoice numbers were found in this PDF.</div>
+                      )}
+                      {a.rows.length > 0 && (
+                        <div className="overflow-x-auto">
+                          <table className="table table-sm">
+                            <thead>
+                              <tr className="bg-slate-50">
+                                {["#", "Invoice no.", "Add Sales", "Sale date", "Outlet", "Staff", "Amount", "Status", "Payment", "Paid", "Balance"].map((h) => (
+                                  <th key={h} className="whitespace-nowrap text-[0.72rem] font-bold text-slate-600">{h}</th>
+                                ))}
+                              </tr>
+                            </thead>
+                            <tbody className="text-[0.8rem]">
+                              {a.rows.map((inv, index) => (
+                                <tr key={inv.invoiceNumber} className={`hover:bg-slate-50 ${!inv.created ? "bg-[#fff7f7]" : ""}`}>
+                                  <td>{index + 1}</td>
+                                  <td className="font-mono font-semibold">
+                                    {inv.invoiceNumber}
+                                    {inv.created && inv.savedAs && inv.savedAs !== inv.invoiceNumber && (
+                                      <span className="block font-sans text-xs font-normal text-slate-500">saved as {inv.savedAs}</span>
+                                    )}
+                                  </td>
+                                  <td>
+                                    {inv.created ? (
+                                      <Pill tone="teal" bold>{inv.duplicates > 1 ? `Created (${inv.duplicates}x)` : "Created"}</Pill>
+                                    ) : (
+                                      <Pill tone="red" bold>Not created</Pill>
+                                    )}
+                                    {inv.created && inv.autoCreated && (
+                                      <span className="block text-xs font-semibold text-teal-700">Auto from PDF</span>
+                                    )}
+                                    {!inv.created && inv.autoError && (
+                                      <span className={`block max-w-60 whitespace-normal text-xs ${AUTO_WAITING.includes(inv.autoStatus) ? "text-amber-700" : "text-red-700"}`}>
+                                        {AUTO_LABEL[inv.autoStatus] || "Auto Add Sales"}: {inv.autoError}
+                                      </span>
+                                    )}
+                                  </td>
+                                  <td>{showDate(inv.saleDate)}</td>
+                                  <td>{inv.outletName || ""}</td>
+                                  <td>{inv.staffName || ""}</td>
+                                  <td className="text-right">{inv.created ? rupees(inv.amount) : ""}</td>
+                                  <td>
+                                    {inv.created ? statusChip(inv) : ""}
+                                    {inv.status === "cancelled" && inv.cancellationReason && (
+                                      <span className="block text-xs text-slate-500">{inv.cancellationReason}</span>
+                                    )}
+                                    {inv.status === "delivered" && inv.deliveryDate && (
+                                      <span className="block text-xs text-slate-500">on {showDate(inv.deliveryDate)}</span>
+                                    )}
+                                  </td>
+                                  <td>
+                                    {inv.created && (inv.paymentUpdated ? (
+                                      <Pill tone="sky" bold>{`Updated${inv.lastPaymentDate ? ` · ${showDate(inv.lastPaymentDate)}` : ""}`}</Pill>
+                                    ) : (
+                                      <span className="badge badge-sm badge-outline whitespace-nowrap">Not updated</span>
+                                    ))}
+                                  </td>
+                                  <td className="text-right">{inv.created ? rupees(inv.paidAmount) : ""}</td>
+                                  <td className="text-right">{inv.created ? rupees(inv.balanceAmount) : ""}</td>
+                                </tr>
                               ))}
-                            </TableRow>
-                          </TableHead>
-                          <TableBody>
-                            {a.rows.map((inv, index) => (
-                              <TableRow key={inv.invoiceNumber} hover sx={!inv.created ? { backgroundColor: "#fff7f7" } : undefined}>
-                                <TableCell sx={cellSx}>{index + 1}</TableCell>
-                                <TableCell sx={{ ...cellSx, fontFamily: "monospace", fontWeight: 600 }}>
-                                  {inv.invoiceNumber}
-                                  {inv.created && inv.savedAs && inv.savedAs !== inv.invoiceNumber && (
-                                    <MDTypography variant="caption" color="text" display="block">saved as {inv.savedAs}</MDTypography>
-                                  )}
-                                </TableCell>
-                                <TableCell sx={cellSx}>
-                                  {inv.created ? (
-                                    <Chip size="small" label={inv.duplicates > 1 ? `Created (${inv.duplicates}x)` : "Created"} sx={{ backgroundColor: "#ccfbf1", color: "#0f766e", fontWeight: 700 }} />
-                                  ) : (
-                                    <Chip size="small" label="Not created" sx={{ backgroundColor: "#fee2e2", color: "#b91c1c", fontWeight: 700 }} />
-                                  )}
-                                  {inv.created && inv.autoCreated && (
-                                    <MDTypography variant="caption" display="block" sx={{ color: "#0f766e", fontWeight: 600 }}>Auto from PDF</MDTypography>
-                                  )}
-                                  {!inv.created && inv.autoError && (
-                                    <MDTypography variant="caption" display="block"
-                                      sx={{ color: AUTO_WAITING.includes(inv.autoStatus) ? "#b45309" : "#b91c1c", maxWidth: 240, whiteSpace: "normal" }}>
-                                      {AUTO_LABEL[inv.autoStatus] || "Auto Add Sales"}: {inv.autoError}
-                                    </MDTypography>
-                                  )}
-                                </TableCell>
-                                <TableCell sx={cellSx}>{showDate(inv.saleDate)}</TableCell>
-                                <TableCell sx={cellSx}>{inv.outletName || ""}</TableCell>
-                                <TableCell sx={cellSx}>{inv.staffName || ""}</TableCell>
-                                <TableCell sx={{ ...cellSx, textAlign: "right" }}>{inv.created ? rupees(inv.amount) : ""}</TableCell>
-                                <TableCell sx={cellSx}>
-                                  {inv.created ? statusChip(inv) : ""}
-                                  {inv.status === "cancelled" && inv.cancellationReason && (
-                                    <MDTypography variant="caption" color="text" display="block">{inv.cancellationReason}</MDTypography>
-                                  )}
-                                  {inv.status === "delivered" && inv.deliveryDate && (
-                                    <MDTypography variant="caption" color="text" display="block">on {showDate(inv.deliveryDate)}</MDTypography>
-                                  )}
-                                </TableCell>
-                                <TableCell sx={cellSx}>
-                                  {inv.created && (inv.paymentUpdated ? (
-                                    <Chip size="small" label={`Updated${inv.lastPaymentDate ? ` · ${showDate(inv.lastPaymentDate)}` : ""}`} sx={{ backgroundColor: "#e0f2fe", color: "#0369a1", fontWeight: 700 }} />
-                                  ) : (
-                                    <Chip size="small" label="Not updated" variant="outlined" />
-                                  ))}
-                                </TableCell>
-                                <TableCell sx={{ ...cellSx, textAlign: "right" }}>{inv.created ? rupees(inv.paidAmount) : ""}</TableCell>
-                                <TableCell sx={{ ...cellSx, textAlign: "right" }}>{inv.created ? rupees(inv.balanceAmount) : ""}</TableCell>
-                              </TableRow>
-                            ))}
-                          </TableBody>
-                        </Table>
-                      </TableContainer>
-                    )}
-                  </Collapse>
-                </Card>
+                            </tbody>
+                          </table>
+                        </div>
+                      )}
+                    </>
+                  )}
+                </div>
               );
             })}
             {data.skippedNonPdf > 0 && (
-              <MDTypography variant="caption" color="text">
+              <p className="m-0 text-xs text-slate-500">
                 {data.skippedNonPdf} uploaded file(s) are images, not PDFs, so they are not in this report.
-              </MDTypography>
+              </p>
             )}
           </>
         )}
-      </MDBox>
+      </div>
     </DashboardLayout>
   );
 }

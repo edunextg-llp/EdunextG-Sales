@@ -105,6 +105,7 @@ export const BAWARCHEE_ROLE_OPTIONS = [
   ["manager", "Manager"],
   ["accountant", "Accountant"],
   ["operator", "Operator"],
+  ["hr", "HR"],
 ];
 
 export const bawarcheeRoleLabel = (role) =>
@@ -129,7 +130,8 @@ export const BAWARCHEE_ROLE_PRESETS = {
     "dashboard", "add_sales", "invoice_lookup",
     "packaging", "delivery", "delivered",
     "chalan_add_sales", "chalan_packaging", "chalan_delivery", "chalan_delivered",
-  ],
+  ],  // HR: staff records, their locations and outlets.
+  hr: ["dashboard", "create_staff", "location_assignments", "add_outlet"],
 };
 
 // Mirrors the backend clean-up: DMS pages need the DMS menu, sub-options need their page.

@@ -596,6 +596,95 @@ class ReportModel {
         return { weekly, monthly, quarterly, yearly };
     }
 
+    // Dashboard > Outlet Analysis: each outlet's sales and invoices in the selected period against the
+    // period of the same length just before it (growth). Cancelled invoices are left out. One outlet =
+    // one ERP id (dashes ignored, the same outlet sits on several staff / route days), else its name.
+    // No dates given: the last 30 days against the 30 days before.
+    static async getOutletAnalysis(startDate, endDate, companyId = null, staffId = null) {
+        const DAY = 24 * 60 * 60 * 1000;
+        const iso = (date) => date.toISOString().slice(0, 10);
+        const todayIst = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
+        const today = new Date(`${todayIst}T00:00:00Z`);
+        const currentTo = endDate ? new Date(`${endDate}T00:00:00Z`) : today;
+        const currentFrom = startDate ? new Date(`${startDate}T00:00:00Z`) : new Date(currentTo.getTime() - 29 * DAY);
+        const days = Math.max(1, Math.round((currentTo - currentFrom) / DAY) + 1);
+        const previousTo = new Date(currentFrom.getTime() - DAY);
+        const previousFrom = new Date(previousTo.getTime() - (days - 1) * DAY);
+        const period = {
+            current: { from: iso(currentFrom), to: iso(currentTo) },
+            previous: { from: iso(previousFrom), to: iso(previousTo) },
+            days,
+        };
+
+        const where = ReportModel.buildSalesWhere('ss', period.previous.from, period.current.to, companyId, staffId);
+        const notCancelled = `ss.packaging_status <> 'cancelled'`;
+        const [rows] = await db.execute(
+            `SELECT x.outlet_key,
+                    MAX(x.outlet_name) AS outlet_name,
+                    MAX(x.outlet_erp_id) AS outlet_erp_id,
+                    GROUP_CONCAT(DISTINCT x.staff_name ORDER BY x.staff_name SEPARATOR ', ') AS staff_names,
+                    COALESCE(SUM(CASE WHEN x.sale_date >= ? THEN x.price END), 0) AS current_sales,
+                    COUNT(CASE WHEN x.sale_date >= ? THEN 1 END) AS current_invoices,
+                    COALESCE(SUM(CASE WHEN x.sale_date < ? THEN x.price END), 0) AS previous_sales,
+                    COUNT(CASE WHEN x.sale_date < ? THEN 1 END) AS previous_invoices,
+                    DATE_FORMAT(MAX(x.sale_date), '%Y-%m-%d') AS last_sale_date
+             FROM (
+                SELECT COALESCE(NULLIF(REPLACE(UPPER(TRIM(sc.outlet_erp_id)), '-', ''), ''),
+                                CONCAT('NAME:', UPPER(TRIM(sc.outlet_name)))) AS outlet_key,
+                       sc.outlet_name, sc.outlet_erp_id, s.name AS staff_name, ss.sale_date, ss.price
+                FROM staff_sales ss
+                JOIN staff_counters sc ON sc.id = ss.outlet_id
+                LEFT JOIN staff s ON s.id = ss.staff_id
+                ${where.sql ? `${where.sql} AND ${notCancelled}` : `WHERE ${notCancelled}`}
+             ) x
+             GROUP BY x.outlet_key`,
+            [period.current.from, period.current.from, period.current.from, period.current.from, ...where.params]
+        );
+
+        const outlets = rows.map((raw) => ({
+            ...raw,
+            current_sales: Number(raw.current_sales) || 0,
+            current_invoices: Number(raw.current_invoices) || 0,
+            previous_sales: Number(raw.previous_sales) || 0,
+            previous_invoices: Number(raw.previous_invoices) || 0,
+        })).map((row) => ({
+            ...row,
+            growth_pct: row.previous_sales > 0
+                ? Math.round(((row.current_sales - row.previous_sales) / row.previous_sales) * 1000) / 10
+                : null,
+            trend: row.current_invoices && !row.previous_invoices ? 'new'
+                : !row.current_invoices && row.previous_invoices ? 'lost'
+                    : row.current_sales > row.previous_sales ? 'up'
+                        : row.current_sales < row.previous_sales ? 'down' : 'flat',
+        }));
+        const sum = (key, list = outlets) => list.reduce((total, row) => total + (Number(row[key]) || 0), 0);
+        const count = (test) => outlets.filter(test).length;
+        const currentSales = sum('current_sales');
+        const currentInvoices = sum('current_invoices');
+        const previousSales = sum('previous_sales');
+        return {
+            period,
+            summary: {
+                active_outlets: count((o) => o.current_invoices > 0),
+                previous_active_outlets: count((o) => o.previous_invoices > 0),
+                new_outlets: count((o) => o.trend === 'new'),
+                lost_outlets: count((o) => o.trend === 'lost'),
+                growing_outlets: count((o) => o.trend === 'up'),
+                declining_outlets: count((o) => o.trend === 'down'),
+                current_sales: currentSales,
+                previous_sales: previousSales,
+                current_invoices: currentInvoices,
+                previous_invoices: sum('previous_invoices'),
+                avg_invoice_value: currentInvoices ? Math.round((currentSales / currentInvoices) * 100) / 100 : 0,
+                growth_pct: previousSales > 0 ? Math.round(((currentSales - previousSales) / previousSales) * 1000) / 10 : null,
+            },
+            // Biggest first; the page sorts / filters further.
+            outlets: outlets
+                .sort((a, b) => b.current_sales - a.current_sales || b.previous_sales - a.previous_sales)
+                .slice(0, 500),
+        };
+    }
+
     static async getStaffSalesSummary(startDate, endDate, companyId = null, staffId = null) {
         const salesWhere = ReportModel.buildSalesWhere('ss', startDate, endDate, companyId, staffId);
         const [rows] = await db.execute(

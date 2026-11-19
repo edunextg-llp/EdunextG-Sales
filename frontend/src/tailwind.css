@@ -1,0 +1,35 @@
+/*
+ * Tailwind CSS 4 + daisyUI 5.
+ * The site is moving from MUI to Tailwind one page at a time. Until the last MUI page is gone:
+ *  - Tailwind's base reset (preflight) is NOT loaded, so MUI pages look exactly as before;
+ *  - daisyUI's page-wide base styles (root colours, scrollbar) are switched off for the same reason.
+ *
+ * Cascade order (lowest first): mui-reset < theme < daisyUI components < Tailwind utilities.
+ *  - Rules outside any @layer beat every layered rule. The MUI template's global
+ *    "* { margin: 0; padding: 0 }" used to be outside a layer, so it wiped out every Tailwind / daisyUI
+ *    padding and margin. It now lives here, in the lowest layer (removed from assets/theme/base/globals.js).
+ *  - Tailwind utilities are NOT in a layer, so a utility class (p-4, text-[15px] ...) beats element
+ *    rules and the Material Icons font size by specificity. MUI components use their own Mui* classes,
+ *    which no utility shares.
+ */
+@layer mui-reset, theme, base, components;
+
+@import "tailwindcss/theme.css" layer(theme);
+@import "tailwindcss/utilities.css";
+
+@layer mui-reset {
+  *,
+  *::before,
+  *::after {
+    margin: 0;
+    padding: 0;
+  }
+}
+
+/* Class names are read from the React source. */
+@source "./";
+
+@plugin "daisyui" {
+  themes: light --default;
+  exclude: rootcolor, rootscrollgutter, rootscrolllock, scrollbar;
+}

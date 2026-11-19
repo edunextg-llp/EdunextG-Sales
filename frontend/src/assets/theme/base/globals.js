@@ -32,10 +32,8 @@ const globals = {
   'html:has(> body[style*="overflow: hidden"])': {
     overflow: "hidden",
   },
-  "*, *::before, *::after": {
-    margin: 0,
-    padding: 0,
-  },
+  // "*, *::before, *::after { margin: 0; padding: 0 }" lives in src/tailwind.css, in the lowest CSS
+  // layer: here (outside any layer) it overrode every Tailwind / daisyUI padding and margin.
   "a, a:link, a:visited": {
     textDecoration: "none !important",
   },

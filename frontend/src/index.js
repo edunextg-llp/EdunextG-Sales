@@ -2,6 +2,8 @@ import React from "react";
 import { createRoot } from "react-dom/client";
 import { BrowserRouter } from "react-router-dom";
 import App from "App";
+// Tailwind CSS 4 + daisyUI 5 (pages are moving from MUI one by one).
+import "./tailwind.css";
 
 // Material Dashboard 2 React Context Provider
 import { MaterialUIControllerProvider } from "context";

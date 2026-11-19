@@ -1,31 +1,11 @@
+// Create Route: Tailwind CSS (no MUI). Area selection, priority order, save and delete logic unchanged.
 import { useEffect, useMemo, useState } from "react";
-import {
-  Alert,
-  Card,
-  Checkbox,
-  Chip,
-  CircularProgress,
-  Dialog,
-  DialogActions,
-  DialogContent,
-  DialogTitle,
-  Grid,
-  Icon,
-  IconButton,
-  Table,
-  TableBody,
-  TableCell,
-  TableContainer,
-  TableHead,
-  TableRow,
-} from "@mui/material";
-import MDBox from "components/MDBox";
-import MDButton from "components/MDButton";
-import MDInput from "components/MDInput";
-import MDTypography from "components/MDTypography";
 import DashboardLayout from "examples/LayoutContainers/DashboardLayout";
 import DashboardNavbar from "examples/Navbars/DashboardNavbar";
 import Footer from "examples/Footer";
+import {
+  Card, Field, Icon, Modal, Notice, PageHeader, Spinner, StatBox, TriCheck, btn, fieldClass, td, th,
+} from "components/tw";
 
 const API = (process.env.REACT_APP_API_URL);
 
@@ -196,194 +176,209 @@ export default function CreateRoute() {
     }
   };
 
+  const areasInRoutes = new Set(routes.flatMap((route) => route.areas)).size;
+
   return (
     <DashboardLayout>
       <DashboardNavbar />
-      <MDBox py={3}>
-        <Grid container spacing={3}>
-          <Grid item xs={12} lg={7}>
-            <Card>
-              <MDBox p={3}>
-                <MDBox display="flex" justifyContent="space-between" alignItems="center" flexWrap="wrap" gap={1} mb={1}>
-                  <MDTypography variant="h5">
-                    {editingRoute ? `Edit Route: ${editingRoute.name}` : "Create Route"}
-                  </MDTypography>
-                  <MDBox display="flex" gap={1} flexWrap="wrap">
-                    {(selected.length > 0 || editingRoute) && (
-                      <MDButton variant="outlined" color="dark" onClick={clearSelection} disabled={saving}>
-                        {editingRoute ? "Cancel Edit" : "Clear"}
-                      </MDButton>
+      <div className="pb-8 font-[Poppins,Roboto,sans-serif] text-slate-700">
+        <PageHeader
+          title={editingRoute ? `Edit Route: ${editingRoute.name}` : "Create Route"}
+          description={`An area can belong to only one route; areas already in another route are greyed out. Select the areas for this route, then click ${editingRoute ? "Save Route" : "Create Route"} and give it a name such as R 1.`}
+          actions={(
+            <>
+              {(selected.length > 0 || editingRoute) && (
+                <button type="button" className={btn.outline} onClick={clearSelection} disabled={saving}>
+                  <Icon name="close" className="text-[18px]" />{editingRoute ? "Cancel Edit" : "Clear"}
+                </button>
+              )}
+              <button type="button" className={btn.primary} disabled={!selected.length || loading} onClick={openCreateDialog}>
+                <Icon name={editingRoute ? "save" : "alt_route"} className="text-[18px]" />
+                {editingRoute ? "Save Route" : "Create Route"}{selected.length ? ` (${selected.length})` : ""}
+              </button>
+            </>
+          )}
+        />
+
+        {!loading && (
+          <div className="mb-5 flex flex-wrap gap-2">
+            <StatBox label="Routes" value={routes.length} icon="alt_route" />
+            <StatBox label="Areas" value={areas.length} icon="map" />
+            <StatBox label="Areas in a route" value={areasInRoutes} icon="check_circle" />
+            <StatBox label="Not in a route" value={Math.max(0, areas.length - areasInRoutes)} icon="radio_button_unchecked" />
+          </div>
+        )}
+
+        {success && <Notice tone="success" className="mb-4" onClose={() => setSuccess("")}>{success}</Notice>}
+        {error && <Notice tone="error" className="mb-4" onClose={() => setError("")}>{error}</Notice>}
+
+        <div className="grid grid-cols-1 gap-5 xl:grid-cols-[minmax(0,7fr)_minmax(0,5fr)]">
+          {/* Areas to pick */}
+          <Card className={editingRoute ? "ring-2 ring-blue-500/30" : ""}>
+            <div className="flex flex-wrap items-center gap-3 border-b border-slate-100 px-4 py-3">
+              <div className="relative w-full max-w-xs">
+                <Icon name="search" className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-[18px] text-slate-400" />
+                <input type="search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search areas" aria-label="Search areas" className={`${fieldClass} pl-8`} />
+              </div>
+              <span className="ml-auto text-[12.5px] text-slate-500">
+                <b className="text-slate-800">{selected.length}</b> selected · {visibleAreas.length} of {areas.length} areas
+              </span>
+            </div>
+            {loading ? (
+              <div className="flex justify-center py-16"><Spinner className="size-7" /></div>
+            ) : (
+              <div className="max-h-[560px] overflow-auto">
+                <table className="w-full border-collapse" aria-label="Areas">
+                  <thead className="sticky top-0 z-10">
+                    <tr className="bg-slate-50">
+                      <th className={`${th} w-12`}>
+                        <TriCheck
+                          checked={allVisibleSelected}
+                          indeterminate={!allVisibleSelected && selectableVisible.some((area) => selectedSet.has(area.name))}
+                          disabled={!selectableVisible.length}
+                          onChange={toggleAllVisible}
+                          label="Select all visible areas"
+                        />
+                      </th>
+                      <th className={th}>Area name</th>
+                      <th className={`${th} text-center`}>Priority</th>
+                      <th className={`${th} text-right`}>Outlets</th>
+                      <th className={th}>Route</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {visibleAreas.map((area) => {
+                      const inRoutes = (routesByArea.get(area.name) || []).filter((route) => route.id !== editingRoute?.id);
+                      const locked = inRoutes.length > 0;
+                      const isSelected = selectedSet.has(area.name);
+                      return (
+                        <tr
+                          key={area.name} onClick={() => toggleArea(area.name)}
+                          className={`border-t border-slate-100 transition ${locked ? "cursor-not-allowed opacity-50" : "cursor-pointer hover:bg-slate-50"} ${isSelected ? "bg-blue-50/70 hover:bg-blue-50" : ""}`}
+                        >
+                          <td className={`${td} w-12`}>
+                            <input
+                              type="checkbox" className="size-[18px] cursor-pointer accent-blue-600 disabled:cursor-not-allowed"
+                              checked={isSelected} disabled={locked} aria-label={`Select ${area.name}`}
+                              onClick={(event) => event.stopPropagation()} onChange={() => toggleArea(area.name)}
+                            />
+                          </td>
+                          <td className={`${td} font-semibold text-slate-800`}>{area.name}</td>
+                          <td className={`${td} text-center`}>
+                            {isSelected && (
+                              <span className="inline-flex size-6 items-center justify-center rounded-full bg-blue-600 text-[11.5px] font-bold text-white">
+                                {selected.indexOf(area.name) + 1}
+                              </span>
+                            )}
+                          </td>
+                          <td className={`${td} text-right tabular-nums`}>{area.outlet_count}</td>
+                          <td className={td}>
+                            <span className="flex flex-wrap gap-1">
+                              {inRoutes.map((route) => (
+                                <span key={route.id} className="rounded-full bg-slate-100 px-2 py-0.5 text-[11.5px] font-semibold text-slate-600">{route.name}</span>
+                              ))}
+                            </span>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                    {!visibleAreas.length && (
+                      <tr><td colSpan={5} className="px-4 py-12 text-center text-[13px] text-slate-400">No areas found. Add areas in Create Area first.</td></tr>
                     )}
-                    <MDButton variant="contained" color="info" disabled={!selected.length || loading} onClick={openCreateDialog}>
-                      {editingRoute ? "Save Route" : "Create Route"}
-                      {selected.length ? ` (${selected.length})` : ""}
-                    </MDButton>
-                  </MDBox>
-                </MDBox>
-                <MDTypography variant="body2" color="text" mb={2}>
-                  An area can belong to only one route; areas already in another route are greyed out. Select the areas for this route, then click {editingRoute ? "Save Route" : "Create Route"} and give it a name such as R 1.
-                </MDTypography>
-                {success && <MDBox mb={2}><Alert severity="success">{success}</Alert></MDBox>}
-                {error && <MDBox mb={2}><Alert severity="error">{error}</Alert></MDBox>}
-                <MDInput label="Search areas" value={search} onChange={(event) => setSearch(event.target.value)} fullWidth />
-                {loading ? (
-                  <MDBox py={4} textAlign="center"><CircularProgress size={28} aria-label="Loading areas" /></MDBox>
-                ) : (
-                  <>
-                    <MDTypography variant="caption" display="block" mt={2}>
-                      {selected.length} selected · {visibleAreas.length} of {areas.length} areas
-                    </MDTypography>
-                    <TableContainer sx={{ maxHeight: 520 }}>
-                      <Table stickyHeader aria-label="Areas">
-                        <TableHead sx={{ display: "table-header-group" }}>
-                          <TableRow>
-                            <TableCell padding="checkbox">
-                              <Checkbox
-                                checked={allVisibleSelected}
-                                indeterminate={!allVisibleSelected && selectableVisible.some((area) => selectedSet.has(area.name))}
-                                disabled={!selectableVisible.length}
-                                onChange={toggleAllVisible}
-                                inputProps={{ "aria-label": "Select all visible areas" }}
-                              />
-                            </TableCell>
-                            <TableCell>Area name</TableCell>
-                            <TableCell align="center">Priority</TableCell>
-                            <TableCell align="right">Outlets</TableCell>
-                            <TableCell>Route</TableCell>
-                          </TableRow>
-                        </TableHead>
-                        <TableBody>
-                          {visibleAreas.map((area) => {
-                            const inRoutes = (routesByArea.get(area.name) || []).filter((route) => route.id !== editingRoute?.id);
-                            const locked = inRoutes.length > 0;
-                            return (
-                              <TableRow key={area.name} hover={!locked} onClick={() => toggleArea(area.name)} sx={{ cursor: locked ? "not-allowed" : "pointer", opacity: locked ? 0.55 : 1 }} selected={selectedSet.has(area.name)}>
-                                <TableCell padding="checkbox">
-                                  <Checkbox checked={selectedSet.has(area.name)} disabled={locked} inputProps={{ "aria-label": `Select ${area.name}` }} />
-                                </TableCell>
-                                <TableCell>{area.name}</TableCell>
-                                <TableCell align="center">
-                                  {selectedSet.has(area.name) ? <Chip label={selected.indexOf(area.name) + 1} size="small" color="info" /> : ""}
-                                </TableCell>
-                                <TableCell align="right">{area.outlet_count}</TableCell>
-                                <TableCell>
-                                  {inRoutes.map((route) => (
-                                    <Chip key={route.id} label={route.name} size="small" sx={{ mr: 0.5 }} />
-                                  ))}
-                                </TableCell>
-                              </TableRow>
-                            );
-                          })}
-                          {!visibleAreas.length && (
-                            <TableRow><TableCell colSpan={5}>No areas found. Add areas in Create Area first.</TableCell></TableRow>
-                          )}
-                        </TableBody>
-                      </Table>
-                    </TableContainer>
-                  </>
-                )}
-              </MDBox>
-            </Card>
-          </Grid>
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </Card>
 
-          <Grid item xs={12} lg={5}>
-            <Card>
-              <MDBox p={3}>
-                <MDBox display="flex" justifyContent="space-between" alignItems="center" mb={2}>
-                  <MDTypography variant="h5">Routes</MDTypography>
-                  <MDButton variant="outlined" color="info" size="small" disabled={loading} onClick={() => setRefresh((value) => value + 1)}>
-                    Refresh
-                  </MDButton>
-                </MDBox>
-                {!loading && !routes.length && (
-                  <MDTypography variant="body2" color="text">No routes yet.</MDTypography>
-                )}
-                {routes.map((route) => (
-                  <MDBox
-                    key={route.id}
-                    p={1.5}
-                    mb={1.5}
-                    sx={{
-                      border: "1px solid",
-                      borderColor: editingRoute?.id === route.id ? "info.main" : "grey.300",
-                      borderRadius: "10px",
-                    }}
-                  >
-                    <MDBox display="flex" justifyContent="space-between" alignItems="center">
-                      <MDTypography variant="h6">{route.name}</MDTypography>
-                      <MDBox display="flex" gap={0.5}>
-                        <MDButton variant="text" color="info" size="small" onClick={() => startEdit(route)} disabled={saving}>
-                          Edit
-                        </MDButton>
-                        <MDButton variant="text" color="error" size="small" onClick={() => deleteRoute(route)} disabled={deletingId === route.id}>
-                          {deletingId === route.id ? "Deleting…" : "Delete"}
-                        </MDButton>
-                      </MDBox>
-                    </MDBox>
-                    <MDTypography variant="caption" color="text" display="block" mb={0.75}>
-                      {route.areas.length} area{route.areas.length === 1 ? "" : "s"}
-                    </MDTypography>
-                    <MDBox display="flex" flexWrap="wrap" gap={0.5}>
+          {/* Existing routes */}
+          <Card className="xl:self-start">
+            <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3">
+              <h3 className="m-0 text-[15px] font-semibold text-slate-900">Routes</h3>
+              <button type="button" className={btn.ghost} disabled={loading} onClick={() => setRefresh((value) => value + 1)}>
+                <Icon name="refresh" className="text-[18px]" />Refresh
+              </button>
+            </div>
+            <div className="max-h-[620px] space-y-3 overflow-y-auto p-4">
+              {!loading && !routes.length && <p className="m-0 py-8 text-center text-[13px] text-slate-400">No routes yet.</p>}
+              {routes.map((route) => {
+                const editing = editingRoute?.id === route.id;
+                return (
+                  <div key={route.id} className={`rounded-xl border p-3 transition ${editing ? "border-blue-400 bg-blue-50/50 ring-2 ring-blue-500/20" : "border-slate-200 hover:border-slate-300"}`}>
+                    <div className="flex items-center gap-2">
+                      <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-blue-600 text-white"><Icon name="alt_route" className="text-[17px]" /></span>
+                      <span className="min-w-0 grow">
+                        <span className="block text-[14px] font-bold text-slate-900">{route.name}</span>
+                        <span className="block text-[11.5px] text-slate-500">{route.areas.length} area{route.areas.length === 1 ? "" : "s"}</span>
+                      </span>
+                      <button type="button" className={`${btn.icon} hover:text-blue-700`} onClick={() => startEdit(route)} disabled={saving} title={`Edit ${route.name}`} aria-label={`Edit ${route.name}`}>
+                        <Icon name="edit" className="text-[18px]" />
+                      </button>
+                      {deletingId === route.id ? (
+                        <Spinner className="mx-2 size-4" />
+                      ) : (
+                        <button type="button" className={`${btn.icon} hover:bg-red-50 hover:text-red-600`} onClick={() => deleteRoute(route)} title={`Delete ${route.name}`} aria-label={`Delete ${route.name}`}>
+                          <Icon name="delete_outline" className="text-[19px]" />
+                        </button>
+                      )}
+                    </div>
+                    <ol className="m-0 mt-2.5 flex list-none flex-wrap gap-1.5 p-0">
                       {route.areas.map((areaName, index) => (
-                        <Chip key={areaName} label={`${index + 1}. ${areaName}`} size="small" variant="outlined" />
+                        <li key={areaName} className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white py-0.5 pl-0.5 pr-2 text-[11.5px] font-medium text-slate-700">
+                          <span className="flex size-5 items-center justify-center rounded-full bg-slate-100 text-[10.5px] font-bold text-slate-600">{index + 1}</span>
+                          {areaName}
+                        </li>
                       ))}
-                    </MDBox>
-                  </MDBox>
-                ))}
-              </MDBox>
-            </Card>
-          </Grid>
-        </Grid>
-      </MDBox>
+                    </ol>
+                  </div>
+                );
+              })}
+            </div>
+          </Card>
+        </div>
+      </div>
 
-      <Dialog open={dialogOpen} onClose={() => !saving && setDialogOpen(false)} fullWidth maxWidth="xs">
-        <MDBox component="form" onSubmit={saveRoute}>
-          <DialogTitle>{editingRoute ? "Save Route" : "Name this Route"}</DialogTitle>
-          <DialogContent dividers>
-            <MDInput
-              label="Route name"
-              value={routeName}
-              onChange={(event) => setRouteName(event.target.value)}
-              fullWidth
-              required
-              autoFocus
-              disabled={saving}
-              inputProps={{ maxLength: 100 }}
-              helperText="For example R 1 or ROUTE 1. Saved in uppercase."
-            />
-            <MDTypography variant="caption" display="block" mt={2} fontWeight="bold">
-              Area priority ({selected.length} area{selected.length === 1 ? "" : "s"})
-            </MDTypography>
-            <MDTypography variant="caption" display="block" mb={0.75} color="text">
-              1 is delivered first. Use the arrows to change the order. Bills from higher-priority areas come first in Report — Pending Deliveries.
-            </MDTypography>
-            <MDBox sx={{ border: "1px solid #e2e8f0", borderRadius: "8px", maxHeight: 320, overflowY: "auto" }}>
-              {selected.map((areaName, index) => (
-                <MDBox key={areaName} display="flex" alignItems="center" gap={1} px={1} py={0.5}
-                  sx={{ borderBottom: index < selected.length - 1 ? "1px solid #e2e8f0" : 0 }}>
-                  <Chip label={index + 1} size="small" color="info" sx={{ minWidth: 34 }} />
-                  <MDTypography variant="button" sx={{ flex: 1 }}>{areaName}</MDTypography>
-                  <IconButton size="small" disabled={saving || index === 0} onClick={() => moveArea(index, -1)} aria-label={`Move ${areaName} up`}>
-                    <Icon fontSize="small">arrow_upward</Icon>
-                  </IconButton>
-                  <IconButton size="small" disabled={saving || index === selected.length - 1} onClick={() => moveArea(index, 1)} aria-label={`Move ${areaName} down`}>
-                    <Icon fontSize="small">arrow_downward</Icon>
-                  </IconButton>
-                </MDBox>
-              ))}
-            </MDBox>
-            {saveError && <MDBox mt={2}><Alert severity="error">{saveError}</Alert></MDBox>}
-          </DialogContent>
-          <DialogActions>
-            <MDButton variant="outlined" color="dark" onClick={() => setDialogOpen(false)} disabled={saving}>
-              Cancel
-            </MDButton>
-            <MDButton type="submit" variant="gradient" color="info" disabled={saving || !routeName.trim()}>
+      <Modal
+        open={dialogOpen} onClose={() => setDialogOpen(false)} locked={saving} title={editingRoute ? "Save Route" : "Name this Route"}
+        actions={(
+          <>
+            <button type="button" className={btn.ghost} onClick={() => setDialogOpen(false)} disabled={saving}>Cancel</button>
+            <button type="submit" form="route-form" className={btn.primary} disabled={saving || !routeName.trim()}>
               {saving ? "Saving…" : editingRoute ? "Save Route" : "Create Route"}
-            </MDButton>
-          </DialogActions>
-        </MDBox>
-      </Dialog>
+            </button>
+          </>
+        )}
+      >
+        <form id="route-form" onSubmit={saveRoute} className="space-y-4">
+          <Field label="Route name" width="w-full" hint="For example R 1 or ROUTE 1. Saved in uppercase.">
+            {/* eslint-disable-next-line jsx-a11y/no-autofocus */}
+            <input className={fieldClass} value={routeName} onChange={(event) => setRouteName(event.target.value)} required autoFocus disabled={saving} maxLength={100} />
+          </Field>
+          <div>
+            <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+              Area priority ({selected.length} area{selected.length === 1 ? "" : "s"})
+            </span>
+            <p className="m-0 mt-0.5 text-[12px] text-slate-500">
+              1 is delivered first. Use the arrows to change the order. Bills from higher-priority areas come first in Report — Pending Deliveries.
+            </p>
+            <ol className="m-0 mt-2 max-h-80 list-none overflow-y-auto rounded-xl border border-slate-200 p-0">
+              {selected.map((areaName, index) => (
+                <li key={areaName} className="flex items-center gap-2 border-b border-slate-100 px-2.5 py-1.5 last:border-0">
+                  <span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-blue-600 text-[12px] font-bold text-white">{index + 1}</span>
+                  <span className="grow text-[13px] font-medium text-slate-800">{areaName}</span>
+                  <button type="button" className={btn.icon} disabled={saving || index === 0} onClick={() => moveArea(index, -1)} aria-label={`Move ${areaName} up`}>
+                    <Icon name="arrow_upward" className="text-[18px]" />
+                  </button>
+                  <button type="button" className={btn.icon} disabled={saving || index === selected.length - 1} onClick={() => moveArea(index, 1)} aria-label={`Move ${areaName} down`}>
+                    <Icon name="arrow_downward" className="text-[18px]" />
+                  </button>
+                </li>
+              ))}
+            </ol>
+          </div>
+          {saveError && <Notice tone="error">{saveError}</Notice>}
+        </form>
+      </Modal>
       <Footer />
     </DashboardLayout>
   );

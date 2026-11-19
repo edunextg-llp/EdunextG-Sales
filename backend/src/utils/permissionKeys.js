@@ -158,7 +158,7 @@ export const permissionsFromRow = (row) => PERMISSION_KEYS.filter((key) => Boole
 
 // Roles a Bawarchee Staff login can have. The role is a label plus a starting set
 // of permissions; the admin can tick or untick individual pages afterwards.
-export const BAWARCHEE_ROLES = ['admin', 'manager', 'accountant', 'operator'];
+export const BAWARCHEE_ROLES = ['admin', 'manager', 'accountant', 'operator', 'hr'];
 
 // A Bawarchee manager always reviews overdue requests, whatever pages are ticked for them.
 export const withRolePermissions = (permissions, bawarcheeRole) => (

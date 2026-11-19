@@ -1,40 +1,14 @@
+// Bawarchee Staff (Delivery Boy / Packaging Staff logins): Tailwind CSS (no MUI).
+// The data loading, create / edit, credentials, active switch and delete logic is unchanged.
 import { useState, useEffect } from "react";
 
-// @mui material components
-import Grid from "@mui/material/Grid";
-import Card from "@mui/material/Card";
-import Icon from "@mui/material/Icon";
-import {
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  FormControl,
-  InputLabel,
-  MenuItem,
-  OutlinedInput,
-  Select,
-  Switch,
-  FormControlLabel,
-  RadioGroup,
-  Radio,
-  FormLabel,
-} from "@mui/material";
-// Material Dashboard 2 React components
-import MDBox from "components/MDBox";
-import MDTypography from "components/MDTypography";
-import MDInput from "components/MDInput";
-import MDButton from "components/MDButton";
-
-// Material Dashboard 2 React example components
 import DashboardLayout from "examples/LayoutContainers/DashboardLayout";
 import DashboardNavbar from "examples/Navbars/DashboardNavbar";
 import Footer from "examples/Footer";
-import DataTable from "examples/Tables/DataTable";
-import { FaRegEdit } from "react-icons/fa";
-import { CiTrash } from "react-icons/ci";
-import CompanyTypeSelect from "components/CompanyFilter/CompanyTypeSelect";
-
+import { COMPANY_TYPES } from "utils/companyTypes";
+import {
+  Card, Field, Icon, Modal, PageHeader, Spinner, StatBox, Toggle, btn, fieldClass, initialsOf, td, th,
+} from "components/tw";
 
 function CreateBawarcheeStaff() {
   const [name, setName] = useState("");
@@ -287,294 +261,213 @@ function CreateBawarcheeStaff() {
     }
   };
 
+  const roleName = (value) => (value === "packaging_staff" ? "Packaging Staff" : "Delivery Boy");
+  const activeCount = deliveryBoys.filter((boy) => boy.is_active === 1).length;
+  const packagingCount = deliveryBoys.filter((boy) => boy.role === "packaging_staff").length;
+  const visibleCompanies = companyOptions.filter((company) => !companyType || company.type === companyType || companyIds.includes(company.id));
+  const toggleCompany = (id) => setCompanyIds((list) => (list.includes(id) ? list.filter((value) => value !== id) : [...list, id]));
+
   return (
     <DashboardLayout>
       <DashboardNavbar />
-      <MDBox pt={6} pb={3}>
-        <Grid container spacing={3}>
-          <Grid item xs={12}>
-            <Card>
-              <MDBox p={3}>
-                <MDBox
-                  display="flex"
-                  flexDirection={{ xs: "column", sm: "row" }}
-                  justifyContent="space-between"
-                  alignItems={{ xs: "stretch", sm: "center" }}
-                  gap={2}
-                  mb={3}
-                >
-                  <MDTypography variant="h5" fontWeight="medium">
-                    Delivery Boys
-                  </MDTypography>
-                  <MDBox display="flex" alignItems="center" gap={2}>
-                    <FormControlLabel
-                      control={
-                        <Switch
-                          checked={showInactive}
-                          onChange={(e) => setShowInactive(e.target.checked)}
-                        />
-                      }
-                      label="Show Inactive"
-                    />
-                    <MDButton color="info" variant="gradient" onClick={openDeliveryModal}>
-                      <Icon sx={{ mr: 1 }}>add</Icon>
-                      Create Bawarchee Staff
-                    </MDButton>
-                  </MDBox>
-                </MDBox>
+      <div className="pb-8 font-[Poppins,Roboto,sans-serif] text-slate-700">
+        <PageHeader
+          title="Bawarchee Staff"
+          description="Delivery Boy and Packaging Staff logins: create them, set their companies, manage their Login ID and password."
+          actions={(
+            <>
+              <label className="mr-1 flex cursor-pointer items-center gap-2 text-[13px] font-medium text-slate-600">
+                <Toggle checked={showInactive} onChange={(e) => setShowInactive(e.target.checked)} label="Show inactive" />
+                Show inactive
+              </label>
+              <button type="button" className={btn.primary} onClick={openDeliveryModal}>
+                <Icon name="person_add" className="text-[18px]" />Create Bawarchee Staff
+              </button>
+            </>
+          )}
+        />
 
-                {loadingList ? (
-                  <MDTypography variant="body2" color="text">
-                    Loading...
-                  </MDTypography>
-                ) : deliveryBoys.length === 0 ? (
-                  <MDTypography variant="body2" color="text">
-                    No delivery boys added yet. Click &quot;Create Delivery Boy&quot; to add one.
-                  </MDTypography>
-                ) : (
-                  <MDBox pt={3}>
-                    <DataTable
-                      table={{
-                        columns: [
-                          // { Header: <MDTypography variant="subtitle2" color="dark" fontWeight="bold">#</MDTypography>, accessor: "id", width: "10%", align: "left" },
-                          { Header: <MDTypography variant="subtitle2" color="dark" fontWeight="bold">Company</MDTypography>, accessor: "company", width: "30%", align: "left" },
-                          { Header: <MDTypography variant="subtitle2" color="dark" fontWeight="bold">Name</MDTypography>, accessor: "name", width: "30%", align: "left" },
-                          { Header: <MDTypography variant="subtitle2" color="dark" fontWeight="bold">Role</MDTypography>, accessor: "role", align: "center" },
-                          { Header: <MDTypography variant="subtitle2" color="dark" fontWeight="bold">Contact Number</MDTypography>, accessor: "contact", align: "center" },
-                          { Header: <MDTypography variant="subtitle2" color="dark" fontWeight="bold">Login ID</MDTypography>, accessor: "loginId", align: "center" },
-                          { Header: <MDTypography variant="subtitle2" color="dark" fontWeight="bold">Passcode</MDTypography>, accessor: "passcode", align: "center" },
-                          { Header: <MDTypography variant="subtitle2" color="dark" fontWeight="bold">Status</MDTypography>, accessor: "status", align: "center" },
-                          { Header: <MDTypography variant="subtitle2" color="dark" fontWeight="bold">Action</MDTypography>, accessor: "action", align: "center" },
-                        ],
-                        rows: deliveryBoys.map((boy, index) => ({
-                          // id: (
-                          //   <MDTypography component="span" variant="caption" color="text" fontWeight="medium" sx={{ opacity: boy.is_active === 0 ? 0.5 : 1 }}>
-                          //     {index + 1}
-                          //   </MDTypography>
-                          // ),
-                          name: (
-                            <MDTypography component="span" variant="caption" color="text" fontWeight="medium" sx={{ opacity: boy.is_active === 0 ? 0.5 : 1 }}>
-                              {boy.name}
-                            </MDTypography>
-                          ),
-                          company: (
-                            <MDTypography component="span" variant="caption" color="text" fontWeight="medium" sx={{ opacity: boy.is_active === 0 ? 0.5 : 1 }}>
-                              {boy.company_name || "—"}
-                            </MDTypography>
-                          ),
-                          role: (
-                            <MDTypography component="span" variant="caption" color="text" fontWeight="medium" sx={{ opacity: boy.is_active === 0 ? 0.5 : 1 }}>
-                              {boy.role === "packaging_staff" ? "Packaging Staff" : "Delivery Boy"}
-                            </MDTypography>
-                          ),
-                          contact: (
-                            <MDTypography component="span" variant="caption" color="text" fontWeight="medium" sx={{ opacity: boy.is_active === 0 ? 0.5 : 1 }}>
-                              {boy.contact_no}
-                            </MDTypography>
-                          ),
-                          loginId: (
-                            <MDTypography component="span" variant="caption" color="text" fontWeight="bold" sx={{ opacity: boy.is_active === 0 ? 0.5 : 1 }}>
-                              {boy.delivery_login_id || "N/A"}
-                            </MDTypography>
-                          ),
-                          passcode: (
-                            <MDTypography component="span" variant="caption" color="text" fontWeight="bold" sx={{ opacity: boy.is_active === 0 ? 0.5 : 1 }}>
-                              {boy.delivery_passcode || "N/A"}
-                            </MDTypography>
-                          ),
-                          status: (
-                            <Switch
-                              checked={boy.is_active === 1}
-                              onChange={() => handleToggleActive(boy)}
-                              color="primary"
-                            />
-                          ),
-                          action: (
-                            <MDBox display="flex" gap={1} justifyContent="center" flexWrap="wrap">
-                              {!boy.delivery_passcode && (
-                                <Icon
-                                  title="Generate ID and password one time"
-                                  onClick={() => handleGeneratePreviousCredentials(boy)}
-                                  sx={{ cursor: "pointer", color: "#0288d1", fontSize: 21 }}
-                                >
-                                  key
-                                </Icon>
-                              )}
-                              <Icon
-                                title="Update Login ID and Password"
-                                onClick={() => openCredentialsModal(boy)}
-                                sx={{ cursor: "pointer", color: "#0288d1", fontSize: 21 }}
-                              >
-                                manage_accounts
-                              </Icon>
-                              <FaRegEdit onClick={() => startEditDeliveryBoy(boy)} style={{ cursor: "pointer" }} color="#E0E388" size={20} />
-                              <CiTrash onClick={() => handleDeleteDeliveryBoy(boy)} style={{ cursor: "pointer" }} color="#FF0000" size={20} />
-                            </MDBox>
-                          ),
-                        })),
-                      }}
-                      isSorted={false}
-                      entriesPerPage={false}
-                      showTotalEntries={false}
-                      noEndBorder
-                    />
-                  </MDBox>
-                )}
-              </MDBox>
-            </Card>
-          </Grid>
-        </Grid>
-      </MDBox>
+        {!loadingList && (
+          <div className="mb-5 flex flex-wrap gap-2">
+            <StatBox label={showInactive ? "Staff (incl. inactive)" : "Staff"} value={deliveryBoys.length} icon="groups" />
+            <StatBox label="Active" value={activeCount} icon="check_circle" />
+            <StatBox label="Packaging" value={packagingCount} icon="inventory" />
+            <StatBox label="Delivery" value={deliveryBoys.length - packagingCount} icon="local_shipping" />
+          </div>
+        )}
 
-      <Dialog open={credentialsModalOpen} onClose={closeCredentialsModal} fullWidth maxWidth="xs">
-        <DialogTitle sx={{ fontWeight: "bold", color: "#344767" }}>
-          Update Login ID & Password
-        </DialogTitle>
-        <DialogContent dividers>
-          <MDTypography variant="body2" color="text" mb={2}>
-            {credentialStaff?.name || "Staff"}
-          </MDTypography>
-          <MDBox mb={2}>
-            <MDInput
-              label="Login ID"
-              fullWidth
-              value={loginId}
-              onChange={(e) => setLoginId(e.target.value)}
-              inputProps={{ maxLength: 50, autoComplete: "username" }}
-            />
-          </MDBox>
-          <MDInput
-            type="password"
-            label="New Password"
-            fullWidth
-            value={newPassword}
-            onChange={(e) => setNewPassword(e.target.value)}
-            inputProps={{ minLength: 8, autoComplete: "new-password" }}
-            helperText="Minimum 8 characters"
-          />
-        </DialogContent>
-        <DialogActions sx={{ px: 3, py: 2 }}>
-          <MDButton variant="outlined" color="dark" onClick={closeCredentialsModal} disabled={savingCredentials}>
-            Cancel
-          </MDButton>
-          <MDButton variant="gradient" color="info" onClick={handleUpdateCredentials} disabled={savingCredentials}>
-            {savingCredentials ? "Updating..." : "Update Credentials"}
-          </MDButton>
-        </DialogActions>
-      </Dialog>
+        <Card>
+          {loadingList ? (
+            <div className="flex justify-center py-16"><Spinner className="size-7" /></div>
+          ) : deliveryBoys.length === 0 ? (
+            <div className="flex flex-col items-center gap-2 py-16 text-center">
+              <Icon name="badge" className="text-[34px] text-slate-300" />
+              <p className="m-0 text-[13px] text-slate-500">No staff added yet. Click &quot;Create Bawarchee Staff&quot; to add one.</p>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full border-collapse">
+                <thead>
+                  <tr className="bg-slate-50">
+                    <th className={th}>Staff</th>
+                    <th className={th}>Company</th>
+                    <th className={th}>Contact number</th>
+                    <th className={th}>Login ID</th>
+                    <th className={th}>Passcode</th>
+                    <th className={th}>Status</th>
+                    <th className={`${th} text-right`}>Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {deliveryBoys.map((boy) => {
+                    const inactive = boy.is_active === 0;
+                    return (
+                      <tr key={boy.id} className={`border-t border-slate-100 hover:bg-slate-50/70 ${inactive ? "opacity-55" : ""}`}>
+                        <td className={td}>
+                          <span className="flex items-center gap-3">
+                            <span className={`flex size-9 shrink-0 items-center justify-center rounded-full text-[12px] font-bold text-white ${boy.role === "packaging_staff" ? "bg-violet-600" : "bg-cyan-600"}`}>
+                              {initialsOf(boy.name)}
+                            </span>
+                            <span className="min-w-0">
+                              <span className="block font-semibold text-slate-800">{boy.name}</span>
+                              <span className="block text-[11.5px] text-slate-500">{roleName(boy.role)}</span>
+                            </span>
+                          </span>
+                        </td>
+                        <td className={`${td} max-w-56`}>{boy.company_name || "—"}</td>
+                        <td className={`${td} tabular-nums`}>{boy.contact_no}</td>
+                        <td className={td}>
+                          {boy.delivery_login_id
+                            ? <span className="rounded-md bg-slate-100 px-2 py-0.5 font-mono text-[12px] font-semibold text-slate-800">{boy.delivery_login_id}</span>
+                            : <span className="text-slate-400">N/A</span>}
+                        </td>
+                        <td className={td}>
+                          {boy.delivery_passcode
+                            ? <span className="font-mono text-[12px] font-semibold text-slate-800">{boy.delivery_passcode}</span>
+                            : <span className="text-slate-400">N/A</span>}
+                        </td>
+                        <td className={td}>
+                          <label className="flex cursor-pointer items-center gap-2">
+                            <Toggle checked={boy.is_active === 1} onChange={() => handleToggleActive(boy)} label={`${boy.name} active`} />
+                            <span className={`text-[12px] font-semibold ${inactive ? "text-slate-400" : "text-emerald-700"}`}>{inactive ? "Inactive" : "Active"}</span>
+                          </label>
+                        </td>
+                        <td className={`${td} text-right`}>
+                          <span className="inline-flex items-center gap-0.5">
+                            {!boy.delivery_passcode && (
+                              <button type="button" className={`${btn.icon} hover:text-blue-700`} title="Generate ID and password one time" aria-label="Generate ID and password one time" onClick={() => handleGeneratePreviousCredentials(boy)}>
+                                <Icon name="key" className="text-[19px]" />
+                              </button>
+                            )}
+                            <button type="button" className={`${btn.icon} hover:text-blue-700`} title="Update Login ID and Password" aria-label="Update Login ID and Password" onClick={() => openCredentialsModal(boy)}>
+                              <Icon name="manage_accounts" className="text-[19px]" />
+                            </button>
+                            <button type="button" className={`${btn.icon} hover:text-amber-700`} title="Edit" aria-label={`Edit ${boy.name}`} onClick={() => startEditDeliveryBoy(boy)}>
+                              <Icon name="edit" className="text-[19px]" />
+                            </button>
+                            <button type="button" className={`${btn.icon} hover:bg-red-50 hover:text-red-600`} title="Delete" aria-label={`Delete ${boy.name}`} onClick={() => handleDeleteDeliveryBoy(boy)}>
+                              <Icon name="delete_outline" className="text-[19px]" />
+                            </button>
+                          </span>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </Card>
+      </div>
 
-      <Dialog open={deliveryModalOpen} onClose={closeDeliveryModal} fullWidth maxWidth="sm">
-        <DialogTitle sx={{ fontWeight: "bold", color: "#344767" }}>
-          {editingId ? "Edit Bawarchee Staff" : "Create Bawarchee Staff"}
-        </DialogTitle>
-        <DialogContent dividers>
-          <MDBox pt={1} component="form" role="form">
-            <MDBox mb={2}>
-              <FormControl component="fieldset">
-                <FormLabel component="legend" sx={{ fontSize: "0.875rem", fontWeight: "bold", color: "#344767" }}>
-                  Role
-                </FormLabel>
-                <RadioGroup
-                  row
-                  value={role}
-                  onChange={(e) => setRole(e.target.value)}
+      <Modal
+        open={credentialsModalOpen} onClose={closeCredentialsModal} locked={savingCredentials} title="Update Login ID & Password"
+        actions={(
+          <>
+            <button type="button" className={btn.ghost} onClick={closeCredentialsModal} disabled={savingCredentials}>Cancel</button>
+            <button type="button" className={btn.primary} onClick={handleUpdateCredentials} disabled={savingCredentials}>
+              {savingCredentials ? "Updating..." : "Update Credentials"}
+            </button>
+          </>
+        )}
+      >
+        <p className="m-0 mb-4 text-[13px] font-semibold text-slate-800">{credentialStaff?.name || "Staff"}</p>
+        <div className="space-y-3">
+          <Field label="Login ID" width="w-full">
+            <input className={fieldClass} value={loginId} onChange={(e) => setLoginId(e.target.value)} maxLength={50} autoComplete="username" />
+          </Field>
+          <Field label="New password" width="w-full" hint="Minimum 8 characters">
+            <input type="password" className={fieldClass} value={newPassword} onChange={(e) => setNewPassword(e.target.value)} minLength={8} autoComplete="new-password" />
+          </Field>
+        </div>
+      </Modal>
+
+      <Modal
+        open={deliveryModalOpen} onClose={closeDeliveryModal} locked={submitting} title={editingId ? "Edit Bawarchee Staff" : "Create Bawarchee Staff"}
+        actions={(
+          <>
+            <button type="button" className={btn.ghost} onClick={closeDeliveryModal} disabled={submitting}>Cancel</button>
+            <button type="button" className={btn.primary} onClick={handleSubmit} disabled={submitting}>
+              {submitting ? (editingId ? "Updating..." : "Creating...") : (editingId ? "Update Bawarchee Staff" : "Create Bawarchee Staff")}
+            </button>
+          </>
+        )}
+      >
+        <div className="space-y-4">
+          <div>
+            <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Role</span>
+            <div className="mt-1.5 grid grid-cols-2 gap-2" role="radiogroup" aria-label="Role">
+              {[["delivery_boy", "Delivery Boy", "local_shipping"], ["packaging_staff", "Packaging Staff", "inventory"]].map(([value, label, icon]) => (
+                <button
+                  key={value} type="button" role="radio" aria-checked={role === value} onClick={() => setRole(value)}
+                  className={`flex items-center gap-2 rounded-xl border px-3 py-2.5 text-[13px] font-semibold transition ${role === value ? "border-blue-500 bg-blue-50 text-blue-800 ring-2 ring-blue-500/20" : "border-slate-200 text-slate-600 hover:bg-slate-50"}`}
                 >
-                  <FormControlLabel value="delivery_boy" control={<Radio />} label="Delivery Boy" />
-                  <FormControlLabel value="packaging_staff" control={<Radio />} label="Packaging Staff" />
-                </RadioGroup>
-              </FormControl>
-            </MDBox>
-            <MDBox mb={2}>
-              <CompanyTypeSelect
-                id="delivery-company-type"
-                value={companyType}
-                onChange={setCompanyType}
-              />
-            </MDBox>
-            <MDBox mb={2}>
-              <FormControl fullWidth size="small">
-                <InputLabel id="delivery-company-label">Company Name</InputLabel>
-                <Select
-                  labelId="delivery-company-label"
-                  multiple
-                  value={companyIds}
-                  label="Company Name"
-                  onChange={(e) => {
-                    const value = e.target.value;
-                    setCompanyIds(typeof value === "string" ? value.split(",") : value);
-                  }}
-                  input={<OutlinedInput label="Company Name" />}
-                  renderValue={(selected) =>
-                    selected
-                      .map((id) => companyOptions.find((company) => company.id === id)?.name)
-                      .filter(Boolean)
-                      .join(", ")
-                  }
-                  sx={{ minHeight: 44 }}
-                >
-                  {companyOptions
-                    .filter((company) => !companyType || company.type === companyType || companyIds.includes(company.id))
-                    .map((company) => (
-                      <MenuItem key={company.id} value={company.id}>
-                        {company.name}
-                      </MenuItem>
-                    ))}
-                  {companyOptions.length === 0 && (
-                    <MenuItem disabled>No staff company assigned</MenuItem>
-                  )}
-                </Select>
-              </FormControl>
-            </MDBox>
-            <MDBox mb={2}>
-              <MDInput
-                type="text"
-                label="Name"
-                fullWidth
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-              />
-            </MDBox>
-            <MDBox mb={2}>
-              <MDInput
-                type="text"
-                label="Contact Number"
-                fullWidth
-                value={contactNo}
-                onChange={(e) => setContactNo(e.target.value.replace(/\D/g, ""))}
-              />
-            </MDBox>
-            <MDBox mb={2}>
-              <MDInput
-                type="text"
-                label="Aadhar Number (Optional)"
-                fullWidth
-                value={aadharNo}
-                onChange={(e) => setAadharNo(e.target.value.replace(/\D/g, "").slice(0, 12))}
-                inputProps={{ maxLength: 12 }}
-                helperText="12 digit Aadhar number — document upload not required"
-              />
-            </MDBox>
-          </MDBox>
-        </DialogContent>
-        <DialogActions sx={{ px: 3, py: 2 }}>
-          <MDButton variant="outlined" color="dark" onClick={closeDeliveryModal} disabled={submitting}>
-            Cancel
-          </MDButton>
-          <MDButton variant="gradient" color="info" onClick={handleSubmit} disabled={submitting}>
-            {submitting
-              ? editingId
-                ? "Updating..."
-                : "Creating..."
-              : editingId
-                ? "Update Bawarchee Staff"
-                : "Create Bawarchee Staff"}
-          </MDButton>
-        </DialogActions>
-      </Dialog>
+                  <Icon name={icon} className="text-[19px]" />{label}
+                </button>
+              ))}
+            </div>
+          </div>
+          <Field label="Company type" width="w-full">
+            <select className={fieldClass} value={companyType} onChange={(e) => setCompanyType(e.target.value)}>
+              <option value="">All types</option>
+              {COMPANY_TYPES.map((type) => <option key={type.value} value={type.value}>{type.label}</option>)}
+            </select>
+          </Field>
+          <div>
+            <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Company name</span>
+            <div className="mt-1.5 max-h-44 overflow-y-auto rounded-lg border border-slate-300 p-1">
+              {visibleCompanies.map((company) => {
+                const on = companyIds.includes(company.id);
+                return (
+                  <label key={company.id} className={`flex cursor-pointer items-center gap-2.5 rounded-md px-2.5 py-1.5 text-[13px] ${on ? "bg-blue-50 font-semibold text-blue-800" : "text-slate-700 hover:bg-slate-50"}`}>
+                    <input type="checkbox" className="size-4 accent-blue-600" checked={on} onChange={() => toggleCompany(company.id)} />
+                    {company.name}
+                  </label>
+                );
+              })}
+              {companyOptions.length === 0 && <p className="m-0 px-2.5 py-2 text-[13px] text-slate-400">No staff company assigned</p>}
+            </div>
+            <p className="m-0 mt-1 text-[11.5px] text-slate-500">
+              {companyIds.length ? `${companyIds.length} selected: ${companyIds.map((id) => companyOptions.find((c) => c.id === id)?.name).filter(Boolean).join(", ")}` : "Choose one or more companies."}
+            </p>
+          </div>
+          <Field label="Name" width="w-full">
+            <input className={fieldClass} value={name} onChange={(e) => setName(e.target.value)} />
+          </Field>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <Field label="Contact number" width="w-full">
+              <input className={fieldClass} inputMode="numeric" value={contactNo} onChange={(e) => setContactNo(e.target.value.replace(/\D/g, ""))} />
+            </Field>
+            <Field label="Aadhar number (optional)" width="w-full" hint="12 digits — no document needed">
+              <input className={fieldClass} inputMode="numeric" value={aadharNo} maxLength={12} onChange={(e) => setAadharNo(e.target.value.replace(/\D/g, "").slice(0, 12))} />
+            </Field>
+          </div>
+        </div>
+      </Modal>
 
       <Footer />
     </DashboardLayout>
   );
 }
 
-export default CreateBawarcheeStaff;  
+export default CreateBawarcheeStaff;
