@@ -163,6 +163,8 @@ export function SearchSelect({ options, value, onChange, placeholder, disabled, 
   const [query, setQuery] = useState("");
   const [active, setActive] = useState(0);
   const boxRef = useRef(null);
+  const listRef = useRef(null);
+  const [place, setPlace] = useState(null);
   const listId = useId();
   const selected = options.find((o) => o.value === value) || null;
   const filtered = useMemo(() => {
@@ -172,9 +174,29 @@ export function SearchSelect({ options, value, onChange, placeholder, disabled, 
 
   useEffect(() => {
     if (!open) return undefined;
-    const onDown = (event) => { if (boxRef.current && !boxRef.current.contains(event.target)) setOpen(false); };
+    const onDown = (event) => {
+      const inBox = boxRef.current && boxRef.current.contains(event.target);
+      const inList = listRef.current && listRef.current.contains(event.target);
+      if (!inBox && !inList) setOpen(false);
+    };
     document.addEventListener("mousedown", onDown);
     return () => document.removeEventListener("mousedown", onDown);
+  }, [open]);
+  // The list is drawn at the end of <body> (fixed, under the input) so a card or popup with
+  // overflow hidden can't cut it off. It opens upwards when there is no room below.
+  useEffect(() => {
+    if (!open) return undefined;
+    const update = () => {
+      const rect = boxRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      const below = window.innerHeight - rect.bottom;
+      const up = below < 220 && rect.top > below;
+      setPlace({ left: rect.left, width: rect.width, top: up ? undefined : rect.bottom + 4, bottom: up ? window.innerHeight - rect.top + 4 : undefined, max: Math.max(120, Math.min(256, (up ? rect.top : below) - 12)) });
+    };
+    update();
+    window.addEventListener("resize", update);
+    window.addEventListener("scroll", update, true);
+    return () => { window.removeEventListener("resize", update); window.removeEventListener("scroll", update, true); };
   }, [open]);
   useEffect(() => { setActive(0); }, [query, open]);
 
@@ -212,8 +234,12 @@ export function SearchSelect({ options, value, onChange, placeholder, disabled, 
           <Icon name="expand_more" className="pointer-events-none text-[18px] text-slate-400" />
         </span>
       </div>
-      {open && !disabled && (
-        <ul id={listId} role="listbox" className="absolute left-0 right-0 top-[calc(100%+4px)] z-[1400] m-0 max-h-64 list-none overflow-y-auto rounded-xl border border-slate-200 bg-white p-1 shadow-xl">
+      {open && !disabled && place && createPortal((
+        <ul
+          ref={listRef} id={listId} role="listbox"
+          style={{ left: place.left, width: place.width, top: place.top, bottom: place.bottom, maxHeight: place.max }}
+          className="fixed z-[1400] m-0 list-none overflow-y-auto rounded-xl border border-slate-200 bg-white p-1 font-[Poppins,Roboto,sans-serif] shadow-xl"
+        >
           {filtered.map((option, index) => (
             <li
               key={option.value} role="option" aria-selected={option.value === value} aria-disabled={option.disabled}
@@ -226,7 +252,7 @@ export function SearchSelect({ options, value, onChange, placeholder, disabled, 
           ))}
           {!filtered.length && <li className="px-2.5 py-2 text-[12.5px] text-slate-400">{noOptionsText}</li>}
         </ul>
-      )}
+      ), document.body)}
     </div>
   );
 }
