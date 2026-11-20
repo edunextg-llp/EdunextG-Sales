@@ -214,6 +214,11 @@ export const create = async (req, res) => {
 export const list = async (req, res) => {
     try {
         const date = req.query.date ? String(req.query.date).trim() : null;
+        // Optional date range (both days included); anything that isn't YYYY-MM-DD is ignored.
+        const dayParam = (value) => (/^\d{4}-\d{2}-\d{2}$/.test(String(value || '').trim()) ? String(value).trim() : null);
+        let from = dayParam(req.query.from);
+        let to = dayParam(req.query.to);
+        if (from && to && from > to) [from, to] = [to, from];
         const requestedStaffId = Number(req.query.staffId);
         const requestedCompanyId = Number(req.query.companyId);
         const staffId = req.user?.role === 'staff' ? Number(req.user.staffId) : requestedStaffId;
@@ -221,10 +226,12 @@ export const list = async (req, res) => {
             ? requestedCompanyId
             : null;
         const requisitions = Number.isInteger(staffId) && staffId > 0
-            ? await PurchaseRequisitionModel.listByStaff(staffId, { date, companyId })
+            ? await PurchaseRequisitionModel.listByStaff(staffId, { date, companyId, from, to })
             : await PurchaseRequisitionModel.listAll({
                 date,
                 companyId,
+                from,
+                to,
                 status: req.query.status ? String(req.query.status).trim() : null,
             });
         // Approvers never see drafts (not Final Submitted yet); staff see their own.

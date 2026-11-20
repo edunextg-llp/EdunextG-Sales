@@ -1846,16 +1846,29 @@ export const recordSales = async (req, res) => {
         // "Own permission": bill a 14+ days overdue outlet with a reason, no admin approval.
         // Overdue on own reason: the user's range of overdue days (Permissions page).
         const ownRange = isAdmin ? null : overdueRangeFor(req.user);
-        const inRange = (outlet) => rangeCovers(ownRange, Number(outlet.maxOverdueDays));
+        const billFor = (outletId) => Math.round(sales
+            .filter((sale) => Number(sale?.outletId) === Number(outletId))
+            .reduce((total, sale) => total + (Number(sale?.price) || 0), 0) * 100) / 100;
+        // Approver tiers: someone chosen as the approver for other users' overdue sales (and still
+        // holding Overdue Approval) may bill the same tier (days and bill limit) on their own reason.
+        const approvesTiers = !isAdmin && userPermissions.includes('add_sales') && userPermissions.includes('overdue_approval')
+            ? (Array.isArray(req.user?.overdueApprovesTiers) ? req.user.overdueApprovesTiers : [])
+            : [];
+        const inApproverTier = (outlet) => approvesTiers.some(
+            (tier) => approvalRouteFor(tier, outlet.maxOverdueDays, billFor(outlet.outletId)).to === 'approver'
+        );
+        const inRange = (outlet) => rangeCovers(ownRange, Number(outlet.maxOverdueDays)) || inApproverTier(outlet);
+        const ownLimitText = [
+            ownRange ? rangeText(ownRange) : '',
+            ...approvesTiers.map((tier) => `${rangeText(tier)}${tier.maxAmount == null ? '' : ` below Rs. ${tier.maxAmount}`} (your approver tier)`),
+        ].filter(Boolean).join(', ');
         let ownApprovedOutlets = [];
         let ownApproval = null;
         // Approver tier (Permissions page): shows Add Sales who each outlet's request will go to.
         // The send endpoints work it out again; this is only for the screen.
         const approverRule = isAdmin ? null : req.user?.overdueApproverRule || null;
         const withApprovalRoute = (outlets) => outlets.map((outlet) => {
-            const bill = Math.round(sales
-                .filter((sale) => Number(sale?.outletId) === Number(outlet.outletId))
-                .reduce((total, sale) => total + (Number(sale?.price) || 0), 0) * 100) / 100;
+            const bill = billFor(outlet.outletId);
             const route = approvalRouteFor(approverRule, outlet.maxOverdueDays, bill);
             return { ...outlet, billAmount: bill, approvalTo: route.to, approverName: route.approverName || null };
         });
@@ -1899,7 +1912,7 @@ export const recordSales = async (req, res) => {
         // Outlets billed with the "7 days overdue" permission (reason given, no admin approval).
         let selfApprovedOutlets = [];
         let selfApproval = null;
-        const canSelfApproveOverdue = !isAdmin && Boolean(ownRange);
+        const canSelfApproveOverdue = !isAdmin && (Boolean(ownRange) || approvesTiers.length > 0);
 
         if (overdueOutlets.length > 0) {
             if (isAdmin && permissionGranted) {
@@ -1946,7 +1959,7 @@ export const recordSales = async (req, res) => {
                             approvalRequired: false,
                             selfApproval: true,
                             selfApproveDays: SELF_APPROVE_OVERDUE_DAYS,
-                            error: `You can bill outlets overdue by ${rangeText(ownRange)} on your own reason. `
+                            error: `You can bill outlets overdue by ${ownLimitText} on your own reason. `
                                 + 'Give a reason to add the sales. Admin will see it.',
                             overdueOutlets: missing,
                             requests,
@@ -1971,7 +1984,7 @@ export const recordSales = async (req, res) => {
                         error: isAdmin
                             ? 'One or more outlets have credit overdue by more than 3 days. Permission is required to add sales.'
                             : beyondSelfLimit
-                                ? `Your overdue permission covers ${rangeText(ownRange)} only. `
+                                ? `Your overdue permission covers ${ownLimitText} only. `
                                     + 'Send a request for approval for the outlets outside it and add the sales after it is approved. '
                                     + 'Outlets inside your range only need your reason.'
                                 : 'One or more outlets have credit overdue by more than 3 days. Send a request to admin and add the sales after it is approved.',

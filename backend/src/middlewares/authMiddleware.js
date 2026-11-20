@@ -53,6 +53,7 @@ export const verifyTokenMiddleware = async (req, res, next) => {
             decoded.companyIds = current.companyIds;
             decoded.overdueRange = current.overdueRange;
             decoded.overdueApproverRule = current.approverRule;
+            decoded.overdueApprovesTiers = current.approvesTiers || [];
         } catch (error) {
             console.error('Permission check failed:', error);
             return res.status(500).json({ error: 'Internal server error' });

@@ -238,12 +238,27 @@ class DeliveryBoyModel {
         const overdueRange = rows[0].overdue_from_days
             ? { from: Number(rows[0].overdue_from_days), to: rows[0].overdue_to_days == null ? null : Number(rows[0].overdue_to_days) }
             : null;
+        // Approver tiers this user approves for other people (they are the chosen approver).
+        // Holding Overdue Approval, they may bill the same tier on their own sales with a reason.
+        const [tierRows] = await db.execute(
+            `SELECT DISTINCT approver_from_days, approver_to_days, approver_max_amount
+             FROM delivery_user_permissions
+             WHERE approver_delivery_boy_id = ? AND approver_from_days IS NOT NULL AND delivery_boy_id <> ?`,
+            [deliveryBoyId, deliveryBoyId]
+        );
+        const approvesTiers = tierRows.map((row) => ({
+            from: Number(row.approver_from_days),
+            to: row.approver_to_days == null ? null : Number(row.approver_to_days),
+            maxAmount: row.approver_max_amount == null ? null : Number(row.approver_max_amount),
+            approverId: Number(deliveryBoyId),
+        }));
         return {
             isActive: Number(rows[0].is_active) === 1,
             permissions: permissionsFromRow(rows[0]),
             companyIds,
             overdueRange,
             approverRule: approverRuleFromRow(rows[0]),
+            approvesTiers,
         };
     }
 

@@ -104,13 +104,22 @@ class PurchaseRequisitionModel {
         return PurchaseRequisitionModel.normalize(rows[0]);
     }
 
-    static async listByStaff(staffId, { date = null, companyId = null } = {}) {
+    static async listByStaff(staffId, { date = null, companyId = null, from = null, to = null } = {}) {
         const params = [staffId];
         let filters = '';
 
         if (date) {
             filters += ' AND DATE(pr.created_at) = ?';
             params.push(date);
+        }
+        // Date range (Outlet Orders): from / to are YYYY-MM-DD, both days included.
+        if (from) {
+            filters += ' AND pr.created_at >= ?';
+            params.push(from);
+        }
+        if (to) {
+            filters += ' AND pr.created_at < DATE_ADD(?, INTERVAL 1 DAY)';
+            params.push(to);
         }
         if (companyId) {
             filters += ' AND pr.company_id = ?';
@@ -161,12 +170,20 @@ class PurchaseRequisitionModel {
         return rows.map((row) => PurchaseRequisitionModel.normalize(row));
     }
 
-    static async listAll({ date = null, companyId = null, status = null } = {}) {
+    static async listAll({ date = null, companyId = null, status = null, from = null, to = null } = {}) {
         const params = [];
         const clauses = [];
         if (date) {
             clauses.push('DATE(pr.created_at) = ?');
             params.push(date);
+        }
+        if (from) {
+            clauses.push('pr.created_at >= ?');
+            params.push(from);
+        }
+        if (to) {
+            clauses.push('pr.created_at < DATE_ADD(?, INTERVAL 1 DAY)');
+            params.push(to);
         }
         if (companyId) {
             clauses.push('pr.company_id = ?');

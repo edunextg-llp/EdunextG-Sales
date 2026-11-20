@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { MdCheck, MdClose, MdPrint, MdRefresh, MdSend, MdTaskAlt, MdVisibility } from "react-icons/md";
 import { apiFetch } from "../auth";
-import { PageHeader, readJson, useFlash } from "../components/ui";
+import { ExcelButton, PageHeader, readJson, useFlash } from "../components/ui";
+import { downloadExcel, fileSafe } from "../utils/excel";
 import { printPurchaseRequisitionPdf, printPurchaseRequisitionsPdf } from "../utils/printPurchaseRequisitionPdf";
 
 // Orders > Outlet Orders. Purchase requisitions that marketing staff raise for their outlets
@@ -396,7 +397,8 @@ export default function OutletOrders({ user }) {
   const [staff, setStaff] = useState([]);
   const [companyId, setCompanyId] = useState("");
   const [staffId, setStaffId] = useState("");
-  const [date, setDate] = useState("");
+  const [fromDate, setFromDate] = useState("");
+  const [toDate, setToDate] = useState("");
   const [show, setShow] = useState("all");
   const [openKey, setOpenKey] = useState(null);
   const [ask, setAsk] = useState(null); // { title, text, button, danger, resolve }
@@ -430,7 +432,8 @@ export default function OutletOrders({ user }) {
       const params = new URLSearchParams();
       if (staffId) params.set("staffId", staffId);
       if (companyId) params.set("companyId", companyId);
-      if (date) params.set("date", date);
+      if (fromDate) params.set("from", fromDate);
+      if (toDate) params.set("to", toDate);
       const res = await apiFetch(`/staff/purchase-requisitions?${params}`);
       const body = await readJson(res);
       if (!res.ok) throw new Error(body.error || "Could not load outlet orders.");
@@ -443,7 +446,7 @@ export default function OutletOrders({ user }) {
     }
     loadRequests();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [staffId, companyId, date, loadRequests]);
+  }, [staffId, companyId, fromDate, toDate, loadRequests]);
 
   useEffect(() => {
     load();
@@ -489,6 +492,98 @@ export default function OutletOrders({ user }) {
     (sum, g) => ({ count: sum.count + g.count, quantity: sum.quantity + g.quantity, value: sum.value + g.value }),
     { count: 0, quantity: 0, value: 0 }
   );
+
+  // Excel: what is on screen (tab + filters) as three sheets: day summary, requisitions, item lines.
+  const SHOW_LABEL = { all: "All", pending: "Pending", below: "Below Target", requests: "Approval Requests" };
+  const exportExcel = () => {
+    const companyName = companies.find((c) => String(c.id) === String(companyId))?.name || "";
+    const staffName = staff.find((s) => String(s.id) === String(staffId))?.name || "";
+    const rangeText = fromDate && toDate ? (fromDate === toDate ? fromDate : `${fromDate} to ${toDate}`)
+      : fromDate ? `from ${fromDate}` : toDate ? `up to ${toDate}` : "All dates";
+    const filterText = [SHOW_LABEL[show], companyName, staffName, rangeText].filter(Boolean).join(" · ");
+    const requisitions = visible.flatMap((g) => g.rows);
+    const itemLines = requisitions.flatMap((row) =>
+      (Array.isArray(row.items) ? row.items : []).map((item) => {
+        const quantity = Number(item.quantity) || 0;
+        const rate = Number(item.rate) || 0;
+        const gst = Number(item.gst_percent) || 5;
+        const taxable = quantity * rate;
+        return { row, item, quantity, rate, gst, taxable, payable: taxable + (taxable * gst) / 100 };
+      })
+    );
+    const sheets = [
+      {
+        name: "Day summary",
+        rows: visible,
+        columns: [
+          { header: "Date", key: "date", width: 12, type: "date" },
+          { header: "Employee", key: "staffName", width: 24 },
+          { header: "Company", key: "companyName", width: 18 },
+          { header: "Requisitions", key: "count", width: 12, type: "number", total: true },
+          { header: "Items", key: "items", width: 8, type: "number", total: true },
+          { header: "Total Qty", key: "quantity", width: 11, type: "number", total: true },
+          { header: "Value", key: "value", width: 14, type: "money", total: true },
+          { header: "Daily Target", value: (g) => g.target || null, width: 13, type: "money" },
+          { header: "Short By", value: (g) => (g.belowTarget ? g.target - g.value : null), width: 12, type: "money" },
+          { header: "Target", value: (g) => (!g.target ? "—" : g.belowTarget ? "Below target" : "Target met"), width: 13 },
+          { header: "Pending", key: "pending", width: 9, type: "number", total: true },
+          { header: "Approval Request", value: (g) => (g.pending > 0 && pendingRequests.has(g.key) ? "Request sent" : ""), width: 15 },
+        ],
+      },
+      {
+        name: "Requisitions",
+        rows: requisitions,
+        columns: [
+          { header: "Date", value: (r) => r.requisition_date || String(r.created_at || "").slice(0, 10) || null, width: 12, type: "date" },
+          { header: "Requisition No.", key: "requisition_number", width: 20 },
+          { header: "Employee", key: "staff_name", width: 22 },
+          { header: "Company", key: "company_name", width: 16 },
+          { header: "Outlet", key: "outlet_name", width: 28 },
+          { header: "Outlet ERP ID", key: "outlet_erp_id", width: 14 },
+          { header: "Area", key: "location_name", width: 18 },
+          { header: "Items", key: "item_count", width: 8, type: "number", total: true },
+          { header: "Total Qty", key: "total_quantity", width: 11, type: "number", total: true },
+          { header: "Value", key: "total_amount", width: 13, type: "money", total: true },
+          { header: "Total Payable", value: (r) => Math.round(payable(r) * 100) / 100, width: 14, type: "money", total: true },
+          { header: "Status", value: (r) => r.status || "pending", width: 11 },
+          ...(isAdmin
+            ? [
+                { header: "Approved / Rejected By", value: (r) => (r.reviewed_by_name ? actorText(r.reviewed_by_name, r.reviewed_by_login_id) : null), width: 24 },
+                { header: "Reviewed At", key: "reviewed_at_label", width: 18 },
+              ]
+            : []),
+          { header: "Invoice No.", key: "invoiced_invoice_number", width: 20 },
+        ],
+      },
+    ];
+    if (itemLines.length) {
+      sheets.push({
+        name: "Items",
+        rows: itemLines,
+        columns: [
+          { header: "Date", value: (l) => l.row.requisition_date || String(l.row.created_at || "").slice(0, 10) || null, width: 12, type: "date" },
+          { header: "Requisition No.", value: (l) => l.row.requisition_number, width: 20 },
+          { header: "Employee", value: (l) => l.row.staff_name, width: 22 },
+          { header: "Outlet", value: (l) => l.row.outlet_name, width: 26 },
+          { header: "Product", value: (l) => l.item.product_name || l.item.productName, width: 28 },
+          { header: "Variant", value: (l) => l.item.variant_name || l.item.variantName, width: 24 },
+          { header: "HSN", value: (l) => l.item.hsn_code || l.item.hsnCode, width: 10 },
+          { header: "MRP", value: (l) => l.item.mrp, width: 10, type: "money" },
+          { header: "Qty", key: "quantity", width: 9, type: "number", total: true },
+          { header: "Rate", key: "rate", width: 11, type: "money" },
+          { header: "Taxable", value: (l) => Math.round(l.taxable * 100) / 100, width: 13, type: "money", total: true },
+          { header: "GST %", key: "gst", width: 8, type: "number" },
+          { header: "Payable", value: (l) => Math.round(l.payable * 100) / 100, width: 13, type: "money", total: true },
+          { header: "Status", value: (l) => l.row.status || "pending", width: 11 },
+        ],
+      });
+    }
+    return downloadExcel({
+      fileName: `Outlet_Orders_${fileSafe([SHOW_LABEL[show], companyName, staffName, fromDate, toDate && toDate !== fromDate ? `to ${toDate}` : ""].filter(Boolean).join(" "))}`,
+      title: `Outlet orders · ${filterText}`,
+      sheets,
+    });
+  };
 
   // Approve / reject one or more requisitions from the day view.
   const reviewRequisitions = async (rowsToReview, status) => {
@@ -597,7 +692,40 @@ export default function OutletOrders({ user }) {
                 </select>
               </>
             )}
-            <input type="date" className="input input-sm w-40" value={date} onChange={(e) => setDate(e.target.value)} title="Date" />
+            <label className="flex flex-col gap-0.5 text-xs text-base-content/60">
+              From
+              <input
+                type="date"
+                className="input input-sm w-40"
+                value={fromDate}
+                max={toDate || undefined}
+                onChange={(e) => setFromDate(e.target.value)}
+              />
+            </label>
+            <label className="flex flex-col gap-0.5 text-xs text-base-content/60">
+              To
+              <input
+                type="date"
+                className="input input-sm w-40"
+                value={toDate}
+                min={fromDate || undefined}
+                onChange={(e) => setToDate(e.target.value)}
+              />
+            </label>
+            {(fromDate || toDate) && (
+              <button
+                type="button"
+                className="btn btn-ghost btn-sm"
+                onClick={() => {
+                  setFromDate("");
+                  setToDate("");
+                }}
+                title="Show all dates"
+              >
+                Clear
+              </button>
+            )}
+            <ExcelButton disabled={loading || !visible.length} onExport={exportExcel} onError={(err) => flash(false, err.message || "Could not download the Excel file.")} />
             <button type="button" className="btn btn-ghost btn-sm" onClick={load} disabled={loading} title="Reload">
               <MdRefresh size={18} />
             </button>
