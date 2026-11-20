@@ -24,14 +24,14 @@ MenuIcon.defaultProps = { icon: null, className: "text-[20px]" };
 const itemClass = (active, mini) => [
   "group relative flex w-full items-center gap-3 rounded-xl text-[13.5px] font-medium transition-colors",
   mini ? "justify-center px-0 py-2.5" : "px-3 py-2",
-  active ? "bg-blue-50 text-blue-700" : "text-slate-600 hover:bg-slate-100 hover:text-slate-900",
+  active ? "bg-[#2e8b3c] text-white shadow-sm shadow-[#2e8b3c]/30" : "text-[#2f4a2c] hover:bg-white/60 hover:text-[#1f3d1c]",
 ].join(" ");
 
 function ItemContent({ icon, name, active, mini, trailing }) {
   return (
     <>
-      {active && !mini && <span className="absolute -left-3 top-1/2 h-5 w-1 -translate-y-1/2 rounded-r-full bg-blue-600" />}
-      <MenuIcon icon={icon} className={`text-[20px] ${active ? "text-blue-600" : "text-slate-400 group-hover:text-slate-600"}`} />
+      {active && !mini && <span className="absolute -left-3 top-1/2 h-5 w-1 -translate-y-1/2 rounded-r-full bg-[#1f6b2b]" />}
+      <MenuIcon icon={icon} className={`text-[20px] ${active ? "text-white" : "text-[#5b8a52] group-hover:text-[#2e8b3c]"}`} />
       {!mini && <span className="min-w-0 grow truncate text-left">{name}</span>}
       {!mini && trailing}
     </>
@@ -52,18 +52,18 @@ function MenuGroup({ name, icon, items, collapseName, mini }) {
       <button type="button" title={mini ? name : undefined} className={itemClass(childActive && mini, mini)} onClick={() => setOpen((v) => !v)} aria-expanded={open}>
         <ItemContent
           icon={icon} name={name} active={childActive && mini} mini={mini}
-          trailing={<span className={`material-icons-round text-[18px] text-slate-400 transition-transform ${open ? "" : "-rotate-90"}`}>expand_more</span>}
+          trailing={<span className={`material-icons-round text-[18px] opacity-60 transition-transform ${open ? "" : "-rotate-90"}`}>expand_more</span>}
         />
       </button>
       {open && !mini && (
-        <ul className="m-0 ml-[22px] mt-1 list-none space-y-0.5 border-l border-slate-200 p-0 pl-3">
+        <ul className="m-0 ml-[22px] mt-1 list-none space-y-0.5 border-l border-[#b9d3a6] p-0 pl-3">
           {visible.map((item) => {
             const active = item.key === collapseName;
             return (
               <li key={item.key}>
                 <NavLink
                   to={item.route}
-                  className={`flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-[13px] transition-colors ${active ? "bg-blue-50 font-semibold text-blue-700" : "text-slate-500 hover:bg-slate-100 hover:text-slate-900"}`}
+                  className={`flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-[13px] transition-colors ${active ? "bg-[#2e8b3c] font-semibold text-white" : "text-[#3d5a38] hover:bg-white/60 hover:text-[#1f3d1c]"}`}
                 >
                   {item.icon ? <MenuIcon icon={item.icon} className="text-[17px]" /> : <span className="size-1.5 rounded-full bg-current" />}
                   <span className="truncate">{item.name}</span>
@@ -160,7 +160,7 @@ function Sidenav({ color, brand, brandName, routes, ...rest }) {
             >
               <ItemContent
                 icon={icon} name={name} active={active} mini={mini}
-                trailing={sameTab ? null : <span className="material-icons-round text-[15px] text-slate-400">open_in_new</span>}
+                trailing={sameTab ? null : <span className="material-icons-round text-[15px] opacity-60">open_in_new</span>}
               />
             </a>
           </li>
@@ -176,10 +176,10 @@ function Sidenav({ color, brand, brandName, routes, ...rest }) {
     }
     if (type === "title") {
       return mini ? null : (
-        <li key={key} className="px-3 pb-1 pt-4 text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">{title}</li>
+        <li key={key} className="px-3 pb-1 pt-4 text-[11px] font-semibold uppercase tracking-[0.12em] text-[#6b8a5f]">{title}</li>
       );
     }
-    if (type === "divider") return <li key={key} className="my-2 border-t border-slate-100" />;
+    if (type === "divider") return <li key={key} className="my-2 border-t border-[#c9dcb8]" />;
     return null;
   });
 
@@ -192,11 +192,11 @@ function Sidenav({ color, brand, brandName, routes, ...rest }) {
       <aside
         {...rest}
         style={{ width: mini ? SIDEBAR_MINI_WIDTH : SIDEBAR_WIDTH }}
-        className={`fixed inset-y-0 left-0 z-[1200] flex flex-col border-r border-slate-200 bg-white font-[Poppins,Roboto,sans-serif] transition-[width,transform] duration-200 ${hidden ? "-translate-x-full" : "translate-x-0"} ${!desktop ? "shadow-2xl" : ""}`}
+        className={`fixed inset-y-0 left-0 z-[1200] flex flex-col border-r border-[#c9dcb8] bg-linear-to-b from-[#e9f3df] via-[#dcebcf] to-[#c8e0b6] font-[Poppins,Roboto,sans-serif] transition-[width,transform] duration-200 ${hidden ? "-translate-x-full" : "translate-x-0"} ${!desktop ? "shadow-2xl" : ""}`}
         aria-label="Main menu"
       >
         {/* Brand */}
-        <div className={`flex h-16 shrink-0 items-center gap-3 border-b border-slate-200 ${mini ? "justify-center px-2" : "px-5"}`}>
+        <div className={`flex h-16 shrink-0 items-center gap-3 border-b border-[#c9dcb8] ${mini ? "justify-center px-2" : "px-5"}`}>
           <NavLink to="/" className="flex min-w-0 items-center gap-3" title={brandName}>
             {brand && <img src={brand} alt="" className="size-9 shrink-0 rounded-xl object-contain" />}
             {mini ? (
@@ -205,12 +205,12 @@ function Sidenav({ color, brand, brandName, routes, ...rest }) {
             ) : (
               <span className="min-w-0">
                 <span className="block truncate text-[15px] font-bold leading-tight text-slate-900">{brandName}</span>
-                <span className="block text-[11px] font-medium text-slate-400">Sales ERP</span>
+                <span className="block text-[11px] font-medium text-[#5b7a52]">Sales ERP</span>
               </span>
             )}
           </NavLink>
           {!desktop && (
-            <button type="button" onClick={closeSidenav} aria-label="Close menu" className="ml-auto inline-flex size-8 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100">
+            <button type="button" onClick={closeSidenav} aria-label="Close menu" className="ml-auto inline-flex size-8 items-center justify-center rounded-lg text-[#3d5a38] hover:bg-white/60">
               <span className="material-icons-round text-[20px]">close</span>
             </button>
           )}
@@ -222,7 +222,7 @@ function Sidenav({ color, brand, brandName, routes, ...rest }) {
         </nav>
 
         {/* Logout */}
-        <div className="shrink-0 border-t border-slate-100 p-3">
+        <div className="shrink-0 border-t border-[#c9dcb8] p-3">
           <button
             type="button" onClick={handleLogout} aria-label="Logout" title="Logout"
             className={`flex w-full items-center gap-2 rounded-xl border border-red-200 bg-white px-3 py-2 text-[13px] font-semibold text-red-600 transition hover:border-red-300 hover:bg-red-50 ${mini ? "justify-center px-0" : ""}`}

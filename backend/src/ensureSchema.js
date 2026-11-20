@@ -38,6 +38,15 @@ export async function ensureSchema() {
     });
 
     try {
+        // Site-wide settings, e.g. maintenance_status ('1' = working, '0' = under maintenance).
+        await connection.query(`
+            CREATE TABLE IF NOT EXISTS app_settings (
+                setting_key VARCHAR(64) PRIMARY KEY,
+                setting_value VARCHAR(1000) NULL,
+                updated_by VARCHAR(255) NULL,
+                updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+            )
+        `);
         await connection.query(`
             CREATE TABLE IF NOT EXISTS sticker_sequence (
                 id INT PRIMARY KEY,
@@ -1291,6 +1300,8 @@ export async function ensureSchema() {
         await tryQuery(connection, `ALTER TABLE purchase_requisitions ADD COLUMN review_note VARCHAR(500) NULL`, 'review_note on purchase requisitions');
         await tryQuery(connection, `ALTER TABLE purchase_requisitions ADD COLUMN invoiced_sale_id INT NULL`, 'invoiced_sale_id on purchase requisitions');
         await tryQuery(connection, `ALTER TABLE purchase_requisitions ADD COLUMN invoiced_at DATETIME NULL`, 'invoiced_at on purchase requisitions');
+        // Billed from Sales & Purchase > Create Sales (a dms_sales bill) instead of Add Sales.
+        await tryQuery(connection, `ALTER TABLE purchase_requisitions ADD COLUMN invoiced_dms_sale_id INT NULL`, 'invoiced_dms_sale_id on purchase requisitions');
         await tryQuery(
             connection,
             `UPDATE purchase_requisitions SET status = 'pending' WHERE status = 'open'`,

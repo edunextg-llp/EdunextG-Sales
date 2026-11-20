@@ -11,6 +11,8 @@ import authRoutes from './routes/authRoutes.js';
 import auditRoutes from './routes/auditRoutes.js';
 import materialReportRoutes from './routes/materialReportRoutes.js';
 import distributorPortalRoutes from './routes/distributorPortalRoutes.js';
+import maintenanceRoutes from './routes/maintenanceRoutes.js';
+import { maintenanceGuard } from './services/maintenance.js';
 import { auditStaffChanges } from './middlewares/auditMiddleware.js';
 import { requestContextMiddleware } from './utils/requestContext.js';
 import {
@@ -30,6 +32,10 @@ app.use(bodyParser.urlencoded({ extended: true }));
 // After the body parsers (their stream callbacks would drop the context):
 // lets the data layer record who made each change (invoice journey, cancellations).
 app.use(requestContextMiddleware);
+
+// Maintenance mode (Postman): always reachable. While status is 0 every other /api call gets 503.
+app.use('/api/maintenance', maintenanceRoutes);
+app.use('/api', maintenanceGuard);
 
 // Routes
 app.use('/api/auth', authRoutes);

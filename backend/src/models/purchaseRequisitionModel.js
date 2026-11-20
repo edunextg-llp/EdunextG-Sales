@@ -76,7 +76,7 @@ class PurchaseRequisitionModel {
                     s.name AS staff_name, s.contact_no AS staff_contact,
                     sc.outlet_name, sc.outlet_erp_id, sc.address AS outlet_address,
                     sc.contact_number AS outlet_contact, sc.location_name, sc.has_gst, sc.gst_number,
-                    sale.invoice_number AS invoiced_invoice_number,
+                    COALESCE(sale.invoice_number, dms_sale.invoice_number) AS invoiced_invoice_number,
                     COALESCE(sale.packaging_status, CASE WHEN pr.status = 'cancelled' THEN 'cancelled' ELSE 'pending' END) AS delivery_status,
                     COALESCE(sale.cancellation_reason, sale_cancellations.reasons, CASE WHEN pr.status = 'cancelled' THEN pr.review_note ELSE NULL END) AS cancellation_reason,
                     DATE_FORMAT(COALESCE(sale_events.status_updated_at, pr.invoiced_at, pr.reviewed_at, pr.created_at), '%Y-%m-%d %H:%i:%s') AS delivery_status_at
@@ -87,6 +87,7 @@ class PurchaseRequisitionModel {
              LEFT JOIN staff rv_staff ON pr.reviewed_by_type = 'staff' AND rv_staff.id = pr.reviewed_by
              LEFT JOIN delivery_boys rv_db ON pr.reviewed_by_type = 'delivery_boy' AND rv_db.id = pr.reviewed_by
              LEFT JOIN staff_sales sale ON sale.id = pr.invoiced_sale_id
+             LEFT JOIN dms_sales dms_sale ON dms_sale.id = pr.invoiced_dms_sale_id
              LEFT JOIN (
                  SELECT sale_id, MAX(changed_at) AS status_updated_at
                  FROM staff_sale_status_history
@@ -141,7 +142,7 @@ class PurchaseRequisitionModel {
                     s.name AS staff_name, s.contact_no AS staff_contact,
                     sc.outlet_name, sc.outlet_erp_id, sc.address AS outlet_address,
                     sc.contact_number AS outlet_contact, sc.location_name, sc.has_gst, sc.gst_number,
-                    sale.invoice_number AS invoiced_invoice_number,
+                    COALESCE(sale.invoice_number, dms_sale.invoice_number) AS invoiced_invoice_number,
                     COALESCE(sale.packaging_status, CASE WHEN pr.status = 'cancelled' THEN 'cancelled' ELSE 'pending' END) AS delivery_status,
                     COALESCE(sale.cancellation_reason, sale_cancellations.reasons, CASE WHEN pr.status = 'cancelled' THEN pr.review_note ELSE NULL END) AS cancellation_reason,
                     DATE_FORMAT(COALESCE(sale_events.status_updated_at, pr.invoiced_at, pr.reviewed_at, pr.created_at), '%Y-%m-%d %H:%i:%s') AS delivery_status_at
@@ -152,6 +153,7 @@ class PurchaseRequisitionModel {
              LEFT JOIN staff rv_staff ON pr.reviewed_by_type = 'staff' AND rv_staff.id = pr.reviewed_by
              LEFT JOIN delivery_boys rv_db ON pr.reviewed_by_type = 'delivery_boy' AND rv_db.id = pr.reviewed_by
              LEFT JOIN staff_sales sale ON sale.id = pr.invoiced_sale_id
+             LEFT JOIN dms_sales dms_sale ON dms_sale.id = pr.invoiced_dms_sale_id
              LEFT JOIN (
                  SELECT sale_id, MAX(changed_at) AS status_updated_at
                  FROM staff_sale_status_history
@@ -212,7 +214,7 @@ class PurchaseRequisitionModel {
                     s.name AS staff_name, s.contact_no AS staff_contact,
                     sc.outlet_name, sc.outlet_erp_id, sc.address AS outlet_address,
                     sc.contact_number AS outlet_contact, sc.location_name, sc.has_gst, sc.gst_number,
-                    sale.invoice_number AS invoiced_invoice_number
+                    COALESCE(sale.invoice_number, dms_sale.invoice_number) AS invoiced_invoice_number
              FROM purchase_requisitions pr
              JOIN companies c ON c.id = pr.company_id
              JOIN staff s ON s.id = pr.staff_id
@@ -220,6 +222,7 @@ class PurchaseRequisitionModel {
              LEFT JOIN staff rv_staff ON pr.reviewed_by_type = 'staff' AND rv_staff.id = pr.reviewed_by
              LEFT JOIN delivery_boys rv_db ON pr.reviewed_by_type = 'delivery_boy' AND rv_db.id = pr.reviewed_by
              LEFT JOIN staff_sales sale ON sale.id = pr.invoiced_sale_id
+             LEFT JOIN dms_sales dms_sale ON dms_sale.id = pr.invoiced_dms_sale_id
              ${where}
              ORDER BY pr.created_at DESC`,
             params

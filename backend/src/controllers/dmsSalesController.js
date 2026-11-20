@@ -355,6 +355,22 @@ export const createSale = async (req, res) => {
                 requisitionNumber, distributorId: buyer.distributorId, companyId, saleId,
             });
         }
+        // A bill made from an outlet's approved requisition (Outlet Orders > Create Sales, PRQ...):
+        // that requisition is invoiced with this bill, so it can't be billed again.
+        if (buyer.buyerType === 'outlet' && requisitionNumber && !/^DRQ/i.test(requisitionNumber)) {
+            const [marked] = await connection.execute(
+                `UPDATE purchase_requisitions
+                 SET status = 'invoiced', invoiced_dms_sale_id = ?, invoiced_at = NOW()
+                 WHERE UPPER(requisition_number) = UPPER(?) AND outlet_id = ? AND company_id = ? AND status = 'approved'`,
+                [saleId, requisitionNumber, buyer.outletId, companyId]
+            );
+            if (!marked.affectedRows) {
+                throw Object.assign(
+                    new Error(`Requisition ${requisitionNumber} is not approved for this outlet, or it has already been invoiced.`),
+                    { statusCode: 409 }
+                );
+            }
+        }
         await connection.commit();
         return res.status(201).json({ id: saleId, message: `Invoice ${invoiceNumber} saved for ${buyer.name}.` });
     } catch (error) {

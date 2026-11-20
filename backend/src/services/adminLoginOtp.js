@@ -4,11 +4,11 @@ import crypto from 'crypto';
 // OTP_MAIL_APP_PASSWORD in backend/.env), separate from the bit mails.
 let otpTransporterPromise = null;
 
-function getOtpMailUser() {
+export function getOtpMailUser() {
     return String(process.env.OTP_MAIL_USER || '').trim();
 }
 
-async function getOtpTransporter() {
+export async function getOtpTransporter() {
     const user = getOtpMailUser();
     const pass = String(process.env.OTP_MAIL_APP_PASSWORD || '').replace(/\s+/g, '');
     if (!user || !pass) {

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { MdCheck, MdClose, MdPrint, MdRefresh, MdSend, MdTaskAlt, MdVisibility } from "react-icons/md";
+import { useNavigate } from "react-router-dom";
+import { MdCheck, MdClose, MdPointOfSale, MdPrint, MdRefresh, MdSend, MdTaskAlt, MdVisibility } from "react-icons/md";
 import { apiFetch } from "../auth";
 import { ExcelButton, PageHeader, readJson, useFlash } from "../components/ui";
 import { downloadExcel, fileSafe } from "../utils/excel";
@@ -16,6 +17,10 @@ const money = (value) =>
   Number(value || 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 const isPending = (row) => ["open", "pending"].includes(row.status || "pending");
+
+// Approved and not invoiced yet: the requisition can be billed from Sales > Create Sales here,
+// which loads it, picks its company / staff / location / outlet and opens its bill.
+const canBill = (row) => row.status === "approved" && !row.invoiced_invoice_number;
 
 const payable = (row) => {
   const items = Array.isArray(row?.items) ? row.items : [];
@@ -184,7 +189,7 @@ function RequestPanel({ group, request, lastRejected, isAdmin, canApprove, canAp
   );
 }
 
-function DayDialog({ group, onClose, canApprove, canApproveBelowTarget, onReview, isAdmin, request, lastRejected, onRequest, onReviewRequest }) {
+function DayDialog({ group, onClose, canCreateSales, onCreateSales, canApprove, canApproveBelowTarget, onReview, isAdmin, request, lastRejected, onRequest, onReviewRequest }) {
   const [selected, setSelected] = useState([]);
   const [busy, setBusy] = useState(false);
 
@@ -311,9 +316,28 @@ function DayDialog({ group, onClose, canApprove, canApproveBelowTarget, onReview
                   )}
                   <td className="font-mono text-xs">{row.invoiced_invoice_number || "—"}</td>
                   <td>
-                    <button type="button" className="btn btn-ghost btn-xs btn-square text-info" title="View / print requisition" onClick={() => printPurchaseRequisitionPdf(row)}>
-                      <MdVisibility size={16} />
-                    </button>
+                    <span className="inline-flex items-center gap-1">
+                      <button type="button" className="btn btn-ghost btn-xs btn-square text-info" title="View / print requisition" onClick={() => printPurchaseRequisitionPdf(row)}>
+                        <MdVisibility size={16} />
+                      </button>
+                      {canCreateSales && (
+                        <button
+                          type="button"
+                          className="btn btn-primary btn-xs"
+                          disabled={!canBill(row)}
+                          title={
+                            canBill(row)
+                              ? "Create the bill for this requisition in Sales > Create Sales"
+                              : row.invoiced_invoice_number
+                                ? `Already invoiced: ${row.invoiced_invoice_number}`
+                                : "Approve the requisition first"
+                          }
+                          onClick={() => onCreateSales(row)}
+                        >
+                          <MdPointOfSale size={14} /> Create Sales
+                        </button>
+                      )}
+                    </span>
                   </td>
                   {canApprove && (
                     <td>
@@ -389,6 +413,9 @@ export default function OutletOrders({ user }) {
   const permissions = user?.permissions || [];
   const canApprove = isAdmin || permissions.includes("requisition_approval");
   const canApproveBelowTarget = isAdmin || permissions.includes("requisition_target_approval");
+  // Create Sales opens Sales > Create Sales, so it needs that page.
+  const canCreateSales = isAdmin || permissions.includes("create_sales");
+  const navigate = useNavigate();
 
   const [rows, setRows] = useState([]);
   const [requests, setRequests] = useState([]);
@@ -803,6 +830,11 @@ export default function OutletOrders({ user }) {
       <DayDialog
         group={openGroup}
         onClose={() => setOpenKey(null)}
+        canCreateSales={canCreateSales}
+        onCreateSales={(row) => {
+          setOpenKey(null);
+          navigate(`/create-sales?requisition=${encodeURIComponent(row.requisition_number)}`);
+        }}
         canApprove={canApprove}
         canApproveBelowTarget={canApproveBelowTarget}
         onReview={reviewRequisitions}

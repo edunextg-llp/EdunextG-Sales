@@ -8,6 +8,7 @@ import "./tailwind.css";
 // Material Dashboard 2 React Context Provider
 import { MaterialUIControllerProvider } from "context";
 import { AuthProvider } from "context/AuthContext";
+import MaintenanceGate from "components/MaintenanceGate";
 
 const container = document.getElementById("app");
 // A tab that was Sales & Purchase (dms/) and then came back to the main site (logout, sign-in,
@@ -18,11 +19,14 @@ if (window.name === "edunextg-sales-purchase") window.name = "";
 const root = createRoot(container);
 
 root.render(
-  <BrowserRouter>
-    <AuthProvider>
-      <MaterialUIControllerProvider>
-        <App />
-      </MaterialUIControllerProvider>
-    </AuthProvider>
-  </BrowserRouter>
+  // Outside AuthProvider: its fetch wrapper is set first and the maintenance check wraps it.
+  <MaintenanceGate apiBase={process.env.REACT_APP_API_URL || "/api"}>
+    <BrowserRouter>
+      <AuthProvider>
+        <MaterialUIControllerProvider>
+          <App />
+        </MaterialUIControllerProvider>
+      </AuthProvider>
+    </BrowserRouter>
+  </MaintenanceGate>
 );

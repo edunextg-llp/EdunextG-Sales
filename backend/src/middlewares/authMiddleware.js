@@ -280,7 +280,8 @@ export const enforceManagedUserApiScope = (req, res, next) => {
         // Approve / cancel button on Requisition Approvals.
         allowed = method === 'PUT' && permissions.has('requisition_approval');
     } else if (/^\/purchase-requisitions\/[^/]+$/.test(path)) {
-        allowed = (method === 'GET' && (permissions.has('add_sales') || permissions.has('requisition_approval')))
+        // GET by number: Add Sales and Sales & Purchase > Create Sales load a requisition's items into a bill.
+        allowed = (method === 'GET' && (permissions.has('add_sales') || permissions.has('create_sales') || permissions.has('requisition_approval')))
             || (method === 'PUT' && permissions.has('requisition_approval'));
     } else if (path === '/purchase-requisitions') {
         // Below Target approvers read a day's requisitions from their approvals page.

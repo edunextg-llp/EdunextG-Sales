@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
 import { MdAdd, MdPrint, MdRefresh, MdSearch } from "react-icons/md";
 import { apiFetch } from "../auth";
 import { CompanyPicker, ExcelButton, Field, PageHeader, readJson, useCompanies, useFlash } from "../components/ui";
@@ -31,6 +32,8 @@ export default function CreateSales() {
   const company = companies.find((c) => String(c.id) === String(companyId));
   const [distributors, setDistributors] = useState([]);
   const [outlets, setOutlets] = useState([]);
+  // Which company the outlets list was loaded for (the requisition link waits for it).
+  const [outletsFor, setOutletsFor] = useState("");
   const [buyerId, setBuyerId] = useState("");
   const [staffId, setStaffId] = useState("");
   const [locationName, setLocationName] = useState("");
@@ -39,6 +42,8 @@ export default function CreateSales() {
   const [saleDate, setSaleDate] = useState(todayLocal());
   const [billOpen, setBillOpen] = useState(false);
   const [billNumber, setBillNumber] = useState("");
+  // Requisition the bill opens with (Outlet Orders > Create Sales); the form loads its items.
+  const [billRequisition, setBillRequisition] = useState("");
   const [saving, setSaving] = useState(false);
 
   // Bills list
@@ -56,6 +61,7 @@ export default function CreateSales() {
     setLocationName("");
     setDistributors([]);
     setOutlets([]);
+    setOutletsFor("");
     if (!companyId) return;
     apiFetch(`/staff/distributors?${new URLSearchParams({ companyId })}`)
       .then(readJson)
@@ -63,8 +69,11 @@ export default function CreateSales() {
       .catch(() => {});
     apiFetch(`/staff/dms-sales/outlets?${new URLSearchParams({ companyId })}`)
       .then(readJson)
-      .then((b) => setOutlets(b.outlets || []))
-      .catch(() => {});
+      .then((b) => {
+        setOutlets(b.outlets || []);
+        setOutletsFor(companyId);
+      })
+      .catch(() => setOutletsFor(companyId));
   }, [companyId]);
 
   const buyer =
@@ -99,9 +108,72 @@ export default function CreateSales() {
     }
   };
   const openBill = async () => {
+    setBillRequisition("");
     setBillNumber(await fetchNextBillNumber());
     setBillOpen(true);
   };
+
+  // Outlet Orders > Create Sales opens /create-sales?requisition=PRQ...: load that approved
+  // requisition, choose its company, staff, location and outlet, then open the bill with it.
+  // Each choice waits for the data it needs (companies, then that company's outlets).
+  const location = useLocation();
+  const navigate = useNavigate();
+  const [linkedRequisition, setLinkedRequisition] = useState(null); // { step, requisition }
+  useEffect(() => {
+    if (location.pathname !== "/create-sales") return;
+    const code = new URLSearchParams(location.search).get("requisition");
+    if (!code) return;
+    navigate("/create-sales", { replace: true });
+    (async () => {
+      try {
+        const res = await apiFetch(`/staff/purchase-requisitions/${encodeURIComponent(code)}`);
+        const body = await readJson(res);
+        if (!res.ok || !body.requisition) throw new Error(body.error || `Requisition ${code} was not found.`);
+        setLinkedRequisition({ step: "company", requisition: body.requisition });
+      } catch (err) {
+        alert(err.message || "Could not load the requisition.");
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [location.pathname, location.search]);
+
+  useEffect(() => {
+    if (!linkedRequisition) return;
+    const { step, requisition } = linkedRequisition;
+    const stop = (message) => {
+      setLinkedRequisition(null);
+      if (message) alert(message);
+    };
+    if (step === "company") {
+      if (!companies.length) return; // companies still loading
+      const reqCompany = companies.find((c) => Number(c.id) === Number(requisition.company_id));
+      if (!reqCompany) return stop(`${requisition.company_name || "The requisition's company"} was not found.`);
+      if (reqCompany.type === "cnf") return stop(`${reqCompany.name} is a CNF company; it bills distributors, not outlets.`);
+      setBillOpen(false);
+      setCompanyType(reqCompany.type);
+      setCompanyId(String(reqCompany.id));
+      setLinkedRequisition({ step: "outlet", requisition });
+    } else if (step === "outlet") {
+      if (outletsFor !== String(requisition.company_id)) return; // outlets still loading
+      const outlet =
+        outlets.find((o) => Number(o.id) === Number(requisition.outlet_id) && Number(o.staff_id) === Number(requisition.staff_id))
+        || outlets.find((o) => Number(o.id) === Number(requisition.outlet_id));
+      if (!outlet) return stop(`${requisition.outlet_name || "The requisition's outlet"} is not in ${requisition.company_name || "this company"}'s outlet list.`);
+      setStaffId(String(outlet.staff_id));
+      setLocationName(String(outlet.location_name || "").trim());
+      setBuyerId(String(outlet.id));
+      setLinkedRequisition({ step: "bill", requisition });
+    } else if (step === "bill") {
+      if (!company || !buyer) return;
+      stop();
+      (async () => {
+        setBillNumber(await fetchNextBillNumber());
+        setBillRequisition(requisition.requisition_number);
+        setBillOpen(true);
+      })();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [linkedRequisition, companies, outletsFor, outlets, company, buyer]);
 
   // Create Bill form submit. Its rates are before GST (5% added on the form), less the flat
   // discount; the bill is saved with that GST-inclusive rate per piece. Free lines are worked
@@ -145,6 +217,7 @@ export default function CreateSales() {
       if (!res.ok) throw new Error(body.error || "Could not save the bill.");
       show(true, body.message || "Saved.");
       if (!addAnother) setBillOpen(false);
+      setBillRequisition("");
       loadSales();
       if (body.id) openPrint(body.id);
       return true;
@@ -360,8 +433,12 @@ export default function CreateSales() {
 
       <SalesInvoiceDialog
         open={billOpen && ready}
-        onClose={() => setBillOpen(false)}
+        onClose={() => {
+          setBillOpen(false);
+          setBillRequisition("");
+        }}
         outlet={billBuyer}
+        initialRequisitionNumber={billRequisition}
         selectedDate={saleDate}
         companyName={company?.name || ""}
         invoiceNumber={billNumber}

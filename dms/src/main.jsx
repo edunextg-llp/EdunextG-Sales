@@ -5,6 +5,8 @@ import { ThemeProvider, createTheme } from "@mui/material/styles";
 import CssBaseline from "@mui/material/CssBaseline";
 import App from "./App";
 import SingleTabGuard from "./components/SingleTabGuard";
+import MaintenanceGate from "./components/MaintenanceGate";
+import { API_BASE } from "./auth";
 import "./index.css";
 
 const theme = createTheme({
@@ -33,9 +35,11 @@ function renderApp() {
     <BrowserRouter basename="/dms">
       <ThemeProvider theme={theme}>
         <CssBaseline />
-        <SingleTabGuard>
-          <App />
-        </SingleTabGuard>
+        <MaintenanceGate apiBase={API_BASE}>
+          <SingleTabGuard>
+            <App />
+          </SingleTabGuard>
+        </MaintenanceGate>
       </ThemeProvider>
     </BrowserRouter>
   </React.StrictMode>

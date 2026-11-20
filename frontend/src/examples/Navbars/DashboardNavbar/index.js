@@ -34,7 +34,7 @@ function TopIcon({ name, className }) {
 TopIcon.propTypes = { name: PropTypes.string.isRequired, className: PropTypes.string };
 TopIcon.defaultProps = { className: "text-[21px]" };
 
-const iconButton = "relative inline-flex size-9 items-center justify-center rounded-xl text-slate-500 transition hover:bg-slate-100 hover:text-slate-900 disabled:opacity-40";
+const iconButton = "relative inline-flex size-9 items-center justify-center rounded-xl text-[#3d5a38] transition hover:bg-white/60 hover:text-[#1f3d1c] disabled:opacity-40";
 
 // eslint-disable-next-line no-unused-vars
 function DashboardNavbar({ absolute, light, isMini }) {
@@ -190,7 +190,7 @@ function DashboardNavbar({ absolute, light, isMini }) {
     <div aria-hidden="true" className="-mx-6 -mt-6 mb-6 h-16" />
     <header
       style={{ "--sidebar-w": `${miniSidenav ? SIDEBAR_MINI_WIDTH : SIDEBAR_WIDTH}px` }}
-      className="fixed inset-x-0 top-0 z-[1100] border-b border-slate-200 bg-white/90 px-4 font-[Poppins,Roboto,sans-serif] shadow-[0_1px_3px_rgba(15,23,42,0.06)] backdrop-blur-md transition-[left] duration-200 sm:px-6 xl:left-[var(--sidebar-w)]"
+      className="fixed inset-x-0 top-0 z-[1100] border-b border-[#c9dcb8] bg-linear-to-r from-[#e9f3df] via-[#f1f7ea] to-[#dcebcf] px-4 font-[Poppins,Roboto,sans-serif] shadow-[0_1px_3px_rgba(31,61,28,0.08)] transition-[left] duration-200 sm:px-6 xl:left-[var(--sidebar-w)]"
     >
       <div className="flex h-16 items-center gap-3">
         <button
@@ -207,20 +207,20 @@ function DashboardNavbar({ absolute, light, isMini }) {
         </button>
 
         <div className="min-w-0 grow">
-          <nav aria-label="Breadcrumb" className="flex items-center gap-1 text-[12px] text-slate-400">
-            <Link to="/" className="inline-flex items-center hover:text-slate-700" aria-label="Home"><TopIcon name="home" className="text-[15px]" /></Link>
+          <nav aria-label="Breadcrumb" className="flex items-center gap-1 text-[12px] text-[#6b8a5f]">
+            <Link to="/" className="inline-flex items-center hover:text-[#1f6b2b]" aria-label="Home"><TopIcon name="home" className="text-[15px]" /></Link>
             {route.map((segment, index) => (
               <span key={`${segment}-${index}`} className="inline-flex items-center gap-1">
                 <TopIcon name="chevron_right" className="text-[15px]" />
                 {index === route.length - 1 ? (
-                  <span className="font-medium text-slate-600">{pageTitle(segment)}</span>
+                  <span className="font-medium text-[#3d5a38]">{pageTitle(segment)}</span>
                 ) : (
-                  <Link to={`/${route.slice(0, index + 1).join("/")}`} className="hover:text-slate-700">{pageTitle(segment)}</Link>
+                  <Link to={`/${route.slice(0, index + 1).join("/")}`} className="hover:text-[#1f6b2b]">{pageTitle(segment)}</Link>
                 )}
               </span>
             ))}
           </nav>
-          <h1 className="m-0 truncate text-[17px] font-semibold leading-tight text-slate-900">{title}</h1>
+          <h1 className="m-0 truncate text-[17px] font-semibold leading-tight text-[#1f3d1c]">{title}</h1>
         </div>
 
         {!isMini && (
@@ -244,7 +244,7 @@ function DashboardNavbar({ absolute, light, isMini }) {
               >
                 <TopIcon name="notifications" />
                 {notifications.length > 0 && (
-                  <span className="absolute right-1 top-1 flex min-w-4 items-center justify-center rounded-full bg-red-600 px-1 text-[10px] font-bold leading-4 text-white ring-2 ring-white">
+                  <span className="absolute right-1 top-1 flex min-w-4 items-center justify-center rounded-full bg-red-600 px-1 text-[10px] font-bold leading-4 text-white ring-2 ring-[#eef5e6]">
                     {notifications.length}
                   </span>
                 )}
@@ -277,11 +277,11 @@ function DashboardNavbar({ absolute, light, isMini }) {
               )}
             </div>
 
-            <div className="ml-2 hidden items-center gap-2.5 border-l border-slate-200 pl-3 sm:flex">
-              <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-slate-800 text-[12px] font-bold text-white">{initials}</span>
+            <div className="ml-2 hidden items-center gap-2.5 border-l border-[#c9dcb8] pl-3 sm:flex">
+              <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-[#2e8b3c] text-[12px] font-bold text-white">{initials}</span>
               <span className="hidden min-w-0 md:block">
-                <span className="block max-w-40 truncate text-[12.5px] font-semibold text-slate-800">{displayName}</span>
-                <span className="block text-[11px] text-slate-500">{ROLE_LABELS[user?.role] || user?.role || ""}</span>
+                <span className="block max-w-40 truncate text-[12.5px] font-semibold text-[#1f3d1c]">{displayName}</span>
+                <span className="block text-[11px] text-[#5b7a52]">{ROLE_LABELS[user?.role] || user?.role || ""}</span>
               </span>
             </div>
           </div>
