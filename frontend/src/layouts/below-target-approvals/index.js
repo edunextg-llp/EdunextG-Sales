@@ -1,12 +1,6 @@
+// Approvals > Below Target Approvals: Tailwind CSS (no MUI). Loading, print and approve / reject logic unchanged.
 import { useCallback, useEffect, useMemo, useState } from "react";
-import {
-  Card, Checkbox, Chip, Dialog, DialogActions, DialogContent, DialogTitle, Icon, IconButton,
-  Table, TableBody, TableCell, TableContainer, TableHead, TableRow, ToggleButton, ToggleButtonGroup,
-} from "@mui/material";
 
-import MDBox from "components/MDBox";
-import MDButton from "components/MDButton";
-import MDTypography from "components/MDTypography";
 import DashboardLayout from "examples/LayoutContainers/DashboardLayout";
 import DashboardNavbar from "examples/Navbars/DashboardNavbar";
 import Footer from "examples/Footer";
@@ -15,6 +9,9 @@ import {
   printPurchaseRequisitionPdf,
   printPurchaseRequisitionsPdf,
 } from "utils/printPurchaseRequisitionPdf";
+import {
+  Badge, Card, EmptyState, Icon, Modal, Notice, PageHeader, STATUS_TONE, Segmented, Spinner, TriCheck, btn, td, th,
+} from "components/tw";
 
 const API = process.env.REACT_APP_API_URL;
 const auth = () => {
@@ -29,7 +26,6 @@ const actorText = (name, loginId) => {
   if (!name) return "—";
   return name === "Admin" || !loginId ? name : `${name} (${loginId})`;
 };
-const STATUS_COLORS = { pending: "warning", approved: "success", rejected: "error" };
 const isPendingRequisition = (row) => ["open", "pending"].includes(row.status || "pending");
 
 /** One below-target day: its requisitions, a print checklist, and Approve / Reject. */
@@ -72,112 +68,102 @@ function RequestDialog({ request, isAdmin, canDecide, onClose, onDecide }) {
   };
 
   return (
-    <Dialog open onClose={onClose} fullWidth maxWidth="lg">
-      <DialogTitle sx={{ pb: 1 }}>
-        <MDBox display="flex" justifyContent="space-between" alignItems="flex-start" gap={2}>
-          <MDBox>
-            <MDTypography variant="h6" fontWeight="bold">
-              {request.staff_name} · {request.company_name}
-            </MDTypography>
-            <MDTypography variant="caption" color="text">
-              {request.request_date} · Target ₹{money(request.target_amount)} · Done ₹{money(request.achieved_amount)} · Short ₹{money(short)}
-            </MDTypography>
-          </MDBox>
-          <IconButton onClick={onClose} aria-label="Close"><Icon>close</Icon></IconButton>
-        </MDBox>
-      </DialogTitle>
-      <DialogContent dividers>
-        <MDBox mb={2} p={1.5} borderRadius="lg" sx={{ backgroundColor: "#eff6ff", border: "1px solid #bfdbfe" }}>
-          <MDTypography variant="button" fontWeight="bold" color="info">
-            Requested on {request.requested_at}
-            {isAdmin && request.requested_by_name ? ` by ${actorText(request.requested_by_name, request.requested_by_login_id)}` : ""}
-          </MDTypography>
-          <MDTypography variant="caption" color="text" display="block">
-            Reason: {request.note || "No reason given."}
-          </MDTypography>
-          {request.status !== "pending" && (
-            <MDTypography variant="caption" color="text" display="block">
-              {request.status === "approved" ? "Approved" : "Rejected"} on {request.reviewed_at}
-              {isAdmin && request.reviewed_by_name ? ` by ${actorText(request.reviewed_by_name, request.reviewed_by_login_id)}` : ""}
-              {request.review_note ? ` · ${request.review_note}` : ""}
-            </MDTypography>
+    <Modal
+      open onClose={onClose} size="xl" locked={busy}
+      title={`${request.staff_name} · ${request.company_name}`}
+      actions={(
+        <div className="flex w-full flex-wrap items-center justify-between gap-2">
+          <button
+            type="button" className={btn.outline} disabled={!selected.length}
+            onClick={() => printPurchaseRequisitionsPdf(rows.filter((row) => selected.includes(String(row.id))))}
+          >
+            <Icon name="print" className="text-[18px]" />Print Selected ({selected.length})
+          </button>
+          {canDecide && request.status === "pending" && (
+            <div className="flex gap-2">
+              <button type="button" className={`${btn.outline} border-red-200 text-red-700 hover:bg-red-50`} disabled={busy} onClick={() => decide("rejected")}>
+                <Icon name="block" className="text-[18px]" />Reject Request
+              </button>
+              <button type="button" className={`${btn.primary} bg-emerald-600 hover:bg-emerald-700`} disabled={busy} onClick={() => decide("approved")}>
+                <Icon name="check_circle" className="text-[18px]" />Approve ({pendingCount} pending)
+              </button>
+            </div>
           )}
-        </MDBox>
+        </div>
+      )}
+    >
+      <div className="mb-4 grid grid-cols-3 gap-2">
+        {[["Target", request.target_amount, "text-slate-900"], ["Done", request.achieved_amount, "text-emerald-700"], ["Short", short, "text-red-700"]].map(([label, value, cls]) => (
+          <div key={label} className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
+            <span className="block text-[11px] font-semibold uppercase tracking-wide text-slate-400">{label}</span>
+            <span className={`block text-[15px] font-bold tabular-nums ${cls}`}>₹{money(value)}</span>
+          </div>
+        ))}
+      </div>
+      <div className="mb-4 rounded-xl border border-blue-200 bg-blue-50 px-3.5 py-2.5 text-[12.5px] text-slate-600">
+        <span className="block font-semibold text-blue-800">
+          {request.request_date} · Requested on {request.requested_at}
+          {isAdmin && request.requested_by_name ? ` by ${actorText(request.requested_by_name, request.requested_by_login_id)}` : ""}
+        </span>
+        <span className="block">Reason: {request.note || "No reason given."}</span>
+        {request.status !== "pending" && (
+          <span className="block">
+            {request.status === "approved" ? "Approved" : "Rejected"} on {request.reviewed_at}
+            {isAdmin && request.reviewed_by_name ? ` by ${actorText(request.reviewed_by_name, request.reviewed_by_login_id)}` : ""}
+            {request.review_note ? ` · ${request.review_note}` : ""}
+          </span>
+        )}
+      </div>
 
-        {loading ? (
-          <MDTypography variant="body2" color="text">Loading requisitions...</MDTypography>
-        ) : (
-          <TableContainer>
-            <Table size="small">
-              <TableHead sx={{ display: "table-header-group" }}>
-                <TableRow>
-                  <TableCell padding="checkbox">
-                    <Checkbox
-                      checked={allSelected}
-                      indeterminate={!allSelected && selected.length > 0}
-                      onChange={() => setSelected(allSelected ? [] : ids)}
-                      inputProps={{ "aria-label": "Select all requisitions" }}
-                    />
-                  </TableCell>
-                  {["Sr No", "Requisition No", "Outlet", "Area", "Items", "Total Qty", "Value", "Status", "View"]
-                    .map((heading) => <TableCell key={heading} sx={{ fontWeight: 700 }}>{heading}</TableCell>)}
-                </TableRow>
-              </TableHead>
-              <TableBody>
-                {rows.map((row, index) => (
-                  <TableRow key={row.id} sx={row.status === "cancelled" ? { backgroundColor: "#fee2e2" } : row.status === "approved" ? { backgroundColor: "#dcfce7" } : {}}>
-                    <TableCell padding="checkbox">
-                      <Checkbox
-                        checked={selected.includes(String(row.id))}
-                        onChange={() => setSelected((current) => (
-                          current.includes(String(row.id))
-                            ? current.filter((value) => value !== String(row.id))
-                            : [...current, String(row.id)]
-                        ))}
-                        inputProps={{ "aria-label": `Select requisition ${row.requisition_number}` }}
-                      />
-                    </TableCell>
-                    <TableCell>{index + 1}</TableCell>
-                    <TableCell>{row.requisition_number}</TableCell>
-                    <TableCell>{row.outlet_name}</TableCell>
-                    <TableCell>{row.location_name || "—"}</TableCell>
-                    <TableCell>{row.item_count}</TableCell>
-                    <TableCell>{Number(row.total_quantity || 0).toFixed(2)}</TableCell>
-                    <TableCell>{money(row.total_amount)}</TableCell>
-                    <TableCell>{row.status || "pending"}</TableCell>
-                    <TableCell>
-                      <MDButton color="info" variant="text" size="small" title="View / print" onClick={() => printPurchaseRequisitionPdf(row)}>
-                        <Icon fontSize="small">visibility</Icon>
-                      </MDButton>
-                    </TableCell>
-                  </TableRow>
+      {loading ? (
+        <div className="flex justify-center py-10"><Spinner className="size-6" /></div>
+      ) : (
+        <div className="overflow-x-auto rounded-xl border border-slate-200">
+          <table className="w-full border-collapse">
+            <thead>
+              <tr className="bg-slate-50">
+                <th className={`${th} w-10`}>
+                  <TriCheck checked={allSelected} indeterminate={!allSelected && selected.length > 0} onChange={() => setSelected(allSelected ? [] : ids)} label="Select all requisitions" />
+                </th>
+                {["#", "Requisition no", "Outlet", "Area", "Items", "Total qty", "Value", "Status", ""].map((heading) => (
+                  <th key={heading} className={th}>{heading}</th>
                 ))}
-              </TableBody>
-            </Table>
-          </TableContainer>
-        )}
-      </DialogContent>
-      <DialogActions sx={{ px: 3, py: 2, justifyContent: "space-between", flexWrap: "wrap", gap: 1 }}>
-        <MDButton
-          color="dark"
-          variant="outlined"
-          disabled={!selected.length}
-          onClick={() => printPurchaseRequisitionsPdf(rows.filter((row) => selected.includes(String(row.id))))}
-        >
-          <Icon sx={{ mr: 0.5 }}>print</Icon> Print Selected ({selected.length})
-        </MDButton>
-        {canDecide && request.status === "pending" && (
-          <MDBox display="flex" gap={1}>
-            <MDButton color="error" variant="outlined" disabled={busy} onClick={() => decide("rejected")}>
-              Reject Request
-            </MDButton>
-            <MDButton color="success" variant="gradient" disabled={busy} onClick={() => decide("approved")}>
-              Approve ({pendingCount} pending)
-            </MDButton>
-          </MDBox>
-        )}
-      </DialogActions>
-    </Dialog>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((row, index) => (
+                <tr key={row.id} className={`border-t border-slate-100 ${row.status === "cancelled" ? "bg-red-50/70" : row.status === "approved" ? "bg-emerald-50/70" : ""}`}>
+                  <td className={td}>
+                    <input
+                      type="checkbox" className="size-4 accent-blue-600" aria-label={`Select requisition ${row.requisition_number}`}
+                      checked={selected.includes(String(row.id))}
+                      onChange={() => setSelected((current) => (
+                        current.includes(String(row.id))
+                          ? current.filter((value) => value !== String(row.id))
+                          : [...current, String(row.id)]
+                      ))}
+                    />
+                  </td>
+                  <td className={`${td} text-slate-400`}>{index + 1}</td>
+                  <td className={`${td} font-mono text-[12.5px] font-semibold`}>{row.requisition_number}</td>
+                  <td className={`${td} font-semibold text-slate-800`}>{row.outlet_name}</td>
+                  <td className={td}>{row.location_name || "—"}</td>
+                  <td className={`${td} tabular-nums`}>{row.item_count}</td>
+                  <td className={`${td} tabular-nums`}>{Number(row.total_quantity || 0).toFixed(2)}</td>
+                  <td className={`${td} tabular-nums font-semibold`}>{money(row.total_amount)}</td>
+                  <td className={td}><Badge tone={STATUS_TONE[row.status || "pending"]}>{row.status || "pending"}</Badge></td>
+                  <td className={td}>
+                    <button type="button" className={`${btn.icon} hover:text-blue-700`} title="View / print" aria-label="View / print" onClick={() => printPurchaseRequisitionPdf(row)}>
+                      <Icon name="visibility" className="text-[18px]" />
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </Modal>
   );
 }
 
@@ -244,85 +230,70 @@ function BelowTargetApprovals() {
   return (
     <DashboardLayout>
       <DashboardNavbar />
-      <MDBox py={3}>
+      <div className="pb-8 font-[Poppins,Roboto,sans-serif] text-slate-700">
+        <PageHeader
+          title="Below Target Approvals"
+          description="Days where a staff member's requisitions are below the company's daily target, sent here for approval. Approving a request approves all pending requisitions of that day."
+          actions={(
+            <button type="button" className={btn.outline} onClick={load} disabled={loading}>
+              <Icon name="refresh" className="text-[18px]" />Refresh
+            </button>
+          )}
+        />
+        {message && <Notice tone="success" className="mb-4" onClose={() => setMessage("")}>{message}</Notice>}
+
         <Card>
-          <MDBox p={3}>
-            <MDBox display="flex" justifyContent="space-between" alignItems="flex-end" flexWrap="wrap" gap={2} mb={2}>
-              <MDBox>
-                <MDTypography variant="h6" fontWeight="bold">Below Target Approvals</MDTypography>
-                <MDTypography variant="caption" color="text">
-                  Days where a staff member&apos;s requisitions are below the company&apos;s daily target, sent here for approval.
-                  Approving a request approves all pending requisitions of that day.
-                </MDTypography>
-              </MDBox>
-              <MDButton color="info" variant="outlined" size="small" onClick={load} disabled={loading}>
-                <Icon sx={{ mr: 0.5 }}>refresh</Icon> Refresh
-              </MDButton>
-            </MDBox>
-
-            {message && (
-              <MDTypography variant="button" color="success" display="block" mb={1.5}>{message}</MDTypography>
-            )}
-
-            <ToggleButtonGroup exclusive size="small" value={show} onChange={(_, value) => value && setShow(value)} sx={{ mb: 2 }}>
-              <ToggleButton value="pending">Pending ({counts.pending})</ToggleButton>
-              <ToggleButton value="approved">Approved ({counts.approved})</ToggleButton>
-              <ToggleButton value="rejected">Rejected ({counts.rejected})</ToggleButton>
-              <ToggleButton value="all">All ({counts.all})</ToggleButton>
-            </ToggleButtonGroup>
-
-            {loading ? (
-              <MDTypography variant="body2" color="text">Loading requests...</MDTypography>
-            ) : visible.length === 0 ? (
-              <MDTypography variant="body2" color="text">No requests here.</MDTypography>
-            ) : (
-              <TableContainer>
-                <Table>
-                  <TableHead sx={{ display: "table-header-group" }}>
-                    <TableRow>
-                      {[
-                        "Sr No", "Date", "Employee", "Company", "Target", "Done", "Short", "Reason", "Requested On",
-                        ...(isAdmin ? ["Requested By"] : []), "Status", ...(isAdmin ? ["Reviewed By"] : []), "Action",
-                      ].map((heading) => <TableCell key={heading} sx={{ fontWeight: 700 }}>{heading}</TableCell>)}
-                    </TableRow>
-                  </TableHead>
-                  <TableBody>
-                    {visible.map((request, index) => (
-                      <TableRow key={request.id}>
-                        <TableCell>{index + 1}</TableCell>
-                        <TableCell>{request.request_date}</TableCell>
-                        <TableCell>{request.staff_name}</TableCell>
-                        <TableCell>{request.company_name}</TableCell>
-                        <TableCell>{money(request.target_amount)}</TableCell>
-                        <TableCell>{money(request.achieved_amount)}</TableCell>
-                        <TableCell sx={{ color: "#b91c1c", fontWeight: 600 }}>
-                          {money(Math.max(0, request.target_amount - request.achieved_amount))}
-                        </TableCell>
-                        <TableCell sx={{ maxWidth: 220 }}>{request.note || "—"}</TableCell>
-                        <TableCell>{request.requested_at}</TableCell>
-                        {isAdmin && <TableCell>{actorText(request.requested_by_name, request.requested_by_login_id)}</TableCell>}
-                        <TableCell>
-                          <Chip size="small" color={STATUS_COLORS[request.status] || "default"} label={request.status} />
-                        </TableCell>
-                        {isAdmin && (
-                          <TableCell>
-                            {request.status === "pending" ? "—" : actorText(request.reviewed_by_name, request.reviewed_by_login_id)}
-                          </TableCell>
-                        )}
-                        <TableCell>
-                          <MDButton color="info" variant="gradient" size="small" onClick={() => setOpen(request)}>
-                            View
-                          </MDButton>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </TableContainer>
-            )}
-          </MDBox>
+          <div className="border-b border-slate-100 px-4 py-3">
+            <Segmented
+              label="Show requests" value={show} onChange={setShow}
+              options={[["pending", `Pending (${counts.pending})`], ["approved", `Approved (${counts.approved})`], ["rejected", `Rejected (${counts.rejected})`], ["all", `All (${counts.all})`]]}
+            />
+          </div>
+          {loading ? (
+            <div className="flex justify-center py-14"><Spinner className="size-7" /></div>
+          ) : visible.length === 0 ? (
+            <EmptyState icon="task_alt" text="No requests here." />
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full border-collapse">
+                <thead>
+                  <tr className="bg-slate-50">
+                    {[
+                      "#", "Date", "Employee", "Company", "Target", "Done", "Short", "Reason", "Requested on",
+                      ...(isAdmin ? ["Requested by"] : []), "Status", ...(isAdmin ? ["Reviewed by"] : []), "",
+                    ].map((heading) => <th key={heading} className={th}>{heading}</th>)}
+                  </tr>
+                </thead>
+                <tbody>
+                  {visible.map((request, index) => (
+                    <tr key={request.id} className="border-t border-slate-100 hover:bg-slate-50/70">
+                      <td className={`${td} text-slate-400`}>{index + 1}</td>
+                      <td className={`${td} whitespace-nowrap`}>{request.request_date}</td>
+                      <td className={`${td} font-semibold text-slate-800`}>{request.staff_name}</td>
+                      <td className={td}>{request.company_name}</td>
+                      <td className={`${td} tabular-nums`}>{money(request.target_amount)}</td>
+                      <td className={`${td} tabular-nums`}>{money(request.achieved_amount)}</td>
+                      <td className={`${td} tabular-nums font-semibold text-red-700`}>{money(Math.max(0, request.target_amount - request.achieved_amount))}</td>
+                      <td className={`${td} max-w-56 text-[12.5px] text-slate-500`}>{request.note || "—"}</td>
+                      <td className={`${td} whitespace-nowrap text-[12.5px]`}>{request.requested_at}</td>
+                      {isAdmin && <td className={`${td} text-[12.5px]`}>{actorText(request.requested_by_name, request.requested_by_login_id)}</td>}
+                      <td className={td}><Badge tone={STATUS_TONE[request.status]}>{request.status}</Badge></td>
+                      {isAdmin && (
+                        <td className={`${td} text-[12.5px]`}>
+                          {request.status === "pending" ? "—" : actorText(request.reviewed_by_name, request.reviewed_by_login_id)}
+                        </td>
+                      )}
+                      <td className={`${td} text-right`}>
+                        <button type="button" className={`${btn.outline} h-8 px-3`} onClick={() => setOpen(request)}>View</button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </Card>
-      </MDBox>
+      </div>
       <RequestDialog
         request={open}
         isAdmin={isAdmin}

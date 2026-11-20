@@ -1,133 +1,11 @@
+// Sales invoice (detailed bill) popup: Tailwind CSS (no MUI). Stock, free goods, lots, requisition, totals and submit logic unchanged.
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import { lotKey, lotLabel, lotPrice, remainingLots, takeFromLots } from "utils/stockLots";
-import {
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  Grid,
-  Table,
-  TableBody,
-  TableCell,
-  TableContainer,
-  TableHead,
-  TableRow,
-  IconButton,
-  Autocomplete,
-  Icon,
-  Select,
-  MenuItem,
-  InputAdornment,
-} from "@mui/material";
-import { FaRegEdit } from "react-icons/fa";
-import { CiTrash } from "react-icons/ci";
-
-import MDBox from "components/MDBox";
-import MDTypography from "components/MDTypography";
-import MDInput from "components/MDInput";
-import MDButton from "components/MDButton";
 import { buildInvoiceNumber, getInvoicePrefix, getInvoiceSuffix } from "utils/invoicePrefix";
-
-/* ─────────────────────────────────────────────────────────────
-   THEME TOKENS  (matches the reference screenshot precisely)
-───────────────────────────────────────────────────────────── */
-const PURPLE = "#6b3fa0";       // header / footer bar
-const PURPLE_DARK = "#5a3285";       // right-panel sidebar
-const GOLD_BAR = "#c9a252";       // product-entry bar
-const GOLD_LIGHT = "#e8d49e";       // table header row
-const WHITE = "#ffffff";
-const FIELD_BG = "#f5f0fa";       // table-area background
-
-/* ─────────────────────────────────────────────────────────────
-   SHARED INPUT STYLES
-   All inputs look like the on-screen fields: white bg, purple
-   label/border, small font.
-───────────────────────────────────────────────────────────── */
-const mkInput = (bgColor = WHITE) => ({
-  "& .MuiInputBase-root": {
-    backgroundColor: bgColor,
-    borderRadius: "3px !important",
-    fontSize: "0.78rem",
-    height: 26,
-  },
-  "& .MuiInputBase-input": {
-    color: "#1a1a2e !important",
-    fontSize: "0.78rem",
-    padding: "2px 6px !important",
-  },
-  "& .MuiInputBase-input.Mui-disabled": {
-    color: "#444 !important",
-    WebkitTextFillColor: "#444 !important",
-  },
-  "& .MuiInputBase-root.Mui-disabled": {
-    backgroundColor: "#ede8f5 !important",
-  },
-  "& .MuiOutlinedInput-notchedOutline": {
-    borderColor: "#b39ddb !important",
-    borderWidth: "1px !important",
-  },
-  "& .MuiInputBase-root.Mui-focused .MuiOutlinedInput-notchedOutline": {
-    borderColor: PURPLE + " !important",
-  },
-  "& .MuiInputLabel-root": {
-    color: "#7c4dab !important",
-    fontSize: "0.72rem !important",
-    top: "-4px",
-    fontWeight: 600,
-  },
-  "& .MuiInputLabel-shrink": {
-    top: "0px",
-    fontSize: "0.72rem !important",
-    backgroundColor: bgColor,
-    padding: "0 3px",
-  },
-});
-
-const headerInput = mkInput(WHITE);
-const goldInput = mkInput(WHITE);
-const sidebarInput = mkInput(WHITE);
-
-/* small bold label used above each input column in gold bar */
-const colLabelSx = {
-  fontSize: "0.65rem",
-  fontWeight: 700,
-  color: PURPLE_DARK,
-  textTransform: "uppercase",
-  letterSpacing: "0.04em",
-  mb: 0.3,
-  whiteSpace: "nowrap",
-};
-
-/* table header cell */
-const TH = {
-  backgroundColor: `${GOLD_LIGHT} !important`,
-  fontWeight: 700,
-  fontSize: "0.68rem",
-  color: "#4a2d7a",
-  borderBottom: `2px solid ${GOLD_BAR}`,
-  py: 0.8,
-  px: 1,
-  whiteSpace: "nowrap",
-};
-
-/* table body cell */
-const TD = {
-  fontSize: "0.73rem",
-  color: "#1a1a2e",
-  borderBottom: "1px solid #e8e0f5",
-  py: 0.6,
-  px: 1,
-  overflow: "hidden",
-  textOverflow: "ellipsis",
-};
+import { Icon, Modal, Notice, SearchSelect, btn, fieldClass } from "components/tw";
 
 const lineItemTableColWidths = ["4%", "22%", "6%", "6%", "6%", "8%", "8%", "6%", "12%", "10%", "12%"];
-
-const lineItemTableHeadRowSx = {
-  display: "table-header-group",
-  backgroundColor: GOLD_LIGHT,
-  "& .MuiTableCell-root": { backgroundColor: GOLD_LIGHT },
-};
 
 const LINE_ITEM_COLUMNS = [
   { label: "#", align: "center", width: "4%" },
@@ -143,37 +21,13 @@ const LINE_ITEM_COLUMNS = [
   { label: "Action", align: "center", width: "12%" },
 ];
 
-/* summary row inside right panel */
+/* summary row inside the totals panel */
 function SummaryRow({ label, value, highlight }) {
   return (
-    <MDBox
-      display="flex"
-      justifyContent="space-between"
-      alignItems="center"
-      sx={{
-        py: 0.4,
-        px: 0.5,
-        borderBottom: "1px solid rgba(255,255,255,0.1)",
-        ...(highlight && {
-          mt: 0.5,
-          pt: 0.8,
-          borderTop: "1px solid rgba(255,255,255,0.3)",
-        }),
-      }}
-    >
-      <MDTypography
-        variant="caption"
-        sx={{ color: "#e8d5f5", fontSize: "0.7rem", fontWeight: 600 }}
-      >
-        {label}
-      </MDTypography>
-      <MDTypography
-        variant="caption"
-        sx={{ color: WHITE, fontSize: "0.72rem", fontWeight: 700 }}
-      >
-        {value}
-      </MDTypography>
-    </MDBox>
+    <div className={`flex items-center justify-between gap-2 py-1.5 text-[12.5px] ${highlight ? "mt-1 border-t border-slate-300 pt-2.5 font-bold text-slate-900" : "border-b border-slate-100 text-slate-600"}`}>
+      <span>{label}</span>
+      <span className="font-semibold tabular-nums text-slate-900">{value}</span>
+    </div>
   );
 }
 
@@ -264,18 +118,6 @@ export default function SalesInvoiceDialog({
   );
   const invoicePrefix = getInvoicePrefix(companyName);
   const showEditableInvoiceSuffix = Boolean(invoicePrefix);
-  const invoiceInputProps = invoicePrefix
-    ? {
-        startAdornment: (
-          <InputAdornment position="start" disableTypography sx={{ mr: 0.25 }}>
-            <span style={{ fontSize: "0.75rem", fontWeight: 600, color: "#344767", whiteSpace: "nowrap" }}>
-              {invoicePrefix}
-            </span>
-          </InputAdornment>
-        ),
-      }
-    : undefined;
-
   const buildExistingSaleLine = (itemCount, price) => {
     const qty = Math.max(1, Number(itemCount) || 1);
     const net = Number(price) || 0;
@@ -756,686 +598,316 @@ export default function SalesInvoiceDialog({
   /* ─────────────────────────────────────────────────────────
      RENDER
   ───────────────────────────────────────────────────────── */
-  return (
-    <Dialog
-      open={open}
-      onClose={submitting ? undefined : onClose}
-      fullWidth
-      maxWidth="xl"
-      PaperProps={{
-        sx: {
-          borderRadius: "4px",
-          overflow: "hidden",
-          boxShadow: "0 25px 50px -12px rgba(0,0,0,0.4)",
-          m: 1,
-        },
-      }}
-    >
-      {/* ══════════════════════════════════════════════
-          ROW 1 — PURPLE HEADER  (Bill No, Sale To, Date)
-      ══════════════════════════════════════════════ */}
-      <MDBox sx={{ backgroundColor: PURPLE, px: 2, py: 1.2, position: "relative" }}>
-        <IconButton
-          aria-label="Close"
-          onClick={onClose}
-          disabled={submitting}
-          sx={{
-            position: "absolute",
-            top: 8,
-            right: 8,
-            color: WHITE,
-            backgroundColor: "rgba(255,255,255,0.12)",
-            "&:hover": { backgroundColor: "rgba(255,255,255,0.22)" },
-            zIndex: 1,
-          }}
-        >
-          <Icon sx={{ fontSize: "1.25rem !important" }}>close</Icon>
-        </IconButton>
-        <Grid container spacing={1.5} alignItems="flex-end" pr={4}>
+  // Product option text: "ERP — name (variant) [stock left]" (stock minus qty already on this bill).
+  const productLabel = (item, skipIndex) => {
+    const orig = Number(item.total_current_stock_in_pcs) || 0;
+    const used = lineItems.reduce((s, li, i) =>
+      i !== skipIndex && li.productErpId === item.product_erp_id
+        ? s + (Number(li.qty) || 0) : s, 0);
+    return `${item.product_erp_id} — ${item.product_name}${item.variant_name ? ` (${item.variant_name})` : ""} [${Math.max(0, orig - used)}]`;
+  };
+  const productOptions = (skipIndex) => companyStockItems.map((item) => ({ value: item.product_erp_id, label: productLabel(item, skipIndex) }));
+  const findProduct = (erpId) => companyStockItems.find((x) => x.product_erp_id === erpId) || null;
 
-          {/* Bill No + Prev Bill */}
-          <Grid item xs={12} md={2.5}>
-            <Grid container spacing={1}>
-              <Grid item xs={12}>
-                <MDTypography sx={{ ...colLabelSx, color: "#e2c9ff" }}>Bill No.</MDTypography>
-                <MDInput
-                  fullWidth
+  // Close on Escape like a dialog (not while saving, and not while the Edit Item popup is open).
+  useEffect(() => {
+    if (!open) return undefined;
+    const onKey = (event) => { if (event.key === "Escape" && !submitting && !editPopup.open) onClose(); };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [open, submitting, editPopup.open, onClose]);
+
+  if (!open) return null;
+
+  const lbl = "mb-1 block whitespace-nowrap text-[10.5px] font-semibold uppercase tracking-wide text-slate-500";
+  const inp = `${fieldClass} h-9 text-[12.5px]`;
+  const readOnly = "flex h-9 items-center truncate rounded-lg border border-slate-200 bg-slate-50 px-2.5 text-[12.5px] tabular-nums text-slate-700";
+  const th = "sticky top-0 z-[1] whitespace-nowrap bg-slate-50 px-2 py-2 text-[10.5px] font-semibold uppercase tracking-wide text-slate-500";
+  const td = "overflow-hidden text-ellipsis whitespace-nowrap border-t border-slate-100 px-2 py-2 text-[12.5px] text-slate-700";
+
+  return createPortal((
+    <div className="fixed inset-0 z-[1300] flex items-center justify-center p-2 sm:p-4">
+      <button type="button" aria-label="Close" onClick={() => { if (!submitting) onClose(); }} className="absolute inset-0 bg-slate-900/45 backdrop-blur-[2px]" />
+      <div role="dialog" aria-modal="true" aria-label="Sales invoice" className="relative flex max-h-[96vh] w-full max-w-[1440px] flex-col overflow-hidden rounded-2xl bg-white font-[Poppins,Roboto,sans-serif] text-slate-700 shadow-2xl">
+
+        {/* ROW 1 — header: bill no, requisition, address, date */}
+        <div className="flex items-start gap-3 border-b border-slate-200 px-5 py-4">
+          <span className="mt-5 hidden size-10 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-600 sm:flex"><Icon name="receipt_long" className="text-[22px]" /></span>
+          <div className="grid min-w-0 grow gap-3 sm:grid-cols-2 lg:grid-cols-[1fr_1.3fr_1.6fr_0.8fr]">
+            <div>
+              <span className={lbl}>Bill no.</span>
+              <span className="relative block">
+                {invoicePrefix && <span className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-[12px] font-semibold text-slate-600">{invoicePrefix}</span>}
+                <input
+                  className={inp} style={invoicePrefix ? { paddingLeft: `${invoicePrefix.length * 7.5 + 16}px` } : undefined}
                   value={getInvoiceSuffix(billNo, invoicePrefix)}
                   onChange={(e) => setBillNo(
                     invoicePrefix ? buildInvoiceNumber(e.target.value, invoicePrefix) : e.target.value
                   )}
-                  InputProps={invoiceInputProps}
                   disabled={!editMode && !showEditableInvoiceSuffix}
-                  sx={headerInput}
                 />
-              </Grid>
-              {/* <Grid item xs={12}>
-                <MDTypography sx={{ ...colLabelSx, color: "#e2c9ff" }}>Prev. Sold Bill No.</MDTypography>
-                <MDInput fullWidth value={prevBillNo} disabled sx={headerInput} />
-              </Grid> */}
-            </Grid>
-          </Grid>
-
-          {/* Sale To + Address */}
-          <Grid item xs={12} md={3}>
-            <MDTypography sx={{ ...colLabelSx, color: "#e2c9ff" }}>Requisition No. (Optional)</MDTypography>
-            <MDBox display="flex" gap={0.5}>
-              <MDInput fullWidth value={requisitionNumber} onChange={(e) => setRequisitionNumber(e.target.value)}
-                placeholder="PRQ000001" sx={headerInput} />
-              <MDButton color="info" variant="gradient" size="small" onClick={() => loadRequisition()}>Load</MDButton>
-            </MDBox>
-          </Grid>
-
-          {/* Sale To + Address */}
-          <Grid item xs={12} md={3.5}>
-            <Grid container spacing={1}>
-              {/* <Grid item xs={12}>
-                <MDTypography sx={{ ...colLabelSx, color: "#e2c9ff" }}>Sale To</MDTypography>
-                <MDInput fullWidth value={saleTo} disabled sx={headerInput} />
-              </Grid> */}
-              <Grid item xs={12}>
-                <MDTypography sx={{ ...colLabelSx, color: "#e2c9ff" }}>Address</MDTypography>
-                <MDInput fullWidth value={address} disabled sx={headerInput} />
-              </Grid>
-            </Grid>
-          </Grid>
-
-          {/* Date */}
-          <Grid item xs={12} md={3}>
-            <MDTypography sx={{ ...colLabelSx, color: "#e2c9ff" }}>Date</MDTypography>
-            <MDInput
-              fullWidth
-              value={formatDisplayDate(selectedDate)}
-              disabled
-              sx={headerInput}
-            />
-          </Grid>
-
-        </Grid>
-      </MDBox>
-
-      {/* ══════════════════════════════════════════════
-          ROW 2 — GOLD PRODUCT ENTRY BAR
-      ══════════════════════════════════════════════ */}
-      <MDBox sx={{ backgroundColor: GOLD_BAR, px: 2, py: 1 }}>
-        {stockError && (
-          <MDTypography variant="caption" color="error" fontWeight="medium" display="block" mb={0.5}>
-            {stockError}
-          </MDTypography>
-        )}
-        <Grid container spacing={1} alignItems="flex-end">
-
-          {/* Description (Autocomplete) */}
-          <Grid item xs={12} md={3.5}>
-            <MDTypography sx={colLabelSx}>Description Name</MDTypography>
-            <Autocomplete
-              options={companyStockItems}
-              loading={loadingStock}
-              size="small"
-              value={companyStockItems.find((x) => x.product_erp_id === draft.productErpId) || null}
-              onChange={(_, prod) => handleProductChange(prod)}
-              getOptionLabel={(item) => {
-                const orig = Number(item.total_current_stock_in_pcs) || 0;
-                const used = lineItems.reduce((s, li, i) =>
-                  i !== editingIdx && li.productErpId === item.product_erp_id
-                    ? s + (Number(li.qty) || 0) : s, 0);
-                return `${item.product_erp_id} — ${item.product_name}${item.variant_name ? ` (${item.variant_name})` : ""} [${Math.max(0, orig - used)}]`;
-              }}
-              isOptionEqualToValue={(o, v) => o.product_erp_id === v.product_erp_id}
-              renderInput={(params) => (
-                <MDInput {...params} placeholder="Search product from current stock…" fullWidth sx={goldInput} />
-              )}
-              sx={{
-                "& .MuiAutocomplete-inputRoot": { height: 26, fontSize: "0.78rem" },
-              }}
-            />
-          </Grid>
-
-          {/* Selected Item (product name display) */}
-          <Grid item xs={12} md={2}>
-            <MDTypography sx={colLabelSx}>Selected Item</MDTypography>
-            <MDInput fullWidth value={draft.productName} disabled sx={goldInput} />
-          </Grid>
-
-          {/* Avl. Stock */}
-          <Grid item xs={6} md={1}>
-            <MDTypography sx={colLabelSx}>Avl. Stock</MDTypography>
-            <MDInput fullWidth value={availableStock} disabled sx={goldInput} />
-          </Grid>
-
-          {/* Qty */}
-          <Grid item xs={6} md={0.7}>
-            <MDTypography sx={colLabelSx}>Qty.</MDTypography>
-            <MDInput
-              fullWidth
-              type="number"
-              inputProps={{ min: 1, max: availableStock || undefined }}
-              value={draft.qty}
-              onChange={(e) => setDraft((p) => ({ ...p, qty: e.target.value }))}
-              sx={goldInput}
-            />
-          </Grid>
-
-          {/* Unit (static) */}
-          <Grid item xs={6} md={0.7}>
-            <MDTypography sx={colLabelSx}>Unit</MDTypography>
-            <MDInput fullWidth value="PCS" disabled sx={goldInput} />
-          </Grid>
-
-          {/* Price type from Item List */}
-          <Grid item xs={6} md={1.2}>
-            <MDTypography sx={colLabelSx}>Price Type</MDTypography>
-            <Select
-              fullWidth
-              value={draft.priceType || "retail"}
-              onChange={(e) => handlePriceTypeChange(e.target.value)}
-              disabled={!draft.productErpId}
-              sx={{ height: 26, backgroundColor: WHITE, fontSize: "0.72rem" }}
-            >
-              <MenuItem value="retail">Retail</MenuItem>
-              <MenuItem value="wholesale">Wholesale</MenuItem>
-            </Select>
-          </Grid>
-
-          {/* Rate */}
-          <Grid item xs={6} md={1}>
-            <MDTypography sx={colLabelSx}>Rate</MDTypography>
-            <MDInput
-              fullWidth
-              type="number"
-              inputProps={{ min: 0, step: "0.01" }}
-              value={draft.rate}
-              onChange={(e) => setDraft((p) => ({ ...p, rate: e.target.value, rateEdited: true }))}
-              sx={goldInput}
-            />
-          </Grid>
-
-          {/* Total */}
-          <Grid item xs={6} md={0.8}>
-            <MDTypography sx={colLabelSx}>Total</MDTypography>
-            <MDInput fullWidth value={fmt(draftCalc.total)} disabled sx={goldInput} />
-          </Grid>
-
-          {/* Disc.% */}
-          <Grid item xs={6} md={0.7}>
-            <MDTypography sx={colLabelSx}>Disc.(%)</MDTypography>
-            <MDInput fullWidth value="0" disabled sx={goldInput} />
-          </Grid>
-
-          {/* Disc.(RS) */}
-          <Grid item xs={6} md={0.7}>
-            <MDTypography sx={colLabelSx}>Disc.(RS)</MDTypography>
-            <MDInput fullWidth value={fmt(0)} disabled sx={goldInput} />
-          </Grid>
-
-          {/* Taxable */}
-          <Grid item xs={6} md={0.8}>
-            <MDTypography sx={colLabelSx}>Taxable</MDTypography>
-            <MDInput fullWidth value={fmt(draftCalc.taxable)} disabled sx={goldInput} />
-          </Grid>
-
-          {/* Net Total */}
-          <Grid item xs={6} md={0.8}>
-            <MDTypography sx={colLabelSx}>Net Total</MDTypography>
-            <MDInput fullWidth value={fmt(draftCalc.netTotal)} disabled sx={goldInput} />
-          </Grid>
-
-          {/* Add / Update button */}
-          <Grid item xs={12} md="auto">
-            <MDButton
-              variant="gradient"
-              color={editingIdx != null ? "warning" : "info"}
-              size="small"
-              onClick={handleAddItem}
-              sx={{
-                height: 26,
-                minWidth: 52,
-                fontSize: "0.72rem",
-                fontWeight: 700,
-                textTransform: "none",
-                borderRadius: "3px",
-                boxShadow: "none",
-                mt: "auto",
-              }}
-            >
-              {editingIdx != null ? "Update" : "Add"}
-            </MDButton>
-          </Grid>
-
-        </Grid>
-        {draftLots.length > 1 && (
-          <MDTypography sx={{ fontSize: "0.68rem", color: "#475569", mt: 0.75 }}>
-            Sells in this order (earliest expiry, then lowest MRP):{" "}
-            {draftLots.map((lot, i) => (
-              <span key={lotKey(lot)}>
-                {i > 0 ? " → " : ""}
-                <b>{lotLabel(lot)}</b> ({lot.pcs} pcs)
               </span>
-            ))}
-          </MDTypography>
-        )}
-      </MDBox>
+            </div>
+            <div>
+              <span className={lbl}>Requisition no. (optional)</span>
+              <span className="flex gap-1.5">
+                <input className={inp} value={requisitionNumber} onChange={(e) => setRequisitionNumber(e.target.value)} placeholder="PRQ000001" />
+                <button type="button" className={`${btn.outline} h-9 px-3`} onClick={() => loadRequisition()}>Load</button>
+              </span>
+            </div>
+            <div className="min-w-0">
+              <span className={lbl}>Outlet / address</span>
+              <span className={readOnly} title={address}>
+                {outlet?.outlet_name ? <b className="mr-1.5 text-slate-900">{outlet.outlet_name}</b> : null}{address || "—"}
+              </span>
+            </div>
+            <div>
+              <span className={lbl}>Date</span>
+              <span className={readOnly}>{formatDisplayDate(selectedDate)}</span>
+            </div>
+          </div>
+          <button type="button" aria-label="Close" onClick={onClose} disabled={submitting} className={`${btn.icon} shrink-0`}>
+            <Icon name="close" className="text-[22px]" />
+          </button>
+        </div>
 
-      {/* ══════════════════════════════════════════════
-          ROW 3 — TABLE  (left) + SUMMARY PANEL (right)
-      ══════════════════════════════════════════════ */}
-      <MDBox display="flex" sx={{ minHeight: 420 }}>
-
-        {/* ── TABLE AREA ── */}
-        <MDBox flex={1} sx={{ backgroundColor: FIELD_BG, p: 1.5, minWidth: 0 }}>
-          <TableContainer
-            sx={{
-              maxHeight: 400,
-              backgroundColor: WHITE,
-              borderRadius: "3px",
-              boxShadow: "none",
-              borderTop: "1px solid #e8e0f5",
-              overflowX: "auto",
-              overflowY: "auto",
-            }}
-          >
-            <Table
-              size="small"
-              sx={{
-                tableLayout: "fixed",
-                width: "100%",
-                minWidth: 960,
-                "& .MuiTableCell-root": { overflow: "hidden" },
-              }}
+        {/* ROW 2 — product entry bar */}
+        <div className="border-b border-blue-100 bg-blue-50/50 px-5 py-3">
+          {stockError && <Notice tone="error" className="mb-2">{stockError}</Notice>}
+          <div className="grid grid-cols-2 items-end gap-2 sm:grid-cols-4 xl:grid-cols-[2.6fr_1.6fr_0.8fr_0.7fr_0.6fr_1fr_0.9fr_0.8fr_0.6fr_0.7fr_0.8fr_0.8fr_auto]">
+            <div className="col-span-2 sm:col-span-4 xl:col-span-1">
+              <span className={lbl}>Description name</span>
+              <SearchSelect
+                label="Search product from current stock" placeholder="Search product from current stock…" loading={loadingStock}
+                options={productOptions(editingIdx)} value={draft.productErpId || null}
+                onChange={(erpId) => handleProductChange(findProduct(erpId))}
+                noOptionsText="No products in current stock"
+              />
+            </div>
+            <div className="col-span-2 sm:col-span-2 xl:col-span-1"><span className={lbl}>Selected item</span><span className={readOnly} title={draft.productName}>{draft.productName || "—"}</span></div>
+            <div><span className={lbl}>Avl. stock</span><span className={readOnly}>{availableStock}</span></div>
+            <div>
+              <span className={lbl}>Qty.</span>
+              <input type="number" min={1} max={availableStock || undefined} className={inp} value={draft.qty} onChange={(e) => setDraft((p) => ({ ...p, qty: e.target.value }))} />
+            </div>
+            <div><span className={lbl}>Unit</span><span className={readOnly}>PCS</span></div>
+            <div>
+              <span className={lbl}>Price type</span>
+              <select className={inp} value={draft.priceType || "retail"} onChange={(e) => handlePriceTypeChange(e.target.value)} disabled={!draft.productErpId}>
+                <option value="retail">Retail</option>
+                <option value="wholesale">Wholesale</option>
+              </select>
+            </div>
+            <div>
+              <span className={lbl}>Rate</span>
+              <input type="number" min={0} step="0.01" className={inp} value={draft.rate} onChange={(e) => setDraft((p) => ({ ...p, rate: e.target.value, rateEdited: true }))} />
+            </div>
+            <div><span className={lbl}>Total</span><span className={readOnly}>{fmt(draftCalc.total)}</span></div>
+            <div><span className={lbl}>Disc. %</span><span className={readOnly}>0</span></div>
+            <div><span className={lbl}>Disc. ₹</span><span className={readOnly}>{fmt(0)}</span></div>
+            <div><span className={lbl}>Taxable</span><span className={readOnly}>{fmt(draftCalc.taxable)}</span></div>
+            <div><span className={lbl}>Net total</span><span className={`${readOnly} font-semibold text-slate-900`}>{fmt(draftCalc.netTotal)}</span></div>
+            <button
+              type="button" onClick={handleAddItem}
+              className={`${btn.primary} h-9 ${editingIdx != null ? "bg-amber-500 hover:bg-amber-600" : ""}`}
             >
+              <Icon name={editingIdx != null ? "check" : "add"} className="text-[18px]" />{editingIdx != null ? "Update" : "Add"}
+            </button>
+          </div>
+          {draftLots.length > 1 && (
+            <p className="m-0 mt-2 text-[11.5px] text-slate-600">
+              Sells in this order (earliest expiry, then lowest MRP):{" "}
+              {draftLots.map((lot, i) => (
+                <span key={lotKey(lot)}>
+                  {i > 0 ? " → " : ""}
+                  <b>{lotLabel(lot)}</b> ({lot.pcs} pcs)
+                </span>
+              ))}
+            </p>
+          )}
+        </div>
+
+        {/* ROW 3 — items table + totals panel */}
+        <div className="flex min-h-0 grow flex-col lg:flex-row">
+          <div className="min-h-[260px] min-w-0 grow overflow-auto">
+            <table className="w-full min-w-[960px] table-fixed border-separate border-spacing-0">
               <colgroup>
                 {lineItemTableColWidths.map((width, index) => (
+                  // eslint-disable-next-line react/no-array-index-key
                   <col key={`line-item-col-${index}`} style={{ width }} />
                 ))}
               </colgroup>
-              <TableHead sx={lineItemTableHeadRowSx}>
-                <TableRow>
+              <thead>
+                <tr>
                   {LINE_ITEM_COLUMNS.map((column) => (
-                    <TableCell
-                      key={column.label}
-                      align={column.align}
-                      sx={{ ...TH, width: column.width }}
-                    >
-                      {column.label}
-                    </TableCell>
+                    <th key={column.label} className={`${th} ${column.align === "left" ? "text-left" : "text-center"}`}>{column.label}</th>
                   ))}
-                </TableRow>
-              </TableHead>
-              <TableBody>
+                </tr>
+              </thead>
+              <tbody>
                 {lineItems.length > 0 ? lineItems.map((item, i) => {
                   const c = calcLine(item);
                   const itemName = `${item.productName}${item.variantName ? `, ${item.variantName}` : ""}`;
                   return (
-                    <TableRow
-                      key={`${item.productErpId}-${i}`}
-                      sx={{
-                        backgroundColor: i % 2 === 0 ? WHITE : "#faf7ff",
-                        "&:hover": { backgroundColor: "#f3eeff" },
-                      }}
-                    >
-                      <TableCell align="center" sx={{ ...TD, width: "4%", whiteSpace: "nowrap" }}>
-                        {i + 1}
-                      </TableCell>
-                      <TableCell align="left" sx={{ ...TD, width: "22%", whiteSpace: "nowrap" }} title={item.isFree ? `${itemName} · ${item.freeNote || "Free"}` : itemName}>
-                        {item.isFree ? (
-                          <span
-                            style={{ background: "#dcf3e3", color: "#15803d", fontWeight: 700, fontSize: "0.62rem", borderRadius: 3, padding: "1px 5px", marginRight: 6 }}
-                          >
-                            FREE
-                          </span>
-                        ) : null}
+                    // eslint-disable-next-line react/no-array-index-key
+                    <tr key={`${item.productErpId}-${i}`} className={item.isFree ? "bg-emerald-50/50" : "hover:bg-slate-50"}>
+                      <td className={`${td} text-center text-slate-400`}>{i + 1}</td>
+                      <td className={`${td} font-medium text-slate-900`} title={item.isFree ? `${itemName} · ${item.freeNote || "Free"}` : itemName}>
+                        {item.isFree ? <span className="mr-1.5 rounded bg-emerald-100 px-1.5 py-px text-[10px] font-bold text-emerald-700">FREE</span> : null}
                         {itemName}
-                      </TableCell>
-                      <TableCell
-                        align="center"
-                        sx={{ ...TD, width: "6%", whiteSpace: "nowrap" }}
-                        title={Number(item.mrp) > 0 ? lotLabel(item) : ""}
-                      >
+                      </td>
+                      <td className={`${td} text-center`} title={Number(item.mrp) > 0 ? lotLabel(item) : ""}>
                         {Number(item.mrp) > 0 ? `₹${fmt(item.mrp)}` : "—"}
-                        {item.expiryDate ? (
-                          <div style={{ fontSize: "0.62rem", color: "#64748b" }}>exp {formatDisplayDate(item.expiryDate)}</div>
-                        ) : null}
-                      </TableCell>
-                      <TableCell align="center" sx={{ ...TD, width: "6%", whiteSpace: "nowrap" }}>
-                        NA
-                      </TableCell>
-                      <TableCell align="center" sx={{ ...TD, width: "6%", whiteSpace: "nowrap" }}>
-                        {item.qty}
-                      </TableCell>
-                      <TableCell align="center" sx={{ ...TD, width: "8%", whiteSpace: "nowrap" }}>
-                        {fmt(c.rate)}
-                      </TableCell>
-                      <TableCell align="center" sx={{ ...TD, width: "8%", whiteSpace: "nowrap" }}>
-                        {fmt(c.total)}
-                      </TableCell>
-                      <TableCell align="center" sx={{ ...TD, width: "6%", whiteSpace: "nowrap" }}>
-                        0
-                      </TableCell>
-                      <TableCell align="center" sx={{ ...TD, width: "12%", whiteSpace: "nowrap" }}>
-                        {fmt(c.taxable)}
-                      </TableCell>
-                      <TableCell align="center" sx={{ ...TD, width: "10%", whiteSpace: "nowrap", fontWeight: 700 }}>
-                        {fmt(c.netTotal)}
-                      </TableCell>
-                      <TableCell align="center" sx={{ ...TD, width: "12%", whiteSpace: "nowrap" }}>
+                        {item.expiryDate ? <span className="block text-[10.5px] text-slate-500">exp {formatDisplayDate(item.expiryDate)}</span> : null}
+                      </td>
+                      <td className={`${td} text-center text-slate-400`}>NA</td>
+                      <td className={`${td} text-center tabular-nums`}>{item.qty}</td>
+                      <td className={`${td} text-center tabular-nums`}>{fmt(c.rate)}</td>
+                      <td className={`${td} text-center tabular-nums`}>{fmt(c.total)}</td>
+                      <td className={`${td} text-center tabular-nums`}>0</td>
+                      <td className={`${td} text-center tabular-nums`}>{fmt(c.taxable)}</td>
+                      <td className={`${td} text-center font-bold tabular-nums text-slate-900`}>{fmt(c.netTotal)}</td>
+                      <td className={`${td} text-center`}>
                         {item.isFree ? (
-                          <span style={{ fontSize: "0.65rem", color: "#64748b" }} title={item.freeNote || "Free goods"}>auto</span>
+                          <span className="text-[11px] text-slate-500" title={item.freeNote || "Free goods"}>auto</span>
                         ) : (
-                        <MDBox display="flex" justifyContent="center" gap={0.5}>
-                          <IconButton
-                            size="small"
-                            onClick={() => handleEdit(i)}
-                            sx={{ p: 0.3, color: "#2563eb", "&:hover": { backgroundColor: "#dbeafe" } }}
-                          >
-                            <FaRegEdit size={12} />
-                          </IconButton>
-                          <IconButton
-                            size="small"
-                            onClick={() => handleDelete(i)}
-                            sx={{ p: 0.3, color: "#dc2626", "&:hover": { backgroundColor: "#fee2e2" } }}
-                          >
-                            <CiTrash size={14} />
-                          </IconButton>
-                        </MDBox>
+                          <span className="inline-flex gap-0.5">
+                            <button type="button" className={`${btn.icon} size-7 text-blue-600 hover:bg-blue-50`} title="Edit item" aria-label="Edit item" onClick={() => handleEdit(i)}>
+                              <Icon name="edit" className="text-[16px]" />
+                            </button>
+                            <button type="button" className={`${btn.icon} size-7 text-red-500 hover:bg-red-50 hover:text-red-600`} title="Remove item" aria-label="Remove item" onClick={() => handleDelete(i)}>
+                              <Icon name="delete" className="text-[16px]" />
+                            </button>
+                          </span>
                         )}
-                      </TableCell>
-                    </TableRow>
+                      </td>
+                    </tr>
                   );
                 }) : (
-                  <TableRow>
-                    <TableCell colSpan={LINE_ITEM_COLUMNS.length} align="center" sx={{ py: 5, color: "#94a3b8", fontSize: "0.78rem" }}>
+                  <tr>
+                    <td colSpan={LINE_ITEM_COLUMNS.length} className="px-4 py-16 text-center text-[13px] text-slate-400">
+                      <Icon name="inventory_2" className="block text-[32px] text-slate-300" />
                       No items added yet.
-                    </TableCell>
-                  </TableRow>
+                    </td>
+                  </tr>
                 )}
-              </TableBody>
-            </Table>
-          </TableContainer>
-        </MDBox>
+              </tbody>
+            </table>
+          </div>
 
-        {/* ── SUMMARY PANEL ── */}
-        <MDBox
-          sx={{
-            width: 220,
-            flexShrink: 0,
-            backgroundColor: PURPLE_DARK,
-            display: "flex",
-            flexDirection: "column",
-            p: 1.5,
-            gap: 0.8,
-            overflowY: "auto",
-          }}
-        >
-          {/* Totals */}
-          <SummaryRow label="Total Amount" value={fmt(totals.amount)} />
-          <SummaryRow label="Total Discount" value={fmt(totals.disc)} />
-          <SummaryRow label="Taxable After Discount" value={fmt(totals.discountedTaxable)} />
-          <SummaryRow label="CGST (2.5%)" value={fmt(totals.cgst)} />
-          <SummaryRow label="SGST (2.5%)" value={fmt(totals.sgst)} />
-          <SummaryRow label="Total GST (5%)" value={fmt(totals.gst)} />
-          <SummaryRow label="Grand. Total" value={fmt(totals.grandTotal)} highlight />
+          {/* totals panel */}
+          <aside className="flex w-full shrink-0 flex-col gap-3 overflow-y-auto border-t border-slate-200 bg-slate-50/70 p-4 lg:w-72 lg:border-l lg:border-t-0">
+            <div>
+              <SummaryRow label="Total amount" value={fmt(totals.amount)} />
+              <SummaryRow label="Total discount" value={fmt(totals.disc)} />
+              <SummaryRow label="Taxable after discount" value={fmt(totals.discountedTaxable)} />
+              <SummaryRow label="CGST (2.5%)" value={fmt(totals.cgst)} />
+              <SummaryRow label="SGST (2.5%)" value={fmt(totals.sgst)} />
+              <SummaryRow label="Total GST (5%)" value={fmt(totals.gst)} />
+              <SummaryRow label="Grand total" value={fmt(totals.grandTotal)} highlight />
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <label><span className={lbl}>Flat discount (%)</span><input type="number" min={0} max={100} step="0.01" className={inp} value={flatDiscount} onChange={(e) => setFlatDiscount(e.target.value)} /></label>
+              <label><span className={lbl}>Round off</span><input type="number" className={inp} value={roundOff} onChange={(e) => setRoundOff(e.target.value)} /></label>
+            </div>
+            <div className="rounded-xl bg-blue-600 px-4 py-3 text-white">
+              <span className="block text-[11px] font-semibold uppercase tracking-wide text-blue-100">Net payable</span>
+              <span className="block text-[24px] font-bold leading-tight tabular-nums">₹{fmt(totals.netPayable)}</span>
+            </div>
+            <div className="flex flex-col gap-2">
+              <button type="button" onClick={handleSubmit} disabled={submitting} className={`${btn.primary} h-10 justify-center bg-emerald-600 text-[14px] hover:bg-emerald-700`}>
+                <Icon name="check_circle" className="text-[18px]" />
+                {submitting ? (editMode ? "Updating…" : "Submitting…") : editMode ? "Update" : "Submit"}
+              </button>
+              {!editMode && (
+                <button type="button" onClick={handleAddAnother} disabled={submitting} className={`${btn.outline} h-10 justify-center`}>
+                  <Icon name="add_circle_outline" className="text-[18px]" />Submit &amp; Add Another
+                </button>
+              )}
+            </div>
+          </aside>
+        </div>
 
-          {/* Flat Discount input */}
-          <MDBox mt={0.5}>
-            <MDTypography sx={{ ...colLabelSx, color: "#d8bfff", mb: 0.4 }}>Flat Discount (%)</MDTypography>
-            <MDInput
-              fullWidth
-              type="number"
-              inputProps={{ min: 0, max: 100, step: "0.01" }}
-              value={flatDiscount}
-              onChange={(e) => setFlatDiscount(e.target.value)}
-              sx={sidebarInput}
-            />
-          </MDBox>
-
-          {/* Round Off input */}
-          <MDBox>
-            <MDTypography sx={{ ...colLabelSx, color: "#d8bfff", mb: 0.4 }}>Round of</MDTypography>
-            <MDInput
-              fullWidth
-              type="number"
-              value={roundOff}
-              onChange={(e) => setRoundOff(e.target.value)}
-              sx={sidebarInput}
-            />
-          </MDBox>
-
-          {/* Net Payable */}
-          <MDBox>
-            <MDTypography sx={{ ...colLabelSx, color: "#d8bfff", mb: 0.4 }}>Net Paybale</MDTypography>
-            <MDInput
-              fullWidth
-              value={fmt(totals.netPayable)}
-              disabled
-              sx={{
-                ...sidebarInput,
-                "& .MuiInputBase-root.Mui-disabled": {
-                  backgroundColor: "#3b1f6e !important",
-                },
-                "& .MuiInputBase-input.Mui-disabled": {
-                  color: "#fff !important",
-                  WebkitTextFillColor: "#fff !important",
-                  fontWeight: 700,
-                },
-              }}
-            />
-          </MDBox>
-
-          {/* ── Buttons — always visible, not pushed off with mt=auto ── */}
-          <MDBox display="flex" flexDirection="column" gap={1} pt={1}>
-            <MDButton
-              variant="contained"
-              fullWidth
-              onClick={handleSubmit}
-              disabled={submitting}
-              sx={{
-                backgroundColor: "#22c55e",
-                color: WHITE,
-                fontWeight: 700,
-                fontSize: "0.82rem",
-                textTransform: "none",
-                borderRadius: "3px",
-                minHeight: 36,
-                boxShadow: "none",
-                "&:hover": { backgroundColor: "#16a34a" },
-              }}
-            >
-              {submitting ? (editMode ? "Updating…" : "Submitting…") : editMode ? "Update" : "Submit"}
-            </MDButton>
-
-            {!editMode && (
-              <MDButton
-                variant="outlined"
-                fullWidth
-                onClick={handleAddAnother}
-                disabled={submitting}
-                sx={{
-                  color: WHITE,
-                  borderColor: "rgba(255,255,255,0.6)",
-                  fontWeight: 600,
-                  fontSize: "0.74rem",
-                  textTransform: "none",
-                  borderRadius: "3px",
-                  minHeight: 32,
-                  lineHeight: 1.3,
-                  py: 0.6,
-                  "&:hover": { backgroundColor: "rgba(255,255,255,0.12)", borderColor: WHITE },
-                }}
-              >
-                Submit &amp; Add Another
-              </MDButton>
-            )}
-          </MDBox>
-        </MDBox>
-
-      </MDBox>
-
-      {/* ══════════════════════════════════════════════
-          ROW 4 — PURPLE FOOTER  (totals + remarks)
-      ══════════════════════════════════════════════ */}
-      <MDBox
-        sx={{
-          backgroundColor: PURPLE,
-          px: 2,
-          py: 1,
-          display: "flex",
-          alignItems: "center",
-          gap: 3,
-        }}
-      >
-        <MDBox sx={{ display: "flex", alignItems: "center", gap: 0.8, whiteSpace: "nowrap" }}>
-          <MDTypography sx={{ color: "#e2c9ff", fontSize: "0.7rem", fontWeight: 700 }}>
-            Total Items
-          </MDTypography>
-          <MDTypography sx={{ color: WHITE, fontSize: "0.75rem", fontWeight: 900 }}>
-            {String(totals.items).padStart(2, "0")}
-          </MDTypography>
-        </MDBox>
-
-        <MDBox sx={{ display: "flex", alignItems: "center", gap: 0.8, whiteSpace: "nowrap" }}>
-          <MDTypography sx={{ color: "#e2c9ff", fontSize: "0.7rem", fontWeight: 700 }}>
-            Total Quantity
-          </MDTypography>
-          <MDTypography sx={{ color: WHITE, fontSize: "0.75rem", fontWeight: 900 }}>
-            {totals.qty}
-          </MDTypography>
-        </MDBox>
-
-        <MDBox sx={{ display: "flex", alignItems: "center", gap: 1, flex: 1 }}>
-          <MDTypography sx={{ color: "#e2c9ff", fontSize: "0.7rem", fontWeight: 700, whiteSpace: "nowrap" }}>
-            Remarks
-          </MDTypography>
-          <MDInput
-            fullWidth
-            value={remarks}
-            onChange={(e) => setRemarks(e.target.value)}
-            sx={{
-              ...headerInput,
-              "& .MuiInputBase-root": {
-                ...headerInput["& .MuiInputBase-root"],
-                height: 28,
-                flex: 1,
-              },
-            }}
-          />
-        </MDBox>
-      </MDBox>
+        {/* ROW 4 — footer: totals + remarks */}
+        <div className="flex flex-wrap items-center gap-x-6 gap-y-2 border-t border-slate-200 bg-slate-50 px-5 py-2.5">
+          <span className="whitespace-nowrap text-[12.5px] text-slate-500">Total items <b className="ml-1 text-[14px] tabular-nums text-slate-900">{String(totals.items).padStart(2, "0")}</b></span>
+          <span className="whitespace-nowrap text-[12.5px] text-slate-500">Total quantity <b className="ml-1 text-[14px] tabular-nums text-slate-900">{totals.qty}</b></span>
+          <label className="flex min-w-64 grow items-center gap-2">
+            <span className="whitespace-nowrap text-[12.5px] text-slate-500">Remarks</span>
+            <input className={inp} value={remarks} onChange={(e) => setRemarks(e.target.value)} />
+          </label>
+        </div>
+      </div>
 
       {/* Edit line-item popup */}
-      <Dialog
-        open={editPopup.open}
-        onClose={closeEditPopup}
-        maxWidth="sm"
-        fullWidth
-        PaperProps={{ sx: { borderRadius: "6px" } }}
+      <Modal
+        open={editPopup.open} onClose={closeEditPopup} size="lg" title="Edit Item"
+        actions={(
+          <>
+            <button type="button" className={btn.ghost} onClick={closeEditPopup}>Cancel</button>
+            <button type="button" className={btn.primary} onClick={handleSaveEditPopup}>Update Item</button>
+          </>
+        )}
       >
-        <DialogTitle sx={{ fontWeight: 700, color: PURPLE_DARK, pb: 1 }}>
-          Edit Item
-        </DialogTitle>
-        <DialogContent dividers>
-          <Grid container spacing={2}>
-            <Grid item xs={12}>
-              <MDTypography sx={colLabelSx}>Description Name</MDTypography>
-              <Autocomplete
-                options={companyStockItems}
-                loading={loadingStock}
-                size="small"
-                value={companyStockItems.find((x) => x.product_erp_id === editPopup.draft.productErpId) || null}
-                onChange={(_, prod) => handleEditPopupProductChange(prod)}
-                getOptionLabel={(item) => {
-                  const orig = Number(item.total_current_stock_in_pcs) || 0;
-                  const used = lineItems.reduce((s, li, i) =>
-                    i !== editPopup.index && li.productErpId === item.product_erp_id
-                      ? s + (Number(li.qty) || 0) : s, 0);
-                  return `${item.product_erp_id} — ${item.product_name}${item.variant_name ? ` (${item.variant_name})` : ""} [${Math.max(0, orig - used)}]`;
-                }}
-                isOptionEqualToValue={(o, v) => o.product_erp_id === v.product_erp_id}
-                renderInput={(params) => (
-                  <MDInput {...params} placeholder="Search product from current stock…" fullWidth sx={goldInput} />
-                )}
-              />
-            </Grid>
-            <Grid item xs={12} sm={6}>
-              <MDTypography sx={colLabelSx}>Selected Item</MDTypography>
-              <MDInput fullWidth value={editPopup.draft.productName || ""} disabled sx={goldInput} />
-            </Grid>
-            <Grid item xs={6} sm={3}>
-              <MDTypography sx={colLabelSx}>Avl. Stock</MDTypography>
-              <MDInput fullWidth value={editPopupStock} disabled sx={goldInput} />
-            </Grid>
-            <Grid item xs={6} sm={3}>
-              <MDTypography sx={colLabelSx}>Unit</MDTypography>
-              <MDInput fullWidth value="PCS" disabled sx={goldInput} />
-            </Grid>
-            <Grid item xs={6} sm={4}>
-              <MDTypography sx={colLabelSx}>Qty.</MDTypography>
-              <MDInput
-                fullWidth
-                type="number"
-                inputProps={{ min: 1, max: editPopupStock || undefined }}
-                value={editPopup.draft.qty}
-                onChange={(e) =>
-                  setEditPopup((prev) => ({
-                    ...prev,
-                    draft: { ...prev.draft, qty: e.target.value },
-                  }))
-                }
-                sx={goldInput}
-              />
-            </Grid>
-            <Grid item xs={6} sm={4}>
-              <MDTypography sx={colLabelSx}>Price Type</MDTypography>
-              <Select
-                fullWidth
-                value={editPopup.draft.priceType || "retail"}
-                onChange={(e) => setEditPopup((prev) => ({
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-6">
+          <div className="col-span-2 sm:col-span-6">
+            <span className={lbl}>Description name</span>
+            <SearchSelect
+              label="Search product from current stock" placeholder="Search product from current stock…" loading={loadingStock}
+              options={productOptions(editPopup.index)} value={editPopup.draft.productErpId || null}
+              onChange={(erpId) => handleEditPopupProductChange(findProduct(erpId))}
+              noOptionsText="No products in current stock"
+            />
+          </div>
+          <div className="col-span-2 sm:col-span-3"><span className={lbl}>Selected item</span><span className={readOnly}>{editPopup.draft.productName || "—"}</span></div>
+          <div className="sm:col-span-2"><span className={lbl}>Avl. stock</span><span className={readOnly}>{editPopupStock}</span></div>
+          <div><span className={lbl}>Unit</span><span className={readOnly}>PCS</span></div>
+          <div className="sm:col-span-2">
+            <span className={lbl}>Qty.</span>
+            <input
+              type="number" min={1} max={editPopupStock || undefined} className={inp} value={editPopup.draft.qty}
+              onChange={(e) =>
+                setEditPopup((prev) => ({
                   ...prev,
-                  draft: {
-                    ...prev.draft,
-                    priceType: e.target.value,
-                    rate: e.target.value === "wholesale"
-                      ? prev.draft.wholesalePrice
-                      : prev.draft.retailPrice,
-                  },
-                }))}
-                sx={{ height: 26, backgroundColor: WHITE, fontSize: "0.72rem" }}
-              >
-                <MenuItem value="retail">Retail</MenuItem>
-                <MenuItem value="wholesale">Wholesale</MenuItem>
-              </Select>
-            </Grid>
-            <Grid item xs={6} sm={4}>
-              <MDTypography sx={colLabelSx}>Rate</MDTypography>
-              <MDInput
-                fullWidth
-                type="number"
-                inputProps={{ min: 0, step: "0.01" }}
-                value={editPopup.draft.rate}
-                onChange={(e) =>
-                  setEditPopup((prev) => ({
-                    ...prev,
-                    draft: { ...prev.draft, rate: e.target.value },
-                  }))
-                }
-                sx={goldInput}
-              />
-            </Grid>
-            <Grid item xs={12} sm={4}>
-              <MDTypography sx={colLabelSx}>Net Total</MDTypography>
-              <MDInput fullWidth value={fmt(editPopupCalc.netTotal)} disabled sx={goldInput} />
-            </Grid>
-          </Grid>
-        </DialogContent>
-        <DialogActions sx={{ px: 2, py: 1.5 }}>
-          <MDButton variant="outlined" color="dark" onClick={closeEditPopup}>
-            Cancel
-          </MDButton>
-          <MDButton variant="gradient" color="info" onClick={handleSaveEditPopup}>
-            Update Item
-          </MDButton>
-        </DialogActions>
-      </Dialog>
-
-    </Dialog>
-  );
+                  draft: { ...prev.draft, qty: e.target.value },
+                }))
+              }
+            />
+          </div>
+          <div className="sm:col-span-2">
+            <span className={lbl}>Price type</span>
+            <select
+              className={inp} value={editPopup.draft.priceType || "retail"}
+              onChange={(e) => setEditPopup((prev) => ({
+                ...prev,
+                draft: {
+                  ...prev.draft,
+                  priceType: e.target.value,
+                  rate: e.target.value === "wholesale"
+                    ? prev.draft.wholesalePrice
+                    : prev.draft.retailPrice,
+                },
+              }))}
+            >
+              <option value="retail">Retail</option>
+              <option value="wholesale">Wholesale</option>
+            </select>
+          </div>
+          <div className="sm:col-span-2">
+            <span className={lbl}>Rate</span>
+            <input
+              type="number" min={0} step="0.01" className={inp} value={editPopup.draft.rate}
+              onChange={(e) =>
+                setEditPopup((prev) => ({
+                  ...prev,
+                  draft: { ...prev.draft, rate: e.target.value },
+                }))
+              }
+            />
+          </div>
+          <div className="col-span-2 sm:col-span-6"><span className={lbl}>Net total</span><span className={`${readOnly} font-semibold text-slate-900`}>{fmt(editPopupCalc.netTotal)}</span></div>
+        </div>
+      </Modal>
+    </div>
+  ), document.body);
 }

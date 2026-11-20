@@ -1,14 +1,11 @@
+// Report > Transfers tab: Tailwind CSS (no MUI). Loading, filters and PDF unchanged.
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import ejs from 'ejs/ejs.min.js';
 import PropTypes from 'prop-types';
-import { Table, TableHead, TableBody, TableRow, TableCell, TableContainer, FormControl, InputLabel, Select, MenuItem, Chip } from '@mui/material';
-import MDBox from 'components/MDBox';
-import MDTypography from 'components/MDTypography';
-import MDInput from 'components/MDInput';
-import MDButton from 'components/MDButton';
 import { invoiceValue } from 'utils/assignmentReport';
 import { reportAreaName } from 'utils/areaName';
 import { useSalesPolling } from 'utils/salesSync';
+import { Badge, Field, Icon, Notice, btn, fieldClass } from 'components/tw';
 
 const pad = (value) => String(value).padStart(2, '0');
 const today = () => { const d = new Date(); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`; };
@@ -123,47 +120,55 @@ export default function DeliveryTransfers({ api }) {
     setTimeout(() => { if (!printWindow.closed) printWindow.print(); }, 250);
   };
 
-  return <MDBox mt={2} p={2} sx={{ border: '1px solid #cbd5e1' }}>
-    <MDTypography variant="h6">Delivery Transfers</MDTypography>
-    <MDTypography variant="caption" display="block">Invoices a delivery boy transferred to another delivery boy from the app. Dates filter on the transfer date; clear both to see every transfer.</MDTypography>
-    <MDBox display="flex" gap={2} alignItems="center" my={2} flexWrap="wrap">
-      <MDInput type="date" label="Transferred From" InputLabelProps={{ shrink: true }} value={from} onChange={(event) => setFrom(event.target.value)} />
-      <MDInput type="date" label="Transferred To" InputLabelProps={{ shrink: true }} value={to} onChange={(event) => setTo(event.target.value)} />
-      <FormControl size="small" sx={{ minWidth: 200 }}>
-        <InputLabel id="transfer-boy-label">Delivery Boy</InputLabel>
-        <Select labelId="transfer-boy-label" label="Delivery Boy" value={boys.includes(boy) ? boy : ''} onChange={(event) => setBoy(event.target.value)} sx={{ height: 44 }}>
-          <MenuItem value="">All delivery boys</MenuItem>
-          {boys.map((name) => <MenuItem key={name} value={name}>{name}</MenuItem>)}
-        </Select>
-      </FormControl>
-      <MDInput label="Search invoice / outlet / area" value={search} onChange={(event) => setSearch(event.target.value)} sx={{ minWidth: 220 }} />
-      <MDButton color="info" variant="outlined" onClick={reload} disabled={loading}>{loading ? 'Loading…' : 'Refresh'}</MDButton>
-      <MDButton color="success" variant="gradient" onClick={download} disabled={loading || !shown.length}>Download PDF</MDButton>
-    </MDBox>
-    {error && <MDTypography color="error" variant="body2" role="alert">{error}</MDTypography>}
-    <MDTypography variant="button" display="block" mb={1}>{shown.length} transfers · Invoice Amt: {money(total)}</MDTypography>
-    <TableContainer sx={{ maxHeight: '60vh' }}><Table size="small" stickyHeader sx={{ '& .MuiTableCell-root': { fontSize: '0.8rem', verticalAlign: 'top' } }}>
-      <TableHead sx={{ display: 'table-header-group' }}><TableRow>
-        {COLUMNS.map((label) => <TableCell key={label} align={label === 'Invoice Amt' ? 'right' : 'left'} sx={{ whiteSpace: 'nowrap' }}>{label}</TableCell>)}
-      </TableRow></TableHead>
-      <TableBody>
-        {shown.map((row, index) => <TableRow key={row.id} hover>
-          <TableCell>{index + 1}</TableCell>
-          <TableCell sx={{ whiteSpace: 'nowrap' }}>{displayDate(row.transferred_at)}</TableCell>
-          <TableCell>{row.from_delivery_boy_name || '—'}</TableCell>
-          <TableCell sx={{ fontWeight: 700 }}>{row.to_delivery_boy_name || '—'}</TableCell>
-          <TableCell sx={{ whiteSpace: 'nowrap' }}>{displayDate(row.delivery_date)}</TableCell>
-          <TableCell>{row.company_name || '—'}</TableCell>
-          <TableCell>{reportAreaName(row.location_name)}</TableCell>
-          <TableCell>{row.invoice_number || row.sale_id}</TableCell>
-          <TableCell>{row.outlet_name || '—'}</TableCell>
-          <TableCell align="right" sx={{ whiteSpace: 'nowrap' }}>{money(invoiceValue(row))}</TableCell>
-          <TableCell>{row.reason || '—'}</TableCell>
-          <TableCell><Chip size="small" variant="outlined" color={STATUS_COLOR[statusKey(row)] || 'default'} label={STATUS_LABEL[statusKey(row)] || row.packaging_status || '—'} /></TableCell>
-        </TableRow>)}
-        {!shown.length && <TableRow><TableCell colSpan={COLUMNS.length}>{loading ? 'Loading transfers…' : 'No transfers for these dates.'}</TableCell></TableRow>}
-      </TableBody>
-    </Table></TableContainer>
-  </MDBox>;
+const TONE = { warning: "amber", success: "green", error: "red", default: "slate" };
+  const th = "sticky top-0 z-[1] whitespace-nowrap bg-slate-50 px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500";
+  const td = "border-t border-slate-100 px-3 py-2 text-[12.5px] align-top";
+  return (
+    <section className="rounded-2xl border border-slate-200 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+      <div className="border-b border-slate-100 px-4 py-3">
+        <h3 className="m-0 text-[15px] font-semibold text-slate-900">Delivery Transfers</h3>
+        <p className="m-0 mt-0.5 text-[12.5px] text-slate-500">Invoices a delivery boy transferred to another delivery boy from the app. Dates filter on the transfer date; clear both to see every transfer.</p>
+      </div>
+      <div className="flex flex-wrap items-end gap-3 border-b border-slate-100 px-4 py-3">
+        <Field label="Transferred from" width="w-36"><input type="date" className={fieldClass} value={from} onChange={(event) => setFrom(event.target.value)} /></Field>
+        <Field label="Transferred to" width="w-36"><input type="date" className={fieldClass} value={to} onChange={(event) => setTo(event.target.value)} /></Field>
+        <Field label="Delivery boy" width="w-48">
+          <select className={fieldClass} value={boys.includes(boy) ? boy : ''} onChange={(event) => setBoy(event.target.value)}>
+            <option value="">All delivery boys</option>
+            {boys.map((name) => <option key={name} value={name}>{name}</option>)}
+          </select>
+        </Field>
+        <Field label="Search" width="w-56"><input className={fieldClass} placeholder="Invoice / outlet / area" value={search} onChange={(event) => setSearch(event.target.value)} /></Field>
+        <button type="button" className={btn.outline} onClick={reload} disabled={loading}><Icon name="refresh" className="text-[18px]" />{loading ? 'Loading…' : 'Refresh'}</button>
+        <button type="button" className={btn.primary} onClick={download} disabled={loading || !shown.length}><Icon name="picture_as_pdf" className="text-[18px]" />Download PDF</button>
+      </div>
+      {error && <div className="px-4 pt-3"><Notice tone="error">{error}</Notice></div>}
+      <p className="m-0 px-4 py-2.5 text-[12.5px] text-slate-500"><b className="text-slate-800">{shown.length}</b> transfers · Invoice amt: <b className="text-slate-800">{money(total)}</b></p>
+      <div className="max-h-[60vh] overflow-auto border-t border-slate-100">
+        <table className="w-full min-w-[1200px] border-separate border-spacing-0">
+          <thead><tr>{COLUMNS.map((label) => <th key={label} className={`${th} ${label === 'Invoice Amt' ? 'text-right' : ''}`}>{label}</th>)}</tr></thead>
+          <tbody>
+            {shown.map((row, index) => (
+              <tr key={row.id} className="hover:bg-slate-50">
+                <td className={`${td} text-slate-400`}>{index + 1}</td>
+                <td className={`${td} whitespace-nowrap`}>{displayDate(row.transferred_at)}</td>
+                <td className={td}>{row.from_delivery_boy_name || '—'}</td>
+                <td className={`${td} font-bold text-slate-900`}>{row.to_delivery_boy_name || '—'}</td>
+                <td className={`${td} whitespace-nowrap`}>{displayDate(row.delivery_date)}</td>
+                <td className={td}>{row.company_name || '—'}</td>
+                <td className={td}>{reportAreaName(row.location_name)}</td>
+                <td className={`${td} font-mono`}>{row.invoice_number || row.sale_id}</td>
+                <td className={td}>{row.outlet_name || '—'}</td>
+                <td className={`${td} whitespace-nowrap text-right font-semibold tabular-nums`}>{money(invoiceValue(row))}</td>
+                <td className={`${td} max-w-56`}>{row.reason || '—'}</td>
+                <td className={td}><Badge tone={TONE[STATUS_COLOR[statusKey(row)]] || 'slate'}>{STATUS_LABEL[statusKey(row)] || row.packaging_status || '—'}</Badge></td>
+              </tr>
+            ))}
+            {!shown.length && <tr><td colSpan={COLUMNS.length} className="px-4 py-12 text-center text-[13px] text-slate-400">{loading ? 'Loading transfers…' : 'No transfers for these dates.'}</td></tr>}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  );
 }
 DeliveryTransfers.propTypes = { api: PropTypes.string.isRequired };

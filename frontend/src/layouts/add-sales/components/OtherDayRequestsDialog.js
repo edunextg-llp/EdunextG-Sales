@@ -1,31 +1,18 @@
+// Other bit / date approvals list (opened from Add Sales): Tailwind CSS (no MUI). Filter, search and review logic unchanged.
 import { useMemo, useState } from "react";
 import PropTypes from "prop-types";
-import {
-  Dialog,
-  DialogActions,
-  DialogContent,
-  DialogTitle,
-  IconButton,
-  InputAdornment,
-  TextField,
-  Tooltip,
-} from "@mui/material";
-import Icon from "@mui/material/Icon";
-
-import MDBox from "components/MDBox";
-import MDButton from "components/MDButton";
-import MDInput from "components/MDInput";
-import MDTypography from "components/MDTypography";
+import { Icon, Modal, Notice, SearchBox, btn, fieldClass } from "components/tw";
 import { formatDate, formatDateTime } from "layouts/overdue-requests/components/ReviewDialog";
 
 const API = process.env.REACT_APP_API_URL;
 
+// Status look: card accent (left border) + pill.
 const STATUS = {
-  pending: { label: "Waiting for admin", accent: "#f59e0b", bg: "#fffbeb", text: "#b45309" },
-  approved: { label: "Approved", accent: "#16a34a", bg: "#f0fdf4", text: "#15803d" },
-  rejected: { label: "Rejected", accent: "#dc2626", bg: "#fef2f2", text: "#b91c1c" },
-  used: { label: "Sale added", accent: "#64748b", bg: "#f1f5f9", text: "#475569" },
-  own_permission: { label: "Own permission", accent: "#0d9488", bg: "#f0fdfa", text: "#0f766e" },
+  pending: { label: "Waiting for admin", accent: "border-l-amber-500", pill: "bg-amber-50 text-amber-700" },
+  approved: { label: "Approved", accent: "border-l-emerald-600", pill: "bg-emerald-50 text-emerald-700" },
+  rejected: { label: "Rejected", accent: "border-l-red-600", pill: "bg-red-50 text-red-700" },
+  used: { label: "Sale added", accent: "border-l-slate-500", pill: "bg-slate-100 text-slate-600" },
+  own_permission: { label: "Own permission", accent: "border-l-teal-600", pill: "bg-teal-50 text-teal-700" },
 };
 
 const FILTERS = [
@@ -44,109 +31,72 @@ const matchesFilter = (request, filter) => {
   return request.status === filter;
 };
 
-function Fact({ label, children }) {
+function Fact({ label, children, sub }) {
   return (
-    <MDBox minWidth={0}>
-      <MDTypography variant="caption" sx={{ color: "#9ca3af", fontSize: "0.68rem", textTransform: "uppercase", letterSpacing: "0.04em" }}>
-        {label}
-      </MDTypography>
-      <MDTypography variant="button" display="block" fontWeight="medium" color="dark" sx={{ textTransform: "none", lineHeight: 1.35, wordBreak: "break-word" }}>
-        {children}
-      </MDTypography>
-    </MDBox>
+    <div className="min-w-0">
+      <span className="block text-[10.5px] font-semibold uppercase tracking-wide text-slate-400">{label}</span>
+      <span className="block break-words text-[13px] font-medium leading-snug text-slate-800">{children}</span>
+      {sub && <span className="block text-[11.5px] text-slate-500">{sub}</span>}
+    </div>
   );
 }
 
-Fact.propTypes = { label: PropTypes.string.isRequired, children: PropTypes.node.isRequired };
+Fact.defaultProps = { sub: null };
+Fact.propTypes = { label: PropTypes.string.isRequired, children: PropTypes.node.isRequired, sub: PropTypes.node };
 
 function RequestCard({ request, isAdmin, onReview }) {
   const status = (isOwn(request) ? STATUS.own_permission : STATUS[request.status]) || STATUS.pending;
   return (
-    <MDBox
-      sx={{
-        border: "1px solid #e5e7eb",
-        borderLeft: `4px solid ${status.accent}`,
-        borderRadius: "10px",
-        backgroundColor: "#fff",
-        p: 2,
-      }}
-    >
-      <MDBox display="flex" justifyContent="space-between" alignItems="flex-start" gap={1.5} flexWrap="wrap">
-        <MDBox minWidth={0}>
-          <MDTypography variant="h6" sx={{ fontSize: "0.95rem", lineHeight: 1.3 }}>
-            {request.outlet_name || "Outlet"}
-          </MDTypography>
-          <MDTypography variant="caption" sx={{ color: "#6b7280" }}>
-            ERP {request.outlet_erp_id || "—"} · Request #{request.id}
-          </MDTypography>
-        </MDBox>
-        <MDBox
-          component="span"
-          sx={{
-            px: 1.25,
-            py: 0.4,
-            borderRadius: "999px",
-            fontSize: "0.72rem",
-            fontWeight: 700,
-            backgroundColor: status.bg,
-            color: status.text,
-            border: `1px solid ${status.accent}33`,
-            whiteSpace: "nowrap",
-          }}
-        >
-          {status.label}
-        </MDBox>
-      </MDBox>
+    <div className={`rounded-xl border border-l-4 border-slate-200 bg-white p-4 ${status.accent}`}>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h4 className="m-0 text-[14.5px] font-semibold leading-snug text-slate-900">{request.outlet_name || "Outlet"}</h4>
+          <span className="text-[12px] text-slate-500">ERP {request.outlet_erp_id || "—"} · Request #{request.id}</span>
+        </div>
+        <span className={`whitespace-nowrap rounded-full px-2.5 py-0.5 text-[11.5px] font-bold ${status.pill}`}>{status.label}</span>
+      </div>
 
-      <MDBox mt={1.5} sx={{ display: "grid", gap: 1.5, gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))" }}>
+      <div className="mt-3 grid grid-cols-[repeat(auto-fit,minmax(120px,1fr))] gap-3">
         <Fact label="Staff">{request.staff_name || `Staff #${request.staff_id}`}</Fact>
         <Fact label="Sale date">{formatDate(request.sale_date)}</Fact>
         <Fact label="Outlet bit">{request.outlet_day || "—"}</Fact>
         <Fact label="Asked on">{request.request_day ? `${request.request_day}, ` : ""}{formatDateTime(request.created_at)}</Fact>
-      </MDBox>
+      </div>
 
       {request.request_note && (
-        <MDBox mt={1.5} p={1.25} display="flex" gap={0.75} sx={{ backgroundColor: "#f9fafb", borderRadius: "8px", border: "1px solid #f1f5f9" }}>
-          <Icon sx={{ fontSize: "1rem !important", color: "#9ca3af", mt: "2px" }}>format_quote</Icon>
-          <MDTypography variant="caption" sx={{ color: "#374151", fontSize: "0.8rem", whiteSpace: "pre-wrap", wordBreak: "break-word" }}>
-            {request.request_note}
-          </MDTypography>
-        </MDBox>
+        <div className="mt-3 flex gap-1.5 rounded-lg border border-slate-100 bg-slate-50 p-2.5">
+          <Icon name="format_quote" className="mt-0.5 text-[16px] text-slate-400" />
+          <span className="whitespace-pre-wrap break-words text-[12.5px] text-slate-700">{request.request_note}</span>
+        </div>
       )}
 
       {request.review_note && (
-        <MDTypography variant="caption" display="block" mt={1} sx={{ color: request.status === "rejected" ? "#b91c1c" : "#15803d" }}>
-          Admin: {request.review_note}
-        </MDTypography>
+        <p className={`m-0 mt-2 text-[12px] font-medium ${request.status === "rejected" ? "text-red-700" : "text-emerald-700"}`}>Admin: {request.review_note}</p>
       )}
 
-      <MDBox mt={1.5} display="flex" justifyContent="space-between" alignItems="center" gap={1} flexWrap="wrap">
-        <MDTypography variant="caption" sx={{ color: "#6b7280" }}>
-          <Icon sx={{ fontSize: "0.9rem !important", verticalAlign: "middle", mr: 0.5 }}>person</Icon>
+      <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+        <span className="inline-flex items-center gap-1 text-[12px] text-slate-500">
+          <Icon name="person" className="text-[15px]" />
           {request.requested_by_name || "—"}
           {request.reviewed_by_name ? ` · reviewed by ${request.reviewed_by_name}` : ""}
-        </MDTypography>
-        <MDBox display="flex" gap={1}>
+        </span>
+        <div className="flex gap-2">
           {request.status === "approved" && (
-            <MDTypography variant="caption" fontWeight="bold" sx={{ color: "#15803d" }}>
-              <Icon sx={{ fontSize: "0.95rem !important", verticalAlign: "middle", mr: 0.5 }}>check_circle</Icon>
-              Ready — enter the bill in the list as usual
-            </MDTypography>
+            <span className="inline-flex items-center gap-1 text-[12px] font-bold text-emerald-700">
+              <Icon name="check_circle" className="text-[16px]" />Ready — enter the bill in the list as usual
+            </span>
           )}
           {isAdmin && request.status === "pending" && (
             <>
-              <MDButton size="small" variant="outlined" color="error" onClick={() => onReview(request, "reject")}>
-                Reject
-              </MDButton>
-              <MDButton size="small" variant="gradient" color="success" onClick={() => onReview(request, "approve")}>
-                <Icon sx={{ mr: 0.5 }}>check</Icon>
-                Approve
-              </MDButton>
+              <button type="button" className={`${btn.outline} h-8 px-3 text-red-600`} onClick={() => onReview(request, "reject")}>Reject</button>
+              <button type="button" className={`${btn.primary} h-8 bg-emerald-600 px-3 hover:bg-emerald-700`} onClick={() => onReview(request, "approve")}>
+                <Icon name="check" className="text-[16px]" />Approve
+              </button>
             </>
           )}
-        </MDBox>
-      </MDBox>
-    </MDBox>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -206,128 +156,81 @@ function OtherDayRequestsDialog({ open, onClose, requests, onRefresh, isAdmin })
 
   return (
     <>
-      <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth PaperProps={{ sx: { borderRadius: "14px" } }}>
-        <DialogTitle sx={{ pb: 1.5 }}>
-          <MDBox display="flex" alignItems="center" justifyContent="space-between" gap={1}>
-            <MDBox display="flex" alignItems="center" gap={1.25}>
-              <MDBox sx={{ width: 36, height: 36, borderRadius: "10px", backgroundColor: "#eff6ff", display: "grid", placeItems: "center" }}>
-                <Icon sx={{ color: "#1A73E8" }}>event_busy</Icon>
-              </MDBox>
-              <MDBox>
-                <MDTypography variant="h6" lineHeight={1.2}>Other Bit / Date Approvals</MDTypography>
-                <MDTypography variant="caption" sx={{ color: "#6b7280" }}>
-                  {counts.pending} waiting for admin · {counts.approved} approved, ready to add
-                </MDTypography>
-              </MDBox>
-            </MDBox>
-            <MDBox display="flex">
-              <Tooltip title="Refresh">
-                <IconButton size="small" onClick={onRefresh}><Icon>refresh</Icon></IconButton>
-              </Tooltip>
-              <Tooltip title="Close">
-                <IconButton size="small" onClick={onClose}><Icon>close</Icon></IconButton>
-              </Tooltip>
-            </MDBox>
-          </MDBox>
+      <Modal
+        open={open} onClose={onClose} size="xl"
+        title={(
+          <span className="flex items-center justify-between gap-2">
+            <span className="flex items-center gap-2.5">
+              <span className="flex size-9 items-center justify-center rounded-xl bg-blue-50 text-blue-600"><Icon name="event_busy" className="text-[20px]" /></span>
+              <span>
+                <span className="block leading-tight">Other Bit / Date Approvals</span>
+                <span className="block text-[12px] font-normal text-slate-500">{counts.pending} waiting for admin · {counts.approved} approved, ready to add</span>
+              </span>
+            </span>
+            <button type="button" className={btn.icon} title="Refresh" aria-label="Refresh" onClick={onRefresh}><Icon name="refresh" className="text-[20px]" /></button>
+          </span>
+        )}
+        actions={<button type="button" className={btn.ghost} onClick={onClose}>Close</button>}
+      >
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+          <div className="inline-flex flex-wrap gap-1 rounded-xl bg-slate-100 p-1" role="tablist" aria-label="Request filter">
+            {FILTERS.map((option) => {
+              const active = filter === option.value;
+              return (
+                <button
+                  key={option.value} type="button" role="tab" aria-selected={active} onClick={() => setFilter(option.value)}
+                  className={`rounded-lg px-2.5 py-1.5 text-[12.5px] font-semibold transition ${active ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-800"}`}
+                >
+                  {option.label} <span className="opacity-60">({counts[option.value]})</span>
+                </button>
+              );
+            })}
+          </div>
+          <SearchBox value={search} onChange={setSearch} placeholder="Search outlet, staff" className="w-full sm:w-56" />
+        </div>
+        {notice && <Notice tone="info" className="mb-3" onClose={() => setNotice("")}>{notice}</Notice>}
+        {visible.length === 0 ? (
+          <div className="py-12 text-center">
+            <Icon name="task_alt" className="text-[40px] text-slate-300" />
+            <p className="m-0 mt-1 text-[13px] text-slate-500">{requests.length === 0 ? "No other bit or date requests yet." : "Nothing in this list."}</p>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {visible.map((request) => (
+              <RequestCard
+                key={request.id}
+                request={request}
+                isAdmin={isAdmin}
+                onReview={(item, action) => setReview({ request: item, action, note: "" })}
+              />
+            ))}
+          </div>
+        )}
+      </Modal>
 
-          <MDBox mt={2} display="flex" gap={1.5} alignItems="center" flexWrap="wrap" justifyContent="space-between">
-            <MDBox display="flex" gap={0.5} flexWrap="wrap" sx={{ backgroundColor: "#f3f4f6", p: 0.5, borderRadius: "10px" }}>
-              {FILTERS.map((option) => {
-                const active = filter === option.value;
-                return (
-                  <MDBox
-                    key={option.value}
-                    component="button"
-                    type="button"
-                    onClick={() => setFilter(option.value)}
-                    sx={{
-                      border: 0,
-                      cursor: "pointer",
-                      px: 1.25,
-                      py: 0.6,
-                      borderRadius: "8px",
-                      fontSize: "0.8rem",
-                      fontWeight: 600,
-                      fontFamily: "inherit",
-                      backgroundColor: active ? "#fff" : "transparent",
-                      color: active ? "#111827" : "#6b7280",
-                      boxShadow: active ? "0 1px 3px rgba(0,0,0,0.08)" : "none",
-                    }}
-                  >
-                    {option.label} <span style={{ opacity: 0.6 }}>({counts[option.value]})</span>
-                  </MDBox>
-                );
-              })}
-            </MDBox>
-            <TextField
-              size="small"
-              placeholder="Search outlet, staff"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              sx={{ minWidth: { xs: "100%", sm: 220 } }}
-              InputProps={{
-                startAdornment: (
-                  <InputAdornment position="start">
-                    <Icon sx={{ color: "#9ca3af" }}>search</Icon>
-                  </InputAdornment>
-                ),
-              }}
-            />
-          </MDBox>
-          {notice && (
-            <MDTypography variant="caption" display="block" mt={1} color="info">{notice}</MDTypography>
-          )}
-        </DialogTitle>
-
-        <DialogContent dividers sx={{ backgroundColor: "#f8fafc", p: 2 }}>
-          {visible.length === 0 ? (
-            <MDBox py={6} textAlign="center">
-              <Icon sx={{ fontSize: "2.5rem !important", color: "#d1d5db" }}>task_alt</Icon>
-              <MDTypography variant="button" display="block" color="text" mt={1}>
-                {requests.length === 0 ? "No other bit or date requests yet." : "Nothing in this list."}
-              </MDTypography>
-            </MDBox>
-          ) : (
-            <MDBox display="flex" flexDirection="column" gap={1.5}>
-              {visible.map((request) => (
-                <RequestCard
-                  key={request.id}
-                  request={request}
-                  isAdmin={isAdmin}
-                  onReview={(item, action) => setReview({ request: item, action, note: "" })}
-                />
-              ))}
-            </MDBox>
-          )}
-        </DialogContent>
-      </Dialog>
-
-      <Dialog open={Boolean(review.request)} onClose={closeReview} maxWidth="xs" fullWidth>
-        <DialogTitle>{approving ? "Approve request" : "Reject request"}</DialogTitle>
-        <DialogContent dividers>
-          {review.request && (
-            <MDTypography variant="body2" color="text" mb={2}>
-              {review.request.requested_by_name || "User"} wants to add a sale for{" "}
-              <strong>{review.request.outlet_name}</strong> ({review.request.outlet_day || "—"} bit) under{" "}
-              <strong>{review.request.staff_name}</strong> on <strong>{formatDate(review.request.sale_date)}</strong>.
-            </MDTypography>
-          )}
-          <MDInput
-            label={approving ? "Note (optional)" : "Reason for rejecting *"}
-            fullWidth
-            multiline
-            rows={2}
-            value={review.note}
-            onChange={(e) => setReview((prev) => ({ ...prev, note: e.target.value }))}
-          />
-        </DialogContent>
-        <DialogActions>
-          <MDButton color="secondary" variant="outlined" onClick={closeReview} disabled={saving}>Cancel</MDButton>
-          <MDButton color={approving ? "success" : "error"} variant="gradient" onClick={submitReview} disabled={saving || (!approving && !review.note.trim())}>
-            {saving ? "Saving..." : approving ? "Approve" : "Reject"}
-          </MDButton>
-        </DialogActions>
-      </Dialog>
+      <Modal
+        open={Boolean(review.request)} onClose={closeReview} locked={saving} title={approving ? "Approve request" : "Reject request"}
+        actions={(
+          <>
+            <button type="button" className={btn.ghost} onClick={closeReview} disabled={saving}>Cancel</button>
+            <button type="button" className={approving ? `${btn.primary} bg-emerald-600 hover:bg-emerald-700` : btn.danger} onClick={submitReview} disabled={saving || (!approving && !review.note.trim())}>
+              {saving ? "Saving..." : approving ? "Approve" : "Reject"}
+            </button>
+          </>
+        )}
+      >
+        {review.request && (
+          <p className="m-0 mb-3 text-[13px] text-slate-600">
+            {review.request.requested_by_name || "User"} wants to add a sale for{" "}
+            <strong>{review.request.outlet_name}</strong> ({review.request.outlet_day || "—"} bit) under{" "}
+            <strong>{review.request.staff_name}</strong> on <strong>{formatDate(review.request.sale_date)}</strong>.
+          </p>
+        )}
+        <label className="flex flex-col gap-1">
+          <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">{approving ? "Note (optional)" : "Reason for rejecting *"}</span>
+          <textarea rows={2} className={`${fieldClass} h-auto py-2`} value={review.note} onChange={(e) => setReview((prev) => ({ ...prev, note: e.target.value }))} />
+        </label>
+      </Modal>
     </>
   );
 }

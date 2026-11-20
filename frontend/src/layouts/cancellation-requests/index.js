@@ -1,35 +1,11 @@
+// Approvals > Cancellation Approvals: Tailwind CSS (no MUI). Loading and review logic unchanged.
 import { useCallback, useEffect, useState } from "react";
-import {
-  Card,
-  MenuItem,
-  Select,
-  Table,
-  TableBody,
-  TableCell,
-  TableContainer,
-  TableHead,
-  TableRow,
-} from "@mui/material";
 import DashboardLayout from "examples/LayoutContainers/DashboardLayout";
 import DashboardNavbar from "examples/Navbars/DashboardNavbar";
 import Footer from "examples/Footer";
-import MDBox from "components/MDBox";
-import MDButton from "components/MDButton";
-import MDTypography from "components/MDTypography";
+import { Badge, Card, EmptyState, Icon, Notice, PageHeader, STATUS_TONE, Segmented, Spinner, btn, td, th } from "components/tw";
 
 const API = process.env.REACT_APP_API_URL;
-
-// Same table styling as the Suspense Requests page.
-// The theme renders TableHead as a block, so it must be reset to a table header group.
-const headSx = { color: "#6b7280", fontSize: "0.75rem", fontWeight: 600, borderBottom: "1px solid #e5e7eb", px: 2, py: 1.5, whiteSpace: "nowrap" };
-const cellSx = { px: 2, py: 1.5, verticalAlign: "top", fontSize: "0.8rem" };
-const subTextSx = { display: "block", color: "#6b7280", fontSize: "0.72rem", mt: 0.25 };
-const statusStyles = {
-  pending: { color: "#b45309", backgroundColor: "#fef3c7" },
-  approved: { color: "#047857", backgroundColor: "#d1fae5" },
-  rejected: { color: "#b91c1c", backgroundColor: "#fee2e2" },
-};
-const headings = ["Sr. No.", "Requested", "Invoice / Outlet", "Product & Reason", "Amount", "Invoice Image", "Status", "Action"];
 
 export default function CancellationRequests() {
   const [rows, setRows] = useState([]);
@@ -76,114 +52,82 @@ export default function CancellationRequests() {
   return (
     <DashboardLayout>
       <DashboardNavbar />
-      <MDBox py={3}>
-        <Card>
-          <MDBox p={2} display="flex" justifyContent="space-between" alignItems="center" flexWrap="wrap" gap={2}>
-            <MDBox>
-              <MDTypography variant="h6">Cancellation Approvals</MDTypography>
-              <MDTypography variant="caption" color="text">
-                Invoice value is reduced only after approval.
-              </MDTypography>
-            </MDBox>
-            <Select size="small" value={status} onChange={(event) => setStatus(event.target.value)} sx={{ minWidth: 140, height: 36 }}>
-              <MenuItem value="pending">Pending</MenuItem>
-              <MenuItem value="approved">Approved</MenuItem>
-              <MenuItem value="rejected">Rejected</MenuItem>
-              <MenuItem value="all">All</MenuItem>
-            </Select>
-          </MDBox>
-
-          {message && (
-            <MDTypography px={2} pb={1} color="text" variant="caption" display="block">
-              {message}
-            </MDTypography>
+      <div className="pb-8 font-[Poppins,Roboto,sans-serif] text-slate-700">
+        <PageHeader
+          title="Cancellation Approvals"
+          description="Invoice value is reduced only after approval."
+          actions={(
+            <button type="button" className={btn.outline} onClick={load} disabled={loading}>
+              <Icon name="refresh" className="text-[18px]" />Refresh
+            </button>
           )}
+        />
+        {message && <Notice tone="info" className="mb-4" onClose={() => setMessage("")}>{message}</Notice>}
 
-          <TableContainer sx={{ boxShadow: "none", overflowX: "auto" }}>
-            <Table sx={{ minWidth: 900 }}>
-              <TableHead sx={{ display: "table-header-group", backgroundColor: "#f9fafb" }}>
-                <TableRow>
-                  {headings.map((heading) => (
-                    <TableCell key={heading} sx={headSx} align={heading === "Amount" ? "right" : "left"}>
-                      {heading}
-                    </TableCell>
+        <Card>
+          <div className="border-b border-slate-100 px-4 py-3">
+            <Segmented label="Status" value={status} onChange={setStatus} options={[["pending", "Pending"], ["approved", "Approved"], ["rejected", "Rejected"], ["all", "All"]]} />
+          </div>
+          {loading ? (
+            <div className="flex justify-center py-14"><Spinner className="size-7" /></div>
+          ) : !rows.length ? (
+            <EmptyState icon="task_alt" text={`No ${status === "all" ? "" : status} cancellation requests.`} />
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[900px] border-collapse">
+                <thead>
+                  <tr className="bg-slate-50">
+                    {["#", "Requested", "Invoice / outlet", "Product & reason"].map((heading) => <th key={heading} className={th}>{heading}</th>)}
+                    <th className={`${th} text-right`}>Amount</th>
+                    <th className={th}>Invoice image</th>
+                    <th className={th}>Status</th>
+                    <th className={th} aria-label="Action" />
+                  </tr>
+                </thead>
+                <tbody>
+                  {rows.map((row, index) => (
+                    <tr key={row.id} className="border-t border-slate-100 align-top hover:bg-slate-50/70">
+                      <td className={`${td} text-slate-400`}>{index + 1}</td>
+                      <td className={`${td} whitespace-nowrap`}>
+                        <span className="block text-[12.5px]">{row.created_at_display}</span>
+                        <span className="block text-[11.5px] text-slate-500">{row.requested_by_name || "—"}</span>
+                      </td>
+                      <td className={td}>
+                        <span className="block font-mono text-[12.5px] font-semibold text-slate-800">{row.invoice_number}</span>
+                        <span className="block text-[12px] text-slate-500">{row.outlet_name || "—"}</span>
+                      </td>
+                      <td className={`${td} max-w-64`}>
+                        <span className="block font-semibold text-slate-800">{row.product_name} × {Number(row.product_qty)}</span>
+                        <span className="block text-[12px] text-slate-500">{row.reason}</span>
+                        {row.remarks && <span className="block text-[12px] text-slate-500">{row.remarks}</span>}
+                      </td>
+                      <td className={`${td} whitespace-nowrap text-right font-semibold tabular-nums text-slate-900`}>₹{Number(row.amount).toFixed(2)}</td>
+                      <td className={td}>
+                        <a href={row.invoice_image_url} target="_blank" rel="noopener noreferrer" className={`${btn.outline} h-8 px-3`}>
+                          <Icon name="image" className="text-[17px] text-blue-600" />View
+                        </a>
+                      </td>
+                        <td className={td}>
+                          <Badge tone={STATUS_TONE[row.status]}><span className="capitalize">{row.status}</span></Badge>
+                          {row.status !== "pending" && row.reviewed_by_name && <span className="mt-1 block text-[11.5px] text-slate-500">by {row.reviewed_by_name}</span>}
+                          {row.status !== "pending" && row.review_note && <span className="block text-[11.5px] text-slate-500">{row.review_note}</span>}
+                        </td>
+                        <td className={`${td} whitespace-nowrap text-right`}>
+                          {row.status === "pending" && (
+                            <span className="inline-flex gap-1.5">
+                              <button type="button" className={`${btn.primary} h-8 bg-emerald-600 px-3 hover:bg-emerald-700`} onClick={() => review(row, "approve")}>Approve</button>
+                              <button type="button" className={`${btn.outline} h-8 border-red-200 px-3 text-red-700 hover:bg-red-50`} onClick={() => review(row, "reject")}>Reject</button>
+                            </span>
+                          )}
+                        </td>
+                    </tr>
                   ))}
-                </TableRow>
-              </TableHead>
-              <TableBody>
-                {!loading && !rows.length && (
-                  <TableRow>
-                    <TableCell colSpan={headings.length} sx={{ ...cellSx, textAlign: "center", py: 4 }}>
-                      No {status === "all" ? "" : status} cancellation requests.
-                    </TableCell>
-                  </TableRow>
-                )}
-                {rows.map((row, index) => (
-                  <TableRow key={row.id}>
-                    <TableCell sx={cellSx}>{index + 1}</TableCell>
-                    <TableCell sx={{ ...cellSx, whiteSpace: "nowrap" }}>
-                      {row.created_at_display}
-                      <MDBox component="span" sx={subTextSx}>{row.requested_by_name || "—"}</MDBox>
-                    </TableCell>
-                    <TableCell sx={cellSx}>
-                      <strong>{row.invoice_number}</strong>
-                      <MDBox component="span" sx={subTextSx}>{row.outlet_name}</MDBox>
-                    </TableCell>
-                    <TableCell sx={{ ...cellSx, maxWidth: 260 }}>
-                      {row.product_name} × {Number(row.product_qty)}
-                      <MDBox component="span" sx={subTextSx}>{row.reason}</MDBox>
-                      {row.remarks && <MDBox component="span" sx={subTextSx}>{row.remarks}</MDBox>}
-                    </TableCell>
-                    <TableCell sx={{ ...cellSx, textAlign: "right", whiteSpace: "nowrap", fontWeight: 600 }}>
-                      ₹{Number(row.amount).toFixed(2)}
-                    </TableCell>
-                    <TableCell sx={cellSx}>
-                      <MDButton size="small" variant="outlined" color="info" component="a" href={row.invoice_image_url} target="_blank" rel="noopener noreferrer">
-                        View
-                      </MDButton>
-                    </TableCell>
-                    <TableCell sx={cellSx}>
-                      <MDBox
-                        component="span"
-                        sx={{
-                          ...(statusStyles[row.status] || {}),
-                          px: 1,
-                          py: 0.25,
-                          borderRadius: 1,
-                          fontSize: "0.72rem",
-                          fontWeight: 600,
-                          textTransform: "capitalize",
-                          whiteSpace: "nowrap",
-                        }}
-                      >
-                        {row.status}
-                      </MDBox>
-                      {row.status !== "pending" && row.reviewed_by_name && (
-                        <MDBox component="span" sx={subTextSx}>by {row.reviewed_by_name}</MDBox>
-                      )}
-                      {row.status !== "pending" && row.review_note && (
-                        <MDBox component="span" sx={subTextSx}>{row.review_note}</MDBox>
-                      )}
-                    </TableCell>
-                    <TableCell sx={cellSx}>
-                      {row.status === "pending" && (
-                        <MDBox display="flex" gap={1}>
-                          <MDButton size="small" color="success" onClick={() => review(row, "approve")}>
-                            Approve
-                          </MDButton>
-                          <MDButton size="small" color="error" onClick={() => review(row, "reject")}>
-                            Reject
-                          </MDButton>
-                        </MDBox>
-                      )}
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </TableContainer>
+                </tbody>
+              </table>
+            </div>
+          )}
         </Card>
-      </MDBox>
+      </div>
       <Footer />
     </DashboardLayout>
   );

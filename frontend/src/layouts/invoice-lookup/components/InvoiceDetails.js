@@ -1,48 +1,65 @@
-import Card from "@mui/material/Card";
-import {
-  Chip,
-  Divider,
-  Grid,
-  Paper,
-  Step,
-  StepLabel,
-  Stepper,
-  Table,
-  TableBody,
-  TableCell,
-  TableContainer,
-  TableHead,
-  TableRow,
-} from "@mui/material";
-
+// One invoice: details, journey, delivery, payments, collections, cancellations (Invoice Lookup): Tailwind CSS (no MUI).
+import PropTypes from "prop-types";
 import { useAuth } from "context/AuthContext";
-import MDBox from "components/MDBox";
-import MDTypography from "components/MDTypography";
+import { Badge, Icon } from "components/tw";
 
 import {
   PAYMENT_LABELS,
   STATUS_COLORS,
   STATUS_LABELS,
   STATUS_ORDER,
-  TABLE_HEAD_SX,
   formatCancelQtyDisplay,
   formatCurrency,
   formatDate,
   formatDateTime,
 } from "../format";
 
+// format.js status colours (MUI names) -> Badge tones.
+const TONE = { default: "slate", warning: "amber", info: "blue", primary: "violet", success: "green", error: "red", secondary: "slate" };
+
+const th = "whitespace-nowrap bg-slate-50 px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500";
+const td = "border-t border-slate-100 px-3 py-2.5 align-top text-[12.5px] text-slate-700";
+
 function InfoRow({ label, value }) {
   return (
-    <Grid item xs={12} sm={6} md={4}>
-      <MDTypography variant="caption" color="text" fontWeight="medium" display="block">
-        {label}
-      </MDTypography>
-      <MDTypography variant="button" fontWeight="regular">
-        {value || "N/A"}
-      </MDTypography>
-    </Grid>
+    <div className="min-w-0">
+      <span className="block text-[10.5px] font-semibold uppercase tracking-wide text-slate-400">{label}</span>
+      <span className="block break-words text-[13px] font-medium text-slate-800">{value || "N/A"}</span>
+    </div>
   );
 }
+InfoRow.propTypes = { label: PropTypes.string.isRequired, value: PropTypes.node };
+InfoRow.defaultProps = { value: null };
+
+// A titled white panel.
+function Panel({ title, right, children, embedded }) {
+  return (
+    <section className={`mb-4 overflow-hidden rounded-2xl border border-slate-200 bg-white ${embedded ? "" : "shadow-[0_1px_2px_rgba(15,23,42,0.04)]"}`}>
+      {title && (
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 px-5 py-3">
+          <h4 className="m-0 text-[14px] font-semibold text-slate-900">{title}</h4>
+          {right}
+        </div>
+      )}
+      {children}
+    </section>
+  );
+}
+Panel.propTypes = { title: PropTypes.node, right: PropTypes.node, children: PropTypes.node.isRequired, embedded: PropTypes.bool };
+Panel.defaultProps = { title: null, right: null, embedded: false };
+
+// A small bordered table.
+function MiniTable({ head, children }) {
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full border-collapse">
+        <thead><tr>{head}</tr></thead>
+        <tbody>{children}</tbody>
+      </table>
+    </div>
+  );
+}
+MiniTable.propTypes = { head: PropTypes.node.isRequired, children: PropTypes.node.isRequired };
 
 // Who did a journey step. Older entries (before tracking started) fall back to the
 // packer / delivery boy saved on the invoice, marked as "assigned".
@@ -63,26 +80,16 @@ function journeyActor(entry, sale) {
 }
 
 function ActorCell({ actor }) {
-  if (!actor) {
-    return (
-      <MDTypography variant="caption" color="text">
-        Not recorded
-      </MDTypography>
-    );
-  }
+  if (!actor) return <span className="text-[11.5px] text-slate-400">Not recorded</span>;
   return (
-    <MDBox lineHeight={1.2}>
-      <MDTypography variant="button" fontWeight={actor.recorded ? "medium" : "regular"} display="block">
-        {actor.name}
-      </MDTypography>
-      {actor.role && (
-        <MDTypography variant="caption" color="text" fontStyle={actor.recorded ? "normal" : "italic"}>
-          {actor.role}
-        </MDTypography>
-      )}
-    </MDBox>
+    <span className="block leading-tight">
+      <span className={`block text-[12.5px] text-slate-800 ${actor.recorded ? "font-semibold" : ""}`}>{actor.name}</span>
+      {actor.role && <span className={`block text-[11px] text-slate-500 ${actor.recorded ? "" : "italic"}`}>{actor.role}</span>}
+    </span>
   );
 }
+ActorCell.propTypes = { actor: PropTypes.object };
+ActorCell.defaultProps = { actor: null };
 
 const ACTION_LABELS = {
   not_packing: "Added sale",
@@ -99,10 +106,6 @@ function InvoiceDetails({ details, embedded = false }) {
   // Who did what (names, roles, login IDs) is shown to Admin only.
   const { user } = useAuth();
   const isAdmin = user?.role === "admin";
-  // Inside an outlet history row the cards sit on a tinted panel, so drop the shadow.
-  const cardSx = embedded
-    ? { p: 2, mb: 2, boxShadow: "none", border: "1px solid", borderColor: "grey.300" }
-    : { p: 3, mb: 3 };
   const currentStatus = sale.packaging_status || "not_packing";
   const activeStep = STATUS_ORDER.indexOf(currentStatus);
 
@@ -127,28 +130,19 @@ function InvoiceDetails({ details, embedded = false }) {
     };
   });
 
+  const steps = STATUS_ORDER;
   return (
-    <MDBox mt={embedded ? 0 : 3}>
-      <Card sx={cardSx}>
-        <MDBox display="flex" justifyContent="space-between" alignItems="flex-start" flexWrap="wrap" gap={2} mb={2}>
-          <MDBox>
-            <MDTypography variant="h5" fontWeight="bold">
-              Invoice {sale.invoice_number}
-            </MDTypography>
-            <MDTypography variant="button" color="text">
-              Sale ID: {sale.sticker_number || sale.id} &nbsp;|&nbsp; Date: {sale.formatted_date || formatDate(sale.sale_date)}
-            </MDTypography>
-          </MDBox>
-          <Chip
-            label={STATUS_LABELS[currentStatus] || currentStatus}
-            color={STATUS_COLORS[currentStatus] || "default"}
-            size="medium"
-          />
-        </MDBox>
-
-        <Divider sx={{ my: 2 }} />
-
-        <Grid container spacing={2}>
+    <div className={embedded ? "" : "mb-1"}>
+      {/* Invoice header + facts */}
+      <Panel embedded={embedded}>
+        <div className="flex flex-wrap items-start justify-between gap-3 border-b border-slate-100 px-5 py-4">
+          <div>
+            <h3 className="m-0 text-[18px] font-bold text-slate-900">Invoice {sale.invoice_number}</h3>
+            <p className="m-0 text-[12.5px] text-slate-500">Sale ID: {sale.sticker_number || sale.id} · Date: {sale.formatted_date || formatDate(sale.sale_date)}</p>
+          </div>
+          <Badge tone={TONE[STATUS_COLORS[currentStatus]] || "slate"}>{STATUS_LABELS[currentStatus] || currentStatus}</Badge>
+        </div>
+        <div className="grid gap-x-6 gap-y-3 px-5 py-4 sm:grid-cols-2 lg:grid-cols-4">
           <InfoRow label="Company" value={sale.company_name} />
           <InfoRow label="Staff" value={sale.staff_name} />
           <InfoRow label="Outlet" value={sale.outlet_name} />
@@ -156,335 +150,230 @@ function InvoiceDetails({ details, embedded = false }) {
           <InfoRow label="Location" value={sale.location_name} />
           <InfoRow label="Contact" value={sale.contact_number} />
           <InfoRow label="Items" value={sale.item_count} />
-          <InfoRow label="Packed Items" value={sale.packed_item_count} />
-          <InfoRow label="Boxes / Packets" value={`${sale.box_count || 0} / ${sale.packet_count || 0}`} />
-          <InfoRow label="Bill Amount" value={formatCurrency(summary.price)} />
-          <InfoRow label="Paid Amount" value={formatCurrency(summary.paidAmount)} />
+          <InfoRow label="Packed items" value={sale.packed_item_count} />
+          <InfoRow label="Boxes / packets" value={`${sale.box_count || 0} / ${sale.packet_count || 0}`} />
+          <InfoRow label="Bill amount" value={formatCurrency(summary.price)} />
+          <InfoRow label="Paid amount" value={formatCurrency(summary.paidAmount)} />
           <InfoRow label="Balance" value={formatCurrency(summary.balanceAmount)} />
-          <InfoRow label="Payment Mode" value={PAYMENT_LABELS[sale.payment_mode] || sale.payment_mode} />
-          {sale.reference_no && <InfoRow label="Reference No" value={sale.reference_no} />}
-          {sale.reference_date && <InfoRow label="Reference Date" value={formatDate(sale.reference_date)} />}
-          {sale.credit_days && <InfoRow label="Credit Days" value={sale.credit_days} />}
+          <InfoRow label="Payment mode" value={PAYMENT_LABELS[sale.payment_mode] || sale.payment_mode} />
+          {sale.reference_no && <InfoRow label="Reference no" value={sale.reference_no} />}
+          {sale.reference_date && <InfoRow label="Reference date" value={formatDate(sale.reference_date)} />}
+          {sale.credit_days && <InfoRow label="Credit days" value={sale.credit_days} />}
           {isAdmin && (
             <InfoRow
-              label="Added By"
+              label="Added by"
               value={sale.created_by_name ? `${sale.created_by_name}${sale.created_by_role ? ` (${sale.created_by_role})` : ""}` : "Not recorded"}
             />
           )}
           {sale.credit_photo_url && (
-            <Grid item xs={12} sm={6} md={4}>
-              <MDTypography variant="caption" color="text" fontWeight="medium" display="block">
-                Credit Bill Photo
-              </MDTypography>
-              <MDTypography
-                variant="button"
-                fontWeight="regular"
-                component="a"
-                href={sale.credit_photo_url}
-                target="_blank"
-                rel="noopener noreferrer"
-                color="info"
-              >
-                View photo
-              </MDTypography>
-              <MDTypography variant="caption" color="text" display="block">
+            <div className="min-w-0">
+              <span className="block text-[10.5px] font-semibold uppercase tracking-wide text-slate-400">Credit bill photo</span>
+              <a href={sale.credit_photo_url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-[13px] font-semibold text-blue-600 hover:underline">
+                <Icon name="image" className="text-[16px]" />View photo
+              </a>
+              <span className="block text-[11.5px] text-slate-500">
                 {isAdmin && (sale.credit_photo_by_name
                   ? `Uploaded by ${sale.credit_photo_by_name}${sale.credit_photo_by_role ? ` (${sale.credit_photo_by_role})` : ""}`
                   : "Uploader not recorded")}
                 {sale.credit_photo_at ? `${isAdmin ? " · " : ""}${formatDateTime(sale.credit_photo_at)}` : ""}
-              </MDTypography>
-            </Grid>
+              </span>
+            </div>
           )}
           {sale.requisition_number && (
             <InfoRow
-              label="From Requisition"
+              label="From requisition"
               value={`${sale.requisition_number}${isAdmin && sale.requisition_raised_by ? ` · raised by ${sale.requisition_raised_by}` : ""}${
                 isAdmin && sale.requisition_approved_by ? ` · approved by ${sale.requisition_approved_by}` : ""
               }`}
             />
           )}
-        </Grid>
-      </Card>
+        </div>
+      </Panel>
 
-      <Card sx={cardSx}>
-        <MDTypography variant="h6" fontWeight="medium" mb={2}>
-          Invoice Journey
-        </MDTypography>
-        {currentStatus === "cancelled" && (
-          <MDBox mb={2} px={2} py={1.25} borderRadius="md" sx={{ backgroundColor: "#fef2f2", border: "1px solid #fecaca" }}>
-            <MDTypography variant="button" fontWeight="bold" color="error" display="block">
-              Invoice Cancelled
-            </MDTypography>
-            {sale.cancellation_reason && (
-              <MDTypography variant="caption" color="error">Reason: {sale.cancellation_reason}</MDTypography>
-            )}
-          </MDBox>
-        )}
-        <Stepper activeStep={activeStep >= 0 ? activeStep : 0} alternativeLabel sx={{ mb: 3 }}>
-          {STATUS_ORDER.map((status) => (
-            <Step key={status} completed={STATUS_ORDER.indexOf(status) <= activeStep}>
-              <StepLabel>{STATUS_LABELS[status]}</StepLabel>
-            </Step>
-          ))}
-        </Stepper>
-
-        {history.length > 0 ? (
-          <TableContainer component={Paper} variant="outlined">
-            <Table size="small">
-              <TableHead sx={TABLE_HEAD_SX}>
-                <TableRow>
-                  <TableCell>Stage</TableCell>
-                  <TableCell>Date & Time</TableCell>
-                  <TableCell>{isAdmin ? "Done by" : "Action"}</TableCell>
-                </TableRow>
-              </TableHead>
-              <TableBody>
+      {/* Journey */}
+      <Panel title="Invoice Journey" embedded={embedded}>
+        <div className="px-5 py-4">
+          {currentStatus === "cancelled" && (
+            <div className="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-2.5">
+              <span className="block text-[13px] font-bold text-red-700">Invoice Cancelled</span>
+              {sale.cancellation_reason && <span className="block text-[12px] text-red-700">Reason: {sale.cancellation_reason}</span>}
+            </div>
+          )}
+          <ol className="m-0 mb-4 flex list-none items-start p-0">
+            {steps.map((status, index) => {
+              const done = index <= activeStep;
+              return (
+                <li key={status} className="relative flex flex-1 flex-col items-center text-center">
+                  {index > 0 && <span className={`absolute right-1/2 top-3.5 h-0.5 w-full ${index <= activeStep ? "bg-blue-600" : "bg-slate-200"}`} />}
+                  <span className={`relative z-[1] flex size-7 items-center justify-center rounded-full text-[12px] font-bold ${done ? "bg-blue-600 text-white" : "border-2 border-slate-200 bg-white text-slate-400"}`}>
+                    {done ? <Icon name="check" className="text-[16px]" /> : index + 1}
+                  </span>
+                  <span className={`mt-1.5 px-1 text-[11.5px] font-medium ${done ? "text-slate-800" : "text-slate-400"}`}>{STATUS_LABELS[status]}</span>
+                </li>
+              );
+            })}
+          </ol>
+          {history.length > 0 ? (
+            <div className="overflow-hidden rounded-xl border border-slate-200">
+              <MiniTable head={<><th className={th}>Stage</th><th className={th}>Date &amp; time</th><th className={th}>{isAdmin ? "Done by" : "Action"}</th></>}>
                 {history.map((entry) => (
-                  <TableRow key={entry.id}>
-                    <TableCell>
-                      <Chip
-                        label={STATUS_LABELS[entry.status] || entry.status}
-                        color={STATUS_COLORS[entry.status] || "default"}
-                        size="small"
-                        variant="outlined"
-                      />
-                    </TableCell>
-                    <TableCell>{formatDateTime(entry.changed_at)}</TableCell>
-                    <TableCell>
-                      <MDTypography variant="caption" color="text" display="block">
-                        {ACTION_LABELS[entry.status] || ""}
-                      </MDTypography>
-                      {entry.remarks && (
-                        <MDTypography variant="caption" color="error" display="block">
-                          {entry.remarks}
-                        </MDTypography>
-                      )}
+                  <tr key={entry.id}>
+                    <td className={td}><Badge tone={TONE[STATUS_COLORS[entry.status]] || "slate"}>{STATUS_LABELS[entry.status] || entry.status}</Badge></td>
+                    <td className={`${td} whitespace-nowrap`}>{formatDateTime(entry.changed_at)}</td>
+                    <td className={td}>
+                      <span className="block text-[11.5px] text-slate-500">{ACTION_LABELS[entry.status] || ""}</span>
+                      {entry.remarks && <span className="block text-[11.5px] text-red-700">{entry.remarks}</span>}
                       {isAdmin && <ActorCell actor={journeyActor(entry, sale)} />}
-                    </TableCell>
-                  </TableRow>
+                    </td>
+                  </tr>
                 ))}
-              </TableBody>
-            </Table>
-          </TableContainer>
-        ) : (
-          <MDTypography variant="button" color="text">
-            No status history recorded yet.
-          </MDTypography>
-        )}
-      </Card>
+              </MiniTable>
+            </div>
+          ) : <p className="m-0 text-[13px] text-slate-400">No status history recorded yet.</p>}
+        </div>
+      </Panel>
 
       {(sale.delivery_boy_name || sale.vehicle_no || sale.delivery_date || sale.packed_by_name) && (
-        <Card sx={cardSx}>
-          <MDTypography variant="h6" fontWeight="medium" mb={2}>
-            Delivery Details
-          </MDTypography>
-          <Grid container spacing={2}>
-            <InfoRow label="Delivery Boy" value={sale.delivery_boy_name} />
-            <InfoRow label="Vehicle No" value={sale.vehicle_no} />
-            <InfoRow label="Delivery Date" value={formatDate(sale.delivery_date)} />
-            <InfoRow label="Packed By" value={sale.packed_by_name} />
-            <InfoRow label="Packing Date" value={formatDate(sale.packing_date)} />
-          </Grid>
-        </Card>
+        <Panel title="Delivery Details" embedded={embedded}>
+          <div className="grid gap-x-6 gap-y-3 px-5 py-4 sm:grid-cols-2 lg:grid-cols-5">
+            <InfoRow label="Delivery boy" value={sale.delivery_boy_name} />
+            <InfoRow label="Vehicle no" value={sale.vehicle_no} />
+            <InfoRow label="Delivery date" value={formatDate(sale.delivery_date)} />
+            <InfoRow label="Packed by" value={sale.packed_by_name} />
+            <InfoRow label="Packing date" value={formatDate(sale.packing_date)} />
+          </div>
+        </Panel>
       )}
 
-      <Card sx={cardSx}>
-        <MDBox display="flex" justifyContent="space-between" alignItems="center" flexWrap="wrap" gap={1} mb={2}>
-          <MDTypography variant="h6" fontWeight="medium">
-            Payment History ({payments.length})
-          </MDTypography>
-          <MDBox display="flex" gap={1} flexWrap="wrap">
-            <Chip size="small" variant="outlined" label={`Bill: ${formatCurrency(effectivePrice)}`} />
-            <Chip size="small" variant="outlined" color="success" label={`Paid: ${formatCurrency(summary.paidAmount)}`} />
-            <Chip
-              size="small"
-              variant="outlined"
-              color={Number(summary.balanceAmount) > 0 ? "error" : "success"}
-              label={`Balance: ${formatCurrency(summary.balanceAmount)}`}
-            />
-          </MDBox>
-        </MDBox>
-        {paymentHistory.length > 0 ? (
-          <TableContainer component={Paper} variant="outlined">
-            <Table size="small">
-              <TableHead sx={TABLE_HEAD_SX}>
-                <TableRow>
-                  <TableCell>Sr No</TableCell>
-                  <TableCell>Payment Date</TableCell>
-                  <TableCell>Type</TableCell>
-                  <TableCell align="right">Amount</TableCell>
-                  <TableCell align="right">Total Paid</TableCell>
-                  <TableCell align="right">Balance After</TableCell>
-                  <TableCell>Collector</TableCell>
-                  <TableCell>Reference</TableCell>
-                  {isAdmin && <TableCell>Entered By</TableCell>}
-                  <TableCell>Entry Time</TableCell>
-                </TableRow>
-              </TableHead>
-              <TableBody>
-                {paymentHistory.map((payment, index) => (
-                  <TableRow
-                    key={payment.id}
-                    sx={{ backgroundColor: payment.isCredit ? "#fff7ed" : undefined }}
-                  >
-                    <TableCell>{index + 1}</TableCell>
-                    <TableCell>{formatDate(payment.payment_date)}</TableCell>
-                    <TableCell>
-                      <Chip
-                        size="small"
-                        variant="outlined"
-                        color={payment.isCredit ? "warning" : "success"}
-                        label={payment.typeLabel}
-                      />
-                    </TableCell>
-                    <TableCell align="right" sx={{ fontWeight: 700 }}>
-                      {formatCurrency(payment.amount)}
-                    </TableCell>
-                    <TableCell align="right">{formatCurrency(payment.paidSoFar)}</TableCell>
-                    <TableCell
-                      align="right"
-                      sx={{ fontWeight: 700, color: payment.balanceAfter > 0 ? "#b91c1c" : "#15803d" }}
-                    >
-                      {formatCurrency(payment.balanceAfter)}
-                    </TableCell>
-                    <TableCell>{payment.collector_staff_name || payment.collector_name || "N/A"}</TableCell>
-                    <TableCell>
-                      {payment.reference_no
-                        ? `${payment.reference_no}${payment.reference_date ? ` (${formatDate(payment.reference_date)})` : ""}`
-                        : "—"}
-                      {payment.isCredit && payment.credit_days ? ` · ${payment.credit_days} days` : ""}
-                    </TableCell>
-                    {isAdmin && (
-                      <TableCell>
-                        {payment.updated_by_role === "admin"
-                          ? "Admin"
-                          : payment.updated_by_name && payment.updated_by_name !== "Staff"
-                            ? `${payment.updated_by_name}${payment.updated_by_employee_code ? ` (${payment.updated_by_employee_code})` : ""}`
-                            : payment.updated_by_employee_code || "Not recorded"}
-                      </TableCell>
-                    )}
-                    <TableCell>{formatDateTime(payment.created_at)}</TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </TableContainer>
-        ) : (
-          <MDTypography variant="button" color="text">
-            No payments recorded yet.
-          </MDTypography>
+      {/* Payments */}
+      <Panel
+        embedded={embedded} title={`Payment History (${payments.length})`}
+        right={(
+          <span className="flex flex-wrap gap-1.5">
+            <Badge>Bill: {formatCurrency(effectivePrice)}</Badge>
+            <Badge tone="green">Paid: {formatCurrency(summary.paidAmount)}</Badge>
+            <Badge tone={Number(summary.balanceAmount) > 0 ? "red" : "green"}>Balance: {formatCurrency(summary.balanceAmount)}</Badge>
+          </span>
         )}
-      </Card>
+      >
+        {paymentHistory.length > 0 ? (
+          <MiniTable
+            head={(
+              <>
+                {["#", "Payment date", "Type"].map((h) => <th key={h} className={th}>{h}</th>)}
+                {["Amount", "Total paid", "Balance after"].map((h) => <th key={h} className={`${th} text-right`}>{h}</th>)}
+                <th className={th}>Collector</th>
+                <th className={th}>Reference</th>
+                {isAdmin && <th className={th}>Entered by</th>}
+                <th className={th}>Entry time</th>
+              </>
+            )}
+          >
+            {paymentHistory.map((payment, index) => (
+              <tr key={payment.id} className={payment.isCredit ? "bg-orange-50/60" : ""}>
+                <td className={`${td} text-slate-400`}>{index + 1}</td>
+                <td className={`${td} whitespace-nowrap`}>{formatDate(payment.payment_date)}</td>
+                <td className={td}><Badge tone={payment.isCredit ? "amber" : "green"}>{payment.typeLabel}</Badge></td>
+                <td className={`${td} whitespace-nowrap text-right font-bold tabular-nums text-slate-900`}>{formatCurrency(payment.amount)}</td>
+                <td className={`${td} whitespace-nowrap text-right tabular-nums`}>{formatCurrency(payment.paidSoFar)}</td>
+                <td className={`${td} whitespace-nowrap text-right font-bold tabular-nums ${payment.balanceAfter > 0 ? "text-red-700" : "text-emerald-700"}`}>{formatCurrency(payment.balanceAfter)}</td>
+                <td className={td}>{payment.collector_staff_name || payment.collector_name || "N/A"}</td>
+                <td className={td}>
+                  {payment.reference_no
+                    ? `${payment.reference_no}${payment.reference_date ? ` (${formatDate(payment.reference_date)})` : ""}`
+                    : "—"}
+                  {payment.isCredit && payment.credit_days ? ` · ${payment.credit_days} days` : ""}
+                </td>
+                {isAdmin && (
+                  <td className={td}>
+                    {payment.updated_by_role === "admin"
+                      ? "Admin"
+                      : payment.updated_by_name && payment.updated_by_name !== "Staff"
+                        ? `${payment.updated_by_name}${payment.updated_by_employee_code ? ` (${payment.updated_by_employee_code})` : ""}`
+                        : payment.updated_by_employee_code || "Not recorded"}
+                  </td>
+                )}
+                <td className={`${td} whitespace-nowrap`}>{formatDateTime(payment.created_at)}</td>
+              </tr>
+            ))}
+          </MiniTable>
+        ) : <p className="m-0 px-5 py-6 text-[13px] text-slate-400">No payments recorded yet.</p>}
+      </Panel>
 
       {collections.length > 0 && (
-        <Card sx={cardSx}>
-          <MDTypography variant="h6" fontWeight="medium" mb={2}>
-            D.B. Collection Submissions
-          </MDTypography>
-          <TableContainer component={Paper} variant="outlined">
-            <Table size="small">
-              <TableHead sx={TABLE_HEAD_SX}>
-                <TableRow>
-                  <TableCell>Delivery Boy</TableCell>
-                  <TableCell>Mode</TableCell>
-                  <TableCell>Amount</TableCell>
-                  <TableCell>Reference</TableCell>
-                  <TableCell>Submitted At</TableCell>
-                </TableRow>
-              </TableHead>
-              <TableBody>
-                {collections.map((row) => (
-                  <TableRow key={row.id}>
-                    <TableCell>{row.delivery_boy_name}</TableCell>
-                    <TableCell>{PAYMENT_LABELS[row.payment_mode] || row.payment_mode}</TableCell>
-                    <TableCell>{formatCurrency(row.amount)}</TableCell>
-                    <TableCell>
-                      {row.reference_no
-                        ? `${row.reference_no}${row.reference_date ? ` (${formatDate(row.reference_date)})` : ""}`
-                        : "—"}
-                    </TableCell>
-                    <TableCell>{formatDateTime(row.updated_at || row.created_at)}</TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </TableContainer>
-        </Card>
+        <Panel title="D.B. Collection Submissions" embedded={embedded}>
+          <MiniTable head={<>{["Delivery boy", "Mode", "Amount", "Reference", "Submitted at"].map((h) => <th key={h} className={th}>{h}</th>)}</>}>
+            {collections.map((row) => (
+              <tr key={row.id}>
+                <td className={td}>{row.delivery_boy_name}</td>
+                <td className={td}>{PAYMENT_LABELS[row.payment_mode] || row.payment_mode}</td>
+                <td className={`${td} tabular-nums`}>{formatCurrency(row.amount)}</td>
+                <td className={td}>
+                  {row.reference_no
+                    ? `${row.reference_no}${row.reference_date ? ` (${formatDate(row.reference_date)})` : ""}`
+                    : "—"}
+                </td>
+                <td className={`${td} whitespace-nowrap`}>{formatDateTime(row.updated_at || row.created_at)}</td>
+              </tr>
+            ))}
+          </MiniTable>
+        </Panel>
       )}
 
       {takenBills.length > 0 && (
-        <Card sx={cardSx}>
-          <MDTypography variant="h6" fontWeight="medium" mb={2}>
-            Credit Bill Collection
-          </MDTypography>
-          <TableContainer component={Paper} variant="outlined">
-            <Table size="small">
-              <TableHead sx={TABLE_HEAD_SX}>
-                <TableRow>
-                  <TableCell>Taken Date</TableCell>
-                  <TableCell>Collector</TableCell>
-                  <TableCell>Credit Amount</TableCell>
-                  <TableCell>Status</TableCell>
-                </TableRow>
-              </TableHead>
-              <TableBody>
-                {takenBills.map((row) => (
-                  <TableRow key={row.id}>
-                    <TableCell>{formatDate(row.taken_date)}</TableCell>
-                    <TableCell>{row.staff_name || row.delivery_boy_name || "N/A"}</TableCell>
-                    <TableCell>{formatCurrency(row.credit_amount)}</TableCell>
-                    <TableCell>{row.returned_at ? `Returned (${formatDateTime(row.returned_at)})` : "Taken"}</TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </TableContainer>
-        </Card>
+        <Panel title="Credit Bill Collection" embedded={embedded}>
+          <MiniTable head={<>{["Taken date", "Collector", "Credit amount", "Status"].map((h) => <th key={h} className={th}>{h}</th>)}</>}>
+            {takenBills.map((row) => (
+              <tr key={row.id}>
+                <td className={`${td} whitespace-nowrap`}>{formatDate(row.taken_date)}</td>
+                <td className={td}>{row.staff_name || row.delivery_boy_name || "N/A"}</td>
+                <td className={`${td} tabular-nums`}>{formatCurrency(row.credit_amount)}</td>
+                <td className={td}>{row.returned_at ? `Returned (${formatDateTime(row.returned_at)})` : "Taken"}</td>
+              </tr>
+            ))}
+          </MiniTable>
+        </Panel>
       )}
 
       {cancellations.length > 0 && (
-        <Card sx={cardSx}>
-          <MDTypography variant="h6" fontWeight="medium" mb={2}>
-            Cancellations / Returns
-          </MDTypography>
-          <TableContainer component={Paper} variant="outlined">
-            <Table size="small">
-              <TableHead sx={TABLE_HEAD_SX}>
-                <TableRow>
-                  <TableCell>Product</TableCell>
-                  <TableCell>Qty to Cancel</TableCell>
-                  <TableCell>Amount</TableCell>
-                  <TableCell>Date</TableCell>
-                  {isAdmin && <TableCell>Requested by</TableCell>}
-                  {isAdmin && <TableCell>Cancelled / Approved by</TableCell>}
-                </TableRow>
-              </TableHead>
-              <TableBody>
-                {cancellations.map((row) => (
-                  <TableRow key={row.id}>
-                    <TableCell>{row.product_name}</TableCell>
-                    <TableCell>{formatCancelQtyDisplay(row)}</TableCell>
-                    <TableCell>{formatCurrency(row.amount)}</TableCell>
-                    <TableCell>{formatDateTime(row.created_at)}</TableCell>
-                    {isAdmin && <TableCell>{row.requested_by_name || "—"}</TableCell>}
-                    {isAdmin && <TableCell>
-                      <ActorCell
-                        actor={
-                          row.approved_by_name
-                            ? { name: row.approved_by_name, role: row.cancelled_by_role, recorded: true }
-                            : null
-                        }
-                      />
-                    </TableCell>}
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </TableContainer>
-        </Card>
+        <Panel title="Cancellations / Returns" embedded={embedded}>
+          <MiniTable
+            head={(
+              <>
+                {["Product", "Qty to cancel", "Amount", "Date"].map((h) => <th key={h} className={th}>{h}</th>)}
+                {isAdmin && <th className={th}>Requested by</th>}
+                {isAdmin && <th className={th}>Cancelled / approved by</th>}
+              </>
+            )}
+          >
+            {cancellations.map((row) => (
+              <tr key={row.id}>
+                <td className={td}>{row.product_name}</td>
+                <td className={`${td} tabular-nums`}>{formatCancelQtyDisplay(row)}</td>
+                <td className={`${td} tabular-nums`}>{formatCurrency(row.amount)}</td>
+                <td className={`${td} whitespace-nowrap`}>{formatDateTime(row.created_at)}</td>
+                {isAdmin && <td className={td}>{row.requested_by_name || "—"}</td>}
+                {isAdmin && (
+                  <td className={td}>
+                    <ActorCell
+                      actor={
+                        row.approved_by_name
+                          ? { name: row.approved_by_name, role: row.cancelled_by_role, recorded: true }
+                          : null
+                      }
+                    />
+                  </td>
+                )}
+              </tr>
+            ))}
+          </MiniTable>
+        </Panel>
       )}
-    </MDBox>
+    </div>
   );
 }
+
+InvoiceDetails.propTypes = { details: PropTypes.object.isRequired, embedded: PropTypes.bool };
+InvoiceDetails.defaultProps = { embedded: false };
 
 export default InvoiceDetails;

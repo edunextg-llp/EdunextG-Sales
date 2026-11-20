@@ -1,38 +1,13 @@
+// Delivery Manager > Material Reports: Tailwind CSS (no MUI). Loading, reason and review logic unchanged.
 import { useCallback, useEffect, useMemo, useState } from "react";
-import {
-  Card,
-  Dialog,
-  DialogActions,
-  DialogContent,
-  DialogTitle,
-  FormControl,
-  Grid,
-  Icon,
-  IconButton,
-  InputLabel,
-  Link,
-  MenuItem,
-  Select,
-  Tab,
-  Tabs,
-  Table,
-  TableBody,
-  TableCell,
-  TableContainer,
-  TableHead,
-  TableRow,
-  Tooltip,
-} from "@mui/material";
 
-import MDBox from "components/MDBox";
-import MDBadge from "components/MDBadge";
-import MDButton from "components/MDButton";
-import MDInput from "components/MDInput";
-import MDTypography from "components/MDTypography";
 import DashboardLayout from "examples/LayoutContainers/DashboardLayout";
 import DashboardNavbar from "examples/Navbars/DashboardNavbar";
 import Footer from "examples/Footer";
 import { formatDateTime, money } from "layouts/overdue-requests/components/ReviewDialog";
+import {
+  Badge, Card, EmptyState, Field, Icon, Modal, Notice, PageHeader, SearchBox, Segmented, Spinner, StatBox, btn, fieldClass, td, th,
+} from "components/tw";
 
 const API = process.env.REACT_APP_API_URL;
 
@@ -43,23 +18,13 @@ const STATUS_OPTIONS = [
   { value: "approved", label: "Approved" },
   { value: "rejected", label: "Rejected" },
 ];
+// Review badge: [label, tone].
 const REVIEW_BADGE = {
-  pending: { label: "Waiting for review", color: "warning" },
-  approved: { label: "Approved", color: "success" },
-  rejected: { label: "Rejected", color: "error" },
+  pending: ["Waiting for review", "amber"],
+  approved: ["Approved", "green"],
+  rejected: ["Rejected", "red"],
 };
 const qtyText = (value) => (value == null ? "" : String(Number(value)));
-
-const headSx = {
-  color: "#6b7280",
-  fontSize: "0.75rem",
-  fontWeight: 600,
-  borderBottom: "1px solid #e5e7eb",
-  px: 2,
-  py: 1.5,
-  whiteSpace: "nowrap",
-};
-const cellSx = { px: 2, py: 1.5, verticalAlign: "top", fontSize: "0.8rem" };
 
 // Extra / less material reported by delivery boys after delivery.
 //  - Packaging staff: reports on invoices they packed; they must give the reason.
@@ -189,504 +154,257 @@ function MaterialReports() {
     ? "Review extra and less product reports. Rejecting less adds the amount back to the bill; rejecting extra takes the star back."
     : "Reports on invoices you packed. Give the reason for each one.";
 
+  const tabs = [["less", "Less product"], ["extra", "Extra product"], ...((access.canReview || access.isAdmin) ? [["cancelled", "Cancelled deliveries"]] : [])];
+  const iconAction = (title, icon, tone, onClick) => (
+    <button
+      type="button" title={title} aria-label={title} onClick={onClick}
+      className={`${btn.icon} ${tone === "green" ? "text-emerald-600 hover:bg-emerald-50 hover:text-emerald-700" : tone === "red" ? "text-red-500 hover:bg-red-50 hover:text-red-600" : "hover:text-blue-700"}`}
+    >
+      <Icon name={icon} className="text-[20px]" />
+    </button>
+  );
+  const invoiceCell = (row) => (
+    <>
+      <span className="block text-[12.5px]"><b className="font-mono text-slate-800">{row.invoice_number || "—"}</b> <span className="text-slate-400">· {row.bp_sale_id}</span></span>
+      <span className="block font-semibold text-slate-800">{row.outlet_name || "—"}</span>
+    </>
+  );
+
   return (
     <DashboardLayout>
       <DashboardNavbar />
-      <MDBox py={3}>
+      <div className="pb-8 font-[Poppins,Roboto,sans-serif] text-slate-700">
+        <PageHeader
+          title="Material Reports"
+          description={`${subtitle}${totals.waitingReview && access.canReview ? ` ${totals.waitingReview} waiting for review.` : ""}${totals.waitingReason ? ` ${totals.waitingReason} without packer reason.` : ""}`}
+          actions={(
+            <button type="button" className={btn.outline} onClick={() => load()} disabled={loading}>
+              <Icon name="refresh" className="text-[18px]" />Refresh
+            </button>
+          )}
+        />
+
+        {tab !== "cancelled" && (
+          <div className="mb-5 flex flex-wrap gap-2">
+            <StatBox label="Less reports" value={totals.less} icon="remove_shopping_cart" />
+            <StatBox label="Taken off bills" value={money(totals.lessAmount)} icon="currency_rupee" />
+            <StatBox label="Extra reports" value={totals.extra} icon="add_shopping_cart" />
+            <StatBox label="Waiting review" value={totals.waitingReview} icon="hourglass_top" />
+            <StatBox label="Reason pending" value={totals.waitingReason} icon="edit_note" />
+          </div>
+        )}
+        {notice && <Notice tone="success" className="mb-4" onClose={() => setNotice(null)}>{notice.text}</Notice>}
+        {error && <Notice tone="error" className="mb-4">{error}</Notice>}
+
         <Card>
-          <MDBox p={2}>
-            <MDTypography variant="h6">Material Reports</MDTypography>
-            <MDTypography variant="caption" color="text">
-              {subtitle}
-              {totals.waitingReview && access.canReview
-                ? ` ${totals.waitingReview} waiting for review.`
-                : ""}
-              {totals.waitingReason ? ` ${totals.waitingReason} without packer reason.` : ""}
-            </MDTypography>
-          </MDBox>
-
-          <MDBox px={2} pb={2}>
-            <Tabs value={tab} onChange={(event, value) => setTab(value)} sx={{ maxWidth: 560 }}>
-              <Tab value="less" label="Less product" />
-              <Tab value="extra" label="Extra product" />
-              {(access.canReview || access.isAdmin) && (
-                <Tab value="cancelled" label="Cancelled deliveries" />
-              )}
-            </Tabs>
-          </MDBox>
-
-          <MDBox px={2} pb={2}>
-            <Grid container spacing={2} alignItems="center">
-              {tab !== "cancelled" && (
-                <Grid item xs={12} sm={6} md={3}>
-                  <FormControl fullWidth size="small">
-                    <InputLabel>Status</InputLabel>
-                    <Select
-                      label="Status"
-                      value={status}
-                      onChange={(e) => setStatus(e.target.value)}
-                      sx={{ height: 40 }}
-                    >
-                      {STATUS_OPTIONS.map((o) => (
-                        <MenuItem key={o.value || "all"} value={o.value}>
-                          {o.label}
-                        </MenuItem>
-                      ))}
-                    </Select>
-                  </FormControl>
-                </Grid>
-              )}
-              <Grid item xs={6} md={2}>
-                <MDInput
-                  type="date"
-                  label="From"
-                  fullWidth
-                  value={fromDate}
-                  onChange={(e) => setFromDate(e.target.value)}
-                  InputLabelProps={{ shrink: true }}
-                />
-              </Grid>
-              <Grid item xs={6} md={2}>
-                <MDInput
-                  type="date"
-                  label="To"
-                  fullWidth
-                  value={toDate}
-                  onChange={(e) => setToDate(e.target.value)}
-                  InputLabelProps={{ shrink: true }}
-                />
-              </Grid>
-              <Grid item xs={10} md={2}>
-                <MDInput
-                  label={
-                    tab === "cancelled"
-                      ? "Search invoice / outlet / reason"
-                      : "Search invoice / outlet / name"
-                  }
-                  fullWidth
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                />
-              </Grid>
-              <Grid item xs={2} md={1}>
-                <Tooltip title="Refresh">
-                  <span>
-                    <IconButton color="info" onClick={() => load()} disabled={loading}>
-                      <Icon>refresh</Icon>
-                    </IconButton>
-                  </span>
-                </Tooltip>
-              </Grid>
-            </Grid>
-            <MDTypography variant="caption" color="text" display="block" mt={1}>
-              {tab === "cancelled"
-                ? `Showing ${cancelled.length} cancelled deliver${
-                    cancelled.length === 1 ? "y" : "ies"
-                  } · ${money(cancelled.reduce((sum, row) => sum + (Number(row.price) || 0), 0))}`
-                : tab === "less"
-                ? `Showing ${reports.length} less report(s) · ${money(
-                    totals.lessAmount
-                  )} taken off bills`
+          <div className="flex flex-wrap items-end gap-3 border-b border-slate-100 px-4 py-3">
+            <Segmented label="Report type" value={tab} onChange={setTab} options={tabs} />
+            <div className="grow" />
+            {tab !== "cancelled" && (
+              <Field label="Status" width="w-52">
+                <select className={fieldClass} value={status} onChange={(e) => setStatus(e.target.value)}>
+                  {STATUS_OPTIONS.map((o) => <option key={o.value || "all"} value={o.value}>{o.label}</option>)}
+                </select>
+              </Field>
+            )}
+            <Field label="From" width="w-36"><input type="date" className={fieldClass} value={fromDate} onChange={(e) => setFromDate(e.target.value)} /></Field>
+            <Field label="To" width="w-36"><input type="date" className={fieldClass} value={toDate} onChange={(e) => setToDate(e.target.value)} /></Field>
+            <SearchBox value={search} onChange={setSearch} className="w-64" placeholder={tab === "cancelled" ? "Search invoice / outlet / reason" : "Search invoice / outlet / name"} />
+          </div>
+          <p className="m-0 border-b border-slate-100 px-4 py-2 text-[12px] text-slate-500">
+            {tab === "cancelled"
+              ? `Showing ${cancelled.length} cancelled deliver${cancelled.length === 1 ? "y" : "ies"} · ${money(cancelled.reduce((sum, row) => sum + (Number(row.price) || 0), 0))}`
+              : tab === "less"
+                ? `Showing ${reports.length} less report(s) · ${money(totals.lessAmount)} taken off bills`
                 : `Showing ${reports.length} extra report(s)`}
-            </MDTypography>
-          </MDBox>
+          </p>
 
-          {notice && (
-            <MDBox px={2} pb={2}>
-              <MDTypography variant="button" color={notice.color}>
-                {notice.text}
-              </MDTypography>
-            </MDBox>
-          )}
-          {error && (
-            <MDBox px={2} pb={2}>
-              <MDTypography variant="button" color="error">
-                {error}
-              </MDTypography>
-            </MDBox>
-          )}
-
-          {tab === "cancelled" ? (
-            <TableContainer sx={{ boxShadow: "none" }}>
-              <Table>
-                <TableHead sx={{ display: "table-header-group", backgroundColor: "#f9fafb" }}>
-                  <TableRow>
-                    {[
-                      "Sr. No.",
-                      "Cancelled",
-                      "Invoice / Outlet",
-                      "Amount",
-                      "Delivery person",
-                      "Cancelled by",
-                      "Reason",
-                    ].map((h) => (
-                      <TableCell key={h} sx={headSx}>
-                        {h}
-                      </TableCell>
+          {loading ? (
+            <div className="flex justify-center py-14"><Spinner className="size-7" /></div>
+          ) : tab === "cancelled" ? (
+            cancelled.length === 0 ? <EmptyState icon="local_shipping" text="No cancelled deliveries here." /> : (
+              <div className="overflow-x-auto">
+                <table className="w-full border-collapse">
+                  <thead>
+                    <tr className="bg-slate-50">
+                      {["#", "Cancelled", "Invoice / outlet", "Amount", "Delivery person", "Cancelled by", "Reason"].map((h) => <th key={h} className={`${th} whitespace-nowrap`}>{h}</th>)}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {cancelled.map((row, index) => (
+                      <tr key={row.sale_id} className="border-t border-slate-100 align-top hover:bg-slate-50/70">
+                        <td className={`${td} text-slate-400`}>{index + 1}</td>
+                        <td className={`${td} whitespace-nowrap`}>
+                          <span className="block text-[12.5px]">{formatDateTime(row.cancelled_at) || "—"}</span>
+                          <span className="block text-[11.5px] text-slate-500">Delivery date {row.delivery_date || "—"}</span>
+                        </td>
+                        <td className={td}>
+                          {invoiceCell(row)}
+                          <span className="block text-[12px] text-slate-500">
+                            {row.outlet_erp_id ? `${row.outlet_erp_id} · ` : ""}{[row.company_name, row.location_name].filter(Boolean).join(" · ")}
+                          </span>
+                        </td>
+                        <td className={`${td} whitespace-nowrap`}>
+                          <span className="block font-semibold tabular-nums text-slate-900">{money(row.price)}</span>
+                          <span className="block text-[11.5px] text-slate-500">{row.item_count} item(s)</span>
+                        </td>
+                        <td className={td}>{row.delivery_person_name || "—"}</td>
+                        <td className={td}>
+                          <span className="block">{row.changed_by_name || "—"}</span>
+                          {row.changed_by_role && <span className="block text-[11.5px] text-slate-500">{row.changed_by_role}</span>}
+                        </td>
+                        <td className={`${td} max-w-72 text-[12.5px]`}>{row.cancellation_reason || <span className="text-slate-400">Not given</span>}</td>
+                      </tr>
                     ))}
-                  </TableRow>
-                </TableHead>
-                <TableBody>
-                  {!loading && cancelled.length === 0 && (
-                    <TableRow>
-                      <TableCell colSpan={7} sx={{ ...cellSx, textAlign: "center", py: 4 }}>
-                        No cancelled deliveries here.
-                      </TableCell>
-                    </TableRow>
-                  )}
-                  {cancelled.map((row, index) => (
-                    <TableRow key={row.sale_id}>
-                      <TableCell sx={cellSx}>{index + 1}</TableCell>
-                      <TableCell sx={cellSx}>
-                        {formatDateTime(row.cancelled_at) || "—"}
-                        <MDTypography variant="caption" display="block" color="text">
-                          Delivery date {row.delivery_date || "—"}
-                        </MDTypography>
-                      </TableCell>
-                      <TableCell sx={cellSx}>
-                        <strong>{row.invoice_number || "—"}</strong> · {row.bp_sale_id}
-                        <br />
-                        {row.outlet_name || "—"}
-                        {row.outlet_erp_id ? ` (${row.outlet_erp_id})` : ""}
-                        <br />
-                        {[row.company_name, row.location_name].filter(Boolean).join(" · ")}
-                      </TableCell>
-                      <TableCell sx={cellSx}>
-                        {money(row.price)}
-                        <MDTypography variant="caption" display="block" color="text">
-                          {row.item_count} item(s)
-                        </MDTypography>
-                      </TableCell>
-                      <TableCell sx={cellSx}>{row.delivery_person_name || "—"}</TableCell>
-                      <TableCell sx={cellSx}>
-                        {row.changed_by_name || "—"}
-                        {row.changed_by_role && (
-                          <MDTypography variant="caption" display="block" color="text">
-                            {row.changed_by_role}
-                          </MDTypography>
-                        )}
-                      </TableCell>
-                      <TableCell sx={{ ...cellSx, maxWidth: 280 }}>
-                        {row.cancellation_reason || "Not given"}
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </TableContainer>
+                  </tbody>
+                </table>
+              </div>
+            )
+          ) : reports.length === 0 ? (
+            <EmptyState icon="inventory" text="No material reports here." />
           ) : (
-            <TableContainer sx={{ boxShadow: "none" }}>
-              <Table>
-                <TableHead sx={{ display: "table-header-group", backgroundColor: "#f9fafb" }}>
-                  <TableRow>
-                    {[
-                      "Sr. No.",
-                      "Reported",
-                      "Invoice / Outlet",
-                      "Type",
-                      "Delivery boy",
-                      "Packed by",
-                      "Packer reason",
-                      "Review",
-                      "Actions",
-                    ].map((h) => (
-                      <TableCell key={h} sx={headSx}>
-                        {h}
-                      </TableCell>
-                    ))}
-                  </TableRow>
-                </TableHead>
-                <TableBody>
-                  {!loading && reports.length === 0 && (
-                    <TableRow>
-                      <TableCell colSpan={9} sx={{ ...cellSx, textAlign: "center", py: 4 }}>
-                        No material reports here.
-                      </TableCell>
-                    </TableRow>
-                  )}
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[1100px] border-collapse">
+                <thead>
+                  <tr className="bg-slate-50">
+                    {["#", "Reported", "Invoice / outlet", "Type", "Delivery boy", "Packed by", "Packer reason", "Review", ""].map((h) => <th key={h} className={`${th} whitespace-nowrap`}>{h}</th>)}
+                  </tr>
+                </thead>
+                <tbody>
                   {reports.map((report, index) => {
                     const isLess = report.report_type === "less";
                     const isMine = myPackerId && Number(report.packed_by_id) === myPackerId;
                     const badge = REVIEW_BADGE[report.review_status];
+                    const hasReason = Boolean(String(report.packer_reason || "").trim());
                     return (
-                      <TableRow key={report.id}>
-                        <TableCell sx={cellSx}>{index + 1}</TableCell>
-                        <TableCell sx={cellSx}>
-                          #{report.id}
-                          <br />
-                          {formatDateTime(report.created_at)}
-                        </TableCell>
-                        <TableCell sx={cellSx}>
-                          <strong>{report.invoice_number || "—"}</strong> · {report.bp_sale_id}
-                          <br />
-                          {report.outlet_name || "—"}
-                          {report.company_name ? ` · ${report.company_name}` : ""}
-                          <br />
-                          Bill {money(report.price)}
-                        </TableCell>
-                        <TableCell sx={cellSx}>
-                          <MDBadge
-                            badgeContent={isLess ? `Less ${money(report.amount)}` : "Extra product"}
-                            color={isLess ? "warning" : "success"}
-                            variant="gradient"
-                            size="sm"
-                            container
-                          />
-                          {!isLess && report.product_name && (
-                            <MDTypography
-                              variant="caption"
-                              display="block"
-                              fontWeight="medium"
-                              mt={0.5}
-                            >
-                              {report.product_name} · Qty {qtyText(report.product_qty)}
-                            </MDTypography>
-                          )}
+                      <tr key={report.id} className="border-t border-slate-100 align-top hover:bg-slate-50/70">
+                        <td className={`${td} text-slate-400`}>{index + 1}</td>
+                        <td className={`${td} whitespace-nowrap`}>
+                          <span className="block font-mono text-[12px] text-slate-500">#{report.id}</span>
+                          <span className="block text-[12.5px]">{formatDateTime(report.created_at)}</span>
+                        </td>
+                        <td className={td}>
+                          {invoiceCell(report)}
+                          <span className="block text-[12px] text-slate-500">{report.company_name ? `${report.company_name} · ` : ""}Bill {money(report.price)}</span>
+                        </td>
+                        <td className={td}>
+                          <Badge tone={isLess ? "amber" : "green"} icon={isLess ? "remove" : "add"}>{isLess ? `Less ${money(report.amount)}` : "Extra product"}</Badge>
+                          {!isLess && report.product_name && <span className="mt-1 block text-[12px] font-semibold text-slate-700">{report.product_name} · Qty {qtyText(report.product_qty)}</span>}
                           {report.photo_url && (
-                            <MDBox mt={0.5}>
-                              <Link
-                                href={report.photo_url}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                variant="caption"
-                              >
-                                View photo
-                              </Link>
-                            </MDBox>
+                            <a href={report.photo_url} target="_blank" rel="noopener noreferrer" className="mt-1 inline-flex items-center gap-1 text-[12px] font-semibold text-blue-700 hover:underline">
+                              <Icon name="photo_camera" className="text-[15px]" />View photo
+                            </a>
                           )}
-                          {report.remarks && (
-                            <MDTypography variant="caption" display="block" color="text">
-                              {report.remarks}
-                            </MDTypography>
-                          )}
-                        </TableCell>
-                        <TableCell sx={cellSx}>
-                          <strong>{report.delivery_boy_name || "—"}</strong>
-                          {report.star_awarded && (
-                            <MDTypography variant="caption" display="block" color="text">
-                              ⭐ 1 star
-                            </MDTypography>
-                          )}
-                          {!isLess && report.review_status === "rejected" && (
-                            <MDTypography variant="caption" display="block" color="error">
-                              Star taken back
-                            </MDTypography>
-                          )}
-                        </TableCell>
-                        <TableCell sx={cellSx}>{report.packed_by_name || "Not recorded"}</TableCell>
-                        <TableCell sx={{ ...cellSx, maxWidth: 260 }}>
-                          {String(report.packer_reason || "").trim() ? (
+                          {report.remarks && <span className="block text-[12px] text-slate-500">{report.remarks}</span>}
+                        </td>
+                        <td className={td}>
+                          <span className="block font-semibold text-slate-800">{report.delivery_boy_name || "—"}</span>
+                          {report.star_awarded && <span className="block text-[12px] text-amber-600">⭐ 1 star</span>}
+                          {!isLess && report.review_status === "rejected" && <span className="block text-[12px] font-semibold text-red-600">Star taken back</span>}
+                        </td>
+                        <td className={td}>{report.packed_by_name || <span className="text-slate-400">Not recorded</span>}</td>
+                        <td className={`${td} max-w-64`}>
+                          {hasReason ? (
                             <>
-                              {report.packer_reason}
-                              <MDTypography variant="caption" display="block" color="text">
-                                {formatDateTime(report.packer_reason_at)}
-                              </MDTypography>
+                              <span className="block text-[12.5px]">{report.packer_reason}</span>
+                              <span className="block text-[11.5px] text-slate-500">{formatDateTime(report.packer_reason_at)}</span>
                             </>
-                          ) : (
-                            <MDTypography variant="caption" color="error">
-                              Reason pending
-                            </MDTypography>
-                          )}
-                        </TableCell>
-                        <TableCell sx={cellSx}>
+                          ) : <Badge tone="red" icon="error_outline">Reason pending</Badge>}
+                        </td>
+                        <td className={td}>
                           {badge ? (
                             <>
-                              <MDBadge
-                                badgeContent={badge.label}
-                                color={badge.color}
-                                variant="gradient"
-                                size="sm"
-                                container
-                              />
-                              {report.reviewed_by_name && (
-                                <MDTypography
-                                  variant="caption"
-                                  display="block"
-                                  color="text"
-                                  mt={0.5}
-                                >
-                                  {report.reviewed_by_name} · {formatDateTime(report.reviewed_at)}
-                                </MDTypography>
-                              )}
-                              {report.review_remarks && (
-                                <MDTypography variant="caption" display="block" color="text">
-                                  {report.review_remarks}
-                                </MDTypography>
-                              )}
+                              <Badge tone={badge[1]}>{badge[0]}</Badge>
+                              {report.reviewed_by_name && <span className="mt-1 block text-[11.5px] text-slate-500">{report.reviewed_by_name} · {formatDateTime(report.reviewed_at)}</span>}
+                              {report.review_remarks && <span className="block text-[11.5px] text-slate-500">{report.review_remarks}</span>}
                             </>
-                          ) : (
-                            <MDTypography variant="caption" color="text">
-                              Not needed
-                            </MDTypography>
-                          )}
-                        </TableCell>
-                        <TableCell sx={{ ...cellSx, whiteSpace: "nowrap" }}>
-                          {isMine && (
-                            <Tooltip title={report.packer_reason ? "Edit reason" : "Give reason"}>
-                              <IconButton
-                                size="small"
-                                color="info"
-                                onClick={() => openDialog(report, "reason")}
-                              >
-                                <Icon>edit_note</Icon>
-                              </IconButton>
-                            </Tooltip>
-                          )}
+                          ) : <span className="text-[12px] text-slate-400">Not needed</span>}
+                        </td>
+                        <td className={`${td} whitespace-nowrap text-right`}>
+                          {isMine && iconAction(report.packer_reason ? "Edit reason" : "Give reason", "edit_note", "", () => openDialog(report, "reason"))}
                           {access.canReview && report.review_status === "pending" && (
                             <>
-                              <Tooltip
-                                title={
-                                  isLess
-                                    ? "Approve (amount stays off the bill)"
-                                    : "Approve (keeps the star)"
-                                }
-                              >
-                                <IconButton
-                                  size="small"
-                                  color="success"
-                                  onClick={() => openDialog(report, "approve")}
-                                >
-                                  <Icon>check_circle</Icon>
-                                </IconButton>
-                              </Tooltip>
-                              <Tooltip
-                                title={
-                                  isLess
-                                    ? "Reject (adds the amount back to the bill)"
-                                    : "Reject (takes the star back)"
-                                }
-                              >
-                                <IconButton
-                                  size="small"
-                                  color="error"
-                                  onClick={() => openDialog(report, "reject")}
-                                >
-                                  <Icon>cancel</Icon>
-                                </IconButton>
-                              </Tooltip>
+                              {iconAction(isLess ? "Approve (amount stays off the bill)" : "Approve (keeps the star)", "check_circle", "green", () => openDialog(report, "approve"))}
+                              {iconAction(isLess ? "Reject (adds the amount back to the bill)" : "Reject (takes the star back)", "cancel", "red", () => openDialog(report, "reject"))}
                             </>
                           )}
-                        </TableCell>
-                      </TableRow>
+                        </td>
+                      </tr>
                     );
                   })}
-                </TableBody>
-              </Table>
-            </TableContainer>
+                </tbody>
+              </table>
+            </div>
           )}
         </Card>
 
         {tab !== "cancelled" && access.isAdmin && stars.length > 0 && (
-          <Card sx={{ mt: 3 }}>
-            <MDBox p={2}>
-              <MDTypography variant="h6">Delivery boy stars</MDTypography>
-              <MDTypography variant="caption" color="text">
-                1 star for every extra product reported (all time, rejected ones removed).
-              </MDTypography>
-            </MDBox>
-            <TableContainer sx={{ boxShadow: "none" }}>
-              <Table>
-                <TableHead sx={{ display: "table-header-group", backgroundColor: "#f9fafb" }}>
-                  <TableRow>
-                    {["Delivery boy", "Stars", "Extra reports", "Less reports", "Less amount"].map(
-                      (h) => (
-                        <TableCell key={h} sx={headSx}>
-                          {h}
-                        </TableCell>
-                      )
-                    )}
-                  </TableRow>
-                </TableHead>
-                <TableBody>
+          <Card className="mt-5">
+            <div className="border-b border-slate-100 px-5 py-3">
+              <h3 className="m-0 text-[15px] font-semibold text-slate-900">Delivery boy stars</h3>
+              <p className="m-0 mt-0.5 text-[12.5px] text-slate-500">1 star for every extra product reported (all time, rejected ones removed).</p>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full border-collapse">
+                <thead>
+                  <tr className="bg-slate-50">
+                    {["Delivery boy", "Stars", "Extra reports", "Less reports", "Less amount"].map((h) => <th key={h} className={th}>{h}</th>)}
+                  </tr>
+                </thead>
+                <tbody>
                   {stars.map((row) => (
-                    <TableRow key={row.delivery_boy_id}>
-                      <TableCell sx={cellSx}>
-                        <strong>{row.delivery_boy_name}</strong>
-                      </TableCell>
-                      <TableCell sx={cellSx}>⭐ {row.stars}</TableCell>
-                      <TableCell sx={cellSx}>{row.extra_count}</TableCell>
-                      <TableCell sx={cellSx}>{row.less_count}</TableCell>
-                      <TableCell sx={cellSx}>{money(row.less_amount)}</TableCell>
-                    </TableRow>
+                    <tr key={row.delivery_boy_id} className="border-t border-slate-100 hover:bg-slate-50/70">
+                      <td className={`${td} font-semibold text-slate-800`}>{row.delivery_boy_name}</td>
+                      <td className={`${td} font-semibold text-amber-600`}>⭐ {row.stars}</td>
+                      <td className={`${td} tabular-nums`}>{row.extra_count}</td>
+                      <td className={`${td} tabular-nums`}>{row.less_count}</td>
+                      <td className={`${td} tabular-nums font-semibold`}>{money(row.less_amount)}</td>
+                    </tr>
                   ))}
-                </TableBody>
-              </Table>
-            </TableContainer>
+                </tbody>
+              </table>
+            </div>
           </Card>
         )}
-      </MDBox>
+      </div>
 
-      <Dialog
-        open={Boolean(dialog)}
-        onClose={() => !saving && setDialog(null)}
-        fullWidth
-        maxWidth="sm"
+      <Modal
+        open={Boolean(dialog)} onClose={() => setDialog(null)} locked={saving} size="lg"
+        title={
+          dialog?.kind === "reason" ? "Reason for the material difference"
+            : dialog ? `${dialog.kind === "approve" ? "Approve" : "Reject"} ${dialog.report.report_type === "less" ? "less" : "extra"} product` : ""
+        }
+        actions={(
+          <>
+            <button type="button" className={btn.ghost} disabled={saving} onClick={() => setDialog(null)}>Cancel</button>
+            <button
+              type="button" disabled={saving} onClick={submitDialog}
+              className={`${btn.primary} ${dialog?.kind === "reject" ? "bg-red-600 hover:bg-red-700" : dialog?.kind === "approve" ? "bg-emerald-600 hover:bg-emerald-700" : ""}`}
+            >
+              {saving ? "Saving..." : dialog?.kind === "reason" ? "Save reason" : dialog?.kind === "approve" ? "Approve" : "Reject"}
+            </button>
+          </>
+        )}
       >
-        <DialogTitle>
-          {dialog?.kind === "reason" && "Reason for the material difference"}
-          {dialog?.kind === "approve" &&
-            `Approve ${dialog.report.report_type === "less" ? "less" : "extra"} product`}
-          {dialog?.kind === "reject" &&
-            `Reject ${dialog.report.report_type === "less" ? "less" : "extra"} product`}
-        </DialogTitle>
-        <DialogContent>
-          {dialog && (
-            <MDTypography variant="caption" color="text" display="block" mb={2}>
-              {dialog.report.invoice_number} · {dialog.report.outlet_name} ·{" "}
-              {dialog.report.report_type === "less"
-                ? `Less ${money(dialog.report.amount)}`
-                : `Extra: ${dialog.report.product_name || "product"} · Qty ${qtyText(
-                    dialog.report.product_qty
-                  )}`}{" "}
-              · reported by {dialog.report.delivery_boy_name}
-              {dialog.kind === "reject" &&
-                (dialog.report.report_type === "less"
-                  ? ". Rejecting adds the amount back to the bill."
-                  : ". Rejecting takes the delivery boy's star back.")}
-            </MDTypography>
-          )}
-          <MDInput
-            label={
-              dialog?.kind === "reason"
-                ? "Why was there extra / less material?"
-                : dialog?.kind === "reject"
-                ? "Why is it rejected?"
-                : "Note (optional)"
-            }
-            fullWidth
-            multiline
-            rows={3}
-            value={text}
-            onChange={(e) => setText(e.target.value)}
-          />
-        </DialogContent>
-        <DialogActions>
-          <MDButton
-            variant="outlined"
-            color="secondary"
-            disabled={saving}
-            onClick={() => setDialog(null)}
-          >
-            Cancel
-          </MDButton>
-          <MDButton
-            variant="gradient"
-            color={
-              dialog?.kind === "reject" ? "error" : dialog?.kind === "approve" ? "success" : "info"
-            }
-            disabled={saving}
-            onClick={submitDialog}
-          >
-            {saving
-              ? "Saving..."
-              : dialog?.kind === "reason"
-              ? "Save reason"
-              : dialog?.kind === "approve"
-              ? "Approve"
-              : "Reject"}
-          </MDButton>
-        </DialogActions>
-      </Dialog>
+        {dialog && (
+          <p className="m-0 mb-4 rounded-xl bg-slate-50 px-3.5 py-3 text-[13px] leading-relaxed text-slate-600">
+            {dialog.report.invoice_number} · {dialog.report.outlet_name} ·{" "}
+            {dialog.report.report_type === "less"
+              ? `Less ${money(dialog.report.amount)}`
+              : `Extra: ${dialog.report.product_name || "product"} · Qty ${qtyText(dialog.report.product_qty)}`}{" "}
+            · reported by {dialog.report.delivery_boy_name}
+            {dialog.kind === "reject" && (dialog.report.report_type === "less"
+              ? ". Rejecting adds the amount back to the bill."
+              : ". Rejecting takes the delivery boy's star back.")}
+          </p>
+        )}
+        <label className="flex flex-col gap-1">
+          <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+            {dialog?.kind === "reason" ? "Why was there extra / less material?" : dialog?.kind === "reject" ? "Why is it rejected?" : "Note (optional)"}
+          </span>
+          <textarea rows={3} className={`${fieldClass} h-auto py-2`} value={text} onChange={(e) => setText(e.target.value)} />
+        </label>
+      </Modal>
 
       <Footer />
     </DashboardLayout>

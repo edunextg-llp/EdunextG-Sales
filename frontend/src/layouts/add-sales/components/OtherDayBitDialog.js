@@ -1,13 +1,7 @@
+// Other-day bit / other-date approval popup: Tailwind CSS (no MUI). Request, refresh and own-permission logic unchanged.
 import { useEffect, useMemo, useState } from "react";
 import PropTypes from "prop-types";
-import { Dialog, DialogTitle, DialogContent, DialogActions } from "@mui/material";
-import Icon from "@mui/material/Icon";
-
-import MDBox from "components/MDBox";
-import MDTypography from "components/MDTypography";
-import MDInput from "components/MDInput";
-import MDButton from "components/MDButton";
-import MDBadge from "components/MDBadge";
+import { Badge, Icon, Modal, Notice, btn, fieldClass } from "components/tw";
 
 const API = process.env.REACT_APP_API_URL;
 
@@ -28,10 +22,10 @@ export const isTodaysBit = (outletDay, today = todayDayName()) => {
 };
 
 const STATUS = {
-  pending: { label: "Waiting for admin approval", color: "warning" },
-  approved: { label: "Approved — you can add the sale", color: "success" },
-  rejected: { label: "Rejected", color: "error" },
-  used: { label: "Approval already used", color: "secondary" },
+  pending: { label: "Waiting for admin approval", color: "amber" },
+  approved: { label: "Approved — you can add the sale", color: "green" },
+  rejected: { label: "Rejected", color: "red" },
+  used: { label: "Approval already used", color: "slate" },
 };
 
 /**
@@ -142,143 +136,114 @@ function OtherDayBitDialog({
   };
 
   return (
-    <Dialog open={open} onClose={sending || retrying ? undefined : onClose} maxWidth="sm" fullWidth>
-      <DialogTitle>
-        {ownMode ? "Add on Your Own Permission" : "Admin Approval Required"} — {reason === "other_date" ? "Other Date" : "Other Day Bit"}
-      </DialogTitle>
-      <DialogContent dividers>
-        {canOwnPermission && (
-          <MDBox mb={2} display="flex" gap={1} flexWrap="wrap">
-            <MDButton size="small" variant={ownMode ? "gradient" : "outlined"} color="success" onClick={() => { setOwnMode(true); setError(""); }}>
-              <Icon sx={{ mr: 0.5 }}>verified_user</Icon> Own permission
-            </MDButton>
-            <MDButton size="small" variant={ownMode ? "outlined" : "gradient"} color="info" onClick={() => { setOwnMode(false); setError(""); }}>
-              <Icon sx={{ mr: 0.5 }}>send</Icon> Ask admin instead
-            </MDButton>
-          </MDBox>
-        )}
-        {ownMode && (
-          <MDBox mb={2} p={1.5} sx={{ backgroundColor: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: "8px" }}>
-            <MDTypography variant="button" fontWeight="bold" sx={{ color: "#15803d" }} display="block">
-              You can add this sale without admin approval.
-            </MDTypography>
-            <MDTypography variant="caption" color="text" display="block" mb={1.5}>
-              Give the reason below. Admin can see every sale added on own permission (Other-day requests, Own permission).
-            </MDTypography>
-            <MDInput
-              label="Your reason *"
-              fullWidth
-              multiline
-              rows={2}
-              value={ownNote}
+    <Modal
+      open={open} onClose={onClose} locked={sending || retrying} size="lg"
+      title={`${ownMode ? "Add on Your Own Permission" : "Admin Approval Required"} — ${reason === "other_date" ? "Other Date" : "Other Day Bit"}`}
+      actions={(
+        <div className="flex flex-wrap justify-end gap-2">
+          <button type="button" className={btn.ghost} onClick={onClose} disabled={sending || retrying}>Close</button>
+          {ownMode ? (
+            <button type="button" className={`${btn.primary} bg-emerald-600 hover:bg-emerald-700`} onClick={addOnOwnPermission} disabled={retrying || !ownNote.trim()}>
+              <Icon name="verified_user" className="text-[17px]" />{retrying ? "Saving..." : "Add Sales on My Permission"}
+            </button>
+          ) : null}
+          {!ownMode && anyPending && (
+            <button type="button" className={btn.outline} onClick={refresh} disabled={sending || retrying}>
+              <Icon name="refresh" className="text-[17px]" />Check Status
+            </button>
+          )}
+          {!ownMode && needsRequest && (
+            <button type="button" className={btn.primary} onClick={sendRequest} disabled={sending || retrying || !note.trim()}>
+              <Icon name="send" className="text-[17px]" />{sending ? "Sending..." : "Send Request"}
+            </button>
+          )}
+          {!ownMode && (
+            <button type="button" className={`${btn.primary} bg-emerald-600 hover:bg-emerald-700`} onClick={onRetry} disabled={retrying || !allApproved}>
+              <Icon name={allApproved ? "check_circle" : "lock"} className="text-[17px]" />{retrying ? "Saving..." : "Add Sales"}
+            </button>
+          )}
+        </div>
+      )}
+    >
+      {canOwnPermission && (
+        <div className="mb-4 inline-flex gap-1 rounded-xl bg-slate-100 p-1" role="tablist" aria-label="How to add">
+          <button type="button" role="tab" aria-selected={ownMode} onClick={() => { setOwnMode(true); setError(""); }} className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[12.5px] font-semibold transition ${ownMode ? "bg-white text-emerald-700 shadow-sm" : "text-slate-500 hover:text-slate-800"}`}>
+            <Icon name="verified_user" className="text-[16px]" />Own permission
+          </button>
+          <button type="button" role="tab" aria-selected={!ownMode} onClick={() => { setOwnMode(false); setError(""); }} className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[12.5px] font-semibold transition ${!ownMode ? "bg-white text-blue-700 shadow-sm" : "text-slate-500 hover:text-slate-800"}`}>
+            <Icon name="send" className="text-[16px]" />Ask admin instead
+          </button>
+        </div>
+      )}
+      {ownMode && (
+        <div className="mb-4 rounded-xl border border-emerald-200 bg-emerald-50/60 p-3.5">
+          <p className="m-0 text-[13px] font-bold text-emerald-800">You can add this sale without admin approval.</p>
+          <p className="m-0 mb-2.5 mt-0.5 text-[12px] text-slate-600">Give the reason below. Admin can see every sale added on own permission (Other-day requests, Own permission).</p>
+          <label className="flex flex-col gap-1">
+            <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Your reason *</span>
+            <textarea
+              rows={2} className={`${fieldClass} h-auto py-2`} value={ownNote}
+              placeholder="e.g. Outlet was closed on its bit day, delivery requested today"
               onChange={(event) => {
                 setOwnNote(event.target.value);
                 setError("");
               }}
-              placeholder="e.g. Outlet was closed on its bit day, delivery requested today"
             />
-          </MDBox>
+          </label>
+        </div>
+      )}
+      <p className="m-0 mb-4 text-[13px] text-slate-600">
+        {reason === "other_date" ? (
+          <>
+            You can add sales directly only for <strong>today&apos;s date</strong> ({todayDate()}). This entry is for{" "}
+            <strong>{saleDate}</strong>, so send a request to admin. Once it is approved, you can add the
+            sale for these outlets on {saleDate}.
+          </>
+        ) : (
+          <>
+            Today is <strong>{todayDay || todayDayName()}</strong>. You can add sales directly only for
+            today&apos;s bit. The outlets below belong to another day&apos;s bit, so send a request to
+            admin. Once it is approved, you can add the sale for these outlets on {saleDate}.
+          </>
         )}
-        <MDTypography variant="body2" color="text" mb={2}>
-          {reason === "other_date" ? (
-            <>
-              You can add sales directly only for <strong>today&apos;s date</strong> ({todayDate()}). This entry is for{" "}
-              <strong>{saleDate}</strong>, so send a request to admin. Once it is approved, you can add the
-              sale for these outlets on {saleDate}.
-            </>
-          ) : (
-            <>
-              Today is <strong>{todayDay || todayDayName()}</strong>. You can add sales directly only for
-              today&apos;s bit. The outlets below belong to another day&apos;s bit, so send a request to
-              admin. Once it is approved, you can add the sale for these outlets on {saleDate}.
-            </>
-          )}
-        </MDTypography>
+      </p>
 
+      <div className="space-y-2">
         {outlets.map((outlet) => {
           const request = requestByOutlet.get(Number(outlet.outletId));
           const statusInfo = request ? STATUS[request.status] : null;
           return (
-            <MDBox
-              key={outlet.outletId}
-              mb={1.5}
-              p={1.5}
-              sx={{ backgroundColor: "#fffbeb", border: "1px solid #fde68a", borderRadius: "8px" }}
-            >
-              <MDBox display="flex" justifyContent="space-between" alignItems="center" flexWrap="wrap" gap={1}>
-                <MDBox>
-                  <MDTypography variant="button" fontWeight="bold" color="dark" display="block">
-                    {outlet.outletName}
-                  </MDTypography>
-                  <MDTypography variant="caption" color="text">
-                    ERP: {outlet.outletErpId || "—"} · Bit: {outlet.outletDay || "—"}
-                  </MDTypography>
-                </MDBox>
-                {statusInfo && (
-                  <MDBadge badgeContent={statusInfo.label} color={statusInfo.color} variant="gradient" size="sm" container />
-                )}
-              </MDBox>
+            <div key={outlet.outletId} className="rounded-xl border border-amber-200 bg-amber-50/50 p-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <span className="block text-[13px] font-bold text-slate-900">{outlet.outletName}</span>
+                  <span className="block text-[12px] text-slate-500">ERP: {outlet.outletErpId || "—"} · Bit: {outlet.outletDay || "—"}</span>
+                </div>
+                {statusInfo && <Badge tone={statusInfo.color}>{statusInfo.label}</Badge>}
+              </div>
               {request?.status === "rejected" && request.review_note && (
-                <MDTypography variant="caption" color="error" display="block" mt={0.5}>
-                  Admin: {request.review_note}
-                </MDTypography>
+                <p className="m-0 mt-1 text-[12px] font-medium text-red-700">Admin: {request.review_note}</p>
               )}
-            </MDBox>
+            </div>
           );
         })}
+      </div>
 
-        {needsRequest && !ownMode && (
-          <MDBox mt={2}>
-            <MDInput
-              label="Reason for request *"
-              fullWidth
-              multiline
-              rows={2}
-              value={note}
-              onChange={(event) => {
-                setNote(event.target.value);
-                setError("");
-              }}
-              placeholder="e.g. Outlet was closed on its bit day, delivery requested today"
-            />
-          </MDBox>
-        )}
-        {error && (
-          <MDTypography variant="caption" color="error" display="block" mt={1}>
-            {error}
-          </MDTypography>
-        )}
-      </DialogContent>
-      <DialogActions sx={{ px: 3, py: 2, flexWrap: "wrap", gap: 1 }}>
-        <MDButton variant="outlined" color="secondary" onClick={onClose} disabled={sending || retrying}>
-          Close
-        </MDButton>
-        {ownMode ? (
-          <MDButton color="success" variant="gradient" onClick={addOnOwnPermission} disabled={retrying || !ownNote.trim()}>
-            <Icon sx={{ mr: 0.75 }}>verified_user</Icon>
-            {retrying ? "Saving..." : "Add Sales on My Permission"}
-          </MDButton>
-        ) : null}
-        {!ownMode && anyPending && (
-          <MDButton variant="outlined" color="info" onClick={refresh} disabled={sending || retrying}>
-            <Icon sx={{ mr: 0.75 }}>refresh</Icon>
-            Check Status
-          </MDButton>
-        )}
-        {!ownMode && needsRequest && (
-          <MDButton color="info" variant="gradient" onClick={sendRequest} disabled={sending || retrying || !note.trim()}>
-            <Icon sx={{ mr: 0.75 }}>send</Icon>
-            {sending ? "Sending..." : "Send Request"}
-          </MDButton>
-        )}
-        {!ownMode && (
-          <MDButton color="success" variant="gradient" onClick={onRetry} disabled={retrying || !allApproved}>
-            <Icon sx={{ mr: 0.75 }}>{allApproved ? "check_circle" : "lock"}</Icon>
-            {retrying ? "Saving..." : "Add Sales"}
-          </MDButton>
-        )}
-      </DialogActions>
-    </Dialog>
+      {needsRequest && !ownMode && (
+        <label className="mt-4 flex flex-col gap-1">
+          <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Reason for request *</span>
+          <textarea
+            rows={2} className={`${fieldClass} h-auto py-2`} value={note}
+            placeholder="e.g. Outlet was closed on its bit day, delivery requested today"
+            onChange={(event) => {
+              setNote(event.target.value);
+              setError("");
+            }}
+          />
+        </label>
+      )}
+      {error && <Notice tone="error" className="mt-3">{error}</Notice>}
+    </Modal>
   );
 }
 

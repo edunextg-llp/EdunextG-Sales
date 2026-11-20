@@ -1,33 +1,13 @@
+// Approvals > Other Day Bit Requests: Tailwind CSS (no MUI). Loading and review logic unchanged.
 import { useCallback, useEffect, useState } from "react";
-import {
-  Card,
-  Dialog,
-  DialogActions,
-  DialogContent,
-  DialogTitle,
-  FormControl,
-  Icon,
-  IconButton,
-  MenuItem,
-  Select,
-  Table,
-  TableBody,
-  TableCell,
-  TableContainer,
-  TableHead,
-  TableRow,
-  Tooltip,
-} from "@mui/material";
 
-import MDBox from "components/MDBox";
-import MDBadge from "components/MDBadge";
-import MDButton from "components/MDButton";
-import MDInput from "components/MDInput";
-import MDTypography from "components/MDTypography";
 import DashboardLayout from "examples/LayoutContainers/DashboardLayout";
 import DashboardNavbar from "examples/Navbars/DashboardNavbar";
 import Footer from "examples/Footer";
 import { formatDate, formatDateTime } from "layouts/overdue-requests/components/ReviewDialog";
+import {
+  Badge, Card, EmptyState, Icon, Modal, Notice, PageHeader, Segmented, Spinner, btn, fieldClass, td, th,
+} from "components/tw";
 
 const API = process.env.REACT_APP_API_URL;
 
@@ -40,15 +20,14 @@ const STATUS_OPTIONS = [
   { value: "own_permission", label: "Own permission" },
   { value: "all", label: "All" },
 ];
+// Status badge: [label, tone].
 const STATUS_BADGE = {
-  pending: { label: "Pending", color: "warning" },
-  approved: { label: "Approved", color: "success" },
-  used: { label: "Sale added", color: "info" },
-  rejected: { label: "Rejected", color: "error" },
+  pending: ["Pending", "amber"],
+  approved: ["Approved", "green"],
+  used: ["Sale added", "blue"],
+  rejected: ["Rejected", "red"],
 };
-const HEADINGS = ["Sr. No.", "Requested", "Staff", "Sale Date", "Outlet", "Bit", "Requested by", "Reason", "Status", "Actions"];
-const headSx = { color: "#6b7280", fontSize: "0.75rem", fontWeight: 600, borderBottom: "1px solid #e5e7eb", px: 2, py: 1.5, whiteSpace: "nowrap" };
-const cellSx = { px: 2, py: 1.5, verticalAlign: "top", fontSize: "0.8rem" };
+const HEADINGS = ["#", "Requested", "Staff", "Sale date", "Outlet", "Bit", "Requested by", "Reason", "Status", ""];
 
 function OtherDayRequests() {
   const [status, setStatus] = useState("pending");
@@ -109,138 +88,118 @@ function OtherDayRequests() {
   return (
     <DashboardLayout>
       <DashboardNavbar />
-      <MDBox py={3}>
-        <Card>
-          <MDBox p={2} display="flex" justifyContent="space-between" alignItems="center" flexWrap="wrap" gap={2}>
-            <MDBox>
-              <MDTypography variant="h6">Other Day Bit Requests</MDTypography>
-              <MDTypography variant="caption" color="text">
-                Add Sales users can bill only today&apos;s bit. Approve a request to let them add one sale entry
-                for another day&apos;s outlet on the requested date.
-                {counts.pending ? ` ${counts.pending} waiting for review.` : ""}
-              </MDTypography>
-            </MDBox>
-            <MDBox display="flex" gap={1} alignItems="center">
-              <FormControl size="small" sx={{ minWidth: 220 }}>
-                <Select value={status} onChange={(e) => setStatus(e.target.value)} sx={{ height: 40 }}>
-                  {STATUS_OPTIONS.map((option) => (
-                    <MenuItem key={option.value} value={option.value}>
-                      {option.label}
-                      {option.value !== "all" && counts[option.value] ? ` (${counts[option.value]})` : ""}
-                    </MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
-              <Tooltip title="Refresh">
-                <span>
-                  <IconButton color="info" onClick={() => load()} disabled={loading}>
-                    <Icon>refresh</Icon>
-                  </IconButton>
-                </span>
-              </Tooltip>
-            </MDBox>
-          </MDBox>
-
-          {notice && <MDBox px={2} pb={2}><MDTypography variant="button" color="info">{notice}</MDTypography></MDBox>}
-          {error && <MDBox px={2} pb={2}><MDTypography variant="button" color="error">{error}</MDTypography></MDBox>}
-
-          <TableContainer sx={{ boxShadow: "none" }}>
-            <Table>
-              <TableHead sx={{ display: "table-header-group", backgroundColor: "#f9fafb" }}>
-                <TableRow>
-                  {HEADINGS.map((heading) => <TableCell key={heading} sx={headSx}>{heading}</TableCell>)}
-                </TableRow>
-              </TableHead>
-              <TableBody>
-                {!loading && requests.length === 0 && (
-                  <TableRow>
-                    <TableCell colSpan={HEADINGS.length} sx={{ ...cellSx, textAlign: "center", py: 4 }}>No requests here.</TableCell>
-                  </TableRow>
-                )}
-                {requests.map((request, index) => {
-                  const badge = Number(request.own_permission) === 1
-                    ? { label: "Own permission", color: "dark" }
-                    : STATUS_BADGE[request.status] || { label: request.status, color: "secondary" };
-                  return (
-                    <TableRow key={request.id}>
-                      <TableCell sx={cellSx}>{index + 1}</TableCell>
-                      <TableCell sx={cellSx}>#{request.id}<br />{formatDateTime(request.created_at)}</TableCell>
-                      <TableCell sx={cellSx}><strong>{request.staff_name || `Staff #${request.staff_id}`}</strong></TableCell>
-                      <TableCell sx={{ ...cellSx, whiteSpace: "nowrap" }}>{formatDate(request.sale_date)}</TableCell>
-                      <TableCell sx={cellSx}>
-                        <strong>{request.outlet_name || "—"}</strong>
-                        <br />
-                        {request.outlet_erp_id || "—"}
-                      </TableCell>
-                      <TableCell sx={{ ...cellSx, whiteSpace: "nowrap" }}>
-                        <strong>{request.outlet_day || "—"}</strong>
-                        {request.request_day && (
-                          <MDTypography variant="caption" display="block" color="text">asked on {request.request_day}</MDTypography>
-                        )}
-                      </TableCell>
-                      <TableCell sx={cellSx}>{request.requested_by_name || "—"}</TableCell>
-                      <TableCell sx={{ ...cellSx, maxWidth: 260, whiteSpace: "pre-wrap" }}>{request.request_note}</TableCell>
-                      <TableCell sx={cellSx}>
-                        <MDBadge badgeContent={badge.label} color={badge.color} variant="gradient" size="sm" container />
-                        {request.reviewed_by_name && (
-                          <MDTypography variant="caption" display="block" color="text" mt={0.5}>
-                            {request.reviewed_by_name} · {formatDateTime(request.reviewed_at)}
-                          </MDTypography>
-                        )}
-                        {request.review_note && <MDTypography variant="caption" display="block" color="text">{request.review_note}</MDTypography>}
-                      </TableCell>
-                      <TableCell sx={{ ...cellSx, whiteSpace: "nowrap" }}>
-                        {request.status === "pending" ? (
-                          <>
-                            <Tooltip title="Approve">
-                              <IconButton size="small" color="success" onClick={() => setReview({ request, action: "approve", note: "" })}>
-                                <Icon>check_circle</Icon>
-                              </IconButton>
-                            </Tooltip>
-                            <Tooltip title="Reject">
-                              <IconButton size="small" color="error" onClick={() => setReview({ request, action: "reject", note: "" })}>
-                                <Icon>cancel</Icon>
-                              </IconButton>
-                            </Tooltip>
-                          </>
-                        ) : "—"}
-                      </TableCell>
-                    </TableRow>
-                  );
-                })}
-              </TableBody>
-            </Table>
-          </TableContainer>
-        </Card>
-      </MDBox>
-
-      <Dialog open={Boolean(review.request)} onClose={closeReview} maxWidth="sm" fullWidth>
-        <DialogTitle>{approving ? "Approve other-day bit sale" : "Reject request"}</DialogTitle>
-        <DialogContent dividers>
-          {review.request && (
-            <MDTypography variant="body2" color="text" mb={2}>
-              {review.request.requested_by_name || "User"} wants to add a sale for{" "}
-              <strong>{review.request.outlet_name}</strong> ({review.request.outlet_day} bit) under{" "}
-              <strong>{review.request.staff_name}</strong> on <strong>{formatDate(review.request.sale_date)}</strong>.
-              Reason: <strong>{review.request.request_note}</strong>
-            </MDTypography>
+      <div className="pb-8 font-[Poppins,Roboto,sans-serif] text-slate-700">
+        <PageHeader
+          title="Other Day Bit Requests"
+          description={`Add Sales users can bill only today's bit. Approve a request to let them add one sale entry for another day's outlet on the requested date.${counts.pending ? ` ${counts.pending} waiting for review.` : ""}`}
+          actions={(
+            <button type="button" className={btn.outline} onClick={() => load()} disabled={loading}>
+              <Icon name="refresh" className="text-[18px]" />Refresh
+            </button>
           )}
-          <MDInput
-            label={approving ? "Note (optional)" : "Reason for rejecting *"}
-            fullWidth
-            multiline
-            rows={2}
-            value={review.note}
-            onChange={(e) => setReview((prev) => ({ ...prev, note: e.target.value }))}
-          />
-        </DialogContent>
-        <DialogActions>
-          <MDButton color="secondary" variant="outlined" onClick={closeReview} disabled={saving}>Cancel</MDButton>
-          <MDButton color={approving ? "success" : "error"} variant="gradient" onClick={submitReview} disabled={saving || (!approving && !review.note.trim())}>
-            {saving ? "Saving..." : approving ? "Approve" : "Reject"}
-          </MDButton>
-        </DialogActions>
-      </Dialog>
+        />
+        {notice && <Notice tone="info" className="mb-4" onClose={() => setNotice("")}>{notice}</Notice>}
+        {error && <Notice tone="error" className="mb-4">{error}</Notice>}
+
+        <Card>
+          <div className="border-b border-slate-100 px-4 py-3">
+            <Segmented
+              label="Status" value={status} onChange={setStatus}
+              options={STATUS_OPTIONS.map((option) => [option.value, `${option.label}${option.value !== "all" && counts[option.value] ? ` (${counts[option.value]})` : ""}`])}
+            />
+          </div>
+          {loading ? (
+            <div className="flex justify-center py-14"><Spinner className="size-7" /></div>
+          ) : requests.length === 0 ? (
+            <EmptyState icon="task_alt" text="No requests here." />
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full border-collapse">
+                <thead>
+                  <tr className="bg-slate-50">{HEADINGS.map((heading) => <th key={heading} className={th}>{heading}</th>)}</tr>
+                </thead>
+                <tbody>
+                  {requests.map((request, index) => {
+                    const [label, tone] = Number(request.own_permission) === 1
+                      ? ["Own permission", "violet"]
+                      : STATUS_BADGE[request.status] || [request.status, "slate"];
+                    return (
+                      <tr key={request.id} className="border-t border-slate-100 align-top hover:bg-slate-50/70">
+                        <td className={`${td} text-slate-400`}>{index + 1}</td>
+                        <td className={`${td} whitespace-nowrap`}>
+                          <span className="block font-mono text-[12px] text-slate-500">#{request.id}</span>
+                          <span className="block text-[12.5px]">{formatDateTime(request.created_at)}</span>
+                        </td>
+                        <td className={`${td} font-semibold text-slate-800`}>{request.staff_name || `Staff #${request.staff_id}`}</td>
+                        <td className={`${td} whitespace-nowrap`}>{formatDate(request.sale_date)}</td>
+                        <td className={td}>
+                          <span className="block font-semibold text-slate-800">{request.outlet_name || "—"}</span>
+                          <span className="block font-mono text-[11.5px] text-slate-400">{request.outlet_erp_id || "—"}</span>
+                        </td>
+                        <td className={`${td} whitespace-nowrap`}>
+                          <span className="block font-semibold">{request.outlet_day || "—"}</span>
+                          {request.request_day && <span className="block text-[11.5px] text-slate-500">asked on {request.request_day}</span>}
+                        </td>
+                        <td className={td}>{request.requested_by_name || "—"}</td>
+                        <td className={`${td} max-w-64 whitespace-pre-wrap text-[12.5px] text-slate-600`}>{request.request_note}</td>
+                        <td className={td}>
+                          <Badge tone={tone}>{label}</Badge>
+                          {request.reviewed_by_name && (
+                            <span className="mt-1 block text-[11.5px] text-slate-500">{request.reviewed_by_name} · {formatDateTime(request.reviewed_at)}</span>
+                          )}
+                          {request.review_note && <span className="block text-[11.5px] text-slate-500">{request.review_note}</span>}
+                        </td>
+                        <td className={`${td} whitespace-nowrap text-right`}>
+                          {request.status === "pending" && (
+                            <>
+                              <button type="button" className={`${btn.icon} text-emerald-600 hover:bg-emerald-50 hover:text-emerald-700`} title="Approve" aria-label="Approve" onClick={() => setReview({ request, action: "approve", note: "" })}>
+                                <Icon name="check_circle" className="text-[20px]" />
+                              </button>
+                              <button type="button" className={`${btn.icon} text-red-500 hover:bg-red-50 hover:text-red-600`} title="Reject" aria-label="Reject" onClick={() => setReview({ request, action: "reject", note: "" })}>
+                                <Icon name="cancel" className="text-[20px]" />
+                              </button>
+                            </>
+                          )}
+                          {request.status !== "pending" && <span className="text-slate-300">—</span>}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </Card>
+      </div>
+
+      <Modal
+        open={Boolean(review.request)} onClose={closeReview} locked={saving} size="lg" title={approving ? "Approve other-day bit sale" : "Reject request"}
+        actions={(
+          <>
+            <button type="button" className={btn.ghost} onClick={closeReview} disabled={saving}>Cancel</button>
+            <button
+              type="button" disabled={saving || (!approving && !review.note.trim())} onClick={submitReview}
+              className={`${btn.primary} ${approving ? "bg-emerald-600 hover:bg-emerald-700" : "bg-red-600 hover:bg-red-700"}`}
+            >
+              <Icon name={approving ? "check_circle" : "block"} className="text-[18px]" />
+              {saving ? "Saving..." : approving ? "Approve" : "Reject"}
+            </button>
+          </>
+        )}
+      >
+        {review.request && (
+          <p className="m-0 mb-4 rounded-xl bg-slate-50 px-3.5 py-3 text-[13px] leading-relaxed text-slate-600">
+            {review.request.requested_by_name || "User"} wants to add a sale for{" "}
+            <b className="text-slate-900">{review.request.outlet_name}</b> ({review.request.outlet_day} bit) under{" "}
+            <b className="text-slate-900">{review.request.staff_name}</b> on <b className="text-slate-900">{formatDate(review.request.sale_date)}</b>.
+            Reason: <b className="text-slate-900">{review.request.request_note}</b>
+          </p>
+        )}
+        <label className="flex flex-col gap-1">
+          <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">{approving ? "Note (optional)" : "Reason for rejecting *"}</span>
+          <textarea rows={3} className={`${fieldClass} h-auto py-2`} value={review.note} onChange={(e) => setReview((prev) => ({ ...prev, note: e.target.value }))} />
+        </label>
+      </Modal>
 
       <Footer />
     </DashboardLayout>

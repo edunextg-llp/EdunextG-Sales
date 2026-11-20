@@ -1,24 +1,7 @@
-import { useCallback, useEffect, useState } from "react";
-import {
-  Card,
-  FormControl,
-  Icon,
-  IconButton,
-  MenuItem,
-  Select,
-  Table,
-  TableBody,
-  TableCell,
-  TableContainer,
-  TableHead,
-  TableRow,
-  Tooltip,
-} from "@mui/material";
+// Approvals > Overdue Sale Requests: Tailwind CSS (no MUI). Loading, create sales and review logic unchanged.
+import { Fragment, useCallback, useEffect, useState } from "react";
 
 import { useAuth } from "context/AuthContext";
-import MDBox from "components/MDBox";
-import MDBadge from "components/MDBadge";
-import MDTypography from "components/MDTypography";
 import DashboardLayout from "examples/LayoutContainers/DashboardLayout";
 import DashboardNavbar from "examples/Navbars/DashboardNavbar";
 import Footer from "examples/Footer";
@@ -28,6 +11,7 @@ import ReviewDialog, {
   money,
   overdueBalance,
 } from "layouts/overdue-requests/components/ReviewDialog";
+import { Badge, Card, EmptyState, Icon, Notice, PageHeader, Spinner, btn, fieldClass, td, th } from "components/tw";
 
 const API = (process.env.REACT_APP_API_URL);
 
@@ -49,24 +33,14 @@ const STATUS_OPTIONS = [
   { value: "all", label: "All" },
 ];
 
+// Status badge: [label, tone].
 const STATUS_BADGE = {
-  awaiting_staff: { label: "With marketing staff", color: "info" },
-  pending: { label: "Pending", color: "warning" },
-  approved: { label: "Approved", color: "success" },
-  used: { label: "Sales created", color: "info" },
-  rejected: { label: "Rejected", color: "error" },
+  awaiting_staff: ["With marketing staff", "blue"],
+  pending: ["Pending", "amber"],
+  approved: ["Approved", "green"],
+  used: ["Sales created", "blue"],
+  rejected: ["Rejected", "red"],
 };
-
-const headSx = {
-  color: "#6b7280",
-  fontSize: "0.75rem",
-  fontWeight: 600,
-  borderBottom: "1px solid #e5e7eb",
-  px: 2,
-  py: 1.5,
-  whiteSpace: "nowrap",
-};
-const cellSx = { px: 2, py: 1.5, verticalAlign: "top", fontSize: "0.8rem" };
 
 function OverdueRequests() {
   const { user } = useAuth();
@@ -128,219 +102,161 @@ function OverdueRequests() {
     return () => clearInterval(timer);
   }, [load]);
 
+  const noticeTone = { success: "success", error: "error", warning: "info" };
+  const iconAction = (title, icon, tone, onClick, disabled) => (
+    <button
+      type="button" title={title} aria-label={title} onClick={onClick} disabled={disabled}
+      className={`${btn.icon} ${tone === "green" ? "text-emerald-600 hover:bg-emerald-50 hover:text-emerald-700" : tone === "red" ? "text-red-500 hover:bg-red-50 hover:text-red-600" : "hover:text-blue-700"}`}
+    >
+      <Icon name={icon} className="text-[20px]" />
+    </button>
+  );
+
   return (
     <DashboardLayout>
       <DashboardNavbar />
-      <MDBox py={3}>
+      <div className="pb-8 font-[Poppins,Roboto,sans-serif] text-slate-700">
+        <PageHeader
+          title="Overdue Sale Requests"
+          description={`${isAdmin
+            ? "Requests to add sales for outlets with credit overdue by more than 3 days."
+            : "Outlets overdue by 14 days or more that you can approve. Approving creates the sale."}${counts.pending ? ` ${counts.pending} waiting for review.` : ""}${isAdmin && counts.self_approved ? ` ${counts.self_approved} added by staff with the 7-day permission.` : ""}${isAdmin && counts.own_permission ? ` ${counts.own_permission} added on own permission (14+ days).` : ""}`}
+          actions={(
+            <>
+              <select className={`${fieldClass} w-auto min-w-64`} value={status} onChange={(e) => setStatus(e.target.value)} aria-label="Status">
+                {STATUS_OPTIONS.filter((option) => isAdmin || !option.adminOnly).map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}{option.value !== "all" && counts[option.value] ? ` (${counts[option.value]})` : ""}
+                  </option>
+                ))}
+              </select>
+              <button type="button" className={btn.outline} onClick={() => load()} disabled={loading}>
+                <Icon name="refresh" className="text-[18px]" />Refresh
+              </button>
+            </>
+          )}
+        />
+        {notice && <Notice tone={noticeTone[notice.color] || "info"} className="mb-4" onClose={() => setNotice(null)}>{notice.text}</Notice>}
+        {error && <Notice tone="error" className="mb-4">{error}</Notice>}
+
         <Card>
-          <MDBox p={2} display="flex" justifyContent="space-between" alignItems="center" flexWrap="wrap" gap={2}>
-            <MDBox>
-              <MDTypography variant="h6">Overdue Sale Requests</MDTypography>
-              <MDTypography variant="caption" color="text">
-                {isAdmin
-                  ? "Requests to add sales for outlets with credit overdue by more than 3 days."
-                  : "Outlets overdue by 14 days or more that you can approve. Approving creates the sale."}
-                {counts.pending ? ` ${counts.pending} waiting for review.` : ""}
-                {isAdmin && counts.self_approved ? ` ${counts.self_approved} added by staff with the 7-day permission.` : ""}
-                {isAdmin && counts.own_permission ? ` ${counts.own_permission} added on own permission (14+ days).` : ""}
-              </MDTypography>
-            </MDBox>
-            <MDBox display="flex" gap={1} alignItems="center">
-              <FormControl size="small" sx={{ minWidth: 220 }}>
-                <Select value={status} onChange={(e) => setStatus(e.target.value)} sx={{ height: 40 }}>
-                  {STATUS_OPTIONS.filter((option) => isAdmin || !option.adminOnly).map((option) => (
-                    <MenuItem key={option.value} value={option.value}>
-                      {option.label}
-                      {option.value !== "all" && counts[option.value] ? ` (${counts[option.value]})` : ""}
-                    </MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
-              <Tooltip title="Refresh">
-                <span>
-                  <IconButton color="info" onClick={() => load()} disabled={loading}>
-                    <Icon>refresh</Icon>
-                  </IconButton>
-                </span>
-              </Tooltip>
-            </MDBox>
-          </MDBox>
-
-          {notice && (
-            <MDBox px={2} pb={2}>
-              <MDTypography variant="button" color={notice.color}>
-                {notice.text}
-              </MDTypography>
-            </MDBox>
-          )}
-          {error && (
-            <MDBox px={2} pb={2}>
-              <MDTypography variant="button" color="error">
-                {error}
-              </MDTypography>
-            </MDBox>
-          )}
-
-          <TableContainer sx={{ boxShadow: "none" }}>
-            <Table>
-              <TableHead sx={{ display: "table-header-group", backgroundColor: "#f9fafb" }}>
-                <TableRow>
-                  {["Sr. No.", "Requested", "Staff / Sale date", "Company", "Outlet", "Overdue", "New sale", "Requested by", "Status", "Actions"].map(
-                    (heading) => (
-                      <TableCell key={heading} sx={headSx}>
-                        {heading}
-                      </TableCell>
-                    )
-                  )}
-                </TableRow>
-              </TableHead>
-              <TableBody>
-                {!loading && requests.length === 0 && (
-                  <TableRow>
-                    <TableCell colSpan={10} sx={{ ...cellSx, textAlign: "center", py: 4 }}>
-                      No requests here.
-                    </TableCell>
-                  </TableRow>
-                )}
-                {requests.map((request, index) => {
-                  const selfKind = Number(request.self_approved);
-                  const badge = selfKind === 2
-                    ? { label: "Own permission", color: "error" }
-                    : selfKind === 1
-                      ? { label: "7-day permission", color: "warning" }
-                      : STATUS_BADGE[request.status] || { label: request.status, color: "secondary" };
-                  const expanded = expandedId === request.id;
-                  return [
-                    <TableRow key={request.id}>
-                      <TableCell sx={cellSx}>{index + 1}</TableCell>
-                      <TableCell sx={cellSx}>
-                        #{request.id}
-                        <br />
-                        {formatDateTime(request.created_at)}
-                      </TableCell>
-                      <TableCell sx={cellSx}>
-                        <strong>{request.staff_name || `Staff #${request.staff_id}`}</strong>
-                        <br />
-                        {formatDate(request.sale_date)}
-                      </TableCell>
-                      <TableCell sx={cellSx}>
-                        <strong>{request.company_name || "—"}</strong>
-                      </TableCell>
-                      <TableCell sx={cellSx}>
-                        <strong>{request.outlet_name || "—"}</strong>
-                        <br />
-                        ERP: {request.outlet_erp_id}
-                      </TableCell>
-                      <TableCell sx={cellSx}>
-                        {request.max_overdue_days} day(s)
-                        <br />
-                        {money(overdueBalance(request))} in {(request.overdue_details || []).length} bill(s)
-                      </TableCell>
-                      <TableCell sx={cellSx}>
-                        {request.sales_summary ? (
-                          <>
-                            <strong>{(request.sales_summary.invoiceNumbers || []).join(", ") || "—"}</strong>
-                            <br />
-                            {money(request.sales_summary.totalAmount)} · {request.sales_summary.invoiceCount} invoice(s)
-                          </>
-                        ) : (
-                          "—"
-                        )}
-                      </TableCell>
-                      <TableCell sx={{ ...cellSx, maxWidth: 260 }}>
-                        <strong>{request.requested_by_name || "—"}</strong>
-                        {request.marketing_staff_name && <> · Marketing: <strong>{request.marketing_staff_name}</strong></>}
-                        <br />
-                        {request.request_note}
-                        {request.payment_days && (
-                          <MDTypography variant="caption" display="block" fontWeight="bold" color="text">
-                            Pay within {request.payment_days} day(s)
-                          </MDTypography>
-                        )}
-                        {APPROVER_LABEL[request.approval_level] && (
-                          <MDTypography variant="caption" display="block" color="text">
-                            {APPROVER_LABEL[request.approval_level]}
-                          </MDTypography>
-                        )}
-                      </TableCell>
-                      <TableCell sx={cellSx}>
-                        <MDBadge badgeContent={badge.label} color={badge.color} variant="gradient" size="sm" container />
-                        {request.reviewed_by_name && (
-                          <MDTypography variant="caption" display="block" color="text" mt={0.5}>
-                            {request.reviewed_by_name} · {formatDateTime(request.reviewed_at)}
-                          </MDTypography>
-                        )}
-                        {request.review_note && (
-                          <MDTypography variant="caption" display="block" color="text">
-                            {request.review_note}
-                          </MDTypography>
-                        )}
-                      </TableCell>
-                      <TableCell sx={{ ...cellSx, whiteSpace: "nowrap" }}>
-                        <Tooltip title={expanded ? "Hide overdue bills" : "View overdue bills"}>
-                          <IconButton size="small" color="info" onClick={() => setExpandedId(expanded ? null : request.id)}>
-                            <Icon>{expanded ? "expand_less" : "receipt_long"}</Icon>
-                          </IconButton>
-                        </Tooltip>
-                        {request.status === "approved" && request.sales_payload?.sales?.length > 0 && (
-                          <Tooltip title="Create the approved sales now">
-                            <span>
-                              <IconButton size="small" color="success" disabled={creatingId === request.id} onClick={() => createSales(request)}>
-                                <Icon>add_shopping_cart</Icon>
-                              </IconButton>
+          {loading ? (
+            <div className="flex justify-center py-14"><Spinner className="size-7" /></div>
+          ) : requests.length === 0 ? (
+            <EmptyState icon="task_alt" text="No requests here." />
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[1100px] border-collapse">
+                <thead>
+                  <tr className="bg-slate-50">
+                    {["#", "Requested", "Staff / sale date", "Company", "Outlet", "Overdue", "New sale", "Requested by", "Status", ""].map((heading) => <th key={heading} className={`${th} whitespace-nowrap`}>{heading}</th>)}
+                  </tr>
+                </thead>
+                <tbody>
+                  {requests.map((request, index) => {
+                    const selfKind = Number(request.self_approved);
+                    const [label, tone] = selfKind === 2
+                      ? ["Own permission", "red"]
+                      : selfKind === 1
+                        ? ["7-day permission", "amber"]
+                        : STATUS_BADGE[request.status] || [request.status, "slate"];
+                    const expanded = expandedId === request.id;
+                    return (
+                      <Fragment key={request.id}>
+                        <tr className={`border-t border-slate-100 align-top hover:bg-slate-50/70 ${expanded ? "bg-red-50/30" : ""}`}>
+                          <td className={`${td} text-slate-400`}>{index + 1}</td>
+                          <td className={`${td} whitespace-nowrap`}>
+                            <span className="block font-mono text-[12px] text-slate-500">#{request.id}</span>
+                            <span className="block text-[12.5px]">{formatDateTime(request.created_at)}</span>
+                          </td>
+                          <td className={td}>
+                            <span className="block font-semibold text-slate-800">{request.staff_name || `Staff #${request.staff_id}`}</span>
+                            <span className="block text-[12px] text-slate-500">{formatDate(request.sale_date)}</span>
+                          </td>
+                          <td className={`${td} font-semibold text-slate-800`}>{request.company_name || "—"}</td>
+                          <td className={td}>
+                            <span className="block font-semibold text-slate-800">{request.outlet_name || "—"}</span>
+                            <span className="block font-mono text-[11.5px] text-slate-400">ERP: {request.outlet_erp_id}</span>
+                          </td>
+                          <td className={`${td} whitespace-nowrap`}>
+                            <span className="block font-bold text-red-700">{request.max_overdue_days} day(s)</span>
+                            <span className="block text-[12px] text-slate-500">{money(overdueBalance(request))} in {(request.overdue_details || []).length} bill(s)</span>
+                          </td>
+                          <td className={td}>
+                            {request.sales_summary ? (
+                              <>
+                                <span className="block font-mono text-[12px] font-semibold text-slate-800">{(request.sales_summary.invoiceNumbers || []).join(", ") || "—"}</span>
+                                <span className="block text-[12px] text-slate-500">{money(request.sales_summary.totalAmount)} · {request.sales_summary.invoiceCount} invoice(s)</span>
+                              </>
+                            ) : "—"}
+                          </td>
+                          <td className={`${td} max-w-64`}>
+                            <span className="block text-[12.5px]">
+                              <b className="text-slate-800">{request.requested_by_name || "—"}</b>
+                              {request.marketing_staff_name && <> · Marketing: <b className="text-slate-800">{request.marketing_staff_name}</b></>}
                             </span>
-                          </Tooltip>
+                            <span className="block text-[12px] text-slate-500">{request.request_note}</span>
+                            {request.payment_days && <span className="block text-[11.5px] font-semibold text-slate-700">Pay within {request.payment_days} day(s)</span>}
+                            {APPROVER_LABEL[request.approval_level] && <span className="block text-[11.5px] text-slate-500">{APPROVER_LABEL[request.approval_level]}</span>}
+                          </td>
+                          <td className={td}>
+                            <Badge tone={tone}>{label}</Badge>
+                            {request.reviewed_by_name && <span className="mt-1 block text-[11.5px] text-slate-500">{request.reviewed_by_name} · {formatDateTime(request.reviewed_at)}</span>}
+                            {request.review_note && <span className="block text-[11.5px] text-slate-500">{request.review_note}</span>}
+                          </td>
+                          <td className={`${td} whitespace-nowrap text-right`}>
+                            {iconAction(expanded ? "Hide overdue bills" : "View overdue bills", expanded ? "expand_less" : "receipt_long", "", () => setExpandedId(expanded ? null : request.id))}
+                            {request.status === "approved" && request.sales_payload?.sales?.length > 0
+                              && iconAction("Create the approved sales now", "add_shopping_cart", "green", () => createSales(request), creatingId === request.id)}
+                            {request.status === "pending" && (
+                              <>
+                                {iconAction("Approve & create sales", "check_circle", "green", () => setReview({ request, action: "approve" }))}
+                                {iconAction("Reject", "cancel", "red", () => setReview({ request, action: "reject" }))}
+                              </>
+                            )}
+                            {isAdmin && request.status === "awaiting_staff" && (
+                              <>
+                                {iconAction("Admin approve & create sales", "check_circle", "green", () => setReview({ request, action: "approve" }))}
+                                {iconAction("Reject request", "cancel", "red", () => setReview({ request, action: "reject" }))}
+                              </>
+                            )}
+                          </td>
+                        </tr>
+                        {expanded && (
+                          <tr className="bg-red-50/30">
+                            <td colSpan={10} className="px-4 pb-4">
+                              <div className="overflow-hidden rounded-xl border border-red-200 bg-white">
+                                <table className="w-full border-collapse text-[12.5px]">
+                                  <thead>
+                                    <tr className="bg-red-50 text-left text-[11px] font-semibold uppercase tracking-wide text-red-800">
+                                      {["Invoice", "Balance", "Due", "Overdue", "Staff"].map((h) => <th key={h} className="px-3 py-2">{h}</th>)}
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    {(request.overdue_details || []).map((credit) => (
+                                      <tr key={credit.creditPaymentId} className="border-t border-red-100">
+                                        <td className="px-3 py-1.5 font-mono font-semibold">{credit.invoiceNumber || "-"}</td>
+                                        <td className="px-3 py-1.5 tabular-nums font-semibold">{money(credit.balanceAmount)}</td>
+                                        <td className="px-3 py-1.5">{credit.dueDate || "-"}</td>
+                                        <td className="px-3 py-1.5 font-semibold text-red-700">{credit.overdueDays} day(s)</td>
+                                        <td className="px-3 py-1.5">{credit.creditStaffName || "—"}</td>
+                                      </tr>
+                                    ))}
+                                  </tbody>
+                                </table>
+                              </div>
+                            </td>
+                          </tr>
                         )}
-                        {request.status === "pending" && (
-                          <>
-                            <Tooltip title="Approve & create sales">
-                              <IconButton size="small" color="success" onClick={() => setReview({ request, action: "approve" })}>
-                                <Icon>check_circle</Icon>
-                              </IconButton>
-                            </Tooltip>
-                            <Tooltip title="Reject">
-                              <IconButton size="small" color="error" onClick={() => setReview({ request, action: "reject" })}>
-                                <Icon>cancel</Icon>
-                              </IconButton>
-                            </Tooltip>
-                          </>
-                        )}
-                        {isAdmin && request.status === "awaiting_staff" && (
-                          <>
-                            <Tooltip title="Admin approve & create sales">
-                              <IconButton size="small" color="success" onClick={() => setReview({ request, action: "approve" })}>
-                                <Icon>check_circle</Icon>
-                              </IconButton>
-                            </Tooltip>
-                            <Tooltip title="Reject request">
-                              <IconButton size="small" color="error" onClick={() => setReview({ request, action: "reject" })}>
-                                <Icon>cancel</Icon>
-                              </IconButton>
-                            </Tooltip>
-                          </>
-                        )}
-                      </TableCell>
-                    </TableRow>,
-                    expanded && (
-                      <TableRow key={`${request.id}-bills`}>
-                        <TableCell colSpan={10} sx={{ ...cellSx, backgroundColor: "#fff7f7" }}>
-                          {(request.overdue_details || []).map((credit) => (
-                            <MDTypography key={credit.creditPaymentId} variant="caption" display="block" color="text">
-                              Invoice {credit.invoiceNumber || "-"} | Balance {money(credit.balanceAmount)} | Due{" "}
-                              {credit.dueDate || "-"} | Overdue {credit.overdueDays} day(s)
-                              {credit.creditStaffName ? ` | Staff: ${credit.creditStaffName}` : ""}
-                            </MDTypography>
-                          ))}
-                        </TableCell>
-                      </TableRow>
-                    ),
-                  ];
-                })}
-              </TableBody>
-            </Table>
-          </TableContainer>
+                      </Fragment>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
         </Card>
-      </MDBox>
+      </div>
 
       <ReviewDialog
         request={review.request}

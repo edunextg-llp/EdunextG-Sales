@@ -1,17 +1,11 @@
+// Invoice Lookup: Tailwind CSS (no MUI). Search, mode switch and result logic unchanged.
 import { useRef, useState } from "react";
-import Card from "@mui/material/Card";
-import Icon from "@mui/material/Icon";
-import { Box, LinearProgress, ToggleButton, ToggleButtonGroup, Typography } from "@mui/material";
-
-import MDBox from "components/MDBox";
-import MDTypography from "components/MDTypography";
-import MDInput from "components/MDInput";
-import MDButton from "components/MDButton";
 
 import DashboardLayout from "examples/LayoutContainers/DashboardLayout";
 import DashboardNavbar from "examples/Navbars/DashboardNavbar";
 import Footer from "examples/Footer";
 import { useAuth } from "context/AuthContext";
+import { Card, Icon, Notice, PageHeader, Spinner, btn, fieldClass } from "components/tw";
 
 import InvoiceDetails from "./components/InvoiceDetails";
 import OutletHistory from "./components/OutletHistory";
@@ -132,97 +126,85 @@ function InvoiceLookup() {
   return (
     <DashboardLayout>
       <DashboardNavbar />
-      <MDBox pt={6} pb={3}>
-        <MDBox mb={3}>
-          <MDTypography variant="h4" fontWeight="medium">
-            Invoice Lookup
-          </MDTypography>
-          <MDTypography variant="button" color="text">
-            Find an invoice or an outlet to see the full journey from sale to delivery and every payment.
-          </MDTypography>
-          {isMarketingStaff && (
-            <MDTypography variant="caption" color="info" fontWeight="medium" display="block" mt={0.5}>
-              You are seeing only the invoices you created, with their delivery status and payments.
-            </MDTypography>
-          )}
-        </MDBox>
-
-        <Card sx={{ p: 3 }}>
-          <ToggleButtonGroup size="small" exclusive value={mode} onChange={handleModeChange} sx={{ mb: 2 }}>
-            <ToggleButton value="invoice" sx={{ px: 2 }}>
-              <Icon sx={{ mr: 0.75 }}>receipt_long</Icon> Invoice
-            </ToggleButton>
-            <ToggleButton value="outlet" sx={{ px: 2 }}>
-              <Icon sx={{ mr: 0.75 }}>storefront</Icon> Outlet
-            </ToggleButton>
-          </ToggleButtonGroup>
-
-          <Box component="form" onSubmit={handleSubmit} display="flex" gap={2} flexWrap="wrap" alignItems="center">
-            <MDBox flex={1} minWidth="240px">
-              <MDInput
-                fullWidth
-                autoFocus
-                label={config.label}
-                placeholder={config.placeholder}
-                value={searchQuery}
-                onChange={(event) => setSearchQuery(event.target.value)}
-              />
-            </MDBox>
-            <MDButton variant="gradient" color="info" type="submit" disabled={loading}>
-              <Icon sx={{ mr: 0.5 }}>search</Icon>
-              {loading ? "Searching..." : "Search"}
-            </MDButton>
-          </Box>
-          <MDTypography variant="caption" color="text" display="block" mt={1}>
-            {config.help}
-          </MDTypography>
-          {loading && <LinearProgress sx={{ mt: 2 }} />}
-        </Card>
-
-        {error && (
-          <MDBox mt={2}>
-            <Typography color="error" variant="button">
-              {error}
-            </Typography>
-          </MDBox>
+      <div className="pb-8 font-[Poppins,Roboto,sans-serif] text-slate-700">
+        <PageHeader
+          title="Invoice Lookup"
+          description="Find an invoice or an outlet to see the full journey from sale to delivery and every payment."
+        />
+        {isMarketingStaff && (
+          <Notice tone="info" className="mb-4">You are seeing only the invoices you created, with their delivery status and payments.</Notice>
         )}
 
+        <Card className="mb-5">
+          <div className="px-5 py-4">
+            <div className="mb-3 inline-flex gap-1 rounded-xl bg-slate-100 p-1" role="tablist" aria-label="Search by">
+              {[["invoice", "receipt_long", "Invoice"], ["outlet", "storefront", "Outlet"]].map(([value, icon, text]) => (
+                <button
+                  key={value} type="button" role="tab" aria-selected={mode === value} onClick={() => handleModeChange(null, value)}
+                  className={`inline-flex items-center gap-1.5 rounded-lg px-4 py-1.5 text-[13px] font-semibold transition ${mode === value ? "bg-white text-blue-700 shadow-sm" : "text-slate-500 hover:text-slate-800"}`}
+                >
+                  <Icon name={icon} className="text-[18px]" />{text}
+                </button>
+              ))}
+            </div>
+            <form onSubmit={handleSubmit} className="flex flex-wrap items-end gap-3">
+              <label className="flex min-w-60 grow flex-col gap-1">
+                <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">{config.label}</span>
+                <span className="relative block">
+                  <Icon name="search" className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[20px] text-slate-400" />
+                  {/* eslint-disable-next-line jsx-a11y/no-autofocus */}
+                  <input
+                    autoFocus type="search" className={`${fieldClass} h-11 pl-10 text-[14px]`} placeholder={config.placeholder}
+                    value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)}
+                  />
+                </span>
+              </label>
+              <button type="submit" className={`${btn.primary} h-11 px-6 text-[14px]`} disabled={loading}>
+                {loading ? <Spinner className="size-4 border-white/40 border-t-white" /> : <Icon name="search" className="text-[19px]" />}
+                {loading ? "Searching..." : "Search"}
+              </button>
+            </form>
+            <p className="m-0 mt-2 text-[12px] text-slate-500">{config.help}</p>
+          </div>
+          {loading && <div className="h-1 overflow-hidden bg-blue-100"><div className="h-full w-1/3 animate-pulse bg-blue-600" /></div>}
+        </Card>
+
+        {error && <Notice tone="error" className="mb-5" onClose={() => setError("")}>{error}</Notice>}
+
         {notFound && (
-          <Card sx={{ p: 3, mt: 3 }}>
-            <MDBox display="flex" alignItems="center" justifyContent="space-between" flexWrap="wrap" gap={2}>
-              <MDTypography variant="button" color="text">
+          <Card className="mb-5">
+            <div className="flex flex-wrap items-center justify-between gap-3 px-5 py-4">
+              <span className="flex items-center gap-2 text-[13.5px] text-slate-600">
+                <Icon name="search_off" className="text-[22px] text-slate-400" />
                 {mode === "invoice"
                   ? `No invoice found for "${searchedTerm}".`
                   : `No outlet found for "${searchedTerm}". Try part of the name, the ERP ID or the phone number.`}
-              </MDTypography>
+              </span>
               {mode === "invoice" && (
-                <MDButton size="small" variant="outlined" color="info" onClick={searchAsOutlet}>
-                  <Icon sx={{ mr: 0.5 }}>storefront</Icon> Search &quot;{searchedTerm}&quot; as outlet
-                </MDButton>
+                <button type="button" className={btn.outline} onClick={searchAsOutlet}>
+                  <Icon name="storefront" className="text-[18px]" />Search &quot;{searchedTerm}&quot; as outlet
+                </button>
               )}
-            </MDBox>
+            </div>
           </Card>
         )}
 
         {mode === "invoice" && invoiceResults.length > 1 && (
-          <Card sx={{ p: 2, mt: 3 }}>
-            <MDTypography variant="button" color="text" mb={1} display="block">
-              {invoiceResults.length} invoices match — select one:
-            </MDTypography>
-            <MDBox display="flex" flexWrap="wrap" gap={1}>
-              {invoiceResults.map((result, index) => (
-                <MDButton
-                  key={result.sale.id}
-                  variant={selectedIndex === index ? "gradient" : "outlined"}
-                  color="info"
-                  size="small"
-                  onClick={() => setSelectedIndex(index)}
-                >
-                  {result.sale.invoice_number} — {result.sale.outlet_name} ({result.sale.outlet_erp_id}) ·{" "}
-                  {result.sale.formatted_date || formatDate(result.sale.sale_date)}
-                </MDButton>
-              ))}
-            </MDBox>
+          <Card className="mb-5">
+            <div className="px-5 py-4">
+              <p className="m-0 mb-2 text-[13px] font-semibold text-slate-700">{invoiceResults.length} invoices match — select one:</p>
+              <div className="flex flex-wrap gap-2">
+                {invoiceResults.map((result, index) => (
+                  <button
+                    key={result.sale.id} type="button" onClick={() => setSelectedIndex(index)}
+                    className={`rounded-lg border px-3 py-1.5 text-left text-[12.5px] transition ${selectedIndex === index ? "border-blue-600 bg-blue-600 text-white" : "border-slate-200 bg-white text-slate-700 hover:border-blue-300"}`}
+                  >
+                    <b>{result.sale.invoice_number}</b> — {result.sale.outlet_name} ({result.sale.outlet_erp_id}) ·{" "}
+                    {result.sale.formatted_date || formatDate(result.sale.sale_date)}
+                  </button>
+                ))}
+              </div>
+            </div>
           </Card>
         )}
 
@@ -245,16 +227,14 @@ function InvoiceLookup() {
         {mode === "outlet" && selectedOutlet && (
           <>
             {outlets.length > 1 && (
-              <MDBox mt={3}>
-                <MDButton size="small" variant="text" color="info" onClick={() => setSelectedOutlet(null)}>
-                  <Icon sx={{ mr: 0.5 }}>arrow_back</Icon> Back to {outlets.length} matching outlets
-                </MDButton>
-              </MDBox>
+              <button type="button" className={`${btn.ghost} mb-3`} onClick={() => setSelectedOutlet(null)}>
+                <Icon name="arrow_back" className="text-[18px]" />Back to {outlets.length} matching outlets
+              </button>
             )}
             <OutletHistory outletKey={selectedOutlet.outlet_key} />
           </>
         )}
-      </MDBox>
+      </div>
       <Footer />
     </DashboardLayout>
   );

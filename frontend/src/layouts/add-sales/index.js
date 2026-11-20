@@ -1,46 +1,12 @@
+// Delivery Manager > Add Sales: Tailwind CSS (no MUI). Staff / outlet loading, entry, overdue / other-day permission,
+// requisition, edit / delete and PDF / sticker logic unchanged.
 import { useState, useEffect, useMemo, useRef } from "react";
 
-// @mui material components
-import Grid from "@mui/material/Grid";
-import Card from "@mui/material/Card";
-import Icon from "@mui/material/Icon";
-import Autocomplete from "@mui/material/Autocomplete";
-import {
-  FormControl,
-  InputLabel,
-  MenuItem,
-  Select,
-  Table,
-  TableBody,
-  TableCell,
-  TableContainer,
-  TableHead,
-  TableRow,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  Badge,
-  IconButton,
-  Tooltip,
-  InputAdornment,
-} from "@mui/material";
-
-// Material Dashboard 2 React components
-import MDBox from "components/MDBox";
-import MDTypography from "components/MDTypography";
-import MDInput from "components/MDInput";
-import MDButton from "components/MDButton";
-import MDBadge from "components/MDBadge";
-
-// Material Dashboard 2 React example components
 import DashboardLayout from "examples/LayoutContainers/DashboardLayout";
 import DashboardNavbar from "examples/Navbars/DashboardNavbar";
 import Footer from "examples/Footer";
 import { printSalesStickers } from "utils/printSalesStickers";
 import { printSalesInvoicePdf } from "utils/printSalesInvoicePdf";
-import { FaRegEdit } from "react-icons/fa";
-import { CiTrash } from "react-icons/ci";
 import SalesInvoiceDialog from "layouts/add-sales/components/SalesInvoiceDialog";
 import OtherDayBitDialog, { isTodaysBit, todayDate, todayDayName } from "layouts/add-sales/components/OtherDayBitDialog";
 import PendingOverdueRequestsDialog from "layouts/add-sales/components/PendingOverdueRequestsDialog";
@@ -49,12 +15,16 @@ import { useAuth } from "context/AuthContext";
 import { useCompanyTypeLookup } from "utils/companyTypes";
 import ReviewDialog from "layouts/overdue-requests/components/ReviewDialog";
 import { getInvoicePrefix, getInvoiceSuffix, buildInvoiceNumber } from "utils/invoicePrefix";
+import {
+  Badge, Card, Field, Icon, Modal, Notice, PageHeader, SearchSelect, btn, fieldClass,
+} from "components/tw";
 
+// Overdue request status: label + badge tone.
 const REQUEST_STATUS = {
-  pending: { label: "Waiting for admin approval", color: "warning" },
-  approved: { label: "Approved — you can create the sales", color: "success" },
-  rejected: { label: "Rejected", color: "error" },
-  used: { label: "Approval already used", color: "secondary" },
+  pending: { label: "Waiting for admin approval", color: "amber" },
+  approved: { label: "Approved — you can create the sales", color: "green" },
+  rejected: { label: "Rejected", color: "red" },
+  used: { label: "Approval already used", color: "slate" },
 };
 
 const emptyPermissionDialog = {
@@ -102,30 +72,6 @@ const emptyOtherDayDialog = {
   lineMapPatch: {},
   // other_day_own_permission: the user may bill these outlets with a reason, no admin approval.
   canOwnPermission: false,
-};
-
-const tableHeadSx = {
-  color: "#6b7280",
-  fontSize: "0.75rem",
-  fontWeight: 600,
-  textTransform: "none",
-  borderBottom: "1px solid #e5e7eb",
-  px: 2,
-  py: 1.5,
-  whiteSpace: "nowrap",
-  verticalAlign: "middle",
-};
-
-const tableBodySx = {
-  px: 2,
-  verticalAlign: "middle",
-  py: 1.5,
-};
-
-const tableHeadRowSx = {
-  display: "table-header-group",
-  backgroundColor: "#f9fafb",
-  "& .MuiTableCell-root": { backgroundColor: "#f9fafb" },
 };
 
 function AddSales() {
@@ -186,18 +132,13 @@ function AddSales() {
 
   // Everest / Loriel invoices start with a fixed number; the user types only the rest.
   const invoicePrefix = getInvoicePrefix(selectedCompanyName);
-  const invoicePrefixAdornment = (prefix) =>
-    prefix
-      ? {
-          startAdornment: (
-            <InputAdornment position="start" disableTypography sx={{ mr: 0.25 }}>
-              <span style={{ fontSize: "0.75rem", fontWeight: 600, color: "#344767", whiteSpace: "nowrap" }}>
-                {prefix}
-              </span>
-            </InputAdornment>
-          ),
-        }
-      : undefined;
+  // Fixed invoice prefix shown inside the input (the user types only the rest).
+  const invoicePrefixTag = (prefix) =>
+    prefix ? (
+      <span className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 whitespace-nowrap text-[12px] font-semibold text-slate-600">
+        {prefix}
+      </span>
+    ) : null;
   // In the edit dialog, keep old invoice numbers that don't use the prefix untouched.
   const editInvoicePrefix =
     invoicePrefix && (!manualEditDialog.invoiceNumber || manualEditDialog.invoiceNumber.startsWith(invoicePrefix))
@@ -1462,830 +1403,417 @@ function AddSales() {
     }
   };
 
+  const head = "whitespace-nowrap bg-slate-50 px-3 py-2.5 text-[11px] font-semibold uppercase tracking-wide text-slate-500";
+  const cell = "px-3 py-2.5 align-middle text-[13px]";
+  const label = "text-[11px] font-semibold uppercase tracking-wide text-slate-500";
+  const prefixPad = (prefix) => (prefix ? { paddingLeft: `${prefix.length * 7.5 + 16}px` } : undefined);
+  const headerIcon = (title, icon, count, tone, onClick, ariaLabel) => (
+    <button
+      type="button" onClick={onClick} title={title} aria-label={ariaLabel}
+      className={`relative inline-flex size-10 items-center justify-center rounded-xl border bg-white transition hover:shadow-sm ${count ? "border-slate-300 text-slate-800" : "border-slate-200 text-slate-400"}`}
+    >
+      <Icon name={icon} className="text-[21px]" />
+      {count > 0 && (
+        <span className={`absolute -right-1.5 -top-1.5 min-w-5 rounded-full px-1 text-center text-[10.5px] font-bold leading-5 text-white ${tone}`}>
+          {count > 99 ? "99+" : count}
+        </span>
+      )}
+    </button>
+  );
+  const smallBtn = "inline-flex size-8 items-center justify-center rounded-lg border transition disabled:cursor-not-allowed disabled:opacity-40";
+  const closeOverdueCancel = () => setOverdueCancelDialog(emptyOverdueCancelDialog);
+
   return (
     <DashboardLayout>
       <DashboardNavbar />
-      <MDBox pt={6} pb={3}>
-        <Grid container spacing={3} justifyContent="center">
-          <Grid item xs={12}>
-            <Card
-              sx={{ boxShadow: "0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)" }}
-            >
-              <MDBox p={3} pb={2} display="flex" justifyContent="space-between" alignItems="center">
-                <MDBox display="flex" alignItems="center" gap={1.5}>
-                  <MDTypography variant="h5" fontWeight="medium" color="dark">
-                    Daily Outlet Price Entry
-                  </MDTypography>
-                  <MDBadge
-                    badgeContent={
-                      displayOutlets.length > 0
-                        ? `${displayOutlets.length} outlet${displayOutlets.length !== 1 ? "s" : ""}`
-                        : `${outlets.length} today`
-                    }
-                    color="light"
-                    container
-                    sx={{
-                      "& .MuiBadge-badge": {
-                        textTransform: "none",
-                        border: "1px solid #e5e7eb",
-                        backgroundColor: "#f9fafb",
-                        color: "#374151",
-                        fontWeight: 500,
-                      },
-                    }}
+      <div className="pb-8 font-[Poppins,Roboto,sans-serif] text-slate-700">
+        <PageHeader
+          title="Add Sales"
+          description="Daily outlet price entry. Choose the date, staff type, company and marketing person, then add sales for each outlet."
+          actions={(
+            <>
+              <span className="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-[12px] font-medium text-slate-600">
+                {displayOutlets.length > 0
+                  ? `${displayOutlets.length} outlet${displayOutlets.length !== 1 ? "s" : ""}`
+                  : `${outlets.length} today`}
+              </span>
+              {headerIcon(
+                otherDayBadgeCount
+                  ? `Other bit / date approvals: ${otherDayPendingCount} waiting, ${otherDayApprovedCount} approved`
+                  : "Other bit / date approvals",
+                "event_busy", otherDayBadgeCount, otherDayApprovedCount && !isAdmin ? "bg-emerald-600" : "bg-red-600",
+                () => { loadOtherDayRequests(); setOtherDayListOpen(true); }, "Other bit and date approvals",
+              )}
+              {headerIcon(
+                pendingRequests.length ? `${pendingRequests.length} overdue request(s) pending or approved` : "No pending overdue requests",
+                "pending_actions", pendingRequests.length, "bg-red-600",
+                () => { loadPendingRequests(); setPendingOpen(true); }, "Pending overdue requests",
+              )}
+            </>
+          )}
+        />
+
+        <Card className="mb-5">
+          <div className="grid gap-3 px-4 py-4 sm:grid-cols-2 lg:grid-cols-4">
+            <Field label="Date" width="w-full">
+              <input type="date" className={fieldClass} value={selectedDate} onChange={(e) => { setSelectedDate(e.target.value); setOutletSearch(""); }} />
+            </Field>
+            <Field label="Staff type" width="w-full">
+              <select className={fieldClass} value={selectedStaffType} onChange={(e) => setSelectedStaffType(e.target.value)}>
+                <option value="">Select staff type</option>
+                <option value="distributor">Distributor</option>
+                <option value="cnf">CNF</option>
+              </select>
+            </Field>
+            <Field label="Company name" width="w-full">
+              <select className={fieldClass} value={selectedCompanyName} disabled={!selectedStaffType} onChange={(e) => setSelectedCompanyName(e.target.value)}>
+                <option value="">Select company</option>
+                {companyOptions.map((companyName) => <option key={companyName} value={companyName}>{companyName}</option>)}
+                {selectedStaffType && companyOptions.length === 0 && (
+                  <option disabled>No {selectedStaffType === "cnf" ? "CNF" : "Distributor"} company found</option>
+                )}
+              </select>
+            </Field>
+            <div className="flex flex-col gap-1">
+              <span className={label}>Marketing person</span>
+              <SearchSelect
+                label="Search staff name" placeholder="Search staff name"
+                options={filteredStaffOptions.map((staff) => ({ value: staff.id, label: staff.name }))}
+                value={selectedStaff?.id ?? null}
+                onChange={(id) => {
+                  const newValue = filteredStaffOptions.find((staff) => staff.id === id) || null;
+                  setSelectedStaff(newValue);
+                  setSubmittedSummary(null);
+                  setOutletSearch("");
+                }}
+                disabled={!selectedStaffType || !selectedCompanyName}
+                noOptionsText="No staff found"
+              />
+            </div>
+          </div>
+        </Card>
+
+        {showEntryTable && (
+          <Card className="mb-5">
+            <div className="flex flex-wrap items-end gap-3 border-b border-slate-100 px-4 py-3">
+              <div className="mr-auto flex items-center gap-2">
+                <h3 className="m-0 text-[15px] font-semibold text-slate-900">Enter Prices for {new Date(selectedDate).toLocaleDateString()}</h3>
+                <Badge tone="blue" icon={isCnfStaff ? "business" : "calendar_today"}>{isCnfStaff ? "CNF" : dayName}</Badge>
+              </div>
+              <div className="flex items-end gap-1.5">
+                <Field label="Requisition no." width="w-48">
+                  <input
+                    className={fieldClass} value={requisitionLookupNumber} disabled={loadingRequisition}
+                    onChange={(e) => setRequisitionLookupNumber(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === "Enter") openRequisitionBillChoice(); }}
                   />
-                </MDBox>
-                <MDBox display="flex" alignItems="center" gap={0.5}>
-                  <Tooltip
-                    title={
-                      otherDayBadgeCount
-                        ? `Other bit / date approvals: ${otherDayPendingCount} waiting, ${otherDayApprovedCount} approved`
-                        : "Other bit / date approvals"
-                    }
-                  >
-                    <IconButton
-                      color={otherDayBadgeCount ? "info" : "secondary"}
-                      onClick={() => {
-                        loadOtherDayRequests();
-                        setOtherDayListOpen(true);
-                      }}
-                      aria-label="Other bit and date approvals"
-                    >
-                      <Badge badgeContent={otherDayBadgeCount} color={otherDayApprovedCount && !isAdmin ? "success" : "error"} max={99}>
-                        <Icon>event_busy</Icon>
-                      </Badge>
-                    </IconButton>
-                  </Tooltip>
-                  <Tooltip
-                    title={
-                      pendingRequests.length
-                        ? `${pendingRequests.length} overdue request(s) pending or approved`
-                        : "No pending overdue requests"
-                    }
-                  >
-                    <IconButton
-                      color={pendingRequests.length ? "warning" : "secondary"}
-                      onClick={() => {
-                        loadPendingRequests();
-                        setPendingOpen(true);
-                      }}
-                      aria-label="Pending overdue requests"
-                    >
-                      <Badge badgeContent={pendingRequests.length} color="error" max={99}>
-                        <Icon>pending_actions</Icon>
-                      </Badge>
-                    </IconButton>
-                  </Tooltip>
-                </MDBox>
-              </MDBox>
-              <MDBox pb={3} px={3}>
-                <Grid container spacing={3}>
-                  <Grid item xs={12} md={3}>
-                    <MDBox mb={2}>
-                      <MDInput
-                        type="date"
-                        label="Select Date"
-                        fullWidth
-                        value={selectedDate}
-                        onChange={(e) => {
-                          setSelectedDate(e.target.value);
-                          setOutletSearch("");
-                        }}
-                        InputLabelProps={{ shrink: true }}
-                      />
-                    </MDBox>
-                  </Grid>
+                </Field>
+                <button type="button" className={`${btn.primary} px-3`} title="Load requisition" aria-label="Load requisition" onClick={openRequisitionBillChoice} disabled={loadingRequisition}>
+                  <Icon name={loadingRequisition ? "hourglass_top" : "search"} className="text-[18px]" />
+                </button>
+              </div>
+            </div>
+            <div className="flex flex-wrap items-end gap-3 border-b border-slate-100 px-4 py-3">
+              <Field label="Search outlet" width="w-full sm:w-96" hint={selectedStaff ? "Search by outlet name, ERP ID, or area across all route days." : null}>
+                <input className={fieldClass} placeholder="Outlet name or ERP ID" value={outletSearch} disabled={!selectedStaff} onChange={(e) => setOutletSearch(e.target.value)} />
+              </Field>
+              {!isCnfStaff && (
+                <Field label="Load outlets by day" width="w-full sm:w-64" hint="Adds that day's outlets to the list.">
+                  <select
+                    className={fieldClass} value=""
+                    onChange={(event) => {
+                      const newValue = event.target.value;
+                      if (newValue) {
+                        const outletsToAdd = allOutlets.filter(
+                          o => o.day === newValue && !outlets.some(existing => existing.id === o.id)
+                        );
 
-                  <Grid item xs={12} md={3}>
-                    <FormControl fullWidth size="small">
-                      <InputLabel id="sales-staff-type-label">Staff Type</InputLabel>
-                      <Select
-                        labelId="sales-staff-type-label"
-                        value={selectedStaffType}
-                        label="Staff Type"
-                        onChange={(e) => setSelectedStaffType(e.target.value)}
-                        sx={{ minHeight: 48, height: 48 }}
-                      >
-                        <MenuItem value="">
-                          <em>Select Staff Type</em>
-                        </MenuItem>
-                        <MenuItem value="distributor">Distributor</MenuItem>
-                        <MenuItem value="cnf">CNF</MenuItem>
-                      </Select>
-                    </FormControl>
-                  </Grid>
-
-                  <Grid item xs={12} md={3}>
-                    <FormControl fullWidth size="small" disabled={!selectedStaffType}>
-                      <InputLabel id="sales-company-label">Company Name</InputLabel>
-                      <Select
-                        labelId="sales-company-label"
-                        value={selectedCompanyName}
-                        label="Company Name"
-                        onChange={(e) => setSelectedCompanyName(e.target.value)}
-                        sx={{ minHeight: 48, height: 48 }}
-                      >
-                        <MenuItem value="">
-                          <em>Select Company</em>
-                        </MenuItem>
-                        {companyOptions.map((companyName) => (
-                          <MenuItem key={companyName} value={companyName}>
-                            {companyName}
-                          </MenuItem>
-                        ))}
-                        {selectedStaffType && companyOptions.length === 0 && (
-                          <MenuItem disabled>
-                            No {selectedStaffType === "cnf" ? "CNF" : "Distributor"} company found
-                          </MenuItem>
-                        )}
-                      </Select>
-                    </FormControl>
-                  </Grid>
-
-                  <Grid item xs={12} md={3}>
-                    <MDBox mb={2}>
-                      <Autocomplete
-                        options={filteredStaffOptions}
-                        value={selectedStaff}
-                        getOptionLabel={(option) => option.name}
-                        isOptionEqualToValue={(option, value) => option.id === value.id}
-                        onChange={(event, newValue) => {
-                          setSelectedStaff(newValue);
-                          setSubmittedSummary(null);
-                          setOutletSearch("");
-                        }}
-                        onOpen={() => {
-                          if (staffOptions.length === 0) {
-                            fetchStaffOptions();
-                          }
-                        }}
-                        onInputChange={(event, newInputValue) => fetchStaffOptions(newInputValue)}
-                        disabled={!selectedStaffType || !selectedCompanyName}
-                        renderInput={(params) => (
-                          <MDInput {...params} label="Search Staff Name" fullWidth />
-                        )}
-                      />
-                    </MDBox>
-                  </Grid>
-                  {/* <Grid item xs={12} md={4}>
-                    <MDBox mb={2}>
-                      <MDInput
-                        type="text"
-                        label="Search Outlet (any weekday)"
-                        fullWidth
-                        value={outletSearch}
-                        onChange={(e) => setOutletSearch(e.target.value)}
-                        disabled={!selectedStaff}
-                        helperText={
-                          selectedStaff
-                            ? "Finds outlets from Mon–Sat routes; sale is saved for the selected date."
-                            : ""
+                        if (outletsToAdd.length > 0) {
+                          setOutlets([...outlets, ...outletsToAdd]);
+                          setSalesData((prev) => {
+                            const newData = { ...prev };
+                            outletsToAdd.forEach((o) => {
+                              newData[outletKey(o.id)] = [{ ...emptySaleRow }];
+                            });
+                            return newData;
+                          });
                         }
-                      />
-                    </MDBox>
-                  </Grid> */}
-                </Grid>
-
-                {showEntryTable && (
-                  <MDBox mt={4}>
-                    <MDBox display="flex" alignItems="center" flexWrap="wrap" gap={1} mb={2}>
-                      <MDTypography variant="h6">
-                        Enter Prices for {new Date(selectedDate).toLocaleDateString()}
-                      </MDTypography>
-                      <MDBox
-                        px={1.5}
-                        py={0.75}
-                        sx={{
-                          backgroundColor: "#f0f2f5",
-                          borderRadius: "10px",
-                          border: "1px solid #ddd",
-                        }}
-                      >
-                        <MDTypography variant="button" fontWeight="bold" color="info">
-                          {isCnfStaff ? "CNF" : dayName}
-                        </MDTypography>
-                      </MDBox>
-                      <MDBox display="flex" alignItems="center" gap={1} ml={{ xs: 0, md: "auto" }} width={{ xs: "100%", md: 300 }}>
-                        <MDInput
-                          label="Requisition No."
-                          fullWidth
-                          value={requisitionLookupNumber}
-                          onChange={(e) => setRequisitionLookupNumber(e.target.value)}
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter") openRequisitionBillChoice();
-                          }}
-                          disabled={loadingRequisition}
-                        />
-                        <MDButton
-                          color="info"
-                          variant="gradient"
-                          title="Load requisition"
-                          aria-label="Load requisition"
-                          onClick={openRequisitionBillChoice}
-                          disabled={loadingRequisition}
-                          sx={{ minWidth: 42, px: 1 }}
-                        >
-                          <Icon fontSize="small">{loadingRequisition ? "hourglass_top" : "search"}</Icon>
-                        </MDButton>
-                      </MDBox>
-                    </MDBox>
-
-                    <MDBox mb={2} maxWidth={400}>
-                      <MDInput
-                        type="text"
-                        label="Search Outlet Name or ERP ID"
-                        fullWidth
-                        value={outletSearch}
-                        onChange={(e) => setOutletSearch(e.target.value)}
-                        disabled={!selectedStaff}
-                        helperText={
-                          selectedStaff
-                            ? "Search by outlet name, ERP ID, or area across all route days."
-                            : ""
-                        }
-                      />
-                    </MDBox>
-                    {!isCnfStaff && (
-                      <MDBox mb={2} maxWidth={400}>
-                        <Autocomplete
-                          options={["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"]}
-                          onChange={(event, newValue) => {
-                            if (newValue) {
-                              const outletsToAdd = allOutlets.filter(
-                                o => o.day === newValue && !outlets.some(existing => existing.id === o.id)
-                              );
-
-                              if (outletsToAdd.length > 0) {
-                                setOutlets([...outlets, ...outletsToAdd]);
-                                setSalesData((prev) => {
-                                  const newData = { ...prev };
-                                  outletsToAdd.forEach((o) => {
-                                    newData[outletKey(o.id)] = [{ ...emptySaleRow }];
-                                  });
-                                  return newData;
-                                });
-                              }
-                            }
-                          }}
-                          renderInput={(params) => (
-                            <MDInput {...params} label="Load Outlets by Day" fullWidth />
-                          )}
-                          clearOnBlur
-                          blurOnSelect
-                        />
-                      </MDBox>
-                    )}
-
-                    <TableContainer
-                      sx={{
-                        boxShadow: "none",
-                        backgroundColor: "transparent",
-                        borderTop: "1px solid #e5e7eb",
-                        mt: 2,
-                        overflowX: "auto",
-                      }}
-                    >
-                      <Table
-                        sx={{
-                          tableLayout: "fixed",
-                          width: "100%",
-                          minWidth: invoicePrefix ? 960 : 720,
-                          "& .MuiTableCell-root": { overflow: "hidden" },
-                        }}
-                      >
-                        <colgroup>
-                          {(invoicePrefix
-                            ? ["5%", "16%", "10%", "11%", "10%", "23%", "13%", "12%"] // wider Invoice No. for the fixed prefix
-                            : ["5%", "19%", "12%", "13%", "12%", "14%", "13%", "12%"]
-                          ).map((width, i) => (
-                            <col key={i} style={{ width }} />
-                          ))}
-                        </colgroup>
-                        <TableHead sx={tableHeadRowSx}>
-                          <TableRow>
-                            <TableCell align="center" sx={{ ...tableHeadSx, width: "6%" }}>
-                              Sr No
-                            </TableCell>
-                            <TableCell align="left" sx={{ ...tableHeadSx, width: "18%" }}>
-                              Outlet
-                            </TableCell>
-                            <TableCell align="left" sx={{ ...tableHeadSx, width: "12%" }}>
-                              Area
-                            </TableCell>
-                            <TableCell align="left" sx={{ ...tableHeadSx, width: "14%" }}>
-                              Staff Name
-                            </TableCell>
-                            <TableCell align="center" sx={tableHeadSx}>No. of Item</TableCell>
-                            <TableCell align="center" sx={tableHeadSx}>Invoice No.</TableCell>
-                            <TableCell align="center" sx={tableHeadSx}>Invoice Amount</TableCell>
-                            <TableCell align="center" sx={{ ...tableHeadSx, width: "16%" }}>
-                              Action
-                            </TableCell>
-                          </TableRow>
-                        </TableHead>
-                        <TableBody>
-                          {searchingOutlets ? (
-                            <TableRow>
-                              <TableCell sx={{ ...tableBodySx, borderBottom: "1px solid #e5e7eb" }} />
-                              <TableCell
-                                colSpan={6}
-                                align="center"
-                                sx={{ ...tableBodySx, borderBottom: "1px solid #e5e7eb", py: 3 }}
-                              >
-                                <MDTypography variant="body2" color="text">
-                                  Searching outlets...
-                                </MDTypography>
-                              </TableCell>
-                              <TableCell sx={{ ...tableBodySx, borderBottom: "1px solid #e5e7eb" }} />
-                            </TableRow>
-                          ) : displayOutlets.length === 0 ? (
-                            <TableRow>
-                              <TableCell sx={{ ...tableBodySx, borderBottom: "1px solid #e5e7eb" }} />
-                              <TableCell
-                                colSpan={6}
-                                align="center"
-                                sx={{ ...tableBodySx, borderBottom: "1px solid #e5e7eb", py: 3 }}
-                              >
-                                <MDTypography variant="body2" color="text">
-                                  {outletSearch.trim()
-                                    ? "No outlets match this search on this staff's routes."
-                                    : `No pending outlets for ${dayName}. Use Search Outlet above to find routes from other weekdays.`}
-                                </MDTypography>
-                              </TableCell>
-                              <TableCell sx={{ ...tableBodySx, borderBottom: "1px solid #e5e7eb" }} />
-                            </TableRow>
-                          ) : (
-                            displayOutlets.map((outlet, outletIndex) => {
-                              const rows = salesData[outletKey(outlet.id)] || [];
-                              const isManualEntry = manualOutletIds.includes(outletKey(outlet.id));
-                              return rows.map((row, index) => {
-                                const rowBorder =
-                                  index === rows.length - 1
-                                    ? { borderBottom: "1px solid #e5e7eb" }
-                                    : { borderBottom: "1px solid #f0f0f0" };
-                                return (
-                                  <TableRow
-                                    key={`${outlet.id}-${index}`}
-
-                                    sx={{
-                                      backgroundColor: index % 2 !== 0 ? "#fafafa" : "inherit",
-                                    }}
-                                  >
-
-
-                                    <TableCell
-                                      align="center"
-                                      sx={{
-                                        ...tableBodySx,
-                                        ...rowBorder,
-                                      }}
-                                    >
-                                      {index === 0 ? outletIndex + 1 : `${outletIndex + 1}.${index + 1}`}
-                                    </TableCell>
-                                    {index === 0 && (
-                                      <TableCell
-                                        rowSpan={rows.length}
-                                        align="left"
-                                        sx={{
-                                          ...tableBodySx,
-                                          borderBottom: "1px solid #e5e7eb",
-                                        }}
-                                      >
-                                        <MDBox display="flex" alignItems="center" gap={1.5}>
-                                          {/* <MDAvatar
-                                            bgColor="light"
-                                            size="sm"
-                                            sx={{ border: "1px solid #e5e7eb", color: "#374151", flexShrink: 0 }}
-                                          >
-                                            <MDTypography variant="caption" fontWeight="medium">
-                                              {outlet.outlet_name.charAt(0)}
-                                            </MDTypography>
-                                          </MDAvatar> */}
-                                          <MDBox lineHeight={1} minWidth={0}>
-                                            <MDTypography
-                                              display="block"
-                                              variant="button"
-                                              fontWeight="medium"
-                                              color="dark"
-                                              sx={{ fontSize: "0.875rem" }}
-                                            >
-                                              {outlet.outlet_name}
-                                            </MDTypography>
-                                            <MDTypography
-                                              variant="caption"
-                                              sx={{ fontSize: "0.75rem", color: "#6b7280" }}
-                                            >
-                                              {outlet.outlet_erp_id}
-                                            </MDTypography>
-                                            {outletApprovalLabel(outlet) && (
-                                              <Tooltip
-                                                title={approvedOutletIds.has(Number(outlet.id))
-                                                  ? "Admin approved this outlet for this date. Save the bill as usual (one time)."
-                                                  : isOtherDate
-                                                  ? "Sales for a date other than today need admin approval."
-                                                  : `Not in today's (${todayDayName()}) bit. Admin approval is needed to add a sale.`}
-                                              >
-                                                <MDTypography
-                                                  display="block"
-                                                  variant="caption"
-                                                  sx={{
-                                                    fontSize: "0.7rem",
-                                                    fontWeight: 600,
-                                                    mt: 0.5,
-                                                    color: approvedOutletIds.has(Number(outlet.id)) ? "#15803d" : "#b45309",
-                                                  }}
-                                                >
-                                                  {outletApprovalLabel(outlet)}
-                                                </MDTypography>
-                                              </Tooltip>
-                                            )}
-                                          </MDBox>
-                                        </MDBox>
-                                      </TableCell>
-                                    )}
-                                    {index === 0 && (
-                                      <TableCell
-                                        rowSpan={rows.length}
-                                        align="left"
-                                        sx={{
-                                          ...tableBodySx,
-                                          borderBottom: "1px solid #e5e7eb",
-                                          fontSize: "0.875rem",
-                                          color: "#374151",
-                                        }}
-                                      >
-                                        {outlet.location_name || "N/A"}
-                                      </TableCell>
-                                    )}
-                                    {index === 0 && (
-                                      <TableCell
-                                        rowSpan={rows.length}
-                                        align="left"
-                                        sx={{
-                                          ...tableBodySx,
-                                          borderBottom: "1px solid #e5e7eb",
-                                          fontSize: "0.875rem",
-                                          color: "#374151",
-                                        }}
-                                      >
-                                        {selectedStaff?.name || "N/A"}
-                                      </TableCell>
-                                    )}
-                                    <TableCell align="center" sx={{ ...tableBodySx, ...rowBorder }}>
-                                      {isManualEntry && (
-                                        <MDInput
-                                          type="number"
-                                          inputProps={{ min: 1 }}
-                                          value={row.itemCount || ""}
-                                          onChange={(e) => handleManualSalesChange(outlet.id, index, "itemCount", e.target.value)}
-                                          sx={{ width: "100%" }}
-                                        />
-                                      )}
-                                    </TableCell>
-                                    <TableCell align="center" sx={{ ...tableBodySx, ...rowBorder }}>
-                                      {isManualEntry && (
-                                        <MDInput
-                                          value={getInvoiceSuffix(row.invoiceNumber, invoicePrefix)}
-                                          onChange={(e) =>
-                                            handleManualSalesChange(
-                                              outlet.id,
-                                              index,
-                                              "invoiceNumber",
-                                              invoicePrefix ? buildInvoiceNumber(e.target.value, invoicePrefix) : e.target.value
-                                            )
-                                          }
-                                          InputProps={invoicePrefixAdornment(invoicePrefix)}
-                                          sx={{ width: "100%" }}
-                                        />
-                                      )}
-                                    </TableCell>
-                                    <TableCell align="center" sx={{ ...tableBodySx, ...rowBorder }}>
-                                      {isManualEntry && (
-                                        <MDInput
-                                          type="number"
-                                          inputProps={{ min: 0, step: "0.01" }}
-                                          value={row.price || ""}
-                                          onChange={(e) => handleManualSalesChange(outlet.id, index, "price", e.target.value)}
-                                          sx={{ width: "100%" }}
-                                        />
-                                      )}
-                                    </TableCell>
-                                    <TableCell align="center" sx={{ ...tableBodySx, ...rowBorder }}>
-                                      {isManualEntry ? (
-                                        <MDBox display="flex" gap={0.5} justifyContent="center" flexWrap="wrap">
-                                          <MDButton size="small" color="info" variant="outlined" onClick={() => handleAddManualRow(outlet.id)} disabled={submitting} sx={{ minWidth: 0, px: 1 }} title="Add row">
-                                            <Icon sx={{ fontSize: "1rem !important" }}>add</Icon>
-                                          </MDButton>
-                                          {rows.length > 1 && (
-                                            <MDButton size="small" color="error" variant="text" onClick={() => handleRemoveManualRow(outlet.id, index)} disabled={submitting} sx={{ minWidth: 0, px: 1 }} title="Remove row">
-                                              <Icon sx={{ fontSize: "1rem !important" }}>remove</Icon>
-                                            </MDButton>
-                                          )}
-                                          {index === rows.length - 1 && (
-                                            <MDButton size="small" color="success" variant="gradient" onClick={() => handleSaveManualOutlet(outlet.id)} disabled={submitting} sx={{ minWidth: 0, px: 1 }} title="Save">
-                                              <Icon sx={{ fontSize: "1rem !important" }}>check</Icon>
-                                            </MDButton>
-                                          )}
-                                          {index === rows.length - 1 && (
-                                            <MDButton
-                                              size="small"
-                                              color="error"
-                                              variant="outlined"
-                                              onClick={() => cancelManualEntry(outlet.id)}
-                                              disabled={submitting}
-                                              sx={{ minWidth: 0, px: 1 }}
-                                              title="Cancel"
-                                            >
-                                              <Icon sx={{ fontSize: "1rem !important" }}>close</Icon>
-                                            </MDButton>
-                                          )}
-                                        </MDBox>
-                                      ) : (
-                                        <MDButton
-                                          variant="gradient"
-                                          color="info"
-                                          size="small"
-                                          onClick={() => openBillChoiceDialog(outlet, index)}
-                                          disabled={submitting}
-                                          sx={{ minWidth: 72 }}
-                                        >
-                                          Sales
-                                        </MDButton>
-                                      )}
-                                    </TableCell>
-                                  </TableRow>
-                                );
-                              });
-                            })
-
-                          )}
-                        </TableBody>
-                      </Table>
-                    </TableContainer>
-
-                  </MDBox>
-                )}
-
-                {showNoDayOutletsHint && (
-                  <MDBox mt={2} textAlign="center">
-                    <MDTypography variant="body2" color="text">
-                      {isCnfStaff
-                        ? "No CNF outlets for this staff. Search by outlet name in the box above."
-                        : `No outlets on ${dayName} for this staff. Search by outlet name in the box above to record a sale from another weekday's route.`}
-                    </MDTypography>
-                  </MDBox>
-                )}
-
-
-                {submittedSummary && (
-                  <MDBox
-                    mt={4}
-                    p={3}
-                    sx={{
-                      backgroundColor: "#f8f9fa",
-                      borderRadius: "12px",
-                      border: "1px solid #dee2e6",
+                      }
                     }}
                   >
-                    <MDBox display="flex" justifyContent="space-between" alignItems="center" mb={2} flexWrap="wrap" gap={1}>
-                      <MDTypography variant="h6" fontWeight="bold">
-                        Submitted Details
-                      </MDTypography>
-                      <MDBox display="flex" gap={1} flexWrap="wrap">
-                        {(submittedSummary.sales || []).some((sale) => isDetailedBill(sale)) && (
-                          <MDButton
-                            variant="outlined"
-                            color="info"
-                            size="small"
-                            onClick={() => {
-                              const sales = attachLineItemsToSales(submittedSummary.sales || []).filter(isDetailedBill);
-                              const byOutlet = new Map();
-                              sales.forEach((sale) => {
-                                const key = outletKey(sale.outletId);
-                                if (!byOutlet.has(key)) byOutlet.set(key, []);
-                                byOutlet.get(key).push(sale);
-                              });
-                              const groups = Array.from(byOutlet.values());
-                              if (!groups.length) {
-                                alert("No invoices available to download.");
-                                return;
-                              }
-                              groups.forEach((outletSales, index) => {
-                                const first = outletSales[0];
-                                setTimeout(() => {
-                                  printSalesInvoicePdf({
-                                    outletName: first.shopName,
-                                    outletErpId: first.outletErpId,
-                                    locationName: first.locationName,
-                                    saleDate: submittedSummary.date
-                                      ? new Date(`${submittedSummary.date}T12:00:00`).toLocaleDateString("en-IN")
-                                      : selectedDate,
-                                    staffName: submittedSummary.staffName || "",
-                                    companyName: submittedSummary.companyName || "",
-                                    invoices: outletSales,
-                                  });
-                                }, index * 500);
-                              });
-                            }}
-                          >
-                            <Icon sx={{ mr: 1 }}>picture_as_pdf</Icon>
-                            Download PDF
-                          </MDButton>
-                        )}
-                        <MDButton
-                          variant="outlined"
-                          color="dark"
-                          size="small"
-                          onClick={() => printSalesStickers(submittedSummary.sales)}
-                        >
-                          <Icon sx={{ mr: 1 }}>label</Icon>
-                          Print Stickers
-                        </MDButton>
-                      </MDBox>
-                    </MDBox>
-                    <TableContainer
-                      sx={{
-                        boxShadow: "none",
-                        borderTop: "1px solid #e5e7eb",
-                        backgroundColor: "transparent",
-                        overflowX: "auto",
-                      }}
-                    >
-                      <Table
-                        size="small"
-                        sx={{
-                          tableLayout: "fixed",
-                          width: "100%",
-                          minWidth: 720,
-                          "& .MuiTableCell-root": { overflow: "hidden" },
-                        }}
-                      >
-                        <colgroup>
-                          <col style={{ width: "6%" }} />
-                          <col style={{ width: "18%" }} />
-                          <col style={{ width: "12%" }} />
-                          <col style={{ width: "14%" }} />
-                          <col style={{ width: "11%" }} />
-                          <col style={{ width: "13%" }} />
-                          <col style={{ width: "12%" }} />
-                          <col style={{ width: "12%" }} />
-                          <col style={{ width: "8%" }} />
-                        </colgroup>
-                        <TableHead sx={tableHeadRowSx}>
-                          <TableRow>
-                            <TableCell align="center" sx={{ ...tableHeadSx, width: "6%" }}>
-                              Sr No
-                            </TableCell>
-                            <TableCell align="left" sx={{ ...tableHeadSx, width: "18%" }}>
-                              Outlet
-                            </TableCell>
-                            <TableCell align="left" sx={{ ...tableHeadSx, width: "12%" }}>
-                              Area
-                            </TableCell>
-                            <TableCell align="left" sx={{ ...tableHeadSx, width: "14%" }}>
-                              Marketing Person
-                            </TableCell>
-                            <TableCell align="center" sx={{ ...tableHeadSx, width: "11%" }}>
-                              No. of Item
-                            </TableCell>
-                            <TableCell align="center" sx={{ ...tableHeadSx, width: "13%" }}>
-                              Invoice
-                            </TableCell>
-                            <TableCell align="center" sx={{ ...tableHeadSx, width: "12%" }}>
-                              Sticker
-                            </TableCell>
-                            <TableCell align="right" sx={{ ...tableHeadSx, width: "12%" }}>
-                              Amount
-                            </TableCell>
-                            <TableCell align="center" sx={{ ...tableHeadSx, width: "8%" }}>
-                              Action
-                            </TableCell>
-                          </TableRow>
-                        </TableHead>
-                        <TableBody>
-                          {submittedSummary.sales.map((row, index) => (
-                            <TableRow
-                              key={row.id || index}
-                              sx={{ "&:last-child td, &:last-child th": { border: 0 } }}
-                            >
-                              <TableCell align="center" sx={{ ...tableBodySx, borderBottom: "1px solid #e5e7eb" }}>
-                                {index + 1}
-                              </TableCell>
+                    <option value="">Choose a day</option>
+                    {["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"].map((day) => <option key={day} value={day}>{day}</option>)}
+                  </select>
+                </Field>
+              )}
+            </div>
 
-                              <TableCell align="left" sx={{ ...tableBodySx, borderBottom: "1px solid #e5e7eb" }}>
-                                <MDBox display="flex" alignItems="center" gap={1.5}>
-                                  <MDBox lineHeight={1} minWidth={0}>
-                                    <MDTypography
-                                      display="block"
-                                      variant="button"
-                                      fontWeight="medium"
-                                      color="dark"
-                                      sx={{ fontSize: "0.875rem" }}
-                                    >
-                                      {row.shopName}
-                                    </MDTypography>
-                                    <MDTypography
-                                      variant="caption"
-                                      color="text"
-                                      sx={{ fontSize: "0.75rem", color: "#6b7280" }}
-                                    >
-                                      {row.outletErpId || "—"}
-                                    </MDTypography>
-                                  </MDBox>
-                                </MDBox>
-                              </TableCell>
-
-                              <TableCell
-                                align="left"
-                                sx={{ ...tableBodySx, borderBottom: "1px solid #e5e7eb", fontSize: "0.875rem", color: "#374151" }}
-                              >
-                                {row.locationName || "N/A"}
-                              </TableCell>
-
-                              <TableCell
-                                align="left"
-                                sx={{ ...tableBodySx, borderBottom: "1px solid #e5e7eb", fontSize: "0.875rem", color: "#374151" }}
-                              >
-                                {row.staffName || "N/A"}
-                              </TableCell>
-
-                              <TableCell
-                                align="center"
-                                sx={{ ...tableBodySx, borderBottom: "1px solid #e5e7eb", fontSize: "0.875rem", color: "#374151" }}
-                              >
-                                {row.itemCount || "N/A"}
-                              </TableCell>
-
-                              <TableCell
-                                align="center"
-                                sx={{ ...tableBodySx, borderBottom: "1px solid #e5e7eb", fontSize: "0.875rem", color: "#374151" }}
-                              >
-                                {row.invoiceNumber}
-                              </TableCell>
-
-                              <TableCell
-                                align="center"
-                                sx={{ ...tableBodySx, borderBottom: "1px solid #e5e7eb", fontSize: "0.875rem", color: "#374151" }}
-                              >
-                                {row.stickerNumber}
-                              </TableCell>
-
-                              <TableCell
-                                align="right"
-                                sx={{
-                                  ...tableBodySx,
-                                  borderBottom: "1px solid #e5e7eb",
-                                  fontSize: "0.875rem",
-                                  fontWeight: 500,
-                                  color: "#111827",
-                                }}
-                              >
-                                {`₹${Number(row.amount).toFixed(2)}`}
-                              </TableCell>
-
-                              <TableCell align="center" sx={{ ...tableBodySx, borderBottom: "1px solid #e5e7eb" }}>
-                                {row.id ? (
-                                  <MDBox display="flex" gap={0.5} justifyContent="center" alignItems="center" flexWrap="wrap">
-                                    {isDetailedBill(row) && (
-                                      <Icon
-                                        onClick={() => downloadOutletInvoicePdf(row)}
-                                        sx={{ cursor: "pointer", color: "#2563eb", fontSize: 22 }}
-                                        titleAccess="Download PDF"
-                                      >
-                                        picture_as_pdf
-                                      </Icon>
-                                    )}
-                                    <FaRegEdit
-                                      onClick={() => (isDetailedBill(row) ? openEditSaleDialog(row) : openManualEditDialog(row))}
-                                      style={{ cursor: "pointer" }}
-                                      color="#E0E388"
-                                      size={20}
-                                    />
-                                    <CiTrash
-                                      onClick={() => handleDeleteSale(row.id)}
-                                      style={{ cursor: "pointer" }}
-                                      color="#FF0000"
-                                      size={20}
-                                    />
-                                  </MDBox>
-                                ) : (
-                                  "—"
+            <div className="overflow-x-auto">
+              <table className="w-full table-fixed border-collapse" style={{ minWidth: invoicePrefix ? 960 : 720 }}>
+                <colgroup>
+                  {(invoicePrefix
+                    ? ["5%", "16%", "10%", "11%", "10%", "23%", "13%", "12%"] // wider Invoice No. for the fixed prefix
+                    : ["5%", "19%", "12%", "13%", "12%", "14%", "13%", "12%"]
+                  ).map((width, i) => (
+                    // eslint-disable-next-line react/no-array-index-key
+                    <col key={i} style={{ width }} />
+                  ))}
+                </colgroup>
+                <thead>
+                  <tr>
+                    <th className={`${head} text-center`}>#</th>
+                    <th className={`${head} text-left`}>Outlet</th>
+                    <th className={`${head} text-left`}>Area</th>
+                    <th className={`${head} text-left`}>Staff name</th>
+                    <th className={`${head} text-center`}>No. of item</th>
+                    <th className={`${head} text-center`}>Invoice no.</th>
+                    <th className={`${head} text-center`}>Invoice amount</th>
+                    <th className={`${head} text-center`}>Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {searchingOutlets ? (
+                    <tr><td colSpan={8} className="border-t border-slate-100 px-4 py-10 text-center text-[13px] text-slate-400">Searching outlets...</td></tr>
+                  ) : displayOutlets.length === 0 ? (
+                    <tr>
+                      <td colSpan={8} className="border-t border-slate-100 px-4 py-10 text-center text-[13px] text-slate-400">
+                        {outletSearch.trim()
+                          ? "No outlets match this search on this staff's routes."
+                          : `No pending outlets for ${dayName}. Use Search Outlet above to find routes from other weekdays.`}
+                      </td>
+                    </tr>
+                  ) : (
+                    displayOutlets.map((outlet, outletIndex) => {
+                      const rows = salesData[outletKey(outlet.id)] || [];
+                      const isManualEntry = manualOutletIds.includes(outletKey(outlet.id));
+                      return rows.map((row, index) => {
+                        const rowBorder = index === 0 ? "border-t border-slate-200" : "border-t border-slate-100";
+                        const approved = approvedOutletIds.has(Number(outlet.id));
+                        return (
+                          // eslint-disable-next-line react/no-array-index-key
+                          <tr key={`${outlet.id}-${index}`} className={isManualEntry ? "bg-blue-50/40" : "hover:bg-slate-50/70"}>
+                            <td className={`${cell} ${rowBorder} text-center text-slate-400`}>
+                              {index === 0 ? outletIndex + 1 : `${outletIndex + 1}.${index + 1}`}
+                            </td>
+                            {index === 0 && (
+                              <td rowSpan={rows.length} className={`${cell} border-t border-slate-200`}>
+                                <span className="block truncate font-semibold text-slate-900" title={outlet.outlet_name}>{outlet.outlet_name}</span>
+                                <span className="block font-mono text-[11.5px] text-slate-500">{outlet.outlet_erp_id}</span>
+                                {outletApprovalLabel(outlet) && (
+                                  <span
+                                    className={`mt-1 inline-flex items-center gap-1 text-[11px] font-semibold ${approved ? "text-emerald-700" : "text-amber-700"}`}
+                                    title={approved
+                                      ? "Admin approved this outlet for this date. Save the bill as usual (one time)."
+                                      : isOtherDate
+                                      ? "Sales for a date other than today need admin approval."
+                                      : `Not in today's (${todayDayName()}) bit. Admin approval is needed to add a sale.`}
+                                  >
+                                    <Icon name={approved ? "verified" : "schedule"} className="text-[14px]" />
+                                    {outletApprovalLabel(outlet)}
+                                  </span>
                                 )}
-                              </TableCell>
-                            </TableRow>
-                          ))}
-                        </TableBody>
-                      </Table>
-                    </TableContainer>
-                  </MDBox>
+                              </td>
+                            )}
+                            {index === 0 && <td rowSpan={rows.length} className={`${cell} border-t border-slate-200 text-slate-600`}>{outlet.location_name || "N/A"}</td>}
+                            {index === 0 && <td rowSpan={rows.length} className={`${cell} border-t border-slate-200 text-slate-600`}>{selectedStaff?.name || "N/A"}</td>}
+                            <td className={`${cell} ${rowBorder} text-center`}>
+                              {isManualEntry && (
+                                <input type="number" min={1} aria-label="No. of item" className={`${fieldClass} h-9 text-center`} value={row.itemCount || ""} onChange={(e) => handleManualSalesChange(outlet.id, index, "itemCount", e.target.value)} />
+                              )}
+                            </td>
+                            <td className={`${cell} ${rowBorder} text-center`}>
+                              {isManualEntry && (
+                                <div className="relative">
+                                  {invoicePrefixTag(invoicePrefix)}
+                                  <input
+                                    aria-label="Invoice no." className={`${fieldClass} h-9`} style={prefixPad(invoicePrefix)}
+                                    value={getInvoiceSuffix(row.invoiceNumber, invoicePrefix)}
+                                    onChange={(e) =>
+                                      handleManualSalesChange(
+                                        outlet.id,
+                                        index,
+                                        "invoiceNumber",
+                                        invoicePrefix ? buildInvoiceNumber(e.target.value, invoicePrefix) : e.target.value
+                                      )
+                                    }
+                                  />
+                                </div>
+                              )}
+                            </td>
+                            <td className={`${cell} ${rowBorder} text-center`}>
+                              {isManualEntry && (
+                                <input type="number" min={0} step="0.01" aria-label="Invoice amount" className={`${fieldClass} h-9 text-right`} value={row.price || ""} onChange={(e) => handleManualSalesChange(outlet.id, index, "price", e.target.value)} />
+                              )}
+                            </td>
+                            <td className={`${cell} ${rowBorder} text-center`}>
+                              {isManualEntry ? (
+                                <span className="inline-flex flex-wrap justify-center gap-1">
+                                  <button type="button" className={`${smallBtn} border-blue-200 bg-white text-blue-600 hover:bg-blue-50`} onClick={() => handleAddManualRow(outlet.id)} disabled={submitting} title="Add row" aria-label="Add row">
+                                    <Icon name="add" className="text-[18px]" />
+                                  </button>
+                                  {rows.length > 1 && (
+                                    <button type="button" className={`${smallBtn} border-transparent text-red-500 hover:bg-red-50`} onClick={() => handleRemoveManualRow(outlet.id, index)} disabled={submitting} title="Remove row" aria-label="Remove row">
+                                      <Icon name="remove" className="text-[18px]" />
+                                    </button>
+                                  )}
+                                  {index === rows.length - 1 && (
+                                    <button type="button" className={`${smallBtn} border-emerald-600 bg-emerald-600 text-white hover:bg-emerald-700`} onClick={() => handleSaveManualOutlet(outlet.id)} disabled={submitting} title="Save" aria-label="Save">
+                                      <Icon name="check" className="text-[18px]" />
+                                    </button>
+                                  )}
+                                  {index === rows.length - 1 && (
+                                    <button type="button" className={`${smallBtn} border-red-200 bg-white text-red-600 hover:bg-red-50`} onClick={() => cancelManualEntry(outlet.id)} disabled={submitting} title="Cancel" aria-label="Cancel">
+                                      <Icon name="close" className="text-[18px]" />
+                                    </button>
+                                  )}
+                                </span>
+                              ) : (
+                                <button type="button" className={`${btn.primary} h-8 px-4`} onClick={() => openBillChoiceDialog(outlet, index)} disabled={submitting}>
+                                  <Icon name="add_shopping_cart" className="text-[16px]" />Sales
+                                </button>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      });
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </Card>
+        )}
+
+        {showNoDayOutletsHint && (
+          <Notice tone="info" className="mb-5">
+            {isCnfStaff
+              ? "No CNF outlets for this staff. Search by outlet name in the box above."
+              : `No outlets on ${dayName} for this staff. Search by outlet name in the box above to record a sale from another weekday's route.`}
+          </Notice>
+        )}
+
+        {!showEntryTable && (
+          <div className="rounded-2xl border border-dashed border-slate-300 bg-white px-6 py-14 text-center">
+            <Icon name="storefront" className="text-[36px] text-slate-300" />
+            <p className="m-0 mt-2 text-[14px] font-semibold text-slate-700">Choose a staff type, company and marketing person</p>
+            <p className="m-0 mt-1 text-[12.5px] text-slate-500">Their outlets for the selected date appear here.</p>
+          </div>
+        )}
+
+        {submittedSummary && (
+          <Card>
+            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 px-4 py-3">
+              <div>
+                <h3 className="m-0 text-[15px] font-semibold text-slate-900">Submitted Details</h3>
+                <p className="m-0 mt-0.5 text-[12.5px] text-slate-500">
+                  {submittedSummary.dayName} · {submittedSummary.staffName} · {(submittedSummary.sales || []).length} bill(s) ·
+                  {" "}₹{(submittedSummary.sales || []).reduce((sum, sale) => sum + (Number(sale.amount) || 0), 0).toFixed(2)}
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {(submittedSummary.sales || []).some((sale) => isDetailedBill(sale)) && (
+                  <button
+                    type="button" className={btn.outline}
+                    onClick={() => {
+                      const sales = attachLineItemsToSales(submittedSummary.sales || []).filter(isDetailedBill);
+                      const byOutlet = new Map();
+                      sales.forEach((sale) => {
+                        const key = outletKey(sale.outletId);
+                        if (!byOutlet.has(key)) byOutlet.set(key, []);
+                        byOutlet.get(key).push(sale);
+                      });
+                      const groups = Array.from(byOutlet.values());
+                      if (!groups.length) {
+                        alert("No invoices available to download.");
+                        return;
+                      }
+                      groups.forEach((outletSales, index) => {
+                        const first = outletSales[0];
+                        setTimeout(() => {
+                          printSalesInvoicePdf({
+                            outletName: first.shopName,
+                            outletErpId: first.outletErpId,
+                            locationName: first.locationName,
+                            saleDate: submittedSummary.date
+                              ? new Date(`${submittedSummary.date}T12:00:00`).toLocaleDateString("en-IN")
+                              : selectedDate,
+                            staffName: submittedSummary.staffName || "",
+                            companyName: submittedSummary.companyName || "",
+                            invoices: outletSales,
+                          });
+                        }, index * 500);
+                      });
+                    }}
+                  >
+                    <Icon name="picture_as_pdf" className="text-[18px] text-blue-600" />Download PDF
+                  </button>
                 )}
-
-
-              </MDBox>
-            </Card>
-          </Grid>
-        </Grid>
-      </MDBox>
+                <button type="button" className={btn.outline} onClick={() => printSalesStickers(submittedSummary.sales)}>
+                  <Icon name="label" className="text-[18px]" />Print Stickers
+                </button>
+              </div>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[820px] table-fixed border-collapse">
+                <colgroup>
+                  {["6%", "18%", "12%", "14%", "11%", "13%", "12%", "12%", "10%"].map((width, i) => (
+                    // eslint-disable-next-line react/no-array-index-key
+                    <col key={i} style={{ width }} />
+                  ))}
+                </colgroup>
+                <thead>
+                  <tr>
+                    <th className={`${head} text-center`}>#</th>
+                    <th className={`${head} text-left`}>Outlet</th>
+                    <th className={`${head} text-left`}>Area</th>
+                    <th className={`${head} text-left`}>Marketing person</th>
+                    <th className={`${head} text-center`}>No. of item</th>
+                    <th className={`${head} text-center`}>Invoice</th>
+                    <th className={`${head} text-center`}>Sticker</th>
+                    <th className={`${head} text-right`}>Amount</th>
+                    <th className={`${head} text-center`}>Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {submittedSummary.sales.map((row, index) => (
+                    // eslint-disable-next-line react/no-array-index-key
+                    <tr key={row.id || index} className="hover:bg-slate-50/70">
+                      <td className={`${cell} border-t border-slate-100 text-center text-slate-400`}>{index + 1}</td>
+                      <td className={`${cell} border-t border-slate-100`}>
+                        <span className="block truncate font-semibold text-slate-900" title={row.shopName}>{row.shopName}</span>
+                        <span className="block font-mono text-[11.5px] text-slate-500">{row.outletErpId || "—"}</span>
+                      </td>
+                      <td className={`${cell} border-t border-slate-100 text-slate-600`}>{row.locationName || "N/A"}</td>
+                      <td className={`${cell} border-t border-slate-100 text-slate-600`}>{row.staffName || "N/A"}</td>
+                      <td className={`${cell} border-t border-slate-100 text-center tabular-nums`}>{row.itemCount || "N/A"}</td>
+                      <td className={`${cell} border-t border-slate-100 truncate text-center font-mono`}>{row.invoiceNumber}</td>
+                      <td className={`${cell} border-t border-slate-100 text-center font-semibold`}>{row.stickerNumber}</td>
+                      <td className={`${cell} border-t border-slate-100 whitespace-nowrap text-right font-semibold tabular-nums text-slate-900`}>{`₹${Number(row.amount).toFixed(2)}`}</td>
+                      <td className={`${cell} border-t border-slate-100 text-center`}>
+                        {row.id ? (
+                          <span className="inline-flex gap-0.5">
+                            {isDetailedBill(row) && (
+                              <button type="button" className={`${btn.icon} text-blue-600 hover:bg-blue-50 hover:text-blue-700`} title="Download PDF" aria-label="Download PDF" onClick={() => downloadOutletInvoicePdf(row)}>
+                                <Icon name="picture_as_pdf" className="text-[19px]" />
+                              </button>
+                            )}
+                            <button type="button" className={`${btn.icon} text-amber-600 hover:bg-amber-50 hover:text-amber-700`} title="Edit" aria-label="Edit" onClick={() => (isDetailedBill(row) ? openEditSaleDialog(row) : openManualEditDialog(row))}>
+                              <Icon name="edit" className="text-[19px]" />
+                            </button>
+                            <button type="button" className={`${btn.icon} text-red-500 hover:bg-red-50 hover:text-red-600`} title="Delete" aria-label="Delete" onClick={() => handleDeleteSale(row.id)}>
+                              <Icon name="delete" className="text-[19px]" />
+                            </button>
+                          </span>
+                        ) : "—"}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </Card>
+        )}
+      </div>
 
       <SalesInvoiceDialog
         open={invoiceDialog.open}
@@ -2307,41 +1835,40 @@ function AddSales() {
         onSubmit={handleInvoiceSubmit}
       />
 
-      <Dialog open={billChoiceDialog.open} onClose={closeBillChoiceDialog} maxWidth="xs" fullWidth>
-        <DialogTitle>Create Bill?</DialogTitle>
-        <DialogContent dividers>
-          <MDTypography variant="body2" color="text">
-            Do you want to create a detailed sales bill for this outlet? Choose No to enter No. of Item, Invoice No., and Invoice Amount manually.
-          </MDTypography>
-        </DialogContent>
-        <DialogActions>
-          <MDButton color="secondary" variant="outlined" onClick={chooseManualEntry}>
-            No, Manual Entry
-          </MDButton>
-          <MDButton color="info" variant="gradient" onClick={chooseCreateBill}>
-            Yes, Create Bill
-          </MDButton>
-        </DialogActions>
-      </Dialog>
+      {/* Detailed bill or manual entry? */}
+      <Modal
+        open={billChoiceDialog.open} onClose={closeBillChoiceDialog} title="Create Bill?"
+        actions={(
+          <>
+            <button type="button" className={btn.outline} onClick={chooseManualEntry}>No, Manual Entry</button>
+            <button type="button" className={btn.primary} onClick={chooseCreateBill}>Yes, Create Bill</button>
+          </>
+        )}
+      >
+        <p className="m-0 text-[13.5px] text-slate-600">
+          Do you want to create a detailed sales bill for this outlet? Choose No to enter No. of Item, Invoice No., and Invoice Amount manually.
+        </p>
+      </Modal>
 
-      <Dialog open={manualEditDialog.open} onClose={savingEdit ? undefined : closeManualEditDialog} maxWidth="xs" fullWidth>
-        <DialogTitle>Edit Manual Entry</DialogTitle>
-        <DialogContent dividers>
-          <Grid container spacing={2} pt={0.5}>
-            <Grid item xs={12}>
-              <MDInput
-                label="No. of Item"
-                type="number"
-                fullWidth
-                inputProps={{ min: 1 }}
-                value={manualEditDialog.itemCount}
-                onChange={(e) => setManualEditDialog((prev) => ({ ...prev, itemCount: e.target.value }))}
-              />
-            </Grid>
-            <Grid item xs={12}>
-              <MDInput
-                label="Invoice No."
-                fullWidth
+      {/* Edit a manual entry */}
+      <Modal
+        open={manualEditDialog.open} onClose={closeManualEditDialog} locked={savingEdit} title="Edit Manual Entry"
+        actions={(
+          <>
+            <button type="button" className={btn.ghost} onClick={closeManualEditDialog} disabled={savingEdit}>Cancel</button>
+            <button type="button" className={btn.primary} onClick={handleManualEditSave} disabled={savingEdit}>{savingEdit ? "Saving..." : "Save Changes"}</button>
+          </>
+        )}
+      >
+        <div className="space-y-3">
+          <Field label="No. of item" width="w-full">
+            <input type="number" min={1} className={fieldClass} value={manualEditDialog.itemCount} onChange={(e) => setManualEditDialog((prev) => ({ ...prev, itemCount: e.target.value }))} />
+          </Field>
+          <Field label="Invoice no." width="w-full">
+            <span className="relative block">
+              {invoicePrefixTag(editInvoicePrefix)}
+              <input
+                className={fieldClass} style={prefixPad(editInvoicePrefix)}
                 value={getInvoiceSuffix(manualEditDialog.invoiceNumber, editInvoicePrefix)}
                 onChange={(e) => {
                   const typed = e.target.value;
@@ -2350,217 +1877,176 @@ function AddSales() {
                     invoiceNumber: editInvoicePrefix ? buildInvoiceNumber(typed, editInvoicePrefix) : typed,
                   }));
                 }}
-                InputProps={invoicePrefixAdornment(editInvoicePrefix)}
               />
-            </Grid>
-            <Grid item xs={12}>
-              <MDInput
-                label="Invoice Amount"
-                type="number"
-                fullWidth
-                inputProps={{ min: 0, step: "0.01" }}
-                value={manualEditDialog.price}
-                onChange={(e) => setManualEditDialog((prev) => ({ ...prev, price: e.target.value }))}
-              />
-            </Grid>
-          </Grid>
-        </DialogContent>
-        <DialogActions>
-          <MDButton color="secondary" variant="outlined" onClick={closeManualEditDialog} disabled={savingEdit}>
-            Cancel
-          </MDButton>
-          <MDButton color="info" variant="gradient" onClick={handleManualEditSave} disabled={savingEdit}>
-            {savingEdit ? "Saving..." : "Save Changes"}
-          </MDButton>
-        </DialogActions>
-      </Dialog>
+            </span>
+          </Field>
+          <Field label="Invoice amount" width="w-full">
+            <input type="number" min={0} step="0.01" className={fieldClass} value={manualEditDialog.price} onChange={(e) => setManualEditDialog((prev) => ({ ...prev, price: e.target.value }))} />
+          </Field>
+        </div>
+      </Modal>
 
-      <Dialog
-        open={permissionDialog.open}
-        onClose={submitting ? undefined : closePermissionDialog}
-        maxWidth="md"
-        fullWidth
+      {/* Overdue credit: permission note / admin request / own 7-day permission */}
+      <Modal
+        open={permissionDialog.open} onClose={closePermissionDialog} locked={submitting} size="lg"
+        title={permissionDialog.selfApproval
+          ? "Reason Required — Overdue Credit (7 Days Permission)"
+          : permissionDialog.approvalRequired
+            ? "Admin Approval Required — Overdue Credit"
+            : "Permission Required — Overdue Credit"}
+        actions={(
+          <>
+            <button type="button" className={btn.ghost} onClick={closePermissionDialog} disabled={submitting || permissionDialog.sendingRequest}>
+              {permissionDialog.approvalRequired ? "Close" : "Cancel"}
+            </button>
+            {permissionDialog.approvalRequired ? (
+              <>
+                {anyRequestPending && (
+                  <button type="button" className={`${btn.icon} text-blue-600`} title="Check approval status" aria-label="Check approval status" onClick={refreshOverdueRequests}>
+                    <Icon name="refresh" className="text-[20px]" />
+                  </button>
+                )}
+                {needsNewRequest && (
+                  <button type="button" className={`${btn.primary} bg-amber-500 hover:bg-amber-600`} onClick={handleSendOverdueRequest} disabled={permissionDialog.sendingRequest || !String(permissionDialog.permissionNote || "").trim()}>
+                    <Icon name="send" className="text-[17px]" />{permissionDialog.sendingRequest ? "Sending..." : "Send Request"}
+                  </button>
+                )}
+                <button type="button" className={`${btn.primary} bg-emerald-600 hover:bg-emerald-700`} onClick={handleCreateApprovedSales} disabled={submitting || !allRequestsApproved}>
+                  <Icon name={allRequestsApproved ? "check_circle" : "lock"} className="text-[17px]" />{overdueCancelDialog.saving ? "Saving..." : "Create Sales"}
+                </button>
+              </>
+            ) : (
+              <button type="button" className={`${btn.primary} bg-amber-500 hover:bg-amber-600`} onClick={handleGrantPermissionAndSave} disabled={submitting || !String(permissionDialog.permissionNote || "").trim()}>
+                {submitting ? "Saving..." : permissionDialog.selfApproval ? "Add Sales with Reason" : "Grant Permission & Save"}
+              </button>
+            )}
+          </>
+        )}
       >
-        <DialogTitle>
+        <p className="m-0 mb-4 text-[13px] text-slate-600">
           {permissionDialog.selfApproval
-            ? "Reason Required — Overdue Credit (7 Days Permission)"
+            ? `This ERP ID has credit overdue by ${permissionDialog.selfApproveDays} days or less. With your 7 days overdue permission you can add the sale by giving a reason — no admin approval needed. Admin will see the reason.`
             : permissionDialog.approvalRequired
-              ? "Admin Approval Required — Overdue Credit"
-              : "Permission Required — Overdue Credit"}
-        </DialogTitle>
-        <DialogContent dividers>
-          <MDTypography variant="body2" color="text" mb={2}>
-            {permissionDialog.selfApproval
-              ? `This ERP ID has credit overdue by ${permissionDialog.selfApproveDays} days or less. With your 7 days overdue permission you can add the sale by giving a reason — no admin approval needed. Admin will see the reason.`
-              : permissionDialog.approvalRequired
-                ? permissionDialog.serverMessage
-                  || "This ERP ID has credit overdue by more than 3 days. Send a request to admin. Once admin approves it, you can create the sales for this date."
-                : "This ERP ID has credit overdue by more than 3 days. Permission note is required to add a new sale for the same ERP ID. This permission will be stored in the database."}
-          </MDTypography>
-
+              ? permissionDialog.serverMessage
+                || "This ERP ID has credit overdue by more than 3 days. Send a request to admin. Once admin approves it, you can create the sales for this date."
+              : "This ERP ID has credit overdue by more than 3 days. Permission note is required to add a new sale for the same ERP ID. This permission will be stored in the database."}
+        </p>
+        <div className="space-y-3">
           {(permissionDialog.overdueOutlets || []).map((outlet) => {
             const request = requestByOutlet.get(Number(outlet.outletId));
             const statusInfo = request ? REQUEST_STATUS[request.status] : null;
             return (
-              <MDBox
-                key={`${outlet.outletId}-${outlet.outletErpId}`}
-                mb={2}
-                p={2}
-                sx={{ backgroundColor: "#fff7f7", border: "1px solid #fecaca", borderRadius: "8px" }}
-              >
-                <MDBox display="flex" justifyContent="space-between" alignItems="center" flexWrap="wrap" gap={1}>
-                  <MDTypography variant="button" fontWeight="bold" color="error">
-                    ERP: {outlet.outletErpId} — {outlet.outletName}
-                  </MDTypography>
-                  {permissionDialog.approvalRequired && statusInfo && (
-                    <MDBadge badgeContent={statusInfo.label} color={statusInfo.color} variant="gradient" size="sm" container />
-                  )}
-                </MDBox>
-                <MDTypography variant="caption" display="block" color="text" mb={1}>
-                  Max overdue: {outlet.maxOverdueDays} day(s)
-                </MDTypography>
+              <div key={`${outlet.outletId}-${outlet.outletErpId}`} className="rounded-xl border border-red-200 bg-red-50/50 p-3.5">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span className="text-[13px] font-bold text-red-800">ERP: {outlet.outletErpId} — {outlet.outletName}</span>
+                  {permissionDialog.approvalRequired && statusInfo && <Badge tone={statusInfo.color}>{statusInfo.label}</Badge>}
+                </div>
+                <p className="m-0 mb-1.5 mt-0.5 text-[12px] text-slate-600">Max overdue: <b>{outlet.maxOverdueDays} day(s)</b></p>
                 {(outlet.credits || []).map((credit) => (
-                  <MDTypography key={credit.creditPaymentId} variant="caption" display="block" color="text">
+                  <p key={credit.creditPaymentId} className="m-0 text-[12px] text-slate-600">
                     Invoice {credit.invoiceNumber || "-"} | Balance ₹{Number(credit.balanceAmount || 0).toFixed(2)} | Due{" "}
                     {credit.dueDate || "-"} | Overdue {credit.overdueDays} day(s)
                     {credit.creditStaffName ? ` | Staff: ${credit.creditStaffName}` : ""}
-                  </MDTypography>
+                  </p>
                 ))}
                 {permissionDialog.approvalRequired && request && (
-                  <MDTypography variant="caption" display="block" color="text" mt={1}>
+                  <p className="m-0 mt-1.5 text-[12px] text-slate-600">
                     Request #{request.id} by {request.requested_by_name || "-"}: {request.request_note}
                     {request.review_note ? ` | Admin: ${request.review_note}` : ""}
-                  </MDTypography>
+                  </p>
                 )}
-              </MDBox>
+              </div>
             );
           })}
+        </div>
+        {(!permissionDialog.approvalRequired || needsNewRequest) && (
+          <label className="mt-4 flex flex-col gap-1">
+            <span className={label}>
+              {permissionDialog.selfApproval
+                ? "Reason for adding this sale *"
+                : permissionDialog.approvalRequired
+                  ? "Reason for request *"
+                  : "Permission note *"}
+            </span>
+            <textarea rows={2} required className={`${fieldClass} h-auto py-2`} value={permissionDialog.permissionNote} onChange={(e) => setPermissionDialog((prev) => ({ ...prev, permissionNote: e.target.value }))} />
+          </label>
+        )}
+        {permissionDialog.approvalRequired && anyRequestPending && (
+          <p className="m-0 mt-2 text-[12px] text-slate-500">This checks for approval every 15 seconds. You can also close this and submit the same sale again after approval.</p>
+        )}
+      </Modal>
 
-          {(!permissionDialog.approvalRequired || needsNewRequest) && (
-            <MDBox mt={1}>
-              <MDInput
-                label={
-                  permissionDialog.selfApproval
-                    ? "Reason for adding this sale *"
-                    : permissionDialog.approvalRequired
-                      ? "Reason for request *"
-                      : "Permission note *"
-                }
-                fullWidth
-                multiline
-                rows={2}
-                required
-                value={permissionDialog.permissionNote}
-                onChange={(e) =>
-                  setPermissionDialog((prev) => ({ ...prev, permissionNote: e.target.value }))
-                }
-              />
-            </MDBox>
-          )}
-          {permissionDialog.approvalRequired && anyRequestPending && (
-            <MDTypography variant="caption" display="block" color="text" mt={1}>
-              This checks for approval every 15 seconds. You can also close this and submit the same sale again after approval.
-            </MDTypography>
-          )}
-        </DialogContent>
-        <DialogActions>
-          <MDButton
-            color="secondary"
-            variant="outlined"
-            onClick={closePermissionDialog}
-            disabled={submitting || permissionDialog.sendingRequest}
-          >
-            {permissionDialog.approvalRequired ? "Close" : "Cancel"}
-          </MDButton>
-          {permissionDialog.approvalRequired ? (
-            <>
-              {anyRequestPending && (
-                <Tooltip title="Check approval status">
-                  <IconButton color="info" onClick={refreshOverdueRequests}>
-                    <Icon>refresh</Icon>
-                  </IconButton>
-                </Tooltip>
-              )}
-              {needsNewRequest && (
-                <MDButton
-                  color="warning"
-                  variant="gradient"
-                  onClick={handleSendOverdueRequest}
-                  disabled={permissionDialog.sendingRequest || !String(permissionDialog.permissionNote || "").trim()}
-                >
-                  <Icon sx={{ mr: 0.75 }}>send</Icon>
-                  {permissionDialog.sendingRequest ? "Sending..." : "Send Request"}
-                </MDButton>
-              )}
-              <MDButton
-                color="success"
-                variant="gradient"
-                onClick={handleCreateApprovedSales}
-                disabled={submitting || !allRequestsApproved}
-              >
-                <Icon sx={{ mr: 0.75 }}>{allRequestsApproved ? "check_circle" : "lock"}</Icon>
+      {/* Outlet overdue by 14+ days: send to staff / admin, own permission, or cancel the invoice */}
+      <Modal
+        open={overdueCancelDialog.open} onClose={closeOverdueCancel} locked={overdueCancelDialog.saving} size="lg"
+        title={overdueCancelDialog.entering
+          ? "Cancel Invoice — Enter Invoice Number"
+          : overdueCancelDialog.sendingToAdmin
+            ? "Send to Admin — Enter Reason"
+            : overdueCancelDialog.ownPermission
+              ? "Own Permission — Enter Reason"
+              : "Outlet Overdue by More Than 13 Days"}
+        actions={(
+          <div className="flex flex-wrap justify-end gap-2">
+            <button type="button" className={btn.ghost} disabled={overdueCancelDialog.saving} onClick={closeOverdueCancel}>Close</button>
+            {overdueCancelDialog.entering ? (
+              <button type="button" className={btn.danger} disabled={overdueCancelDialog.saving} onClick={handleCancelOverdueInvoices}>
+                {overdueCancelDialog.saving ? "Cancelling..." : "Confirm Cancel"}
+              </button>
+            ) : overdueCancelDialog.sendingToAdmin ? (
+              <button type="button" className={btn.primary} disabled={overdueCancelDialog.saving} onClick={handleSendOverdueToAdmin}>
+                {overdueCancelDialog.saving ? "Sending..." : "Confirm Send to Admin"}
+              </button>
+            ) : overdueCancelDialog.ownPermission ? (
+              <button type="button" className={`${btn.primary} bg-emerald-600 hover:bg-emerald-700`} disabled={overdueCancelDialog.saving} onClick={handleOwnPermissionSave}>
                 {overdueCancelDialog.saving ? "Saving..." : "Create Sales"}
-              </MDButton>
-            </>
-          ) : (
-            <MDButton
-              color="warning"
-              variant="gradient"
-              onClick={handleGrantPermissionAndSave}
-              disabled={submitting || !String(permissionDialog.permissionNote || "").trim()}
-            >
-              {submitting ? "Saving..." : permissionDialog.selfApproval ? "Add Sales with Reason" : "Grant Permission & Save"}
-            </MDButton>
-          )}
-        </DialogActions>
-      </Dialog>
-
-      <Dialog
-        open={overdueCancelDialog.open}
-        onClose={overdueCancelDialog.saving ? undefined : () => setOverdueCancelDialog(emptyOverdueCancelDialog)}
-        maxWidth="sm"
-        fullWidth
+              </button>
+            ) : (
+              <>
+                <button type="button" className={btn.outline} disabled={overdueCancelDialog.saving} onClick={handleSendOverdueToStaff}>
+                  {overdueCancelDialog.saving ? "Sending..." : "Send to Marketing Staff"}
+                </button>
+                <button type="button" className={btn.primary} disabled={overdueCancelDialog.saving} onClick={() => setOverdueCancelDialog((prev) => ({ ...prev, sendingToAdmin: true, error: "" }))}>
+                  Send to Admin
+                </button>
+                {overdueCancelDialog.canOwnPermission && (
+                  <button type="button" className={`${btn.primary} bg-emerald-600 hover:bg-emerald-700`} disabled={overdueCancelDialog.saving} onClick={() => setOverdueCancelDialog((prev) => ({ ...prev, ownPermission: true, error: "" }))}>
+                    Own Permission
+                  </button>
+                )}
+                <button type="button" className={btn.danger} disabled={overdueCancelDialog.saving} onClick={() => setOverdueCancelDialog((prev) => ({ ...prev, entering: true, error: "" }))}>
+                  Cancel Invoice
+                </button>
+              </>
+            )}
+          </div>
+        )}
       >
-        <DialogTitle>
-          {overdueCancelDialog.entering
-            ? "Cancel Invoice — Enter Invoice Number"
-            : overdueCancelDialog.sendingToAdmin
-              ? "Send to Admin — Enter Reason"
-              : overdueCancelDialog.ownPermission
-                ? "Own Permission — Enter Reason"
-                : "Outlet Overdue by More Than 13 Days"}
-        </DialogTitle>
-        <DialogContent dividers>
+        <div className="mb-4 space-y-2">
           {overdueCancelDialog.outlets.map((outlet) => (
-            <MDBox
-              key={outlet.outletId}
-              mb={2}
-              p={2}
-              sx={{ backgroundColor: "#fff7f7", border: "1px solid #fecaca", borderRadius: "8px" }}
-            >
-              <MDTypography variant="button" fontWeight="bold" color="error" display="block">
-                ERP: {outlet.outletErpId} — {outlet.outletName}
-              </MDTypography>
-              <MDTypography variant="caption" display="block" color="text">
+            <div key={outlet.outletId} className="rounded-xl border border-red-200 bg-red-50/50 p-3.5">
+              <span className="block text-[13px] font-bold text-red-800">ERP: {outlet.outletErpId} — {outlet.outletName}</span>
+              <span className="block text-[12px] text-slate-600">
                 Overdue {outlet.maxOverdueDays} day(s) · ₹
                 {(outlet.credits || [])
                   .reduce((total, credit) => total + (Number(credit.balanceAmount) || 0), 0)
                   .toLocaleString("en-IN", { maximumFractionDigits: 2 })}
-              </MDTypography>
-            </MDBox>
+              </span>
+            </div>
           ))}
-          {overdueCancelDialog.entering ? (
-            <>
-              <MDTypography variant="body2" color="text" mb={2}>
-                The invoice goes to Delivered → Cancelled Items with the reason &quot;Cancelled due to overdue&quot;.
-                No stock is taken.
-              </MDTypography>
+        </div>
+        {overdueCancelDialog.entering ? (
+          <>
+            <p className="m-0 mb-3 text-[13px] text-slate-600">
+              The invoice goes to Delivered → Cancelled Items with the reason &quot;Cancelled due to overdue&quot;.
+              No stock is taken.
+            </p>
+            <div className="space-y-3">
               {overdueCancelDialog.sales.map((sale, index) => (
-                <MDBox key={`${sale.outletId}-${index}`} mb={2}>
-                  <MDInput
-                    label="Invoice number *"
-                    fullWidth
-                    value={sale.invoiceNumber || ""}
+                // eslint-disable-next-line react/no-array-index-key
+                <Field key={`${sale.outletId}-${index}`} label="Invoice number *" width="w-full" hint={`Amount ₹${Number(sale.price || 0).toFixed(2)} · ${sale.itemCount} item(s)`}>
+                  <input
+                    className={fieldClass} value={sale.invoiceNumber || ""}
                     onChange={(event) => {
                       const { value } = event.target;
                       setOverdueCancelDialog((prev) => ({
@@ -2569,120 +2055,49 @@ function AddSales() {
                       }));
                     }}
                   />
-                  <MDTypography variant="caption" color="text">
-                    Amount ₹{Number(sale.price || 0).toFixed(2)} · {sale.itemCount} item(s)
-                  </MDTypography>
-                </MDBox>
+                </Field>
               ))}
-            </>
-          ) : overdueCancelDialog.sendingToAdmin ? (
-            <>
-              <MDTypography variant="body2" color="text" mb={2}>
-                If admin approves, the sale is created automatically (stock is deducted then). If admin rejects, the
-                invoice goes to Delivered → Cancelled Items.
-              </MDTypography>
-              <MDInput
-                label="Reason *"
-                fullWidth
-                multiline
-                rows={2}
-                value={overdueCancelDialog.adminNote}
+            </div>
+          </>
+        ) : overdueCancelDialog.sendingToAdmin ? (
+          <>
+            <p className="m-0 mb-3 text-[13px] text-slate-600">
+              If admin approves, the sale is created automatically (stock is deducted then). If admin rejects, the
+              invoice goes to Delivered → Cancelled Items.
+            </p>
+            <label className="flex flex-col gap-1">
+              <span className={label}>Reason *</span>
+              <textarea
+                rows={2} className={`${fieldClass} h-auto py-2`} value={overdueCancelDialog.adminNote}
                 onChange={(event) => {
                   const { value } = event.target;
                   setOverdueCancelDialog((prev) => ({ ...prev, adminNote: value }));
                 }}
               />
-            </>
-          ) : overdueCancelDialog.ownPermission ? (
-            <>
-              <MDTypography variant="body2" color="text" mb={2}>
-                The sale is created now on your own permission, without admin approval (stock is deducted). Admin
-                will see your name and this reason under Overdue Requests.
-              </MDTypography>
-              <MDInput
-                label="Reason for own permission *"
-                fullWidth
-                multiline
-                rows={2}
-                value={overdueCancelDialog.ownNote}
+            </label>
+          </>
+        ) : overdueCancelDialog.ownPermission ? (
+          <>
+            <p className="m-0 mb-3 text-[13px] text-slate-600">
+              The sale is created now on your own permission, without admin approval (stock is deducted). Admin
+              will see your name and this reason under Overdue Requests.
+            </p>
+            <label className="flex flex-col gap-1">
+              <span className={label}>Reason for own permission *</span>
+              <textarea
+                rows={2} className={`${fieldClass} h-auto py-2`} value={overdueCancelDialog.ownNote}
                 onChange={(event) => {
                   const { value } = event.target;
                   setOverdueCancelDialog((prev) => ({ ...prev, ownNote: value, error: "" }));
                 }}
               />
-            </>
-          ) : (
-            <MDTypography variant="body2" color="text">
-              This invoice cannot be billed. Choose what to do with it.
-            </MDTypography>
-          )}
-          {overdueCancelDialog.error && (
-            <MDTypography variant="caption" color="error" display="block" mt={1}>
-              {overdueCancelDialog.error}
-            </MDTypography>
-          )}
-        </DialogContent>
-        <DialogActions sx={{ flexWrap: "wrap", rowGap: 1 }}>
-          <MDButton
-            color="secondary"
-            variant="outlined"
-            disabled={overdueCancelDialog.saving}
-            onClick={() => setOverdueCancelDialog(emptyOverdueCancelDialog)}
-          >
-            Close
-          </MDButton>
-          {overdueCancelDialog.entering ? (
-            <MDButton color="error" variant="gradient" disabled={overdueCancelDialog.saving} onClick={handleCancelOverdueInvoices}>
-              {overdueCancelDialog.saving ? "Cancelling..." : "Confirm Cancel"}
-            </MDButton>
-          ) : overdueCancelDialog.sendingToAdmin ? (
-            <MDButton color="info" variant="gradient" disabled={overdueCancelDialog.saving} onClick={handleSendOverdueToAdmin}>
-              {overdueCancelDialog.saving ? "Sending..." : "Confirm Send to Admin"}
-            </MDButton>
-          ) : overdueCancelDialog.ownPermission ? (
-            <MDButton color="success" variant="gradient" disabled={overdueCancelDialog.saving} onClick={handleOwnPermissionSave}>
-              {overdueCancelDialog.saving ? "Saving..." : "Create Sales"}
-            </MDButton>
-          ) : (
-            <>
-              <MDButton
-                color="info"
-                variant="outlined"
-                disabled={overdueCancelDialog.saving}
-                onClick={handleSendOverdueToStaff}
-              >
-                {overdueCancelDialog.saving ? "Sending..." : "Send to Marketing Staff"}
-              </MDButton>
-              <MDButton
-                color="info"
-                variant="gradient"
-                disabled={overdueCancelDialog.saving}
-                onClick={() => setOverdueCancelDialog((prev) => ({ ...prev, sendingToAdmin: true, error: "" }))}
-              >
-                Send to Admin
-              </MDButton>
-              {overdueCancelDialog.canOwnPermission && (
-                <MDButton
-                  color="success"
-                  variant="gradient"
-                  disabled={overdueCancelDialog.saving}
-                  onClick={() => setOverdueCancelDialog((prev) => ({ ...prev, ownPermission: true, error: "" }))}
-                >
-                  Own Permission
-                </MDButton>
-              )}
-              <MDButton
-                color="error"
-                variant="gradient"
-                disabled={overdueCancelDialog.saving}
-                onClick={() => setOverdueCancelDialog((prev) => ({ ...prev, entering: true, error: "" }))}
-              >
-                Cancel Invoice
-              </MDButton>
-            </>
-          )}
-        </DialogActions>
-      </Dialog>
+            </label>
+          </>
+        ) : (
+          <p className="m-0 text-[13px] text-slate-600">This invoice cannot be billed. Choose what to do with it.</p>
+        )}
+        {overdueCancelDialog.error && <Notice tone="error" className="mt-3">{overdueCancelDialog.error}</Notice>}
+      </Modal>
 
       <OtherDayBitDialog
         open={otherDayDialog.open}

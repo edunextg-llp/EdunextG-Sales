@@ -1,9 +1,9 @@
+// Company type + company filter for sales lists (Delivery Manager pages): Tailwind CSS (no MUI).
 import { useMemo, useState } from "react";
 import PropTypes from "prop-types";
-import { Box, FormControl, InputLabel, Select, MenuItem } from "@mui/material";
-import CompanyTypeSelect from "components/CompanyFilter/CompanyTypeSelect";
 import { getSaleCompanyOptions } from "utils/companyFilter";
-import { useCompanyTypeLookup } from "utils/companyTypes";
+import { COMPANY_TYPES, useCompanyTypeLookup } from "utils/companyTypes";
+import { Field, fieldClass } from "components/tw";
 
 function CompanyFilter({ rows, value, onChange, id }) {
   const [companyType, setCompanyType] = useState("");
@@ -20,32 +20,21 @@ function CompanyFilter({ rows, value, onChange, id }) {
   };
 
   return (
-    <Box display="flex" gap={1} width="100%">
-      <Box flex={1} minWidth={0}>
-        <CompanyTypeSelect id={`${id}-type`} value={companyType} onChange={handleTypeChange} />
-      </Box>
-      <Box flex={1} minWidth={0}>
-        <FormControl size="small" fullWidth>
-          <InputLabel id={`${id}-label`}>Company</InputLabel>
-          <Select
-            labelId={`${id}-label`}
-            id={id}
-            label="Company"
-            value={value}
-            onChange={(event) => onChange(event.target.value)}
-            sx={{ height: 44, backgroundColor: "#fff" }}
-          >
-            <MenuItem value="">All Companies</MenuItem>
-            {value && !options.some((option) => option.id === value) && (
-              <MenuItem value={value}>{`Company ${value}`}</MenuItem>
-            )}
-            {options.map((company) => (
-              <MenuItem key={company.id} value={company.id}>{company.name}</MenuItem>
-            ))}
-          </Select>
-        </FormControl>
-      </Box>
-    </Box>
+    <div className="flex w-full gap-2">
+      <Field label="Company type" width="min-w-0 flex-1">
+        <select id={`${id}-type`} className={fieldClass} value={companyType} onChange={(event) => handleTypeChange(event.target.value)}>
+          <option value="">All types</option>
+          {COMPANY_TYPES.map((type) => <option key={type.value} value={type.value}>{type.label}</option>)}
+        </select>
+      </Field>
+      <Field label="Company" width="min-w-0 flex-1">
+        <select id={id} className={fieldClass} value={value} onChange={(event) => onChange(event.target.value)}>
+          <option value="">All companies</option>
+          {value && !options.some((option) => option.id === value) && <option value={value}>{`Company ${value}`}</option>}
+          {options.map((company) => <option key={company.id} value={company.id}>{company.name}</option>)}
+        </select>
+      </Field>
+    </div>
   );
 }
 

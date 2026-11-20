@@ -1,5 +1,6 @@
 // Shared Tailwind CSS building blocks for pages moved off MUI (Permissions, Areas, ...).
 import { useEffect, useId, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import PropTypes from "prop-types";
 
 // Material Icons font (loaded in public/index.html), same icons as before.
@@ -36,6 +37,7 @@ const NOTICE_TONES = {
   error: { cls: "border-red-200 bg-red-50 text-red-800", icon: "error_outline" },
   success: { cls: "border-emerald-200 bg-emerald-50 text-emerald-800", icon: "check_circle" },
   info: { cls: "border-blue-200 bg-blue-50 text-blue-800", icon: "info" },
+  warning: { cls: "border-amber-200 bg-amber-50 text-amber-800", icon: "warning_amber" },
 };
 export function Notice({ tone, children, onClose, className }) {
   const t = NOTICE_TONES[tone];
@@ -68,7 +70,8 @@ export function Modal({ open, onClose, title, children, actions, locked, size })
     return () => document.removeEventListener("keydown", onKey);
   }, [open, onClose, locked]);
   if (!open) return null;
-  return (
+  // Rendered at the end of <body> so it always sits above the page (and any MUI dialog still in use).
+  return createPortal((
     <div className="fixed inset-0 z-[1300] flex items-center justify-center p-4">
       <button type="button" aria-label="Close" onClick={() => { if (!locked) onClose(); }} className="absolute inset-0 bg-slate-900/40 backdrop-blur-[2px]" />
       <div role="dialog" aria-modal="true" className={`relative w-full ${MODAL_SIZES[size]} overflow-hidden rounded-2xl bg-white font-[Poppins,Roboto,sans-serif] text-slate-700 shadow-2xl`}>
@@ -77,10 +80,10 @@ export function Modal({ open, onClose, title, children, actions, locked, size })
         <div className="flex justify-end gap-2 border-t border-slate-100 bg-slate-50 px-5 py-3">{actions}</div>
       </div>
     </div>
-  );
+  ), document.body);
 }
 Modal.propTypes = {
-  open: PropTypes.bool.isRequired, onClose: PropTypes.func.isRequired, title: PropTypes.string.isRequired,
+  open: PropTypes.bool.isRequired, onClose: PropTypes.func.isRequired, title: PropTypes.node.isRequired,
   children: PropTypes.node.isRequired, actions: PropTypes.node.isRequired, locked: PropTypes.bool, size: PropTypes.oneOf(["md", "lg", "xl"]),
 };
 Modal.defaultProps = { locked: false, size: "md" };
@@ -238,3 +241,133 @@ SearchSelect.propTypes = {
   loading: PropTypes.bool,
 };
 SearchSelect.defaultProps = { value: null, placeholder: "Search…", disabled: false, noOptionsText: "No matches", label: "", loading: false };
+
+// Segmented switch (Pending / Approved / ...). options: [[value, label]].
+export function Segmented({ options, value, onChange, label }) {
+  return (
+    <div className="inline-flex flex-wrap gap-1 rounded-xl bg-slate-100 p-1" role="tablist" aria-label={label}>
+      {options.map(([v, text]) => (
+        <button
+          key={v} type="button" role="tab" aria-selected={value === v} onClick={() => onChange(v)}
+          className={`rounded-lg px-3 py-1.5 text-[12.5px] font-semibold transition ${value === v ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-800"}`}
+        >
+          {text}
+        </button>
+      ))}
+    </div>
+  );
+}
+Segmented.propTypes = {
+  options: PropTypes.arrayOf(PropTypes.arrayOf(PropTypes.node)).isRequired,
+  value: PropTypes.oneOfType([PropTypes.string, PropTypes.number]).isRequired,
+  onChange: PropTypes.func.isRequired,
+  label: PropTypes.string,
+};
+Segmented.defaultProps = { label: "Filter" };
+
+// Status pill. tone: green | amber | red | blue | violet | slate.
+const BADGE_TONES = {
+  green: "bg-emerald-50 text-emerald-700",
+  amber: "bg-amber-50 text-amber-700",
+  red: "bg-red-50 text-red-700",
+  blue: "bg-blue-50 text-blue-700",
+  violet: "bg-violet-50 text-violet-700",
+  slate: "bg-slate-100 text-slate-600",
+};
+// Common request statuses -> tone.
+export const STATUS_TONE = {
+  pending: "amber", awaiting_staff: "amber", open: "amber",
+  approved: "green", used: "blue", done: "green", active: "green",
+  rejected: "red", cancelled: "red", expired: "red",
+};
+export function Badge({ tone, children, icon }) {
+  return (
+    <span className={`inline-flex items-center gap-1 whitespace-nowrap rounded-full px-2 py-0.5 text-[11.5px] font-semibold ${BADGE_TONES[tone] || BADGE_TONES.slate}`}>
+      {icon && <Icon name={icon} className="text-[14px]" />}
+      {children}
+    </span>
+  );
+}
+Badge.propTypes = { tone: PropTypes.string, children: PropTypes.node.isRequired, icon: PropTypes.string };
+Badge.defaultProps = { tone: "slate", icon: "" };
+
+// Search box with icon.
+export function SearchBox({ value, onChange, placeholder, className }) {
+  return (
+    <div className={`relative ${className}`}>
+      <Icon name="search" className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-[18px] text-slate-400" />
+      <input type="search" value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} aria-label={placeholder} className={`${fieldClass} pl-8`} />
+    </div>
+  );
+}
+SearchBox.propTypes = { value: PropTypes.string.isRequired, onChange: PropTypes.func.isRequired, placeholder: PropTypes.string, className: PropTypes.string };
+SearchBox.defaultProps = { placeholder: "Search", className: "w-full max-w-xs" };
+
+// Empty / loading placeholders inside a card.
+export function EmptyState({ icon, text }) {
+  return (
+    <div className="flex flex-col items-center gap-1.5 py-14 text-center">
+      <Icon name={icon} className="text-[34px] text-slate-300" />
+      <p className="m-0 text-[13px] text-slate-500">{text}</p>
+    </div>
+  );
+}
+EmptyState.propTypes = { icon: PropTypes.string, text: PropTypes.node.isRequired };
+EmptyState.defaultProps = { icon: "inbox" };
+
+// Pagination footer: "Showing 1 to 10 of 52", rows per page, page buttons.
+export function Pagination({ page, totalPages, total, onPageChange, limit, onLimitChange, options }) {
+  const start = total <= 0 ? 0 : (page - 1) * limit + 1;
+  const end = Math.min(page * limit, total);
+  // Page numbers around the current page: 1 … 4 5 6 … 12
+  const pages = [];
+  for (let p = 1; p <= totalPages; p += 1) {
+    if (p === 1 || p === totalPages || Math.abs(p - page) <= 1) pages.push(p);
+    else if (pages[pages.length - 1] !== "…") pages.push("…");
+  }
+  const pageButton = "inline-flex size-8 items-center justify-center rounded-lg text-[12.5px] font-semibold transition disabled:cursor-not-allowed disabled:opacity-40";
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 px-4 py-3 text-[12.5px] text-slate-500">
+      <div className="flex flex-wrap items-center gap-3">
+        <span>Showing <b className="text-slate-700">{start}</b> to <b className="text-slate-700">{end}</b> of <b className="text-slate-700">{total}</b></span>
+        {onLimitChange && (
+          <label className="flex items-center gap-1.5">
+            Rows
+            <select className={`${fieldClass} h-8 w-auto px-2`} value={limit} onChange={(e) => onLimitChange(Number(e.target.value))}>
+              {options.map((n) => <option key={n} value={n}>{n}</option>)}
+            </select>
+          </label>
+        )}
+      </div>
+      <div className="flex items-center gap-1">
+        <button type="button" className={`${pageButton} text-slate-500 hover:bg-slate-100`} disabled={page <= 1} onClick={() => onPageChange(page - 1)} aria-label="Previous page">
+          <Icon name="chevron_left" className="text-[18px]" />
+        </button>
+        {pages.map((p, i) => (p === "…" ? (
+          // eslint-disable-next-line react/no-array-index-key
+          <span key={`gap-${i}`} className="px-1 text-slate-400">…</span>
+        ) : (
+          <button
+            key={p} type="button" onClick={() => onPageChange(p)} aria-current={p === page ? "page" : undefined}
+            className={`${pageButton} ${p === page ? "bg-blue-600 text-white" : "text-slate-600 hover:bg-slate-100"}`}
+          >
+            {p}
+          </button>
+        )))}
+        <button type="button" className={`${pageButton} text-slate-500 hover:bg-slate-100`} disabled={page >= totalPages} onClick={() => onPageChange(page + 1)} aria-label="Next page">
+          <Icon name="chevron_right" className="text-[18px]" />
+        </button>
+      </div>
+    </div>
+  );
+}
+Pagination.propTypes = {
+  page: PropTypes.number.isRequired,
+  totalPages: PropTypes.number.isRequired,
+  total: PropTypes.number.isRequired,
+  onPageChange: PropTypes.func.isRequired,
+  limit: PropTypes.number,
+  onLimitChange: PropTypes.func,
+  options: PropTypes.arrayOf(PropTypes.number),
+};
+Pagination.defaultProps = { limit: 10, onLimitChange: null, options: [10, 25, 50, 100] };

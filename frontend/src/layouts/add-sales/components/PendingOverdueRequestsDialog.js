@@ -1,17 +1,14 @@
+// Overdue requests list (opened from Add Sales): Tailwind CSS (no MUI). Filter, search, create and review logic unchanged.
 import { useEffect, useMemo, useState } from "react";
 import PropTypes from "prop-types";
-import { Dialog, DialogContent, DialogTitle, IconButton, InputAdornment, TextField, Tooltip } from "@mui/material";
-import Icon from "@mui/material/Icon";
-
-import MDBox from "components/MDBox";
-import MDButton from "components/MDButton";
-import MDTypography from "components/MDTypography";
+import { Icon, Modal, SearchBox, btn } from "components/tw";
 import { formatDate, formatDateTime, money, overdueBalance } from "layouts/overdue-requests/components/ReviewDialog";
 
+// Status look: card accent (left border) + pill.
 const STATUS = {
-  awaiting_staff: { label: "With marketing staff", accent: "#2563eb", bg: "#eff6ff", text: "#1d4ed8" },
-  pending: { label: "Pending", accent: "#f59e0b", bg: "#fffbeb", text: "#b45309" },
-  approved: { label: "Approved", accent: "#16a34a", bg: "#f0fdf4", text: "#15803d" },
+  awaiting_staff: { label: "With marketing staff", accent: "border-l-blue-600", pill: "bg-blue-50 text-blue-700" },
+  pending: { label: "Pending", accent: "border-l-amber-500", pill: "bg-amber-50 text-amber-700" },
+  approved: { label: "Approved", accent: "border-l-emerald-600", pill: "bg-emerald-50 text-emerald-700" },
 };
 
 const FILTERS = [
@@ -21,31 +18,23 @@ const FILTERS = [
 ];
 
 const overdueTone = (days) => {
-  if (days >= 30) return { bg: "#fef2f2", text: "#b91c1c" };
-  if (days >= 10) return { bg: "#fff7ed", text: "#c2410c" };
-  return { bg: "#f3f4f6", text: "#374151" };
+  if (days >= 30) return "bg-red-50 text-red-700";
+  if (days >= 10) return "bg-orange-50 text-orange-700";
+  return "bg-slate-100 text-slate-700";
 };
 
-function Fact({ label, value, sub }) {
+function Fact({ label, children, sub }) {
   return (
-    <MDBox minWidth={0}>
-      <MDTypography variant="caption" sx={{ color: "#9ca3af", fontSize: "0.68rem", textTransform: "uppercase", letterSpacing: "0.04em" }}>
-        {label}
-      </MDTypography>
-      <MDTypography variant="button" display="block" fontWeight="medium" color="dark" sx={{ wordBreak: "break-word", lineHeight: 1.35, textTransform: "none" }}>
-        {value}
-      </MDTypography>
-      {sub && (
-        <MDTypography variant="caption" display="block" sx={{ color: "#6b7280" }}>
-          {sub}
-        </MDTypography>
-      )}
-    </MDBox>
+    <div className="min-w-0">
+      <span className="block text-[10.5px] font-semibold uppercase tracking-wide text-slate-400">{label}</span>
+      <span className="block break-words text-[13px] font-medium leading-snug text-slate-800">{children}</span>
+      {sub && <span className="block text-[11.5px] text-slate-500">{sub}</span>}
+    </div>
   );
 }
 
 Fact.defaultProps = { sub: null };
-Fact.propTypes = { label: PropTypes.string.isRequired, value: PropTypes.node.isRequired, sub: PropTypes.node };
+Fact.propTypes = { label: PropTypes.string.isRequired, children: PropTypes.node.isRequired, sub: PropTypes.node };
 
 function RequestCard({ request, isAdmin, creating, onCreate, onReview }) {
   const [expanded, setExpanded] = useState(false);
@@ -57,136 +46,67 @@ function RequestCard({ request, isAdmin, creating, onCreate, onReview }) {
   const invoices = (request.sales_summary?.invoiceNumbers || []).join(", ") || "—";
 
   return (
-    <MDBox
-      sx={{
-        border: "1px solid #e5e7eb",
-        borderLeft: `4px solid ${status.accent}`,
-        borderRadius: "10px",
-        backgroundColor: "#fff",
-        p: 2,
-        "&:hover": { boxShadow: "0 2px 8px rgba(15, 23, 42, 0.06)" },
-      }}
-    >
+    <div className={`rounded-xl border border-l-4 border-slate-200 bg-white p-4 transition hover:shadow-sm ${status.accent}`}>
       {/* Outlet + status */}
-      <MDBox display="flex" justifyContent="space-between" alignItems="flex-start" gap={1.5} flexWrap="wrap">
-        <MDBox minWidth={0}>
-          <MDTypography variant="h6" sx={{ fontSize: "0.95rem", lineHeight: 1.3 }}>
-            {request.outlet_name || "Outlet"}
-          </MDTypography>
-          <MDTypography variant="caption" sx={{ color: "#6b7280" }}>
-            ERP {request.outlet_erp_id || "—"} · Request #{request.id}
-          </MDTypography>
-        </MDBox>
-        <MDBox
-          component="span"
-          sx={{
-            px: 1.25,
-            py: 0.4,
-            borderRadius: "999px",
-            fontSize: "0.72rem",
-            fontWeight: 700,
-            backgroundColor: status.bg,
-            color: status.text,
-            border: `1px solid ${status.accent}33`,
-            whiteSpace: "nowrap",
-          }}
-        >
-          {status.label}
-        </MDBox>
-      </MDBox>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h4 className="m-0 text-[14.5px] font-semibold leading-snug text-slate-900">{request.outlet_name || "Outlet"}</h4>
+          <span className="text-[12px] text-slate-500">ERP {request.outlet_erp_id || "—"} · Request #{request.id}</span>
+        </div>
+        <span className={`whitespace-nowrap rounded-full px-2.5 py-0.5 text-[11.5px] font-bold ${status.pill}`}>{status.label}</span>
+      </div>
 
       {/* Key facts */}
-      <MDBox
-        mt={1.5}
-        sx={{ display: "grid", gap: 1.5, gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))" }}
-      >
-        <Fact label="Staff" value={request.staff_name || `Staff #${request.staff_id}`} />
-        <Fact label="Sale date" value={formatDate(request.sale_date)} />
-        <Fact
-          label="Invoice"
-          value={invoices}
-          sub={request.sales_summary ? money(request.sales_summary.totalAmount) : null}
-        />
-        <MDBox>
-          <MDTypography variant="caption" sx={{ color: "#9ca3af", fontSize: "0.68rem", textTransform: "uppercase", letterSpacing: "0.04em" }}>
-            Overdue
-          </MDTypography>
-          <MDBox display="flex" alignItems="center" gap={0.75} flexWrap="wrap">
-            <MDBox
-              component="span"
-              sx={{ px: 1, py: 0.25, borderRadius: "6px", fontSize: "0.78rem", fontWeight: 700, backgroundColor: tone.bg, color: tone.text }}
-            >
-              {days} day{days === 1 ? "" : "s"}
-            </MDBox>
-          </MDBox>
-          <MDTypography variant="caption" display="block" sx={{ color: "#6b7280" }}>
-            Due {money(overdueBalance(request))}
-          </MDTypography>
-        </MDBox>
-      </MDBox>
+      <div className="mt-3 grid grid-cols-[repeat(auto-fit,minmax(120px,1fr))] gap-3">
+        <Fact label="Staff">{request.staff_name || `Staff #${request.staff_id}`}</Fact>
+        <Fact label="Sale date">{formatDate(request.sale_date)}</Fact>
+        <Fact label="Invoice" sub={request.sales_summary ? money(request.sales_summary.totalAmount) : null}>{invoices}</Fact>
+        <div>
+          <span className="block text-[10.5px] font-semibold uppercase tracking-wide text-slate-400">Overdue</span>
+          <span className={`inline-block rounded-md px-2 py-0.5 text-[12px] font-bold ${tone}`}>{days} day{days === 1 ? "" : "s"}</span>
+          <span className="block text-[11.5px] text-slate-500">Due {money(overdueBalance(request))}</span>
+        </div>
+      </div>
 
       {/* Reason */}
       {note && (
-        <MDBox mt={1.5} p={1.25} sx={{ backgroundColor: "#f9fafb", borderRadius: "8px", border: "1px solid #f1f5f9" }}>
-          <MDBox display="flex" gap={0.75} alignItems="flex-start">
-            <Icon sx={{ fontSize: "1rem !important", color: "#9ca3af", mt: "2px" }}>format_quote</Icon>
-            <MDTypography
-              variant="caption"
-              sx={{
-                color: "#374151",
-                fontSize: "0.8rem",
-                whiteSpace: "pre-wrap",
-                wordBreak: "break-word",
-                ...(!expanded && longNote
-                  ? { display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }
-                  : {}),
-              }}
-            >
-              {note}
-            </MDTypography>
-          </MDBox>
+        <div className="mt-3 rounded-lg border border-slate-100 bg-slate-50 p-2.5">
+          <div className="flex items-start gap-1.5">
+            <Icon name="format_quote" className="mt-0.5 text-[16px] text-slate-400" />
+            <span className={`whitespace-pre-wrap break-words text-[12.5px] text-slate-700 ${!expanded && longNote ? "line-clamp-2" : ""}`}>{note}</span>
+          </div>
           {longNote && (
-            <MDTypography
-              component="button"
-              type="button"
-              variant="caption"
-              onClick={() => setExpanded((value) => !value)}
-              sx={{ border: 0, background: "none", p: 0, ml: 3, mt: 0.5, color: "#1A73E8", fontWeight: 600, cursor: "pointer" }}
-            >
+            <button type="button" onClick={() => setExpanded((value) => !value)} className="ml-6 mt-1 cursor-pointer border-0 bg-transparent p-0 text-[12px] font-semibold text-blue-600">
               {expanded ? "Show less" : "Show more"}
-            </MDTypography>
+            </button>
           )}
-        </MDBox>
+        </div>
       )}
 
       {/* Footer */}
-      <MDBox mt={1.5} display="flex" justifyContent="space-between" alignItems="center" gap={1} flexWrap="wrap">
-        <MDTypography variant="caption" sx={{ color: "#6b7280" }}>
-          <Icon sx={{ fontSize: "0.9rem !important", verticalAlign: "middle", mr: 0.5 }}>person</Icon>
+      <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+        <span className="inline-flex items-center gap-1 text-[12px] text-slate-500">
+          <Icon name="person" className="text-[15px]" />
           {request.requested_by_name || "—"} · {formatDateTime(request.created_at)}
           {request.status === "approved" && request.reviewed_by_name ? ` · approved by ${request.reviewed_by_name}` : ""}
-        </MDTypography>
-        <MDBox display="flex" gap={1}>
+        </span>
+        <div className="flex gap-2">
           {request.status === "approved" && (
-            <MDButton size="small" variant="gradient" color="success" disabled={creating} onClick={() => onCreate(request)}>
-              <Icon sx={{ mr: 0.5 }}>add_task</Icon>
-              {creating ? "Creating..." : "Create invoice"}
-            </MDButton>
+            <button type="button" className={`${btn.primary} h-8 bg-emerald-600 px-3 hover:bg-emerald-700`} disabled={creating} onClick={() => onCreate(request)}>
+              <Icon name="add_task" className="text-[16px]" />{creating ? "Creating..." : "Create invoice"}
+            </button>
           )}
           {isAdmin && request.status === "pending" && (
             <>
-              <MDButton size="small" variant="outlined" color="error" onClick={() => onReview(request, "reject")}>
-                Reject
-              </MDButton>
-              <MDButton size="small" variant="gradient" color="success" onClick={() => onReview(request, "approve")}>
-                <Icon sx={{ mr: 0.5 }}>check</Icon>
-                Approve
-              </MDButton>
+              <button type="button" className={`${btn.outline} h-8 px-3 text-red-600`} onClick={() => onReview(request, "reject")}>Reject</button>
+              <button type="button" className={`${btn.primary} h-8 bg-emerald-600 px-3 hover:bg-emerald-700`} onClick={() => onReview(request, "approve")}>
+                <Icon name="check" className="text-[16px]" />Approve
+              </button>
             </>
           )}
-        </MDBox>
-      </MDBox>
-    </MDBox>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -227,101 +147,58 @@ function PendingOverdueRequestsDialog({ open, onClose, requests, onRefresh, isAd
   }, [requests, filter, search]);
 
   return (
-    <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth PaperProps={{ sx: { borderRadius: "14px" } }}>
-      <DialogTitle sx={{ pb: 1.5 }}>
-        <MDBox display="flex" alignItems="center" justifyContent="space-between" gap={1}>
-          <MDBox display="flex" alignItems="center" gap={1.25}>
-            <MDBox
-              sx={{ width: 36, height: 36, borderRadius: "10px", backgroundColor: "#fff7ed", display: "grid", placeItems: "center" }}
-            >
-              <Icon sx={{ color: "#f59e0b" }}>pending_actions</Icon>
-            </MDBox>
-            <MDBox>
-              <MDTypography variant="h6" lineHeight={1.2}>Overdue Requests</MDTypography>
-              <MDTypography variant="caption" sx={{ color: "#6b7280" }}>
-                {counts.pending} waiting for admin · {counts.approved} approved, ready to create
-              </MDTypography>
-            </MDBox>
-          </MDBox>
-          <MDBox display="flex">
-            <Tooltip title="Refresh">
-              <IconButton size="small" onClick={onRefresh}><Icon>refresh</Icon></IconButton>
-            </Tooltip>
-            <Tooltip title="Close">
-              <IconButton size="small" onClick={onClose}><Icon>close</Icon></IconButton>
-            </Tooltip>
-          </MDBox>
-        </MDBox>
-
-        <MDBox mt={2} display="flex" gap={1.5} alignItems="center" flexWrap="wrap" justifyContent="space-between">
-          <MDBox display="flex" gap={0.75} sx={{ backgroundColor: "#f3f4f6", p: 0.5, borderRadius: "10px" }}>
-            {FILTERS.map((option) => {
-              const active = filter === option.value;
-              return (
-                <MDBox
-                  key={option.value}
-                  component="button"
-                  type="button"
-                  onClick={() => setFilter(option.value)}
-                  sx={{
-                    border: 0,
-                    cursor: "pointer",
-                    px: 1.5,
-                    py: 0.6,
-                    borderRadius: "8px",
-                    fontSize: "0.8rem",
-                    fontWeight: 600,
-                    backgroundColor: active ? "#fff" : "transparent",
-                    color: active ? "#111827" : "#6b7280",
-                    boxShadow: active ? "0 1px 3px rgba(0,0,0,0.08)" : "none",
-                  }}
-                >
-                  {option.label} <span style={{ opacity: 0.6 }}>({counts[option.value]})</span>
-                </MDBox>
-              );
-            })}
-          </MDBox>
-          <TextField
-            size="small"
-            placeholder="Search outlet, staff, invoice"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            sx={{ minWidth: { xs: "100%", sm: 260 } }}
-            InputProps={{
-              startAdornment: (
-                <InputAdornment position="start">
-                  <Icon sx={{ color: "#9ca3af" }}>search</Icon>
-                </InputAdornment>
-              ),
-            }}
-          />
-        </MDBox>
-      </DialogTitle>
-
-      <DialogContent dividers sx={{ backgroundColor: "#f8fafc", p: 2 }}>
-        {visible.length === 0 ? (
-          <MDBox py={6} textAlign="center">
-            <Icon sx={{ fontSize: "2.5rem !important", color: "#d1d5db" }}>task_alt</Icon>
-            <MDTypography variant="button" display="block" color="text" mt={1}>
-              {requests.length === 0 ? "No overdue requests right now." : "Nothing matches this filter."}
-            </MDTypography>
-          </MDBox>
-        ) : (
-          <MDBox display="flex" flexDirection="column" gap={1.5}>
-            {visible.map((request) => (
-              <RequestCard
-                key={request.id}
-                request={request}
-                isAdmin={isAdmin}
-                creating={creatingRequestId === request.id}
-                onCreate={onCreate}
-                onReview={onReview}
-              />
-            ))}
-          </MDBox>
+    <Modal
+      open={open} onClose={onClose} size="xl"
+        title={(
+          <span className="flex items-center justify-between gap-2">
+            <span className="flex items-center gap-2.5">
+              <span className="flex size-9 items-center justify-center rounded-xl bg-amber-50 text-amber-600"><Icon name="pending_actions" className="text-[20px]" /></span>
+              <span>
+                <span className="block leading-tight">Overdue Requests</span>
+                <span className="block text-[12px] font-normal text-slate-500">{counts.pending} waiting for admin · {counts.approved} approved, ready to create</span>
+              </span>
+            </span>
+            <button type="button" className={btn.icon} title="Refresh" aria-label="Refresh" onClick={onRefresh}><Icon name="refresh" className="text-[20px]" /></button>
+          </span>
         )}
-      </DialogContent>
-    </Dialog>
+      actions={<button type="button" className={btn.ghost} onClick={onClose}>Close</button>}
+    >
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+        <div className="inline-flex gap-1 rounded-xl bg-slate-100 p-1" role="tablist" aria-label="Request filter">
+          {FILTERS.map((option) => {
+            const active = filter === option.value;
+            return (
+              <button
+                key={option.value} type="button" role="tab" aria-selected={active} onClick={() => setFilter(option.value)}
+                className={`rounded-lg px-3 py-1.5 text-[12.5px] font-semibold transition ${active ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-800"}`}
+              >
+                {option.label} <span className="opacity-60">({counts[option.value]})</span>
+              </button>
+            );
+          })}
+        </div>
+        <SearchBox value={search} onChange={setSearch} placeholder="Search outlet, staff, invoice" className="w-full sm:w-64" />
+      </div>
+      {visible.length === 0 ? (
+        <div className="py-12 text-center">
+          <Icon name="task_alt" className="text-[40px] text-slate-300" />
+          <p className="m-0 mt-1 text-[13px] text-slate-500">{requests.length === 0 ? "No overdue requests right now." : "Nothing matches this filter."}</p>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {visible.map((request) => (
+            <RequestCard
+              key={request.id}
+              request={request}
+              isAdmin={isAdmin}
+              creating={creatingRequestId === request.id}
+              onCreate={onCreate}
+              onReview={onReview}
+            />
+          ))}
+        </div>
+      )}
+    </Modal>
   );
 }
 

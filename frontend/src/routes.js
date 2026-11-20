@@ -4,11 +4,6 @@ import Area from "./layouts/area/index.js";
 import CreateRoute from "./layouts/create-route/index.js";
 import PermissionManagement from "layouts/permission-management";
 import Welcome from "layouts/welcome";
-// import Tables from "layouts/tables";
-// import Billing from "layouts/billing";
-// import RTL from "layouts/rtl";
-// import Notifications from "layouts/notifications";
-// import Profile from "layouts/profile";
 // import SignIn from "layouts/authentication/sign-in";i
 // import SignUp from "layouts/authentication/sign-up";
 import CreateStaff from "layouts/create-staff";
@@ -254,22 +249,6 @@ const routes = [
       // },
     ],
   },
-  // {
-  //   type: "collapse",
-  //   name: "Tables",
-  //   key: "tables",
-  //   icon: <Icon fontSize="small">table_view</Icon>,
-  //   route: "/tables",
-  //   component: <Tables />,
-  // },
-  // {
-  //   type: "collapse",
-  //   name: "Billing",
-  //   key: "billing",
-  //   icon: <Icon fontSize="small">receipt_long</Icon>,
-  //   route: "/billing",
-  //   component: <Billing />,
-  // },
   {
     type: "collapse",
     name: "Staff Management",
@@ -652,22 +631,6 @@ const routes = [
     allowedRoles: ["admin", "packaging_staff", "bawarchee_staff", "delivery_boy"],
     requiredPermission: "out_bill",
   },
-  // {
-  //   type: "collapse",
-  //   name: "Notifications",
-  //   key: "notifications",
-  //   icon: <Icon fontSize="small">notifications</Icon>,
-  //   route: "/notifications",
-  //   component: <Notifications />,
-  // },
-  // {
-  //   type: "collapse",
-  //   name: "Profile",
-  //   key: "profile",
-  //   icon: <Icon fontSize="small">person</Icon>,
-  //   route: "/profile",
-  //   component: <Profile />,
-  // },
   // {
   //   type: "collapse",
   //   name: "Sign In",

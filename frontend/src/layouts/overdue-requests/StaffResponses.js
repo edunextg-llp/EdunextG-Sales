@@ -1,23 +1,21 @@
+// Marketing staff: their outlets overdue 14+ days (reason + days to pay). Tailwind CSS (no MUI); logic unchanged.
 import { useCallback, useEffect, useState } from "react";
-import { Alert, Card, Chip, FormControl, InputLabel, MenuItem, Select } from "@mui/material";
 
-import MDBox from "components/MDBox";
-import MDButton from "components/MDButton";
-import MDInput from "components/MDInput";
-import MDTypography from "components/MDTypography";
 import DashboardLayout from "examples/LayoutContainers/DashboardLayout";
 import DashboardNavbar from "examples/Navbars/DashboardNavbar";
 import Footer from "examples/Footer";
 import { formatDate, money, overdueBalance } from "layouts/overdue-requests/components/ReviewDialog";
+import { Badge, Card, EmptyState, Field, Icon, Notice, PageHeader, Spinner, btn, fieldClass } from "components/tw";
 
 const API = process.env.REACT_APP_API_URL;
 const DAYS = [1, 2, 3, 4, 5, 6, 7];
+// Status badge: [label, tone].
 const STATUS = {
-  awaiting_staff: { label: "Your response needed", color: "warning" },
-  pending: { label: "Waiting for approval", color: "info" },
-  approved: { label: "Approved", color: "success" },
-  used: { label: "Approved, sale created", color: "success" },
-  rejected: { label: "Rejected", color: "error" },
+  awaiting_staff: ["Your response needed", "amber"],
+  pending: ["Waiting for approval", "blue"],
+  approved: ["Approved", "green"],
+  used: ["Approved, sale created", "green"],
+  rejected: ["Rejected", "red"],
 };
 
 // Marketing staff: outlets overdue by 14+ days that need a reason and days to pay.
@@ -72,88 +70,73 @@ function StaffResponses() {
   return (
     <DashboardLayout>
       <DashboardNavbar />
-      <MDBox py={3}>
-        <MDBox mb={2}>
-          <MDTypography variant="h4" fontWeight="bold">Overdue Requests</MDTypography>
-          <MDTypography variant="button" color="text">
-            Your outlets overdue by 14 days or more. Give the reason and how many days the payment will take.
-          </MDTypography>
-        </MDBox>
-        {notice && <Alert severity="success" sx={{ mb: 2 }} onClose={() => setNotice("")}>{notice}</Alert>}
-        {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
-        {loading && <MDTypography variant="body2" color="text">Loading...</MDTypography>}
+      <div className="pb-8 font-[Poppins,Roboto,sans-serif] text-slate-700">
+        <PageHeader title="Overdue Requests" description="Your outlets overdue by 14 days or more. Give the reason and how many days the payment will take." />
+        {notice && <Notice tone="success" className="mb-4" onClose={() => setNotice("")}>{notice}</Notice>}
+        {error && <Notice tone="error" className="mb-4">{error}</Notice>}
+        {loading && <div className="flex justify-center py-14"><Spinner className="size-7" /></div>}
         {!loading && !error && requests.length === 0 && (
-          <Card>
-            <MDBox p={4} textAlign="center">
-              <MDTypography variant="button" color="text">No overdue requests for your outlets.</MDTypography>
-            </MDBox>
-          </Card>
+          <Card><EmptyState icon="task_alt" text="No overdue requests for your outlets." /></Card>
         )}
-        {requests.map((request) => {
-          const status = STATUS[request.status] || { label: request.status, color: "default" };
-          const draft = drafts[request.id] || { reason: "", paymentDays: "" };
-          const waiting = request.status === "awaiting_staff";
-          return (
-            <Card key={request.id} sx={{ mb: 2 }}>
-              <MDBox p={2.5}>
-                <MDBox display="flex" justifyContent="space-between" alignItems="center" flexWrap="wrap" gap={1}>
-                  <MDTypography variant="h6" fontWeight="medium">
-                    {request.outlet_name} · ERP {request.outlet_erp_id}
-                  </MDTypography>
-                  <Chip size="small" color={status.color} label={status.label} />
-                </MDBox>
-                <MDTypography variant="button" color="error" fontWeight="medium" display="block">
-                  Overdue {request.max_overdue_days} day(s) · {money(overdueBalance(request))}
-                </MDTypography>
-                <MDTypography variant="caption" color="text" display="block">
-                  New invoice {(request.sales_summary?.invoiceNumbers || []).join(", ") || "—"} for{" "}
-                  {money(request.sales_summary?.totalAmount)} · {formatDate(request.sale_date)}
-                </MDTypography>
-                {waiting ? (
-                  <MDBox display="flex" gap={2} flexWrap="wrap" alignItems="flex-start" mt={2}>
-                    <MDBox flex="1 1 320px">
-                      <MDInput
-                        label="Reason of overdue *"
-                        fullWidth
-                        multiline
-                        rows={2}
-                        inputProps={{ maxLength: 1000 }}
-                        value={draft.reason}
-                        onChange={(event) => setDraft(request.id, { reason: event.target.value })}
-                      />
-                    </MDBox>
-                    <FormControl sx={{ minWidth: 220 }}>
-                      <InputLabel id={`days-${request.id}`}>Days to complete payment *</InputLabel>
-                      <Select
-                        labelId={`days-${request.id}`}
-                        label="Days to complete payment *"
-                        value={draft.paymentDays}
-                        sx={{ height: 44 }}
-                        onChange={(event) => setDraft(request.id, { paymentDays: event.target.value })}
+        <div className="space-y-3">
+          {requests.map((request) => {
+            const [label, tone] = STATUS[request.status] || [request.status, "slate"];
+            const draft = drafts[request.id] || { reason: "", paymentDays: "" };
+            const waiting = request.status === "awaiting_staff";
+            return (
+              <Card key={request.id} className={waiting ? "ring-2 ring-amber-300/60" : ""}>
+                <div className="p-5">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="flex size-10 items-center justify-center rounded-xl bg-red-50 text-red-600"><Icon name="storefront" /></span>
+                    <span className="min-w-0 grow">
+                      <span className="block text-[15px] font-semibold text-slate-900">{request.outlet_name}</span>
+                      <span className="block font-mono text-[11.5px] text-slate-400">ERP {request.outlet_erp_id}</span>
+                    </span>
+                    <Badge tone={tone}>{label}</Badge>
+                  </div>
+                  <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                    <div className="rounded-xl bg-red-50 px-3 py-2">
+                      <span className="block text-[11px] font-semibold uppercase tracking-wide text-red-400">Overdue</span>
+                      <span className="block text-[14px] font-bold text-red-700">{request.max_overdue_days} day(s) · {money(overdueBalance(request))}</span>
+                    </div>
+                    <div className="rounded-xl bg-slate-50 px-3 py-2">
+                      <span className="block text-[11px] font-semibold uppercase tracking-wide text-slate-400">New invoice · {formatDate(request.sale_date)}</span>
+                      <span className="block text-[13px] font-semibold text-slate-800">
+                        {(request.sales_summary?.invoiceNumbers || []).join(", ") || "—"} for {money(request.sales_summary?.totalAmount)}
+                      </span>
+                    </div>
+                  </div>
+                  {waiting ? (
+                    <div className="mt-4 flex flex-wrap items-end gap-3">
+                      <label className="flex min-w-72 grow flex-col gap-1">
+                        <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Reason of overdue *</span>
+                        <textarea rows={2} maxLength={1000} className={`${fieldClass} h-auto py-2`} value={draft.reason} onChange={(event) => setDraft(request.id, { reason: event.target.value })} />
+                      </label>
+                      <Field label="Days to complete payment *" width="w-56">
+                        <select className={fieldClass} value={draft.paymentDays} onChange={(event) => setDraft(request.id, { paymentDays: event.target.value })}>
+                          <option value="" disabled>Choose days</option>
+                          {DAYS.map((day) => <option key={day} value={day}>{day} day{day === 1 ? "" : "s"}</option>)}
+                        </select>
+                      </Field>
+                      <button
+                        type="button" className={btn.primary} onClick={() => submit(request)}
+                        disabled={savingId === request.id || !draft.reason.trim() || !draft.paymentDays}
                       >
-                        {DAYS.map((day) => <MenuItem key={day} value={day}>{day} day{day === 1 ? "" : "s"}</MenuItem>)}
-                      </Select>
-                    </FormControl>
-                    <MDButton
-                      color="info"
-                      variant="gradient"
-                      disabled={savingId === request.id || !draft.reason.trim() || !draft.paymentDays}
-                      onClick={() => submit(request)}
-                    >
-                      {savingId === request.id ? "Submitting..." : "Submit"}
-                    </MDButton>
-                  </MDBox>
-                ) : (
-                  <MDTypography variant="caption" color="text" display="block" mt={1}>
-                    Your reason: {request.request_note} · Pay within {request.payment_days} day(s)
-                    {request.review_note ? ` · Note: ${request.review_note}` : ""}
-                  </MDTypography>
-                )}
-              </MDBox>
-            </Card>
-          );
-        })}
-      </MDBox>
+                        <Icon name="send" className="text-[17px]" />{savingId === request.id ? "Submitting..." : "Submit"}
+                      </button>
+                    </div>
+                  ) : (
+                    <p className="m-0 mt-3 text-[12.5px] text-slate-500">
+                      Your reason: <span className="text-slate-700">{request.request_note}</span> · Pay within {request.payment_days} day(s)
+                      {request.review_note ? ` · Note: ${request.review_note}` : ""}
+                    </p>
+                  )}
+                </div>
+              </Card>
+            );
+          })}
+        </div>
+      </div>
       <Footer />
     </DashboardLayout>
   );

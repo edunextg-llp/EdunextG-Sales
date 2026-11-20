@@ -1,14 +1,11 @@
+// Report > Download Report tab: Tailwind CSS (no MUI). Loading, timeline and PDF unchanged.
 import { useEffect, useState } from 'react';
 import ejs from 'ejs/ejs.min.js';
 import PropTypes from 'prop-types';
-import { Table, TableHead, TableBody, TableRow, TableCell, TableContainer, FormControl, InputLabel, Select, MenuItem, Chip, Checkbox, FormControlLabel } from '@mui/material';
-import MDBox from 'components/MDBox';
-import MDTypography from 'components/MDTypography';
-import MDInput from 'components/MDInput';
-import MDButton from 'components/MDButton';
 import { invoiceValue } from 'utils/assignmentReport';
 import { reportAreaName } from 'utils/areaName';
-import CompanyTypeSelect from "components/CompanyFilter/CompanyTypeSelect";
+import { COMPANY_TYPES } from 'utils/companyTypes';
+import { Badge, Field, Icon, Notice, btn, fieldClass } from 'components/tw';
 
 const pad = (value) => String(value).padStart(2, '0');
 const toIso = (date) => `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
@@ -200,61 +197,83 @@ export default function DeliveryStatusReport({ api }) {
   const sum = (list) => list.reduce((total, row) => total + invoiceValue(row), 0);
   const filtersOff = Boolean(invoiceQuery) || !companyId;
 
-  return <MDBox mt={2} p={2} sx={{ border: '1px solid #cbd5e1' }}>
-    <MDTypography variant="h6">Delivery Report Download</MDTypography>
-    <MDTypography variant="caption" display="block">Choose a company, or search one invoice number. Each bill shows its sales date, delivered / cancelled date and the total days between them. Dates filter on the delivered / cancelled date; with All statuses, bills not yet delivered are included by their sales date.</MDTypography>
-    <MDBox display="flex" gap={2} alignItems="center" my={2} flexWrap="wrap">
-      <MDBox sx={{ minWidth: 180 }}>
-        <CompanyTypeSelect id="delivery-report-company-type" value={companyType} onChange={handleCompanyTypeChange} disabled={Boolean(invoiceQuery)} />
-      </MDBox>
-      <FormControl size="small" sx={{ minWidth: 220 }}>
-        <InputLabel id="delivery-report-company-label">Company</InputLabel>
-        <Select labelId="delivery-report-company-label" label="Company" value={companyId} disabled={Boolean(invoiceQuery)} onChange={(event) => { setCompanyId(event.target.value); setError(''); }} sx={{ height: 44 }}>
-          {typedCompanies.map((item) => <MenuItem key={item.id} value={item.id}>{item.name}</MenuItem>)}
-          {!typedCompanies.length && <MenuItem disabled>No companies found</MenuItem>}
-        </Select>
-      </FormControl>
-      <MDInput type="date" label="From" InputLabelProps={{ shrink: true }} value={from} disabled={filtersOff || allTime} onChange={(event) => setFrom(event.target.value)} />
-      <MDInput type="date" label="To" InputLabelProps={{ shrink: true }} value={to} disabled={filtersOff || allTime} onChange={(event) => setTo(event.target.value)} />
-      <FormControlLabel label="All time" control={<Checkbox checked={allTime} disabled={filtersOff} onChange={(event) => setAllTime(event.target.checked)} />} />
-      <FormControl size="small" sx={{ minWidth: 200 }}>
-        <InputLabel id="delivery-report-status-label">Status</InputLabel>
-        <Select labelId="delivery-report-status-label" label="Status" value={status} disabled={filtersOff} onChange={(event) => setStatus(event.target.value)} sx={{ height: 44 }}>
-          {Object.entries(STATUS_FILTERS).map(([value, { label }]) => <MenuItem key={value} value={value}>{label}</MenuItem>)}
-        </Select>
-      </FormControl>
-      <MDInput label="Or invoice number" value={invoice} onChange={(event) => { setInvoice(event.target.value); setError(''); }}
-        onKeyDown={(event) => { if (event.key === 'Enter') load(); }} sx={{ minWidth: 200 }} />
-      <MDButton color="info" variant="outlined" onClick={load} disabled={loading || (!invoiceQuery && !companyId)}>{loading ? 'Loading…' : 'Show'}</MDButton>
-      <MDButton color="success" variant="gradient" onClick={download} disabled={loading || (!invoiceQuery && !companyId)}>Download PDF</MDButton>
-    </MDBox>
-    {error && <MDTypography color="error" variant="body2" role="alert">{error}</MDTypography>}
-    {shown && shown.length > 0 && <>
-      <MDTypography variant="button" display="block" mb={1}>
-        {shown.length} bills · Amount: {money(sum(shown))} · Delivered: {delivered.length} ({money(sum(delivered))}) · Cancelled: {cancelled.length} ({money(sum(cancelled))}){pending.length > 0 && ` · Not completed: ${pending.length} (${money(sum(pending))})`}
-      </MDTypography>
-      <TableContainer sx={{ maxHeight: '60vh' }}><Table size="small" stickyHeader sx={{ '& .MuiTableCell-root': { fontSize: '0.78rem', verticalAlign: 'top' } }}><TableHead sx={{ display: 'table-header-group' }}><TableRow>
-        {COLUMNS.map((label) => <TableCell key={label} sx={{ whiteSpace: 'nowrap' }}>{label}</TableCell>)}
-      </TableRow></TableHead><TableBody>
-        {shown.map((row, index) => {
-          const step = timeline(row);
-          return <TableRow key={row.id} hover>
-            <TableCell>{index + 1}</TableCell>
-            <TableCell>{row.invoice_number || row.id}</TableCell>
-            <TableCell>{row.outlet_name || '—'}</TableCell>
-            <TableCell>{reportAreaName(row.location_name)}</TableCell>
-            <TableCell>{row.staff_name || '—'}</TableCell>
-            <TableCell>{row.delivery_boy_name || '—'}</TableCell>
-            <TableCell align="right" sx={{ whiteSpace: 'nowrap' }}>{money(invoiceValue(row))}</TableCell>
-            <TableCell sx={{ whiteSpace: 'nowrap' }}>{step.saleDate}</TableCell>
-            <TableCell sx={{ whiteSpace: 'nowrap' }}>{step.completed}</TableCell>
-            <TableCell align="center" sx={{ whiteSpace: 'nowrap', fontWeight: 700 }}>{step.totalDays || '—'}</TableCell>
-            <TableCell><Chip size="small" variant="outlined" color={STATUS_COLOR[statusKey(row)] || 'default'} label={STATUS_LABEL[statusKey(row)] || row.packaging_status || '—'} /></TableCell>
-          </TableRow>;
-        })}
-      </TableBody></Table></TableContainer>
-    </>}
-    {shown && !shown.length && !invoiceQuery && <MDTypography variant="body2">No bills match this company, dates and status.</MDTypography>}
-  </MDBox>;
+const TONE = { warning: "amber", success: "green", error: "red", default: "slate" };
+  const th = "sticky top-0 z-[1] whitespace-nowrap bg-slate-50 px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500";
+  const td = "border-t border-slate-100 px-3 py-2 text-[12.5px] align-top";
+  return (
+    <section className="rounded-2xl border border-slate-200 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+      <div className="border-b border-slate-100 px-4 py-3">
+        <h3 className="m-0 text-[15px] font-semibold text-slate-900">Delivery Report Download</h3>
+        <p className="m-0 mt-0.5 text-[12.5px] text-slate-500">Choose a company, or search one invoice number. Each bill shows its sales date, delivered / cancelled date and the total days between them. Dates filter on the delivered / cancelled date; with All statuses, bills not yet delivered are included by their sales date.</p>
+      </div>
+      <div className="flex flex-wrap items-end gap-3 border-b border-slate-100 px-4 py-3">
+        <Field label="Company type" width="w-36">
+          <select id="delivery-report-company-type" className={fieldClass} value={companyType} disabled={Boolean(invoiceQuery)} onChange={(event) => handleCompanyTypeChange(event.target.value)}>
+            <option value="">All types</option>
+            {COMPANY_TYPES.map((type) => <option key={type.value} value={type.value}>{type.label}</option>)}
+          </select>
+        </Field>
+        <Field label="Company" width="w-52">
+          <select className={fieldClass} value={companyId} disabled={Boolean(invoiceQuery)} onChange={(event) => { setCompanyId(event.target.value); setError(''); }}>
+            <option value="" disabled>{typedCompanies.length ? 'Select company' : 'No companies found'}</option>
+            {typedCompanies.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
+          </select>
+        </Field>
+        <Field label="From" width="w-36"><input type="date" className={fieldClass} value={from} disabled={filtersOff || allTime} onChange={(event) => setFrom(event.target.value)} /></Field>
+        <Field label="To" width="w-36"><input type="date" className={fieldClass} value={to} disabled={filtersOff || allTime} onChange={(event) => setTo(event.target.value)} /></Field>
+        <label className="flex h-10 items-center gap-2 text-[13px] font-medium text-slate-700">
+          <input type="checkbox" className="size-4 accent-blue-600" checked={allTime} disabled={filtersOff} onChange={(event) => setAllTime(event.target.checked)} />All time
+        </label>
+        <Field label="Status" width="w-48">
+          <select className={fieldClass} value={status} disabled={filtersOff} onChange={(event) => setStatus(event.target.value)}>
+            {Object.entries(STATUS_FILTERS).map(([value, { label }]) => <option key={value} value={value}>{label}</option>)}
+          </select>
+        </Field>
+        <Field label="Or invoice number" width="w-48">
+          <input className={fieldClass} value={invoice} onChange={(event) => { setInvoice(event.target.value); setError(''); }} onKeyDown={(event) => { if (event.key === 'Enter') load(); }} />
+        </Field>
+        <button type="button" className={btn.outline} onClick={load} disabled={loading || (!invoiceQuery && !companyId)}><Icon name="visibility" className="text-[18px]" />{loading ? 'Loading…' : 'Show'}</button>
+        <button type="button" className={btn.primary} onClick={download} disabled={loading || (!invoiceQuery && !companyId)}><Icon name="picture_as_pdf" className="text-[18px]" />Download PDF</button>
+      </div>
+      {error && <div className="px-4 pt-3"><Notice tone="error">{error}</Notice></div>}
+      {shown && shown.length > 0 && (
+        <>
+          <div className="flex flex-wrap gap-2 px-4 py-3 text-[12.5px]">
+            <span className="rounded-lg bg-slate-100 px-2.5 py-1 font-semibold text-slate-700">{shown.length} bills · {money(sum(shown))}</span>
+            <span className="rounded-lg bg-emerald-50 px-2.5 py-1 font-semibold text-emerald-700">Delivered: {delivered.length} ({money(sum(delivered))})</span>
+            <span className="rounded-lg bg-red-50 px-2.5 py-1 font-semibold text-red-700">Cancelled: {cancelled.length} ({money(sum(cancelled))})</span>
+            {pending.length > 0 && <span className="rounded-lg bg-amber-50 px-2.5 py-1 font-semibold text-amber-700">Not completed: {pending.length} ({money(sum(pending))})</span>}
+          </div>
+          <div className="max-h-[60vh] overflow-auto border-t border-slate-100">
+            <table className="w-full min-w-[1100px] border-separate border-spacing-0">
+              <thead><tr>{COLUMNS.map((label) => <th key={label} className={th}>{label}</th>)}</tr></thead>
+              <tbody>
+                {shown.map((row, index) => {
+                  const step = timeline(row);
+                  return (
+                    <tr key={row.id} className="hover:bg-slate-50">
+                      <td className={`${td} text-slate-400`}>{index + 1}</td>
+                      <td className={`${td} font-mono`}>{row.invoice_number || row.id}</td>
+                      <td className={`${td} font-medium text-slate-800`}>{row.outlet_name || '—'}</td>
+                      <td className={td}>{reportAreaName(row.location_name)}</td>
+                      <td className={td}>{row.staff_name || '—'}</td>
+                      <td className={td}>{row.delivery_boy_name || '—'}</td>
+                      <td className={`${td} whitespace-nowrap text-right font-semibold tabular-nums`}>{money(invoiceValue(row))}</td>
+                      <td className={`${td} whitespace-nowrap`}>{step.saleDate}</td>
+                      <td className={`${td} whitespace-nowrap`}>{step.completed}</td>
+                      <td className={`${td} whitespace-nowrap text-center font-bold text-slate-900`}>{step.totalDays || '—'}</td>
+                      <td className={td}><Badge tone={TONE[STATUS_COLOR[statusKey(row)]] || 'slate'}>{STATUS_LABEL[statusKey(row)] || row.packaging_status || '—'}</Badge></td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
+      {shown && !shown.length && !invoiceQuery && <p className="m-0 px-4 py-10 text-center text-[13px] text-slate-400">No bills match this company, dates and status.</p>}
+      {!shown && <p className="m-0 px-4 py-10 text-center text-[13px] text-slate-400">Choose a company or enter an invoice number, then press Show.</p>}
+    </section>
+  );
 }
 DeliveryStatusReport.propTypes = { api: PropTypes.string.isRequired };

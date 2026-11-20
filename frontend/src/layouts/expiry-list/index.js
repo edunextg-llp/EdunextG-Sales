@@ -1,27 +1,15 @@
+// Expiry List / Damage List: Tailwind CSS (no MUI). Loading, add / edit and save logic unchanged.
 import { useCallback, useEffect, useMemo, useState } from "react";
 import PropTypes from "prop-types";
-import { Autocomplete, Card, Dialog, DialogActions, DialogContent, DialogTitle, FormControl,
-  Grid, MenuItem, Select, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper } from "@mui/material";
-import MDBox from "components/MDBox";
-import MDButton from "components/MDButton";
-import MDInput from "components/MDInput";
-import MDTypography from "components/MDTypography";
 import DashboardLayout from "examples/LayoutContainers/DashboardLayout";
 import DashboardNavbar from "examples/Navbars/DashboardNavbar";
 import Footer from "examples/Footer";
 import { COMPANY_TYPES } from "utils/companyTypes";
+import { Card, EmptyState, Field, Icon, Modal, PageHeader, SearchSelect, btn, fieldClass, td, th } from "components/tw";
 
 const API = (process.env.REACT_APP_API_URL);
 const emptyForm = () => ({ companyId: "", sellerId: "", staffId: "", area: "", outletId: "", productSource: "fetched",
   productErpId: "", productName: "", invoiceNumber: "", batchNumber: "", expiryDate: "", damageDescription: "", qty: "", amount: "" });
-const cellSx = { px: 1.5, py: 1.25, fontSize: "0.8125rem", whiteSpace: "nowrap" };
-const headSx = { ...cellSx, fontWeight: 700, color: "#475569", backgroundColor: "#f8fafc" };
-const chooseSx = {
-  height: 44,
-  backgroundColor: "#fff",
-  "& .MuiSelect-select": { display: "flex", alignItems: "center", minHeight: "44px !important", boxSizing: "border-box" },
-};
-const productInputSx = { "& .MuiInputBase-root": { height: 44, minHeight: 44, paddingTop: "0 !important", paddingBottom: "0 !important" } };
 const formatDate = (value) => value ? String(value).slice(0, 10).split("-").reverse().join("-") : "—";
 
 export default function ExpiryList({ mode = "expiry" }) {
@@ -110,43 +98,156 @@ export default function ExpiryList({ mode = "expiry" }) {
     } finally { setSaving(false); }
   };
 
-  return <DashboardLayout><DashboardNavbar /><MDBox pt={6} pb={3}><Card>
-    <MDBox p={3} display="flex" justifyContent="space-between" alignItems="center">
-      <MDBox><MDTypography variant="h5">{isDamage ? "Damage List" : "Expiry List"}</MDTypography><MDTypography variant="caption" color="text">Outlet-wise product {isDamage ? "damage" : "expiry"} records.</MDTypography></MDBox>
-      <MDButton color="info" variant="gradient" onClick={() => { setEditingId(null); setCompanyType(""); setForm(emptyForm()); setOpen(true); }}>Add {isDamage ? "Damage" : "Expiry"}</MDButton>
-    </MDBox><MDBox px={3} pb={3}><TableContainer component={Paper} sx={{ border: "1px solid #e5e7eb" }}><Table size="small">
-      <TableHead sx={{ display: "table-header-group" }}><TableRow>{["Company", "Seller", "Staff", "Area", "Outlet", "Invoice No", "ERP ID", "Product", "Batch No", isDamage ? "Damage Description" : "Expiry Date", "Qty", "Amount", "Action"].map((h) => <TableCell key={h} sx={headSx}>{h}</TableCell>)}</TableRow></TableHead>
-      <TableBody>{records.map((r) => <TableRow key={r.id}><TableCell sx={cellSx}>{r.company_name}</TableCell><TableCell sx={cellSx}>{r.seller_name}</TableCell><TableCell sx={cellSx}>{r.staff_name}</TableCell><TableCell sx={cellSx}>{r.location_name}</TableCell><TableCell sx={cellSx}>{r.outlet_name}</TableCell><TableCell sx={cellSx}>{r.invoice_number}</TableCell><TableCell sx={cellSx}>{r.product_erp_id || "Manual"}</TableCell><TableCell sx={cellSx}>{r.product_name}</TableCell><TableCell sx={cellSx}>{r.batch_number}</TableCell><TableCell sx={{ ...cellSx, whiteSpace: isDamage ? "normal" : "nowrap", minWidth: isDamage ? 180 : undefined }}>{isDamage ? r.damage_description : formatDate(r.expiry_date)}</TableCell><TableCell sx={cellSx}>{Number(r.qty)}</TableCell><TableCell sx={cellSx}>₹{Number(r.amount).toFixed(2)}</TableCell><TableCell sx={cellSx}><MDButton size="small" color="info" variant="outlined" onClick={() => editRecord(r)}>Edit</MDButton></TableCell></TableRow>)}
-        {!records.length && <TableRow><TableCell colSpan={13} align="center" sx={cellSx}>No expiry records added yet.</TableCell></TableRow>}</TableBody>
-    </Table></TableContainer></MDBox></Card></MDBox>
-    <Dialog open={open} onClose={() => !saving && setOpen(false)} fullWidth maxWidth="md"><DialogTitle>{editingId ? "Edit" : "Add"} {isDamage ? "Damage" : "Expiry"}</DialogTitle><DialogContent dividers><Grid container spacing={2}>
-      <Grid item xs={12} md={6}><FormControl fullWidth size="small"><Select sx={chooseSx} displayEmpty value={companyType} onChange={(e) => { const type = e.target.value; setCompanyType(type); const current = companies.find((c) => String(c.id) === String(form.companyId)); if (current && current.type !== type) changeCompany(""); }}><MenuItem value="" disabled>Choose Company Type *</MenuItem>{COMPANY_TYPES.map((t) => <MenuItem key={t.value} value={t.value}>{t.label}</MenuItem>)}</Select></FormControl></Grid>
-      <Grid item xs={12} md={6}><FormControl fullWidth size="small"><Select sx={chooseSx} displayEmpty disabled={!companyType} value={form.companyId} onChange={(e) => changeCompany(e.target.value)}><MenuItem value="" disabled>Choose Company *</MenuItem>{companies.filter((c) => c.type === companyType || String(c.id) === String(form.companyId)).map((c) => <MenuItem key={c.id} value={String(c.id)}>{c.name}</MenuItem>)}</Select></FormControl></Grid>
-      <Grid item xs={12} md={6}><FormControl fullWidth size="small"><Select sx={chooseSx} displayEmpty disabled={!form.companyId} value={form.sellerId} onChange={(e) => setForm((old) => ({ ...old, sellerId: e.target.value }))}><MenuItem value="" disabled>Choose Seller *</MenuItem>{sellers.map((seller) => <MenuItem key={seller.id} value={String(seller.id)}>{seller.seller_name}</MenuItem>)}</Select></FormControl></Grid>
-      <Grid item xs={12} md={6}><FormControl fullWidth size="small"><Select sx={chooseSx} displayEmpty disabled={!form.companyId} value={form.staffId} onChange={(e) => changeStaff(e.target.value)}><MenuItem value="" disabled>Choose Staff *</MenuItem>{staff.map((s) => <MenuItem key={s.id} value={String(s.id)}>{s.name}</MenuItem>)}</Select></FormControl></Grid>
-      <Grid item xs={12} md={6}><FormControl fullWidth size="small"><Select sx={chooseSx} displayEmpty disabled={!form.staffId} value={form.area} onChange={(e) => setForm((o) => ({ ...o, area: e.target.value, outletId: "" }))}><MenuItem value="" disabled>Choose Area *</MenuItem>{areas.map((a) => <MenuItem key={a} value={a}>{a}</MenuItem>)}</Select></FormControl></Grid>
-      <Grid item xs={12} md={6}>
-        <Autocomplete
-          sx={productInputSx}
-          size="small"
-          disabled={!form.area}
-          options={areaOutlets}
-          value={areaOutlets.find((outlet) => String(outlet.id) === String(form.outletId)) || null}
-          getOptionLabel={(outlet) => `${outlet.outlet_name || ""}${outlet.outlet_erp_id ? ` — ${outlet.outlet_erp_id}` : ""}`}
-          isOptionEqualToValue={(option, value) => String(option.id) === String(value.id)}
-          onChange={(_, outlet) => setForm((old) => ({ ...old, outletId: outlet ? String(outlet.id) : "" }))}
-          renderInput={(params) => <MDInput {...params} label="Search Outlet *" placeholder="Type outlet name or ERP ID" />}
+  const setField = (key) => (e) => setForm((o) => ({ ...o, [key]: e.target.value }));
+  const label = isDamage ? "Damage" : "Expiry";
+
+  return (
+    <DashboardLayout>
+      <DashboardNavbar />
+      <div className="pb-8 font-[Poppins,Roboto,sans-serif] text-slate-700">
+        <PageHeader
+          title={isDamage ? "Damage List" : "Expiry List"}
+          description={`Outlet-wise product ${isDamage ? "damage" : "expiry"} records.`}
+          actions={(
+            <button type="button" className={btn.primary} onClick={() => { setEditingId(null); setCompanyType(""); setForm(emptyForm()); setOpen(true); }}>
+              <Icon name="add" className="text-[18px]" />Add {label}
+            </button>
+          )}
         />
-      </Grid>
-      <Grid item xs={12} md={4}><FormControl fullWidth size="small"><Select sx={chooseSx} value={form.productSource} onChange={(e) => setForm((o) => ({ ...o, productSource: e.target.value, productErpId: "", productName: "" }))}><MenuItem value="fetched">Fetch Product</MenuItem><MenuItem value="manual">Manual Entry</MenuItem></Select></FormControl></Grid>
-      <Grid item xs={12} md={8}>{form.productSource === "manual" ? <MDInput sx={productInputSx} label="Product Name *" fullWidth value={form.productName} onChange={(e) => setForm((o) => ({ ...o, productName: e.target.value }))} /> : <Autocomplete sx={productInputSx} size="small" options={products} value={products.find((p) => String(p.product_erp_id) === String(form.productErpId)) || null} getOptionLabel={(p) => `${p.product_name || ""}${p.product_erp_id ? ` — ${p.product_erp_id}` : ""}`} isOptionEqualToValue={(option, value) => String(option.product_erp_id) === String(value.product_erp_id)} onChange={(_, p) => setForm((o) => ({ ...o, productName: p?.product_name || "", productErpId: p?.product_erp_id || "" }))} renderInput={(params) => <MDInput {...params} label="Choose Product *" />} />}</Grid>
-      <Grid item xs={12} md={6}><MDInput label="Invoice Number *" fullWidth value={form.invoiceNumber} onChange={(e) => setForm((o) => ({ ...o, invoiceNumber: e.target.value }))} /></Grid>
-      <Grid item xs={12} md={6}><MDInput label="Batch Number *" fullWidth value={form.batchNumber} onChange={(e) => setForm((o) => ({ ...o, batchNumber: e.target.value }))} /></Grid>
-      {isDamage ? <Grid item xs={12}><MDInput label="Damage Description *" fullWidth multiline rows={3} value={form.damageDescription} onChange={(e) => setForm((o) => ({ ...o, damageDescription: e.target.value }))} /></Grid> : <Grid item xs={12} md={4}><MDInput type="date" label="Expiry Date *" fullWidth InputLabelProps={{ shrink: true }} value={form.expiryDate} onChange={(e) => setForm((o) => ({ ...o, expiryDate: e.target.value }))} /></Grid>}
-      <Grid item xs={12} md={isDamage ? 6 : 4}><MDInput type="number" label="Qty *" fullWidth inputProps={{ min: 0.01, step: "any" }} value={form.qty} onChange={(e) => setForm((o) => ({ ...o, qty: e.target.value }))} /></Grid>
-      <Grid item xs={12} md={isDamage ? 6 : 4}><MDInput type="number" label="Amount *" fullWidth inputProps={{ min: 0, step: "0.01" }} value={form.amount} onChange={(e) => setForm((o) => ({ ...o, amount: e.target.value }))} /></Grid>
-    </Grid></DialogContent><DialogActions><MDButton color="dark" variant="outlined" onClick={() => { setOpen(false); setEditingId(null); }} disabled={saving}>Cancel</MDButton><MDButton color="info" variant="gradient" onClick={save} disabled={saving}>{saving ? "Saving..." : `${editingId ? "Update" : "Save"} ${isDamage ? "Damage" : "Expiry"}`}</MDButton></DialogActions></Dialog>
-    <Footer /></DashboardLayout>;
+        <Card>
+          {!records.length ? (
+            <EmptyState icon={isDamage ? "broken_image" : "event_busy"} text={`No ${isDamage ? "damage" : "expiry"} records added yet.`} />
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full border-collapse">
+                <thead>
+                  <tr className="bg-slate-50">
+                    {["Company", "Seller", "Staff", "Area", "Outlet", "Invoice no", "Product", "Batch no", isDamage ? "Damage description" : "Expiry date", "Qty", "Amount", ""].map((h) => <th key={h} className={`${th} whitespace-nowrap`}>{h}</th>)}
+                  </tr>
+                </thead>
+                <tbody>
+                  {records.map((r) => (
+                    <tr key={r.id} className="border-t border-slate-100 align-top hover:bg-slate-50/70">
+                      <td className={`${td} whitespace-nowrap font-semibold text-slate-800`}>{r.company_name}</td>
+                      <td className={`${td} whitespace-nowrap`}>{r.seller_name}</td>
+                      <td className={`${td} whitespace-nowrap`}>{r.staff_name}</td>
+                      <td className={`${td} whitespace-nowrap`}>{r.location_name}</td>
+                      <td className={`${td} whitespace-nowrap font-semibold text-slate-800`}>{r.outlet_name}</td>
+                      <td className={`${td} whitespace-nowrap font-mono text-[12.5px]`}>{r.invoice_number}</td>
+                      <td className={td}>
+                        <span className="block font-semibold text-slate-800">{r.product_name}</span>
+                        <span className="block font-mono text-[11.5px] text-slate-400">{r.product_erp_id || "Manual"}</span>
+                      </td>
+                      <td className={`${td} whitespace-nowrap`}>{r.batch_number}</td>
+                      <td className={`${td} ${isDamage ? "min-w-44" : "whitespace-nowrap font-semibold"}`}>{isDamage ? r.damage_description : formatDate(r.expiry_date)}</td>
+                      <td className={`${td} tabular-nums`}>{Number(r.qty)}</td>
+                      <td className={`${td} whitespace-nowrap font-semibold tabular-nums`}>₹{Number(r.amount).toFixed(2)}</td>
+                      <td className={`${td} text-right`}>
+                        <button type="button" className={`${btn.icon} hover:text-amber-700`} onClick={() => editRecord(r)} title="Edit" aria-label={`Edit ${r.product_name}`}>
+                          <Icon name="edit" className="text-[19px]" />
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </Card>
+      </div>
+
+      <Modal
+        open={open} onClose={() => setOpen(false)} locked={saving} size="lg" title={`${editingId ? "Edit" : "Add"} ${label}`}
+        actions={(
+          <>
+            <button type="button" className={btn.ghost} onClick={() => { setOpen(false); setEditingId(null); }} disabled={saving}>Cancel</button>
+            <button type="button" className={btn.primary} onClick={save} disabled={saving}>{saving ? "Saving..." : `${editingId ? "Update" : "Save"} ${label}`}</button>
+          </>
+        )}
+      >
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+          <Field label="Company type *" width="w-full">
+            <select className={fieldClass} value={companyType} onChange={(e) => { const type = e.target.value; setCompanyType(type); const current = companies.find((c) => String(c.id) === String(form.companyId)); if (current && current.type !== type) changeCompany(""); }}>
+              <option value="" disabled>Choose company type</option>
+              {COMPANY_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
+            </select>
+          </Field>
+          <Field label="Company *" width="w-full">
+            <select className={fieldClass} disabled={!companyType} value={form.companyId} onChange={(e) => changeCompany(e.target.value)}>
+              <option value="" disabled>Choose company</option>
+              {companies.filter((c) => c.type === companyType || String(c.id) === String(form.companyId)).map((c) => <option key={c.id} value={String(c.id)}>{c.name}</option>)}
+            </select>
+          </Field>
+          <Field label="Seller *" width="w-full">
+            <select className={fieldClass} disabled={!form.companyId} value={form.sellerId} onChange={(e) => setForm((old) => ({ ...old, sellerId: e.target.value }))}>
+              <option value="" disabled>Choose seller</option>
+              {sellers.map((seller) => <option key={seller.id} value={String(seller.id)}>{seller.seller_name}</option>)}
+            </select>
+          </Field>
+          <Field label="Staff *" width="w-full">
+            <select className={fieldClass} disabled={!form.companyId} value={form.staffId} onChange={(e) => changeStaff(e.target.value)}>
+              <option value="" disabled>Choose staff</option>
+              {staff.map((s) => <option key={s.id} value={String(s.id)}>{s.name}</option>)}
+            </select>
+          </Field>
+          <Field label="Area *" width="w-full">
+            <select className={fieldClass} disabled={!form.staffId} value={form.area} onChange={(e) => setForm((o) => ({ ...o, area: e.target.value, outletId: "" }))}>
+              <option value="" disabled>Choose area</option>
+              {areas.map((a) => <option key={a} value={a}>{a}</option>)}
+            </select>
+          </Field>
+          <div className="flex flex-col gap-1">
+            <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Outlet *</span>
+            <SearchSelect
+              label="Search outlet" placeholder="Type outlet name or ERP ID" disabled={!form.area}
+              options={areaOutlets.map((outlet) => ({ value: String(outlet.id), label: `${outlet.outlet_name || ""}${outlet.outlet_erp_id ? ` — ${outlet.outlet_erp_id}` : ""}` }))}
+              value={form.outletId || null}
+              onChange={(id) => setForm((old) => ({ ...old, outletId: id ? String(id) : "" }))}
+            />
+          </div>
+          <Field label="Product source" width="w-full">
+            <select className={fieldClass} value={form.productSource} onChange={(e) => setForm((o) => ({ ...o, productSource: e.target.value, productErpId: "", productName: "" }))}>
+              <option value="fetched">Fetch product</option>
+              <option value="manual">Manual entry</option>
+            </select>
+          </Field>
+          {form.productSource === "manual" ? (
+            <Field label="Product name *" width="w-full">
+              <input className={fieldClass} value={form.productName} onChange={setField("productName")} />
+            </Field>
+          ) : (
+            <div className="flex flex-col gap-1">
+              <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Product *</span>
+              <SearchSelect
+                label="Choose product" placeholder="Choose product"
+                options={products.map((p) => ({ value: String(p.product_erp_id), label: `${p.product_name || ""}${p.product_erp_id ? ` — ${p.product_erp_id}` : ""}` }))}
+                value={form.productErpId ? String(form.productErpId) : null}
+                onChange={(erpId) => {
+                  const p = products.find((item) => String(item.product_erp_id) === String(erpId));
+                  setForm((o) => ({ ...o, productName: p?.product_name || "", productErpId: p?.product_erp_id || "" }));
+                }}
+              />
+            </div>
+          )}
+          <Field label="Invoice number *" width="w-full"><input className={fieldClass} value={form.invoiceNumber} onChange={setField("invoiceNumber")} /></Field>
+          <Field label="Batch number *" width="w-full"><input className={fieldClass} value={form.batchNumber} onChange={setField("batchNumber")} /></Field>
+          {isDamage ? (
+            <label className="flex flex-col gap-1 md:col-span-2">
+              <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Damage description *</span>
+              <textarea rows={3} className={`${fieldClass} h-auto py-2`} value={form.damageDescription} onChange={setField("damageDescription")} />
+            </label>
+          ) : (
+            <Field label="Expiry date *" width="w-full"><input type="date" className={fieldClass} value={form.expiryDate} onChange={setField("expiryDate")} /></Field>
+          )}
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Qty *" width="w-full"><input type="number" min={0.01} step="any" className={fieldClass} value={form.qty} onChange={setField("qty")} /></Field>
+            <Field label="Amount *" width="w-full"><input type="number" min={0} step="0.01" className={fieldClass} value={form.amount} onChange={setField("amount")} /></Field>
+          </div>
+        </div>
+      </Modal>
+      <Footer />
+    </DashboardLayout>
+  );
 }
 
 ExpiryList.propTypes = { mode: PropTypes.oneOf(["expiry", "damage"]) };

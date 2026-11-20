@@ -1,36 +1,10 @@
+// Delivery Manager > Delivery: Tailwind CSS (no MUI). Sales sync, assign / save, suspense, history and print logic unchanged.
 import { useState, useEffect, useCallback, useMemo } from "react";
-import Grid from "@mui/material/Grid";
-import Card from "@mui/material/Card";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableContainer,
-  TableHead,
-  TableRow,
-  Paper,
-  FormControl,
-  Select,
-  MenuItem,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  Tabs,
-  Tab,
-  InputLabel,
-  Tooltip,
-  Checkbox,
-} from "@mui/material";
 
 import SalesExcelButton from "components/SalesExcelButton";
 import DeliveryLogDialog from "./DeliveryLogDialog";
 import CompanyFilter from "components/CompanyFilter";
 import { matchesSaleCompany } from "utils/companyFilter";
-import MDBox from "components/MDBox";
-import MDTypography from "components/MDTypography";
-import MDInput from "components/MDInput";
-import MDButton from "components/MDButton";
 
 import DashboardLayout from "examples/LayoutContainers/DashboardLayout";
 import DashboardNavbar from "examples/Navbars/DashboardNavbar";
@@ -42,25 +16,10 @@ import {
   useSalesPolling,
 } from "utils/salesSync";
 import { formatBpSaleId } from "utils/saleId";
+import { ROWS_PER_PAGE } from "utils/tablePagination";
 import {
-  ROWS_PER_PAGE,
-  TablePaginationFooter,
-  compactTableTextSx,
-  paginatedTableContainerSx,
-  paginatedTableHeadCellSx,
-  paginatedTableHeadSx,
-} from "utils/tablePagination";
-import { IoSaveOutline } from "react-icons/io5";
-import { FaEye } from "react-icons/fa";
-
-const tableActionBoxSx = {
-  backgroundColor: "#f0fdfa",
-  padding: "6px 10px",
-  borderRadius: "8px",
-  border: "1px solid #99f6e4",
-  flexWrap: "nowrap",
-  minWidth: "fit-content",
-};
+  Card, Field, Icon, Modal, PageHeader, Pagination, SearchBox, Segmented, StatBox, TriCheck, btn, fieldClass,
+} from "components/tw";
 
 const getTodayLocalDate = () => {
   const now = new Date();
@@ -577,528 +536,314 @@ function Delivery() {
     page * rowsPerPage
   );
 
+  const activeRow = activeRowId ? salesData.find((r) => r.id === activeRowId) : null;
+  const pageAllSelected = paginatedSales.length > 0 && paginatedSales.every((row) => selectedIds.has(row.id));
+  const pageSomeSelected = paginatedSales.some((row) => selectedIds.has(row.id));
+  const head = "sticky top-0 z-[1] whitespace-nowrap bg-slate-50 px-3 py-2.5 text-[11px] font-semibold uppercase tracking-wide text-slate-500";
+  const cell = "px-3 py-2.5 text-[12.5px]";
+  const pendingValue = filteredSales.reduce((sum, row) => sum + (Number(row.price) || 0), 0);
+
   return (
     <DashboardLayout>
       <DashboardNavbar />
       <DeliveryLogDialog open={deliveryLogOpen} onClose={() => setDeliveryLogOpen(false)} sales={salesData.filter((row) => Number(row.in_suspense) !== 1)} />
-      <MDBox pt={6} pb={3}>
-        <Grid container spacing={3} justifyContent="center">
-          <Grid item xs={12}>
-            <Card>
-              <MDBox p={3} pb={2}>
-                <MDTypography variant="h5" fontWeight="medium" color="dark" mb={2}>
-                  Delivery Management
-                </MDTypography>
-                <MDButton color="info" variant="gradient" onClick={() => setDeliveryLogOpen(true)} sx={{ mb: 2 }}>
-                  See Delivery Log
-                </MDButton>
-                <Tabs
-                  value={activeTab}
-                  onChange={(_, value) => setActiveTab(value)}
-                  sx={{
-                    minHeight: 40,
-                    "& .MuiTab-root": { minHeight: 40, textTransform: "none", fontWeight: 600 },
-                  }}
-                >
-                  <Tab label={`Pending Deliveries (${filteredSales.length})`} value="pending" />
-                  <Tab label={`Suspense (${filteredSuspenseSales.length})`} value="suspense" />
-                  <Tab label={`Out for Delivery Log (${filteredLogSales.length})`} value="out_for_delivery" />
-                </Tabs>
-              </MDBox>
-              <MDBox pb={3} px={3}>
-                <Grid container spacing={3} mb={3}>
-                  <Grid item xs={12} md={activeTab === "out_for_delivery" ? 3 : 9}>
-                    <MDInput
-                      type="text"
-                      label="Search by Outlet Name, Area, ID, Staff Name, Sale ID, or Invoice No."
-                      fullWidth
-                      value={searchQuery}
-                      onChange={(e) => setSearchQuery(e.target.value)}
-                    />
-                  </Grid>
-                  <Grid item xs={12} md={4}>
-                    <CompanyFilter
-                      id="delivery-company-filter"
-                      rows={salesData}
-                      value={companyFilter}
-                      onChange={setCompanyFilter}
-                    />
-                  </Grid>
+      <div className="pb-8 font-[Poppins,Roboto,sans-serif] text-slate-700">
+        <PageHeader
+          title="Delivery Management"
+          description="Assign packed bills to a delivery boy and vehicle, send them out for delivery, park bills in Suspense, and print the out-for-delivery log."
+          actions={(
+            <button type="button" className={btn.outline} onClick={() => setDeliveryLogOpen(true)}>
+              <Icon name="summarize" className="text-[18px] text-blue-600" />See Delivery Log
+            </button>
+          )}
+        />
+
+        <div className="mb-5 flex flex-wrap gap-2">
+          <StatBox label="Pending deliveries" value={filteredSales.length} icon="inventory_2" />
+          <StatBox label="Pending value" value={`₹${pendingValue.toLocaleString("en-IN", { maximumFractionDigits: 0 })}`} icon="currency_rupee" />
+          <StatBox label="In suspense" value={filteredSuspenseSales.length} icon="pause_circle" />
+          <StatBox label="Out for delivery" value={filteredLogSales.length} icon="local_shipping" />
+        </div>
+
+        <Card>
+          <div className="space-y-3 border-b border-slate-100 px-4 py-3">
+            <Segmented
+              label="Delivery lists" value={activeTab} onChange={setActiveTab}
+              options={[
+                ["pending", `Pending Deliveries (${filteredSales.length})`],
+                ["suspense", `Suspense (${filteredSuspenseSales.length})`],
+                ["out_for_delivery", `Out for Delivery Log (${filteredLogSales.length})`],
+              ]}
+            />
+            <div className="flex flex-wrap items-end gap-3">
+              <div className="flex min-w-72 grow flex-col gap-1">
+                <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Search</span>
+                <SearchBox value={searchQuery} onChange={setSearchQuery} className="w-full" placeholder="Outlet, area, ERP ID, staff, sale ID or invoice no." />
+              </div>
+              <div className="w-full sm:w-96"><CompanyFilter id="delivery-company-filter" rows={salesData} value={companyFilter} onChange={setCompanyFilter} /></div>
+              {activeTab === "out_for_delivery" && (
+                <>
+                  <Field label="From date" width="w-36"><input type="date" className={fieldClass} value={logStartDate} onChange={(e) => setLogStartDate(e.target.value)} /></Field>
+                  <Field label="To date" width="w-36"><input type="date" className={fieldClass} value={logEndDate} onChange={(e) => setLogEndDate(e.target.value)} /></Field>
+                  <Field label="Staff" width="w-48">
+                    <select className={fieldClass} value={logStaffId} onChange={(e) => setLogStaffId(e.target.value)}>
+                      <option value="">All staff</option>
+                      {staffOptions.map((staff) => <option key={staff.id} value={staff.id}>{staff.name}</option>)}
+                    </select>
+                  </Field>
+                  <button type="button" className={btn.outline} onClick={handlePrintPdf} disabled={filteredLogSales.length === 0}>
+                    <Icon name="print" className="text-[18px]" />Print PDF
+                  </button>
+                </>
+              )}
+            </div>
+            <div className="flex flex-wrap items-center justify-end gap-2">
+              {activeTab === "pending" && (
+                <button type="button" className={`${btn.primary} bg-amber-500 hover:bg-amber-600`} disabled={!selectedIds.size || suspenseBusy} onClick={() => updateSuspense([...selectedIds], true)}>
+                  <Icon name="pause_circle" className="text-[18px]" />
+                  {suspenseBusy ? "Moving..." : `Move to Suspense${selectedIds.size ? ` (${selectedIds.size})` : ""}`}
+                </button>
+              )}
+              {activeTab === "suspense" && (
+                <button type="button" className={`${btn.primary} bg-emerald-600 hover:bg-emerald-700`} disabled={!selectedIds.size || suspenseBusy} onClick={() => updateSuspense([...selectedIds], false)}>
+                  <Icon name="undo" className="text-[18px]" />
+                  {suspenseBusy ? "Returning..." : `Return Selected${selectedIds.size ? ` (${selectedIds.size})` : ""}`}
+                </button>
+              )}
+              <SalesExcelButton
+                rows={activeList}
+                filename={activeTab === "pending" ? "Delivery_Management" : activeTab === "suspense" ? "Delivery_Suspense" : "Out_for_Delivery_Log"}
+              />
+            </div>
+          </div>
+
+          <div className="max-h-[70vh] overflow-auto">
+            <table className="w-full min-w-[1400px] border-separate border-spacing-0">
+              <thead>
+                <tr>
+                  {selectable && (
+                    <th className={`${head} w-10`}>
+                      <TriCheck
+                        checked={pageAllSelected} indeterminate={pageSomeSelected && !pageAllSelected} label="Select all bills on this page"
+                        onChange={(event) => {
+                          const checked = event.target.checked;
+                          setSelectedIds((prev) => {
+                            const next = new Set(prev);
+                            paginatedSales.forEach((row) => (checked ? next.add(row.id) : next.delete(row.id)));
+                            return next;
+                          });
+                        }}
+                      />
+                    </th>
+                  )}
+                  <th className={`${head} text-center`}>#</th>
+                  {["Staff", "Company", "Outlet", "Area", "ERP ID"].map((h) => <th key={h} className={`${head} text-left`}>{h}</th>)}
+                  <th className={`${head} text-center`}>Sale ID</th>
+                  <th className={`${head} text-center`}>Invoice no</th>
+                  <th className={`${head} text-right`}>Price</th>
+                  {["Items", "Packed", "Boxes", "Packets"].map((h) => <th key={h} className={`${head} text-center`}>{h}</th>)}
                   {activeTab === "out_for_delivery" && (
                     <>
-                      <Grid item xs={12} md={2}>
-                        <MDInput
-                          type="date"
-                          label="From Date"
-                          fullWidth
-                          InputLabelProps={{ shrink: true }}
-                          value={logStartDate}
-                          onChange={(e) => setLogStartDate(e.target.value)}
-                        />
-                      </Grid>
-                      <Grid item xs={12} md={2}>
-                        <MDInput
-                          type="date"
-                          label="To Date"
-                          fullWidth
-                          InputLabelProps={{ shrink: true }}
-                          value={logEndDate}
-                          onChange={(e) => setLogEndDate(e.target.value)}
-                        />
-                      </Grid>
-                      <Grid item xs={12} md={2.5}>
-                        <FormControl size="small" fullWidth>
-                          <InputLabel id="log-staff-filter-label">Staff</InputLabel>
-                          <Select
-                            labelId="log-staff-filter-label"
-                            value={logStaffId}
-                            label="Staff"
-                            onChange={(e) => setLogStaffId(e.target.value)}
-                            sx={{ height: 44 }}
-                          >
-                            <MenuItem value="">All Staff</MenuItem>
-                            {staffOptions.map((staff) => (
-                              <MenuItem key={staff.id} value={staff.id}>
-                                {staff.name}
-                              </MenuItem>
-                            ))}
-                          </Select>
-                        </FormControl>
-                      </Grid>
-                      <Grid item xs={12} md={2.5} display="flex" alignItems="center">
-                        <MDButton
-                          color="info"
-                          variant="gradient"
-                          fullWidth
-                          onClick={handlePrintPdf}
-                          disabled={filteredLogSales.length === 0}
-                          sx={{ height: 44 }}
-                        >
-                          Print PDF
-                        </MDButton>
-                      </Grid>
+                      <th className={`${head} text-center`}>Delivery boy</th>
+                      <th className={`${head} text-center`}>Vehicle</th>
                     </>
                   )}
-                  <Grid item xs={12} display="flex" justifyContent="flex-end" alignItems="center" gap={1} flexWrap="wrap">
-                    {activeTab === "pending" && (
-                      <MDButton
-                        color="warning"
-                        variant="gradient"
-                        disabled={!selectedIds.size || suspenseBusy}
-                        onClick={() => updateSuspense([...selectedIds], true)}
-                      >
-                        {suspenseBusy ? "Moving..." : `Move to Suspense${selectedIds.size ? ` (${selectedIds.size})` : ""}`}
-                      </MDButton>
-                    )}
-                    {activeTab === "suspense" && (
-                      <MDButton
-                        color="success"
-                        variant="gradient"
-                        disabled={!selectedIds.size || suspenseBusy}
-                        onClick={() => updateSuspense([...selectedIds], false)}
-                      >
-                        {suspenseBusy ? "Returning..." : `Return Selected${selectedIds.size ? ` (${selectedIds.size})` : ""}`}
-                      </MDButton>
-                    )}
-                    <SalesExcelButton
-                      rows={activeList}
-                      filename={activeTab === "pending" ? "Delivery_Management" : activeTab === "suspense" ? "Delivery_Suspense" : "Out_for_Delivery_Log"}
-                    />
-                  </Grid>
-                </Grid>
-
-                <TableContainer component={Paper} sx={paginatedTableContainerSx}>
-                  <Table stickyHeader sx={{ minWidth: 650, ...compactTableTextSx }}>
-                    <TableHead sx={paginatedTableHeadSx()}>
-                      <TableRow>
-                        {selectable && (
-                          <TableCell padding="checkbox" sx={paginatedTableHeadCellSx}>
-                            <Checkbox
-                              size="small"
-                              checked={paginatedSales.length > 0 && paginatedSales.every((row) => selectedIds.has(row.id))}
-                              indeterminate={
-                                paginatedSales.some((row) => selectedIds.has(row.id)) &&
-                                !paginatedSales.every((row) => selectedIds.has(row.id))
-                              }
-                              onChange={(event) => {
-                                const checked = event.target.checked;
-                                setSelectedIds((prev) => {
-                                  const next = new Set(prev);
-                                  paginatedSales.forEach((row) => (checked ? next.add(row.id) : next.delete(row.id)));
-                                  return next;
-                                });
-                              }}
-                              inputProps={{ "aria-label": "Select all bills on this page" }}
-                            />
-                          </TableCell>
-                        )}
-                        <TableCell align="center" sx={{ ...paginatedTableHeadCellSx, width: 56 }}>
-                          Sr No
-                        </TableCell>
-                        <TableCell sx={paginatedTableHeadCellSx}>Staff Name</TableCell>
-                        <TableCell sx={paginatedTableHeadCellSx}>Company</TableCell>
-                        <TableCell sx={paginatedTableHeadCellSx}>Outlet Name</TableCell>
-                        <TableCell sx={paginatedTableHeadCellSx}>Area</TableCell>
-                        <TableCell sx={paginatedTableHeadCellSx}>ERP ID</TableCell>
-                        <TableCell align="center" sx={paginatedTableHeadCellSx}>Sale ID</TableCell>
-                        <TableCell align="center" sx={paginatedTableHeadCellSx}>Invoice No</TableCell>
-                        <TableCell align="right" sx={paginatedTableHeadCellSx}>Price</TableCell>
-                        <TableCell align="center" sx={paginatedTableHeadCellSx}>No. of Item</TableCell>
-                        <TableCell align="center" sx={paginatedTableHeadCellSx}>Packing Item</TableCell>
-                        <TableCell align="center" sx={paginatedTableHeadCellSx}>No. of Box</TableCell>
-                        <TableCell align="center" sx={paginatedTableHeadCellSx}>No. of Packet</TableCell>
-                        {activeTab === "out_for_delivery" && (
-                          <>
-                            <TableCell align="center" sx={paginatedTableHeadCellSx}>Delivery Boy</TableCell>
-                            <TableCell align="center" sx={paginatedTableHeadCellSx}>Vehicle</TableCell>
-                          </>
-                        )}
-                        <TableCell align="center" sx={paginatedTableHeadCellSx}>Status</TableCell>
-                        <TableCell align="center" sx={paginatedTableHeadCellSx}>Delivery Date</TableCell>
-                        <TableCell align="center" sx={paginatedTableHeadCellSx}>Packing Date</TableCell>
-                        {activeTab === "pending" && (
-                          <>
-                            <TableCell align="center" sx={paginatedTableHeadCellSx}>Delivery Details</TableCell>
-                            <TableCell align="center" sx={paginatedTableHeadCellSx}>Action</TableCell>
-                          </>
-                        )}
-                        {activeTab === "suspense" && (
-                          <>
-                            <TableCell align="center" sx={paginatedTableHeadCellSx}>In Suspense Since</TableCell>
-                            <TableCell align="center" sx={paginatedTableHeadCellSx}>Reason</TableCell>
-                            <TableCell align="center" sx={paginatedTableHeadCellSx}>Action</TableCell>
-                          </>
-                        )}
-                      </TableRow>
-                    </TableHead>
-                    <TableBody>
-                      {paginatedSales.length > 0 ? (
-                        paginatedSales.map((row, index) => {
-                          const bgColor = getRowColor(row.packaging_status);
-                          const txColor = getTextColor(row.packaging_status);
-                          const borderCol = `1px solid ${txColor}`;
-                          return (
-                            <TableRow
-                              key={row.id}
-                              sx={{
-                                backgroundColor: bgColor,
-                                "&:last-child td, &:last-child th": { border: 0 }
-                              }}
-                            >
-                              {selectable && (
-                                <TableCell padding="checkbox" sx={{ borderBottom: borderCol }}>
-                                  <Checkbox
-                                    size="small"
-                                    checked={selectedIds.has(row.id)}
-                                    onChange={() => toggleSelected(row.id)}
-                                    inputProps={{ "aria-label": `Select bill ${row.invoice_number || row.id}` }}
-                                  />
-                                </TableCell>
-                              )}
-                              <TableCell align="center" sx={{ borderBottom: borderCol, py: 2, color: txColor }}>
-                                {(page - 1) * rowsPerPage + index + 1}
-                              </TableCell>
-                              <TableCell sx={{ borderBottom: borderCol, py: 2, color: txColor }}>
-                                {row.staff_name}
-                              </TableCell>
-                              <TableCell sx={{ borderBottom: borderCol, py: 2, color: txColor }}>
-                                {row.company_name || "N/A"}
-                              </TableCell>
-                              <TableCell sx={{ borderBottom: borderCol, py: 2, color: txColor, fontWeight: "medium" }}>
-                                {row.outlet_name}
-                              </TableCell>
-                              <TableCell sx={{ borderBottom: borderCol, py: 2, color: txColor }}>
-                                {row.location_name || "N/A"}
-                              </TableCell>
-                              <TableCell sx={{ borderBottom: borderCol, py: 2, color: txColor }}>
-                                {row.outlet_erp_id}
-                              </TableCell>
-                              <TableCell align="center" sx={{ borderBottom: borderCol, py: 2, color: txColor, fontWeight: "bold" }}>
-                                {row.sticker_number}
-                              </TableCell>
-                              <TableCell align="center" sx={{ borderBottom: borderCol, py: 2, color: txColor }}>
-                                {row.invoice_number}
-                                {activeTab === "pending" && requestedIds.has(Number(row.id)) && (
-                                  <MDTypography component="span" display="block" sx={{ fontSize: "0.68rem", fontWeight: 700, color: "#b45309", whiteSpace: "nowrap" }}>
-                                    Suspense requested
-                                  </MDTypography>
-                                )}
-                              </TableCell>
-                              <TableCell align="right" sx={{ borderBottom: borderCol, py: 2, color: txColor, fontWeight: "bold" }}>
-                                ₹{Number(row.price).toFixed(2)}
-                              </TableCell>
-                              <TableCell align="center" sx={{ borderBottom: borderCol, py: 2, color: txColor }}>
-                                {row.item_count || "N/A"}
-                              </TableCell>
-                              <TableCell align="center" sx={{ borderBottom: borderCol, py: 2, color: txColor }}>
-                                {row.packed_item_count || row.item_count || "N/A"}
-                              </TableCell>
-                              <TableCell align="center" sx={{ borderBottom: borderCol, py: 2, color: txColor }}>
-                                {row.box_count || "N/A"}
-                              </TableCell>
-                              <TableCell align="center" sx={{ borderBottom: borderCol, py: 2, color: txColor }}>
-                                {row.packet_count || "N/A"}
-                              </TableCell>
-
-                              {activeTab === "out_for_delivery" && (
-                                <>
-                                  <TableCell align="center" sx={{ borderBottom: borderCol, py: 2, color: txColor }}>
-                                    {row.delivery_boy_name || "N/A"}
-                                  </TableCell>
-                                  <TableCell align="center" sx={{ borderBottom: borderCol, py: 2, color: txColor }}>
-                                    {row.vehicle_no || "N/A"}
-                                  </TableCell>
-                                </>
-                              )}
-
-                              <TableCell align="center" sx={{ borderBottom: borderCol, py: 2, color: txColor }}>
-                                {activeTab === "pending" ? (
-                                  <FormControl size="small" sx={{ minWidth: 160 }}>
-                                    <Select
-                                      value={row.packaging_status === 'packing_done' ? '' : row.packaging_status}
-                                      displayEmpty
-                                      onChange={(e) => handleRowChange(row.id, "packaging_status", e.target.value)}
-                                      sx={{ height: "36px", fontSize: "0.875rem", backgroundColor: "#fff" }}
-                                    >
-                                      <MenuItem value="" disabled>Select Status</MenuItem>
-                                      <MenuItem value="returned" disabled>Returned</MenuItem>
-                                      <MenuItem value="out_for_delivery">Out for Delivery</MenuItem>
-                                    </Select>
-                                  </FormControl>
-                                ) : (
-                                  statusLabels[row.packaging_status] || row.packaging_status
-                                )}
-                              </TableCell>
-                              <TableCell align="center" sx={{ borderBottom: borderCol, py: 2, color: txColor }}>
-                                {formatDate(row.delivery_date)}
-                              </TableCell>
-                              <TableCell align="center" sx={{ borderBottom: borderCol, py: 2, color: txColor }}>
-                                {formatDate(row.packing_date)}
-                              </TableCell>
-                              {activeTab === "pending" && (
-                                <>
-                                  <TableCell align="center" sx={{ borderBottom: borderCol, py: 2, color: txColor }}>
-                                    <MDButton color="info" variant="text" size="small" onClick={() => handleOpenDetails(row.id)}>
-                                      {(row.delivery_boy_id && row.vehicle_no && row.delivery_date) ? "Edit Details" : "Assign Details"}
-                                    </MDButton>
-                                  </TableCell>
-                                  <TableCell align="center" sx={{ borderBottom: borderCol, py: 2, minWidth: 96 }}>
-                                    <MDBox
-                                      display="flex"
-                                      flexDirection="row"
-                                      gap={0.75}
-                                      justifyContent="center"
-                                      alignItems="center"
-                                      sx={tableActionBoxSx}
-                                    >
-                                      <Tooltip title="Save">
-                                        <span>
-                                          <IoSaveOutline onClick={() => handleSaveDelivery(row.id)} style={{ cursor: "pointer" }} color="#059669" size={20} />
-                                        </span>
-                                      </Tooltip>
-                                      <Tooltip title="Status History">
-                                        <span>
-                                          <FaEye onClick={() => handleViewHistory(row.id)} style={{ cursor: "pointer" }} color="#E0E388" size={20} />
-                                        </span>
-                                      </Tooltip>
-                                    </MDBox>
-                                  </TableCell>
-                                </>
-                              )}
-                              {activeTab === "suspense" && (
-                                <>
-                                  <TableCell align="center" sx={{ borderBottom: borderCol, py: 2, color: txColor }}>
-                                    {formatDateTime(row.suspense_at)}
-                                  </TableCell>
-                                  <TableCell sx={{ borderBottom: borderCol, py: 2, color: txColor, maxWidth: 240, whiteSpace: "pre-wrap" }}>
-                                    {row.suspense_reason || "—"}
-                                  </TableCell>
-                                  <TableCell align="center" sx={{ borderBottom: borderCol, py: 2 }}>
-                                    <MDButton
-                                      color="success"
-                                      variant="outlined"
-                                      size="small"
-                                      disabled={suspenseBusy}
-                                      onClick={() => updateSuspense([row.id], false)}
-                                    >
-                                      Return
-                                    </MDButton>
-                                  </TableCell>
-                                </>
-                              )}
-                            </TableRow>
-                          )
-                        })
-                      ) : (
-                        <TableRow>
-                          <TableCell colSpan={19} align="center" sx={{ py: 3, borderBottom: 0 }}>
-                            <MDTypography variant="body2" color="text">
-                              {activeTab === "suspense" ? "No bills in Suspense." : "No deliveries found."}
-                            </MDTypography>
-                          </TableCell>
-                        </TableRow>
+                  <th className={`${head} text-center`}>Status</th>
+                  <th className={`${head} text-center`}>Delivery date</th>
+                  <th className={`${head} text-center`}>Packing date</th>
+                  {activeTab === "pending" && (
+                    <>
+                      <th className={`${head} text-center`}>Delivery details</th>
+                      <th className={`${head} text-center`}>Action</th>
+                    </>
+                  )}
+                  {activeTab === "suspense" && (
+                    <>
+                      <th className={`${head} text-center`}>In suspense since</th>
+                      <th className={`${head} text-left`}>Reason</th>
+                      <th className={`${head} text-center`}>Action</th>
+                    </>
+                  )}
+                </tr>
+              </thead>
+              <tbody>
+                {paginatedSales.length > 0 ? paginatedSales.map((row, index) => {
+                  const bgColor = getRowColor(row.packaging_status);
+                  const txColor = getTextColor(row.packaging_status);
+                  const td = `${cell} border-t border-white/70`;
+                  const hasDetails = row.delivery_boy_id && row.vehicle_no && row.delivery_date;
+                  return (
+                    <tr key={row.id} style={{ backgroundColor: bgColor, color: txColor }}>
+                      {selectable && (
+                        <td className={td}>
+                          <input type="checkbox" className="size-4 accent-blue-600" checked={selectedIds.has(row.id)} onChange={() => toggleSelected(row.id)} aria-label={`Select bill ${row.invoice_number || row.id}`} />
+                        </td>
                       )}
-                    </TableBody>
-                  </Table>
-                </TableContainer>
-                <TablePaginationFooter
-                  page={page}
-                  totalPages={totalPages}
-                  total={activeList.length}
-                  onPageChange={setPage}
-                  limit={rowsPerPage}
-                  onLimitChange={setRowsPerPage}
-                />
-              </MDBox>
-            </Card>
-          </Grid>
-        </Grid>
-      </MDBox>
+                      <td className={`${td} text-center opacity-70`}>{(page - 1) * rowsPerPage + index + 1}</td>
+                      <td className={`${td} whitespace-nowrap`}>{row.staff_name}</td>
+                      <td className={`${td} whitespace-nowrap`}>{row.company_name || "N/A"}</td>
+                      <td className={`${td} font-semibold`}>{row.outlet_name}</td>
+                      <td className={`${td} whitespace-nowrap`}>{row.location_name || "N/A"}</td>
+                      <td className={`${td} whitespace-nowrap font-mono text-[11.5px]`}>{row.outlet_erp_id}</td>
+                      <td className={`${td} text-center font-bold`}>{row.sticker_number}</td>
+                      <td className={`${td} text-center font-mono`}>
+                        {row.invoice_number}
+                        {activeTab === "pending" && requestedIds.has(Number(row.id)) && (
+                          <span className="mt-0.5 block whitespace-nowrap font-sans text-[10.5px] font-bold text-amber-700">Suspense requested</span>
+                        )}
+                      </td>
+                      <td className={`${td} whitespace-nowrap text-right font-bold tabular-nums`}>₹{Number(row.price).toFixed(2)}</td>
+                      <td className={`${td} text-center tabular-nums`}>{row.item_count || "N/A"}</td>
+                      <td className={`${td} text-center tabular-nums`}>{row.packed_item_count || row.item_count || "N/A"}</td>
+                      <td className={`${td} text-center tabular-nums`}>{row.box_count || "N/A"}</td>
+                      <td className={`${td} text-center tabular-nums`}>{row.packet_count || "N/A"}</td>
+                      {activeTab === "out_for_delivery" && (
+                        <>
+                          <td className={`${td} text-center`}>{row.delivery_boy_name || "N/A"}</td>
+                          <td className={`${td} text-center`}>{row.vehicle_no || "N/A"}</td>
+                        </>
+                      )}
+                      <td className={`${td} text-center`}>
+                        {activeTab === "pending" ? (
+                          <select
+                            className={`${fieldClass} h-8 min-w-40 text-slate-800`} aria-label="Status"
+                            value={row.packaging_status === "packing_done" ? "" : row.packaging_status}
+                            onChange={(e) => handleRowChange(row.id, "packaging_status", e.target.value)}
+                          >
+                            <option value="" disabled>Select status</option>
+                            <option value="returned" disabled>Returned</option>
+                            <option value="out_for_delivery">Out for Delivery</option>
+                          </select>
+                        ) : (
+                          <span className="whitespace-nowrap font-semibold">{statusLabels[row.packaging_status] || row.packaging_status}</span>
+                        )}
+                      </td>
+                      <td className={`${td} whitespace-nowrap text-center`}>{formatDate(row.delivery_date)}</td>
+                      <td className={`${td} whitespace-nowrap text-center`}>{formatDate(row.packing_date)}</td>
+                      {activeTab === "pending" && (
+                        <>
+                          <td className={`${td} text-center`}>
+                            <button
+                              type="button" onClick={() => handleOpenDetails(row.id)}
+                              className={`inline-flex h-8 items-center gap-1 whitespace-nowrap rounded-lg border px-2.5 text-[12px] font-semibold transition ${hasDetails ? "border-slate-300 bg-white text-slate-700 hover:bg-slate-50" : "border-blue-300 bg-blue-600 text-white hover:bg-blue-700"}`}
+                            >
+                              <Icon name={hasDetails ? "edit" : "person_add"} className="text-[15px]" />{hasDetails ? "Edit details" : "Assign details"}
+                            </button>
+                          </td>
+                          <td className={`${td} text-center`}>
+                            <span className="inline-flex gap-0.5 rounded-lg bg-white/80 p-0.5 ring-1 ring-black/5">
+                              <button type="button" className={`${btn.icon} text-emerald-600 hover:bg-emerald-50 hover:text-emerald-700`} title="Save" aria-label="Save" disabled={savingSaleIds.has(row.id)} onClick={() => handleSaveDelivery(row.id)}>
+                                <Icon name="save" className="text-[19px]" />
+                              </button>
+                              <button type="button" className={`${btn.icon} hover:text-blue-700`} title="Status history" aria-label="Status history" onClick={() => handleViewHistory(row.id)}>
+                                <Icon name="history" className="text-[19px]" />
+                              </button>
+                            </span>
+                          </td>
+                        </>
+                      )}
+                      {activeTab === "suspense" && (
+                        <>
+                          <td className={`${td} whitespace-nowrap text-center`}>{formatDateTime(row.suspense_at)}</td>
+                          <td className={`${td} max-w-60 whitespace-pre-wrap`}>{row.suspense_reason || "—"}</td>
+                          <td className={`${td} text-center`}>
+                            <button type="button" className={`${btn.outline} h-8 px-3 text-emerald-700`} disabled={suspenseBusy} onClick={() => updateSuspense([row.id], false)}>
+                              <Icon name="undo" className="text-[16px]" />Return
+                            </button>
+                          </td>
+                        </>
+                      )}
+                    </tr>
+                  );
+                }) : (
+                  <tr>
+                    <td colSpan={19} className="px-4 py-14 text-center text-[13px] text-slate-400">
+                      {activeTab === "suspense" ? "No bills in Suspense." : "No deliveries found."}
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+          <Pagination page={page} totalPages={totalPages} total={activeList.length} onPageChange={setPage} limit={rowsPerPage} onLimitChange={setRowsPerPage} />
+        </Card>
+      </div>
       <Footer />
 
-      <Dialog open={detailsModalOpen} onClose={handleCloseDetails} fullWidth maxWidth="xs">
-        <DialogTitle>Assign Delivery Details</DialogTitle>
-        <DialogContent dividers>
-          <MDBox display="flex" flexDirection="column" gap={2} mt={1}>
-            <FormControl size="small" fullWidth>
-              <Select
-                value={
-                  activeRowId
-                    ? salesData.find((r) => r.id === activeRowId)?.delivery_boy_id || ""
-                    : ""
-                }
-                displayEmpty
-                onChange={(e) => handleRowChange(activeRowId, "delivery_boy_id", e.target.value)}
-                sx={{ height: "44px", width: "100%" }}
-              >
-                <MenuItem value="" disabled>Select Delivery Boy</MenuItem>
-                {deliveryBoys.map((boy) => (
-                  <MenuItem key={boy.id} value={boy.id}>
-                    {boy.name}
-                  </MenuItem>
-                ))}
-              </Select>
-            </FormControl>
-            <MDInput
-              type="text"
-              label="Vehicle No"
-              fullWidth
-              value={
-                activeRowId
-                  ? salesData.find((r) => r.id === activeRowId)?.vehicle_no || ""
-                  : ""
-              }
-              onChange={(e) => handleRowChange(activeRowId, "vehicle_no", e.target.value)}
-            />
-            <MDInput
-              type="date"
-              label="Delivery Date"
-              fullWidth
-              InputLabelProps={{ shrink: true }}
-              value={
-                activeRowId
-                  ? salesData.find((r) => r.id === activeRowId)?.delivery_date || ""
-                  : ""
-              }
-              onChange={(e) => handleRowChange(activeRowId, "delivery_date", e.target.value)}
-            />
-          </MDBox>
-        </DialogContent>
-        <DialogActions>
-          <MDButton onClick={handleCloseDetails} color="dark">Done</MDButton>
-        </DialogActions>
-      </Dialog>
-
-      <Dialog
-        open={reasonDialog.open}
-        onClose={() => { if (!suspenseBusy) setReasonDialog({ open: false, saleIds: [], reason: "" }); }}
-        fullWidth
-        maxWidth="sm"
+      {/* Assign delivery boy, vehicle and date (saved with the row's Save button) */}
+      <Modal
+        open={detailsModalOpen} onClose={handleCloseDetails} title="Assign Delivery Details"
+        actions={<button type="button" className={btn.primary} onClick={handleCloseDetails}>Done</button>}
       >
-        <DialogTitle>Move {reasonDialog.saleIds.length} bill(s) to Suspense</DialogTitle>
-        <DialogContent dividers>
-          <MDTypography variant="body2" color="text" mb={2}>
-            Enter why these bills should go to Suspense. Admin moves them at once; for anyone else the request goes to admin
-            and the bills move only after it is approved (see Suspense Requests).
-          </MDTypography>
-          <MDInput
-            label="Reason *"
-            fullWidth
-            multiline
-            rows={3}
-            autoFocus
-            value={reasonDialog.reason}
-            inputProps={{ maxLength: 1000 }}
-            onChange={(e) => setReasonDialog((prev) => ({ ...prev, reason: e.target.value }))}
-          />
-        </DialogContent>
-        <DialogActions>
-          <MDButton color="secondary" disabled={suspenseBusy} onClick={() => setReasonDialog({ open: false, saleIds: [], reason: "" })}>
-            Cancel
-          </MDButton>
-          <MDButton
-            color="warning"
-            variant="gradient"
-            disabled={suspenseBusy || !reasonDialog.reason.trim()}
-            onClick={() => updateSuspense(reasonDialog.saleIds, true, reasonDialog.reason)}
-          >
-            {suspenseBusy ? "Sending..." : "Move to Suspense"}
-          </MDButton>
-        </DialogActions>
-      </Dialog>
+        {activeRow && (
+          <p className="m-0 mb-4 rounded-xl bg-slate-50 px-3.5 py-2.5 text-[12.5px] text-slate-600">
+            <b className="text-slate-900">{activeRow.outlet_name}</b> · Invoice {activeRow.invoice_number} · ₹{Number(activeRow.price).toFixed(2)}
+          </p>
+        )}
+        <div className="space-y-3">
+          <Field label="Delivery boy" width="w-full">
+            <select className={fieldClass} value={activeRow?.delivery_boy_id || ""} onChange={(e) => handleRowChange(activeRowId, "delivery_boy_id", e.target.value)}>
+              <option value="" disabled>Select delivery boy</option>
+              {deliveryBoys.map((boy) => <option key={boy.id} value={boy.id}>{boy.name}</option>)}
+            </select>
+          </Field>
+          <Field label="Vehicle no" width="w-full">
+            <input className={fieldClass} value={activeRow?.vehicle_no || ""} onChange={(e) => handleRowChange(activeRowId, "vehicle_no", e.target.value)} />
+          </Field>
+          <Field label="Delivery date" width="w-full">
+            <input type="date" className={fieldClass} value={activeRow?.delivery_date || ""} onChange={(e) => handleRowChange(activeRowId, "delivery_date", e.target.value)} />
+          </Field>
+          <p className="m-0 text-[12px] text-slate-500">Press <b>Save</b> on the row afterwards to update the bill.</p>
+        </div>
+      </Modal>
 
-      <Dialog
-        open={historyDialog.open}
-        onClose={() => setHistoryDialog({ open: false, sale: null, history: [] })}
-        fullWidth
-        maxWidth="sm"
+      {/* Reason for moving bills to Suspense */}
+      <Modal
+        open={reasonDialog.open} onClose={() => setReasonDialog({ open: false, saleIds: [], reason: "" })} locked={suspenseBusy} size="lg"
+        title={`Move ${reasonDialog.saleIds.length} bill(s) to Suspense`}
+        actions={(
+          <>
+            <button type="button" className={btn.ghost} disabled={suspenseBusy} onClick={() => setReasonDialog({ open: false, saleIds: [], reason: "" })}>Cancel</button>
+            <button type="button" className={`${btn.primary} bg-amber-500 hover:bg-amber-600`} disabled={suspenseBusy || !reasonDialog.reason.trim()} onClick={() => updateSuspense(reasonDialog.saleIds, true, reasonDialog.reason)}>
+              {suspenseBusy ? "Sending..." : "Move to Suspense"}
+            </button>
+          </>
+        )}
       >
-        <DialogTitle>Status Update Dates</DialogTitle>
-        <DialogContent dividers>
-          <MDBox mb={2}>
-            <MDTypography variant="button" fontWeight="medium">
-              Sale ID: {historyDialog.sale ? formatBpSaleId(historyDialog.sale) : "N/A"}
-            </MDTypography>
-            <MDTypography display="block" variant="button" fontWeight="medium">
-              Invoice: {historyDialog.sale?.invoice_number || "N/A"}
-            </MDTypography>
-            <MDTypography variant="body2" color="text">
-              Invoice Date: {formatDate(historyDialog.sale?.sale_date)}
-            </MDTypography>
-            <MDTypography variant="body2" color="text">
-              Outlet: {historyDialog.sale?.outlet_name || "N/A"}
-            </MDTypography>
-          </MDBox>
-          <Table size="small">
-            <TableHead sx={{ display: "table-header-group" }}>
-              <TableRow>
-                <TableCell>Status</TableCell>
-                <TableCell align="center">Update Date</TableCell>
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {historyDialog.history.map((item) => (
-                <TableRow key={item.id}>
-                  <TableCell>{statusLabels[item.status] || item.status}</TableCell>
-                  <TableCell align="center">{formatDateTime(item.changed_at)}</TableCell>
-                </TableRow>
-              ))}
-              {historyDialog.history.length === 0 && (
-                <TableRow>
-                  <TableCell colSpan={2} align="center">
-                    No status update dates found.
-                  </TableCell>
-                </TableRow>
-              )}
-            </TableBody>
-          </Table>
-        </DialogContent>
-        <DialogActions>
-          <MDButton color="dark" onClick={() => setHistoryDialog({ open: false, sale: null, history: [] })}>
-            Close
-          </MDButton>
-        </DialogActions>
-      </Dialog>
+        <p className="m-0 mb-3 text-[13px] text-slate-600">
+          Enter why these bills should go to Suspense. Admin moves them at once; for anyone else the request goes to admin
+          and the bills move only after it is approved (see Suspense Requests).
+        </p>
+        <label className="flex flex-col gap-1">
+          <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Reason *</span>
+          {/* eslint-disable-next-line jsx-a11y/no-autofocus */}
+          <textarea rows={3} autoFocus maxLength={1000} className={`${fieldClass} h-auto py-2`} value={reasonDialog.reason} onChange={(e) => setReasonDialog((prev) => ({ ...prev, reason: e.target.value }))} />
+        </label>
+      </Modal>
+
+      {/* Status history */}
+      <Modal
+        open={historyDialog.open} onClose={() => setHistoryDialog({ open: false, sale: null, history: [] })} size="lg" title="Status Update Dates"
+        actions={<button type="button" className={btn.ghost} onClick={() => setHistoryDialog({ open: false, sale: null, history: [] })}>Close</button>}
+      >
+        <div className="mb-4 grid grid-cols-2 gap-2 rounded-xl bg-slate-50 p-3 text-[12.5px]">
+          <span><span className="text-slate-500">Sale ID:</span> <b>{historyDialog.sale ? formatBpSaleId(historyDialog.sale) : "N/A"}</b></span>
+          <span><span className="text-slate-500">Invoice:</span> <b>{historyDialog.sale?.invoice_number || "N/A"}</b></span>
+          <span><span className="text-slate-500">Invoice date:</span> {formatDate(historyDialog.sale?.sale_date)}</span>
+          <span><span className="text-slate-500">Outlet:</span> {historyDialog.sale?.outlet_name || "N/A"}</span>
+        </div>
+        <ol className="m-0 list-none space-y-0 p-0">
+          {historyDialog.history.map((item, i) => (
+            <li key={item.id} className="relative flex gap-3 pb-4 pl-1 last:pb-0">
+              {i < historyDialog.history.length - 1 && <span className="absolute left-[9px] top-5 h-full w-px bg-slate-200" />}
+              <span className="relative mt-1 size-3 shrink-0 rounded-full border-2 border-blue-600 bg-white" />
+              <span className="grow text-[13px] font-semibold text-slate-800">{statusLabels[item.status] || item.status}</span>
+              <span className="text-[12.5px] tabular-nums text-slate-500">{formatDateTime(item.changed_at)}</span>
+            </li>
+          ))}
+          {historyDialog.history.length === 0 && <li className="py-6 text-center text-[13px] text-slate-400">No status update dates found.</li>}
+        </ol>
+      </Modal>
     </DashboardLayout>
   );
 }

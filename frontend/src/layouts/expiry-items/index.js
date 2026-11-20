@@ -1,33 +1,14 @@
+// Expiry Items: Tailwind CSS (no MUI). DMS upload loading, filters and expiry calculation unchanged.
 import { useEffect, useMemo, useState } from "react";
 
-import Card from "@mui/material/Card";
-import FormControl from "@mui/material/FormControl";
-import Grid from "@mui/material/Grid";
-import LinearProgress from "@mui/material/LinearProgress";
-import MenuItem from "@mui/material/MenuItem";
-import Paper from "@mui/material/Paper";
-import Select from "@mui/material/Select";
-import Table from "@mui/material/Table";
-import TableBody from "@mui/material/TableBody";
-import TableCell from "@mui/material/TableCell";
-import TableContainer from "@mui/material/TableContainer";
-import TableHead from "@mui/material/TableHead";
-import TableRow from "@mui/material/TableRow";
-
-import MDBox from "components/MDBox";
-import MDInput from "components/MDInput";
-import MDTypography from "components/MDTypography";
 import DashboardLayout from "examples/LayoutContainers/DashboardLayout";
 import DashboardNavbar from "examples/Navbars/DashboardNavbar";
 import Footer from "examples/Footer";
-import CompanyTypeSelect from "components/CompanyFilter/CompanyTypeSelect";
-import { useCompanyTypeLookup } from "utils/companyTypes";
+import { COMPANY_TYPES, useCompanyTypeLookup } from "utils/companyTypes";
+import { Card, Field, Notice, PageHeader, SearchBox, StatBox, fieldClass } from "components/tw";
 
 const API = (process.env.REACT_APP_API_URL);
 const dayMs = 86400000;
-const cellSx = { px: 1.5, py: 1, whiteSpace: "nowrap", fontSize: "0.75rem" };
-const headSx = { ...cellSx, fontWeight: 700, backgroundColor: "#dbeafe", color: "#334155" };
-
 const formatDate = (value) => {
   if (!value) return "—";
   return new Date(`${String(value).slice(0, 10)}T00:00:00`).toLocaleDateString("en-IN", {
@@ -149,86 +130,118 @@ function ExpiryItems() {
     }
   };
 
+  const statusCounts = expiryItems.reduce((acc, item) => {
+    if (item.expiry.days < 0) acc.expired += 1;
+    else if (item.expiry.days <= 30) acc.d30 += 1;
+    else if (item.expiry.days <= 90) acc.d90 += 1;
+    return acc;
+  }, { expired: 0, d30: 0, d90: 0 });
+  const right = ["Days remaining", "Expired qty", "Current qty", "Qty after expiry"];
+
   return (
     <DashboardLayout>
       <DashboardNavbar />
-      <MDBox pt={6} pb={3}>
-        <Grid container spacing={3}>
-          <Grid item xs={12}>
-            <Card>
-              <MDBox p={3} pb={2}>
-                <MDTypography variant="h5" fontWeight="medium" color="dark">Expiry Items</MDTypography>
-                <MDTypography variant="caption" color="text">
-                  Monitor expired and upcoming-expiry stock from each DMS upload. Expiry does not deduct current stock.
-                </MDTypography>
-              </MDBox>
-              <MDBox px={3} pb={3}>
-                <Grid container spacing={2} mb={2} alignItems="center">
-                  <Grid item xs={12} md={3}>
-                    <CompanyTypeSelect
-                      id="expiry-items-company-type"
-                      value={companyType}
-                      onChange={handleCompanyTypeChange}
-                    />
-                  </Grid>
-                  <Grid item xs={12} md={3}>
-                    <FormControl size="small" fullWidth>
-                      <Select displayEmpty value={selectedCompanyId} onChange={(event) => handleCompanyChange(event.target.value)} sx={{ height: 44, backgroundColor: "#fff" }}>
-                        <MenuItem value="">All Companies</MenuItem>
-                        {typedCompanyOptions.map((company) => <MenuItem key={company.id} value={company.id}>{company.name}</MenuItem>)}
-                      </Select>
-                    </FormControl>
-                  </Grid>
-                  <Grid item xs={12} md={3}>
-                    <FormControl size="small" fullWidth>
-                      <Select displayEmpty value={selectedImportId} onChange={(event) => setSelectedImportId(event.target.value)} sx={{ height: 44, backgroundColor: "#fff" }}>
-                        {!selectedCompanyId && <MenuItem value="">Latest DMS Upload</MenuItem>}
-                        {companyImports.map((entry) => (
-                          <MenuItem key={entry.id} value={String(entry.id)}>
-                            {formatDate(entry.upload_date)}{entry.company_name ? ` — ${entry.company_name}` : ""}{entry.invoice_number ? ` — Inv: ${entry.invoice_number}` : ""}
-                          </MenuItem>
-                        ))}
-                      </Select>
-                    </FormControl>
-                  </Grid>
-                  <Grid item xs={12} md={3}><MDInput label="Search product, ERP or batch" fullWidth value={search} onChange={(event) => setSearch(event.target.value)} /></Grid>
-                  <Grid item xs={12} md={3}>
-                    <FormControl size="small" fullWidth>
-                      <Select value={status} onChange={(event) => setStatus(event.target.value)} sx={{ height: 44, backgroundColor: "#fff" }}>
-                        <MenuItem value="all">All Expiry Statuses</MenuItem>
-                        <MenuItem value="expired">Expired</MenuItem>
-                        <MenuItem value="30">Expiring Within 30 Days</MenuItem>
-                        <MenuItem value="90">Expiring Within 90 Days</MenuItem>
-                        <MenuItem value="valid">Valid Over 90 Days</MenuItem>
-                      </Select>
-                    </FormControl>
-                  </Grid>
-                </Grid>
-                {stockImport && <MDTypography variant="caption" color="text" display="block" mb={1}>DMS upload: {formatDate(stockImport.upload_date || stockImport.created_at)}{stockImport.company_name ? ` — ${stockImport.company_name}` : ""}</MDTypography>}
-                {error && <MDTypography color="error" variant="button">{error}</MDTypography>}
-                {loading && <LinearProgress color="info" sx={{ mb: 2 }} />}
-                <TableContainer component={Paper} sx={{ maxHeight: "68vh", border: "1px solid #e5e7eb" }}>
-                  <Table size="small" stickyHeader sx={{ minWidth: 1650 }}>
-                    <TableHead sx={{ display: "table-header-group" }}><TableRow>{["Sr No", "Invoice No.", "Invoice Date", "ERP ID", "SKU Name", "Company", "Variant", "Batch", "MFG Date", "Expiry Date", "Days Remaining", "Status", "Expired Qty", "Current Qty", "Stock Deduction", "Qty After Expiry"].map((heading) => <TableCell key={heading} align={["Days Remaining", "Expired Qty", "Current Qty", "Qty After Expiry"].includes(heading) ? "right" : "left"} sx={headSx}>{heading}</TableCell>)}</TableRow></TableHead>
-                    <TableBody>
-                      {!loading && expiryItems.length === 0 && <TableRow><TableCell colSpan={16} align="center" sx={cellSx}>No expiry items match the selected filters.</TableCell></TableRow>}
-                      {expiryItems.map((item, index) => {
-                        const quantities = getExpiryQuantities(item);
-                        return (
-                          <TableRow key={item.id} hover>
-                            <TableCell sx={cellSx}>{index + 1}</TableCell><TableCell sx={cellSx}>{item.invoice_number || stockImport?.invoice_number || "—"}</TableCell><TableCell sx={cellSx}>{formatDate(item.upload_date || stockImport?.upload_date)}</TableCell><TableCell sx={cellSx}>{item.product_erp_id}</TableCell><TableCell sx={{ ...cellSx, minWidth: 200 }}>{item.product_name}</TableCell><TableCell sx={cellSx}>{item.company_name || stockImport?.company_name || item.product_division || "N/A"}</TableCell><TableCell sx={cellSx}>{item.variant_name || "—"}</TableCell><TableCell sx={cellSx}>{item.batch_number || "—"}</TableCell><TableCell sx={cellSx}>{formatDate(item.mfg_date)}</TableCell><TableCell sx={{ ...cellSx, fontWeight: 700 }}>{formatDate(item.expiry_date)}</TableCell><TableCell align="right" sx={cellSx}>{item.expiry.days < 0 ? `${Math.abs(item.expiry.days)} days ago` : `${item.expiry.days} days`}</TableCell>
-                            <TableCell sx={cellSx}><MDBox component="span" px={1} py={0.5} sx={{ display: "inline-block", borderRadius: 1, color: item.expiry.color, backgroundColor: item.expiry.bg, fontSize: "0.7rem", fontWeight: 700 }}>{item.expiry.label}</MDBox></TableCell><TableCell align="right" sx={{ ...cellSx, fontWeight: 700, color: quantities.expiredQty > 0 ? "#991b1b" : "inherit" }}>{number(quantities.expiredQty)}</TableCell><TableCell align="right" sx={{ ...cellSx, fontWeight: 700 }}>{number(quantities.currentQty)}</TableCell><TableCell sx={cellSx}>No</TableCell><TableCell align="right" sx={{ ...cellSx, fontWeight: 700 }}>{number(quantities.qtyAfterExpiry)}</TableCell>
-                          </TableRow>
-                        );
-                      })}
-                    </TableBody>
-                  </Table>
-                </TableContainer>
-              </MDBox>
-            </Card>
-          </Grid>
-        </Grid>
-      </MDBox>
+      <div className="pb-8 font-[Poppins,Roboto,sans-serif] text-slate-700">
+        <PageHeader title="Expiry Items" description="Monitor expired and upcoming-expiry stock from each DMS upload. Expiry does not deduct current stock." />
+
+        <Card className="mb-5">
+          <div className="grid grid-cols-1 gap-3 p-4 sm:grid-cols-2 xl:grid-cols-5">
+            <Field label="Company type" width="w-full">
+              <select className={fieldClass} value={companyType} onChange={(e) => handleCompanyTypeChange(e.target.value)}>
+                <option value="">All types</option>
+                {COMPANY_TYPES.map((type) => <option key={type.value} value={type.value}>{type.label}</option>)}
+              </select>
+            </Field>
+            <Field label="Company" width="w-full">
+              <select className={fieldClass} value={selectedCompanyId} onChange={(e) => handleCompanyChange(e.target.value)}>
+                <option value="">All companies</option>
+                {typedCompanyOptions.map((company) => <option key={company.id} value={company.id}>{company.name}</option>)}
+              </select>
+            </Field>
+            <Field label="DMS upload" width="w-full">
+              <select className={fieldClass} value={selectedImportId} onChange={(e) => setSelectedImportId(e.target.value)}>
+                {!selectedCompanyId && <option value="">Latest DMS upload</option>}
+                {companyImports.map((entry) => (
+                  <option key={entry.id} value={String(entry.id)}>
+                    {formatDate(entry.upload_date)}{entry.company_name ? ` — ${entry.company_name}` : ""}{entry.invoice_number ? ` — Inv: ${entry.invoice_number}` : ""}
+                  </option>
+                ))}
+              </select>
+            </Field>
+            <Field label="Expiry status" width="w-full">
+              <select className={fieldClass} value={status} onChange={(e) => setStatus(e.target.value)}>
+                <option value="all">All expiry statuses</option>
+                <option value="expired">Expired</option>
+                <option value="30">Expiring within 30 days</option>
+                <option value="90">Expiring within 90 days</option>
+                <option value="valid">Valid over 90 days</option>
+              </select>
+            </Field>
+            <div className="flex flex-col gap-1">
+              <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Search</span>
+              <SearchBox value={search} onChange={setSearch} placeholder="Product, ERP or batch" className="w-full" />
+            </div>
+          </div>
+        </Card>
+
+        <div className="mb-4 flex flex-wrap items-center gap-2">
+          <StatBox label="Shown" value={expiryItems.length} icon="inventory_2" />
+          <StatBox label="Expired" value={statusCounts.expired} icon="dangerous" />
+          <StatBox label="≤30 days" value={statusCounts.d30} icon="hourglass_bottom" />
+          <StatBox label="31–90 days" value={statusCounts.d90} icon="schedule" />
+          {stockImport && (
+            <span className="ml-auto text-[12.5px] text-slate-500">
+              DMS upload: <b className="text-slate-700">{formatDate(stockImport.upload_date || stockImport.created_at)}</b>{stockImport.company_name ? ` — ${stockImport.company_name}` : ""}
+            </span>
+          )}
+        </div>
+        {error && <Notice tone="error" className="mb-4">{error}</Notice>}
+
+        <Card>
+          {loading && <div className="h-1 w-full overflow-hidden bg-blue-100"><div className="h-full w-1/3 animate-pulse bg-blue-600" /></div>}
+          <div className="max-h-[68vh] overflow-auto">
+            <table className="w-full min-w-[1650px] border-collapse text-[12.5px]">
+              <thead className="sticky top-0 z-10">
+                <tr className="bg-slate-50 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                  {["#", "Invoice no", "Invoice date", "ERP ID", "SKU name", "Company", "Variant", "Batch", "MFG date", "Expiry date", "Days remaining", "Status", "Expired qty", "Current qty", "Stock deduction", "Qty after expiry"].map((heading) => (
+                    <th key={heading} className={`whitespace-nowrap px-3 py-2.5 ${right.includes(heading) ? "text-right" : "text-left"}`}>{heading}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {!loading && expiryItems.length === 0 && (
+                  <tr><td colSpan={16} className="px-3 py-12 text-center text-[13px] text-slate-400">No expiry items match the selected filters.</td></tr>
+                )}
+                {expiryItems.map((item, index) => {
+                  const quantities = getExpiryQuantities(item);
+                  return (
+                    <tr key={item.id} className="whitespace-nowrap border-t border-slate-100 hover:bg-slate-50/70">
+                      <td className="px-3 py-2 text-slate-400">{index + 1}</td>
+                      <td className="px-3 py-2 font-mono">{item.invoice_number || stockImport?.invoice_number || "—"}</td>
+                      <td className="px-3 py-2">{formatDate(item.upload_date || stockImport?.upload_date)}</td>
+                      <td className="px-3 py-2 font-mono text-slate-500">{item.product_erp_id}</td>
+                      <td className="min-w-52 whitespace-normal px-3 py-2 font-semibold text-slate-800">{item.product_name}</td>
+                      <td className="px-3 py-2">{item.company_name || stockImport?.company_name || item.product_division || "N/A"}</td>
+                      <td className="px-3 py-2">{item.variant_name || "—"}</td>
+                      <td className="px-3 py-2">{item.batch_number || "—"}</td>
+                      <td className="px-3 py-2">{formatDate(item.mfg_date)}</td>
+                      <td className="px-3 py-2 font-bold text-slate-900">{formatDate(item.expiry_date)}</td>
+                      <td className="px-3 py-2 text-right tabular-nums">{item.expiry.days < 0 ? `${Math.abs(item.expiry.days)} days ago` : `${item.expiry.days} days`}</td>
+                      <td className="px-3 py-2">
+                        <span className="inline-block rounded-full px-2 py-0.5 text-[11px] font-bold" style={{ color: item.expiry.color, backgroundColor: item.expiry.bg }}>{item.expiry.label}</span>
+                      </td>
+                      <td className={`px-3 py-2 text-right font-bold tabular-nums ${quantities.expiredQty > 0 ? "text-red-700" : ""}`}>{number(quantities.expiredQty)}</td>
+                      <td className="px-3 py-2 text-right font-bold tabular-nums">{number(quantities.currentQty)}</td>
+                      <td className="px-3 py-2">No</td>
+                      <td className="px-3 py-2 text-right font-bold tabular-nums">{number(quantities.qtyAfterExpiry)}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </Card>
+      </div>
       <Footer />
     </DashboardLayout>
   );

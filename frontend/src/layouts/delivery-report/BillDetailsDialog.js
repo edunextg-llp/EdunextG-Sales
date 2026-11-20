@@ -1,9 +1,7 @@
+// Bill details + items popup: Tailwind CSS (no MUI). Loading logic unchanged.
 import { useEffect, useState } from "react";
 import PropTypes from "prop-types";
-import { Dialog, DialogTitle, DialogContent, DialogActions, TableContainer, Table, TableHead, TableBody, TableRow, TableCell } from "@mui/material";
-import MDBox from "components/MDBox";
-import MDTypography from "components/MDTypography";
-import MDButton from "components/MDButton";
+import { Modal, Notice, btn } from "components/tw";
 
 const money = (value) => value == null ? "—" : `Rs. ${Number(value).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
@@ -48,30 +46,50 @@ export default function BillDetailsDialog({ bill, onClose, api }) {
     ["Cancelled amount", money(row.cancelled_amount)], ["Bill total", money(row.effective_price ?? row.price)],
     ["Paid", money(row.paid_amount)], ["Balance", money(row.balance_amount)],
   ];
-  return <Dialog open={Boolean(bill)} onClose={onClose} fullWidth maxWidth="lg" aria-labelledby="bill-details-title">
-    <DialogTitle id="bill-details-title">Bill Details — {row.invoice_number || row.id}</DialogTitle>
-    <DialogContent dividers>
-      <MDBox display="grid" sx={{ gridTemplateColumns: { xs: "1fr", sm: "repeat(3, 1fr)" }, gap: 1, mb: 2 }}>
-        {details.map(([label, value]) => <MDTypography key={label} variant="caption"><strong>{label}:</strong> {value === "" || value == null ? "—" : String(value)}</MDTypography>)}
-      </MDBox>
-      <MDTypography variant="h6">Bill Items</MDTypography>
-      {loading ? <MDTypography variant="body2" role="status">Loading items…</MDTypography> : error ?
-        <MDBox><MDTypography variant="body2" color="error" role="alert">{error}</MDTypography><MDButton onClick={() => setRetry((value) => value + 1)} color="info">Retry</MDButton></MDBox> :
-        <TableContainer><Table size="small" aria-label="Bill items">
-          <TableHead sx={{ display: "table-header-group" }}><TableRow>
-            {["Product", "ERP ID", "Division", "Variant", "Quantity", "Rate", "Amount"].map((label) => <TableCell key={label}>{label}</TableCell>)}
-          </TableRow></TableHead>
-          <TableBody>{items.map((item, index) => <TableRow key={item.id ?? index}>
-            <TableCell>{item.product_name || "—"}</TableCell><TableCell>{item.product_erp_id || "—"}</TableCell>
-            <TableCell>{item.product_division || "—"}</TableCell><TableCell>{item.variant_name || "—"}</TableCell>
-            <TableCell>{item.qty}</TableCell><TableCell>{money(item.rate)}</TableCell><TableCell>{money(item.line_total)}</TableCell>
-          </TableRow>)}
-          {!items.length && <TableRow><TableCell colSpan={7}>No item details recorded for this bill.</TableCell></TableRow>}
-          </TableBody>
-        </Table></TableContainer>}
-    </DialogContent>
-    <DialogActions><MDButton color="secondary" onClick={onClose}>Close</MDButton></DialogActions>
-  </Dialog>;
+  const th = "sticky top-0 z-[1] whitespace-nowrap bg-slate-50 px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500";
+  const td = "border-t border-slate-100 px-3 py-2 text-[12.5px] align-top";
+  return (
+    <Modal
+      open={Boolean(bill)} onClose={onClose} size="xl" title={`Bill Details — ${row.invoice_number || row.id}`}
+      actions={<button type="button" className={btn.ghost} onClick={onClose}>Close</button>}
+    >
+      <dl className="m-0 mb-5 grid gap-x-6 gap-y-2 rounded-xl bg-slate-50 p-4 sm:grid-cols-3">
+        {details.map(([label, value]) => (
+          <div key={label} className="min-w-0">
+            <dt className="text-[10.5px] font-semibold uppercase tracking-wide text-slate-500">{label}</dt>
+            <dd className="m-0 truncate text-[13px] font-medium text-slate-800">{value === "" || value == null ? "—" : String(value)}</dd>
+          </div>
+        ))}
+      </dl>
+      <h4 className="m-0 mb-2 text-[14px] font-semibold text-slate-900">Bill items</h4>
+      {loading ? <p role="status" className="m-0 py-6 text-center text-[13px] text-slate-400">Loading items…</p> : error ? (
+        <div className="flex flex-wrap items-center gap-3">
+          <Notice tone="error">{error}</Notice>
+          <button type="button" className={btn.outline} onClick={() => setRetry((value) => value + 1)}>Retry</button>
+        </div>
+      ) : (
+        <div className="overflow-x-auto rounded-xl border border-slate-200">
+          <table aria-label="Bill items" className="w-full border-collapse">
+            <thead><tr>{["Product", "ERP ID", "Division", "Variant", "Quantity", "Rate", "Amount"].map((label) => <th key={label} className={th}>{label}</th>)}</tr></thead>
+            <tbody>
+              {items.map((item, index) => (
+                <tr key={item.id ?? index}>
+                  <td className={`${td} font-medium text-slate-800`}>{item.product_name || "—"}</td>
+                  <td className={`${td} font-mono text-[11.5px]`}>{item.product_erp_id || "—"}</td>
+                  <td className={td}>{item.product_division || "—"}</td>
+                  <td className={td}>{item.variant_name || "—"}</td>
+                  <td className={`${td} tabular-nums`}>{item.qty}</td>
+                  <td className={`${td} whitespace-nowrap tabular-nums`}>{money(item.rate)}</td>
+                  <td className={`${td} whitespace-nowrap font-semibold tabular-nums`}>{money(item.line_total)}</td>
+                </tr>
+              ))}
+              {!items.length && <tr><td colSpan={7} className="px-4 py-8 text-center text-[13px] text-slate-400">No item details recorded for this bill.</td></tr>}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </Modal>
+  );
 }
 
 BillDetailsDialog.propTypes = { bill: PropTypes.object, onClose: PropTypes.func.isRequired, api: PropTypes.string.isRequired };

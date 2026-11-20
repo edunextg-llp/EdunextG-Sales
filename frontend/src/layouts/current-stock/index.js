@@ -1,59 +1,13 @@
+// Current Stock: Tailwind CSS (no MUI). Stock loading and company filters unchanged.
 import { useEffect, useState } from "react";
 
-import Card from "@mui/material/Card";
-import FormControl from "@mui/material/FormControl";
-import Grid from "@mui/material/Grid";
-import Icon from "@mui/material/Icon";
-import LinearProgress from "@mui/material/LinearProgress";
-import MenuItem from "@mui/material/MenuItem";
-import Paper from "@mui/material/Paper";
-import Select from "@mui/material/Select";
-import Table from "@mui/material/Table";
-import TableBody from "@mui/material/TableBody";
-import TableCell from "@mui/material/TableCell";
-import TableContainer from "@mui/material/TableContainer";
-import TableHead from "@mui/material/TableHead";
-import TableRow from "@mui/material/TableRow";
-
-import MDBox from "components/MDBox";
-import MDButton from "components/MDButton";
-import MDTypography from "components/MDTypography";
 import DashboardLayout from "examples/LayoutContainers/DashboardLayout";
 import DashboardNavbar from "examples/Navbars/DashboardNavbar";
 import Footer from "examples/Footer";
-import { stickyColumnSx, stickyHeadRowSx, stickyTableContainerSx, stickyTableSx } from "utils/stickyProductColumns";
-import CompanyTypeSelect from "components/CompanyFilter/CompanyTypeSelect";
-import { useCompanyTypeLookup } from "utils/companyTypes";
+import { COMPANY_TYPES, useCompanyTypeLookup } from "utils/companyTypes";
+import { Card, Field, Icon, Notice, PageHeader, btn, fieldClass } from "components/tw";
 
 const API = (process.env.REACT_APP_API_URL);
-
-const tableHeadSx = {
-  color: "#6b7280",
-  fontSize: "0.75rem",
-  fontWeight: 700,
-  borderBottom: "1px solid #e5e7eb",
-  px: 2,
-  py: 1.5,
-  whiteSpace: "nowrap",
-};
-
-const tableBodySx = {
-  px: 2,
-  py: 1.5,
-  verticalAlign: "middle",
-  whiteSpace: "nowrap",
-};
-
-const calculatedCellSx = {
-  ...tableBodySx,
-  backgroundColor: "#eff6ff",
-  fontWeight: 700,
-};
-
-const sourceCellSx = {
-  ...tableBodySx,
-  backgroundColor: "#f8fafc",
-};
 
 const numberFormat = (value, decimals = 2) =>
   Number(value || 0).toLocaleString("en-IN", {
@@ -179,147 +133,117 @@ function CurrentStock() {
     }
   }, [companyFilter, companyType, companyTypeOf]);
 
+  // First four columns stay in view when scrolling sideways.
+  const STICKY = [
+    ["w-14 min-w-14", "left-0"],
+    ["w-36 min-w-36", "left-14"],
+    ["w-60 min-w-60", "left-50"],
+    ["w-36 min-w-36", "left-110"],
+  ];
+  const stickyCell = (index, head) => `sticky ${STICKY[index][1]} ${STICKY[index][0]} ${head ? "z-[3]" : "z-[1]"} ${head ? "bg-slate-50" : "bg-white group-hover:bg-slate-50"} ${index === 3 ? "shadow-[2px_0_0_#e2e8f0]" : ""}`;
+  const groupHead = { physical: "bg-slate-100", dms: "bg-amber-50", current: "bg-blue-50" };
+  const headCell = "whitespace-nowrap px-3 py-2.5 text-[11px] font-semibold uppercase tracking-wide text-slate-500";
+  const cell = "whitespace-nowrap px-3 py-2 text-[12.5px]";
+
   return (
     <DashboardLayout>
       <DashboardNavbar />
-      <MDBox pt={6} pb={3}>
-        <Grid container spacing={3}>
-          <Grid item xs={12}>
-            <Card>
-              <MDBox p={3} pb={2} display="flex" justifyContent="space-between" alignItems="center">
-                <MDBox>
-                  <MDTypography variant="h5" fontWeight="medium" color="dark">
-                    Current Stock
-                  </MDTypography>
-                  <MDTypography variant="caption" color="text">
-                    Automatically calculated from the latest DMS upload.
-                  </MDTypography>
-                </MDBox>
-                <MDButton color="dark" variant="outlined" onClick={() => fetchCurrentStock()} disabled={loading}>
-                  <Icon sx={{ mr: 1 }}>refresh</Icon>
-                  Calculate
-                </MDButton>
-              </MDBox>
+      <div className="pb-8 font-[Poppins,Roboto,sans-serif] text-slate-700">
+        <PageHeader
+          title="Current Stock"
+          description="Automatically calculated from the latest DMS upload: Current Stock = Physical Stock minus DMS Stock."
+          actions={(
+            <button type="button" className={btn.outline} onClick={() => fetchCurrentStock()} disabled={loading}>
+              <Icon name="refresh" className="text-[18px]" />{loading ? "Calculating..." : "Calculate"}
+            </button>
+          )}
+        />
+        {message && <Notice tone="success" className="mb-4" onClose={() => setMessage("")}>{message}</Notice>}
+        {error && <Notice tone="error" className="mb-4">{error}</Notice>}
 
-              <MDBox px={3} pb={3}>
-                {loading && <LinearProgress color="info" sx={{ mb: 2 }} />}
-                {message && <MDTypography variant="button" color="success" fontWeight="medium" display="block" mb={1}>{message}</MDTypography>}
-                {error && <MDTypography variant="button" color="error" fontWeight="medium" display="block">{error}</MDTypography>}
-              </MDBox>
-            </Card>
-          </Grid>
-
-          {/* {stockImport && (
-            <Grid item xs={12}>
-              <Grid container spacing={2}>
-                <Grid item xs={12} sm={6} md={3}><Metric label="Company" value={stockImport.company_name || "N/A"} /></Grid>
-                <Grid item xs={12} sm={6} md={3}><Metric label="DMS Stock Date" value={formatDate(stockImport.dms_upload_date)} /></Grid>
-                <Grid item xs={12} sm={6} md={3}><Metric label="Products Compared" value={unitFormat(stockImport.row_count)} /></Grid>
-                <Grid item xs={12} sm={6} md={3}><Metric label="Physical Total Pcs" value={unitFormat(stockImport.total_physical_pieces)} /></Grid>
-                <Grid item xs={12} sm={6} md={3}><Metric label="DMS Total Pcs" value={unitFormat(stockImport.total_dms_pieces)} /></Grid>
-                <Grid item xs={12} sm={6} md={3}><Metric label="Current Stock Cases" value={unitFormat(stockImport.total_cases)} /></Grid>
-                <Grid item xs={12} sm={6} md={3}><Metric label="Current Stock Loose Pcs" value={unitFormat(stockImport.total_loose_pcs)} /></Grid>
-                <Grid item xs={12} sm={6} md={3}><Metric label="Current Stock Total Pcs" value={unitFormat(stockImport.total_pieces)} /></Grid>
-                <Grid item xs={12} sm={6} md={3}><Metric label="Current Stock Total Value" value={money(stockImport.total_value)} /></Grid>
-              </Grid>
-            </Grid>
-          )} */}
-
-          <Grid item xs={12}>
-            <Card>
-              <MDBox p={3} pb={2}>
-                <MDTypography variant="h6" fontWeight="medium">Current Stock Items</MDTypography>
-                <MDTypography variant="caption" color="text" display="block">
-                  Current Stock is automatically fetched from the latest DMS upload. No manual selection is required.
-                </MDTypography>
-                {stockImport && (
-                  <MDTypography variant="caption" color="text" display="block" mt={0.5}>
-                    Latest DMS upload: {formatDate(stockImport.dms_upload_date)}
-                    {stockImport.company_name ? ` - ${stockImport.company_name}` : ""}
-                    {stockImport.dms_file_name ? ` (${stockImport.dms_file_name})` : ""}
-                  </MDTypography>
+        <Card>
+          <div className="flex flex-wrap items-end gap-3 border-b border-slate-100 px-4 py-3">
+            <Field label="Company type" width="w-48">
+              <select className={fieldClass} value={companyType} onChange={(e) => handleCompanyTypeChange(e.target.value)}>
+                <option value="">All types</option>
+                {COMPANY_TYPES.map((type) => <option key={type.value} value={type.value}>{type.label}</option>)}
+              </select>
+            </Field>
+            <Field label="Company" width="w-60">
+              <select className={fieldClass} value={companyFilter} onChange={handleCompanyChange}>
+                <option value="" disabled>Select company</option>
+                {typedCompanies.map((company) => <option key={company} value={company}>{company}</option>)}
+              </select>
+            </Field>
+            <div className="ml-auto text-right text-[12px] text-slate-500">
+              {stockImport && (
+                <span className="block">
+                  Latest DMS upload: <b className="text-slate-700">{formatDate(stockImport.dms_upload_date)}</b>
+                  {stockImport.company_name ? ` - ${stockImport.company_name}` : ""}
+                  {stockImport.dms_file_name ? ` (${stockImport.dms_file_name})` : ""}
+                </span>
+              )}
+              <span className="mt-1 inline-flex items-center gap-3">
+                <span className="inline-flex items-center gap-1"><span className="size-2.5 rounded-sm bg-slate-200" />Physical</span>
+                <span className="inline-flex items-center gap-1"><span className="size-2.5 rounded-sm bg-amber-200" />DMS</span>
+                <span className="inline-flex items-center gap-1"><span className="size-2.5 rounded-sm bg-blue-300" />Current (calculated)</span>
+              </span>
+            </div>
+          </div>
+          {loading && <div className="h-1 w-full overflow-hidden bg-blue-100"><div className="h-full w-1/3 animate-pulse bg-blue-600" /></div>}
+          <div className="max-h-[70vh] overflow-auto">
+            <table className="w-full min-w-[1950px] border-separate border-spacing-0">
+              <thead className="sticky top-0 z-[2]">
+                <tr>
+                  <th className={`${headCell} ${stickyCell(0, true)} text-left`}>#</th>
+                  <th className={`${headCell} ${stickyCell(1, true)} text-left`}>Product ERP ID</th>
+                  <th className={`${headCell} ${stickyCell(2, true)} text-left`}>SKU name</th>
+                  <th className={`${headCell} ${stickyCell(3, true)} text-left`}>Product division</th>
+                  <th className={`${headCell} bg-slate-50 text-left`}>Variant name</th>
+                  <th className={`${headCell} bg-slate-50 text-right`}>Pcs/box</th>
+                  <th className={`${headCell} bg-slate-50 text-left`}>Expired stock</th>
+                  {["Physical case", "Physical pcs", "Physical total pcs"].map((h) => <th key={h} className={`${headCell} ${groupHead.physical} text-right`}>{h}</th>)}
+                  {["DMS case", "DMS pcs", "DMS total pcs"].map((h) => <th key={h} className={`${headCell} ${groupHead.dms} text-right`}>{h}</th>)}
+                  {["Current case", "Current pcs", "Current total pcs"].map((h) => <th key={h} className={`${headCell} ${groupHead.current} text-right text-blue-800`}>{h}</th>)}
+                  <th className={`${headCell} bg-slate-50 text-right`}>Price/pcs</th>
+                  <th className={`${headCell} ${groupHead.current} text-right text-blue-800`}>Current value</th>
+                </tr>
+              </thead>
+              <tbody>
+                {items.length === 0 && (
+                  <tr><td colSpan={18} className="px-3 py-12 text-center text-[13px] text-slate-400">No current stock is available for the latest DMS upload.</td></tr>
                 )}
-                <MDTypography variant="caption" color="info" display="block" mt={0.5}>
-                  Blue columns show Current Stock = Physical Stock minus DMS Stock.
-                </MDTypography>
-              </MDBox>
-              <MDBox px={3} pb={3}>
-                <Grid container spacing={2} mb={2} alignItems="center">
-                  <Grid item xs={12} sm={6} md={4}>
-                    <CompanyTypeSelect
-                      id="current-stock-company-type"
-                      value={companyType}
-                      onChange={handleCompanyTypeChange}
-                    />
-                  </Grid>
-                  <Grid item xs={12} sm={6} md={4}>
-                    <FormControl size="small" fullWidth>
-                      <Select displayEmpty value={companyFilter} onChange={handleCompanyChange} sx={{ height: 44, backgroundColor: "#fff" }}>
-                        <MenuItem value="" disabled>Select Company</MenuItem>
-                        {typedCompanies.map((company) => <MenuItem key={company} value={company}>{company}</MenuItem>)}
-                      </Select>
-                    </FormControl>
-                  </Grid>
-                </Grid>
-
-                <TableContainer component={Paper} sx={stickyTableContainerSx}>
-                  <Table sx={stickyTableSx(1950)}>
-                    <TableHead sx={{ display: "table-header-group", backgroundColor: "#f9fafb" }}>
-                      <TableRow>
-                        <TableCell sx={stickyColumnSx(0, { isHead: true, baseSx: tableHeadSx })}>Sr No</TableCell>
-                        <TableCell sx={stickyColumnSx(1, { isHead: true, baseSx: tableHeadSx })}>Product ERP ID</TableCell>
-                        <TableCell sx={stickyColumnSx(2, { isHead: true, baseSx: tableHeadSx })}>SKU Name</TableCell>
-                        <TableCell sx={stickyColumnSx(3, { isHead: true, baseSx: tableHeadSx })}>Product Division</TableCell>
-                        <TableCell sx={stickyHeadRowSx(tableHeadSx)}>Variant Name</TableCell>
-                        <TableCell align="right" sx={stickyHeadRowSx(tableHeadSx)}>Pcs/Box</TableCell>
-                        <TableCell sx={stickyHeadRowSx(tableHeadSx)}>Expired Stock</TableCell>
-                        <TableCell align="right" sx={stickyHeadRowSx(tableHeadSx, "#f1f5f9")}>Physical Case</TableCell>
-                        <TableCell align="right" sx={stickyHeadRowSx(tableHeadSx, "#f1f5f9")}>Physical Pcs</TableCell>
-                        <TableCell align="right" sx={stickyHeadRowSx(tableHeadSx, "#f1f5f9")}>Physical Total Pcs</TableCell>
-                        <TableCell align="right" sx={stickyHeadRowSx(tableHeadSx, "#fef3c7")}>DMS Case</TableCell>
-                        <TableCell align="right" sx={stickyHeadRowSx(tableHeadSx, "#fef3c7")}>DMS Pcs</TableCell>
-                        <TableCell align="right" sx={stickyHeadRowSx(tableHeadSx, "#fef3c7")}>DMS Total Pcs</TableCell>
-                        <TableCell align="right" sx={stickyHeadRowSx(tableHeadSx, "#dbeafe")}>Current Case</TableCell>
-                        <TableCell align="right" sx={stickyHeadRowSx(tableHeadSx, "#dbeafe")}>Current Pcs</TableCell>
-                        <TableCell align="right" sx={stickyHeadRowSx(tableHeadSx, "#dbeafe")}>Current Total Pcs</TableCell>
-                        <TableCell align="right" sx={stickyHeadRowSx(tableHeadSx)}>Price/Pcs</TableCell>
-                        <TableCell align="right" sx={stickyHeadRowSx(tableHeadSx, "#dbeafe")}>Current Value</TableCell>
-                      </TableRow>
-                    </TableHead>
-                    <TableBody>
-                      {items.length === 0 && (
-                        <TableRow><TableCell colSpan={18} align="center" sx={tableBodySx}><MDTypography variant="button" color="text">No current stock is available for the latest DMS upload.</MDTypography></TableCell></TableRow>
-                      )}
-                      {items.map((item, index) => (
-                        <TableRow key={`${item.product_erp_id}-${index}`}>
-                          <TableCell sx={stickyColumnSx(0, { baseSx: tableBodySx })}>{index + 1}</TableCell>
-                          <TableCell sx={stickyColumnSx(1, { baseSx: tableBodySx })}>{item.product_erp_id}</TableCell>
-                          <TableCell sx={stickyColumnSx(2, { baseSx: { ...tableBodySx, overflow: "hidden", textOverflow: "ellipsis" } })}>{item.product_name}</TableCell>
-                          <TableCell sx={stickyColumnSx(3, { baseSx: tableBodySx })}>{item.product_division}</TableCell>
-                          <TableCell sx={tableBodySx}>{item.variant_name}</TableCell>
-                          <TableCell align="right" sx={tableBodySx}>{unitFormat(item.pcs_per_box)}</TableCell>
-                          <TableCell sx={tableBodySx}>{formatExpiredStockDate(item.expired_stock_date)}</TableCell>
-                          <TableCell align="right" sx={sourceCellSx}>{unitFormat(item.physical_stock_in_case)}</TableCell>
-                          <TableCell align="right" sx={sourceCellSx}>{unitFormat(item.physical_stock_in_pcs)}</TableCell>
-                          <TableCell align="right" sx={sourceCellSx}>{unitFormat(item.total_physical_stock_in_pcs)}</TableCell>
-                          <TableCell align="right" sx={{ ...sourceCellSx, backgroundColor: "#fffbeb" }}>{unitFormat(item.dms_stock_in_case)}</TableCell>
-                          <TableCell align="right" sx={{ ...sourceCellSx, backgroundColor: "#fffbeb" }}>{unitFormat(item.dms_stock_in_pcs)}</TableCell>
-                          <TableCell align="right" sx={{ ...sourceCellSx, backgroundColor: "#fffbeb" }}>{unitFormat(item.total_dms_stock_in_pcs)}</TableCell>
-                          <TableCell align="right" sx={calculatedCellSx}>{unitFormat(item.current_stock_in_case)}</TableCell>
-                          <TableCell align="right" sx={calculatedCellSx}>{unitFormat(item.current_stock_in_pcs)}</TableCell>
-                          <TableCell align="right" sx={calculatedCellSx}>{unitFormat(item.total_current_stock_in_pcs)}</TableCell>
-                          <TableCell align="right" sx={tableBodySx}>{money(item.price_per_piece)}</TableCell>
-                          <TableCell align="right" sx={calculatedCellSx}>{money(item.total_value)}</TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </TableContainer>
-              </MDBox>
-            </Card>
-          </Grid>
-        </Grid>
-      </MDBox>
+                {items.map((item, index) => (
+                  // eslint-disable-next-line react/no-array-index-key
+                  <tr key={`${item.product_erp_id}-${index}`} className="group">
+                    <td className={`${cell} ${stickyCell(0)} border-t border-slate-100 text-slate-400`}>{index + 1}</td>
+                    <td className={`${cell} ${stickyCell(1)} border-t border-slate-100 font-mono`}>{item.product_erp_id}</td>
+                    <td className={`${cell} ${stickyCell(2)} max-w-60 truncate border-t border-slate-100 font-semibold text-slate-800`} title={item.product_name}>{item.product_name}</td>
+                    <td className={`${cell} ${stickyCell(3)} border-t border-slate-100`}>{item.product_division}</td>
+                    <td className={`${cell} border-t border-slate-100 group-hover:bg-slate-50`}>{item.variant_name}</td>
+                    <td className={`${cell} border-t border-slate-100 text-right tabular-nums group-hover:bg-slate-50`}>{unitFormat(item.pcs_per_box)}</td>
+                    <td className={`${cell} border-t border-slate-100 group-hover:bg-slate-50`}>{formatExpiredStockDate(item.expired_stock_date)}</td>
+                    {[item.physical_stock_in_case, item.physical_stock_in_pcs, item.total_physical_stock_in_pcs].map((v, i) => (
+                      // eslint-disable-next-line react/no-array-index-key
+                      <td key={`p${i}`} className={`${cell} border-t border-slate-100 bg-slate-50/70 text-right tabular-nums`}>{unitFormat(v)}</td>
+                    ))}
+                    {[item.dms_stock_in_case, item.dms_stock_in_pcs, item.total_dms_stock_in_pcs].map((v, i) => (
+                      // eslint-disable-next-line react/no-array-index-key
+                      <td key={`d${i}`} className={`${cell} border-t border-slate-100 bg-amber-50/60 text-right tabular-nums`}>{unitFormat(v)}</td>
+                    ))}
+                    {[item.current_stock_in_case, item.current_stock_in_pcs, item.total_current_stock_in_pcs].map((v, i) => (
+                      // eslint-disable-next-line react/no-array-index-key
+                      <td key={`c${i}`} className={`${cell} border-t border-slate-100 bg-blue-50/70 text-right font-bold tabular-nums text-blue-900`}>{unitFormat(v)}</td>
+                    ))}
+                    <td className={`${cell} border-t border-slate-100 text-right tabular-nums group-hover:bg-slate-50`}>{money(item.price_per_piece)}</td>
+                    <td className={`${cell} border-t border-slate-100 bg-blue-50/70 text-right font-bold tabular-nums text-blue-900`}>{money(item.total_value)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </Card>
+      </div>
       <Footer />
     </DashboardLayout>
   );

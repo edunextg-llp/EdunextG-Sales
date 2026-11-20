@@ -1,54 +1,21 @@
+// Payment > Update Payment: Tailwind CSS (no MUI). Sales, ledger, add / edit / delete payment, credit, cash notes,
+// cancellation and Excel logic unchanged.
 import CreditPhoto from "components/CreditPhoto";
 import { formatBytes, prepareUpload } from "utils/compressImage";
 import { Fragment, useState, useEffect, useRef, useCallback } from "react";
 import { notifySalesUpdated, useSalesPolling } from "utils/salesSync";
 import { downloadSalesExcel } from "utils/downloadSalesExcel";
 import { getUnupdatedPaymentSales, unupdatedPaymentColumns } from "utils/unupdatedPaymentExport";
-import Grid from "@mui/material/Grid";
-import Card from "@mui/material/Card";
-import Icon from "@mui/material/Icon";
-import {
-  FormControl,
-  Select,
-  MenuItem,
-  Table,
-  TableBody,
-  TableCell,
-  TableContainer,
-  TableHead,
-  TableRow,
-  Paper,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  InputLabel,
-  Tooltip,
-  CircularProgress,
-  Checkbox,
-  Snackbar,
-  Alert,
-} from "@mui/material";
-
-import MDBox from "components/MDBox";
-import MDTypography from "components/MDTypography";
-import MDInput from "components/MDInput";
-import MDButton from "components/MDButton";
 
 import DashboardLayout from "examples/LayoutContainers/DashboardLayout";
 import DashboardNavbar from "examples/Navbars/DashboardNavbar";
 import Footer from "examples/Footer";
 import { useAuth } from "context/AuthContext";
+import { ROWS_PER_PAGE } from "utils/tablePagination";
+import { COMPANY_TYPES, useCompanyTypeLookup } from "utils/companyTypes";
 import {
-  ROWS_PER_PAGE,
-  TablePaginationFooter,
-  compactTableTextSx,
-  paginatedTableContainerSx,
-  paginatedTableHeadCellSx,
-  paginatedTableHeadSx,
-} from "utils/tablePagination";
-import CompanyTypeSelect from "components/CompanyFilter/CompanyTypeSelect";
-import { useCompanyTypeLookup } from "utils/companyTypes";
+  Badge, Card, Field, Icon, Modal, Notice, PageHeader, Pagination, SearchBox, Spinner, TriCheck, btn, fieldClass,
+} from "components/tw";
 
 const PAYMENT_MODE_LABELS = {
   cash: "Cash",
@@ -77,24 +44,6 @@ const parseCashDetails = (value) => {
   } catch (error) {
     return emptyCashNotes();
   }
-};
-
-const tableHeadSx = {
-  color: "#6b7280",
-  fontSize: "0.75rem",
-  fontWeight: 600,
-  textTransform: "none",
-  borderBottom: "1px solid #e5e7eb",
-  px: 2,
-  py: 1.5,
-  whiteSpace: "nowrap",
-  verticalAlign: "middle",
-};
-
-const tableBodySx = {
-  px: 2,
-  verticalAlign: "middle",
-  py: 1.5,
 };
 
 const getTodayLocalDate = () => {
@@ -1508,1474 +1457,665 @@ function UpdatePayment() {
     }
   };
 
+  const head = "sticky top-0 z-[1] whitespace-nowrap bg-slate-50 px-3 py-2.5 text-[11px] font-semibold uppercase tracking-wide text-slate-500";
+  const cell = "border-t border-slate-200/70 px-3 py-2.5 text-[12.5px]";
+  const mini = "whitespace-nowrap bg-slate-50 px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500";
+  const miniTd = "border-t border-slate-100 px-3 py-2 text-[12.5px] text-slate-700";
+  const label = "text-[11px] font-semibold uppercase tracking-wide text-slate-500";
+  const MODE_TONE = { cash: "green", upi: "blue", cheque: "amber", credit: "violet" };
+  const typeSelect = (id, value, onChange) => (
+    <Field label="Company type" width="w-36">
+      <select id={id} className={fieldClass} value={value} onChange={(event) => onChange(event.target.value)}>
+        <option value="">All types</option>
+        {COMPANY_TYPES.map((type) => <option key={type.value} value={type.value}>{type.label}</option>)}
+      </select>
+    </Field>
+  );
+  const paymentActions = (payment, withCredit) => {
+    const creditRemaining = withCredit ? getCreditRemainingAmount(payment) : 0;
+    return (
+      <span className="inline-flex items-center gap-1">
+        {withCredit && (
+          <button type="button" className={`${btn.primary} h-8 bg-emerald-600 px-3 hover:bg-emerald-700`} disabled={creditRemaining <= 0 || dialogRemaining <= 0} onClick={() => startAddAgainstCredit(payment)}>
+            <Icon name="add" className="text-[16px]" />Add
+          </button>
+        )}
+        <button type="button" className={`${btn.icon} text-blue-600 hover:bg-blue-50`} title="Edit payment" aria-label="Edit payment" onClick={() => startEditPayment(payment)}>
+          <Icon name="edit" className="text-[18px]" />
+        </button>
+        <button type="button" className={`${btn.icon} text-red-500 hover:bg-red-50 hover:text-red-600`} title="Delete payment" aria-label="Delete payment" disabled={deletingPaymentId === payment.id || addingPayment} onClick={() => handleDeletePayment(payment)}>
+          <Icon name="delete" className="text-[18px]" />
+        </button>
+      </span>
+    );
+  };
+  const numberBox = (text, key, max) => (
+    <label key={key} className="flex flex-col gap-1">
+      <span className={label}>{text}</span>
+      <input
+        type="number" min={0} max={max} step={1} className={`${fieldClass} text-center`}
+        value={paymentForm.cashNotes[key] || ""} onChange={(e) => handleCashNoteChange(key, e.target.value)}
+      />
+    </label>
+  );
+
+  // The success toast hides itself after 4 seconds.
+  useEffect(() => {
+    if (!paymentSuccessMessage) return undefined;
+    const timer = setTimeout(() => setPaymentSuccessMessage(""), 4000);
+    return () => clearTimeout(timer);
+  }, [paymentSuccessMessage]);
+
   return (
     <DashboardLayout>
       <DashboardNavbar />
-      <MDBox pt={6} pb={3}>
-        <Grid container spacing={3} justifyContent="center">
-          <Grid item xs={12}>
-            <Card>
-              <MDBox p={3}>
-                <MDBox
-                  display="flex"
-                  justifyContent="space-between"
-                  alignItems={{ xs: "flex-start", md: "center" }}
-                  flexDirection={{ xs: "column", md: "row" }}
-                  gap={2}
-                  mb={2}
-                >
-                  <MDBox>
-                    <MDTypography variant="h5" fontWeight="medium">
-                      Payment Update History
-                    </MDTypography>
-                    <MDTypography variant="button" color="text">
-                      Download every payment update with its payment date, filtered by company and staff.
-                    </MDTypography>
-                  </MDBox>
-                  <MDButton
-                    variant="gradient"
-                    color="success"
-                    size="small"
-                    onClick={downloadPaymentExcel}
-                    disabled={!filteredPaymentDetailRows.length}
-                  >
-                    <Icon sx={{ mr: 1 }}>download</Icon>
-                    Download Excel
-                  </MDButton>
-                </MDBox>
+      <div className="pb-8 font-[Poppins,Roboto,sans-serif] text-slate-700">
+        <PageHeader
+          title="Update Payment"
+          description="Record cash, UPI, cheque and credit payments for delivered invoices, log cancelled items, and download payment reports."
+        />
 
-                <Grid container spacing={2} alignItems="center">
-                  <Grid item xs={12} sm={6} md={3}>
-                    <MDInput
-                      type="date"
-                      label="From Date"
-                      fullWidth
-                      InputLabelProps={{ shrink: true }}
-                      value={collectionDate}
-                      onChange={(event) => setCollectionDate(event.target.value)}
-                    />
-                  </Grid>
-                  <Grid item xs={12} sm={6} md={3}>
-                    <MDInput
-                      type="date"
-                      label="To Date"
-                      fullWidth
-                      InputLabelProps={{ shrink: true }}
-                      value={collectionEndDate}
-                      inputProps={{ min: collectionDate || undefined }}
-                      onChange={(event) => setCollectionEndDate(event.target.value)}
-                    />
-                  </Grid>
-                  <Grid item xs={12} sm={6} md={3}>
-                    <CompanyTypeSelect
-                      id="collection-company-type"
-                      value={collectionCompanyType}
-                      onChange={handleCollectionCompanyTypeChange}
-                    />
-                  </Grid>
-                  <Grid item xs={12} sm={6} md={3}>
-                    <FormControl fullWidth>
-                      <InputLabel id="collection-company-filter-label">Company</InputLabel>
-                      <Select
-                        labelId="collection-company-filter-label"
-                        label="Company"
-                        value={collectionCompanyId}
-                        sx={{ height: 43 }}
-                        onChange={(event) => {
-                          setCollectionCompanyId(event.target.value);
-                          setCollectionCompanyStaffId("");
-                        }}
-                      >
-                        <MenuItem value="">All Companies</MenuItem>
-                        {collectionTypedCompanies.map((company) => (
-                          <MenuItem key={company.id} value={String(company.id)}>{company.name}</MenuItem>
-                        ))}
-                      </Select>
-                    </FormControl>
-                  </Grid>
-                  <Grid item xs={12} sm={6} md={3}>
-                    <FormControl fullWidth>
-                      <InputLabel id="collection-company-staff-filter-label">Company Staff</InputLabel>
-                      <Select
-                        labelId="collection-company-staff-filter-label"
-                        label="Company Staff"
-                        value={collectionCompanyStaffId}
-                        sx={{ height: 43 }}
-                        disabled={!collectionCompanyId}
-                        onChange={(event) => setCollectionCompanyStaffId(event.target.value)}
-                      >
-                        <MenuItem value="">
-                          {collectionCompanyId ? "All Company Staff" : "Choose company first"}
-                        </MenuItem>
-                        {filteredCompanyStaffOptions.map((staff) => (
-                          <MenuItem key={staff.id} value={String(staff.id)}>{staff.name}</MenuItem>
-                        ))}
-                      </Select>
-                    </FormControl>
-                  </Grid>
-                </Grid>
+        {/* Payment update history download */}
+        <Card className="mb-5">
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 px-4 py-3">
+            <div>
+              <h3 className="m-0 text-[15px] font-semibold text-slate-900">Payment Update History</h3>
+              <p className="m-0 mt-0.5 text-[12.5px] text-slate-500">Download every payment update with its payment date, filtered by company and staff.</p>
+            </div>
+            <button type="button" className={btn.outline} onClick={downloadPaymentExcel} disabled={!filteredPaymentDetailRows.length}>
+              <Icon name="download" className="text-[18px] text-emerald-600" />Download Excel
+            </button>
+          </div>
+          <div className="flex flex-wrap items-end gap-3 px-4 py-3">
+            <Field label="From date" width="w-40"><input type="date" className={fieldClass} value={collectionDate} onChange={(event) => setCollectionDate(event.target.value)} /></Field>
+            <Field label="To date" width="w-40"><input type="date" className={fieldClass} value={collectionEndDate} min={collectionDate || undefined} onChange={(event) => setCollectionEndDate(event.target.value)} /></Field>
+            {typeSelect("collection-company-type", collectionCompanyType, handleCollectionCompanyTypeChange)}
+            <Field label="Company" width="w-52">
+              <select className={fieldClass} value={collectionCompanyId} onChange={(event) => { setCollectionCompanyId(event.target.value); setCollectionCompanyStaffId(""); }}>
+                <option value="">All companies</option>
+                {collectionTypedCompanies.map((company) => <option key={company.id} value={String(company.id)}>{company.name}</option>)}
+              </select>
+            </Field>
+            <Field label="Company staff" width="w-52">
+              <select className={fieldClass} value={collectionCompanyStaffId} disabled={!collectionCompanyId} onChange={(event) => setCollectionCompanyStaffId(event.target.value)}>
+                <option value="">{collectionCompanyId ? "All company staff" : "Choose company first"}</option>
+                {filteredCompanyStaffOptions.map((staff) => <option key={staff.id} value={String(staff.id)}>{staff.name}</option>)}
+              </select>
+            </Field>
+          </div>
+        </Card>
 
-              </MDBox>
-            </Card>
-          </Grid>
-          <Grid item xs={12}>
-            <Card>
-              <MDBox
-                variant="gradient"
-                bgColor="info"
-                borderRadius="lg"
-                coloredShadow="info"
-                mx={2}
-                mt={-3}
-                p={3}
-                mb={1}
-                textAlign="center"
-              >
-                <MDTypography variant="h4" fontWeight="medium" color="white" mt={1}>
-                  Update Payment Details
-                </MDTypography>
-              </MDBox>
-              <MDBox pt={4} pb={3} px={3}>
-                <Grid container spacing={3} mb={3}>
-                  <Grid item xs={12} md={4}>
-                    <MDInput
-                      type="text"
-                      label="Search by Outlet Name, Area, ID, Staff Name, Sale ID, or Invoice No"
-                      fullWidth
-                      value={searchQuery}
-                      onChange={(e) => setSearchQuery(e.target.value)}
-                    />
-                  </Grid>
-                  <Grid item xs={12} sm={6} md={3}>
-                    <CompanyTypeSelect
-                      id="sales-company-type"
-                      value={salesCompanyType}
-                      onChange={handleSalesCompanyTypeChange}
-                    />
-                  </Grid>
-                  <Grid item xs={12} sm={6} md={3}>
-                    <FormControl fullWidth>
-                      <InputLabel id="sales-company-filter-label">Company</InputLabel>
-                      <Select
-                        labelId="sales-company-filter-label"
-                        label="Company"
-                        value={salesCompanyId}
-                        disabled={downloadingUnupdated}
-                        sx={{ height: 43 }}
-                        onChange={(event) => setSalesCompanyId(event.target.value)}
-                      >
-                        <MenuItem value="">All Companies</MenuItem>
-                        {salesTypedCompanies.map((company) => (
-                          <MenuItem key={company.id} value={String(company.id)}>{company.name}</MenuItem>
-                        ))}
-                      </Select>
-                    </FormControl>
-                  </Grid>
-                  <Grid item xs={12} sm={6} md={3}>
-                    <FormControl fullWidth>
-                      <InputLabel id="payment-update-filter-label">Payment Updates</InputLabel>
-                      <Select
-                        labelId="payment-update-filter-label"
-                        label="Payment Updates"
-                        value={paymentUpdateFilter}
-                        onChange={(event) => setPaymentUpdateFilter(event.target.value)}
-                        sx={{ height: 43 }}
-                      >
-                        <MenuItem value="all">All Bills</MenuItem>
-                        <MenuItem value="none">No Payment Updates</MenuItem>
-                      </Select>
-                    </FormControl>
-                  </Grid>
-                  <Grid item xs={12}>
-                    <MDButton
-                      color="success"
-                      variant="gradient"
-                      onClick={downloadUnupdatedPayments}
-                      disabled={!salesCompanyId || downloadingUnupdated}
-                    >
-                      {downloadingUnupdated ? "Downloading..." : "Download Excel - No Payment Updates"}
-                    </MDButton>
-                    <MDTypography variant="caption" display="block" mt={1}>
-                      Select a company to download all delivered invoices with no payment entries,
-                      sorted by invoice number. Search does not limit this download.
-                    </MDTypography>
-                  </Grid>
-                </Grid>
-
-                {paymentUpdateFilter === "none" && (
-                  <MDBox mb={2} display="flex" alignItems="center" gap={2} flexWrap="wrap">
-                    <MDButton variant="outlined" color="info" onClick={toggleAllMoveBills} disabled={movingToDelivery || !filteredSales.length}>
-                      {allMoveSelected ? "Clear Selection" : `Select All (${filteredSales.length})`}
-                    </MDButton>
-                    <MDButton variant="gradient" color="info" onClick={moveSelectedToDelivery} disabled={movingToDelivery || !selectedMoveIds.length}>
-                      {movingToDelivery ? "Moving..." : `Move to Delivery (${selectedMoveIds.length})`}
-                    </MDButton>
-                    <MDTypography variant="caption">Select All includes all matching bills across pages.</MDTypography>
-                  </MDBox>
-                )}
-                {moveDeliveryMessage && <MDTypography variant="body2" mb={2} role="status">{moveDeliveryMessage}</MDTypography>}
-                <MDBox>
-                  <TableContainer
-                    component={Paper}
-                    sx={{ ...paginatedTableContainerSx, backgroundColor: "transparent" }}
-                  >
-                    <Table stickyHeader size="small" sx={compactTableTextSx}>
-                      <TableHead sx={paginatedTableHeadSx()}>
-                        <TableRow>
-                          {paymentUpdateFilter === "none" && (
-                            <TableCell align="center" sx={paginatedTableHeadCellSx}>
-                              <Checkbox checked={allMoveSelected} indeterminate={selectedMoveIds.length > 0 && !allMoveSelected} onChange={toggleAllMoveBills} disabled={movingToDelivery || !filteredSales.length} inputProps={{ "aria-label": "Select all matching bills" }} />
-                            </TableCell>
-                          )}
-                          <TableCell align="center" sx={{ ...paginatedTableHeadCellSx, width: 56 }}>
-                            Sr No
-                          </TableCell>
-                          <TableCell align="left" sx={paginatedTableHeadCellSx}>Outlet Name</TableCell>
-                          <TableCell align="left" sx={paginatedTableHeadCellSx}>Company</TableCell>
-                          <TableCell align="left" sx={paginatedTableHeadCellSx}>Area</TableCell>
-                          <TableCell align="center" sx={paginatedTableHeadCellSx}>Sale ID</TableCell>
-                          <TableCell align="center" sx={paginatedTableHeadCellSx}>Invoice No</TableCell>
-                          <TableCell align="center" sx={paginatedTableHeadCellSx}>No. of Box</TableCell>
-                          <TableCell align="center" sx={paginatedTableHeadCellSx}>No. of Packet</TableCell>
-                          <TableCell align="center" sx={paginatedTableHeadCellSx}>Invoice Price</TableCell>
-                          <TableCell align="center" sx={paginatedTableHeadCellSx}>Paid Amount</TableCell>
-                          <TableCell align="center" sx={paginatedTableHeadCellSx}>Balance Amount</TableCell>
-                          <TableCell align="center" sx={paginatedTableHeadCellSx}>Action</TableCell>
-                        </TableRow>
-                      </TableHead>
-                      <TableBody>
-                        {paginatedSales.length > 0 ? (
-                          paginatedSales.map((sale, index) => {
-                            const balance = getRemainingBalance(sale);
-                            const paid = getPaidAmount(sale);
-                            const originalPrice = Number(sale.price) || 0;
-                            const updatedPrice = getEffectiveInvoicePrice(sale);
-                            const hasCancellation = updatedPrice < originalPrice - 0.001;
-                            return (
-                              <TableRow key={sale.id} sx={getPaymentRowSx(sale)}>
-                                {paymentUpdateFilter === "none" && (
-                                  <TableCell align="center">
-                                    <Checkbox checked={selectedMoveIds.includes(Number(sale.id))} disabled={movingToDelivery} inputProps={{ "aria-label": `Select invoice ${sale.invoice_number || sale.id}` }} onChange={() => setSelectedDeliveryIds((current) => current.includes(Number(sale.id)) ? current.filter((id) => id !== Number(sale.id)) : [...current, Number(sale.id)])} />
-                                  </TableCell>
-                                )}
-                                <TableCell align="center">{(page - 1) * rowsPerPage + index + 1}</TableCell>
-                                <TableCell align="left">
-                                  <MDTypography variant="button" fontWeight="medium" color="dark">
-                                    {sale.outlet_name}
-                                  </MDTypography>
-                                  <MDTypography display="block" variant="caption" color="text">
-                                    Staff: {sale.staff_name || "N/A"}
-                                  </MDTypography>
-                                </TableCell>
-                                <TableCell align="left">{sale.company_name || "N/A"}</TableCell>
-                                <TableCell align="left">{sale.location_name || "N/A"}</TableCell>
-                                <TableCell align="center">{sale.sticker_number}</TableCell>
-                                <TableCell align="center">{sale.invoice_number}</TableCell>
-                                <TableCell align="center">{sale.box_count || "N/A"}</TableCell>
-                                <TableCell align="center">{sale.packet_count || "N/A"}</TableCell>
-                                <TableCell align="center">
-                                  {hasCancellation ? (
-                                    <>
-                                      <MDTypography variant="caption" display="block" color="text">
-                                        OrgP ₹{originalPrice.toFixed(2)}
-                                      </MDTypography>
-                                      <MDTypography variant="button" fontWeight="bold" color="info">
-                                        UP ₹{updatedPrice.toFixed(2)}
-                                      </MDTypography>
-                                    </>
-                                  ) : `₹${originalPrice.toFixed(2)}`}
-                                </TableCell>
-                                <TableCell align="center">₹{paid.toFixed(2)}</TableCell>
-                                <TableCell align="center">
-                                  <MDTypography
-                                    variant="button"
-                                    fontWeight="medium"
-                                    color={balance > 0 ? "error" : "success"}
-                                  >
-                                    ₹{balance.toFixed(2)}
-                                  </MDTypography>
-                                </TableCell>
-                                <TableCell align="center">
-                                  <MDBox display="flex" justifyContent="center" alignItems="center" gap={1}>
-                                    <Tooltip title="Manage Payments">
-                                      <MDButton
-                                        variant="outlined"
-                                        color="info"
-                                        size="small"
-                                        iconOnly
-                                        onClick={() => openPaymentDialog(sale)}
-                                      >
-                                        <Icon fontSize="small">payments</Icon>
-                                      </MDButton>
-                                    </Tooltip>
-                                    <Tooltip title="Order Cancel">
-                                      <MDButton
-                                        variant="outlined"
-                                        color="error"
-                                        size="small"
-                                        iconOnly
-                                        onClick={() => openCancelDialog(sale)}
-                                      >
-                                        <Icon fontSize="small">cancel</Icon>
-                                      </MDButton>
-                                    </Tooltip>
-                                    {Number(sale.payment_count || 0) === 0 && (
-                                      <Tooltip title="Cancel Full Bill">
-                                        <MDButton
-                                          variant="outlined"
-                                          color="error"
-                                          size="small"
-                                          iconOnly
-                                          onClick={() => handleCancelFullBill(sale)}
-                                          disabled={cancellingFullBillId === sale.id}
-                                        >
-                                          {cancellingFullBillId === sale.id
-                                            ? <CircularProgress size={16} color="inherit" />
-                                            : <Icon fontSize="small">cancel_presentation</Icon>}
-                                        </MDButton>
-                                      </Tooltip>
-                                    )}
-                                  </MDBox>
-                                </TableCell>
-                              </TableRow>
-                            );
-                          })
-                        ) : (
-                          <TableRow>
-                            <TableCell colSpan={paymentUpdateFilter === "none" ? 13 : 12} align="center" sx={{ py: 4 }}>
-                              <MDTypography variant="body2" color="text">
-                                No delivered items found matching your filters.
-                              </MDTypography>
-                            </TableCell>
-                          </TableRow>
-                        )}
-                      </TableBody>
-                    </Table>
-                  </TableContainer>
-                  <TablePaginationFooter
-                    page={page}
-                    totalPages={totalPages}
-                    total={filteredSales.length}
-                    onPageChange={setPage}
-                    limit={rowsPerPage}
-                    onLimitChange={setRowsPerPage}
-                  />
-                </MDBox>
-              </MDBox>
-            </Card>
-          </Grid>
-        </Grid>
-      </MDBox>
-
-      <Dialog
-        open={!!paymentDialogSale}
-        onClose={closePaymentDialog}
-        maxWidth="lg"
-        fullWidth
-        PaperProps={{ sx: { borderRadius: 3, overflow: "hidden" } }}
-      >
-        <DialogTitle sx={{ p: 0 }}>
-          <MDBox
-            px={{ xs: 2, sm: 3 }}
-            py={2.25}
-            display="flex"
-            justifyContent="space-between"
-            alignItems="center"
-            sx={{ background: "linear-gradient(135deg, #1f2937 0%, #344767 100%)", color: "white" }}
-          >
-            <MDBox display="flex" alignItems="center" gap={1.25}>
-              <MDBox
-                width="2.5rem"
-                height="2.5rem"
-                display="flex"
-                justifyContent="center"
-                alignItems="center"
-                borderRadius="lg"
-                sx={{ backgroundColor: "rgba(255,255,255,0.16)" }}
-              >
-                <Icon>account_balance_wallet</Icon>
-              </MDBox>
-              <MDBox>
-                <MDTypography variant="h6" color="white" fontWeight="medium">
-                  Payment Ledger
-                </MDTypography>
-                <MDTypography variant="caption" color="white" sx={{ opacity: 0.78 }}>
-                  {paymentDialogSale?.outlet_name || "Outlet"} · Invoice {paymentDialogSale?.invoice_number || "N/A"}
-                </MDTypography>
-              </MDBox>
-            </MDBox>
-            <MDBox display="flex" alignItems="center" gap={1}>
-              <MDBox
-                px={1.25}
-                py={0.5}
-                borderRadius="lg"
-                sx={{ backgroundColor: dialogRemaining > 0 ? "rgba(255,193,7,0.18)" : "rgba(76,175,80,0.22)" }}
-              >
-                <MDTypography variant="caption" color="white" fontWeight="medium">
-                  {dialogRemaining > 0 ? "Payment Pending" : "Fully Paid"}
-                </MDTypography>
-              </MDBox>
-              <MDButton variant="text" color="white" iconOnly onClick={closePaymentDialog}>
-                <Icon>close</Icon>
-              </MDButton>
-            </MDBox>
-          </MDBox>
-        </DialogTitle>
-        <DialogContent dividers sx={{ p: { xs: 2, sm: 3 }, backgroundColor: "#f8fafc" }}>
-          {paymentDialogSale && (
-            <MDBox>
-              <Grid container spacing={1.25} mb={3}>
-                {[
-                  { label: "Sale ID", value: paymentDialogSale.sticker_number || "N/A" },
-                  { label: "Invoice", value: paymentDialogSale.invoice_number || "N/A" },
-                  { label: "Original Price", value: `₹${Number(paymentSummary?.price ?? paymentDialogSale.price).toFixed(2)}` },
-                  ...(Number(paymentSummary?.cancelledAmount ?? paymentDialogSale.cancelled_amount) > 0
-                    ? [{
-                      label: "Updated Price",
-                      value: `₹${getEffectiveInvoicePrice(paymentSummary ?? paymentDialogSale).toFixed(2)}`,
-                      color: "#0288d1",
-                    }]
-                    : []),
-                  { label: "Paid", value: `₹${Number(paymentSummary?.paidAmount ?? getPaidAmount(paymentDialogSale)).toFixed(2)}`, color: "#2e7d32" },
-                  { label: "Balance", value: `₹${dialogRemaining.toFixed(2)}`, color: dialogRemaining > 0 ? "#d32f2f" : "#2e7d32" },
-                ].map((item) => (
-                  <Grid item xs={6} sm={4} md key={item.label}>
-                    <MDBox p={1.5} height="100%" sx={{ backgroundColor: "#fff", border: "1px solid #e5e7eb", borderRadius: 2 }}>
-                      <MDTypography variant="caption" color="text" display="block">{item.label}</MDTypography>
-                      <MDTypography variant="button" fontWeight="bold" sx={{ color: item.color || "#344767" }}>
-                        {item.value}
-                      </MDTypography>
-                    </MDBox>
-                  </Grid>
+        {/* Bills to update */}
+        <Card>
+          <div className="border-b border-slate-100 px-4 py-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h3 className="m-0 text-[15px] font-semibold text-slate-900">Update Payment Details</h3>
+              <span className="flex flex-wrap items-center gap-3 text-[11.5px] text-slate-500">
+                {[["bg-white ring-1 ring-slate-300", "No payment"], ["bg-amber-100", "Part paid"], ["bg-red-100", "Unpaid (activity)"], ["bg-green-100", "Fully paid"]].map(([sw, text]) => (
+                  <span key={text} className="inline-flex items-center gap-1.5"><span className={`size-3 rounded ${sw}`} />{text}</span>
                 ))}
-                {totalCreditOnAccount > 0 && (
-                  <Grid item xs={12}>
-                    <MDBox px={1.5} py={1} sx={{ backgroundColor: "#fff8e1", border: "1px solid #ffe0a3", borderRadius: 2 }}>
-                      <MDTypography variant="caption" color="text">
-                        Credit remaining: ₹{remainingCreditOnAccount.toFixed(2)} of ₹{totalCreditOnAccount.toFixed(2)}
-                      </MDTypography>
-                    </MDBox>
-                  </Grid>
+              </span>
+            </div>
+            <div className="mt-3 flex flex-wrap items-end gap-3">
+              <div className="flex min-w-64 grow flex-col gap-1">
+                <span className={label}>Search</span>
+                <SearchBox value={searchQuery} onChange={setSearchQuery} className="w-full" placeholder="Outlet, area, ID, staff, sale ID or invoice no" />
+              </div>
+              {typeSelect("sales-company-type", salesCompanyType, handleSalesCompanyTypeChange)}
+              <Field label="Company" width="w-52">
+                <select className={fieldClass} value={salesCompanyId} disabled={downloadingUnupdated} onChange={(event) => setSalesCompanyId(event.target.value)}>
+                  <option value="">All companies</option>
+                  {salesTypedCompanies.map((company) => <option key={company.id} value={String(company.id)}>{company.name}</option>)}
+                </select>
+              </Field>
+              <Field label="Payment updates" width="w-48">
+                <select className={fieldClass} value={paymentUpdateFilter} onChange={(event) => setPaymentUpdateFilter(event.target.value)}>
+                  <option value="all">All bills</option>
+                  <option value="none">No payment updates</option>
+                </select>
+              </Field>
+            </div>
+            <div className="mt-3 flex flex-wrap items-center gap-3">
+              <button type="button" className={btn.outline} onClick={downloadUnupdatedPayments} disabled={!salesCompanyId || downloadingUnupdated}>
+                <Icon name="download" className="text-[18px] text-emerald-600" />
+                {downloadingUnupdated ? "Downloading..." : "Download Excel - No Payment Updates"}
+              </button>
+              <span className="text-[12px] text-slate-500">
+                Select a company to download all delivered invoices with no payment entries,
+                sorted by invoice number. Search does not limit this download.
+              </span>
+            </div>
+            {paymentUpdateFilter === "none" && (
+              <div className="mt-3 flex flex-wrap items-center gap-2 rounded-xl bg-blue-50/60 px-3 py-2">
+                <button type="button" className={btn.outline} onClick={toggleAllMoveBills} disabled={movingToDelivery || !filteredSales.length}>
+                  {allMoveSelected ? "Clear Selection" : `Select All (${filteredSales.length})`}
+                </button>
+                <button type="button" className={btn.primary} onClick={moveSelectedToDelivery} disabled={movingToDelivery || !selectedMoveIds.length}>
+                  <Icon name="local_shipping" className="text-[18px]" />
+                  {movingToDelivery ? "Moving..." : `Move to Delivery (${selectedMoveIds.length})`}
+                </button>
+                <span className="text-[12px] text-slate-500">Select All includes all matching bills across pages.</span>
+              </div>
+            )}
+            {moveDeliveryMessage && <Notice tone="info" className="mt-3">{moveDeliveryMessage}</Notice>}
+          </div>
+
+          <div className="max-h-[70vh] overflow-auto">
+            <table className="w-full min-w-[1250px] border-separate border-spacing-0">
+              <thead>
+                <tr>
+                  {paymentUpdateFilter === "none" && (
+                    <th className={`${head} w-10`}>
+                      <TriCheck checked={allMoveSelected} indeterminate={selectedMoveIds.length > 0 && !allMoveSelected} onChange={toggleAllMoveBills} disabled={movingToDelivery || !filteredSales.length} label="Select all matching bills" />
+                    </th>
+                  )}
+                  <th className={`${head} text-center`}>#</th>
+                  {["Outlet", "Company", "Area"].map((h) => <th key={h} className={`${head} text-left`}>{h}</th>)}
+                  {["Sale ID", "Invoice no", "Boxes", "Packets"].map((h) => <th key={h} className={`${head} text-center`}>{h}</th>)}
+                  {["Invoice price", "Paid", "Balance"].map((h) => <th key={h} className={`${head} text-right`}>{h}</th>)}
+                  <th className={`${head} text-center`}>Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                {paginatedSales.length > 0 ? paginatedSales.map((sale, index) => {
+                  const balance = getRemainingBalance(sale);
+                  const paid = getPaidAmount(sale);
+                  const originalPrice = Number(sale.price) || 0;
+                  const updatedPrice = getEffectiveInvoicePrice(sale);
+                  const hasCancellation = updatedPrice < originalPrice - 0.001;
+                  return (
+                    <tr key={sale.id} style={{ backgroundColor: getPaymentRowSx(sale).backgroundColor }}>
+                      {paymentUpdateFilter === "none" && (
+                        <td className={cell}>
+                          <input type="checkbox" className="size-4 accent-blue-600" checked={selectedMoveIds.includes(Number(sale.id))} disabled={movingToDelivery} aria-label={`Select invoice ${sale.invoice_number || sale.id}`} onChange={() => setSelectedDeliveryIds((current) => current.includes(Number(sale.id)) ? current.filter((id) => id !== Number(sale.id)) : [...current, Number(sale.id)])} />
+                        </td>
+                      )}
+                      <td className={`${cell} text-center text-slate-400`}>{(page - 1) * rowsPerPage + index + 1}</td>
+                      <td className={cell}>
+                        <span className="block font-semibold text-slate-900">{sale.outlet_name}</span>
+                        <span className="block text-[11.5px] text-slate-500">Staff: {sale.staff_name || "N/A"}</span>
+                      </td>
+                      <td className={`${cell} whitespace-nowrap`}>{sale.company_name || "N/A"}</td>
+                      <td className={`${cell} whitespace-nowrap`}>{sale.location_name || "N/A"}</td>
+                      <td className={`${cell} text-center font-semibold`}>{sale.sticker_number}</td>
+                      <td className={`${cell} text-center font-mono`}>{sale.invoice_number}</td>
+                      <td className={`${cell} text-center tabular-nums`}>{sale.box_count || "N/A"}</td>
+                      <td className={`${cell} text-center tabular-nums`}>{sale.packet_count || "N/A"}</td>
+                      <td className={`${cell} whitespace-nowrap text-right tabular-nums`}>
+                        {hasCancellation ? (
+                          <>
+                            <span className="block text-[11px] text-slate-500 line-through">OrgP ₹{originalPrice.toFixed(2)}</span>
+                            <span className="block font-bold text-blue-700">UP ₹{updatedPrice.toFixed(2)}</span>
+                          </>
+                        ) : `₹${originalPrice.toFixed(2)}`}
+                      </td>
+                      <td className={`${cell} whitespace-nowrap text-right tabular-nums`}>₹{paid.toFixed(2)}</td>
+                      <td className={`${cell} whitespace-nowrap text-right font-bold tabular-nums ${balance > 0 ? "text-red-700" : "text-emerald-700"}`}>₹{balance.toFixed(2)}</td>
+                      <td className={`${cell} text-center`}>
+                        <span className="inline-flex gap-0.5 rounded-lg bg-white/80 p-0.5 ring-1 ring-black/5">
+                          <button type="button" className={`${btn.icon} text-blue-600 hover:bg-blue-50`} title="Manage payments" aria-label="Manage payments" onClick={() => openPaymentDialog(sale)}>
+                            <Icon name="payments" className="text-[19px]" />
+                          </button>
+                          <button type="button" className={`${btn.icon} text-red-500 hover:bg-red-50 hover:text-red-600`} title="Order cancel" aria-label="Order cancel" onClick={() => openCancelDialog(sale)}>
+                            <Icon name="cancel" className="text-[19px]" />
+                          </button>
+                          {Number(sale.payment_count || 0) === 0 && (
+                            <button type="button" className={`${btn.icon} text-red-600 hover:bg-red-50`} title="Cancel full bill" aria-label="Cancel full bill" onClick={() => handleCancelFullBill(sale)} disabled={cancellingFullBillId === sale.id}>
+                              {cancellingFullBillId === sale.id ? <Spinner className="size-4" /> : <Icon name="cancel_presentation" className="text-[19px]" />}
+                            </button>
+                          )}
+                        </span>
+                      </td>
+                    </tr>
+                  );
+                }) : (
+                  <tr>
+                    <td colSpan={paymentUpdateFilter === "none" ? 13 : 12} className="px-4 py-14 text-center text-[13px] text-slate-400">No delivered items found matching your filters.</td>
+                  </tr>
                 )}
-              </Grid>
+              </tbody>
+            </table>
+          </div>
+          <Pagination page={page} totalPages={totalPages} total={filteredSales.length} onPageChange={setPage} limit={rowsPerPage} onLimitChange={setRowsPerPage} />
+        </Card>
+      </div>
 
-              <MDBox
-                p={1.5}
-                mb={3}
-                sx={{ backgroundColor: "#fff", border: "1px solid #e5e7eb", borderRadius: 2 }}
-              >
-                <MDBox display="flex" justifyContent="space-between" alignItems="center">
-                  <MDTypography variant="button" fontWeight="medium" color="dark">
-                    Payment progress
-                  </MDTypography>
-                  <MDTypography variant="caption" color="text" fontWeight="medium">
-                    {paymentProgressPercentage.toFixed(0)}% paid
-                  </MDTypography>
-                </MDBox>
-                <MDBox mt={1} height="8px" borderRadius="lg" overflow="hidden" sx={{ backgroundColor: "#e5e7eb" }}>
-                  <MDBox
-                    height="100%"
-                    borderRadius="lg"
-                    sx={{
-                      width: `${paymentProgressPercentage}%`,
-                      transition: "width 0.3s ease",
-                      background: dialogRemaining > 0
-                        ? "linear-gradient(90deg, #1a73e8 0%, #42a5f5 100%)"
-                        : "linear-gradient(90deg, #2e7d32 0%, #66bb6a 100%)",
-                    }}
-                  />
-                </MDBox>
-              </MDBox>
+      {/* Payment ledger */}
+      <Modal
+        open={!!paymentDialogSale} onClose={closePaymentDialog} size="xl"
+        title={(
+          <span className="flex items-center justify-between gap-3">
+            <span className="flex items-center gap-2.5">
+              <span className="flex size-10 items-center justify-center rounded-xl bg-blue-50 text-blue-600"><Icon name="account_balance_wallet" className="text-[22px]" /></span>
+              <span>
+                <span className="block leading-tight">Payment Ledger</span>
+                <span className="block text-[12px] font-normal text-slate-500">{paymentDialogSale?.outlet_name || "Outlet"} · Invoice {paymentDialogSale?.invoice_number || "N/A"}</span>
+              </span>
+            </span>
+            <Badge tone={dialogRemaining > 0 ? "amber" : "green"} icon={dialogRemaining > 0 ? "schedule" : "check_circle"}>{dialogRemaining > 0 ? "Payment Pending" : "Fully Paid"}</Badge>
+          </span>
+        )}
+        actions={<button type="button" className={btn.ghost} onClick={closePaymentDialog}>Close Ledger</button>}
+      >
+        {paymentDialogSale && (
+          <div>
+            <div className="mb-4 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
+              {[
+                { label: "Sale ID", value: paymentDialogSale.sticker_number || "N/A" },
+                { label: "Invoice", value: paymentDialogSale.invoice_number || "N/A" },
+                { label: "Original price", value: `₹${Number(paymentSummary?.price ?? paymentDialogSale.price).toFixed(2)}` },
+                ...(Number(paymentSummary?.cancelledAmount ?? paymentDialogSale.cancelled_amount) > 0
+                  ? [{
+                    label: "Updated price",
+                    value: `₹${getEffectiveInvoicePrice(paymentSummary ?? paymentDialogSale).toFixed(2)}`,
+                    tone: "text-blue-700",
+                  }]
+                  : []),
+                { label: "Paid", value: `₹${Number(paymentSummary?.paidAmount ?? getPaidAmount(paymentDialogSale)).toFixed(2)}`, tone: "text-emerald-700" },
+                { label: "Balance", value: `₹${dialogRemaining.toFixed(2)}`, tone: dialogRemaining > 0 ? "text-red-700" : "text-emerald-700" },
+              ].map((item) => (
+                <div key={item.label} className="rounded-xl border border-slate-200 bg-white px-3 py-2">
+                  <span className="block text-[10.5px] font-semibold uppercase tracking-wide text-slate-400">{item.label}</span>
+                  <span className={`block truncate text-[14px] font-bold tabular-nums ${item.tone || "text-slate-900"}`}>{item.value}</span>
+                </div>
+              ))}
+            </div>
+            {totalCreditOnAccount > 0 && (
+              <p className="m-0 mb-4 rounded-xl border border-amber-200 bg-amber-50 px-3.5 py-2 text-[12.5px] text-amber-900">
+                Credit remaining: <b>₹{remainingCreditOnAccount.toFixed(2)}</b> of ₹{totalCreditOnAccount.toFixed(2)}
+              </p>
+            )}
 
-              <MDBox display="flex" alignItems="center" justifyContent="space-between" mb={1.5}>
-                <MDBox display="flex" alignItems="center" gap={0.75}>
-                  <Icon color="info">history</Icon>
-                  <MDTypography variant="h6" fontWeight="medium">Payment History</MDTypography>
-                </MDBox>
-                <MDTypography variant="caption" color="text">{payments.length} entries</MDTypography>
-              </MDBox>
+            <div className="mb-5 rounded-xl border border-slate-200 bg-white px-3.5 py-3">
+              <div className="flex items-center justify-between text-[12.5px]">
+                <span className="font-semibold text-slate-800">Payment progress</span>
+                <span className="font-semibold text-slate-500">{paymentProgressPercentage.toFixed(0)}% paid</span>
+              </div>
+              <div className="mt-2 h-2 overflow-hidden rounded-full bg-slate-200">
+                <div className={`h-full rounded-full transition-all duration-300 ${dialogRemaining > 0 ? "bg-blue-600" : "bg-emerald-600"}`} style={{ width: `${paymentProgressPercentage}%` }} />
+              </div>
+            </div>
 
-              {loadingPayments ? (
-                <MDTypography variant="body2" color="text" mb={3}>
-                  Loading payments...
-                </MDTypography>
-              ) : payments.length === 0 ? (
-                <MDTypography variant="body2" color="text" mb={3}>
-                  No payments recorded yet. After the first cash, UPI or cheque payment on a delivered invoice, any remaining balance is automatically placed on 14-day credit from the payment date. Credit does not count as paid.
-                </MDTypography>
-              ) : (
-                <TableContainer
-                  sx={{
-                    boxShadow: "none",
-                    border: "1px solid #e5e7eb",
-                    borderRadius: 2,
-                    backgroundColor: "#fff",
-                    mb: 3,
-                    overflowX: "auto",
-                  }}
-                >
-                  <Table
-                    size="small"
-                    sx={{
-                      tableLayout: "fixed",
-                      width: "100%",
-                      minWidth: 760,
-                      "& .MuiTableCell-root": { overflow: "hidden" },
-                    }}
-                  >
-                    <colgroup>
-                      <col style={{ width: "12%" }} />
-                      <col style={{ width: "11%" }} />
-                      <col style={{ width: "12%" }} />
-                      <col style={{ width: "14%" }} />
-                      <col style={{ width: "25%" }} />
-                      <col style={{ width: "14%" }} />
-                    </colgroup>
-                    <TableHead
-                      sx={{
-                        display: "table-header-group",
-                        backgroundColor: "#f9fafb",
-                        "& .MuiTableCell-root": { backgroundColor: "#f9fafb" },
-                      }}
-                    >
-                      <TableRow>
-                        <TableCell align="left" sx={tableHeadSx}>
-                          Date
-                        </TableCell>
-                        <TableCell align="left" sx={tableHeadSx}>
-                          Mode
-                        </TableCell>
-                        <TableCell align="right" sx={tableHeadSx}>
-                          Amount
-                        </TableCell>
-                        <TableCell align="left" sx={tableHeadSx}>
-                          Collector
-                        </TableCell>
-                        <TableCell align="left" sx={tableHeadSx}>
-                          Details
-                        </TableCell>
-                        <TableCell align="center" sx={tableHeadSx}>
-                          Action
-                        </TableCell>
-                      </TableRow>
-                    </TableHead>
-                    <TableBody>
-                      {topLevelPayments.map((payment) => {
-                        const creditChildren = payment.payment_mode === "credit" ? getCreditChildPayments(payment) : [];
-                        const creditRemaining = payment.payment_mode === "credit" ? getCreditRemainingAmount(payment) : 0;
+            <div className="mb-2 flex items-center justify-between">
+              <h4 className="m-0 flex items-center gap-1.5 text-[14px] font-semibold text-slate-900"><Icon name="history" className="text-[19px] text-blue-600" />Payment History</h4>
+              <span className="text-[12px] text-slate-500">{payments.length} entries</span>
+            </div>
 
-                        return (
-                          <Fragment key={payment.id}>
-                            <TableRow
-                              sx={{
-                                backgroundColor: editingPaymentId === payment.id ? "#fff9c4" : "inherit",
-                                "&:hover": { backgroundColor: editingPaymentId === payment.id ? "#fff9c4" : "#f8fafc" },
-                              }}
-                            >
-                              <TableCell
-                                align="left"
-                                sx={{ ...tableBodySx, borderBottom: "1px solid #e5e7eb", fontSize: "0.875rem", color: "#374151" }}
-                              >
-                                {toInputDate(payment.payment_date)}
-                              </TableCell>
-                              <TableCell
-                                align="left"
-                                sx={{ ...tableBodySx, borderBottom: "1px solid #e5e7eb", fontSize: "0.875rem", color: "#374151" }}
-                              >
-                                <MDBox
-                                  display="inline-flex"
-                                  px={1}
-                                  py={0.35}
-                                  borderRadius="lg"
-                                  sx={{
-                                    backgroundColor: payment.payment_mode === "cash" ? "#e8f5e9" : payment.payment_mode === "upi" ? "#e3f2fd" : payment.payment_mode === "cheque" ? "#fff3e0" : "#f3e5f5",
-                                    color: payment.payment_mode === "cash" ? "#2e7d32" : payment.payment_mode === "upi" ? "#1976d2" : payment.payment_mode === "cheque" ? "#e65100" : "#7b1fa2",
-                                  }}
-                                >
-                                  <MDTypography variant="caption" fontWeight="medium">
-                                    {PAYMENT_MODE_LABELS[payment.payment_mode] || payment.payment_mode}
-                                  </MDTypography>
-                                </MDBox>
-                              </TableCell>
-                              <TableCell
-                                align="right"
-                                sx={{
-                                  ...tableBodySx,
-                                  borderBottom: "1px solid #e5e7eb",
-                                  fontSize: "0.875rem",
-                                  fontWeight: 500,
-                                  color: "#111827",
-                                }}
-                              >
-                                ₹{Number(payment.amount).toFixed(2)}
-                              </TableCell>
-                              <TableCell
-                                align="left"
-                                sx={{ ...tableBodySx, borderBottom: "1px solid #e5e7eb", fontSize: "0.875rem", color: "#374151" }}
-                              >
-                                {getCollectorName(payment)}
-                              </TableCell>
-                              <TableCell
-                                align="left"
-                                sx={{
-                                  ...tableBodySx,
-                                  borderBottom: "1px solid #e5e7eb",
-                                  fontSize: "0.875rem",
-                                  color: "#374151",
-                                  overflow: "hidden",
-                                  textOverflow: "ellipsis",
-                                }}
-                              >
-                                <MDTypography variant="caption" color="text" display="block" noWrap>
-                                  {payment.payment_mode === "credit"
-                                    ? `${formatPaymentDetails(payment)} - Remaining: ₹${creditRemaining.toFixed(2)}`
-                                    : formatPaymentDetails(payment)}
-                                </MDTypography>
+            {loadingPayments ? (
+              <p className="m-0 mb-5 text-[13px] text-slate-400">Loading payments...</p>
+            ) : payments.length === 0 ? (
+              <p className="m-0 mb-5 rounded-xl border border-dashed border-slate-300 px-4 py-4 text-[12.5px] text-slate-500">
+                No payments recorded yet. After the first cash, UPI or cheque payment on a delivered invoice, any remaining balance is automatically placed on 14-day credit from the payment date. Credit does not count as paid.
+              </p>
+            ) : (
+              <div className="mb-5 overflow-x-auto rounded-xl border border-slate-200 bg-white">
+                <table className="w-full min-w-[760px] table-fixed border-collapse">
+                  <colgroup>
+                    {["12%", "11%", "12%", "16%", "30%", "19%"].map((width, i) => <col key={width + String(i)} style={{ width }} />)}
+                  </colgroup>
+                  <thead>
+                    <tr>
+                      <th className={mini}>Date</th>
+                      <th className={mini}>Mode</th>
+                      <th className={`${mini} text-right`}>Amount</th>
+                      <th className={mini}>Collector</th>
+                      <th className={mini}>Details</th>
+                      <th className={`${mini} text-center`}>Action</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {topLevelPayments.map((payment) => {
+                      const creditChildren = payment.payment_mode === "credit" ? getCreditChildPayments(payment) : [];
+                      const creditRemaining = payment.payment_mode === "credit" ? getCreditRemainingAmount(payment) : 0;
+
+                      return (
+                        <Fragment key={payment.id}>
+                          <tr className={editingPaymentId === payment.id ? "bg-yellow-50" : "hover:bg-slate-50"}>
+                            <td className={`${miniTd} whitespace-nowrap`}>{toInputDate(payment.payment_date)}</td>
+                            <td className={miniTd}><Badge tone={MODE_TONE[payment.payment_mode] || "slate"}>{PAYMENT_MODE_LABELS[payment.payment_mode] || payment.payment_mode}</Badge></td>
+                            <td className={`${miniTd} text-right font-semibold tabular-nums text-slate-900`}>₹{Number(payment.amount).toFixed(2)}</td>
+                            <td className={`${miniTd} truncate`}>{getCollectorName(payment)}</td>
+                            <td className={miniTd}>
+                              <span className="block truncate text-[12px] text-slate-600">
+                                {payment.payment_mode === "credit"
+                                  ? `${formatPaymentDetails(payment)} - Remaining: ₹${creditRemaining.toFixed(2)}`
+                                  : formatPaymentDetails(payment)}
+                              </span>
+                              {isAdmin && (
+                                <span className="mt-0.5 flex items-center gap-1 truncate text-[11px] text-slate-500">
+                                  <Icon name="manage_accounts" className="text-[14px]" />Updated by: {getPaymentUpdatedBy(payment)}
+                                </span>
+                              )}
+                            </td>
+                            <td className={`${miniTd} text-center`}>{paymentActions(payment, payment.payment_mode === "credit")}</td>
+                          </tr>
+                          {creditChildren.map((childPayment) => (
+                            <tr key={childPayment.id} className={editingPaymentId === childPayment.id ? "bg-yellow-50" : "bg-slate-50/70"}>
+                              <td className={`${miniTd} whitespace-nowrap pl-7 text-slate-500`}><Icon name="subdirectory_arrow_right" className="mr-1 align-middle text-[14px]" />{toInputDate(childPayment.payment_date)}</td>
+                              <td className={miniTd}><Badge tone={MODE_TONE[childPayment.payment_mode] || "slate"}>{PAYMENT_MODE_LABELS[childPayment.payment_mode] || childPayment.payment_mode}</Badge></td>
+                              <td className={`${miniTd} text-right font-semibold tabular-nums text-slate-900`}>₹{Number(childPayment.amount).toFixed(2)}</td>
+                              <td className={`${miniTd} truncate`}>{getCollectorName(childPayment)}</td>
+                              <td className={miniTd}>
+                                <span className="block truncate text-[12px] text-slate-600">Against credit #{payment.id} - {formatPaymentDetails(childPayment)}</span>
                                 {isAdmin && (
-                                  <MDBox display="flex" alignItems="center" gap={0.4} mt={0.35}>
-                                    <Icon fontSize="small" color="secondary">manage_accounts</Icon>
-                                    <MDTypography variant="caption" color="text" noWrap>
-                                      Updated by: {getPaymentUpdatedBy(payment)}
-                                    </MDTypography>
-                                  </MDBox>
+                                  <span className="mt-0.5 flex items-center gap-1 truncate text-[11px] text-slate-500">
+                                    <Icon name="manage_accounts" className="text-[14px]" />Updated by: {getPaymentUpdatedBy(childPayment)}
+                                  </span>
                                 )}
-                              </TableCell>
-                              <TableCell align="center" sx={{ ...tableBodySx, borderBottom: "1px solid #e5e7eb" }}>
-                                <MDBox display="flex" justifyContent="center" alignItems="center" gap={0.75}>
-                                  {payment.payment_mode === "credit" && (
-                                    <MDButton
-                                      variant="gradient"
-                                      color="success"
-                                      size="small"
-                                      disabled={creditRemaining <= 0 || dialogRemaining <= 0}
-                                      onClick={() => startAddAgainstCredit(payment)}
-                                    >
-                                      Add
-                                    </MDButton>
-                                  )}
-                                  <MDButton
-                                    variant="outlined"
-                                    color="info"
-                                    size="small"
-                                    onClick={() => startEditPayment(payment)}
-                                  >
-                                    <Icon fontSize="small">edit</Icon>
-                                  </MDButton>
-                                  <MDButton
-                                    variant="outlined"
-                                    color="error"
-                                    size="small"
-                                    disabled={deletingPaymentId === payment.id || addingPayment}
-                                    onClick={() => handleDeletePayment(payment)}
-                                  >
-                                    <Icon fontSize="small">delete</Icon>
-                                  </MDButton>
-                                </MDBox>
-                              </TableCell>
-                            </TableRow>
-                            {creditChildren.map((childPayment) => (
-                              <TableRow
-                                key={childPayment.id}
-                                sx={{
-                                  backgroundColor: editingPaymentId === childPayment.id ? "#fff9c4" : "#f8fafc",
-                                  "&:hover": { backgroundColor: editingPaymentId === childPayment.id ? "#fff9c4" : "#f1f5f9" },
-                                }}
-                              >
-                                <TableCell align="left" sx={{ ...tableBodySx, pl: 4, borderBottom: "1px solid #e5e7eb", fontSize: "0.8125rem", color: "#475569" }}>
-                                  {toInputDate(childPayment.payment_date)}
-                                </TableCell>
-                                <TableCell align="left" sx={{ ...tableBodySx, borderBottom: "1px solid #e5e7eb", fontSize: "0.8125rem", color: "#475569" }}>
-                                  <MDBox
-                                    display="inline-flex"
-                                    px={1}
-                                    py={0.35}
-                                    borderRadius="lg"
-                                    sx={{
-                                      backgroundColor: childPayment.payment_mode === "cash" ? "#e8f5e9" : childPayment.payment_mode === "upi" ? "#e3f2fd" : childPayment.payment_mode === "cheque" ? "#fff3e0" : "#f3e5f5",
-                                      color: childPayment.payment_mode === "cash" ? "#2e7d32" : childPayment.payment_mode === "upi" ? "#1976d2" : childPayment.payment_mode === "cheque" ? "#e65100" : "#7b1fa2",
-                                    }}
-                                  >
-                                    <MDTypography variant="caption" fontWeight="medium">
-                                      {PAYMENT_MODE_LABELS[childPayment.payment_mode] || childPayment.payment_mode}
-                                    </MDTypography>
-                                  </MDBox>
-                                </TableCell>
-                                <TableCell align="right" sx={{ ...tableBodySx, borderBottom: "1px solid #e5e7eb", fontSize: "0.8125rem", fontWeight: 500, color: "#111827" }}>
-                                  ₹{Number(childPayment.amount).toFixed(2)}
-                                </TableCell>
-                                <TableCell align="left" sx={{ ...tableBodySx, borderBottom: "1px solid #e5e7eb", fontSize: "0.8125rem", color: "#475569" }}>
-                                  {getCollectorName(childPayment)}
-                                </TableCell>
-                                <TableCell align="left" sx={{ ...tableBodySx, borderBottom: "1px solid #e5e7eb", fontSize: "0.8125rem", color: "#475569", overflow: "hidden", textOverflow: "ellipsis" }}>
-                                  <MDTypography variant="caption" color="text" display="block" noWrap>
-                                    Against credit #{payment.id} - {formatPaymentDetails(childPayment)}
-                                  </MDTypography>
-                                  {isAdmin && (
-                                    <MDBox display="flex" alignItems="center" gap={0.4} mt={0.35}>
-                                      <Icon fontSize="small" color="secondary">manage_accounts</Icon>
-                                      <MDTypography variant="caption" color="text" noWrap>
-                                        Updated by: {getPaymentUpdatedBy(childPayment)}
-                                      </MDTypography>
-                                    </MDBox>
-                                  )}
-                                </TableCell>
-                                <TableCell align="center" sx={{ ...tableBodySx, borderBottom: "1px solid #e5e7eb" }}>
-                                  <MDBox display="flex" justifyContent="center" alignItems="center" gap={0.75}>
-                                    <MDButton
-                                      variant="outlined"
-                                      color="info"
-                                      size="small"
-                                      onClick={() => startEditPayment(childPayment)}
-                                    >
-                                      <Icon fontSize="small">edit</Icon>
-                                    </MDButton>
-                                    <MDButton
-                                      variant="outlined"
-                                      color="error"
-                                      size="small"
-                                      disabled={deletingPaymentId === childPayment.id || addingPayment}
-                                      onClick={() => handleDeletePayment(childPayment)}
-                                    >
-                                      <Icon fontSize="small">delete</Icon>
-                                    </MDButton>
-                                  </MDBox>
-                                </TableCell>
-                              </TableRow>
-                            ))}
-                          </Fragment>
-                        );
-                      })}
-                    </TableBody>
-                  </Table>
-                </TableContainer>
-              )}
-
-
-              {showPaymentForm && (
-                <MDBox p={{ xs: 1.5, sm: 2.5 }} sx={{ backgroundColor: "#fff", border: "1px solid #e5e7eb", borderRadius: 2 }}>
-                  <MDBox display="flex" alignItems="center" gap={0.75} mb={2}>
-                    <Icon color="info">{editingPaymentId ? "edit" : "add_circle"}</Icon>
-                    <MDTypography variant="h6" fontWeight="medium">
-                    {editingPaymentId
-                      ? "Edit Payment"
-                      : activeCreditPayment
-                        ? `Add Payment Against Credit - ${activeCreditPayment.credit_days || ""} Days`
-                        : "Add Payment"}
-                    </MDTypography>
-                  </MDBox>
-                  <MDTypography variant="caption" color="text" display="block" mt={-1} mb={2}>
-                    Record the payment details below. The balance updates automatically after saving.
-                  </MDTypography>
-
-                  <Grid container spacing={2}>
-                    <Grid item xs={12} sm={6} md={3}>
-                      <MDInput
-                        type="date"
-                        label="Date"
-                        fullWidth
-                        InputLabelProps={{ shrink: true }}
-                        value={paymentForm.paymentDate}
-                        onChange={(e) => handlePaymentFormChange("paymentDate", e.target.value)}
-                        helperText={
-                          !isAdmin && paymentForm.paymentDate && paymentForm.paymentDate < getTodayLocalDate()
-                            ? "Backdated: needs admin approval"
-                            : undefined
-                        }
-                        FormHelperTextProps={{ sx: { color: "#b45309", fontWeight: 600, mx: 0 } }}
-                      />
-                    </Grid>
-                    <Grid item xs={12} sm={6} md={3}>
-                      <FormControl fullWidth size="small">
-                        <InputLabel>Payment Mode</InputLabel>
-                        <Select
-                          value={paymentForm.paymentMode}
-                          label="Payment Mode"
-                          onChange={(e) => handlePaymentFormChange("paymentMode", e.target.value)}
-                          sx={{ height: "45px" }}
-                        >
-                          <MenuItem value="cash">Cash</MenuItem>
-                          <MenuItem value="upi">UPI</MenuItem>
-                          <MenuItem value="cheque">Cheque</MenuItem>
-                          {!activeCreditPayment && (!hasCreditEntry || payments.some((payment) => payment.id === editingPaymentId && payment.payment_mode === "credit")) && <MenuItem value="credit">Credit</MenuItem>}
-                        </Select>
-                      </FormControl>
-                    </Grid>
-                    <Grid item xs={12} sm={6} md={3}>
-                      <FormControl fullWidth size="small">
-                        <InputLabel>Collector Type</InputLabel>
-                        <Select
-                          value={paymentForm.collectorType}
-                          label="Collector Type"
-                          onChange={(e) => handlePaymentFormChange("collectorType", e.target.value)}
-                          sx={{ height: "45px" }}
-                        >
-                          <MenuItem value="company_staff">Company Staff</MenuItem>
-                          <MenuItem value="bawarchee_staff">Bawarchee Staff</MenuItem>
-                        </Select>
-                      </FormControl>
-                    </Grid>
-                    <Grid item xs={12} sm={6} md={3}>
-                      {paymentForm.collectorType === "company_staff" ? (
-                        <MDInput
-                          label="Marketing Person (Outlet)"
-                          fullWidth
-                          value={getOutletMarketingStaffName()}
-                          InputProps={{ readOnly: true }}
-                        />
-                      ) : (
-                        <FormControl fullWidth size="small">
-                          <InputLabel>Delivery Boy</InputLabel>
-                          <Select
-                            value={paymentForm.collectorDeliveryBoyId}
-                            label="Delivery Boy"
-                            onChange={(e) => handlePaymentFormChange("collectorDeliveryBoyId", e.target.value)}
-                            sx={{ height: "45px" }}
-                          >
-                            {paymentDialogSale?.delivery_boy_id && (
-                              <MenuItem value={String(paymentDialogSale.delivery_boy_id)}>
-                                {paymentDialogSale.delivery_boy_name || "Assigned Delivery Boy"} (Assigned)
-                              </MenuItem>
-                            )}
-                            {deliveryBoys
-                              .filter((boy) => String(boy.id) !== String(paymentDialogSale?.delivery_boy_id || ""))
-                              .map((boy) => (
-                                <MenuItem key={boy.id} value={String(boy.id)}>
-                                  {boy.name}
-                                </MenuItem>
-                              ))}
-                          </Select>
-                        </FormControl>
-                      )}
-                    </Grid>
-                    <Grid item xs={12} sm={6} md={3}>
-                      <MDInput
-                        type="number"
-                        label={
-                          editingPaymentId
-                            ? `Amount (max ₹${maxPayableOnEdit.toFixed(2)})`
-                            : `Amount (max ₹${activeCreditRemaining.toFixed(2)})`
-                        }
-                        fullWidth
-                        value={paymentForm.amount}
-                        disabled={paymentForm.paymentMode === "cash" || paymentForm.paymentMode === "credit"}
-                        InputProps={{ readOnly: paymentForm.paymentMode === "cash" || paymentForm.paymentMode === "credit" }}
-                        onChange={(e) => handlePaymentFormChange("amount", e.target.value)}
-                      />
-                    </Grid>
-                    {paymentForm.paymentMode === "cash" && (
-                      <Grid item xs={12}>
-                        <MDTypography variant="button" fontWeight="medium" color="dark" display="block" mb={1}>
-                          Notes
-                        </MDTypography>
-                        <MDBox
-                          display="grid"
-                          sx={{
-                            gridTemplateColumns: {
-                              xs: "repeat(2, minmax(0, 1fr))",
-                              sm: "repeat(3, minmax(0, 1fr))",
-                              md: "repeat(6, minmax(0, 1fr))",
-                            },
-                          }}
-                          gap={1.5}
-                        >
-                          {CASH_NOTE_DENOMINATIONS.map((denomination) => (
-                            <MDInput
-                              key={`note-${denomination}`}
-                              type="number"
-                              label={`₹${denomination} Note`}
-                              value={paymentForm.cashNotes[`note_${denomination}`] || ""}
-                              onChange={(e) => handleCashNoteChange(`note_${denomination}`, e.target.value)}
-                              inputProps={{ min: 0, step: 1 }}
-                              fullWidth
-                            />
+                              </td>
+                              <td className={`${miniTd} text-center`}>{paymentActions(childPayment, false)}</td>
+                            </tr>
                           ))}
-                        </MDBox>
-                        <MDTypography variant="button" fontWeight="medium" color="dark" display="block" mt={2} mb={1}>
-                          Coins
-                        </MDTypography>
-                        <MDBox
-                          display="grid"
-                          sx={{
-                            gridTemplateColumns: {
-                              xs: "repeat(2, minmax(0, 1fr))",
-                              sm: "repeat(3, minmax(0, 1fr))",
-                              md: "repeat(5, minmax(0, 1fr))",
-                            },
-                          }}
-                          gap={1.5}
-                        >
-                          {CASH_COIN_DENOMINATIONS.map((denomination) => (
-                            <MDInput
-                              key={`coin-${denomination}`}
-                              type="number"
-                              label={`₹${denomination} Coin`}
-                              value={paymentForm.cashNotes[`coin_${denomination}`] || ""}
-                              onChange={(e) => handleCashNoteChange(`coin_${denomination}`, e.target.value)}
-                              inputProps={{ min: 0, step: 1 }}
-                              fullWidth
-                            />
-                          ))}
-                          <MDInput
-                            type="number"
-                            label="Paise (0–99)"
-                            value={paymentForm.cashNotes.paise || ""}
-                            onChange={(e) => handleCashNoteChange("paise", e.target.value)}
-                            inputProps={{ min: 0, max: 99, step: 1 }}
-                            fullWidth
-                          />
-                        </MDBox>
-                        <MDTypography variant="caption" color="text" display="block" mt={1}>
-                          Cash amount auto-calculates from note and coin count.
-                        </MDTypography>
-                      </Grid>
-                    )}
-                    {paymentForm.paymentMode === "upi" && (
-                      <Grid item xs={12} sm={6} md={3}>
-                        <MDInput
-                          type="text"
-                          label="UPI Reference (optional)"
-                          fullWidth
-                          value={paymentForm.referenceNo}
-                          onChange={(e) => handlePaymentFormChange("referenceNo", e.target.value)}
-                        />
-                      </Grid>
-                    )}
-                    {paymentForm.paymentMode === "cheque" && (
-                      <>
-                        <Grid item xs={12} sm={6} md={3}>
-                          <MDInput
-                            type="text"
-                            label="Cheque No"
-                            fullWidth
-                            value={paymentForm.referenceNo}
-                            onChange={(e) => handlePaymentFormChange("referenceNo", e.target.value)}
-                          />
-                        </Grid>
-                        <Grid item xs={12} sm={6} md={3}>
-                          <MDInput
-                            type="date"
-                            label="Cheque Date"
-                            fullWidth
-                            InputLabelProps={{ shrink: true }}
-                            value={paymentForm.referenceDate}
-                            onChange={(e) =>
-                              handlePaymentFormChange("referenceDate", e.target.value)
-                            }
-                          />
-                        </Grid>
-                      </>
-                    )}
-                    {paymentForm.paymentMode === "credit" && (
-                      <Grid item xs={12} sm={6} md={3}>
-                        <MDInput
-                          type="number"
-                          label="Credit Days (maximum 14)"
-                          inputProps={{ min: 1, max: 14, step: 1 }}
-                          fullWidth
-                          value={paymentForm.creditDays}
-                          onChange={(e) => handlePaymentFormChange("creditDays", e.target.value)}
-                        />
-                      </Grid>
-                    )}
-                  </Grid>
-                  {paymentForm.paymentMode === "credit" && (
-                    <MDTypography variant="caption" color="text" display="block" mt={1}>
-                      The full remaining balance is placed on credit for up to 14 days. Balance stays the same until paid by cash, UPI, or cheque.
-                    </MDTypography>
-                  )}
-                  {isPartialPayment && (
-                    <MDTypography variant="caption" color="warning" display="block" mt={1}>
-                      Amount is less than the balance (₹{formRemaining.toFixed(2)}). The rest stays due, so upload the invoice photo.
-                    </MDTypography>
-                  )}
-                  {needsInvoicePhoto && paymentDialogSale && <CreditPhoto key={paymentDialogSale.id} api={API} saleId={Number(paymentDialogSale.id)} disabled={addingPayment || photoBusy} onBusyChange={setPhotoBusy} onPhotoReady={setPhotoSaleId} />}
-                  <MDBox mt={2} display="flex" gap={1} flexWrap="wrap">
-                    <MDButton
-                      variant="gradient"
-                      color="info"
-                      onClick={handleSavePayment}
-                      disabled={addingPayment || photoBusy || (needsInvoicePhoto && photoSaleId !== Number(paymentDialogSale?.id))}
-                    >
-                      <Icon sx={{ mr: 1 }}>{editingPaymentId ? "save" : "add"}</Icon>
-                      {addingPayment
-                        ? "Saving..."
-                        : editingPaymentId
-                          ? "Update Payment"
-                          : "Add Payment"}
-                    </MDButton>
-                    {editingPaymentId && (
-                      <MDButton
-                        variant="outlined"
-                        color="dark"
-                        onClick={cancelEditPayment}
-                        disabled={addingPayment || photoBusy}
-                      >
-                        Cancel
-                      </MDButton>
-                    )}
-                    {activeCreditPayment && (
-                      <MDButton
-                        variant="outlined"
-                        color="dark"
-                        onClick={cancelEditPayment}
-                        disabled={addingPayment || photoBusy}
-                      >
-                        Cancel
-                      </MDButton>
-                    )}
-                  </MDBox>
-                </MDBox>
-              )}
+                        </Fragment>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
 
-              {dialogRemaining === 0 && payments.length > 0 && (
-                <MDBox
-                  mt={2}
-                  p={2}
-                  display="flex"
-                  alignItems="center"
-                  gap={1}
-                  sx={{
-                    backgroundColor: "#ecfdf3",
-                    borderRadius: "10px",
-                    border: "1px solid #c8e6c9",
-                  }}
-                >
-                  <Icon color="success">verified</Icon>
-                  <MDBox>
-                    <MDTypography variant="button" color="success" fontWeight="medium" display="block">
-                      Invoice fully paid
-                    </MDTypography>
-                    <MDTypography variant="caption" color="text">
-                      No balance remaining on this invoice.
-                    </MDTypography>
-                  </MDBox>
-                </MDBox>
-              )}
-            </MDBox>
-          )}
-        </DialogContent>
-        <DialogActions sx={{ px: 3, py: 1.5, borderTop: "1px solid #e5e7eb", backgroundColor: "#fff" }}>
-          <MDButton variant="outlined" color="dark" onClick={closePaymentDialog}>
-            Close Ledger
-          </MDButton>
-        </DialogActions>
-      </Dialog>
+            {showPaymentForm && (
+              <div className="rounded-xl border border-blue-200 bg-white p-4">
+                <h4 className="m-0 flex items-center gap-1.5 text-[14px] font-semibold text-slate-900">
+                  <Icon name={editingPaymentId ? "edit" : "add_circle"} className="text-[19px] text-blue-600" />
+                  {editingPaymentId
+                    ? "Edit Payment"
+                    : activeCreditPayment
+                      ? `Add Payment Against Credit - ${activeCreditPayment.credit_days || ""} Days`
+                      : "Add Payment"}
+                </h4>
+                <p className="m-0 mb-3 mt-0.5 text-[12px] text-slate-500">Record the payment details below. The balance updates automatically after saving.</p>
 
-      <Dialog
-        open={!!cancelDialogSale}
-        onClose={closeCancelDialog}
-        maxWidth="md"
-        fullWidth
-        PaperProps={{
-          sx: {
-            width: "100%",
-            maxWidth: 760,
-            mx: 2,
-          },
-        }}
-      >
-        <DialogTitle sx={{ fontWeight: "bold", color: "#344767" }}>
-          Log Cancelled Order
-        </DialogTitle>
-        <DialogContent>
-          {cancelDialogSale && (
-            <MDBox pt={1}>
-              <MDBox
-                display="flex"
-                flexWrap="wrap"
-                gap={2}
-                mb={3}
-                p={2}
-                sx={{ backgroundColor: "#f8f9fa", borderRadius: "10px", border: "1px solid #e9ecef" }}
-              >
-                <MDTypography variant="body2">
-                  <strong>Outlet:</strong> {cancelDialogSale.outlet_name || "—"}
-                </MDTypography>
-                <MDTypography variant="body2">
-                  <strong>Invoice:</strong> {cancelDialogSale.invoice_number || "—"}
-                </MDTypography>
-              </MDBox>
-
-              <MDBox display="flex" justifyContent="space-between" alignItems="center" mb={2}>
-                <MDTypography variant="h6" fontWeight="medium">
-                  Cancellation History
-                </MDTypography>
-                <MDBox display="flex" gap={1}>
-                  {cancellationHistory.length > 0 && (
-                    <Tooltip title="Print All">
-                      <MDButton
-                        variant="outlined"
-                        color="info"
-                        size="small"
-                        iconOnly
-                        onClick={handlePrintAllCancellations}
-                      >
-                        <Icon fontSize="small">print</Icon>
-                      </MDButton>
-                    </Tooltip>
-                  )}
-                </MDBox>
-              </MDBox>
-
-              {loadingCancellations ? (
-                <MDTypography variant="body2" color="text">
-                  Loading history...
-                </MDTypography>
-              ) : cancellationHistory.length === 0 ? (
-                <MDTypography variant="body2" color="text">
-                  No cancellations logged for this invoice.
-                </MDTypography>
-              ) : (
-                <TableContainer
-                  sx={{
-                    boxShadow: "none",
-                    border: "1px solid #e5e7eb",
-                    borderRadius: "8px",
-                    backgroundColor: "#fff",
-                    overflowX: "auto",
-                  }}
-                >
-                  <Table
-                    size="small"
-                    sx={{
-                      tableLayout: "fixed",
-                      width: "100%",
-                      minWidth: 900,
-                      "& .MuiTableCell-root": { overflow: "hidden", textOverflow: "ellipsis" },
-                    }}
+                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                  <Field
+                    label="Date" width="w-full"
+                    hint={!isAdmin && paymentForm.paymentDate && paymentForm.paymentDate < getTodayLocalDate()
+                      ? <span className="font-semibold text-amber-700">Backdated: needs admin approval</span>
+                      : null}
                   >
-                    <colgroup>
-                      <col style={{ width: "17%" }} />
-                      <col style={{ width: "19%" }} />
-                      <col style={{ width: "11%" }} />
-                      <col style={{ width: "15%" }} />
-                      <col style={{ width: "18%" }} />
-                      <col style={{ width: "10%" }} />
-                      <col style={{ width: "10%" }} />
-                    </colgroup>
-                    <TableHead
-                      sx={{
-                        display: "table-header-group",
-                        backgroundColor: "#f9fafb",
-                        "& .MuiTableCell-root": { backgroundColor: "#f9fafb" },
-                      }}
-                    >
-                      <TableRow>
-                        <TableCell align="left" sx={tableHeadSx}>
-                          Date
-                        </TableCell>
-                        <TableCell align="left" sx={tableHeadSx}>
-                          Product Name
-                        </TableCell>
-                        <TableCell align="left" sx={tableHeadSx}>
-                          Qty to Cancel
-                        </TableCell>
-                        <TableCell align="left" sx={tableHeadSx}>
-                          Reason
-                        </TableCell>
-                        <TableCell align="left" sx={tableHeadSx}>
-                          Remarks
-                        </TableCell>
-                        <TableCell align="right" sx={tableHeadSx}>
-                          Amount
-                        </TableCell>
-                        <TableCell align="center" sx={tableHeadSx}>
-                          Action
-                        </TableCell>
-                      </TableRow>
-                    </TableHead>
-                    <TableBody>
-                      {cancellationHistory.map((c) => (
-                        <TableRow key={c.id}>
-                          <TableCell
-                            align="left"
-                            sx={{ ...tableBodySx, borderBottom: "1px solid #e5e7eb", fontSize: "0.875rem", color: "#374151" }}
-                          >
-                            {c.created_at}
-                          </TableCell>
-                          <TableCell
-                            align="left"
-                            sx={{ ...tableBodySx, borderBottom: "1px solid #e5e7eb", fontSize: "0.875rem", color: "#374151" }}
-                          >
-                            {c.product_name}
-                          </TableCell>
-                          <TableCell
-                            align="left"
-                            sx={{ ...tableBodySx, borderBottom: "1px solid #e5e7eb", fontSize: "0.875rem", color: "#374151" }}
-                          >
-                            {formatCancelQtyDisplay(c)}
-                          </TableCell>
-                          <TableCell
-                            align="left"
-                            sx={{ ...tableBodySx, borderBottom: "1px solid #e5e7eb", fontSize: "0.875rem", color: "#374151" }}
-                          >
-                            {c.reason || "—"}
-                          </TableCell>
-                          <TableCell
-                            align="left"
-                            title={c.remarks || ""}
-                            sx={{ ...tableBodySx, borderBottom: "1px solid #e5e7eb", fontSize: "0.875rem", color: "#374151" }}
-                          >
-                            {c.remarks || "—"}
-                          </TableCell>
-                          <TableCell
-                            align="right"
-                            sx={{ ...tableBodySx, borderBottom: "1px solid #e5e7eb", fontSize: "0.875rem", fontWeight: 500, color: "#111827" }}
-                          >
-                            ₹{Number(c.amount).toFixed(2)}
-                          </TableCell>
-                          <TableCell align="center" sx={{ ...tableBodySx, borderBottom: "1px solid #e5e7eb" }}>
-                            <Tooltip title="Print">
-                              <MDButton
-                                variant="outlined"
-                                color="info"
-                                size="small"
-                                iconOnly
-                                onClick={() => handlePrintCancellation(c)}
-                              >
-                                <Icon fontSize="small">print</Icon>
-                              </MDButton>
-                            </Tooltip>
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </TableContainer>
-              )}
-            </MDBox>
-          )}
-        </DialogContent>
-        <DialogActions>
-          <Tooltip title="Close">
-            <MDButton variant="outlined" color="dark" iconOnly onClick={closeCancelDialog}>
-              <Icon fontSize="small">close</Icon>
-            </MDButton>
-          </Tooltip>
-          <Tooltip title="Add Cancellation">
-            <MDButton variant="gradient" color="error" iconOnly onClick={openAddCancelDialog}>
-              <Icon fontSize="small">add</Icon>
-            </MDButton>
-          </Tooltip>
-        </DialogActions>
-      </Dialog>
-
-      <Dialog
-        open={addCancelDialogOpen}
-        onClose={closeAddCancelDialog}
-        maxWidth="md"
-        fullWidth
-        PaperProps={{
-          sx: {
-            width: "100%",
-            maxWidth: 760,
-            mx: 2,
-          },
-        }}
-      >
-        <DialogTitle sx={{ fontWeight: "bold", color: "#344767" }}>
-          Add Cancellation
-        </DialogTitle>
-        <DialogContent>
-          {cancelDialogSale && (
-            <MDBox pt={1}>
-              <Grid container spacing={2}>
-                <Grid item xs={12} sm={6}>
-                  <MDInput
-                    label="Outlet Name"
-                    fullWidth
-                    value={cancelDialogSale.outlet_name || ""}
-                    InputProps={{ readOnly: true }}
-                    disabled
-                  />
-                </Grid>
-                <Grid item xs={12} sm={6}>
-                  <MDInput
-                    label="Invoice Number"
-                    fullWidth
-                    value={cancelDialogSale.invoice_number || ""}
-                    InputProps={{ readOnly: true }}
-                    disabled
-                  />
-                </Grid>
-                <Grid item xs={12} sm={6}>
-                  <FormControl fullWidth>
-                    <InputLabel id="cancellation-reason-label">Cancellation Reason *</InputLabel>
-                    <Select
-                      labelId="cancellation-reason-label"
-                      label="Cancellation Reason *"
-                      value={cancelForm.reason}
-                      sx={{ height: 43 }}
-                      onChange={(e) => handleCancelFormChange("reason", e.target.value)}
-                    >
-                      <MenuItem value="">Select reason</MenuItem>
-                      <MenuItem value="Customer request">Customer request</MenuItem>
-                      <MenuItem value="Product unavailable">Product unavailable</MenuItem>
-                      <MenuItem value="Incorrect order">Incorrect order</MenuItem>
-                      <MenuItem value="Duplicate order">Duplicate order</MenuItem>
-                      <MenuItem value="Payment issue">Payment issue</MenuItem>
-                      <MenuItem value="Delivery issue">Delivery issue</MenuItem>
-                      <MenuItem value="Wrong packing">Wrong packing</MenuItem>
-                      <MenuItem value="Other">Other</MenuItem>
-                    </Select>
-                  </FormControl>
-                </Grid>
-                <Grid item xs={12} sm={6}>
-                  {loadingCancelItems ? (
-                    <MDTypography variant="body2" color="text" sx={{ pt: 1.5 }}>
-                      Loading invoice products...
-                    </MDTypography>
-                  ) : cancelSaleItems.length > 0 ? (
-                    <>
-                      <FormControl fullWidth>
-                        <InputLabel id="cancel-product-label">Product Name *</InputLabel>
-                        <Select
-                          labelId="cancel-product-label"
-                          label="Product Name *"
-                          value={cancelForm.selectedItemId}
-                          sx={{ height: 43 }}
-                          onChange={(e) => handleCancelProductSelect(e.target.value)}
-                        >
-                          <MenuItem value="">Select product</MenuItem>
-                          <MenuItem value="manual">Manual entry</MenuItem>
-                          {cancelSaleItems.map((item) => (
-                            <MenuItem key={item.id} value={String(item.id)}>
-                              {item.product_name} — Qty: {formatItemQtyDisplay(item.qty)}
-                            </MenuItem>
-                          ))}
-                        </Select>
-                      </FormControl>
-                      {isManualCancelEntry && cancelForm.selectedItemId === "manual" && (
-                        <MDBox mt={2}>
-                          <MDInput
-                            label="Product Name *"
-                            fullWidth
-                            value={cancelForm.productName}
-                            onChange={(e) => handleCancelFormChange("productName", e.target.value)}
-                          />
-                        </MDBox>
-                      )}
-                    </>
+                    <input type="date" className={fieldClass} value={paymentForm.paymentDate} onChange={(e) => handlePaymentFormChange("paymentDate", e.target.value)} />
+                  </Field>
+                  <Field label="Payment mode" width="w-full">
+                    <select className={fieldClass} value={paymentForm.paymentMode} onChange={(e) => handlePaymentFormChange("paymentMode", e.target.value)}>
+                      <option value="cash">Cash</option>
+                      <option value="upi">UPI</option>
+                      <option value="cheque">Cheque</option>
+                      {!activeCreditPayment && (!hasCreditEntry || payments.some((payment) => payment.id === editingPaymentId && payment.payment_mode === "credit")) && <option value="credit">Credit</option>}
+                    </select>
+                  </Field>
+                  <Field label="Collector type" width="w-full">
+                    <select className={fieldClass} value={paymentForm.collectorType} onChange={(e) => handlePaymentFormChange("collectorType", e.target.value)}>
+                      <option value="company_staff">Company Staff</option>
+                      <option value="bawarchee_staff">Bawarchee Staff</option>
+                    </select>
+                  </Field>
+                  {paymentForm.collectorType === "company_staff" ? (
+                    <Field label="Marketing person (outlet)" width="w-full">
+                      <input readOnly className={`${fieldClass} bg-slate-50`} value={getOutletMarketingStaffName()} />
+                    </Field>
                   ) : (
-                    <MDInput
-                      label="Product Name *"
-                      fullWidth
-                      value={cancelForm.productName}
-                      onChange={(e) => handleCancelFormChange("productName", e.target.value)}
-                    />
+                    <Field label="Delivery boy" width="w-full">
+                      <select className={fieldClass} value={paymentForm.collectorDeliveryBoyId} onChange={(e) => handlePaymentFormChange("collectorDeliveryBoyId", e.target.value)}>
+                        <option value="" disabled>Select delivery boy</option>
+                        {paymentDialogSale?.delivery_boy_id && (
+                          <option value={String(paymentDialogSale.delivery_boy_id)}>
+                            {paymentDialogSale.delivery_boy_name || "Assigned Delivery Boy"} (Assigned)
+                          </option>
+                        )}
+                        {deliveryBoys
+                          .filter((boy) => String(boy.id) !== String(paymentDialogSale?.delivery_boy_id || ""))
+                          .map((boy) => <option key={boy.id} value={String(boy.id)}>{boy.name}</option>)}
+                      </select>
+                    </Field>
                   )}
-                </Grid>
-                <Grid item xs={12} sm={6}>
-                  <MDInput
-                    type="number"
-                    label="Qty to Cancel"
-                    fullWidth
-                    value={cancelForm.productQtyToCancel}
-                    onChange={(e) =>
-                      selectedCancelItem
-                        ? handleCancelQtyChange(e.target.value)
-                        : handleCancelFormChange("productQtyToCancel", e.target.value)
-                    }
-                    inputProps={
-                      selectedCancelItem
-                        ? { min: 0, max: Number(selectedCancelItem.qty) || undefined, step: "any" }
-                        : { min: 0, step: "any" }
-                    }
-                    helperText={
-                      selectedCancelItem
-                        ? `Ordered qty: ${formatItemQtyDisplay(selectedCancelItem.qty)}`
-                        : undefined
-                    }
-                  />
-                </Grid>
-                <Grid item xs={12} sm={6}>
-                  <MDInput
-                    type="number"
-                    label="Amount"
-                    fullWidth
-                    value={cancelForm.amount}
-                    onChange={(e) => handleCancelFormChange("amount", e.target.value)}
-                    inputProps={{ min: 0, step: "0.01" }}
-                    helperText={
-                      selectedCancelItem
-                        ? "Auto-filled from qty; you can edit manually"
-                        : "Enter cancel amount manually"
-                    }
-                  />
-                </Grid>
-                <Grid item xs={12} sm={6}>
-                  <MDButton variant="outlined" color="info" component="label" fullWidth>
-                    {cancelImageBusy ? "Reducing image size…" : cancelForm.invoiceImageFile ? "Change invoice image" : "Upload Invoice Image *"}
-                    <input hidden type="file" accept="image/jpeg,image/png,image/webp,application/pdf"
-                      disabled={cancelImageBusy || loggingCancel} onChange={handleCancelImageSelect} />
-                  </MDButton>
-                  <MDTypography variant="caption" color="text" display="block">JPG, PNG, WebP or PDF · max 1 MB. Required for admin approval.</MDTypography>
-                  {cancelImageNote && <MDTypography variant="caption" color="success" display="block">{cancelImageNote}</MDTypography>}
-                  {cancelImageError && <MDTypography variant="caption" color="error" display="block" role="alert">{cancelImageError}</MDTypography>}
-                </Grid>
-                <Grid item xs={12}>
-                  <MDInput
-                    label="Remarks"
-                    fullWidth
-                    multiline
-                    rows={3}
-                    value={cancelForm.remarks}
-                    onChange={(e) => handleCancelFormChange("remarks", e.target.value)}
-                    inputProps={{ maxLength: 2000 }}
-                  />
-                </Grid>
-              </Grid>
-            </MDBox>
-          )}
-        </DialogContent>
-        <DialogActions>
-          <Tooltip title="Close">
-            <span>
-              <MDButton
-                variant="outlined"
-                color="dark"
-                iconOnly
-                onClick={closeAddCancelDialog}
-                disabled={loggingCancel}
-              >
-                <Icon fontSize="small">close</Icon>
-              </MDButton>
-            </span>
-          </Tooltip>
-          <Tooltip title={loggingCancel ? "Saving..." : "Create Cancel"}>
-            <span>
-              <MDButton
-                variant="gradient"
-                color="error"
-                iconOnly
-                onClick={handleSaveCancellation}
-                disabled={loggingCancel || cancelImageBusy}
-              >
-                {loggingCancel ? (
-                  <CircularProgress size={18} color="inherit" />
-                ) : (
-                  <Icon fontSize="small">check</Icon>
+                  <Field
+                    label={editingPaymentId
+                      ? `Amount (max ₹${maxPayableOnEdit.toFixed(2)})`
+                      : `Amount (max ₹${activeCreditRemaining.toFixed(2)})`}
+                    width="w-full"
+                  >
+                    <input
+                      type="number" className={`${fieldClass} font-semibold`} value={paymentForm.amount}
+                      disabled={paymentForm.paymentMode === "cash" || paymentForm.paymentMode === "credit"}
+                      readOnly={paymentForm.paymentMode === "cash" || paymentForm.paymentMode === "credit"}
+                      onChange={(e) => handlePaymentFormChange("amount", e.target.value)}
+                    />
+                  </Field>
+                  {paymentForm.paymentMode === "upi" && (
+                    <Field label="UPI reference (optional)" width="w-full">
+                      <input className={fieldClass} value={paymentForm.referenceNo} onChange={(e) => handlePaymentFormChange("referenceNo", e.target.value)} />
+                    </Field>
+                  )}
+                  {paymentForm.paymentMode === "cheque" && (
+                    <>
+                      <Field label="Cheque no" width="w-full">
+                        <input className={fieldClass} value={paymentForm.referenceNo} onChange={(e) => handlePaymentFormChange("referenceNo", e.target.value)} />
+                      </Field>
+                      <Field label="Cheque date" width="w-full">
+                        <input type="date" className={fieldClass} value={paymentForm.referenceDate} onChange={(e) => handlePaymentFormChange("referenceDate", e.target.value)} />
+                      </Field>
+                    </>
+                  )}
+                  {paymentForm.paymentMode === "credit" && (
+                    <Field label="Credit days (maximum 14)" width="w-full">
+                      <input type="number" min={1} max={14} step={1} className={fieldClass} value={paymentForm.creditDays} onChange={(e) => handlePaymentFormChange("creditDays", e.target.value)} />
+                    </Field>
+                  )}
+                </div>
+
+                {paymentForm.paymentMode === "cash" && (
+                  <div className="mt-4 rounded-xl bg-slate-50 p-3">
+                    <span className="mb-2 block text-[12.5px] font-semibold text-slate-800">Notes</span>
+                    <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-6">
+                      {CASH_NOTE_DENOMINATIONS.map((denomination) => numberBox(`₹${denomination} note`, `note_${denomination}`))}
+                    </div>
+                    <span className="mb-2 mt-3 block text-[12.5px] font-semibold text-slate-800">Coins</span>
+                    <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-6">
+                      {CASH_COIN_DENOMINATIONS.map((denomination) => numberBox(`₹${denomination} coin`, `coin_${denomination}`))}
+                      {numberBox("Paise (0–99)", "paise", 99)}
+                    </div>
+                    <p className="m-0 mt-2 text-[12px] text-slate-500">Cash amount auto-calculates from note and coin count.</p>
+                  </div>
                 )}
-              </MDButton>
-            </span>
-          </Tooltip>
-        </DialogActions>
-      </Dialog>
-      <Snackbar
-        open={Boolean(paymentSuccessMessage)}
-        autoHideDuration={4000}
-        onClose={() => setPaymentSuccessMessage("")}
-        anchorOrigin={{ vertical: "top", horizontal: "right" }}
+                {paymentForm.paymentMode === "credit" && (
+                  <p className="m-0 mt-2 text-[12px] text-slate-500">The full remaining balance is placed on credit for up to 14 days. Balance stays the same until paid by cash, UPI, or cheque.</p>
+                )}
+                {isPartialPayment && (
+                  <p className="m-0 mt-2 text-[12px] font-semibold text-amber-700">
+                    Amount is less than the balance (₹{formRemaining.toFixed(2)}). The rest stays due, so upload the invoice photo.
+                  </p>
+                )}
+                {needsInvoicePhoto && paymentDialogSale && <CreditPhoto key={paymentDialogSale.id} api={API} saleId={Number(paymentDialogSale.id)} disabled={addingPayment || photoBusy} onBusyChange={setPhotoBusy} onPhotoReady={setPhotoSaleId} />}
+                <div className="mt-4 flex flex-wrap gap-2">
+                  <button
+                    type="button" className={btn.primary} onClick={handleSavePayment}
+                    disabled={addingPayment || photoBusy || (needsInvoicePhoto && photoSaleId !== Number(paymentDialogSale?.id))}
+                  >
+                    <Icon name={editingPaymentId ? "save" : "add"} className="text-[18px]" />
+                    {addingPayment
+                      ? "Saving..."
+                      : editingPaymentId
+                        ? "Update Payment"
+                        : "Add Payment"}
+                  </button>
+                  {(editingPaymentId || activeCreditPayment) && (
+                    <button type="button" className={btn.ghost} onClick={cancelEditPayment} disabled={addingPayment || photoBusy}>Cancel</button>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {dialogRemaining === 0 && payments.length > 0 && (
+              <div className="mt-4 flex items-center gap-2.5 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3">
+                <Icon name="verified" className="text-[24px] text-emerald-600" />
+                <span>
+                  <span className="block text-[13px] font-bold text-emerald-800">Invoice fully paid</span>
+                  <span className="block text-[12px] text-slate-600">No balance remaining on this invoice.</span>
+                </span>
+              </div>
+            )}
+          </div>
+        )}
+      </Modal>
+
+      {/* Cancellation history */}
+      <Modal
+        open={!!cancelDialogSale} onClose={closeCancelDialog} size="xl" title="Log Cancelled Order"
+        actions={(
+          <>
+            <button type="button" className={btn.ghost} onClick={closeCancelDialog}>Close</button>
+            <button type="button" className={btn.danger} onClick={openAddCancelDialog}><Icon name="add" className="text-[18px]" />Add Cancellation</button>
+          </>
+        )}
       >
-        <Alert
-          severity="success"
-          variant="filled"
-          onClose={() => setPaymentSuccessMessage("")}
-          sx={{ width: "100%" }}
-        >
-          {paymentSuccessMessage}
-        </Alert>
-      </Snackbar>
+        {cancelDialogSale && (
+          <div>
+            <div className="mb-4 flex flex-wrap gap-x-6 gap-y-1 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-[13px]">
+              <span><span className="text-slate-500">Outlet:</span> <b>{cancelDialogSale.outlet_name || "—"}</b></span>
+              <span><span className="text-slate-500">Invoice:</span> <b>{cancelDialogSale.invoice_number || "—"}</b></span>
+            </div>
+            <div className="mb-2 flex items-center justify-between">
+              <h4 className="m-0 text-[14px] font-semibold text-slate-900">Cancellation History</h4>
+              {cancellationHistory.length > 0 && (
+                <button type="button" className={btn.outline} onClick={handlePrintAllCancellations}><Icon name="print" className="text-[18px]" />Print All</button>
+              )}
+            </div>
+            {loadingCancellations ? (
+              <p className="m-0 text-[13px] text-slate-400">Loading history...</p>
+            ) : cancellationHistory.length === 0 ? (
+              <p className="m-0 rounded-xl border border-dashed border-slate-300 px-4 py-6 text-center text-[13px] text-slate-400">No cancellations logged for this invoice.</p>
+            ) : (
+              <div className="overflow-x-auto rounded-xl border border-slate-200">
+                <table className="w-full min-w-[900px] table-fixed border-collapse">
+                  <colgroup>
+                    {["17%", "19%", "11%", "15%", "18%", "10%", "10%"].map((width, i) => <col key={width + String(i)} style={{ width }} />)}
+                  </colgroup>
+                  <thead>
+                    <tr>
+                      {["Date", "Product name", "Qty to cancel", "Reason", "Remarks"].map((h) => <th key={h} className={mini}>{h}</th>)}
+                      <th className={`${mini} text-right`}>Amount</th>
+                      <th className={`${mini} text-center`}>Action</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {cancellationHistory.map((c) => (
+                      <tr key={c.id} className="hover:bg-slate-50">
+                        <td className={`${miniTd} truncate`}>{c.created_at}</td>
+                        <td className={`${miniTd} truncate font-medium text-slate-900`}>{c.product_name}</td>
+                        <td className={`${miniTd} tabular-nums`}>{formatCancelQtyDisplay(c)}</td>
+                        <td className={`${miniTd} truncate`}>{c.reason || "—"}</td>
+                        <td className={`${miniTd} truncate`} title={c.remarks || ""}>{c.remarks || "—"}</td>
+                        <td className={`${miniTd} text-right font-semibold tabular-nums text-slate-900`}>₹{Number(c.amount).toFixed(2)}</td>
+                        <td className={`${miniTd} text-center`}>
+                          <button type="button" className={`${btn.icon} text-blue-600 hover:bg-blue-50`} title="Print" aria-label="Print" onClick={() => handlePrintCancellation(c)}>
+                            <Icon name="print" className="text-[18px]" />
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
+      </Modal>
+
+      {/* Add a cancellation */}
+      <Modal
+        open={addCancelDialogOpen} onClose={closeAddCancelDialog} locked={loggingCancel} size="lg" title="Add Cancellation"
+        actions={(
+          <>
+            <button type="button" className={btn.ghost} onClick={closeAddCancelDialog} disabled={loggingCancel}>Close</button>
+            <button type="button" className={btn.danger} onClick={handleSaveCancellation} disabled={loggingCancel || cancelImageBusy}>
+              {loggingCancel ? <Spinner className="size-4 border-white/40 border-t-white" /> : <Icon name="check" className="text-[18px]" />}
+              {loggingCancel ? "Saving..." : "Create Cancel"}
+            </button>
+          </>
+        )}
+      >
+        {cancelDialogSale && (
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Field label="Outlet name" width="w-full"><input readOnly disabled className={fieldClass} value={cancelDialogSale.outlet_name || ""} /></Field>
+            <Field label="Invoice number" width="w-full"><input readOnly disabled className={fieldClass} value={cancelDialogSale.invoice_number || ""} /></Field>
+            <Field label="Cancellation reason *" width="w-full">
+              <select className={fieldClass} value={cancelForm.reason} onChange={(e) => handleCancelFormChange("reason", e.target.value)}>
+                <option value="">Select reason</option>
+                {["Customer request", "Product unavailable", "Incorrect order", "Duplicate order", "Payment issue", "Delivery issue", "Wrong packing", "Other"].map((reason) => (
+                  <option key={reason} value={reason}>{reason}</option>
+                ))}
+              </select>
+            </Field>
+            <div>
+              {loadingCancelItems ? (
+                <p className="m-0 pt-6 text-[13px] text-slate-400">Loading invoice products...</p>
+              ) : cancelSaleItems.length > 0 ? (
+                <>
+                  <Field label="Product name *" width="w-full">
+                    <select className={fieldClass} value={cancelForm.selectedItemId} onChange={(e) => handleCancelProductSelect(e.target.value)}>
+                      <option value="">Select product</option>
+                      <option value="manual">Manual entry</option>
+                      {cancelSaleItems.map((item) => (
+                        <option key={item.id} value={String(item.id)}>{item.product_name} — Qty: {formatItemQtyDisplay(item.qty)}</option>
+                      ))}
+                    </select>
+                  </Field>
+                  {isManualCancelEntry && cancelForm.selectedItemId === "manual" && (
+                    <div className="mt-3">
+                      <Field label="Product name *" width="w-full">
+                        <input className={fieldClass} value={cancelForm.productName} onChange={(e) => handleCancelFormChange("productName", e.target.value)} />
+                      </Field>
+                    </div>
+                  )}
+                </>
+              ) : (
+                <Field label="Product name *" width="w-full">
+                  <input className={fieldClass} value={cancelForm.productName} onChange={(e) => handleCancelFormChange("productName", e.target.value)} />
+                </Field>
+              )}
+            </div>
+            <Field label="Qty to cancel" width="w-full" hint={selectedCancelItem ? `Ordered qty: ${formatItemQtyDisplay(selectedCancelItem.qty)}` : null}>
+              <input
+                type="number" className={fieldClass} value={cancelForm.productQtyToCancel} min={0} step="any"
+                max={selectedCancelItem ? Number(selectedCancelItem.qty) || undefined : undefined}
+                onChange={(e) =>
+                  selectedCancelItem
+                    ? handleCancelQtyChange(e.target.value)
+                    : handleCancelFormChange("productQtyToCancel", e.target.value)
+                }
+              />
+            </Field>
+            <Field label="Amount" width="w-full" hint={selectedCancelItem ? "Auto-filled from qty; you can edit manually" : "Enter cancel amount manually"}>
+              <input type="number" min={0} step="0.01" className={fieldClass} value={cancelForm.amount} onChange={(e) => handleCancelFormChange("amount", e.target.value)} />
+            </Field>
+            <div className="sm:col-span-2">
+              <label className={`${btn.outline} w-full cursor-pointer justify-center ${cancelImageBusy || loggingCancel ? "pointer-events-none opacity-50" : ""}`}>
+                <Icon name="upload_file" className="text-[18px]" />
+                {cancelImageBusy ? "Reducing image size…" : cancelForm.invoiceImageFile ? "Change invoice image" : "Upload Invoice Image *"}
+                <input hidden type="file" accept="image/jpeg,image/png,image/webp,application/pdf" disabled={cancelImageBusy || loggingCancel} onChange={handleCancelImageSelect} />
+              </label>
+              <p className="m-0 mt-1 text-[12px] text-slate-500">JPG, PNG, WebP or PDF · max 1 MB. Required for admin approval.</p>
+              {cancelImageNote && <p className="m-0 text-[12px] font-medium text-emerald-700">{cancelImageNote}</p>}
+              {cancelImageError && <p role="alert" className="m-0 text-[12px] font-medium text-red-700">{cancelImageError}</p>}
+            </div>
+            <label className="flex flex-col gap-1 sm:col-span-2">
+              <span className={label}>Remarks</span>
+              <textarea rows={3} maxLength={2000} className={`${fieldClass} h-auto py-2`} value={cancelForm.remarks} onChange={(e) => handleCancelFormChange("remarks", e.target.value)} />
+            </label>
+          </div>
+        )}
+      </Modal>
+
+      {/* Success toast (top right) */}
+      {paymentSuccessMessage && (
+        <div role="status" className="fixed right-4 top-20 z-[1500] flex max-w-sm items-center gap-2 rounded-xl bg-emerald-600 px-4 py-3 text-[13px] font-medium text-white shadow-xl">
+          <Icon name="check_circle" className="text-[20px]" />
+          <span className="grow">{paymentSuccessMessage}</span>
+          <button type="button" aria-label="Close" onClick={() => setPaymentSuccessMessage("")} className="rounded p-0.5 text-white/80 hover:text-white">
+            <Icon name="close" className="text-[18px]" />
+          </button>
+        </div>
+      )}
       <Footer />
     </DashboardLayout>
   );

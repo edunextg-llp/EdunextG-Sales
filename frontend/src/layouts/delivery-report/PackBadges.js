@@ -1,27 +1,23 @@
+// Box / packet totals as two small badges: Tailwind CSS (no MUI).
 import PropTypes from "prop-types";
-import { Tooltip } from "@mui/material";
-import MDBox from "components/MDBox";
-import Inventory2Icon from "@mui/icons-material/Inventory2";
-import ShoppingBagIcon from "@mui/icons-material/ShoppingBag";
 import { boxCount, packetCount } from "utils/deliveryLog";
-
-const pill = (color, background) => ({
-  display: "inline-flex", alignItems: "center", gap: 0.25, px: 0.5, py: 0.1, borderRadius: 1,
-  fontSize: "0.66rem", fontWeight: 700, lineHeight: 1.3, whiteSpace: "nowrap", color, backgroundColor: background,
-});
+import { Icon } from "components/tw";
 
 // Box and packet totals for a list of bills, shown as two small badges.
 export default function PackBadges({ rows, compact }) {
   const boxes = boxCount(rows);
   const packets = packetCount(rows);
-  return <MDBox display="flex" justifyContent="center" flexWrap="wrap" gap={0.5} mt={compact ? 0.25 : 0}>
-    <Tooltip title="No. of boxes"><MDBox component="span" sx={pill("#7c2d12", "#ffedd5")}>
-      <Inventory2Icon sx={{ fontSize: 11 }} />{boxes}{compact ? "" : (boxes === 1 ? " box" : " boxes")}
-    </MDBox></Tooltip>
-    <Tooltip title="No. of packets"><MDBox component="span" sx={pill("#1e3a8a", "#dbeafe")}>
-      <ShoppingBagIcon sx={{ fontSize: 11 }} />{packets}{compact ? "" : (packets === 1 ? " packet" : " packets")}
-    </MDBox></Tooltip>
-  </MDBox>;
+  const pill = "inline-flex items-center gap-0.5 whitespace-nowrap rounded px-1 py-px text-[10.5px] font-bold leading-tight";
+  return (
+    <span className={`flex flex-wrap justify-center gap-1 ${compact ? "mt-0.5" : ""}`}>
+      <span className={`${pill} bg-orange-100 text-orange-900`} title="No. of boxes">
+        <Icon name="inventory_2" className="text-[11px]" />{boxes}{compact ? "" : (boxes === 1 ? " box" : " boxes")}
+      </span>
+      <span className={`${pill} bg-blue-100 text-blue-900`} title="No. of packets">
+        <Icon name="shopping_bag" className="text-[11px]" />{packets}{compact ? "" : (packets === 1 ? " packet" : " packets")}
+      </span>
+    </span>
+  );
 }
 PackBadges.propTypes = { rows: PropTypes.arrayOf(PropTypes.object).isRequired, compact: PropTypes.bool };
 PackBadges.defaultProps = { compact: false };

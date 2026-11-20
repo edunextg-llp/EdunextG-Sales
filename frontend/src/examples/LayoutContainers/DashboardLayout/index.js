@@ -9,6 +9,7 @@ import PropTypes from "prop-types";
 // Material Dashboard 2 React components
 import MDBox from "components/MDBox";
 import { SIDEBAR_MINI_WIDTH, SIDEBAR_WIDTH } from "examples/Sidenav";
+import { SiteFooter } from "examples/Footer";
 
 // Material Dashboard 2 React context
 import { useMaterialUIController, setLayout } from "context";
@@ -27,6 +28,9 @@ function DashboardLayout({ children }) {
       sx={({ breakpoints, transitions, functions: { pxToRem } }) => ({
         p: 3,
         position: "relative",
+        // Column: page content, then room for the fixed footer (SiteFooter).
+        display: "flex",
+        flexDirection: "column",
         // "clip" (not "hidden"): still cuts sideways overflow, but is not a scroll container,
         // so the sticky top bar (DashboardNavbar) stays at the top while the page scrolls.
         overflowX: "clip",
@@ -41,7 +45,8 @@ function DashboardLayout({ children }) {
         },
       })}
     >
-      {children}
+      <div className="min-w-0 grow">{children}</div>
+      <SiteFooter />
     </MDBox>
   );
 }

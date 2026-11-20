@@ -1247,11 +1247,13 @@ class StaffModel {
              ) ssh ON ssh.sale_id = ss.id
              WHERE (ss.invoice_number LIKE ?
                 OR ss.sticker_number LIKE ?
-                OR CAST(ss.id AS CHAR) LIKE ?)
+                OR CAST(ss.id AS CHAR) LIKE ?
+                -- "IN-5784-885" finds IN5784885 (and the other way round): ignore - space / . on both sides.
+                OR LOWER(REPLACE(REPLACE(REPLACE(REPLACE(ss.invoice_number, '-', ''), ' ', ''), '/', ''), '.', '')) LIKE ?)
                AND (? IS NULL OR ss.staff_id = ?)
              ORDER BY ss.sale_date DESC, ss.id DESC
              LIMIT 50`,
-            [likeTerm, likeTerm, likeTerm, staffId, staffId]
+            [likeTerm, likeTerm, likeTerm, `%${normalizedTerm || term.toLowerCase()}%`, staffId, staffId]
         );
 
         if (normalizedTerm) {

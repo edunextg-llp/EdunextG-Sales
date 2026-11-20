@@ -1,64 +1,21 @@
+// Delivery Manager > Delivered: Tailwind CSS (no MUI). Status updates, cancel / return, invoice PDFs and reports unchanged.
 import { useState, useEffect, useCallback, useMemo } from "react";
-import Grid from "@mui/material/Grid";
-import Card from "@mui/material/Card";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableContainer,
-  TableHead,
-  TableRow,
-  Paper,
-  Chip,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  FormControl,
-  InputLabel,
-  Select,
-  MenuItem,
-  Tabs,
-  Tab,
-  Icon,
-  Tooltip,
-} from "@mui/material";
 
 import SalesExcelButton from "components/SalesExcelButton";
 import CompanyFilter from "components/CompanyFilter";
 import { matchesSaleCompany } from "utils/companyFilter";
-import MDBox from "components/MDBox";
-import MDTypography from "components/MDTypography";
-import MDInput from "components/MDInput";
-import MDButton from "components/MDButton";
 
 import DashboardLayout from "examples/LayoutContainers/DashboardLayout";
 import DashboardNavbar from "examples/Navbars/DashboardNavbar";
 import Footer from "examples/Footer";
 import { useSalesPolling } from "utils/salesSync";
-import {
-  ROWS_PER_PAGE,
-  TablePaginationFooter,
-  compactTableTextSx,
-  paginatedTableContainerSx,
-  paginatedTableHeadCellSx,
-  paginatedTableHeadCellErrorSx,
-  paginatedTableHeadSx,
-} from "utils/tablePagination";
+import { ROWS_PER_PAGE } from "utils/tablePagination";
 import { printSalesInvoicePdf } from "utils/printSalesInvoicePdf";
-// import { formatBpSaleId } from "utils/saleId";
-// import { IoSaveOutline } from "react-icons/io5";
-import { FaRegEdit } from "react-icons/fa";
-import { MdCancel, MdCheckCircle, MdUndo } from "react-icons/md";
-import CompanyTypeSelect from "components/CompanyFilter/CompanyTypeSelect";
-import { useCompanyTypeLookup } from "utils/companyTypes";
+import { COMPANY_TYPES, useCompanyTypeLookup } from "utils/companyTypes";
 import { useAuth } from "context/AuthContext";
-
-const tableActionBoxSx = {
-  flexWrap: "nowrap",
-  minWidth: "fit-content",
-};
-// import { CiTrash } from "react-icons/ci";
+import {
+  Badge, Card, Field, Icon, Modal, PageHeader, Pagination, SearchBox, Segmented, btn, fieldClass,
+} from "components/tw";
 
 function escapeHtml(value) {
   return String(value ?? "")
@@ -822,783 +779,337 @@ function Delivered() {
     }
   };
 
+  const head = "sticky top-0 z-[1] whitespace-nowrap px-3 py-2.5 text-[11px] font-semibold uppercase tracking-wide";
+  const cell = "border-t px-3 py-2.5 text-[12.5px]";
+  const label = "text-[11px] font-semibold uppercase tracking-wide text-slate-500";
+  const mini = "whitespace-nowrap bg-red-50 px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-red-800";
+  const miniTd = "border-t border-red-100 px-3 py-2 text-[12.5px]";
+  const statusBadge = (status) => (status === "returned" ? <Badge tone="amber" icon="undo">Returned</Badge>
+    : status === "delivered" ? <Badge tone="green" icon="check_circle">Delivered</Badge>
+      : status === "out_for_delivery" ? <Badge tone="blue" icon="local_shipping">Pending Delivery</Badge>
+        : <Badge>{status || "Unknown"}</Badge>);
+  const tile = (title, value, icon, tone, onClick) => (
+    <button
+      type="button" onClick={onClick} disabled={!onClick}
+      className={`flex min-w-40 items-center gap-3 rounded-2xl border bg-white px-4 py-3 text-left transition enabled:cursor-pointer enabled:hover:shadow-sm ${tone}`}
+    >
+      <span className="flex size-10 items-center justify-center rounded-xl bg-current/10"><Icon name={icon} className="text-[22px]" /></span>
+      <span>
+        <span className="block text-[22px] font-bold leading-none tabular-nums text-slate-900">{value}</span>
+        <span className="mt-1 block text-[12px] font-medium text-slate-500">{title}</span>
+      </span>
+    </button>
+  );
+  const companyTypeSelect = (id) => (
+    <Field label="Company type" width="w-36">
+      <select id={id} className={fieldClass} value={companyType} onChange={(e) => handleCompanyTypeChange(e.target.value)}>
+        <option value="">All types</option>
+        {COMPANY_TYPES.map((type) => <option key={type.value} value={type.value}>{type.label}</option>)}
+      </select>
+    </Field>
+  );
+  const cancelFilters = (prefix) => (
+    <>
+      {companyTypeSelect(`${prefix}-company-type`)}
+      <Field label="Company" width="w-44">
+        <select className={fieldClass} value={selectedCompanyId} onChange={(e) => handleCompanyChange(e.target.value)}>
+          <option value="">All companies</option>
+          {typedCompanyOptions.map((company) => <option key={company.id} value={company.id}>{company.name}</option>)}
+        </select>
+      </Field>
+      <Field label="Staff" width="w-44">
+        <select className={fieldClass} value={selectedStaffId} onChange={(e) => { setSelectedStaffId(e.target.value); setSelectedArea(""); }}>
+          <option value="">All staff</option>
+          {staffOptions.map((staff) => <option key={staff.id} value={staff.id}>{staff.name}</option>)}
+        </select>
+      </Field>
+      <Field label="Area" width="w-40">
+        <select className={fieldClass} value={selectedArea} onChange={(e) => setSelectedArea(e.target.value)}>
+          <option value="">All areas</option>
+          {areaOptions.map((area) => <option key={area} value={area}>{area}</option>)}
+        </select>
+      </Field>
+      <Field label="Cancel from" width="w-36"><input type="date" className={fieldClass} value={cancelRangeStart} onChange={(e) => setCancelRangeStart(e.target.value)} /></Field>
+      <Field label="Cancel to" width="w-36"><input type="date" className={fieldClass} value={cancelRangeEnd} onChange={(e) => setCancelRangeEnd(e.target.value)} /></Field>
+    </>
+  );
+  const actionIcon = (title, icon, color, onClick, disabled = false) => (
+    <button type="button" className={`${btn.icon} ${color}`} title={title} aria-label={title} disabled={disabled} onClick={onClick}>
+      <Icon name={icon} className="text-[19px]" />
+    </button>
+  );
+
   return (
     <DashboardLayout>
       <DashboardNavbar />
-      <MDBox pt={6} pb={3}>
-        <Grid container spacing={3} justifyContent="center">
-          <Grid item xs={12}>
-            <Card>
-              <MDBox p={3} pb={2}>
-                <MDTypography variant="h5" fontWeight="medium" color="dark" mb={2}>
-                  Delivered Items
-                </MDTypography>
-                <Tabs
-                  value={activeTab}
-                  onChange={(_, value) => setActiveTab(value)}
-                  sx={{
-                    minHeight: 40,
-                    "& .MuiTab-root": { minHeight: 40, textTransform: "none", fontWeight: 600 },
-                  }}
-                >
-                  <Tab label="Active Deliveries" value="delivered" />
-                  <Tab label={`Pending Delivery (${pendingDeliveryTotal})`} value="pending" />
-                  <Tab
-                    label={`Returned Items (${returnedTotal})`}
-                    value="returned"
-                    sx={{ color: activeTab === "returned" ? "warning.main" : undefined }}
-                  />
-                  <Tab
-                    label={`Cancelled Items (${cancelledTotal})`}
-                    value="cancelled"
-                    sx={{ color: activeTab === "cancelled" ? "error.main" : undefined }}
-                  />
-                </Tabs>
-              </MDBox>
-              <MDBox pb={3} px={3}>
-                <Grid container spacing={3} mb={3}>
-                  <Grid item xs={12} md={activeTab === "cancelled" ? 2 : 4}>
-                    <MDInput
-                      type="text"
-                      label="Search by Outlet Name, Area, ID, Staff Name, Sale ID, or Invoice No."
-                      fullWidth
-                      value={searchQuery}
-                      onChange={(e) => setSearchQuery(e.target.value)}
-                    />
-                  </Grid>
-                  {activeTab !== "cancelled" && (
-                  <Grid item xs={12} md={4}>
-                    <CompanyFilter
-                      id="delivered-company-filter"
-                      rows={salesData}
-                      value={companyFilter}
-                      onChange={setCompanyFilter}
-                    />
-                  </Grid>
-                  )}
-                  {activeTab !== "cancelled" && (
-                    <>
-                      <Grid item xs={12} md={2}>
-                        <MDInput
-                          type="date"
-                          label="Delivery From"
-                          fullWidth
-                          InputLabelProps={{ shrink: true }}
-                          value={deliveryRangeStart}
-                          onChange={(e) => setDeliveryRangeStart(e.target.value)}
-                        />
-                      </Grid>
-                      <Grid item xs={12} md={2}>
-                        <MDInput
-                          type="date"
-                          label="Delivery To"
-                          fullWidth
-                          InputLabelProps={{ shrink: true }}
-                          value={deliveryRangeEnd}
-                          onChange={(e) => setDeliveryRangeEnd(e.target.value)}
-                        />
-                      </Grid>
-                    </>
-                  )}
-                  {activeTab === "cancelled" && (
-                    <>
-                      <Grid item xs={12} md={2}>
-                        <CompanyTypeSelect
-                          id="cancel-page-company-type"
-                          value={companyType}
-                          onChange={handleCompanyTypeChange}
-                        />
-                      </Grid>
-                      <Grid item xs={12} md={2}>
-                        <FormControl size="small" fullWidth>
-                          <InputLabel id="cancel-page-company-label">Company</InputLabel>
-                          <Select
-                            labelId="cancel-page-company-label"
-                            value={selectedCompanyId}
-                            label="Company"
-                            onChange={(e) => handleCompanyChange(e.target.value)}
-                            sx={{ height: 44 }}
-                          >
-                            <MenuItem value="">All Companies</MenuItem>
-                            {typedCompanyOptions.map((company) => (
-                              <MenuItem key={company.id} value={company.id}>
-                                {company.name}
-                              </MenuItem>
-                            ))}
-                          </Select>
-                        </FormControl>
-                      </Grid>
-                      <Grid item xs={12} md={2}>
-                        <FormControl size="small" fullWidth>
-                          <InputLabel id="cancel-page-staff-label">Staff</InputLabel>
-                          <Select
-                            labelId="cancel-page-staff-label"
-                            value={selectedStaffId}
-                            label="Staff"
-                            onChange={(e) => {
-                              setSelectedStaffId(e.target.value);
-                              setSelectedArea("");
-                            }}
-                            sx={{ height: 44 }}
-                          >
-                            <MenuItem value="">All Staff</MenuItem>
-                            {staffOptions.map((staff) => (
-                              <MenuItem key={staff.id} value={staff.id}>
-                                {staff.name}
-                              </MenuItem>
-                            ))}
-                          </Select>
-                        </FormControl>
-                      </Grid>
-                      <Grid item xs={12} md={2}>
-                        <FormControl size="small" fullWidth>
-                          <InputLabel id="cancel-page-area-label">Area</InputLabel>
-                          <Select
-                            labelId="cancel-page-area-label"
-                            value={selectedArea}
-                            label="Area"
-                            onChange={(e) => setSelectedArea(e.target.value)}
-                            sx={{ height: 44 }}
-                          >
-                            <MenuItem value="">All Areas</MenuItem>
-                            {areaOptions.map((area) => <MenuItem key={area} value={area}>{area}</MenuItem>)}
-                          </Select>
-                        </FormControl>
-                      </Grid>
-                      <Grid item xs={12} md={2}>
-                        <MDInput
-                          type="date"
-                          label="Cancel From"
-                          fullWidth
-                          InputLabelProps={{ shrink: true }}
-                          value={cancelRangeStart}
-                          onChange={(e) => setCancelRangeStart(e.target.value)}
-                        />
-                      </Grid>
-                      <Grid item xs={12} md={2}>
-                        <MDInput
-                          type="date"
-                          label="Cancel To"
-                          fullWidth
-                          InputLabelProps={{ shrink: true }}
-                          value={cancelRangeEnd}
-                          onChange={(e) => setCancelRangeEnd(e.target.value)}
-                        />
-                      </Grid>
-                    </>
-                  )}
-                  <Grid item xs={12} md={activeTab === "cancelled" ? 12 : 12}>
-                    <MDBox display="flex" gap={2} justifyContent={{ xs: "flex-start", md: "flex-end" }} flexWrap="wrap">
-                      <MDBox
-                        px={2}
-                        py={1.25}
-                        borderRadius="lg"
-                        onClick={() => setActiveTab("pending")}
-                        sx={{ backgroundColor: "#eff6ff", border: "1px solid #bfdbfe", cursor: "pointer" }}
-                      >
-                        <MDTypography variant="caption" color="text">
-                          Pending Delivery
-                        </MDTypography>
-                        <MDTypography variant="h5" color="info" fontWeight="bold">
-                          {pendingDeliveryTotal}
-                        </MDTypography>
-                      </MDBox>
-                      <MDBox
-                        px={2}
-                        py={1.25}
-                        borderRadius="lg"
-                        sx={{ backgroundColor: "#f0fdf4", border: "1px solid #bbf7d0" }}
-                      >
-                        <MDTypography variant="caption" color="text">
-                          Total Delivered
-                        </MDTypography>
-                        <MDTypography variant="h5" color="success" fontWeight="bold">
-                          {deliveredTotal}
-                        </MDTypography>
-                      </MDBox>
-                      <MDBox
-                        px={2}
-                        py={1.25}
-                        borderRadius="lg"
-                        onClick={() => {
-                          setActiveTab("cancelled");
-                          setCancelReportOpen(true);
-                        }}
-                        sx={{ backgroundColor: "#fef2f2", border: "1px solid #fecaca", cursor: "pointer" }}
-                      >
-                        <MDTypography variant="caption" color="text">
-                          Total Cancel
-                        </MDTypography>
-                        <MDTypography variant="h5" color="error" fontWeight="bold">
-                          {cancelledTotal}
-                        </MDTypography>
-                      </MDBox>
-                      <MDBox
-                        px={2}
-                        py={1.25}
-                        borderRadius="lg"
-                        onClick={() => setActiveTab("returned")}
-                        sx={{ backgroundColor: "#fff7ed", border: "1px solid #fed7aa", cursor: "pointer" }}
-                      >
-                        <MDTypography variant="caption" color="text">
-                          Total Returned
-                        </MDTypography>
-                        <MDTypography variant="h5" color="warning" fontWeight="bold">
-                          {returnedTotal}
-                        </MDTypography>
-                      </MDBox>
-                    </MDBox>
-                  </Grid>
-                  <Grid item xs={12} display="flex" justifyContent="flex-end">
-                    <SalesExcelButton rows={activeList} filename={activeTab === "pending" ? "Pending_Delivery" : activeTab === "returned" ? "Returned_Deliveries" : activeTab === "cancelled" ? "Cancelled_Deliveries" : "Active_Deliveries"} />
-                  </Grid>
-                </Grid>
+      <div className="pb-8 font-[Poppins,Roboto,sans-serif] text-slate-700">
+        <PageHeader
+          title="Delivered Items"
+          description="Bills out for delivery, delivered, returned and cancelled. Mark deliveries, cancel or return bills, and download invoice PDFs and reports."
+          actions={<SalesExcelButton rows={activeList} filename={activeTab === "pending" ? "Pending_Delivery" : activeTab === "returned" ? "Returned_Deliveries" : activeTab === "cancelled" ? "Cancelled_Deliveries" : "Active_Deliveries"} />}
+        />
 
-                {activeTab !== "cancelled" ? (
-                  <>
-                    {(deliveryRangeStart || deliveryRangeEnd) && (
-                      <MDTypography variant="body2" color="text" mb={2}>
-                        Delivery date: {deliveryRangeLabel}
-                        {activeTab === "pending"
-                          ? " · Pending only"
-                          : activeTab === "returned"
-                            ? " · Returned only"
-                            : " · Delivered, pending, and returned"}
-                      </MDTypography>
-                    )}
-                    <MDBox display="flex" justifyContent="flex-end" alignItems="center" gap={1} flexWrap="wrap" mb={2}>
-                      {activeTab === "returned" && (
-                        <>
-                          <MDTypography variant="h6" color="warning" fontWeight="bold" mr={1}>
-                            Total: {returnedTotal} | Amount: ₹{returnedAmount.toFixed(2)}
-                          </MDTypography>
-                          <MDButton
-                            color="warning"
-                            variant="contained"
-                            size="small"
-                            onClick={handleDownloadReturnReport}
-                          >
-                            <Icon sx={{ mr: 1 }}>picture_as_pdf</Icon>
-                            Date Wise Return Report
-                          </MDButton>
-                        </>
-                      )}
-                      <MDButton
-                        color="info"
-                        variant="outlined"
-                        size="small"
-                        onClick={downloadAllDeliveredInvoicePdfs}
-                      >
-                        <Icon sx={{ mr: 1 }}>picture_as_pdf</Icon>
-                        Download Invoice PDF
-                      </MDButton>
-                    </MDBox>
-                    <TableContainer component={Paper} sx={paginatedTableContainerSx}>
-                      <Table stickyHeader sx={{ minWidth: 650, ...compactTableTextSx }}>
-                        <TableHead sx={paginatedTableHeadSx()}>
-                          <TableRow>
-                            <TableCell align="center" sx={{ ...paginatedTableHeadCellSx, width: 56 }}>
-                              Sr No
-                            </TableCell>
-                            <TableCell sx={paginatedTableHeadCellSx}>Staff Name</TableCell>
-                            <TableCell sx={paginatedTableHeadCellSx}>Company</TableCell>
-                            <TableCell sx={paginatedTableHeadCellSx}>Outlet Name</TableCell>
-                            <TableCell sx={paginatedTableHeadCellSx}>Area</TableCell>
-                            <TableCell sx={paginatedTableHeadCellSx}>ERP ID</TableCell>
-                            <TableCell align="center" sx={paginatedTableHeadCellSx}>Sale ID</TableCell>
-                            <TableCell align="center" sx={paginatedTableHeadCellSx}>Invoice No</TableCell>
-                            <TableCell align="right" sx={paginatedTableHeadCellSx}>Price</TableCell>
-                            <TableCell align="center" sx={paginatedTableHeadCellSx}>No. of Item</TableCell>
-                            <TableCell align="center" sx={paginatedTableHeadCellSx}>Packing Item</TableCell>
-                            <TableCell align="center" sx={paginatedTableHeadCellSx}>No. of Box</TableCell>
-                            <TableCell align="center" sx={paginatedTableHeadCellSx}>No. of Packet</TableCell>
-                            <TableCell align="center" sx={paginatedTableHeadCellSx}>Delivery Boy</TableCell>
-                            <TableCell align="center" sx={paginatedTableHeadCellSx}>Vehicle</TableCell>
-                            <TableCell align="center" sx={paginatedTableHeadCellSx}>Delivery Date</TableCell>
-                            <TableCell align="center" sx={paginatedTableHeadCellSx}>Status</TableCell>
-                            <TableCell align="center" sx={paginatedTableHeadCellSx}>Action</TableCell>
-                          </TableRow>
-                        </TableHead>
-                        <TableBody>
-                          {paginatedActiveList.length > 0 ? (
-                            paginatedActiveList.map((row, index) => (
-                              <TableRow
-                                key={row.id}
-                                sx={{
-                                  backgroundColor: row.packaging_status === 'returned' ? '#fff7ed' : row.packaging_status === 'delivered' ? '#f0fdf4' : '#f8fafc',
-                                  "&:last-child td, &:last-child th": { border: 0 }
-                                }}
-                              >
-                                <TableCell align="center" sx={{ borderBottom: "1px solid #cbd5e1", py: 2 }}>
-                                  {(page - 1) * rowsPerPage + index + 1}
-                                </TableCell>
-                                <TableCell sx={{ borderBottom: "1px solid #cbd5e1", py: 2 }}>{row.staff_name}</TableCell>
-                                <TableCell sx={{ borderBottom: "1px solid #cbd5e1", py: 2 }}>{row.company_name || "N/A"}</TableCell>
-                                <TableCell sx={{ borderBottom: "1px solid #cbd5e1", py: 2, fontWeight: "medium" }}>{row.outlet_name}</TableCell>
-                                <TableCell sx={{ borderBottom: "1px solid #cbd5e1", py: 2 }}>{row.location_name || "N/A"}</TableCell>
-                                <TableCell sx={{ borderBottom: "1px solid #cbd5e1", py: 2 }}>{row.outlet_erp_id}</TableCell>
-                                <TableCell align="center" sx={{ borderBottom: "1px solid #cbd5e1", py: 2, fontWeight: "bold" }}>{row.sticker_number}</TableCell>
-                                <TableCell align="center" sx={{ borderBottom: "1px solid #cbd5e1", py: 2 }}>{row.invoice_number}</TableCell>
-                                <TableCell align="right" sx={{ borderBottom: "1px solid #cbd5e1", py: 2, fontWeight: "bold" }}>
-                                  ₹{Number(row.price).toFixed(2)}
-                                </TableCell>
-                                <TableCell align="center" sx={{ borderBottom: "1px solid #cbd5e1", py: 2, color: '#334155' }}>
-                                  {row.item_count || "N/A"}
-                                </TableCell>
-                                <TableCell align="center" sx={{ borderBottom: "1px solid #cbd5e1", py: 2, color: '#334155' }}>
-                                  {row.packed_item_count || row.item_count || "N/A"}
-                                </TableCell>
-                                <TableCell align="center" sx={{ borderBottom: "1px solid #cbd5e1", py: 2, color: '#334155' }}>
-                                  {row.box_count || "N/A"}
-                                </TableCell>
-                                <TableCell align="center" sx={{ borderBottom: "1px solid #cbd5e1", py: 2, color: '#334155' }}>
-                                  {row.packet_count || "N/A"}
-                                </TableCell>
-                                <TableCell align="center" sx={{ borderBottom: "1px solid #cbd5e1", py: 2, color: '#334155' }}>
-                                  {row.delivery_boy_name || 'N/A'}
-                                </TableCell>
-                                <TableCell align="center" sx={{ borderBottom: "1px solid #cbd5e1", py: 2, color: '#334155' }}>
-                                  {row.vehicle_no || 'N/A'}
-                                </TableCell>
-                                <TableCell align="center" sx={{ borderBottom: "1px solid #cbd5e1", py: 2, color: '#334155' }}>
-                                  {formatDate(row.delivery_date)}
-                                </TableCell>
-                                <TableCell align="center" sx={{ borderBottom: "1px solid #cbd5e1", py: 2 }}>
-                                  {row.packaging_status === 'returned' ? (
-                                    <Chip label="Returned" color="warning" variant="outlined" size="small" />
-                                  ) : row.packaging_status === 'delivered' ? (
-                                    <Chip label="Delivered" color="success" variant="outlined" size="small" />
-                                  ) : row.packaging_status === 'out_for_delivery' ? (
-                                    <Chip label="Pending Delivery" color="warning" variant="outlined" size="small" />
-                                  ) : (
-                                    <Chip label={row.packaging_status || "Unknown"} color="default" variant="outlined" size="small" />
-                                  )}
-                                </TableCell>
-                                <TableCell align="center" sx={{ borderBottom: "1px solid #cbd5e1", py: 2, minWidth: 160 }}>
-                                  {row.packaging_status === 'out_for_delivery' ? (
-                                    <MDBox
-                                      display="flex"
-                                      flexDirection="row"
-                                      gap={0.75}
-                                      justifyContent="center"
-                                      alignItems="center"
-                                      sx={tableActionBoxSx}
-                                    >
-                                      <Tooltip title="Download Invoice PDF">
-                                        <Icon
-                                          onClick={() => downloadOutletInvoicePdf(row)}
-                                          sx={{ cursor: "pointer", color: "#2563eb", fontSize: 22 }}
-                                        >
-                                          picture_as_pdf
-                                        </Icon>
-                                      </Tooltip>
-                                      <Tooltip title="Cancel">
-                                        <MDButton
-                                          color="error"
-                                          variant="outlined"
-                                          size="small"
-                                          iconOnly
-                                          onClick={() => handleUpdateStatus(row.id, 'cancelled', row.delivery_boy_id, row.vehicle_no, row.delivery_date)}
-                                        >
-                                          <MdCancel size={18} />
-                                        </MDButton>
-                                      </Tooltip>
-                                      <Tooltip title="Deliver">
-                                        <MDButton
-                                          color="success"
-                                          variant="outlined"
-                                          size="small"
-                                          iconOnly
-                                          onClick={() => handleUpdateStatus(row.id, 'delivered', row.delivery_boy_id, row.vehicle_no, row.delivery_date)}
-                                        >
-                                          <MdCheckCircle size={18} />
-                                        </MDButton>
-                                      </Tooltip>
-                                      <Tooltip title="Return">
-                                        <MDButton
-                                          color="dark"
-                                          variant="outlined"
-                                          size="small"
-                                          iconOnly
-                                          onClick={() => handleUpdateStatus(row.id, 'packing_done', row.delivery_boy_id, row.vehicle_no, row.delivery_date)}
-                                        >
-                                          <MdUndo size={18} />
-                                        </MDButton>
-                                      </Tooltip>
-                                    </MDBox>
-                                  ) : (
-                                    <MDBox
-                                      display="flex"
-                                      flexDirection="row"
-                                      gap={0.75}
-                                      justifyContent="center"
-                                      alignItems="center"
-                                      sx={tableActionBoxSx}
-                                    >
-                                      <Tooltip title="Download Invoice PDF">
-                                        <Icon
-                                          onClick={() => downloadOutletInvoicePdf(row)}
-                                          sx={{ cursor: "pointer", color: "#2563eb", fontSize: 22 }}
-                                        >
-                                          picture_as_pdf
-                                        </Icon>
-                                      </Tooltip>
-                                      <Tooltip title="Revert to Out for Delivery">
-                                        <span>
-                                          <FaRegEdit
-                                            onClick={() => handleUpdateStatus(row.id, 'out_for_delivery', row.delivery_boy_id, row.vehicle_no, row.delivery_date)}
-                                            style={{ cursor: "pointer" }}
-                                            color="#E0E388"
-                                            size={20}
-                                          />
-                                        </span>
-                                      </Tooltip>
-                                    </MDBox>
-                                  )}
-                                </TableCell>
-                              </TableRow>
-                            ))
-                          ) : (
-                            <TableRow>
-                              <TableCell colSpan={17} align="center" sx={{ py: 3, borderBottom: 0 }}>
-                                <MDTypography variant="body2" color="text">
-                                  {activeTab === "pending"
-                                    ? "No pending delivery items found."
-                                    : activeTab === "returned"
-                                      ? "No returned items found."
-                                      : "No delivered items found."}
-                                </MDTypography>
-                              </TableCell>
-                            </TableRow>
-                          )}
-                        </TableBody>
-                      </Table>
-                    </TableContainer>
-                    <TablePaginationFooter
-                      page={page}
-                      totalPages={totalPages}
-                      total={activeList.length}
-                      onPageChange={setPage}
-                      limit={rowsPerPage}
-                      onLimitChange={setRowsPerPage}
-                    />
-                  </>
-                ) : (
-                  <MDBox>
-                    <MDBox
-                      display="flex"
-                      justifyContent="space-between"
-                      alignItems="center"
-                      mb={2}
-                      flexWrap="wrap"
-                      gap={1}
-                    >
-                      <MDTypography variant="body2" color="text">
-                        {reportCompanyLabel} / {reportStaffLabel} / {reportRangeLabel}
-                      </MDTypography>
-                      <MDBox display="flex" gap={1} flexWrap="wrap">
-                        <MDTypography variant="h6" color="error" fontWeight="bold">
-                          Total: {cancelledTotal} | Amount: ₹{cancelledAmount.toFixed(2)}
-                        </MDTypography>
-                        <MDButton color="error" variant="contained" size="small" onClick={handleDownloadCancelReport}>
-                          Download PDF
-                        </MDButton>
-                      </MDBox>
-                    </MDBox>
-                    <TableContainer component={Paper} sx={{ ...paginatedTableContainerSx, border: "1px solid #fecaca" }}>
-                      <Table stickyHeader sx={{ minWidth: 650, ...compactTableTextSx }}>
-                        <TableHead sx={paginatedTableHeadSx("#fef2f2")}>
-                          <TableRow>
-                            <TableCell align="center" sx={{ ...paginatedTableHeadCellErrorSx, width: 56 }}>
-                              Sr No
-                            </TableCell>
-                            <TableCell sx={paginatedTableHeadCellErrorSx}>Staff Name</TableCell>
-                            <TableCell sx={paginatedTableHeadCellErrorSx}>Company</TableCell>
-                            <TableCell sx={paginatedTableHeadCellErrorSx}>Outlet Name</TableCell>
-                            <TableCell sx={paginatedTableHeadCellErrorSx}>Area</TableCell>
-                            <TableCell sx={paginatedTableHeadCellErrorSx}>ERP ID</TableCell>
-                            <TableCell align="center" sx={paginatedTableHeadCellErrorSx}>Sale ID</TableCell>
-                            <TableCell align="center" sx={paginatedTableHeadCellErrorSx}>Invoice No</TableCell>
-                            <TableCell align="center" sx={paginatedTableHeadCellErrorSx}>Invoice Date</TableCell>
-                            <TableCell align="center" sx={paginatedTableHeadCellErrorSx}>Cancel Date</TableCell>
-                            <TableCell align="right" sx={paginatedTableHeadCellErrorSx}>Cancel Amount</TableCell>
-                            <TableCell sx={paginatedTableHeadCellErrorSx}>Reason</TableCell>
-                            <TableCell align="center" sx={paginatedTableHeadCellErrorSx}>Status</TableCell>
-                            {isAdmin && <TableCell align="center" sx={paginatedTableHeadCellErrorSx}>Action</TableCell>}
-                          </TableRow>
-                        </TableHead>
-                        <TableBody>
-                          {paginatedActiveList.length > 0 ? (
-                            paginatedActiveList.map((row, index) => (
-                              <TableRow
-                                key={`cancelled-page-${row.id}`}
-                                sx={{ backgroundColor: "#fff7f7", "&:last-child td, &:last-child th": { border: 0 } }}
-                              >
-                                <TableCell align="center" sx={{ borderBottom: "1px solid #fecaca", py: 2 }}>
-                                  {(page - 1) * rowsPerPage + index + 1}
-                                </TableCell>
-                                <TableCell sx={{ borderBottom: "1px solid #fecaca", py: 2 }}>
-                                  {row.staff_name || "N/A"}
-                                </TableCell>
-                                <TableCell sx={{ borderBottom: "1px solid #fecaca", py: 2 }}>
-                                  {row.company_name || "N/A"}
-                                </TableCell>
-                                <TableCell sx={{ borderBottom: "1px solid #fecaca", py: 2, fontWeight: "medium" }}>
-                                  {row.outlet_name || "N/A"}
-                                </TableCell>
-                                <TableCell sx={{ borderBottom: "1px solid #fecaca", py: 2 }}>
-                                  {row.location_name || "N/A"}
-                                </TableCell>
-                                <TableCell sx={{ borderBottom: "1px solid #fecaca", py: 2 }}>
-                                  {row.outlet_erp_id || "N/A"}
-                                </TableCell>
-                                <TableCell align="center" sx={{ borderBottom: "1px solid #fecaca", py: 2, fontWeight: "bold" }}>
-                                  {row.sticker_number}
-                                </TableCell>
-                                <TableCell align="center" sx={{ borderBottom: "1px solid #fecaca", py: 2 }}>
-                                  {row.invoice_number || "N/A"}
-                                </TableCell>
-                                <TableCell align="center" sx={{ borderBottom: "1px solid #fecaca", py: 2 }}>
-                                  {formatDate(row.sale_date)}
-                                </TableCell>
-                                <TableCell align="center" sx={{ borderBottom: "1px solid #fecaca", py: 2 }}>
-                                  {formatDate(row.delivery_date || row.status_updated_at)}
-                                </TableCell>
-                                <TableCell align="right" sx={{ borderBottom: "1px solid #fecaca", py: 2, fontWeight: "bold" }}>
-                                  ₹{Number(row.price || 0).toFixed(2)}
-                                </TableCell>
-                                <TableCell sx={{ borderBottom: "1px solid #fecaca", py: 2 }}>
-                                  {row.cancellation_reason || "—"}
-                                </TableCell>
-                                <TableCell align="center" sx={{ borderBottom: "1px solid #fecaca", py: 2 }}>
-                                  <Chip label="Cancelled" color="error" variant="outlined" size="small" />
-                                </TableCell>
-                                {isAdmin && (
-                                  <TableCell align="center" sx={{ borderBottom: "1px solid #fecaca", py: 2 }}>
-                                    <Tooltip title="Return to Pending Deliveries">
-                                      <span>
-                                        <MDButton
-                                          color="dark"
-                                          variant="outlined"
-                                          size="small"
-                                          disabled={updatingSaleIds.has(row.id)}
-                                          onClick={() => handleReturnCancelled(row)}
-                                        >
-                                          <MdUndo size={16} style={{ marginRight: 4 }} />
-                                          Return
-                                        </MDButton>
-                                      </span>
-                                    </Tooltip>
-                                  </TableCell>
-                                )}
-                              </TableRow>
-                            ))
-                          ) : (
-                            <TableRow>
-                              <TableCell colSpan={isAdmin ? 14 : 13} align="center" sx={{ py: 3, borderBottom: 0 }}>
-                                <MDTypography variant="body2" color="text">
-                                  No cancelled delivered items found.
-                                </MDTypography>
-                              </TableCell>
-                            </TableRow>
-                          )}
-                        </TableBody>
-                      </Table>
-                    </TableContainer>
-                    <TablePaginationFooter
-                      page={page}
-                      totalPages={totalPages}
-                      total={activeList.length}
-                      onPageChange={setPage}
-                      limit={rowsPerPage}
-                      onLimitChange={setRowsPerPage}
-                    />
-                  </MDBox>
-                )}
-              </MDBox>
-            </Card>
-          </Grid>
-        </Grid>
-      </MDBox>
-      <Dialog open={cancelReportOpen} onClose={() => setCancelReportOpen(false)} fullWidth maxWidth="md">
-        <DialogTitle>Cancelled Invoice Report</DialogTitle>
-        <DialogContent dividers>
-          <Grid container spacing={2} mb={2}>
-            <Grid item xs={12} md={2}>
-              <CompanyTypeSelect
-                id="cancel-company-type"
-                value={companyType}
-                onChange={handleCompanyTypeChange}
-              />
-            </Grid>
-            <Grid item xs={12} md={2}>
-              <FormControl size="small" fullWidth>
-                <InputLabel id="cancel-company-filter-label">Company</InputLabel>
-                <Select
-                  labelId="cancel-company-filter-label"
-                  value={selectedCompanyId}
-                  label="Company"
-                  onChange={(e) => handleCompanyChange(e.target.value)}
-                  sx={{ height: 44 }}
-                >
-                  <MenuItem value="">All Companies</MenuItem>
-                  {typedCompanyOptions.map((company) => (
-                    <MenuItem key={company.id} value={company.id}>
-                      {company.name}
-                    </MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
-            </Grid>
-            <Grid item xs={12} md={2}>
-              <FormControl size="small" fullWidth>
-                <InputLabel id="cancel-staff-filter-label">Staff</InputLabel>
-                <Select
-                  labelId="cancel-staff-filter-label"
-                  value={selectedStaffId}
-                  label="Staff"
-                  onChange={(e) => {
-                    setSelectedStaffId(e.target.value);
-                    setSelectedArea("");
-                  }}
-                  sx={{ height: 44 }}
-                >
-                  <MenuItem value="">All Staff</MenuItem>
-                  {staffOptions.map((staff) => (
-                    <MenuItem key={staff.id} value={staff.id}>
-                      {staff.name}
-                    </MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
-            </Grid>
-            <Grid item xs={12} md={2}>
-              <FormControl size="small" fullWidth>
-                <InputLabel id="cancel-area-filter-label">Area</InputLabel>
-                <Select labelId="cancel-area-filter-label" value={selectedArea} label="Area" onChange={(e) => setSelectedArea(e.target.value)} sx={{ height: 44 }}>
-                  <MenuItem value="">All Areas</MenuItem>
-                  {areaOptions.map((area) => <MenuItem key={area} value={area}>{area}</MenuItem>)}
-                </Select>
-              </FormControl>
-            </Grid>
-            <Grid item xs={12} md={2}>
-              <MDInput
-                type="date"
-                label="Cancel From"
-                fullWidth
-                InputLabelProps={{ shrink: true }}
-                value={cancelRangeStart}
-                onChange={(e) => setCancelRangeStart(e.target.value)}
-              />
-            </Grid>
-            <Grid item xs={12} md={2}>
-              <MDInput
-                type="date"
-                label="Cancel To"
-                fullWidth
-                InputLabelProps={{ shrink: true }}
-                value={cancelRangeEnd}
-                onChange={(e) => setCancelRangeEnd(e.target.value)}
-              />
-            </Grid>
-          </Grid>
-          <MDBox display="flex" justifyContent="space-between" alignItems="center" mb={2} flexWrap="wrap" gap={1}>
-            <MDTypography variant="body2" color="text">
-              {reportCompanyLabel} / {reportStaffLabel} / {reportAreaLabel} / {reportRangeLabel}
-            </MDTypography>
-            <MDTypography variant="h6" color="error" fontWeight="bold">
-              Total Cancel: {cancelledTotal} | Amount: Rs. {cancelledAmount.toFixed(2)}
-            </MDTypography>
-          </MDBox>
-          <Grid container spacing={2} mb={2}>
-            {[
-              { title: "Staff Wise Total", rows: staffCancelSummary },
-              { title: "Company Wise Total", rows: companyCancelSummary },
-              { title: "Area Wise Total", rows: areaCancelSummary },
-              { title: "Range Wise Total", rows: rangeCancelSummary },
-            ].map((section) => (
-              <Grid item xs={12} md={6} key={section.title}>
-                <MDBox p={1.5} borderRadius="lg" sx={{ border: "1px solid #fecaca", backgroundColor: "#fff7f7" }}>
-                  <MDTypography variant="button" color="error" fontWeight="bold">
-                    {section.title}
-                  </MDTypography>
-                  {section.rows.length > 0 ? (
-                    section.rows.map((row) => (
-                      <MDBox key={`${section.title}-${row.name}`} display="flex" justifyContent="space-between" mt={0.75} gap={1}>
-                        <MDTypography variant="caption" color="text">
-                          {row.name}
-                        </MDTypography>
-                        <MDTypography variant="caption" color="dark" fontWeight="bold" sx={{ whiteSpace: "nowrap" }}>
-                          {row.count} / Rs. {row.amount.toFixed(2)}
-                        </MDTypography>
-                      </MDBox>
-                    ))
-                  ) : (
-                    <MDTypography variant="caption" color="text">
-                      No cancelled invoices found.
-                    </MDTypography>
+        <div className="mb-5 flex flex-wrap gap-3">
+          {tile("Pending delivery", pendingDeliveryTotal, "local_shipping", "border-blue-200 text-blue-600", () => setActiveTab("pending"))}
+          {tile("Total delivered", deliveredTotal, "check_circle", "border-emerald-200 text-emerald-600", null)}
+          {tile("Total returned", returnedTotal, "undo", "border-amber-200 text-amber-600", () => setActiveTab("returned"))}
+          {tile("Total cancelled", cancelledTotal, "cancel", "border-red-200 text-red-600", () => { setActiveTab("cancelled"); setCancelReportOpen(true); })}
+        </div>
+
+        <Card>
+          <div className="space-y-3 border-b border-slate-100 px-4 py-3">
+            <Segmented
+              label="Delivered lists" value={activeTab} onChange={setActiveTab}
+              options={[
+                ["delivered", "Active Deliveries"],
+                ["pending", `Pending Delivery (${pendingDeliveryTotal})`],
+                ["returned", `Returned Items (${returnedTotal})`],
+                ["cancelled", `Cancelled Items (${cancelledTotal})`],
+              ]}
+            />
+            <div className="flex flex-wrap items-end gap-3">
+              <div className="flex min-w-64 grow flex-col gap-1">
+                <span className={label}>Search</span>
+                <SearchBox value={searchQuery} onChange={setSearchQuery} className="w-full" placeholder="Outlet, area, ERP ID, staff, sale ID or invoice no." />
+              </div>
+              {activeTab !== "cancelled" ? (
+                <>
+                  <div className="w-full sm:w-96"><CompanyFilter id="delivered-company-filter" rows={salesData} value={companyFilter} onChange={setCompanyFilter} /></div>
+                  <Field label="Delivery from" width="w-36"><input type="date" className={fieldClass} value={deliveryRangeStart} onChange={(e) => setDeliveryRangeStart(e.target.value)} /></Field>
+                  <Field label="Delivery to" width="w-36"><input type="date" className={fieldClass} value={deliveryRangeEnd} onChange={(e) => setDeliveryRangeEnd(e.target.value)} /></Field>
+                </>
+              ) : cancelFilters("cancel-page")}
+            </div>
+          </div>
+
+          {activeTab !== "cancelled" ? (
+            <>
+              <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-3">
+                <span className="text-[12.5px] text-slate-500">
+                  {(deliveryRangeStart || deliveryRangeEnd) && (
+                    <>
+                      Delivery date: <b className="text-slate-700">{deliveryRangeLabel}</b>
+                      {activeTab === "pending" ? " · Pending only" : activeTab === "returned" ? " · Returned only" : " · Delivered, pending, and returned"}
+                    </>
                   )}
-                </MDBox>
-              </Grid>
-            ))}
-          </Grid>
-          <TableContainer component={Paper} sx={{ boxShadow: "none", border: "1px solid #fecaca" }}>
-            <Table size="small">
-              <TableHead sx={{ display: "table-header-group", backgroundColor: "#fef2f2" }}>
-                <TableRow>
-                  <TableCell sx={{ fontWeight: 700 }}>Sr No</TableCell>
-                  <TableCell align="center" sx={{ fontWeight: 700 }}>Sale ID</TableCell>
-                  <TableCell sx={{ fontWeight: 700 }}>Staff</TableCell>
-                  <TableCell sx={{ fontWeight: 700 }}>Company</TableCell>
-                  <TableCell sx={{ fontWeight: 700 }}>Outlet Name</TableCell>
-                  <TableCell sx={{ fontWeight: 700 }}>Area</TableCell>
-                  <TableCell align="center" sx={{ fontWeight: 700 }}>Invoice Date</TableCell>
-                  <TableCell align="center" sx={{ fontWeight: 700 }}>Cancel Date</TableCell>
-                  <TableCell align="center" sx={{ fontWeight: 700 }}>Invoice No</TableCell>
-                  <TableCell align="right" sx={{ fontWeight: 700 }}>Cancel Amount</TableCell>
-                </TableRow>
-              </TableHead>
-              <TableBody>
-                {cancelledSales.map((row, index) => (
-                  <TableRow key={`cancelled-${row.id}`}>
-                    <TableCell>{index + 1}</TableCell>
-                    <TableCell align="center" sx={{ fontWeight: "bold" }}>
-                      {row.sticker_number}
-                    </TableCell>
-                    <TableCell>{row.staff_name || "N/A"}</TableCell>
-                    <TableCell>{row.company_name || "N/A"}</TableCell>
-                    <TableCell>{row.outlet_name || "N/A"}</TableCell>
-                    <TableCell>{row.location_name || "N/A"}</TableCell>
-                    <TableCell align="center">{formatDate(row.sale_date)}</TableCell>
-                    <TableCell align="center">{formatDate(row.delivery_date || row.status_updated_at)}</TableCell>
-                    <TableCell align="center">{row.invoice_number || "N/A"}</TableCell>
-                    <TableCell align="right" sx={{ fontWeight: 700 }}>
-                      ₹{Number(row.price || 0).toFixed(2)}
-                    </TableCell>
-                  </TableRow>
-                ))}
-                {cancelledSales.length === 0 && (
-                  <TableRow>
-                    <TableCell colSpan={9} align="center" sx={{ py: 3 }}>
-                      <MDTypography variant="body2" color="text">
-                        No cancelled invoices found.
-                      </MDTypography>
-                    </TableCell>
-                  </TableRow>
-                )}
-              </TableBody>
-            </Table>
-          </TableContainer>
-        </DialogContent>
-        <DialogActions>
-          <MDButton color="error" variant="contained" onClick={handleDownloadCancelReport}>
-            Download PDF
-          </MDButton>
-          <MDButton color="dark" variant="outlined" onClick={() => setCancelReportOpen(false)}>
-            Close
-          </MDButton>
-        </DialogActions>
-      </Dialog>
+                </span>
+                <div className="flex flex-wrap items-center gap-2">
+                  {activeTab === "returned" && (
+                    <>
+                      <span className="rounded-lg bg-amber-50 px-3 py-1.5 text-[12.5px] font-semibold text-amber-800">
+                        Total: {returnedTotal} · Amount: ₹{returnedAmount.toFixed(2)}
+                      </span>
+                      <button type="button" className={`${btn.primary} bg-amber-500 hover:bg-amber-600`} onClick={handleDownloadReturnReport}>
+                        <Icon name="picture_as_pdf" className="text-[18px]" />Date Wise Return Report
+                      </button>
+                    </>
+                  )}
+                  <button type="button" className={btn.outline} onClick={downloadAllDeliveredInvoicePdfs}>
+                    <Icon name="picture_as_pdf" className="text-[18px] text-blue-600" />Download Invoice PDF
+                  </button>
+                </div>
+              </div>
+              <div className="max-h-[70vh] overflow-auto border-t border-slate-100">
+                <table className="w-full min-w-[1400px] border-separate border-spacing-0">
+                  <thead>
+                    <tr className="[&>th]:bg-slate-50 [&>th]:text-slate-500">
+                      <th className={`${head} text-center`}>#</th>
+                      {["Staff", "Company", "Outlet", "Area", "ERP ID"].map((h) => <th key={h} className={`${head} text-left`}>{h}</th>)}
+                      <th className={`${head} text-center`}>Sale ID</th>
+                      <th className={`${head} text-center`}>Invoice no</th>
+                      <th className={`${head} text-right`}>Price</th>
+                      {["Items", "Packed", "Boxes", "Packets", "Delivery boy", "Vehicle", "Delivery date", "Status", "Action"].map((h) => <th key={h} className={`${head} text-center`}>{h}</th>)}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {paginatedActiveList.length > 0 ? paginatedActiveList.map((row, index) => {
+                      const td = `${cell} border-slate-200/70`;
+                      const rowBg = row.packaging_status === "returned" ? "bg-amber-50/60" : row.packaging_status === "delivered" ? "bg-emerald-50/50" : "bg-white";
+                      return (
+                        <tr key={row.id} className={`${rowBg} hover:bg-slate-50`}>
+                          <td className={`${td} text-center text-slate-400`}>{(page - 1) * rowsPerPage + index + 1}</td>
+                          <td className={`${td} whitespace-nowrap`}>{row.staff_name}</td>
+                          <td className={`${td} whitespace-nowrap`}>{row.company_name || "N/A"}</td>
+                          <td className={`${td} font-semibold text-slate-900`}>{row.outlet_name}</td>
+                          <td className={`${td} whitespace-nowrap`}>{row.location_name || "N/A"}</td>
+                          <td className={`${td} whitespace-nowrap font-mono text-[11.5px]`}>{row.outlet_erp_id}</td>
+                          <td className={`${td} text-center font-bold text-slate-900`}>{row.sticker_number}</td>
+                          <td className={`${td} text-center font-mono`}>{row.invoice_number}</td>
+                          <td className={`${td} whitespace-nowrap text-right font-bold tabular-nums text-slate-900`}>₹{Number(row.price).toFixed(2)}</td>
+                          <td className={`${td} text-center tabular-nums`}>{row.item_count || "N/A"}</td>
+                          <td className={`${td} text-center tabular-nums`}>{row.packed_item_count || row.item_count || "N/A"}</td>
+                          <td className={`${td} text-center tabular-nums`}>{row.box_count || "N/A"}</td>
+                          <td className={`${td} text-center tabular-nums`}>{row.packet_count || "N/A"}</td>
+                          <td className={`${td} whitespace-nowrap text-center`}>{row.delivery_boy_name || "N/A"}</td>
+                          <td className={`${td} whitespace-nowrap text-center`}>{row.vehicle_no || "N/A"}</td>
+                          <td className={`${td} whitespace-nowrap text-center`}>{formatDate(row.delivery_date)}</td>
+                          <td className={`${td} text-center`}>{statusBadge(row.packaging_status)}</td>
+                          <td className={`${td} text-center`}>
+                            <span className="inline-flex gap-0.5">
+                              {actionIcon("Download invoice PDF", "picture_as_pdf", "text-blue-600 hover:bg-blue-50 hover:text-blue-700", () => downloadOutletInvoicePdf(row))}
+                              {row.packaging_status === "out_for_delivery" ? (
+                                <>
+                                  {actionIcon("Cancel", "cancel", "text-red-500 hover:bg-red-50 hover:text-red-600", () => handleUpdateStatus(row.id, "cancelled", row.delivery_boy_id, row.vehicle_no, row.delivery_date), updatingSaleIds.has(row.id))}
+                                  {actionIcon("Deliver", "check_circle", "text-emerald-600 hover:bg-emerald-50 hover:text-emerald-700", () => handleUpdateStatus(row.id, "delivered", row.delivery_boy_id, row.vehicle_no, row.delivery_date), updatingSaleIds.has(row.id))}
+                                  {actionIcon("Return", "undo", "text-slate-600 hover:bg-slate-100", () => handleUpdateStatus(row.id, "packing_done", row.delivery_boy_id, row.vehicle_no, row.delivery_date), updatingSaleIds.has(row.id))}
+                                </>
+                              ) : actionIcon("Revert to Out for Delivery", "edit", "text-amber-600 hover:bg-amber-50 hover:text-amber-700", () => handleUpdateStatus(row.id, "out_for_delivery", row.delivery_boy_id, row.vehicle_no, row.delivery_date), updatingSaleIds.has(row.id))}
+                            </span>
+                          </td>
+                        </tr>
+                      );
+                    }) : (
+                      <tr>
+                        <td colSpan={18} className="px-4 py-14 text-center text-[13px] text-slate-400">
+                          {activeTab === "pending" ? "No pending delivery items found." : activeTab === "returned" ? "No returned items found." : "No delivered items found."}
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-3">
+                <span className="text-[12.5px] text-slate-500">{reportCompanyLabel} / {reportStaffLabel} / {reportRangeLabel}</span>
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="rounded-lg bg-red-50 px-3 py-1.5 text-[12.5px] font-semibold text-red-700">
+                    Total: {cancelledTotal} · Amount: ₹{cancelledAmount.toFixed(2)}
+                  </span>
+                  <button type="button" className={btn.outline} onClick={() => setCancelReportOpen(true)}>
+                    <Icon name="summarize" className="text-[18px]" />Report
+                  </button>
+                  <button type="button" className={btn.danger} onClick={handleDownloadCancelReport}>
+                    <Icon name="picture_as_pdf" className="text-[18px]" />Download PDF
+                  </button>
+                </div>
+              </div>
+              <div className="max-h-[70vh] overflow-auto border-t border-red-100">
+                <table className="w-full min-w-[1300px] border-separate border-spacing-0">
+                  <thead>
+                    <tr className="[&>th]:bg-red-50 [&>th]:text-red-800">
+                      <th className={`${head} text-center`}>#</th>
+                      {["Staff", "Company", "Outlet", "Area", "ERP ID"].map((h) => <th key={h} className={`${head} text-left`}>{h}</th>)}
+                      {["Sale ID", "Invoice no", "Invoice date", "Cancel date"].map((h) => <th key={h} className={`${head} text-center`}>{h}</th>)}
+                      <th className={`${head} text-right`}>Cancel amount</th>
+                      <th className={`${head} text-left`}>Reason</th>
+                      <th className={`${head} text-center`}>Status</th>
+                      {isAdmin && <th className={`${head} text-center`}>Action</th>}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {paginatedActiveList.length > 0 ? paginatedActiveList.map((row, index) => {
+                      const td = `${cell} border-red-100`;
+                      return (
+                        <tr key={`cancelled-page-${row.id}`} className="bg-white hover:bg-red-50/40">
+                          <td className={`${td} text-center text-slate-400`}>{(page - 1) * rowsPerPage + index + 1}</td>
+                          <td className={`${td} whitespace-nowrap`}>{row.staff_name || "N/A"}</td>
+                          <td className={`${td} whitespace-nowrap`}>{row.company_name || "N/A"}</td>
+                          <td className={`${td} font-semibold text-slate-900`}>{row.outlet_name || "N/A"}</td>
+                          <td className={`${td} whitespace-nowrap`}>{row.location_name || "N/A"}</td>
+                          <td className={`${td} whitespace-nowrap font-mono text-[11.5px]`}>{row.outlet_erp_id || "N/A"}</td>
+                          <td className={`${td} text-center font-bold text-slate-900`}>{row.sticker_number}</td>
+                          <td className={`${td} text-center font-mono`}>{row.invoice_number || "N/A"}</td>
+                          <td className={`${td} whitespace-nowrap text-center`}>{formatDate(row.sale_date)}</td>
+                          <td className={`${td} whitespace-nowrap text-center`}>{formatDate(row.delivery_date || row.status_updated_at)}</td>
+                          <td className={`${td} whitespace-nowrap text-right font-bold tabular-nums text-slate-900`}>₹{Number(row.price || 0).toFixed(2)}</td>
+                          <td className={`${td} max-w-60`}>{row.cancellation_reason || "—"}</td>
+                          <td className={`${td} text-center`}><Badge tone="red" icon="cancel">Cancelled</Badge></td>
+                          {isAdmin && (
+                            <td className={`${td} text-center`}>
+                              <button type="button" className={`${btn.outline} h-8 px-3`} title="Return to Pending Deliveries" disabled={updatingSaleIds.has(row.id)} onClick={() => handleReturnCancelled(row)}>
+                                <Icon name="undo" className="text-[16px]" />Return
+                              </button>
+                            </td>
+                          )}
+                        </tr>
+                      );
+                    }) : (
+                      <tr>
+                        <td colSpan={isAdmin ? 14 : 13} className="px-4 py-14 text-center text-[13px] text-slate-400">No cancelled delivered items found.</td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </>
+          )}
+          <Pagination page={page} totalPages={totalPages} total={activeList.length} onPageChange={setPage} limit={rowsPerPage} onLimitChange={setRowsPerPage} />
+        </Card>
+      </div>
+
+      {/* Cancelled invoice report */}
+      <Modal
+        open={cancelReportOpen} onClose={() => setCancelReportOpen(false)} size="xl" title="Cancelled Invoice Report"
+        actions={(
+          <>
+            <button type="button" className={btn.ghost} onClick={() => setCancelReportOpen(false)}>Close</button>
+            <button type="button" className={btn.danger} onClick={handleDownloadCancelReport}>
+              <Icon name="picture_as_pdf" className="text-[18px]" />Download PDF
+            </button>
+          </>
+        )}
+      >
+        <div className="mb-4 flex flex-wrap items-end gap-3">{cancelFilters("cancel")}</div>
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+          <span className="text-[12.5px] text-slate-500">{reportCompanyLabel} / {reportStaffLabel} / {reportAreaLabel} / {reportRangeLabel}</span>
+          <span className="rounded-lg bg-red-50 px-3 py-1.5 text-[13px] font-bold text-red-700">
+            Total cancel: {cancelledTotal} · Amount: Rs. {cancelledAmount.toFixed(2)}
+          </span>
+        </div>
+        <div className="mb-4 grid gap-3 md:grid-cols-2">
+          {[
+            { title: "Staff Wise Total", rows: staffCancelSummary },
+            { title: "Company Wise Total", rows: companyCancelSummary },
+            { title: "Area Wise Total", rows: areaCancelSummary },
+            { title: "Range Wise Total", rows: rangeCancelSummary },
+          ].map((section) => (
+            <div key={section.title} className="rounded-xl border border-red-100 bg-red-50/40 p-3">
+              <h4 className="m-0 mb-1.5 text-[12.5px] font-bold text-red-800">{section.title}</h4>
+              {section.rows.length > 0 ? (
+                <div className="max-h-40 space-y-1 overflow-auto">
+                  {section.rows.map((row) => (
+                    <div key={`${section.title}-${row.name}`} className="flex justify-between gap-2 text-[12px]">
+                      <span className="truncate text-slate-600">{row.name}</span>
+                      <span className="whitespace-nowrap font-semibold tabular-nums text-slate-900">{row.count} / Rs. {row.amount.toFixed(2)}</span>
+                    </div>
+                  ))}
+                </div>
+              ) : <p className="m-0 text-[12px] text-slate-400">No cancelled invoices found.</p>}
+            </div>
+          ))}
+        </div>
+        <div className="max-h-[40vh] overflow-auto rounded-xl border border-red-100">
+          <table className="w-full min-w-[900px] border-collapse">
+            <thead>
+              <tr>
+                {["#", "Sale ID", "Staff", "Company", "Outlet", "Area", "Invoice date", "Cancel date", "Invoice no"].map((h) => <th key={h} className={mini}>{h}</th>)}
+                <th className={`${mini} text-right`}>Cancel amount</th>
+              </tr>
+            </thead>
+            <tbody>
+              {cancelledSales.map((row, index) => (
+                <tr key={`cancelled-${row.id}`}>
+                  <td className={`${miniTd} text-slate-400`}>{index + 1}</td>
+                  <td className={`${miniTd} font-bold`}>{row.sticker_number}</td>
+                  <td className={miniTd}>{row.staff_name || "N/A"}</td>
+                  <td className={miniTd}>{row.company_name || "N/A"}</td>
+                  <td className={miniTd}>{row.outlet_name || "N/A"}</td>
+                  <td className={miniTd}>{row.location_name || "N/A"}</td>
+                  <td className={`${miniTd} whitespace-nowrap`}>{formatDate(row.sale_date)}</td>
+                  <td className={`${miniTd} whitespace-nowrap`}>{formatDate(row.delivery_date || row.status_updated_at)}</td>
+                  <td className={`${miniTd} font-mono`}>{row.invoice_number || "N/A"}</td>
+                  <td className={`${miniTd} text-right font-bold tabular-nums`}>₹{Number(row.price || 0).toFixed(2)}</td>
+                </tr>
+              ))}
+              {cancelledSales.length === 0 && (
+                <tr><td colSpan={10} className="px-4 py-8 text-center text-[13px] text-slate-400">No cancelled invoices found.</td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </Modal>
       <Footer />
     </DashboardLayout>
   );

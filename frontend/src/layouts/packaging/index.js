@@ -1,33 +1,9 @@
+// Delivery Manager > Packaging: Tailwind CSS (no MUI). Sales sync, packer / save, remarks and history logic unchanged.
 import { useState, useEffect, useCallback, useRef } from "react";
-import Grid from "@mui/material/Grid";
-import Card from "@mui/material/Card";
-// import Icon from "@mui/material/Icon";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableContainer,
-  TableHead,
-  TableRow,
-  Paper,
-  FormControl,
-  Select,
-  MenuItem,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  InputLabel,
-  Tooltip,
-} from "@mui/material";
 
 import SalesExcelButton from "components/SalesExcelButton";
 import CompanyFilter from "components/CompanyFilter";
 import { matchesSaleCompany } from "utils/companyFilter";
-import MDBox from "components/MDBox";
-import MDTypography from "components/MDTypography";
-import MDInput from "components/MDInput";
-import MDButton from "components/MDButton";
 
 import DashboardLayout from "examples/LayoutContainers/DashboardLayout";
 import DashboardNavbar from "examples/Navbars/DashboardNavbar";
@@ -39,17 +15,10 @@ import {
   useSalesPolling,
 } from "utils/salesSync";
 import { formatBpSaleId } from "utils/saleId";
+import { ROWS_PER_PAGE } from "utils/tablePagination";
 import {
-  ROWS_PER_PAGE,
-  TablePaginationFooter,
-  compactTableTextSx,
-  paginatedTableContainerSx,
-  paginatedTableHeadCellSx,
-  paginatedTableHeadSx,
-} from "utils/tablePagination";
-import { IoSaveOutline } from "react-icons/io5";
-import { FaRegEdit } from "react-icons/fa";
-import { MdOutlineComment, MdDeleteOutline } from "react-icons/md";
+  Card, Field, Icon, Modal, PageHeader, Pagination, SearchBox, StatBox, btn, fieldClass,
+} from "components/tw";
 
 const REMARK_CATEGORIES = [{ value: "pending_item", label: "Pending Item" }];
 
@@ -75,56 +44,6 @@ const emptyRemarkItemForm = () => ({
   amount: "",
   remarks: "",
 });
-
-const remarkTableHeadSx = {
-  color: "#6b7280",
-  fontSize: "0.75rem",
-  fontWeight: 600,
-  textTransform: "none",
-  borderBottom: "1px solid #e5e7eb",
-  px: 2,
-  py: 1.25,
-  whiteSpace: "nowrap",
-};
-
-const remarkTableBodySx = {
-  px: 2,
-  py: 1.25,
-  fontSize: "0.875rem",
-  borderBottom: "1px solid #e5e7eb",
-};
-
-const remarkSelectSx = {
-  height: 44,
-  backgroundColor: "#fff",
-  "& .MuiSelect-select": {
-    display: "flex",
-    alignItems: "center",
-    minHeight: "44px !important",
-    boxSizing: "border-box",
-  },
-};
-
-const remarkTableSx = {
-  tableLayout: "fixed",
-  width: "100%",
-  "& .MuiTableCell-root": { overflow: "hidden", textOverflow: "ellipsis" },
-};
-
-const remarkTableHeadWrapperSx = {
-  display: "table-header-group",
-  backgroundColor: "#f9fafb",
-  "& .MuiTableCell-root": { backgroundColor: "#f9fafb" },
-};
-
-const tableActionBoxSx = {
-  backgroundColor: "#f0fdfa",
-  padding: "6px 10px",
-  borderRadius: "8px",
-  border: "1px solid #99f6e4",
-  flexWrap: "nowrap",
-  minWidth: "fit-content",
-};
 
 function Packaging() {
   const [dateFilterMode, setDateFilterMode] = useState("all");
@@ -654,747 +573,342 @@ function Packaging() {
     page * rowsPerPage
   );
 
+  const head = "sticky top-0 z-[1] whitespace-nowrap bg-slate-50 px-3 py-2.5 text-[11px] font-semibold uppercase tracking-wide text-slate-500";
+  const cell = "px-3 py-2.5 text-[12.5px]";
+  const mini = "whitespace-nowrap bg-slate-50 px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500";
+  const miniTd = "border-t border-slate-100 px-3 py-2 text-[12.5px]";
+  const notStarted = filteredSales.filter((row) => (row.packaging_status || "not_packing") === "not_packing").length;
+  const inProgress = filteredSales.filter((row) => row.packaging_status === "packing").length;
+  const closeHistory = () => setHistoryDialog({ open: false, sale: null, history: [] });
+  const label = "text-[11px] font-semibold uppercase tracking-wide text-slate-500";
+
   return (
     <DashboardLayout>
       <DashboardNavbar />
-      <MDBox pt={6} pb={3}>
-        <Grid container spacing={3} justifyContent="center">
-          <Grid item xs={12}>
-            <Card>
-              <MDBox p={3} pb={2} display="flex" justifyContent="space-between" alignItems="center">
-                <MDTypography variant="h5" fontWeight="medium" color="dark">
-                  Packaging - Daily Sales
-                </MDTypography>
-              </MDBox>
-              <MDBox pb={3} px={3}>
-                <Grid container spacing={3} mb={3}>
-                  <Grid item xs={12} md={3}>
-                    <MDInput
-                      type="text"
-                      label="Search by Outlet Name, ID, Staff Name, Sale ID, or Invoice No."
-                      fullWidth
-                      value={searchQuery}
-                      onChange={(e) => setSearchQuery(e.target.value)}
-                    />
-                  </Grid>
-                  <Grid item xs={12} md={4}>
-                    <CompanyFilter
-                      id="packaging-company-filter"
-                      rows={salesData}
-                      value={companyFilter}
-                      onChange={setCompanyFilter}
-                    />
-                  </Grid>
-                  <Grid item xs={12} md={3}>
-                    <FormControl size="small" fullWidth>
-                      <Select
-                        value={statusFilter}
-                        onChange={(e) => setStatusFilter(e.target.value)}
-                        sx={{ height: "44px", backgroundColor: "#fff" }}
-                      >
-                        <MenuItem value="all">All Progress</MenuItem>
-                        <MenuItem value="not_packing">Not Started</MenuItem>
-                        <MenuItem value="packing">In Progress</MenuItem>
-                      </Select>
-                    </FormControl>
-                  </Grid>
-                  <Grid item xs={12} md={3}>
-                    <FormControl size="small" fullWidth>
-                      <Select
-                        value={dateFilterMode}
-                        onChange={(e) => setDateFilterMode(e.target.value)}
-                        sx={{ height: "44px", backgroundColor: "#fff" }}
-                      >
-                        <MenuItem value="all">All Dates (incl. previous)</MenuItem>
-                        <MenuItem value="specific">Specific Date</MenuItem>
-                      </Select>
-                    </FormControl>
-                  </Grid>
-                  {dateFilterMode === "specific" && (
-                    <Grid item xs={12} md={3}>
-                      <MDInput
-                        type="date"
-                        label="Sale Date"
-                        fullWidth
-                        value={selectedDate}
-                        onChange={(e) => setSelectedDate(e.target.value)}
-                        InputLabelProps={{ shrink: true }}
-                      />
-                    </Grid>
-                  )}
-                  <Grid item xs={12} display="flex" justifyContent="flex-end">
-                    <SalesExcelButton rows={filteredSales} filename="Packaging_Daily_Sales" />
-                  </Grid>
-                </Grid>
+      <div className="pb-8 font-[Poppins,Roboto,sans-serif] text-slate-700">
+        <PageHeader
+          title="Packaging"
+          description="Daily sales waiting to be packed. Enter packed items, boxes and packets, set the status and date, then save."
+          actions={<SalesExcelButton rows={filteredSales} filename="Packaging_Daily_Sales" />}
+        />
 
-                <TableContainer component={Paper} sx={paginatedTableContainerSx}>
-                  <Table stickyHeader sx={{ minWidth: 650, ...compactTableTextSx }}>
-                    <TableHead sx={paginatedTableHeadSx()}>
-                      <TableRow>
-                        <TableCell align="center" sx={{ ...paginatedTableHeadCellSx, width: 56 }}>
-                          Sr No
-                        </TableCell>
-                        <TableCell sx={paginatedTableHeadCellSx}>Staff Name</TableCell>
-                        <TableCell sx={paginatedTableHeadCellSx}>Company</TableCell>
-                        <TableCell sx={paginatedTableHeadCellSx}>Outlet Name</TableCell>
-                        <TableCell sx={paginatedTableHeadCellSx}>Area</TableCell>
-                        <TableCell sx={paginatedTableHeadCellSx}>ERP ID</TableCell>
-                        {dateFilterMode === "all" && (
-                          <TableCell sx={paginatedTableHeadCellSx}>Sale Date</TableCell>
-                        )}
-                        <TableCell align="center" sx={paginatedTableHeadCellSx}>
-                          Sale ID
-                        </TableCell>
-                        <TableCell align="center" sx={paginatedTableHeadCellSx}>
-                          Invoice No
-                        </TableCell>
-                        <TableCell align="right" sx={paginatedTableHeadCellSx}>
-                          Price
-                        </TableCell>
-                        <TableCell align="center" sx={paginatedTableHeadCellSx}>
-                          No. of Item
-                        </TableCell>
-                        <TableCell align="center" sx={paginatedTableHeadCellSx}>
-                          Packing Item
-                        </TableCell>
-                        <TableCell align="center" sx={paginatedTableHeadCellSx}>
-                          No. of Box
-                        </TableCell>
-                        <TableCell align="center" sx={paginatedTableHeadCellSx}>
-                          No. of Packet
-                        </TableCell>
-                        <TableCell align="center" sx={paginatedTableHeadCellSx}>
-                          Status
-                        </TableCell>
-                        <TableCell align="center" sx={paginatedTableHeadCellSx}>
-                          Packed By
-                        </TableCell>
-                        <TableCell align="center" sx={paginatedTableHeadCellSx}>
-                          Status Date
-                        </TableCell>
-                        <TableCell align="center" sx={paginatedTableHeadCellSx}>
-                          Action
-                        </TableCell>
-                      </TableRow>
-                    </TableHead>
-                    <TableBody>
-                      {paginatedSales.length > 0 ? (
-                        paginatedSales.map((row, index) => {
-                          const bgColor = getRowColor(row.packaging_status);
-                          const txColor = getTextColor(row.packaging_status);
-                          const borderCol = `1px solid ${txColor}`;
-                          return (
-                            <TableRow
-                              key={row.id}
-                              sx={{
-                                backgroundColor: bgColor,
-                                "&:last-child td, &:last-child th": { border: 0 }
-                              }}
-                            >
-                              <TableCell align="center" sx={{ borderBottom: borderCol, py: 2, color: txColor }}>
-                                {(page - 1) * rowsPerPage + index + 1}
-                              </TableCell>
-                              <TableCell sx={{ borderBottom: borderCol, py: 2, color: txColor }}>
-                                {row.staff_name}
-                              </TableCell>
-                              <TableCell sx={{ borderBottom: borderCol, py: 2, color: txColor }}>
-                                {row.company_name || "N/A"}
-                              </TableCell>
-                              <TableCell sx={{ borderBottom: borderCol, py: 2, color: txColor, fontWeight: "medium" }}>
-                                {row.outlet_name}
-                              </TableCell>
-                              <TableCell sx={{ borderBottom: borderCol, py: 2, color: txColor }}>
-                                {row.location_name || "N/A"}
-                              </TableCell>
-                              <TableCell sx={{ borderBottom: borderCol, py: 2, color: txColor }}>
-                                {row.outlet_erp_id}
-                              </TableCell>
-                              {dateFilterMode === "all" && (
-                                <TableCell sx={{ borderBottom: borderCol, py: 2, color: txColor }}>
-                                  {formatDate(row.sale_date || row.formatted_date)}
-                                </TableCell>
-                              )}
-                              <TableCell align="center" sx={{ borderBottom: borderCol, py: 2, color: txColor, fontWeight: "bold" }}>
-                                {row.sticker_number}
-                              </TableCell>
-                              <TableCell align="center" sx={{ borderBottom: borderCol, py: 2, color: txColor }}>
-                                {row.invoice_number}
-                              </TableCell>
-                              <TableCell align="right" sx={{ borderBottom: borderCol, py: 2, color: txColor, fontWeight: "bold" }}>
-                                ₹{Number(row.price).toFixed(2)}
-                              </TableCell>
-                              <TableCell align="center" sx={{ borderBottom: borderCol, py: 2, color: txColor }}>
-                                {row.item_count || "N/A"}
-                              </TableCell>
-                              <TableCell align="center" sx={{ borderBottom: borderCol, py: 2, color: txColor }}>
-                                <MDInput
-                                  type="number"
-                                  value={row.packed_item_count || ""}
-                                  onChange={(e) =>
-                                    handleRowChange(row.id, "packed_item_count", e.target.value)
-                                  }
-                                  size="small"
-                                  inputProps={{ min: 1, max: row.item_count || undefined, style: { textAlign: "center" } }}
-                                  sx={{ width: 110, backgroundColor: "#fff" }}
-                                />
-                              </TableCell>
-                              <TableCell align="center" sx={{ borderBottom: borderCol, py: 2, color: txColor }}>
-                                <MDInput
-                                  type="number"
-                                  value={row.box_count ?? ""}
-                                  onChange={(e) =>
-                                    handleRowChange(row.id, "box_count", e.target.value)
-                                  }
-                                  size="small"
-                                  inputProps={{ min: 0, style: { textAlign: "center" } }}
-                                  sx={{ width: 100, backgroundColor: "#fff" }}
-                                />
-                              </TableCell>
-                              <TableCell align="center" sx={{ borderBottom: borderCol, py: 2, color: txColor }}>
-                                <MDInput
-                                  type="number"
-                                  value={row.packet_count ?? ""}
-                                  onChange={(e) =>
-                                    handleRowChange(row.id, "packet_count", e.target.value)
-                                  }
-                                  size="small"
-                                  inputProps={{ min: 0, style: { textAlign: "center" } }}
-                                  sx={{ width: 100, backgroundColor: "#fff" }}
-                                />
-                              </TableCell>
-                              <TableCell align="center" sx={{ borderBottom: borderCol, py: 2, color: txColor }}>
-                                <FormControl size="small" sx={{ minWidth: 140 }}>
-                                  <Select
-                                    value={row.packaging_status || 'not_packing'}
-                                    onChange={(e) => handleRowChange(row.id, "packaging_status", e.target.value)}
-                                    sx={{ height: "36px", fontSize: "0.875rem", backgroundColor: "#fff" }}
-                                  >
-                                    <MenuItem value="not_packing">Not Packing</MenuItem>
-                                    <MenuItem value="packing">Packing In Progress</MenuItem>
-                                    <MenuItem value="packing_done">Packing Done</MenuItem>
-                                  </Select>
-                                </FormControl>
-                              </TableCell>
-                              <TableCell align="center" sx={{ borderBottom: borderCol, py: 2, color: txColor }}>
-                                {row.packaging_status === "packing_done"
-                                  ? row.packed_by_name || (
-                                    <MDTypography
-                                      component="span"
-                                      variant="caption"
-                                      sx={{ color: "#b45309", cursor: "pointer", textDecoration: "underline" }}
-                                      onClick={() => openPackerDialogForSave(row.id, row)}
-                                    >
-                                      Select packer
-                                    </MDTypography>
-                                  )
-                                  : "—"}
-                              </TableCell>
-                              <TableCell align="center" sx={{ borderBottom: borderCol, py: 2, color: txColor }}>
-                                <MDInput
-                                  type="date"
-                                  value={row.status_update_date || ""}
-                                  onChange={(e) =>
-                                    handleRowChange(row.id, "status_update_date", e.target.value)
-                                  }
-                                  size="small"
-                                  InputLabelProps={{ shrink: true }}
-                                  sx={{ width: 150, backgroundColor: "#fff" }}
-                                />
-                              </TableCell>
-                              <TableCell align="center" sx={{ borderBottom: borderCol, py: 2, minWidth: 120 }}>
-                                <MDBox
-                                  display="flex"
-                                  flexDirection="row"
-                                  gap={0.75}
-                                  justifyContent="center"
-                                  alignItems="center"
-                                  sx={tableActionBoxSx}
-                                >
-                                  <Tooltip title="Save">
-                                    <span>
-                                      <IoSaveOutline onClick={() => handleSavePackaging(row.id)} style={{ cursor: "pointer" }} color="#059669" size={20} />
-                                    </span>
-                                  </Tooltip>
-                                  <Tooltip title="Status History">
-                                    <span>
-                                      <FaRegEdit onClick={() => handleViewHistory(row.id)} style={{ cursor: "pointer" }} color="#E0E388" size={20} />
-                                    </span>
-                                  </Tooltip>
-                                  <Tooltip title="Remarks">
-                                    <span>
-                                      <MdOutlineComment onClick={() => openRemarksDialog(row)} style={{ cursor: "pointer" }} color="#2563eb" size={20} />
-                                    </span>
-                                  </Tooltip>
-                                </MDBox>
-                              </TableCell>
-                            </TableRow>
+        <div className="mb-5 flex flex-wrap gap-2">
+          <StatBox label="To pack" value={filteredSales.length} icon="inventory_2" />
+          <StatBox label="Not started" value={notStarted} icon="hourglass_empty" />
+          <StatBox label="In progress" value={inProgress} icon="package_2" />
+        </div>
+
+        <Card>
+          <div className="flex flex-wrap items-end gap-3 border-b border-slate-100 px-4 py-3">
+            <div className="flex min-w-64 grow flex-col gap-1">
+              <span className={label}>Search</span>
+              <SearchBox value={searchQuery} onChange={setSearchQuery} className="w-full" placeholder="Outlet, ERP ID, staff, sale ID or invoice no." />
+            </div>
+            <div className="w-full sm:w-96"><CompanyFilter id="packaging-company-filter" rows={salesData} value={companyFilter} onChange={setCompanyFilter} /></div>
+            <Field label="Progress" width="w-40">
+              <select className={fieldClass} value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
+                <option value="all">All progress</option>
+                <option value="not_packing">Not started</option>
+                <option value="packing">In progress</option>
+              </select>
+            </Field>
+            <Field label="Dates" width="w-52">
+              <select className={fieldClass} value={dateFilterMode} onChange={(e) => setDateFilterMode(e.target.value)}>
+                <option value="all">All dates (incl. previous)</option>
+                <option value="specific">Specific date</option>
+              </select>
+            </Field>
+            {dateFilterMode === "specific" && (
+              <Field label="Sale date" width="w-40">
+                <input type="date" className={fieldClass} value={selectedDate} onChange={(e) => setSelectedDate(e.target.value)} />
+              </Field>
+            )}
+          </div>
+
+          <div className="max-h-[70vh] overflow-auto">
+            <table className="w-full min-w-[1500px] border-separate border-spacing-0">
+              <thead>
+                <tr>
+                  <th className={`${head} text-center`}>#</th>
+                  {["Staff", "Company", "Outlet", "Area", "ERP ID"].map((h) => <th key={h} className={`${head} text-left`}>{h}</th>)}
+                  {dateFilterMode === "all" && <th className={`${head} text-left`}>Sale date</th>}
+                  <th className={`${head} text-center`}>Sale ID</th>
+                  <th className={`${head} text-center`}>Invoice no</th>
+                  <th className={`${head} text-right`}>Price</th>
+                  {["Items", "Packing item", "Boxes", "Packets", "Status", "Packed by", "Status date", "Action"].map((h) => <th key={h} className={`${head} text-center`}>{h}</th>)}
+                </tr>
+              </thead>
+              <tbody>
+                {paginatedSales.length > 0 ? paginatedSales.map((row, index) => {
+                  const bgColor = getRowColor(row.packaging_status);
+                  const txColor = getTextColor(row.packaging_status);
+                  const td = `${cell} border-t border-white/70`;
+                  const num = `${fieldClass} h-8 text-center text-slate-800`;
+                  return (
+                    <tr key={row.id} style={{ backgroundColor: bgColor, color: txColor }}>
+                      <td className={`${td} text-center opacity-70`}>{(page - 1) * rowsPerPage + index + 1}</td>
+                      <td className={`${td} whitespace-nowrap`}>{row.staff_name}</td>
+                      <td className={`${td} whitespace-nowrap`}>{row.company_name || "N/A"}</td>
+                      <td className={`${td} font-semibold`}>{row.outlet_name}</td>
+                      <td className={`${td} whitespace-nowrap`}>{row.location_name || "N/A"}</td>
+                      <td className={`${td} whitespace-nowrap font-mono text-[11.5px]`}>{row.outlet_erp_id}</td>
+                      {dateFilterMode === "all" && <td className={`${td} whitespace-nowrap`}>{formatDate(row.sale_date || row.formatted_date)}</td>}
+                      <td className={`${td} text-center font-bold`}>{row.sticker_number}</td>
+                      <td className={`${td} text-center font-mono`}>{row.invoice_number}</td>
+                      <td className={`${td} whitespace-nowrap text-right font-bold tabular-nums`}>₹{Number(row.price).toFixed(2)}</td>
+                      <td className={`${td} text-center tabular-nums`}>{row.item_count || "N/A"}</td>
+                      <td className={`${td} text-center`}>
+                        <input type="number" aria-label="Packing item" min={1} max={row.item_count || undefined} className={`${num} w-24`} value={row.packed_item_count || ""} onChange={(e) => handleRowChange(row.id, "packed_item_count", e.target.value)} />
+                      </td>
+                      <td className={`${td} text-center`}>
+                        <input type="number" aria-label="No. of box" min={0} className={`${num} w-20`} value={row.box_count ?? ""} onChange={(e) => handleRowChange(row.id, "box_count", e.target.value)} />
+                      </td>
+                      <td className={`${td} text-center`}>
+                        <input type="number" aria-label="No. of packet" min={0} className={`${num} w-20`} value={row.packet_count ?? ""} onChange={(e) => handleRowChange(row.id, "packet_count", e.target.value)} />
+                      </td>
+                      <td className={`${td} text-center`}>
+                        <select aria-label="Status" className={`${fieldClass} h-8 min-w-40 text-slate-800`} value={row.packaging_status || "not_packing"} onChange={(e) => handleRowChange(row.id, "packaging_status", e.target.value)}>
+                          <option value="not_packing">Not Packing</option>
+                          <option value="packing">Packing In Progress</option>
+                          <option value="packing_done">Packing Done</option>
+                        </select>
+                      </td>
+                      <td className={`${td} whitespace-nowrap text-center`}>
+                        {row.packaging_status === "packing_done"
+                          ? row.packed_by_name || (
+                            <button type="button" className="cursor-pointer border-0 bg-transparent p-0 text-[12px] font-semibold text-amber-700 underline" onClick={() => openPackerDialogForSave(row.id, row)}>
+                              Select packer
+                            </button>
                           )
-                        })
-                      ) : (
-                        <TableRow>
-                          <TableCell colSpan={dateFilterMode === "all" ? 17 : 16} align="center" sx={{ py: 3, borderBottom: 0 }}>
-                            <MDTypography variant="body2" color="text">
-                              No sales found.
-                            </MDTypography>
-                          </TableCell>
-                        </TableRow>
-                      )}
-                    </TableBody>
-                  </Table>
-                </TableContainer>
-                <TablePaginationFooter
-                  page={page}
-                  totalPages={totalPages}
-                  total={filteredSales.length}
-                  onPageChange={setPage}
-                  limit={rowsPerPage}
-                  onLimitChange={setRowsPerPage}
-                />
-              </MDBox>
-            </Card>
-          </Grid>
-        </Grid>
-      </MDBox>
+                          : "—"}
+                      </td>
+                      <td className={`${td} text-center`}>
+                        <input type="date" aria-label="Status date" className={`${fieldClass} h-8 w-36 text-slate-800`} value={row.status_update_date || ""} onChange={(e) => handleRowChange(row.id, "status_update_date", e.target.value)} />
+                      </td>
+                      <td className={`${td} text-center`}>
+                        <span className="inline-flex gap-0.5 rounded-lg bg-white/80 p-0.5 ring-1 ring-black/5">
+                          <button type="button" className={`${btn.icon} text-emerald-600 hover:bg-emerald-50 hover:text-emerald-700`} title="Save" aria-label="Save" disabled={savingSaleIds.has(row.id)} onClick={() => handleSavePackaging(row.id)}>
+                            <Icon name="save" className="text-[19px]" />
+                          </button>
+                          <button type="button" className={`${btn.icon} hover:text-blue-700`} title="Status history" aria-label="Status history" onClick={() => handleViewHistory(row.id)}>
+                            <Icon name="history" className="text-[19px]" />
+                          </button>
+                          <button type="button" className={`${btn.icon} text-blue-600 hover:bg-blue-50 hover:text-blue-700`} title="Remarks" aria-label="Remarks" onClick={() => openRemarksDialog(row)}>
+                            <Icon name="comment" className="text-[19px]" />
+                          </button>
+                        </span>
+                      </td>
+                    </tr>
+                  );
+                }) : (
+                  <tr>
+                    <td colSpan={dateFilterMode === "all" ? 18 : 17} className="px-4 py-14 text-center text-[13px] text-slate-400">No sales found.</td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+          <Pagination page={page} totalPages={totalPages} total={filteredSales.length} onPageChange={setPage} limit={rowsPerPage} onLimitChange={setRowsPerPage} />
+        </Card>
+      </div>
       <Footer />
 
-      <Dialog
-        open={historyDialog.open}
-        onClose={() => setHistoryDialog({ open: false, sale: null, history: [] })}
-        fullWidth
-        maxWidth="sm"
+      {/* Status history */}
+      <Modal
+        open={historyDialog.open} onClose={closeHistory} size="lg" title="Status Update Dates"
+        actions={<button type="button" className={btn.ghost} onClick={closeHistory}>Close</button>}
       >
-        <DialogTitle>Status Update Dates</DialogTitle>
-        <DialogContent dividers>
-          <MDBox mb={2}>
-            <MDTypography variant="button" fontWeight="medium">
-              Sale ID: {historyDialog.sale ? formatBpSaleId(historyDialog.sale) : "N/A"}
-            </MDTypography>
-            <MDTypography display="block" variant="button" fontWeight="medium">
-              Invoice: {historyDialog.sale?.invoice_number || "N/A"}
-            </MDTypography>
-            <MDTypography variant="body2" color="text">
-              Invoice Date: {formatDate(historyDialog.sale?.sale_date)}
-            </MDTypography>
-            <MDTypography variant="body2" color="text">
-              Outlet: {historyDialog.sale?.outlet_name || "N/A"}
-            </MDTypography>
-          </MDBox>
-          <Table size="small">
-            <TableHead sx={{ display: "table-header-group" }}>
-              <TableRow>
-                <TableCell>Status</TableCell>
-                <TableCell align="center">Update Date</TableCell>
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {historyDialog.history.map((item) => (
-                <TableRow key={item.id}>
-                  <TableCell>{statusLabels[item.status] || item.status}</TableCell>
-                  <TableCell align="center">{formatDateTime(item.changed_at)}</TableCell>
-                </TableRow>
-              ))}
-              {historyDialog.history.length === 0 && (
-                <TableRow>
-                  <TableCell colSpan={2} align="center">
-                    No status update dates found.
-                  </TableCell>
-                </TableRow>
-              )}
-            </TableBody>
-          </Table>
-        </DialogContent>
-        <DialogActions>
-          <MDButton color="dark" onClick={() => setHistoryDialog({ open: false, sale: null, history: [] })}>
-            Close
-          </MDButton>
-        </DialogActions>
-      </Dialog>
+        <div className="mb-4 grid grid-cols-2 gap-2 rounded-xl bg-slate-50 p-3 text-[12.5px]">
+          <span><span className="text-slate-500">Sale ID:</span> <b>{historyDialog.sale ? formatBpSaleId(historyDialog.sale) : "N/A"}</b></span>
+          <span><span className="text-slate-500">Invoice:</span> <b>{historyDialog.sale?.invoice_number || "N/A"}</b></span>
+          <span><span className="text-slate-500">Invoice date:</span> {formatDate(historyDialog.sale?.sale_date)}</span>
+          <span><span className="text-slate-500">Outlet:</span> {historyDialog.sale?.outlet_name || "N/A"}</span>
+        </div>
+        <ol className="m-0 list-none space-y-0 p-0">
+          {historyDialog.history.map((item, i) => (
+            <li key={item.id} className="relative flex gap-3 pb-4 pl-1 last:pb-0">
+              {i < historyDialog.history.length - 1 && <span className="absolute left-[9px] top-5 h-full w-px bg-slate-200" />}
+              <span className="relative mt-1 size-3 shrink-0 rounded-full border-2 border-blue-600 bg-white" />
+              <span className="grow text-[13px] font-semibold text-slate-800">{statusLabels[item.status] || item.status}</span>
+              <span className="text-[12.5px] tabular-nums text-slate-500">{formatDateTime(item.changed_at)}</span>
+            </li>
+          ))}
+          {historyDialog.history.length === 0 && <li className="py-6 text-center text-[13px] text-slate-400">No status update dates found.</li>}
+        </ol>
+      </Modal>
 
-      <Dialog
-        open={packerDialog.open}
-        onClose={() => handleClosePackerDialog(false)}
-        fullWidth
-        maxWidth="xs"
+      {/* Who completed packing */}
+      <Modal
+        open={packerDialog.open} onClose={() => handleClosePackerDialog(false)} title="Who Completed Packing?"
+        actions={(
+          <>
+            <button type="button" className={btn.ghost} onClick={() => handleClosePackerDialog(false)}>Cancel</button>
+            <button type="button" className={btn.primary} onClick={() => handleClosePackerDialog(true)}>Confirm</button>
+          </>
+        )}
       >
-        <DialogTitle>Who Completed Packing?</DialogTitle>
-        <DialogContent dividers>
-          <MDTypography variant="body2" color="text" mb={2}>
-            Select the packaging staff member who finished this order.
-          </MDTypography>
-          <FormControl size="small" fullWidth>
-            <InputLabel id="packer-select-label">Packaging Staff</InputLabel>
-            <Select
-              labelId="packer-select-label"
-              label="Packaging Staff"
-              value={packerDialog.selectedPackerId}
-              onChange={(event) =>
-                setPackerDialog((prev) => ({ ...prev, selectedPackerId: event.target.value }))
-              }
-              sx={{ height: 44 }}
-            >
-              <MenuItem value="">
-                <em>Select packaging staff</em>
-              </MenuItem>
-              {packagingStaff.map((person) => (
-                <MenuItem key={person.id} value={String(person.id)}>
-                  {person.name}
-                </MenuItem>
-              ))}
-              {packagingStaff.length === 0 && (
-                <MenuItem disabled>No packaging staff found</MenuItem>
-              )}
-            </Select>
-          </FormControl>
-        </DialogContent>
-        <DialogActions>
-          <MDButton color="secondary" onClick={() => handleClosePackerDialog(false)}>
-            Cancel
-          </MDButton>
-          <MDButton color="info" variant="gradient" onClick={() => handleClosePackerDialog(true)}>
-            Confirm
-          </MDButton>
-        </DialogActions>
-      </Dialog>
+        <p className="m-0 mb-3 text-[13px] text-slate-600">Select the packaging staff member who finished this order.</p>
+        <Field label="Packaging staff" width="w-full">
+          <select className={fieldClass} value={packerDialog.selectedPackerId} onChange={(event) => setPackerDialog((prev) => ({ ...prev, selectedPackerId: event.target.value }))}>
+            <option value="">Select packaging staff</option>
+            {packagingStaff.map((person) => <option key={person.id} value={String(person.id)}>{person.name}</option>)}
+            {packagingStaff.length === 0 && <option disabled>No packaging staff found</option>}
+          </select>
+        </Field>
+      </Modal>
 
-      <Dialog
-        open={remarksDialog.open}
-        onClose={closeRemarksDialog}
-        fullWidth
-        maxWidth="md"
-        PaperProps={{ sx: { width: "100%", maxWidth: 900, mx: 2 } }}
+      {/* Remarks: pending / cancelled / wrongly delivered items */}
+      <Modal
+        open={remarksDialog.open} onClose={closeRemarksDialog} size="xl" title="Add Remarks"
+        actions={(
+          <>
+            <button type="button" className={btn.ghost} onClick={closeRemarksDialog}>Close</button>
+            <button type="button" className={btn.primary} onClick={handleSaveRemarks} disabled={savingRemarks || pendingRemarkItems.length === 0}>
+              {savingRemarks ? "Saving..." : "Save Remarks"}
+            </button>
+          </>
+        )}
       >
-        <DialogTitle sx={{ fontWeight: "bold", color: "#344767" }}>
-          Add Remarks
-        </DialogTitle>
-        <DialogContent dividers>
-          {remarksDialog.sale && (
-            <MDBox pt={1}>
-              <MDBox
-                display="flex"
-                flexWrap="wrap"
-                gap={2}
-                mb={3}
-                p={2}
-                sx={{ backgroundColor: "#f8f9fa", borderRadius: "10px", border: "1px solid #e9ecef" }}
-              >
-                <MDTypography variant="body2">
-                  <strong>Outlet:</strong> {remarksDialog.sale.outlet_name || "—"}
-                </MDTypography>
-                <MDTypography variant="body2">
-                  <strong>Invoice:</strong> {remarksDialog.sale.invoice_number || "—"}
-                </MDTypography>
-                <MDTypography variant="body2">
-                  <strong>Sale ID:</strong> {formatBpSaleId(remarksDialog.sale)}
-                </MDTypography>
-              </MDBox>
+        {remarksDialog.sale && (
+          <div className="space-y-5">
+            <div className="flex flex-wrap gap-x-6 gap-y-1 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-[13px]">
+              <span><span className="text-slate-500">Outlet:</span> <b>{remarksDialog.sale.outlet_name || "—"}</b></span>
+              <span><span className="text-slate-500">Invoice:</span> <b>{remarksDialog.sale.invoice_number || "—"}</b></span>
+              <span><span className="text-slate-500">Sale ID:</span> <b>{formatBpSaleId(remarksDialog.sale)}</b></span>
+            </div>
 
-              <Grid container spacing={2} mb={2} alignItems="flex-start">
-                <Grid item xs={12} sm={6}>
-                  <FormControl fullWidth size="small">
-                    <InputLabel id="remark-category-label" shrink>
-                      Remark Type
-                    </InputLabel>
-                    <Select
-                      labelId="remark-category-label"
-                      label="Remark Type"
-                      value={remarkCategory}
-                      onChange={(e) => setRemarkCategory(e.target.value)}
-                      sx={remarkSelectSx}
-                    >
-                      {REMARK_CATEGORIES.map((option) => (
-                        <MenuItem key={option.value} value={option.value}>
-                          {option.label}
-                        </MenuItem>
-                      ))}
-                    </Select>
-                  </FormControl>
-                </Grid>
-                <Grid item xs={12} sm={6}>
-                  <FormControl fullWidth size="small">
-                    <InputLabel id="issue-type-label" shrink>
-                      Issue Type *
-                    </InputLabel>
-                    <Select
-                      labelId="issue-type-label"
-                      label="Issue Type *"
-                      value={issueType}
-                      displayEmpty
-                      onChange={(e) => handleIssueTypeChange(e.target.value)}
-                      renderValue={(selected) => {
-                        if (!selected) {
-                          return (
-                            <MDTypography component="span" variant="body2" sx={{ color: "#9ca3af" }}>
-                              Select Cancel or Wrong Delivered
-                            </MDTypography>
-                          );
-                        }
-                        return issueTypeLabels[selected] || selected;
-                      }}
-                      sx={remarkSelectSx}
-                    >
-                      {ISSUE_TYPES.map((option) => (
-                        <MenuItem key={option.value} value={option.value}>
-                          {option.label}
-                        </MenuItem>
-                      ))}
-                    </Select>
-                  </FormControl>
-                </Grid>
-              </Grid>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <Field label="Remark type" width="w-full">
+                <select className={fieldClass} value={remarkCategory} onChange={(e) => setRemarkCategory(e.target.value)}>
+                  {REMARK_CATEGORIES.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                </select>
+              </Field>
+              <Field label="Issue type *" width="w-full">
+                <select className={fieldClass} value={issueType} onChange={(e) => handleIssueTypeChange(e.target.value)}>
+                  <option value="" disabled>Select Cancel or Wrong Delivered</option>
+                  {ISSUE_TYPES.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                </select>
+              </Field>
+            </div>
 
-              <MDTypography variant="button" fontWeight="medium" color="dark" mb={1} display="block">
-                Add Item
-              </MDTypography>
+            <div>
+              <h4 className="m-0 mb-1 text-[13px] font-semibold text-slate-900">Add item</h4>
               {issueType === "wrong_delivered" && (
-                <MDTypography variant="caption" color="text" mb={1} display="block">
-                  Enter the wrong item that was delivered and the original item it should be replaced with.
-                </MDTypography>
+                <p className="m-0 mb-2 text-[12px] text-slate-500">Enter the wrong item that was delivered and the original item it should be replaced with.</p>
               )}
-              <Grid container spacing={2} mb={2}>
+              <div className="grid gap-3 sm:grid-cols-4">
                 {issueType === "wrong_delivered" ? (
                   <>
-                    <Grid item xs={12} sm={6}>
-                      <MDInput
-                        label="Wrong Item *"
-                        fullWidth
-                        value={remarkItemForm.wrongItem}
-                        onChange={(e) => handleRemarkFormChange("wrongItem", e.target.value)}
-                      />
-                    </Grid>
-                    <Grid item xs={12} sm={6}>
-                      <MDInput
-                        label="Original Item *"
-                        fullWidth
-                        value={remarkItemForm.originalItem}
-                        onChange={(e) => handleRemarkFormChange("originalItem", e.target.value)}
-                      />
-                    </Grid>
+                    <Field label="Wrong item *" width="w-full sm:col-span-2">
+                      <input className={fieldClass} value={remarkItemForm.wrongItem} onChange={(e) => handleRemarkFormChange("wrongItem", e.target.value)} />
+                    </Field>
+                    <Field label="Original item *" width="w-full sm:col-span-2">
+                      <input className={fieldClass} value={remarkItemForm.originalItem} onChange={(e) => handleRemarkFormChange("originalItem", e.target.value)} />
+                    </Field>
                   </>
                 ) : (
-                  <Grid item xs={12} sm={6}>
-                    <MDInput
-                      label="Item Name *"
-                      fullWidth
-                      value={remarkItemForm.itemName}
-                      onChange={(e) => handleRemarkFormChange("itemName", e.target.value)}
-                      disabled={!issueType}
-                    />
-                  </Grid>
+                  <Field label="Item name *" width="w-full sm:col-span-2">
+                    <input className={fieldClass} value={remarkItemForm.itemName} disabled={!issueType} onChange={(e) => handleRemarkFormChange("itemName", e.target.value)} />
+                  </Field>
                 )}
-                <Grid item xs={12} sm={3}>
-                  <MDInput
-                    label="Qty *"
-                    type="number"
-                    fullWidth
-                    value={remarkItemForm.qty}
-                    onChange={(e) => handleRemarkFormChange("qty", e.target.value)}
-                    inputProps={{ min: 0, step: "any" }}
-                  />
-                </Grid>
-                <Grid item xs={12} sm={3}>
-                  <MDInput
-                    label="Total Amount *"
-                    type="number"
-                    fullWidth
-                    value={remarkItemForm.amount}
-                    onChange={(e) => handleRemarkFormChange("amount", e.target.value)}
-                    inputProps={{ min: 0, step: "0.01" }}
-                  />
-                </Grid>
-                <Grid item xs={12}>
-                  <MDInput
-                    label="Remarks"
-                    fullWidth
-                    multiline
-                    rows={2}
-                    value={remarkItemForm.remarks}
-                    onChange={(e) => handleRemarkFormChange("remarks", e.target.value)}
-                  />
-                </Grid>
-                <Grid item xs={12}>
-                  <MDButton
-                    variant="gradient"
-                    color="info"
-                    onClick={handleAddPendingRemarkItem}
-                    disabled={!issueType}
-                  >
-                    Add Item
-                  </MDButton>
-                </Grid>
-              </Grid>
+                <Field label="Qty *" width="w-full">
+                  <input type="number" min={0} step="any" className={fieldClass} value={remarkItemForm.qty} onChange={(e) => handleRemarkFormChange("qty", e.target.value)} />
+                </Field>
+                <Field label="Total amount *" width="w-full">
+                  <input type="number" min={0} step="0.01" className={fieldClass} value={remarkItemForm.amount} onChange={(e) => handleRemarkFormChange("amount", e.target.value)} />
+                </Field>
+                <label className="flex flex-col gap-1 sm:col-span-4">
+                  <span className={label}>Remarks</span>
+                  <textarea rows={2} className={`${fieldClass} h-auto py-2`} value={remarkItemForm.remarks} onChange={(e) => handleRemarkFormChange("remarks", e.target.value)} />
+                </label>
+              </div>
+              <button type="button" className={`${btn.outline} mt-3`} onClick={handleAddPendingRemarkItem} disabled={!issueType}>
+                <Icon name="add" className="text-[18px]" />Add item
+              </button>
+            </div>
 
-              {pendingRemarkItems.length > 0 && (
-                <MDBox mb={3}>
-                  <MDTypography variant="button" fontWeight="medium" color="dark" mb={1} display="block">
-                    Items to Save ({pendingRemarkItems.length})
-                  </MDTypography>
-                  <TableContainer
-                    component={Paper}
-                    variant="outlined"
-                    sx={{ boxShadow: "none", overflowX: "auto" }}
-                  >
-                    <Table
-                      size="small"
-                      sx={{ ...remarkTableSx, minWidth: issueType === "wrong_delivered" ? 720 : 560 }}
-                    >
-                      <colgroup>
+            {pendingRemarkItems.length > 0 && (
+              <div>
+                <h4 className="m-0 mb-2 text-[13px] font-semibold text-slate-900">Items to save ({pendingRemarkItems.length})</h4>
+                <div className="overflow-x-auto rounded-xl border border-slate-200">
+                  <table className="w-full min-w-[560px] border-collapse">
+                    <thead>
+                      <tr>
                         {issueType === "wrong_delivered" ? (
                           <>
-                            <col style={{ width: "18%" }} />
-                            <col style={{ width: "18%" }} />
-                            <col style={{ width: "8%" }} />
-                            <col style={{ width: "12%" }} />
-                            <col style={{ width: "34%" }} />
-                            <col style={{ width: "10%" }} />
+                            <th className={mini}>Wrong item</th>
+                            <th className={mini}>Original item</th>
                           </>
-                        ) : (
-                          <>
-                            <col style={{ width: "22%" }} />
-                            <col style={{ width: "10%" }} />
-                            <col style={{ width: "14%" }} />
-                            <col style={{ width: "44%" }} />
-                            <col style={{ width: "10%" }} />
-                          </>
-                        )}
-                      </colgroup>
-                      <TableHead sx={remarkTableHeadWrapperSx}>
-                        <TableRow>
+                        ) : <th className={mini}>Item name</th>}
+                        <th className={mini}>Qty</th>
+                        <th className={`${mini} text-right`}>Amount</th>
+                        <th className={mini}>Remarks</th>
+                        <th className={`${mini} text-center`}>Action</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {pendingRemarkItems.map((item) => (
+                        <tr key={item.id}>
                           {issueType === "wrong_delivered" ? (
                             <>
-                              <TableCell align="left" sx={remarkTableHeadSx}>Wrong Item</TableCell>
-                              <TableCell align="left" sx={remarkTableHeadSx}>Original Item</TableCell>
+                              <td className={miniTd}>{item.wrongItem}</td>
+                              <td className={miniTd}>{item.originalItem}</td>
                             </>
-                          ) : (
-                            <TableCell align="left" sx={remarkTableHeadSx}>Item Name</TableCell>
-                          )}
-                          <TableCell align="left" sx={remarkTableHeadSx}>Qty</TableCell>
-                          <TableCell align="right" sx={remarkTableHeadSx}>Amount</TableCell>
-                          <TableCell align="left" sx={remarkTableHeadSx}>Remarks</TableCell>
-                          <TableCell align="center" sx={remarkTableHeadSx}>Action</TableCell>
-                        </TableRow>
-                      </TableHead>
-                      <TableBody>
-                        {pendingRemarkItems.map((item) => (
-                          <TableRow key={item.id}>
-                            {issueType === "wrong_delivered" ? (
-                              <>
-                                <TableCell align="left" sx={remarkTableBodySx}>{item.wrongItem}</TableCell>
-                                <TableCell align="left" sx={remarkTableBodySx}>{item.originalItem}</TableCell>
-                              </>
-                            ) : (
-                              <TableCell align="left" sx={remarkTableBodySx}>{item.itemName}</TableCell>
-                            )}
-                            <TableCell align="left" sx={remarkTableBodySx}>{item.qty}</TableCell>
-                            <TableCell align="right" sx={remarkTableBodySx}>₹{Number(item.amount).toFixed(2)}</TableCell>
-                            <TableCell align="left" sx={remarkTableBodySx}>{item.remarks || "—"}</TableCell>
-                            <TableCell align="center" sx={remarkTableBodySx}>
-                              <Tooltip title="Remove">
-                                <MDButton
-                                  variant="outlined"
-                                  color="error"
-                                  size="small"
-                                  iconOnly
-                                  onClick={() => handleRemovePendingRemarkItem(item.id)}
-                                >
-                                  <MdDeleteOutline size={18} />
-                                </MDButton>
-                              </Tooltip>
-                            </TableCell>
-                          </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
-                  </TableContainer>
-                </MDBox>
-              )}
-
-              <MDTypography variant="button" fontWeight="medium" color="dark" mb={1} display="block">
-                Saved Remarks
-              </MDTypography>
-              {loadingRemarks ? (
-                <MDTypography variant="body2" color="text" mb={2}>
-                  Loading remarks...
-                </MDTypography>
-              ) : savedRemarks.length === 0 ? (
-                <MDTypography variant="body2" color="text" mb={2}>
-                  No remarks saved yet.
-                </MDTypography>
-              ) : (
-                <TableContainer
-                  component={Paper}
-                  variant="outlined"
-                  sx={{ boxShadow: "none", overflowX: "auto" }}
-                >
-                  <Table size="small" sx={{ ...remarkTableSx, minWidth: 980 }}>
-                    <colgroup>
-                      <col style={{ width: "14%" }} />
-                      <col style={{ width: "10%" }} />
-                      <col style={{ width: "10%" }} />
-                      <col style={{ width: "14%" }} />
-                      <col style={{ width: "14%" }} />
-                      <col style={{ width: "14%" }} />
-                      <col style={{ width: "6%" }} />
-                      <col style={{ width: "10%" }} />
-                      <col style={{ width: "8%" }} />
-                    </colgroup>
-                    <TableHead sx={remarkTableHeadWrapperSx}>
-                      <TableRow>
-                        <TableCell align="left" sx={remarkTableHeadSx}>Date</TableCell>
-                        <TableCell align="left" sx={remarkTableHeadSx}>Type</TableCell>
-                        <TableCell align="left" sx={remarkTableHeadSx}>Issue</TableCell>
-                        <TableCell align="left" sx={remarkTableHeadSx}>Item Name</TableCell>
-                        <TableCell align="left" sx={remarkTableHeadSx}>Wrong Item</TableCell>
-                        <TableCell align="left" sx={remarkTableHeadSx}>Original Item</TableCell>
-                        <TableCell align="left" sx={remarkTableHeadSx}>Qty</TableCell>
-                        <TableCell align="right" sx={remarkTableHeadSx}>Amount</TableCell>
-                        <TableCell align="left" sx={remarkTableHeadSx}>Remarks</TableCell>
-                      </TableRow>
-                    </TableHead>
-                    <TableBody>
-                      {savedRemarks.map((item) => (
-                        <TableRow key={item.id}>
-                          <TableCell align="left" sx={remarkTableBodySx}>{item.created_at}</TableCell>
-                          <TableCell align="left" sx={remarkTableBodySx}>
-                            {remarkCategoryLabels[item.remark_category] || item.remark_category}
-                          </TableCell>
-                          <TableCell align="left" sx={remarkTableBodySx}>
-                            {issueTypeLabels[item.issue_type] || item.issue_type}
-                          </TableCell>
-                          <TableCell align="left" sx={remarkTableBodySx}>
-                            {item.issue_type === "wrong_delivered" ? "—" : item.item_name}
-                          </TableCell>
-                          <TableCell align="left" sx={remarkTableBodySx}>
-                            {item.issue_type === "wrong_delivered" ? (item.wrong_item || item.item_name || "—") : "—"}
-                          </TableCell>
-                          <TableCell align="left" sx={remarkTableBodySx}>
-                            {item.issue_type === "wrong_delivered" ? (item.original_item || "—") : "—"}
-                          </TableCell>
-                          <TableCell align="left" sx={remarkTableBodySx}>{Number(item.qty)}</TableCell>
-                          <TableCell align="right" sx={remarkTableBodySx}>₹{Number(item.amount).toFixed(2)}</TableCell>
-                          <TableCell align="left" sx={remarkTableBodySx}>{item.remarks || "—"}</TableCell>
-                        </TableRow>
+                          ) : <td className={miniTd}>{item.itemName}</td>}
+                          <td className={miniTd}>{item.qty}</td>
+                          <td className={`${miniTd} text-right tabular-nums`}>₹{Number(item.amount).toFixed(2)}</td>
+                          <td className={miniTd}>{item.remarks || "—"}</td>
+                          <td className={`${miniTd} text-center`}>
+                            <button type="button" className={`${btn.icon} text-red-500 hover:bg-red-50 hover:text-red-600`} title="Remove" aria-label="Remove" onClick={() => handleRemovePendingRemarkItem(item.id)}>
+                              <Icon name="delete" className="text-[18px]" />
+                            </button>
+                          </td>
+                        </tr>
                       ))}
-                    </TableBody>
-                  </Table>
-                </TableContainer>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
+            <div>
+              <h4 className="m-0 mb-2 text-[13px] font-semibold text-slate-900">Saved remarks</h4>
+              {loadingRemarks ? (
+                <p className="m-0 text-[13px] text-slate-400">Loading remarks...</p>
+              ) : savedRemarks.length === 0 ? (
+                <p className="m-0 text-[13px] text-slate-400">No remarks saved yet.</p>
+              ) : (
+                <div className="overflow-x-auto rounded-xl border border-slate-200">
+                  <table className="w-full min-w-[900px] border-collapse">
+                    <thead>
+                      <tr>
+                        {["Date", "Type", "Issue", "Item name", "Wrong item", "Original item", "Qty"].map((h) => <th key={h} className={mini}>{h}</th>)}
+                        <th className={`${mini} text-right`}>Amount</th>
+                        <th className={mini}>Remarks</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {savedRemarks.map((item) => (
+                        <tr key={item.id}>
+                          <td className={`${miniTd} whitespace-nowrap`}>{item.created_at}</td>
+                          <td className={miniTd}>{remarkCategoryLabels[item.remark_category] || item.remark_category}</td>
+                          <td className={miniTd}>{issueTypeLabels[item.issue_type] || item.issue_type}</td>
+                          <td className={miniTd}>{item.issue_type === "wrong_delivered" ? "—" : item.item_name}</td>
+                          <td className={miniTd}>{item.issue_type === "wrong_delivered" ? (item.wrong_item || item.item_name || "—") : "—"}</td>
+                          <td className={miniTd}>{item.issue_type === "wrong_delivered" ? (item.original_item || "—") : "—"}</td>
+                          <td className={miniTd}>{Number(item.qty)}</td>
+                          <td className={`${miniTd} text-right tabular-nums`}>₹{Number(item.amount).toFixed(2)}</td>
+                          <td className={miniTd}>{item.remarks || "—"}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               )}
-            </MDBox>
-          )}
-        </DialogContent>
-        <DialogActions>
-          <MDButton color="secondary" onClick={closeRemarksDialog}>
-            Close
-          </MDButton>
-          <MDButton
-            color="info"
-            variant="gradient"
-            onClick={handleSaveRemarks}
-            disabled={savingRemarks || pendingRemarkItems.length === 0}
-          >
-            {savingRemarks ? "Saving..." : "Save Remarks"}
-          </MDButton>
-        </DialogActions>
-      </Dialog>
+            </div>
+          </div>
+        )}
+      </Modal>
     </DashboardLayout>
   );
 }

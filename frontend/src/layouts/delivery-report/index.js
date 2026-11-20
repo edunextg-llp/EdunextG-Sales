@@ -1,27 +1,23 @@
+// Delivery Manager > Report: Tailwind CSS (no MUI). Route selection, drafts, assign / submit and suspense logic unchanged.
 import { reportAreaName } from "utils/areaName";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import DashboardLayout from "examples/LayoutContainers/DashboardLayout";
 import DashboardNavbar from "examples/Navbars/DashboardNavbar";
 import Footer from "examples/Footer";
-import MDInput from "components/MDInput";
 import { notifySalesUpdated, useSalesPolling } from "utils/salesSync";
-import { Dialog, DialogTitle, DialogContent, DialogActions, TableContainer, Table, TableHead, TableBody, TableRow, TableCell, Checkbox, FormControl, InputLabel, Select, MenuItem } from "@mui/material";
-import MDBox from "components/MDBox";
-import MDTypography from "components/MDTypography";
-import MDButton from "components/MDButton";
 import { boxCount, packetCount, buildDeliveryLog, deliveryLogColors } from "utils/deliveryLog";
 import PackBadges from "./PackBadges";
 import { printDeliveryAssignmentsPdf } from "utils/printDeliveryAssignmentsPdf";
-import { IconButton, Tooltip, FormControlLabel, Tabs, Tab } from "@mui/material";
-import VisibilityIcon from "@mui/icons-material/Visibility";
 import BillDetailsDialog from "./BillDetailsDialog";
 import AssignmentHistory from "./AssignmentHistory";
 import DeliveryStatusReport from "./DeliveryStatusReport";
 import PendingDeliveries from "./PendingDeliveries";
 import DeliveryTransfers from "./DeliveryTransfers";
 import { selectedAssignments, remainingAssignments, toggleAssignmentSelection } from "utils/deliveryAssignmentSelection";
-import CompanyTypeSelect from "components/CompanyFilter/CompanyTypeSelect";
-import { useCompanyTypeLookup } from "utils/companyTypes";
+import { COMPANY_TYPES, useCompanyTypeLookup } from "utils/companyTypes";
+import {
+  Card, Field, Icon, Modal, Notice, PageHeader, Segmented, StatBox, TriCheck, btn, fieldClass,
+} from "components/tw";
 
 const API = (process.env.REACT_APP_API_URL);
 const today = () => { const d = new Date(); return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0"); };
@@ -229,180 +225,292 @@ export default function DeliveryReport() {
     }
   };
   const [error, setError] = useState("");
+  const head = "sticky top-0 z-[1] whitespace-nowrap bg-slate-50 px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500";
+  const cell = "border-t border-slate-100 px-3 py-2 text-[12.5px]";
+  const label = "text-[11px] font-semibold uppercase tracking-wide text-slate-500";
+  const isIn = (row) => selected.includes(String(row.id));
+  const closeGroup = () => { if (!saving) { setViewGroup(null); setSuspenseFeedback(""); } };
   return (
-    <DashboardLayout><DashboardNavbar /><MDBox py={3} sx={{ backgroundColor: "#fff" }}>
-      <DialogTitle id="delivery-log-title" sx={{ py: 0.5, px: 1, backgroundColor: "#dbeafe", borderBottom: "1px solid #93c5fd" }}>
-        <MDBox display="flex" justifyContent="space-between" alignItems="center" gap={1} flexWrap="wrap">
-          <MDTypography variant="h6" color="dark">Report — Pending Deliveries</MDTypography>
-          <MDBox display="flex" gap={1} alignItems="center" flexWrap="wrap">
-            <FormControl size="small" sx={{ minWidth: 190 }}>
-              <InputLabel id="report-route-label">Select Route</InputLabel>
-              <Select labelId="report-route-label" label="Select Route" value={routeId} disabled={saving || !routes.length}
-                onChange={(event) => selectRoute(event.target.value)} sx={{ height: 34, backgroundColor: "#fff" }}>
-                {routes.map((route) => <MenuItem key={route.id} value={String(route.id)}>{route.name} ({billsForRoute(route).length} bills)</MenuItem>)}
-              </Select>
-            </FormControl>
-            <MDButton size="small" color="info" variant="outlined" onClick={() => setViewOpen(true)}>View ({stagedIds.size})</MDButton>
-            <MDButton size="small" color="info" variant="gradient" disabled={saving || !chosen.length} onClick={() => { setError(""); setOpen(true); }}>Assign ({chosen.length})</MDButton>
-          </MDBox>
-        </MDBox>
-      </DialogTitle>
-      <DialogContent dividers sx={{ p: 0 }}>
-        <MDBox px={1} py={0.5} bgColor="#eff6ff">
-          <MDTypography variant="caption">All companies • Packed and returned bills awaiting delivery • {report.total} pending bills • {boxCount(pending)} boxes • {packetCount(pending)} packets</MDTypography>
-          {routeError && <MDTypography variant="caption" display="block" color="warning">{routeError}</MDTypography>}
-          {message && <MDTypography variant="caption" display="block" color="success">{message}</MDTypography>}
-          {error && <MDTypography variant="caption" display="block" color="error">{error}</MDTypography>}
-        </MDBox>
-        {!report.companyCount ? <MDBox p={3}><MDTypography variant="button">No delivery data available.</MDTypography></MDBox> : (
-          <TableContainer sx={{ maxHeight: "72vh" }}>
-            <Table size="small" aria-label="Pending delivery bills by company and area" sx={{ tableLayout: "fixed", width: 160 + (report.width - 1) * 95, borderCollapse: "collapse" }}>
-              <colgroup>
-                <col style={{ width: 160 }} />
-                {Array.from({ length: report.width - 1 }, (_, index) => <col key={index} style={{ width: 95 }} />)}
-              </colgroup>
-              <TableBody>
-                {report.rows.slice(0, report.rows.findIndex((row) => row.type === "spacer")).map(({ type, cells }, index) => (
-                  <TableRow key={index}>
-                    {(type === "section" || type === "spacer" ? [cells[0] || ""] : cells).map((value, column) => {
-                      const bills = typeof value === "number" ? cellBills(type, cells, column) : [];
-                      const selectedCount = bills.filter((row) => selected.includes(String(row.id))).length;
-                      return <TableCell key={column} colSpan={type === "section" ? 2 : type === "spacer" ? report.width : 1} sx={{
-                        px: 0.5, py: type === "spacer" ? 0.25 : 0.35, fontSize: "0.75rem", lineHeight: 1.2, color: "#172033",
-                        border: type === "spacer" ? 0 : "1px solid #cbd5e1",
-                        backgroundColor: selectedCount > 0 ? "#dcfce7" : `#${deliveryLogColors[type]}`,
-                        fontWeight: ["section", "header", "total"].includes(type) ? 700 : 400,
-                        textAlign: column === 0 ? "left" : "center", overflowWrap: "anywhere",
-                        ...(column === 0 && !["section", "spacer"].includes(type) ? { position: "sticky", left: 0, zIndex: 1, width: 160 } : {}),
-                      }}>{typeof value === "number" ? <MDBox><MDBox display="flex" alignItems="center" justifyContent="center" gap={0.25}>
-                        <Checkbox size="small" sx={{ p: 0, "& .MuiSvgIcon-root": { fontSize: 15 } }} disabled={saving || value === 0} checked={value > 0 && cellBills(type, cells, column).every((row) => selected.includes(String(row.id)))} indeterminate={cellBills(type, cells, column).some((row) => selected.includes(String(row.id))) && !cellBills(type, cells, column).every((row) => selected.includes(String(row.id)))} onChange={() => toggle(cellBills(type, cells, column))} inputProps={{ "aria-label": "Select bills: " + cells[0] + " / " + (report.rows[0].cells[column] || "Total") }} />{value}
-                        <Tooltip title="View and select bills"><span>
-                          <IconButton size="small" disabled={saving || value === 0}
-                            sx={{ p: 0.25 }} aria-label={`View bills: ${cells[0]} / ${report.rows[0].cells[column] || "Total"}`}
-                            onClick={() => setViewGroup({
-                              title: `${cells[0]} / ${report.rows[0].cells[column] || "Total"}`,
-                              ids: cellBills(type, cells, column).map((row) => String(row.id)),
-                            })}>
-                            <VisibilityIcon sx={{ fontSize: 16 }} />
-                          </IconButton>
-                        </span></Tooltip>
-                      </MDBox>
-                        {value > 0 && <PackBadges rows={bills} compact />}
-                        {selectedCount > 0 && <MDTypography component="span" sx={{ display: "block", color: "#166534", fontSize: "0.65rem", fontWeight: 700, whiteSpace: "nowrap", mt: 0.25 }}>
-                          {selectedCount}/{bills.length} selected
-                        </MDTypography>}
-                      </MDBox> : value}</TableCell>;
-                    })}
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </TableContainer>
+    <DashboardLayout>
+      <DashboardNavbar />
+      <div className="pb-8 font-[Poppins,Roboto,sans-serif] text-slate-700">
+        <PageHeader
+          title="Delivery Report"
+          description="Pending deliveries by company and area. Tick bills (or pick a route), Assign them to a delivery boy or company staff, then Submit from View."
+          actions={(
+            <>
+              <Field label="Route" width="w-56">
+                <select className={fieldClass} value={routeId} disabled={saving || !routes.length} onChange={(event) => selectRoute(event.target.value)}>
+                  <option value="" disabled>Select route</option>
+                  {routes.map((route) => <option key={route.id} value={String(route.id)}>{route.name} ({billsForRoute(route).length} bills)</option>)}
+                </select>
+              </Field>
+              <button type="button" className={btn.outline} onClick={() => setViewOpen(true)}>
+                <Icon name="visibility" className="text-[18px]" />View ({stagedIds.size})
+              </button>
+              <button type="button" className={btn.primary} disabled={saving || !chosen.length} onClick={() => { setError(""); setOpen(true); }}>
+                <Icon name="local_shipping" className="text-[18px]" />Assign ({chosen.length})
+              </button>
+            </>
+          )}
+        />
+
+        <div className="mb-4 flex flex-wrap gap-2">
+          <StatBox label="Pending bills" value={report.total} icon="receipt_long" />
+          <StatBox label="Boxes" value={boxCount(pending)} icon="inventory_2" />
+          <StatBox label="Packets" value={packetCount(pending)} icon="shopping_bag" />
+          <StatBox label="Selected" value={chosen.length} icon="check_box" />
+          <StatBox label="In drafts" value={stagedIds.size} icon="drafts" />
+        </div>
+
+        <div className="mb-4 space-y-2">
+          {routeError && <Notice tone="warning">{routeError}</Notice>}
+          {message && <Notice tone="success" onClose={() => setMessage("")}>{message}</Notice>}
+          {error && <Notice tone="error" onClose={() => setError("")}>{error}</Notice>}
+        </div>
+
+        <Card className="mb-6">
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 px-4 py-3">
+            <div>
+              <h3 className="m-0 text-[15px] font-semibold text-slate-900">Pending Deliveries by company and area</h3>
+              <p className="m-0 mt-0.5 text-[12.5px] text-slate-500">All companies • Packed and returned bills awaiting delivery. Tick a cell to select its bills; the eye opens them one by one.</p>
+            </div>
+            <span className="inline-flex items-center gap-1.5 text-[11.5px] text-slate-500"><span className="size-3 rounded bg-green-100 ring-1 ring-green-300" />Has selected bills</span>
+          </div>
+          {!report.companyCount ? <p className="m-0 px-4 py-14 text-center text-[13px] text-slate-400">No delivery data available.</p> : (
+            <div className="max-h-[72vh] overflow-auto">
+              <table aria-label="Pending delivery bills by company and area" className="table-fixed border-collapse" style={{ width: 160 + (report.width - 1) * 95 }}>
+                <colgroup>
+                  <col style={{ width: 160 }} />
+                  {Array.from({ length: report.width - 1 }, (_, index) => <col key={index} style={{ width: 95 }} />)}
+                </colgroup>
+                <tbody>
+                  {report.rows.slice(0, report.rows.findIndex((row) => row.type === "spacer")).map(({ type, cells }, index) => (
+                    // eslint-disable-next-line react/no-array-index-key
+                    <tr key={index}>
+                      {(type === "section" || type === "spacer" ? [cells[0] || ""] : cells).map((value, column) => {
+                        const bills = typeof value === "number" ? cellBills(type, cells, column) : [];
+                        const selectedCount = bills.filter((row) => selected.includes(String(row.id))).length;
+                        const where = `${cells[0]} / ${report.rows[0].cells[column] || "Total"}`;
+                        return (
+                          <td
+                            // eslint-disable-next-line react/no-array-index-key
+                            key={column}
+                            colSpan={type === "section" ? 2 : type === "spacer" ? report.width : 1}
+                            className={`px-1 text-[12px] leading-tight text-slate-800 [overflow-wrap:anywhere] ${type === "spacer" ? "border-0 py-0.5" : "border border-slate-300 py-1"} ${["section", "header", "total"].includes(type) ? "font-bold" : ""} ${column === 0 ? "text-left" : "text-center"} ${column === 0 && !["section", "spacer"].includes(type) ? "sticky left-0 z-[1] w-40" : ""}`}
+                            style={{ backgroundColor: selectedCount > 0 ? "#dcfce7" : `#${deliveryLogColors[type]}` }}
+                          >
+                            {typeof value === "number" ? (
+                              <div>
+                                <div className="flex items-center justify-center gap-1">
+                                  <TriCheck
+                                    disabled={saving || value === 0}
+                                    checked={value > 0 && bills.every(isIn)}
+                                    indeterminate={bills.some(isIn) && !bills.every(isIn)}
+                                    onChange={() => toggle(cellBills(type, cells, column))}
+                                    label={"Select bills: " + where}
+                                  />
+                                  <span className="font-semibold tabular-nums">{value}</span>
+                                  <button
+                                    type="button" disabled={saving || value === 0} title="View and select bills" aria-label={`View bills: ${where}`}
+                                    className="inline-flex size-5 items-center justify-center rounded text-slate-500 hover:bg-white/70 hover:text-blue-700 disabled:opacity-30"
+                                    onClick={() => setViewGroup({ title: where, ids: cellBills(type, cells, column).map((row) => String(row.id)) })}
+                                  >
+                                    <Icon name="visibility" className="text-[15px]" />
+                                  </button>
+                                </div>
+                                {value > 0 && <PackBadges rows={bills} compact />}
+                                {selectedCount > 0 && <span className="mt-0.5 block whitespace-nowrap text-[10px] font-bold text-green-800">{selectedCount}/{bills.length} selected</span>}
+                              </div>
+                            ) : value}
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </Card>
+
+        <div className="mb-3">
+          <Segmented
+            label="Report sections" value={historyTab} onChange={setHistoryTab}
+            options={[["assignments", "Date-wise Assigned Orders"], ["pending", "Pending Deliveries"], ["transfers", "Transfers"], ["download", "Download Report"]]}
+          />
+        </div>
+        {historyTab === "assignments" && <AssignmentHistory api={API} onViewBill={setViewBill} areaOrder={routeAreaOrder} boys={boys} />}
+        {historyTab === "pending" && <PendingDeliveries api={API} />}
+        {historyTab === "transfers" && <DeliveryTransfers api={API} />}
+        {historyTab === "download" && <DeliveryStatusReport api={API} />}
+      </div>
+      <Footer />
+
+      {/* Bills of one report cell: select them or move them to Suspense */}
+      <Modal
+        open={Boolean(viewGroup)} onClose={closeGroup} locked={saving} size="xl" title={`${viewGroup?.title || ""} — Pending bills`}
+        actions={(
+          <div className="flex w-full flex-wrap items-center gap-2">
+            <span className="mr-auto text-[12px] text-slate-500">
+              Selected here: <b className="text-slate-800">{groupSelectedCount} / {groupBills.length}</b> · Boxes: {boxCount(groupBills.filter(isIn))} / {boxCount(groupBills)} · Packets: {packetCount(groupBills.filter(isIn))} / {packetCount(groupBills)} · Total selected: <b className="text-slate-800">{chosen.length}</b> ({boxCount(chosen)} boxes, {packetCount(chosen)} packets)
+            </span>
+            <button type="button" className={`${btn.primary} bg-amber-500 hover:bg-amber-600`} disabled={saving || !groupSelectedCount || !suspenseReason.trim()} onClick={moveGroupToSuspense}>
+              <Icon name="pause_circle" className="text-[18px]" />{suspenseBusy ? "Moving…" : `Suspense (${groupSelectedCount})`}
+            </button>
+            <button type="button" className={btn.primary} disabled={saving} onClick={closeGroup}>Done</button>
+          </div>
         )}
-      </DialogContent>
-      <Dialog open={Boolean(viewGroup)} onClose={() => { if (!saving) { setViewGroup(null); setSuspenseFeedback(""); } }} fullWidth maxWidth="md">
-        <DialogTitle>{viewGroup?.title} — Pending bills</DialogTitle>
-        <DialogContent dividers>
-          <MDTypography variant="caption" display="block" mb={1}>Select bills, then click Done to choose more from another area or company. When finished, use the Assign button at the top of the report.</MDTypography>
-          <MDTypography variant="caption" display="block" mb={1}>Suspense moves only the selected bills in this window out of Pending Deliveries. A reason is required; unless you are admin, the request goes to admin and the bills move after approval.</MDTypography>
-          <MDInput label="Reason for Suspense" value={suspenseReason} onChange={(event) => setSuspenseReason(event.target.value)} fullWidth multiline minRows={1} inputProps={{ maxLength: 1000 }} disabled={saving} sx={{ mb: 1 }} />
-          {suspenseFeedback && <MDTypography role="status" variant="body2" mb={1}>{suspenseFeedback}</MDTypography>}
-          <TableContainer sx={{ maxHeight: "55vh" }}>
-            <Table size="small" stickyHeader sx={{ "& .MuiTableCell-root": { fontSize: "0.8125rem" } }}>
-              <TableHead sx={{ display: "table-header-group" }}><TableRow>
-                <TableCell padding="checkbox"><Checkbox size="small" disabled={saving || !groupBills.length}
-                  checked={groupBills.length > 0 && groupSelectedCount === groupBills.length}
-                  indeterminate={groupSelectedCount > 0 && groupSelectedCount < groupBills.length}
-                  onChange={() => toggle(groupBills)} inputProps={{ "aria-label": "Select all bills in this group" }} /></TableCell>
-                <TableCell>Invoice number</TableCell><TableCell>Outlet name</TableCell><TableCell>Area</TableCell><TableCell align="center">Boxes</TableCell><TableCell align="center">Packets</TableCell><TableCell align="right">Price</TableCell>
-              </TableRow></TableHead>
-              <TableBody>
-                {groupBills.map((row) => <TableRow key={row.id} selected={selected.includes(String(row.id))} hover>
-                  <TableCell padding="checkbox"><Checkbox size="small" disabled={saving}
-                    checked={selected.includes(String(row.id))} onChange={() => toggle([row])}
-                    inputProps={{ "aria-label": `Select invoice ${row.invoice_number || row.id}` }} /></TableCell>
-                  <TableCell>{row.invoice_number || "N/A"}</TableCell>
-                  <TableCell>{row.outlet_name || "Outlet not assigned"}</TableCell>
-                  <TableCell>{reportAreaName(row.location_name)}</TableCell>
-                  <TableCell align="center">{row.box_count ?? "—"}</TableCell>
-                  <TableCell align="center">{row.packet_count ?? "—"}</TableCell>
-                  <TableCell align="right" sx={{ whiteSpace: "nowrap" }}>Rs. {Number(row.price || 0).toFixed(2)}</TableCell>
-                </TableRow>)}
-                {!groupBills.length && <TableRow><TableCell colSpan={7}>No pending bills remain in this group.</TableCell></TableRow>}
-              </TableBody>
-            </Table>
-          </TableContainer>
-        </DialogContent>
-        <DialogActions sx={{ flexWrap: "wrap", gap: 1 }}>
-          <MDTypography variant="caption" sx={{ mr: "auto", pl: 1 }}>Selected here: {groupSelectedCount} / {groupBills.length} · Boxes: {boxCount(groupBills.filter((row) => selected.includes(String(row.id))))} / {boxCount(groupBills)} · Packets: {packetCount(groupBills.filter((row) => selected.includes(String(row.id))))} / {packetCount(groupBills)} · Total selected: {chosen.length} ({boxCount(chosen)} boxes, {packetCount(chosen)} packets)</MDTypography>
-          <MDButton color="warning" disabled={saving || !groupSelectedCount || !suspenseReason.trim()} onClick={moveGroupToSuspense}>
-            {suspenseBusy ? "Moving…" : `Suspense (${groupSelectedCount})`}
-          </MDButton>
-          <MDButton color="secondary" disabled={saving} onClick={() => { setViewGroup(null); setSuspenseFeedback(""); }}>Done</MDButton>
-        </DialogActions>
-      </Dialog>
-      <Dialog open={open} onClose={() => { if (!saving) setOpen(false); }} fullWidth maxWidth="sm">
-        <DialogTitle>Assign {chosen.length} bills</DialogTitle>
-        <DialogContent dividers><MDBox display="flex" flexDirection="column" gap={2}>
-          {error && <MDTypography variant="body2" color="error">{error}</MDTypography>}
-          <FormControl fullWidth>
-            <InputLabel id="report-assignee-type-label">Assign To</InputLabel>
-            <Select labelId="report-assignee-type-label" label="Assign To" value={assigneeType} disabled={saving} onChange={(event) => { setAssigneeType(event.target.value); setAssigneeCompany(""); setBoy(""); setError(""); }} sx={{ height: 44 }}>
-              <MenuItem value="delivery_boy">Delivery Boy</MenuItem>
-              <MenuItem value="marketing_staff">Marketing Staff</MenuItem>
-            </Select>
-          </FormControl>
-          {assigneeType === "marketing_staff" && <CompanyTypeSelect
-            id="report-assignee-company-type"
-            value={assigneeCompanyType}
-            disabled={saving}
-            required
-            onChange={(type) => {
-              setAssigneeCompanyType(type);
-              if (assigneeCompany && type && !companyMatchesType(assigneeCompany, type)) {
-                setAssigneeCompany("");
-                setBoy("");
-              }
-            }}
-          />}
-          {assigneeType === "marketing_staff" && <FormControl fullWidth disabled={!assigneeCompanyType}>
-            <InputLabel id="report-assignee-company-label">Company</InputLabel>
-            <Select labelId="report-assignee-company-label" label="Company" value={assigneeCompany} disabled={saving} onChange={(event) => { setAssigneeCompany(event.target.value); setBoy(""); }} sx={{ height: 44 }}>
-              {assigneeCompanies.map(([id, name]) => <MenuItem key={id} value={id}>{name}</MenuItem>)}
-              {!assigneeCompanies.length && <MenuItem disabled>No {assigneeCompanyType === "cnf" ? "CNF" : "Distributor"} companies with active marketing staff</MenuItem>}
-            </Select>
-          </FormControl>}
-          {(assigneeType === "delivery_boy" || (assigneeType === "marketing_staff" && assigneeCompany)) && <FormControl fullWidth>
-            <InputLabel id="report-boy-label">{assigneeType === "delivery_boy" ? "Delivery Boy" : "Staff Name"}</InputLabel>
-            <Select labelId="report-boy-label" label={assigneeType === "delivery_boy" ? "Delivery Boy" : "Staff Name"} value={boy} disabled={saving} onChange={(event) => setBoy(event.target.value)} sx={{ height: 44 }}>
-              {eligibleAssignees.map((person) => <MenuItem key={person.id} value={String(person.id)}>{person.name.replace(/ \(Company staff\)$/, "")}</MenuItem>)}
-              {!eligibleAssignees.length && <MenuItem disabled>No active staff available</MenuItem>}
-            </Select>
-          </FormControl>}
-          <MDInput type="date" label="Delivery Date" InputLabelProps={{ shrink: true }} value={date} disabled={saving} onChange={(event) => setDate(event.target.value)} />
-          <MDInput label="Vehicle Number" value={vehicle} disabled={saving} onChange={(event) => setVehicle(event.target.value)} />
-          <MDTypography variant="caption">This adds bills to your draft. Open View and Submit to send them to the assigned employee’s app. Drafts remain here until you leave or reload this page.</MDTypography>
-        </MDBox></DialogContent>
-        <DialogActions><MDButton color="secondary" disabled={saving} onClick={() => setOpen(false)}>Cancel</MDButton><MDButton color="info" variant="gradient" disabled={saving || !chosen.length} onClick={stage}>Add to View</MDButton></DialogActions>
-      </Dialog>
-      <Dialog open={viewOpen} onClose={() => { if (!saving) setViewOpen(false); }} fullWidth maxWidth="lg">
-        <DialogTitle>View Assignments</DialogTitle>
-        <DialogContent dividers>
-          {message && <MDTypography variant="body2" color="success">{message}</MDTypography>}
-          {error && <MDTypography variant="body2" color="error">{error}</MDTypography>}
-          <MDTypography variant="caption">All bills are selected by default. Unselect any bill you do not want to assign. Submit assigns only selected bills and returns unselected bills to Report. Use the eye icon to view bill details and items.</MDTypography>
-          <FormControlLabel label={`Select All (${selectedBillCount}/${stagedIds.size})`} control={<Checkbox
-            disabled={saving || !stagedIds.size}
-            checked={stagedIds.size > 0 && selectedBillCount === stagedIds.size}
+      >
+        <p className="m-0 mb-1 text-[12.5px] text-slate-600">Select bills, then click Done to choose more from another area or company. When finished, use the Assign button at the top of the report.</p>
+        <p className="m-0 mb-3 text-[12.5px] text-slate-600">Suspense moves only the selected bills in this window out of Pending Deliveries. A reason is required; unless you are admin, the request goes to admin and the bills move after approval.</p>
+        <label className="mb-3 flex flex-col gap-1">
+          <span className={label}>Reason for Suspense</span>
+          <textarea rows={1} maxLength={1000} disabled={saving} className={`${fieldClass} h-auto py-2`} value={suspenseReason} onChange={(event) => setSuspenseReason(event.target.value)} />
+        </label>
+        {suspenseFeedback && <p role="status" className="m-0 mb-3 rounded-lg bg-slate-50 px-3 py-2 text-[13px] text-slate-700">{suspenseFeedback}</p>}
+        <div className="max-h-[45vh] overflow-auto rounded-xl border border-slate-200">
+          <table className="w-full min-w-[700px] border-separate border-spacing-0">
+            <thead>
+              <tr>
+                <th className={`${head} w-10`}>
+                  <TriCheck
+                    disabled={saving || !groupBills.length} checked={groupBills.length > 0 && groupSelectedCount === groupBills.length}
+                    indeterminate={groupSelectedCount > 0 && groupSelectedCount < groupBills.length} onChange={() => toggle(groupBills)} label="Select all bills in this group"
+                  />
+                </th>
+                {["Invoice number", "Outlet name", "Area"].map((h) => <th key={h} className={head}>{h}</th>)}
+                <th className={`${head} text-center`}>Boxes</th>
+                <th className={`${head} text-center`}>Packets</th>
+                <th className={`${head} text-right`}>Price</th>
+              </tr>
+            </thead>
+            <tbody>
+              {groupBills.map((row) => (
+                <tr key={row.id} className={isIn(row) ? "bg-blue-50/60" : "hover:bg-slate-50"}>
+                  <td className={cell}><input type="checkbox" className="size-4 accent-blue-600" disabled={saving} checked={isIn(row)} onChange={() => toggle([row])} aria-label={`Select invoice ${row.invoice_number || row.id}`} /></td>
+                  <td className={`${cell} font-mono`}>{row.invoice_number || "N/A"}</td>
+                  <td className={`${cell} font-medium text-slate-800`}>{row.outlet_name || "Outlet not assigned"}</td>
+                  <td className={cell}>{reportAreaName(row.location_name)}</td>
+                  <td className={`${cell} text-center tabular-nums`}>{row.box_count ?? "—"}</td>
+                  <td className={`${cell} text-center tabular-nums`}>{row.packet_count ?? "—"}</td>
+                  <td className={`${cell} whitespace-nowrap text-right font-semibold tabular-nums`}>Rs. {Number(row.price || 0).toFixed(2)}</td>
+                </tr>
+              ))}
+              {!groupBills.length && <tr><td colSpan={7} className="px-4 py-8 text-center text-[13px] text-slate-400">No pending bills remain in this group.</td></tr>}
+            </tbody>
+          </table>
+        </div>
+      </Modal>
+
+      {/* Assign the selected bills (adds them to a draft) */}
+      <Modal
+        open={open} onClose={() => setOpen(false)} locked={saving} title={`Assign ${chosen.length} bills`}
+        actions={(
+          <>
+            <button type="button" className={btn.ghost} disabled={saving} onClick={() => setOpen(false)}>Cancel</button>
+            <button type="button" className={btn.primary} disabled={saving || !chosen.length} onClick={stage}>Add to View</button>
+          </>
+        )}
+      >
+        <div className="space-y-3">
+          {error && <Notice tone="error">{error}</Notice>}
+          <Field label="Assign to" width="w-full">
+            <select className={fieldClass} value={assigneeType} disabled={saving} onChange={(event) => { setAssigneeType(event.target.value); setAssigneeCompany(""); setBoy(""); setError(""); }}>
+              <option value="" disabled>Select</option>
+              <option value="delivery_boy">Delivery Boy</option>
+              <option value="marketing_staff">Marketing Staff</option>
+            </select>
+          </Field>
+          {assigneeType === "marketing_staff" && (
+            <Field label="Company type *" width="w-full">
+              <select
+                id="report-assignee-company-type" className={fieldClass} value={assigneeCompanyType} disabled={saving}
+                onChange={(event) => {
+                  const type = event.target.value;
+                  setAssigneeCompanyType(type);
+                  if (assigneeCompany && type && !companyMatchesType(assigneeCompany, type)) {
+                    setAssigneeCompany("");
+                    setBoy("");
+                  }
+                }}
+              >
+                <option value="">Select company type</option>
+                {COMPANY_TYPES.map((type) => <option key={type.value} value={type.value}>{type.label}</option>)}
+              </select>
+            </Field>
+          )}
+          {assigneeType === "marketing_staff" && (
+            <Field label="Company" width="w-full">
+              <select className={fieldClass} value={assigneeCompany} disabled={saving || !assigneeCompanyType} onChange={(event) => { setAssigneeCompany(event.target.value); setBoy(""); }}>
+                <option value="" disabled>Select company</option>
+                {assigneeCompanies.map(([id, name]) => <option key={id} value={id}>{name}</option>)}
+                {!assigneeCompanies.length && <option disabled>No {assigneeCompanyType === "cnf" ? "CNF" : "Distributor"} companies with active marketing staff</option>}
+              </select>
+            </Field>
+          )}
+          {(assigneeType === "delivery_boy" || (assigneeType === "marketing_staff" && assigneeCompany)) && (
+            <Field label={assigneeType === "delivery_boy" ? "Delivery boy" : "Staff name"} width="w-full">
+              <select className={fieldClass} value={boy} disabled={saving} onChange={(event) => setBoy(event.target.value)}>
+                <option value="" disabled>Select</option>
+                {eligibleAssignees.map((person) => <option key={person.id} value={String(person.id)}>{person.name.replace(/ \(Company staff\)$/, "")}</option>)}
+                {!eligibleAssignees.length && <option disabled>No active staff available</option>}
+              </select>
+            </Field>
+          )}
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Delivery date" width="w-full"><input type="date" className={fieldClass} value={date} disabled={saving} onChange={(event) => setDate(event.target.value)} /></Field>
+            <Field label="Vehicle number" width="w-full"><input className={fieldClass} value={vehicle} disabled={saving} onChange={(event) => setVehicle(event.target.value)} /></Field>
+          </div>
+          <p className="m-0 text-[12px] text-slate-500">This adds bills to your draft. Open View and Submit to send them to the assigned employee’s app. Drafts remain here until you leave or reload this page.</p>
+        </div>
+      </Modal>
+
+      {/* Draft assignments: review, untick, download PDF, submit */}
+      <Modal
+        open={viewOpen} onClose={() => setViewOpen(false)} locked={saving} size="xl" title="View Assignments"
+        actions={(
+          <div className="flex w-full flex-wrap items-center gap-2">
+            <span className="mr-auto text-[12.5px] text-slate-600">
+              Selected: <b>{selectedBillCount}</b> of {stagedIds.size} bills · {selectedDrafts.reduce((total, draft) => total + boxCount(draft.rows), 0)} boxes · {selectedDrafts.reduce((total, draft) => total + packetCount(draft.rows), 0)} packets
+            </span>
+            <button
+              type="button" className={btn.outline} disabled={saving || !selectedBillCount}
+              onClick={() => {
+                try { setError(""); printDeliveryAssignmentsPdf(selectedDrafts); }
+                catch (err) { setError(err.message); }
+              }}
+            >
+              <Icon name="picture_as_pdf" className="text-[18px]" />Download PDF
+            </button>
+            <button type="button" className={btn.ghost} disabled={saving} onClick={() => setViewOpen(false)}>Back</button>
+            <button type="button" className={btn.primary} disabled={saving || !selectedBillCount} onClick={submit}>{saving ? "Submitting…" : `Submit (${selectedBillCount})`}</button>
+          </div>
+        )}
+      >
+        <div className="mb-3 space-y-2">
+          {message && <Notice tone="success">{message}</Notice>}
+          {error && <Notice tone="error">{error}</Notice>}
+        </div>
+        <p className="m-0 mb-2 text-[12.5px] text-slate-600">All bills are selected by default. Unselect any bill you do not want to assign. Submit assigns only selected bills and returns unselected bills to Report. Use the eye icon to view bill details and items.</p>
+        <label className="mb-3 inline-flex items-center gap-2 text-[13px] font-semibold text-slate-700">
+          <TriCheck
+            disabled={saving || !stagedIds.size} checked={stagedIds.size > 0 && selectedBillCount === stagedIds.size}
             indeterminate={selectedBillCount > 0 && selectedBillCount < stagedIds.size}
-            onChange={(_, checked) => setRemoveIds(checked ? [] : [...stagedIds])}
-          />} />
-          {!drafts.length && <MDTypography variant="body2" py={2}>No draft assignments. Select bills in Report and click Assign.</MDTypography>}
-          <MDBox display="flex" sx={{ overflowX: "auto", mt: 1, alignItems: "stretch" }}>
-            {draftBoys.map((boyId) => {
-              const batches = drafts.filter((draft) => draft.boy === boyId);
-              return <MDBox key={boyId} sx={{ minWidth: 260, flex: "1 0 260px", border: "1px solid #cbd5e1", display: "flex", flexDirection: "column" }}>
-                <MDTypography variant="h6" sx={{ backgroundColor: "#16dfe3", p: 1 }}>{batches[0].name}</MDTypography>
+            onChange={(event) => setRemoveIds(event.target.checked ? [] : [...stagedIds])} label="Select all draft bills"
+          />
+          Select all ({selectedBillCount}/{stagedIds.size})
+        </label>
+        {!drafts.length && <p className="m-0 py-8 text-center text-[13px] text-slate-400">No draft assignments. Select bills in Report and click Assign.</p>}
+        <div className="flex items-stretch gap-3 overflow-x-auto pb-1">
+          {draftBoys.map((boyId) => {
+            const batches = drafts.filter((draft) => draft.boy === boyId);
+            const kept = (rows) => rows.filter((row) => !removeIds.includes(String(row.id)));
+            return (
+              <div key={boyId} className="flex min-w-[280px] flex-[1_0_280px] flex-col overflow-hidden rounded-xl border border-slate-200">
+                <h4 className="m-0 flex items-center gap-2 bg-cyan-50 px-3 py-2 text-[13.5px] font-semibold text-cyan-900">
+                  <Icon name="person" className="text-[18px]" />{batches[0].name}
+                </h4>
                 {batches.map((draft) => {
                   const groups = new Map();
                   draft.rows.forEach((row) => {
@@ -412,62 +520,57 @@ export default function DeliveryReport() {
                     const group = groups.get(key) || { company, area, count: 0, ids: [], rows: [] };
                     group.count += 1; group.ids.push(String(row.id)); group.rows.push(row); groups.set(key, group);
                   });
-                  return <MDBox key={draft.id} p={1} sx={{ borderBottom: "1px solid #cbd5e1" }}>
-                    <MDTypography variant="caption" display="block">Date: {draft.date} · Vehicle: {draft.vehicle}</MDTypography>
-                    {[...groups.entries()].map(([key, group]) => <MDBox key={key} py={0.5}>
-                      <MDBox display="flex" justifyContent="space-between" gap={1}>
-                      <Checkbox size="small" disabled={saving}
-                        checked={group.ids.every((id) => !removeIds.includes(id))}
-                        indeterminate={group.ids.some((id) => removeIds.includes(id)) && !group.ids.every((id) => removeIds.includes(id))}
-                        onChange={() => toggleDraftArea(group.ids)}
-                        inputProps={{ "aria-label": "Select " + group.area + " / " + group.company + " for " + draft.name + " on " + draft.date }} />
-                      <MDBox><MDTypography variant="button" display="block">{group.area}</MDTypography><MDTypography variant="caption">{group.company}</MDTypography></MDBox>
-                      <MDBox textAlign="right"><MDTypography variant="button" display="block" sx={{ whiteSpace: "nowrap" }}>{group.ids.filter((id) => !removeIds.includes(id)).length}/{group.count} bills</MDTypography>
-                      <PackBadges rows={group.rows.filter((row) => !removeIds.includes(String(row.id)))} /></MDBox>
-                      </MDBox>
-                      {group.rows.map((row) => <MDBox key={row.id} display="flex" alignItems="center" gap={0.5} pl={2} py={0.25}>
-                        <Checkbox size="small" disabled={saving} checked={!removeIds.includes(String(row.id))}
-                          onChange={() => toggleDraftArea([String(row.id)])}
-                          inputProps={{ "aria-label": "Assign bill " + (row.invoice_number || row.id) }} />
-                        <MDBox sx={{ flex: 1 }}>
-                          <MDTypography variant="caption" display="block">Bill: {row.invoice_number || row.id}</MDTypography>
-                          <MDTypography variant="caption" display="block">{row.outlet_name || "Outlet not assigned"}</MDTypography>
-                        </MDBox>
-                        <MDTypography variant="caption" sx={{ whiteSpace: "nowrap" }}>{row.box_count ?? 0} box · {row.packet_count ?? 0} pkt</MDTypography>
-                        <Tooltip title="View bill details"><IconButton size="small" aria-label={"View bill " + (row.invoice_number || row.id)} onClick={() => setViewBill({ row, draft })}><VisibilityIcon fontSize="small" /></IconButton></Tooltip>
-                      </MDBox>)}
-                    </MDBox>)}
-                    <MDButton size="small" color="error" disabled={saving || !draft.rows.some((row) => removeIds.includes(String(row.id)))} onClick={() => removeSelectedAreas(draft.id)}>Remove unselected bills</MDButton>
-                  </MDBox>;
+                  return (
+                    <div key={draft.id} className="border-b border-slate-100 p-3">
+                      <p className="m-0 mb-2 text-[11.5px] text-slate-500">Date: <b className="text-slate-700">{draft.date}</b> · Vehicle: <b className="text-slate-700">{draft.vehicle}</b></p>
+                      {[...groups.entries()].map(([key, group]) => (
+                        <div key={key} className="py-1">
+                          <div className="flex items-start gap-2">
+                            <TriCheck
+                              disabled={saving} checked={group.ids.every((id) => !removeIds.includes(id))}
+                              indeterminate={group.ids.some((id) => removeIds.includes(id)) && !group.ids.every((id) => removeIds.includes(id))}
+                              onChange={() => toggleDraftArea(group.ids)} label={"Select " + group.area + " / " + group.company + " for " + draft.name + " on " + draft.date}
+                            />
+                            <span className="min-w-0 grow">
+                              <span className="block text-[13px] font-semibold text-slate-900">{group.area}</span>
+                              <span className="block text-[11.5px] text-slate-500">{group.company}</span>
+                            </span>
+                            <span className="text-right">
+                              <span className="block whitespace-nowrap text-[12px] font-semibold text-slate-700">{group.ids.filter((id) => !removeIds.includes(id)).length}/{group.count} bills</span>
+                              <PackBadges rows={kept(group.rows)} />
+                            </span>
+                          </div>
+                          {group.rows.map((row) => (
+                            <div key={row.id} className="flex items-center gap-2 py-1 pl-6">
+                              <input type="checkbox" className="size-4 accent-blue-600" disabled={saving} checked={!removeIds.includes(String(row.id))} onChange={() => toggleDraftArea([String(row.id)])} aria-label={"Assign bill " + (row.invoice_number || row.id)} />
+                              <span className="min-w-0 grow text-[11.5px] leading-tight">
+                                <span className="block font-mono text-slate-700">Bill: {row.invoice_number || row.id}</span>
+                                <span className="block truncate text-slate-500">{row.outlet_name || "Outlet not assigned"}</span>
+                              </span>
+                              <span className="whitespace-nowrap text-[11px] text-slate-500">{row.box_count ?? 0} box · {row.packet_count ?? 0} pkt</span>
+                              <button type="button" className={`${btn.icon} size-7 hover:text-blue-700`} title="View bill details" aria-label={"View bill " + (row.invoice_number || row.id)} onClick={() => setViewBill({ row, draft })}>
+                                <Icon name="visibility" className="text-[17px]" />
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      ))}
+                      <button type="button" className={`${btn.outline} mt-2 h-8 px-3 text-red-600`} disabled={saving || !draft.rows.some((row) => removeIds.includes(String(row.id)))} onClick={() => removeSelectedAreas(draft.id)}>
+                        <Icon name="remove_circle_outline" className="text-[16px]" />Remove unselected bills
+                      </button>
+                    </div>
+                  );
                 })}
-                <MDTypography variant="button" sx={{ mt: "auto", p: 1, backgroundColor: "#fef3c7", fontWeight: 700 }}>Selected: {batches.reduce((total, draft) => total + draft.rows.filter((row) => !removeIds.includes(String(row.id))).length, 0)} bills · {batches.reduce((total, draft) => total + boxCount(draft.rows.filter((row) => !removeIds.includes(String(row.id)))), 0)} boxes · {batches.reduce((total, draft) => total + packetCount(draft.rows.filter((row) => !removeIds.includes(String(row.id)))), 0)} packets</MDTypography>
-              </MDBox>;
-            })}
-          </MDBox>
-        </DialogContent>
-        <DialogActions>
-          <MDTypography variant="button" sx={{ mr: "auto", pl: 1 }}>Selected: {selectedBillCount} of {stagedIds.size} bills · {selectedDrafts.reduce((total, draft) => total + boxCount(draft.rows), 0)} boxes · {selectedDrafts.reduce((total, draft) => total + packetCount(draft.rows), 0)} packets</MDTypography>
-          <MDButton color="info" variant="outlined" disabled={saving || !selectedBillCount} onClick={() => {
-            try { setError(""); printDeliveryAssignmentsPdf(selectedDrafts); }
-            catch (err) { setError(err.message); }
-          }}>Download PDF</MDButton>
-          <MDButton color="secondary" disabled={saving} onClick={() => setViewOpen(false)}>Back</MDButton>
-          <MDButton color="info" variant="gradient" disabled={saving || !selectedBillCount} onClick={submit}>{saving ? "Submitting…" : `Submit (${selectedBillCount})`}</MDButton>
-        </DialogActions>
-      </Dialog>
-      <MDBox mt={3} sx={{ borderBottom: "1px solid #cbd5e1" }}>
-        <Tabs value={historyTab} onChange={(_, value) => setHistoryTab(value)} sx={{ maxWidth: 900 }}>
-          <Tab value="assignments" label="Date-wise Assigned Orders" />
-          <Tab value="pending" label="Pending Deliveries" />
-          <Tab value="transfers" label="Transfers" />
-          <Tab value="download" label="Download Report" />
-        </Tabs>
-      </MDBox>
-      {historyTab === "assignments" && <AssignmentHistory api={API} onViewBill={setViewBill} areaOrder={routeAreaOrder} boys={boys} />}
-      {historyTab === "pending" && <PendingDeliveries api={API} />}
-      {historyTab === "transfers" && <DeliveryTransfers api={API} />}
-      {historyTab === "download" && <DeliveryStatusReport api={API} />}
+                <p className="m-0 mt-auto bg-amber-50 px-3 py-2 text-[12px] font-bold text-amber-900">
+                  Selected: {batches.reduce((total, draft) => total + kept(draft.rows).length, 0)} bills · {batches.reduce((total, draft) => total + boxCount(kept(draft.rows)), 0)} boxes · {batches.reduce((total, draft) => total + packetCount(kept(draft.rows)), 0)} packets
+                </p>
+              </div>
+            );
+          })}
+        </div>
+      </Modal>
+
       <BillDetailsDialog bill={viewBill} onClose={() => setViewBill(null)} api={API} />
-    </MDBox><Footer /></DashboardLayout>
+    </DashboardLayout>
   );
 }

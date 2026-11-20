@@ -1,24 +1,7 @@
+// Every invoice of one outlet, with totals (Invoice Lookup): Tailwind CSS (no MUI). Loading and expand logic unchanged.
 import { Fragment, useEffect, useState } from "react";
-import Card from "@mui/material/Card";
-import Icon from "@mui/material/Icon";
-import {
-  Chip,
-  Collapse,
-  Grid,
-  IconButton,
-  LinearProgress,
-  Table,
-  TableBody,
-  TableCell,
-  TableContainer,
-  TableHead,
-  TableRow,
-  ToggleButton,
-  ToggleButtonGroup,
-} from "@mui/material";
-
-import MDBox from "components/MDBox";
-import MDTypography from "components/MDTypography";
+import PropTypes from "prop-types";
+import { Badge, Card, Icon } from "components/tw";
 
 import InvoiceDetails from "./InvoiceDetails";
 import {
@@ -26,42 +9,38 @@ import {
   PAYMENT_LABELS,
   STATUS_COLORS,
   STATUS_LABELS,
-  TABLE_HEAD_SX,
   fetchJson,
   formatCurrency,
   formatDate,
 } from "../format";
 
+// format.js status colours (MUI names) -> Badge tones.
+const TONE = { default: "slate", warning: "amber", info: "blue", primary: "violet", success: "green", error: "red", secondary: "slate" };
+
 const COLUMN_COUNT = 11;
 
-function SummaryTile({ label, value, color }) {
+function SummaryTile({ label, value, tone }) {
   return (
-    <Grid item xs={6} sm={4} md={2.4}>
-      <MDBox p={1.5} borderRadius="lg" sx={{ border: "1px solid", borderColor: "grey.300", height: "100%" }}>
-        <MDTypography variant="caption" color="text" fontWeight="medium" display="block">
-          {label}
-        </MDTypography>
-        <MDTypography variant="h6" fontWeight="bold" sx={{ color }}>
-          {value}
-        </MDTypography>
-      </MDBox>
-    </Grid>
+    <div className="rounded-xl border border-slate-200 bg-white px-3.5 py-2.5">
+      <span className="block text-[11px] font-semibold uppercase tracking-wide text-slate-500">{label}</span>
+      <span className={`block text-[18px] font-bold tabular-nums ${tone || "text-slate-900"}`}>{value}</span>
+    </div>
   );
 }
+SummaryTile.propTypes = { label: PropTypes.string.isRequired, value: PropTypes.node.isRequired, tone: PropTypes.string };
+SummaryTile.defaultProps = { tone: "" };
 
 function ExpandedInvoice({ entry }) {
   if (!entry || entry.loading) {
-    return <LinearProgress sx={{ my: 2 }} />;
+    return <div className="my-3 h-1 overflow-hidden rounded bg-blue-100"><div className="h-full w-1/3 animate-pulse bg-blue-600" /></div>;
   }
   if (entry.error) {
-    return (
-      <MDTypography variant="button" color="error" display="block" py={2}>
-        {entry.error}
-      </MDTypography>
-    );
+    return <p className="m-0 py-3 text-[13px] font-medium text-red-700">{entry.error}</p>;
   }
   return <InvoiceDetails details={entry.data} embedded />;
 }
+ExpandedInvoice.propTypes = { entry: PropTypes.object };
+ExpandedInvoice.defaultProps = { entry: null };
 
 // Every invoice of one outlet (all counters sharing its ERP ID), with totals.
 // Full invoice details are loaded only when a row is opened.
@@ -124,27 +103,22 @@ function OutletHistory({ outletKey, currentSaleId = null }) {
 
   if (loading) {
     return (
-      <Card sx={{ p: 3, mt: 3 }}>
-        <MDTypography variant="button" color="text" display="block" mb={1}>
-          Loading outlet invoices...
-        </MDTypography>
-        <LinearProgress />
+      <Card className="mb-5">
+        <div className="px-5 py-4">
+          <p className="m-0 mb-2 text-[13px] text-slate-500">Loading outlet invoices...</p>
+          <div className="h-1 overflow-hidden rounded bg-blue-100"><div className="h-full w-1/3 animate-pulse bg-blue-600" /></div>
+        </div>
       </Card>
     );
   }
   if (error) {
-    return (
-      <Card sx={{ p: 3, mt: 3 }}>
-        <MDTypography variant="button" color="error">
-          {error}
-        </MDTypography>
-      </Card>
-    );
+    return <Card className="mb-5"><p className="m-0 px-5 py-4 text-[13px] font-medium text-red-700">{error}</p></Card>;
   }
   if (!data) return null;
 
   const { outlet, invoices, summary } = data;
-  const names = outlet.outlet_names.split(" | ");
+  // outlet_names can be empty for outlets saved without a name.
+  const names = String(outlet.outlet_names || "").split(" | ").filter(Boolean);
   const isUnpaid = (invoice) => invoice.packaging_status !== "cancelled" && Number(invoice.balance_amount) > 0;
   const visibleInvoices = invoices.filter((invoice) => {
     if (filter === "unpaid") return isUnpaid(invoice);
@@ -153,24 +127,16 @@ function OutletHistory({ outletKey, currentSaleId = null }) {
   });
 
   return (
-    <Card sx={{ p: 3, mt: 3 }}>
-      <MDBox display="flex" alignItems="flex-start" gap={1.5} mb={2}>
-        <Icon fontSize="large" color="info" sx={{ mt: 0.5 }}>
-          storefront
-        </Icon>
-        <MDBox flex={1} minWidth={0}>
-          <MDBox display="flex" alignItems="center" gap={1} flexWrap="wrap">
-            <MDTypography variant="h5" fontWeight="bold">
-              {names[0]}
-            </MDTypography>
-            <Chip size="small" variant="outlined" label={`ERP ${outlet.outlet_erp_id}`} sx={{ fontFamily: "monospace" }} />
-          </MDBox>
-          {names.length > 1 && (
-            <MDTypography variant="caption" color="text" display="block">
-              Also saved as: {names.slice(1).join(", ")}
-            </MDTypography>
-          )}
-          <MDTypography variant="button" color="text" display="block" mt={0.5}>
+    <Card className="mb-5">
+      <div className="flex items-start gap-3 border-b border-slate-100 px-5 py-4">
+        <span className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-600"><Icon name="storefront" className="text-[24px]" /></span>
+        <div className="min-w-0 grow">
+          <div className="flex flex-wrap items-center gap-2">
+            <h3 className="m-0 text-[17px] font-bold text-slate-900">{names[0] || "Unnamed outlet"}</h3>
+            <span className="rounded-md border border-slate-200 px-1.5 py-0.5 font-mono text-[11.5px] text-slate-600">ERP {outlet.outlet_erp_id}</span>
+          </div>
+          {names.length > 1 && <p className="m-0 text-[12px] text-slate-500">Also saved as: {names.slice(1).join(", ")}</p>}
+          <p className="m-0 mt-1 text-[12.5px] text-slate-600">
             {[
               outlet.locations && `Area: ${outlet.locations}`,
               outlet.staff_names && `Staff: ${outlet.staff_names}`,
@@ -179,60 +145,55 @@ function OutletHistory({ outletKey, currentSaleId = null }) {
             ]
               .filter(Boolean)
               .join("  ·  ")}
-          </MDTypography>
-        </MDBox>
-      </MDBox>
+          </p>
+        </div>
+      </div>
 
-      <Grid container spacing={1.5} mb={3}>
-        <SummaryTile label="Total Bills" value={summary.invoiceCount} />
-        <SummaryTile label="Total Billed" value={formatCurrency(summary.billed)} />
-        <SummaryTile label="Total Paid" value={formatCurrency(summary.paid)} color="#15803d" />
-        <SummaryTile
-          label="Outstanding"
-          value={formatCurrency(summary.outstanding)}
-          color={summary.outstanding > 0 ? "#b91c1c" : "#15803d"}
-        />
-        <SummaryTile label="Unpaid Bills" value={summary.unpaidCount} color={summary.unpaidCount ? "#b91c1c" : undefined} />
-      </Grid>
+      <div className="grid grid-cols-2 gap-3 px-5 py-4 sm:grid-cols-3 lg:grid-cols-5">
+        <SummaryTile label="Total bills" value={summary.invoiceCount} />
+        <SummaryTile label="Total billed" value={formatCurrency(summary.billed)} />
+        <SummaryTile label="Total paid" value={formatCurrency(summary.paid)} tone="text-emerald-700" />
+        <SummaryTile label="Outstanding" value={formatCurrency(summary.outstanding)} tone={summary.outstanding > 0 ? "text-red-700" : "text-emerald-700"} />
+        <SummaryTile label="Unpaid bills" value={summary.unpaidCount} tone={summary.unpaidCount ? "text-red-700" : ""} />
+      </div>
 
-      <MDBox display="flex" justifyContent="space-between" alignItems="center" flexWrap="wrap" gap={1} mb={1.5}>
-        <MDTypography variant="h6" fontWeight="medium">
-          {currentSaleId ? "All Invoices of this Outlet" : "Invoices"}
-        </MDTypography>
-        <ToggleButtonGroup size="small" exclusive value={filter} onChange={(_, value) => value && setFilter(value)}>
-          <ToggleButton value="all">All ({invoices.length})</ToggleButton>
-          <ToggleButton value="unpaid">Unpaid ({summary.unpaidCount})</ToggleButton>
-          <ToggleButton value="paid">Paid</ToggleButton>
-        </ToggleButtonGroup>
-      </MDBox>
-      <MDTypography variant="caption" color="text" display="block" mb={1}>
-        Click a row to see its full journey and payment history.
-        {summary.cancelledCount > 0 && ` Cancelled bills (${summary.cancelledCount}) are not counted in the totals.`}
-      </MDTypography>
+      <div className="flex flex-wrap items-center justify-between gap-2 border-t border-slate-100 px-5 py-3">
+        <div>
+          <h4 className="m-0 text-[14px] font-semibold text-slate-900">{currentSaleId ? "All Invoices of this Outlet" : "Invoices"}</h4>
+          <p className="m-0 text-[12px] text-slate-500">
+            Click a row to see its full journey and payment history.
+            {summary.cancelledCount > 0 && ` Cancelled bills (${summary.cancelledCount}) are not counted in the totals.`}
+          </p>
+        </div>
+        <div className="inline-flex gap-1 rounded-xl bg-slate-100 p-1" role="tablist" aria-label="Invoice filter">
+          {[["all", `All (${invoices.length})`], ["unpaid", `Unpaid (${summary.unpaidCount})`], ["paid", "Paid"]].map(([value, text]) => (
+            <button
+              key={value} type="button" role="tab" aria-selected={filter === value} onClick={() => setFilter(value)}
+              className={`rounded-lg px-3 py-1.5 text-[12.5px] font-semibold transition ${filter === value ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-800"}`}
+            >
+              {text}
+            </button>
+          ))}
+        </div>
+      </div>
 
       {visibleInvoices.length === 0 ? (
-        <MDTypography variant="button" color="text">
-          No invoices to show.
-        </MDTypography>
+        <p className="m-0 px-5 py-10 text-center text-[13px] text-slate-400">No invoices to show.</p>
       ) : (
-        <TableContainer sx={{ boxShadow: "none", border: "1px solid", borderColor: "grey.300" }}>
-          <Table size="small">
-            <TableHead sx={TABLE_HEAD_SX}>
-              <TableRow>
-                <TableCell />
-                <TableCell>Date</TableCell>
-                <TableCell>Invoice No</TableCell>
-                <TableCell>Company</TableCell>
-                <TableCell>Staff</TableCell>
-                <TableCell>Status</TableCell>
-                <TableCell align="right">Bill</TableCell>
-                <TableCell align="right">Paid</TableCell>
-                <TableCell align="right">Balance</TableCell>
-                <TableCell>Last Payment</TableCell>
-                <TableCell>Mode</TableCell>
-              </TableRow>
-            </TableHead>
-            <TableBody>
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[1000px] border-collapse">
+            <thead>
+              <tr>
+                <th className="whitespace-nowrap bg-slate-50 px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500 w-12" />
+                {["Date", "Invoice no", "Company", "Staff", "Status"].map((h) => <th key={h} className="whitespace-nowrap bg-slate-50 px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500">{h}</th>)}
+                <th className="whitespace-nowrap bg-slate-50 px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500 text-right">Bill</th>
+                <th className="whitespace-nowrap bg-slate-50 px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500 text-right">Paid</th>
+                <th className="whitespace-nowrap bg-slate-50 px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500 text-right">Balance</th>
+                <th className="whitespace-nowrap bg-slate-50 px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500">Last payment</th>
+                <th className="whitespace-nowrap bg-slate-50 px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500">Mode</th>
+              </tr>
+            </thead>
+            <tbody>
               {visibleInvoices.map((invoice) => {
                 const isCurrent = Number(invoice.id) === Number(currentSaleId);
                 const isOpen = expanded.has(invoice.id);
@@ -241,82 +202,55 @@ function OutletHistory({ outletKey, currentSaleId = null }) {
                 const cancelled = invoice.packaging_status === "cancelled";
                 return (
                   <Fragment key={invoice.id}>
-                    <TableRow
-                      hover={!isCurrent}
+                    <tr
                       onClick={isCurrent ? undefined : () => toggleRow(invoice.id)}
-                      sx={{
-                        cursor: isCurrent ? "default" : "pointer",
-                        backgroundColor: isCurrent ? "rgba(26, 115, 232, 0.08)" : undefined,
-                        opacity: cancelled ? 0.6 : 1,
-                        "& > td": { borderBottom: isOpen ? "none" : undefined },
-                      }}
+                      className={`${isCurrent ? "bg-blue-50" : "cursor-pointer hover:bg-slate-50"} ${cancelled ? "opacity-60" : ""}`}
                     >
-                      <TableCell padding="checkbox">
-                        {isCurrent ? (
-                          <Chip size="small" color="info" label="Viewing" />
-                        ) : (
-                          <IconButton size="small" aria-label={isOpen ? "Hide invoice" : "Show invoice"}>
-                            <Icon>{isOpen ? "keyboard_arrow_up" : "keyboard_arrow_down"}</Icon>
-                          </IconButton>
+                      <td className="border-t border-slate-100 px-3 py-2.5 align-top text-[12.5px] text-slate-700">
+                        {isCurrent ? <Badge tone="blue">Viewing</Badge> : (
+                          <span aria-label={isOpen ? "Hide invoice" : "Show invoice"} className="inline-flex size-7 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100">
+                            <Icon name={isOpen ? "keyboard_arrow_up" : "keyboard_arrow_down"} className="text-[20px]" />
+                          </span>
                         )}
-                      </TableCell>
-                      <TableCell sx={{ whiteSpace: "nowrap" }}>{formatDate(invoice.sale_date)}</TableCell>
-                      <TableCell sx={{ fontWeight: 600, whiteSpace: "nowrap" }}>{invoice.invoice_number}</TableCell>
-                      <TableCell>{invoice.company_name || "—"}</TableCell>
-                      <TableCell>{invoice.staff_name || "—"}</TableCell>
-                      <TableCell>
-                        <Chip
-                          size="small"
-                          variant="outlined"
-                          color={STATUS_COLORS[invoice.packaging_status] || "default"}
-                          label={STATUS_LABELS[invoice.packaging_status] || invoice.packaging_status}
-                        />
-                      </TableCell>
-                      <TableCell align="right" sx={{ whiteSpace: "nowrap" }}>
-                        {formatCurrency(paid + balance)}
-                      </TableCell>
-                      <TableCell align="right" sx={{ whiteSpace: "nowrap", color: "#15803d" }}>
-                        {formatCurrency(paid)}
-                      </TableCell>
-                      <TableCell
-                        align="right"
-                        sx={{ fontWeight: 700, whiteSpace: "nowrap", color: balance > 0 && !cancelled ? "#b91c1c" : "#15803d" }}
-                      >
-                        {formatCurrency(balance)}
-                      </TableCell>
-                      <TableCell sx={{ whiteSpace: "nowrap" }}>
+                      </td>
+                      <td className="border-t border-slate-100 px-3 py-2.5 align-top text-[12.5px] text-slate-700 whitespace-nowrap">{formatDate(invoice.sale_date)}</td>
+                      <td className="border-t border-slate-100 px-3 py-2.5 align-top text-[12.5px] text-slate-700 whitespace-nowrap font-mono font-semibold text-slate-900">{invoice.invoice_number}</td>
+                      <td className="border-t border-slate-100 px-3 py-2.5 align-top text-[12.5px] text-slate-700">{invoice.company_name || "—"}</td>
+                      <td className="border-t border-slate-100 px-3 py-2.5 align-top text-[12.5px] text-slate-700">{invoice.staff_name || "—"}</td>
+                      <td className="border-t border-slate-100 px-3 py-2.5 align-top text-[12.5px] text-slate-700"><Badge tone={TONE[STATUS_COLORS[invoice.packaging_status]] || "slate"}>{STATUS_LABELS[invoice.packaging_status] || invoice.packaging_status}</Badge></td>
+                      <td className="border-t border-slate-100 px-3 py-2.5 align-top text-[12.5px] text-slate-700 whitespace-nowrap text-right tabular-nums">{formatCurrency(paid + balance)}</td>
+                      <td className="border-t border-slate-100 px-3 py-2.5 align-top text-[12.5px] text-slate-700 whitespace-nowrap text-right tabular-nums text-emerald-700">{formatCurrency(paid)}</td>
+                      <td className={`border-t border-slate-100 px-3 py-2.5 align-top text-[12.5px] text-slate-700 whitespace-nowrap text-right font-bold tabular-nums ${balance > 0 && !cancelled ? "text-red-700" : "text-emerald-700"}`}>{formatCurrency(balance)}</td>
+                      <td className="border-t border-slate-100 px-3 py-2.5 align-top text-[12.5px] text-slate-700 whitespace-nowrap">
                         {invoice.last_payment_date ? formatDate(invoice.last_payment_date) : "—"}
                         {Number(invoice.payment_count) > 0 && (
-                          <MDTypography variant="caption" color="text" display="block">
-                            {invoice.payment_count} entr{Number(invoice.payment_count) === 1 ? "y" : "ies"}
-                          </MDTypography>
+                          <span className="block text-[11px] text-slate-500">{invoice.payment_count} entr{Number(invoice.payment_count) === 1 ? "y" : "ies"}</span>
                         )}
-                      </TableCell>
-                      <TableCell>
+                      </td>
+                      <td className="border-t border-slate-100 px-3 py-2.5 align-top text-[12.5px] text-slate-700">
                         {PAYMENT_LABELS[invoice.payment_mode] || invoice.payment_mode || "—"}
                         {invoice.credit_days ? ` · ${invoice.credit_days}d` : ""}
-                      </TableCell>
-                    </TableRow>
-                    {!isCurrent && (
-                      <TableRow>
-                        <TableCell colSpan={COLUMN_COUNT} sx={{ p: 0, borderBottom: isOpen ? undefined : "none" }}>
-                          <Collapse in={isOpen} timeout="auto" unmountOnExit>
-                            <MDBox px={2} pt={2} pb={0.5} sx={{ backgroundColor: "grey.100" }}>
-                              <ExpandedInvoice entry={details[invoice.id]} />
-                            </MDBox>
-                          </Collapse>
-                        </TableCell>
-                      </TableRow>
+                      </td>
+                    </tr>
+                    {!isCurrent && isOpen && (
+                      <tr>
+                        <td colSpan={COLUMN_COUNT} className="border-t border-slate-100 bg-slate-50 px-4 pb-1 pt-4">
+                          <ExpandedInvoice entry={details[invoice.id]} />
+                        </td>
+                      </tr>
                     )}
                   </Fragment>
                 );
               })}
-            </TableBody>
-          </Table>
-        </TableContainer>
+            </tbody>
+          </table>
+        </div>
       )}
     </Card>
   );
 }
+
+OutletHistory.propTypes = { outletKey: PropTypes.string.isRequired, currentSaleId: PropTypes.oneOfType([PropTypes.number, PropTypes.string]) };
+OutletHistory.defaultProps = { currentSaleId: null };
 
 export default OutletHistory;

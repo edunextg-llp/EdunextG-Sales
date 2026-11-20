@@ -12,15 +12,6 @@ import { useAuth } from "context/AuthContext";
 export const SIDEBAR_WIDTH = 260;
 export const SIDEBAR_MINI_WIDTH = 80;
 
-const ROLE_LABELS = {
-  admin: "Administrator",
-  staff: "Marketing Staff",
-  packaging_staff: "Packaging Staff",
-  delivery_boy: "Delivery",
-  bawarchee_staff: "Bawarchee Staff",
-  distributor: "Distributor",
-};
-
 // Route icons are <Icon>name</Icon> elements: draw the same Material icon without MUI.
 function MenuIcon({ icon, className }) {
   const name = typeof icon === "string" ? icon : typeof icon?.props?.children === "string" ? icon.props.children : null;
@@ -97,7 +88,7 @@ function Sidenav({ color, brand, brandName, routes, ...rest }) {
   const { miniSidenav, transparentSidenav, whiteSidenav } = controller;
   const location = useLocation();
   const navigate = useNavigate();
-  const { user, logout } = useAuth();
+  const { logout } = useAuth();
   const collapseName = location.pathname.replace("/", "");
   const [desktop, setDesktop] = useState(() => window.innerWidth >= 1200);
 
@@ -192,9 +183,6 @@ function Sidenav({ color, brand, brandName, routes, ...rest }) {
     return null;
   });
 
-  const displayName = user?.name || user?.username || user?.loginId || user?.email || "User";
-  const initials = String(displayName).replace(/[^A-Za-z ]/g, " ").trim().split(/\s+/).slice(0, 2).map((w) => w[0]).join("").toUpperCase() || "U";
-
   return (
     <>
       {/* Small screens: dim the page behind the open menu; a tap closes it. */}
@@ -233,17 +221,8 @@ function Sidenav({ color, brand, brandName, routes, ...rest }) {
           <ul className="m-0 list-none space-y-0.5 p-0">{items}</ul>
         </nav>
 
-        {/* Signed-in user + logout */}
-        <div className={`shrink-0 border-t border-slate-100 p-3 ${mini ? "space-y-2" : ""}`}>
-          {!mini && (
-            <div className="mb-2 flex items-center gap-2.5 rounded-xl bg-slate-50 px-2.5 py-2">
-              <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-slate-800 text-[11px] font-bold text-white">{initials}</span>
-              <span className="min-w-0">
-                <span className="block truncate text-[12.5px] font-semibold text-slate-800">{displayName}</span>
-                <span className="block truncate text-[11px] text-slate-500">{ROLE_LABELS[user?.role] || user?.role || ""}</span>
-              </span>
-            </div>
-          )}
+        {/* Logout */}
+        <div className="shrink-0 border-t border-slate-100 p-3">
           <button
             type="button" onClick={handleLogout} aria-label="Logout" title="Logout"
             className={`flex w-full items-center gap-2 rounded-xl border border-red-200 bg-white px-3 py-2 text-[13px] font-semibold text-red-600 transition hover:border-red-300 hover:bg-red-50 ${mini ? "justify-center px-0" : ""}`}

@@ -1,13 +1,19 @@
+// Credit invoice photo (view / upload): Tailwind CSS (no MUI). Load and upload logic unchanged.
 import { useEffect, useState } from "react";
 import PropTypes from "prop-types";
 import { prepareUpload } from "utils/compressImage";
-import { Alert, Box, Button, Icon, IconButton, Tooltip } from "@mui/material";
+import { Icon, Notice, btn } from "components/tw";
 
 export function CreditPhotoLink({ url }) {
   if (!url) return null;
-  return <Tooltip title="View credit invoice"><IconButton aria-label="View credit invoice" component="a" href={url} target="_blank" rel="noopener noreferrer" size="small" color="info"><Icon>visibility</Icon></IconButton></Tooltip>;
+  return (
+    <a href={url} target="_blank" rel="noopener noreferrer" title="View credit invoice" aria-label="View credit invoice" className={`${btn.icon} text-blue-600 hover:bg-blue-50`}>
+      <Icon name="visibility" className="text-[19px]" />
+    </a>
+  );
 }
 CreditPhotoLink.propTypes = { url: PropTypes.string };
+CreditPhotoLink.defaultProps = { url: null };
 
 export default function CreditPhoto({ api, saleId, disabled, onBusyChange, onPhotoReady, onUploaded, requiredForPayment = true }) {
   const [url, setUrl] = useState(null);
@@ -47,22 +53,31 @@ export default function CreditPhoto({ api, saleId, disabled, onBusyChange, onPho
     } catch (err) { setError(err.message); }
     finally { setBusy(false); onBusyChange?.(false); }
   }
-  return <Box sx={{ my: 2 }}>
-    {url && <a href={url} target="_blank" rel="noopener noreferrer"><Box component="img" src={url} alt="Credit invoice photo" sx={{ display: "block", maxWidth: "100%", height: 140, objectFit: "contain", mb: 1 }} /></a>}
-    <Box sx={{ mb: 1, fontSize: "0.8rem" }}>JPG, PNG, or WebP · max 1 MB</Box>
-    <Button component="label" variant="outlined" disabled={disabled || busy}>
-      {busy ? "Uploading…" : url ? "Replace credit photo" : "Upload credit photo"}
-      <input hidden type="file" accept="image/jpeg,image/png,image/webp" disabled={disabled || busy} onChange={upload} />
-    </Button>
-    {!url && requiredForPayment && <Alert severity="info" sx={{ mt: 1 }}>Credit photo is required before submitting Credit.</Alert>}
-    {url && !busy && (
-      <Alert severity="success" sx={{ mt: 1 }}>
-        Photo saved to this invoice
-        {uploader?.uploadedBy ? ` · by ${uploader.uploadedBy}${uploader.uploadedByRole ? ` (${uploader.uploadedByRole})` : ""}` : ""}
-        {uploader?.uploadedAt ? ` · ${uploader.uploadedAt.slice(8, 10)}-${uploader.uploadedAt.slice(5, 7)}-${uploader.uploadedAt.slice(0, 4)} ${uploader.uploadedAt.slice(11, 16)}` : ""}
-      </Alert>
-    )}
-    {error && <Alert severity="error" sx={{ mt: 1 }}>{error}</Alert>}
-  </Box>;
+  return (
+    <div className="my-4 rounded-xl border border-slate-200 bg-slate-50/60 p-3.5">
+      {url && (
+        <a href={url} target="_blank" rel="noopener noreferrer" className="mb-2 block">
+          <img src={url} alt="Credit invoice" className="block h-36 max-w-full rounded-lg border border-slate-200 bg-white object-contain" />
+        </a>
+      )}
+      <div className="flex flex-wrap items-center gap-3">
+        <label className={`${btn.outline} cursor-pointer ${disabled || busy ? "pointer-events-none opacity-50" : ""}`}>
+          <Icon name="photo_camera" className="text-[18px]" />
+          {busy ? "Uploading…" : url ? "Replace credit photo" : "Upload credit photo"}
+          <input hidden type="file" accept="image/jpeg,image/png,image/webp" disabled={disabled || busy} onChange={upload} />
+        </label>
+        <span className="text-[12px] text-slate-500">JPG, PNG, or WebP · max 1 MB</span>
+      </div>
+      {!url && requiredForPayment && <Notice tone="info" className="mt-2">Credit photo is required before submitting Credit.</Notice>}
+      {url && !busy && (
+        <Notice tone="success" className="mt-2">
+          Photo saved to this invoice
+          {uploader?.uploadedBy ? ` · by ${uploader.uploadedBy}${uploader.uploadedByRole ? ` (${uploader.uploadedByRole})` : ""}` : ""}
+          {uploader?.uploadedAt ? ` · ${uploader.uploadedAt.slice(8, 10)}-${uploader.uploadedAt.slice(5, 7)}-${uploader.uploadedAt.slice(0, 4)} ${uploader.uploadedAt.slice(11, 16)}` : ""}
+        </Notice>
+      )}
+      {error && <Notice tone="error" className="mt-2">{error}</Notice>}
+    </div>
+  );
 }
 CreditPhoto.propTypes = { api: PropTypes.string.isRequired, saleId: PropTypes.number.isRequired, disabled: PropTypes.bool, onBusyChange: PropTypes.func, onPhotoReady: PropTypes.func, onUploaded: PropTypes.func, requiredForPayment: PropTypes.bool };

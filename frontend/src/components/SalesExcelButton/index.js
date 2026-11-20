@@ -1,7 +1,8 @@
+// "Download Excel" for sales lists: Tailwind CSS (no MUI). Download logic unchanged.
 import { useState } from "react";
 import PropTypes from "prop-types";
-import MDButton from "components/MDButton";
 import { downloadSalesExcel } from "utils/downloadSalesExcel";
+import { Icon, btn } from "components/tw";
 
 function SalesExcelButton({ rows, filename }) {
   const [downloading, setDownloading] = useState(false);
@@ -17,10 +18,10 @@ function SalesExcelButton({ rows, filename }) {
     }
   };
   return (
-    <MDButton color="success" variant="gradient" onClick={handleDownload}
-      disabled={downloading || rows.length === 0}>
+    <button type="button" className={btn.outline} onClick={handleDownload} disabled={downloading || rows.length === 0}>
+      <Icon name="download" className="text-[18px] text-emerald-600" />
       {downloading ? "Downloading..." : "Download Excel"}
-    </MDButton>
+    </button>
   );
 }
 
