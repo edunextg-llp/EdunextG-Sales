@@ -1,5 +1,6 @@
 import bcrypt from 'bcryptjs';
 import UserModel from '../models/userModel.js';
+import { createSharedStore } from '../utils/sharedStore.js';
 import {
     MAINTENANCE_OTP_TTL_MS,
     createMaintenanceOtp,
@@ -11,21 +12,17 @@ import {
 // Wrong admin passwords on request-otp: at most 5 per IP per 15 minutes.
 const FAIL_WINDOW_MS = 15 * 60 * 1000;
 const FAIL_LIMIT = 5;
-const failures = new Map(); // ip -> { count, firstAt }
+const failures = createSharedStore('maintenanceLoginFailures'); // ip -> { count, firstAt }
 const ipOf = (req) => String(req.headers['x-forwarded-for'] || req.ip || '').split(',')[0].trim();
-const tooManyFailures = (ip) => {
-    const entry = failures.get(ip);
-    if (!entry) return false;
-    if (Date.now() - entry.firstAt > FAIL_WINDOW_MS) {
-        failures.delete(ip);
-        return false;
-    }
-    return entry.count >= FAIL_LIMIT;
+const tooManyFailures = async (ip) => {
+    const entry = await failures.get(ip); // expires FAIL_WINDOW_MS after the first failure
+    return Boolean(entry) && entry.count >= FAIL_LIMIT;
 };
-const recordFailure = (ip) => {
-    const entry = failures.get(ip);
-    if (!entry || Date.now() - entry.firstAt > FAIL_WINDOW_MS) failures.set(ip, { count: 1, firstAt: Date.now() });
-    else entry.count += 1;
+const recordFailure = async (ip) => {
+    const entry = await failures.get(ip);
+    if (!entry) return failures.set(ip, { count: 1, firstAt: Date.now() }, FAIL_WINDOW_MS);
+    entry.count += 1;
+    return failures.set(ip, entry, Math.max(entry.firstAt + FAIL_WINDOW_MS - Date.now(), 1));
 };
 
 const readStatus = (value) => {
@@ -51,7 +48,7 @@ export const getStatus = async (req, res) => {
 export const requestOtp = async (req, res) => {
     const ip = ipOf(req);
     try {
-        if (tooManyFailures(ip)) {
+        if (await tooManyFailures(ip)) {
             return res.status(429).json({ error: 'Too many wrong attempts. Try again after 15 minutes.' });
         }
         const loginId = String(req.body?.loginId || req.body?.email || '').trim();
@@ -62,10 +59,10 @@ export const requestOtp = async (req, res) => {
 
         const admin = await UserModel.findByEmail(loginId);
         if (!admin || !await bcrypt.compare(password, admin.password)) {
-            recordFailure(ip);
+            await recordFailure(ip);
             return res.status(401).json({ error: 'Wrong admin Login ID or password.' });
         }
-        failures.delete(ip);
+        await failures.delete(ip);
 
         const { otpSessionId, sentTo } = await createMaintenanceOtp({
             adminId: admin.id, adminEmail: admin.email, wantedStatus,
@@ -91,7 +88,7 @@ export const updateStatus = async (req, res) => {
         if (status === null || Number.isNaN(status)) return res.status(400).json({ error: 'status must be 0 (maintenance) or 1 (working).' });
         if (!req.body?.otpSessionId || !req.body?.otp) return res.status(400).json({ error: 'otpSessionId and otp are required.' });
 
-        const check = verifyMaintenanceOtp(req.body.otpSessionId, req.body.otp);
+        const check = await verifyMaintenanceOtp(req.body.otpSessionId, req.body.otp);
         if (!check.ok) return res.status(401).json({ error: check.error });
 
         const state = await setMaintenance(status, req.body?.message, check.adminEmail);

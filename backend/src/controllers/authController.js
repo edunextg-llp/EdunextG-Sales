@@ -5,6 +5,7 @@ import UserModel from '../models/userModel.js';
 import StaffModel from '../models/staffModel.js';
 import DeliveryBoyModel from '../models/deliveryBoyModel.js';
 import db from '../config/db.js';
+import { createSharedStore } from '../utils/sharedStore.js';
 import { PERMISSION_KEYS, parseStoredPermissions, withRolePermissions } from '../utils/permissionKeys.js';
 import {
     OTP_RESEND_COOLDOWN_MS,
@@ -20,7 +21,7 @@ const JWT_REFRESH_SECRET = process.env.JWT_REFRESH_SECRET || `${JWT_SECRET}_refr
 const CAPTCHA_TTL_MS = 5 * 60 * 1000;
 const CAPTCHA_CHARS = 'abcdefghkmnpqrstuvwxyzABCDEFGHKMNPQRSTUVWXYZ123456789';
 const CAPTCHA_LENGTH = 6;
-const captchaStore = new Map();
+const captchaStore = createSharedStore('captcha');
 
 const ACCESS_TOKEN_EXPIRES_IN = '15m';
 const SESSION_REFRESH_TOKEN_EXPIRES_IN = '7h';
@@ -29,29 +30,14 @@ const REMEMBER_REFRESH_TOKEN_EXPIRES_IN = '30d';
 // every refresh gives a new 1-day refresh token, so a portal in use stays signed in.
 const DISTRIBUTOR_REFRESH_TOKEN_EXPIRES_IN = '1d';
 
-function cleanupExpiredCaptchas() {
-    const now = Date.now();
-    for (const [id, captcha] of captchaStore.entries()) {
-        if (captcha.expiresAt <= now) {
-            captchaStore.delete(id);
-        }
-    }
-}
-
-function createCaptchaChallenge() {
-    cleanupExpiredCaptchas();
-
+async function createCaptchaChallenge() {
     let code = '';
     for (let i = 0; i < CAPTCHA_LENGTH; i++) {
         code += CAPTCHA_CHARS[crypto.randomInt(0, CAPTCHA_CHARS.length)];
     }
 
     const id = crypto.randomUUID();
-
-    captchaStore.set(id, {
-        answer: code,
-        expiresAt: Date.now() + CAPTCHA_TTL_MS,
-    });
+    await captchaStore.set(id, { answer: code }, CAPTCHA_TTL_MS);
 
     return {
         captchaId: id,
@@ -60,15 +46,14 @@ function createCaptchaChallenge() {
     };
 }
 
-function verifyCaptcha(captchaId, captchaAnswer) {
-    cleanupExpiredCaptchas();
-
+async function verifyCaptcha(captchaId, captchaAnswer) {
     if (!captchaId || captchaAnswer == null) {
         return false;
     }
 
-    const captcha = captchaStore.get(captchaId);
-    captchaStore.delete(captchaId);
+    const id = String(captchaId);
+    const captcha = await captchaStore.get(id);
+    await captchaStore.delete(id); // one use
 
     if (!captcha) {
         return false;
@@ -117,8 +102,13 @@ function sendLoginTokens(res, tokenPayload, user, rememberMe) {
     });
 }
 
-export const getCaptcha = (req, res) => {
-    res.status(200).json(createCaptchaChallenge());
+export const getCaptcha = async (req, res) => {
+    try {
+        res.status(200).json(await createCaptchaChallenge());
+    } catch (error) {
+        console.error('Captcha error:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
 };
 
 export const login = async (req, res) => {
@@ -130,7 +120,7 @@ export const login = async (req, res) => {
             return res.status(400).json({ error: 'Login ID/email and password are required' });
         }
 
-        if (!verifyCaptcha(captchaId, captchaAnswer)) {
+        if (!await verifyCaptcha(captchaId, captchaAnswer)) {
             return res.status(400).json({ error: 'Invalid or expired CAPTCHA. Please try again.' });
         }
 
@@ -281,7 +271,7 @@ export const verifyLoginOtp = async (req, res) => {
             return res.status(400).json({ error: 'OTP is required.' });
         }
 
-        const result = verifyAdminOtp(otpSessionId, otp);
+        const result = await verifyAdminOtp(otpSessionId, otp);
         if (!result.ok) {
             return res.status(401).json({ error: result.error });
         }

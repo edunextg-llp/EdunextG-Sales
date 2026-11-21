@@ -2,6 +2,7 @@ import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import db from '../config/db.js';
 import { encryptPassword } from '../utils/passwordCipher.js';
+import { createSharedStore } from '../utils/sharedStore.js';
 
 // Distributor Portal (the distributor app, ../distributor): a distributor / CNF made on
 // DMS Sales > Add Distributor signs in on the main sign-in page with its Login ID and password and sees its own
@@ -58,23 +59,24 @@ const profileOf = (row) => ({
 const MOBILE_TOKEN_EXPIRES_IN = process.env.DISTRIBUTOR_MOBILE_TOKEN_EXPIRES_IN || '30d';
 const MAX_FAILED_LOGINS = 5;
 const LOGIN_LOCK_MS = 15 * 60 * 1000;
-const failedLogins = new Map();
+// Shared by all cluster workers; entries drop themselves after LOGIN_LOCK_MS.
+const failedLogins = createSharedStore('distributorMobileFailedLogins');
 const loginKey = (req, loginId) => `${loginId}|${req.ip || ''}`;
-const lockedMinutes = (key) => {
-    const entry = failedLogins.get(key);
+const lockedMinutes = async (key) => {
+    const entry = await failedLogins.get(key);
     if (!entry) return 0;
     if (entry.lockedUntil > Date.now()) return Math.ceil((entry.lockedUntil - Date.now()) / 60_000);
-    if (entry.lockedUntil) failedLogins.delete(key);
+    if (entry.lockedUntil) await failedLogins.delete(key);
     return 0;
 };
-const recordFailedLogin = (key) => {
-    const entry = failedLogins.get(key) || { count: 0, lockedUntil: 0 };
+const recordFailedLogin = async (key) => {
+    const entry = (await failedLogins.get(key)) || { count: 0, lockedUntil: 0 };
     entry.count += 1;
     if (entry.count >= MAX_FAILED_LOGINS) {
         entry.lockedUntil = Date.now() + LOGIN_LOCK_MS;
         entry.count = 0;
     }
-    failedLogins.set(key, entry);
+    await failedLogins.set(key, entry, LOGIN_LOCK_MS);
 };
 
 export const mobileLogin = async (req, res) => {
@@ -85,7 +87,7 @@ export const mobileLogin = async (req, res) => {
         if (!/^[A-Z0-9]{3,30}$/.test(loginId)) throw httpError(401, 'Invalid login ID or password.');
 
         const key = loginKey(req, loginId);
-        const minutes = lockedMinutes(key);
+        const minutes = await lockedMinutes(key);
         if (minutes > 0) throw httpError(429, `Too many failed attempts. Try again in ${minutes} minute${minutes === 1 ? '' : 's'}.`);
 
         const [rows] = await db.execute(
@@ -95,10 +97,10 @@ export const mobileLogin = async (req, res) => {
         const row = rows[0];
         const valid = row && row.password_hash && await bcrypt.compare(password, row.password_hash);
         if (!valid) {
-            recordFailedLogin(key);
+            await recordFailedLogin(key);
             throw httpError(401, 'Invalid login ID or password.');
         }
-        failedLogins.delete(key);
+        await failedLogins.delete(key);
         if (!Number(row.is_active)) throw httpError(403, 'This account is inactive. Please contact the company.');
 
         const token = jwt.sign(

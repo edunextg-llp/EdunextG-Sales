@@ -1,0 +1,78 @@
+{
+  "info": {
+    "name": "EduNextG - Maintenance Mode",
+    "description": "Switch the whole site into / out of maintenance.\n\n1. Set the collection variables baseUrl, loginId and password (admin).\n2. Run \"1. Request OTP\" - the OTP is mailed to MAINTENANCE_OTP_MAIL_TO (backend/.env). The otpSessionId is saved automatically.\n3. Put the OTP from the mail in the otp variable (or in the body) and run \"2a. Maintenance ON (status 0)\" or \"2b. Maintenance OFF (status 1)\".\n\nstatus 0 = under maintenance (every other API answers 503, the websites show the maintenance screen).\nstatus 1 = working.\nEach OTP works once and expires in 10 minutes; request a new one for every change.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:2002" },
+    { "key": "loginId", "value": "" },
+    { "key": "password", "value": "" },
+    { "key": "otpSessionId", "value": "" },
+    { "key": "otp", "value": "" }
+  ],
+  "item": [
+    {
+      "name": "Check status",
+      "request": {
+        "method": "GET",
+        "url": "{{baseUrl}}/api/maintenance/status",
+        "description": "Public. { status: 1 } = working, { status: 0, message } = under maintenance."
+      }
+    },
+    {
+      "name": "1. Request OTP",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const body = pm.response.json();",
+              "if (body.otpSessionId) {",
+              "  pm.collectionVariables.set('otpSessionId', body.otpSessionId);",
+              "  console.log('OTP sent to ' + body.sentTo);",
+              "}"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "url": "{{baseUrl}}/api/maintenance/request-otp",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"loginId\": \"{{loginId}}\",\n  \"password\": \"{{password}}\"\n}"
+        },
+        "description": "Checks the admin Login ID and password, then mails a 6-digit OTP to MAINTENANCE_OTP_MAIL_TO. 5 wrong passwords lock this IP out for 15 minutes."
+      }
+    },
+    {
+      "name": "2a. Maintenance ON (status 0)",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "url": "{{baseUrl}}/api/maintenance/status",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"otpSessionId\": \"{{otpSessionId}}\",\n  \"otp\": \"{{otp}}\",\n  \"status\": 0,\n  \"message\": \"The server is under maintenance. Please try again after some time.\"\n}"
+        },
+        "description": "Site goes offline: every API except /api/maintenance answers 503 and the websites show the maintenance screen. message is optional (shown on the screen)."
+      }
+    },
+    {
+      "name": "2b. Maintenance OFF (status 1)",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "url": "{{baseUrl}}/api/maintenance/status",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"otpSessionId\": \"{{otpSessionId}}\",\n  \"otp\": \"{{otp}}\",\n  \"status\": 1\n}"
+        },
+        "description": "Site works again. Open pages close the maintenance screen by themselves within 15 seconds."
+      }
+    }
+  ]
+}

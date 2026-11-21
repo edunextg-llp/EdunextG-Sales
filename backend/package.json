@@ -5,6 +5,7 @@
   "main": "src/index.js",
   "scripts": {
     "start": "node src/index.js",
+    "start:cluster": "node src/cluster.js",
     "test": "node --test",
     "generate-delivery-credentials": "node src/scripts/generateDeliveryCredentials.js",
     "update-schema": "node updateSchema.js",

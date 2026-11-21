@@ -1,4 +1,5 @@
 import crypto from 'crypto';
+import { createSharedStore } from '../utils/sharedStore.js';
 
 // OTP mails go out from their own Gmail account (OTP_MAIL_USER /
 // OTP_MAIL_APP_PASSWORD in backend/.env), separate from the bit mails.
@@ -40,21 +41,19 @@ const OTP_MAX_ATTEMPTS = 5;
 const OTP_MAX_RESENDS = 5;
 const COMPANY_NAME = 'BAWARCHEE FOOD PACKING PVT. LTD.';
 
-const otpStore = new Map();
+// Shared by all cluster workers (see utils/sharedStore.js). otpHash is stored as hex.
+const otpStore = createSharedStore('adminLoginOtp');
 
 function hashOtp(code) {
-    return crypto.createHash('sha256').update(String(code)).digest();
+    return crypto.createHash('sha256').update(String(code)).digest('hex');
+}
+
+function otpMatches(code, otpHash) {
+    return crypto.timingSafeEqual(Buffer.from(hashOtp(code), 'hex'), Buffer.from(otpHash, 'hex'));
 }
 
 function generateCode() {
     return String(crypto.randomInt(0, 10 ** OTP_LENGTH)).padStart(OTP_LENGTH, '0');
-}
-
-function cleanupExpired() {
-    const now = Date.now();
-    for (const [id, entry] of otpStore.entries()) {
-        if (entry.expiresAt <= now) otpStore.delete(id);
-    }
 }
 
 export function maskEmail(email) {
@@ -96,19 +95,16 @@ function getOtpRecipient(adminEmail) {
 }
 
 export async function createAdminOtp({ adminId, email: adminEmail, rememberMe }) {
-    cleanupExpired();
     const email = getOtpRecipient(adminEmail);
     // Only one live challenge per admin.
-    for (const [id, entry] of otpStore.entries()) {
-        if (entry.adminId === adminId) otpStore.delete(id);
-    }
+    await otpStore.deleteWhere('adminId', adminId);
 
     const code = generateCode();
     const otpSessionId = crypto.randomUUID();
     await sendOtpMail(email, code);
 
     const now = Date.now();
-    otpStore.set(otpSessionId, {
+    await otpStore.set(otpSessionId, {
         adminId,
         email,
         rememberMe: Boolean(rememberMe),
@@ -117,13 +113,12 @@ export async function createAdminOtp({ adminId, email: adminEmail, rememberMe })
         attempts: 0,
         resends: 0,
         lastSentAt: now,
-    });
+    }, OTP_TTL_MS);
     return { otpSessionId, email };
 }
 
 export async function resendAdminOtp(otpSessionId) {
-    cleanupExpired();
-    const entry = otpStore.get(otpSessionId);
+    const entry = await otpStore.get(otpSessionId);
     if (!entry) return { ok: false, status: 400, error: 'OTP session expired. Please sign in again.' };
 
     const waitMs = entry.lastSentAt + OTP_RESEND_COOLDOWN_MS - Date.now();
@@ -131,7 +126,7 @@ export async function resendAdminOtp(otpSessionId) {
         return { ok: false, status: 429, error: `Please wait ${Math.ceil(waitMs / 1000)} seconds before requesting a new OTP.` };
     }
     if (entry.resends >= OTP_MAX_RESENDS) {
-        otpStore.delete(otpSessionId);
+        await otpStore.delete(otpSessionId);
         return { ok: false, status: 429, error: 'Too many OTP requests. Please sign in again.' };
     }
 
@@ -145,25 +140,27 @@ export async function resendAdminOtp(otpSessionId) {
         resends: entry.resends + 1,
         lastSentAt: now,
     });
+    await otpStore.set(otpSessionId, entry, OTP_TTL_MS);
     return { ok: true, email: entry.email };
 }
 
-export function verifyAdminOtp(otpSessionId, otp) {
-    cleanupExpired();
-    const entry = otpStore.get(otpSessionId);
+export async function verifyAdminOtp(otpSessionId, otp) {
+    const id = String(otpSessionId || '');
+    const entry = await otpStore.get(id);
     if (!entry) return { ok: false, error: 'OTP expired. Please sign in again.' };
 
     const code = String(otp || '').trim();
-    const matches = /^\d+$/.test(code) && crypto.timingSafeEqual(hashOtp(code), entry.otpHash);
+    const matches = /^\d+$/.test(code) && otpMatches(code, entry.otpHash);
     if (!matches) {
         entry.attempts += 1;
         if (entry.attempts >= OTP_MAX_ATTEMPTS) {
-            otpStore.delete(otpSessionId);
+            await otpStore.delete(id);
             return { ok: false, error: 'Too many wrong attempts. Please sign in again.' };
         }
+        await otpStore.set(id, entry, Math.max(entry.expiresAt - Date.now(), 1));
         return { ok: false, error: `Incorrect OTP. ${OTP_MAX_ATTEMPTS - entry.attempts} attempt(s) left.` };
     }
 
-    otpStore.delete(otpSessionId);
+    await otpStore.delete(id);
     return { ok: true, adminId: entry.adminId, rememberMe: entry.rememberMe };
 }

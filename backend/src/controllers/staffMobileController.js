@@ -3,6 +3,7 @@ import jwt from 'jsonwebtoken';
 import StaffModel from '../models/staffModel.js';
 import StaffPortalModel, { INVOICE_STATUSES } from '../models/staffPortalModel.js';
 import { validateNumeric, validatePositiveInteger } from '../utils/validation.js';
+import { createSharedStore } from '../utils/sharedStore.js';
 import { normalizeAreaName } from '../migrations/migrateAreas.js';
 import { saveDayAreas, staffRouteDays } from './staffController.js';
 
@@ -11,7 +12,8 @@ const TOKEN_EXPIRES_IN = '30d';
 const MAX_FAILED_LOGINS = 5;
 const LOGIN_LOCK_MS = 15 * 60 * 1000;
 const MAX_RANGE_DAYS = 366;
-const failedLogins = new Map();
+// Shared by all cluster workers; entries drop themselves after LOGIN_LOCK_MS.
+const failedLogins = createSharedStore('staffMobileFailedLogins');
 const OVERALL_RANGE = { fromDate: '1000-01-01', toDate: '9999-12-31', overall: true };
 
 /**
@@ -55,29 +57,29 @@ function loginKey(req, loginId) {
     return `${String(loginId).toLowerCase()}|${req.ip || ''}`;
 }
 
-function lockedMinutes(key) {
-    const entry = failedLogins.get(key);
+async function lockedMinutes(key) {
+    const entry = await failedLogins.get(key);
     if (!entry) return 0;
     if (entry.lockedUntil && entry.lockedUntil > Date.now()) {
         return Math.ceil((entry.lockedUntil - Date.now()) / 60_000);
     }
-    if (entry.lockedUntil) failedLogins.delete(key);
+    if (entry.lockedUntil) await failedLogins.delete(key);
     return 0;
 }
 
-function recordFailedLogin(key) {
-    const entry = failedLogins.get(key) || { count: 0, lockedUntil: 0 };
+async function recordFailedLogin(key) {
+    const entry = (await failedLogins.get(key)) || { count: 0, lockedUntil: 0 };
     entry.count += 1;
     if (entry.count >= MAX_FAILED_LOGINS) {
         entry.lockedUntil = Date.now() + LOGIN_LOCK_MS;
         entry.count = 0;
     }
-    failedLogins.set(key, entry);
+    await failedLogins.set(key, entry, LOGIN_LOCK_MS);
 }
 
 /** Test helper. */
 export function resetStaffLoginThrottle() {
-    failedLogins.clear();
+    return failedLogins.clear();
 }
 
 export function verifyStaffMobileToken(req, res, next) {
@@ -121,7 +123,7 @@ export const login = async (req, res) => {
         }
 
         const key = loginKey(req, loginId);
-        const minutes = lockedMinutes(key);
+        const minutes = await lockedMinutes(key);
         if (minutes > 0) {
             return res.status(429).json({
                 error: `Too many failed attempts. Try again in ${minutes} minute${minutes === 1 ? '' : 's'}.`,
@@ -134,10 +136,10 @@ export const login = async (req, res) => {
             && staff.password_hash
             && await bcrypt.compare(password, staff.password_hash);
         if (!valid) {
-            recordFailedLogin(key);
+            await recordFailedLogin(key);
             return res.status(401).json({ error: 'Invalid login ID or password' });
         }
-        failedLogins.delete(key);
+        await failedLogins.delete(key);
 
         const token = jwt.sign(
             { role: 'company_staff', staffId: Number(staff.id), loginId: staff.login_id },

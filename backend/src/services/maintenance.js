@@ -1,5 +1,6 @@
 import crypto from 'crypto';
 import db from '../config/db.js';
+import { createSharedStore } from '../utils/sharedStore.js';
 import { getOtpMailUser, getOtpTransporter, maskEmail } from './adminLoginOtp.js';
 
 // Maintenance mode: one switch for the whole site, stored in app_settings.
@@ -63,16 +64,11 @@ export async function maintenanceGuard(req, res, next) {
 // ---- OTP for switching (sent to its own address, MAINTENANCE_OTP_MAIL_TO in backend/.env) ----
 export const MAINTENANCE_OTP_TTL_MS = 10 * 60 * 1000;
 const OTP_MAX_ATTEMPTS = 5;
-const otpStore = new Map(); // otpSessionId -> { adminId, adminEmail, otpHash, expiresAt, attempts }
+// otpSessionId -> { adminId, adminEmail, otpHash (hex), expiresAt, attempts }; shared by all cluster workers.
+const otpStore = createSharedStore('maintenanceOtp');
 
-const hashOtp = (code) => crypto.createHash('sha256').update(String(code)).digest();
-
-function cleanupExpired() {
-    const now = Date.now();
-    for (const [id, entry] of otpStore.entries()) {
-        if (entry.expiresAt <= now) otpStore.delete(id);
-    }
-}
+const hashOtp = (code) => crypto.createHash('sha256').update(String(code)).digest('hex');
+const otpMatches = (code, otpHash) => crypto.timingSafeEqual(Buffer.from(hashOtp(code), 'hex'), Buffer.from(otpHash, 'hex'));
 
 export function maintenanceOtpRecipient() {
     return String(process.env.MAINTENANCE_OTP_MAIL_TO || '').trim();
@@ -83,10 +79,7 @@ export async function createMaintenanceOtp({ adminId, adminEmail, wantedStatus }
     if (!to) {
         throw Object.assign(new Error('MAINTENANCE_OTP_MAIL_TO is not set in backend/.env.'), { statusCode: 500 });
     }
-    cleanupExpired();
-    for (const [id, entry] of otpStore.entries()) {
-        if (entry.adminId === adminId) otpStore.delete(id); // one live OTP per admin
-    }
+    await otpStore.deleteWhere('adminId', adminId); // one live OTP per admin
     const code = String(crypto.randomInt(0, 1000000)).padStart(6, '0');
     const minutes = MAINTENANCE_OTP_TTL_MS / 60000;
     const transporter = await getOtpTransporter();
@@ -113,26 +106,27 @@ export async function createMaintenanceOtp({ adminId, adminEmail, wantedStatus }
             </div>`,
     });
     const otpSessionId = crypto.randomUUID();
-    otpStore.set(otpSessionId, {
+    await otpStore.set(otpSessionId, {
         adminId, adminEmail, otpHash: hashOtp(code), expiresAt: Date.now() + MAINTENANCE_OTP_TTL_MS, attempts: 0,
-    });
+    }, MAINTENANCE_OTP_TTL_MS);
     return { otpSessionId, sentTo: maskEmail(to) };
 }
 
-export function verifyMaintenanceOtp(otpSessionId, otp) {
-    cleanupExpired();
-    const entry = otpStore.get(String(otpSessionId || ''));
+export async function verifyMaintenanceOtp(otpSessionId, otp) {
+    const id = String(otpSessionId || '');
+    const entry = await otpStore.get(id);
     if (!entry) return { ok: false, error: 'OTP expired or not requested. Call request-otp again.' };
     const code = String(otp || '').trim();
-    const matches = /^\d{6}$/.test(code) && crypto.timingSafeEqual(hashOtp(code), entry.otpHash);
+    const matches = /^\d{6}$/.test(code) && otpMatches(code, entry.otpHash);
     if (!matches) {
         entry.attempts += 1;
         if (entry.attempts >= OTP_MAX_ATTEMPTS) {
-            otpStore.delete(otpSessionId);
+            await otpStore.delete(id);
             return { ok: false, error: 'Too many wrong OTPs. Call request-otp again.' };
         }
+        await otpStore.set(id, entry, Math.max(entry.expiresAt - Date.now(), 1));
         return { ok: false, error: `Incorrect OTP. ${OTP_MAX_ATTEMPTS - entry.attempts} attempt(s) left.` };
     }
-    otpStore.delete(otpSessionId); // one use
+    await otpStore.delete(id); // one use
     return { ok: true, adminId: entry.adminId, adminEmail: entry.adminEmail };
 }
