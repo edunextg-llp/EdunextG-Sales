@@ -11,7 +11,7 @@
 module.exports = {
     apps: [
         {
-            name: 'bawarchee',
+            name: 'edunextg-backend',
             script: 'src/cluster.js',
             cwd: __dirname,
             exec_mode: 'fork',
