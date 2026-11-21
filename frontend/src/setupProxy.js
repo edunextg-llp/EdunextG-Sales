@@ -7,7 +7,7 @@ module.exports = function setupProxy(app) {
   app.use(
     "/api",
     createProxyMiddleware({
-      target: "http://localhost:2002",
+      target: "https://bawarchee.edunextg.in",
       changeOrigin: true,
     })
   );
@@ -18,7 +18,7 @@ module.exports = function setupProxy(app) {
   // websocket upgrades go to the DMS dev server, not this site's own /ws.
   app.use(
     createProxyMiddleware("/dms", {
-      target: "http://localhost:3001",
+      target: "https://dms.edunextg.in",
       changeOrigin: true,
       ws: true,
     })
@@ -28,7 +28,7 @@ module.exports = function setupProxy(app) {
   // /distributor/ on this same origin so distributors sign in on this site's sign-in page.
   app.use(
     createProxyMiddleware("/distributor", {
-      target: "http://localhost:3002",
+      target: "https://distributor.edunextg.in",
       changeOrigin: true,
       ws: true,
     })
