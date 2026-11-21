@@ -6,7 +6,7 @@ import Toolbar from "@mui/material/Toolbar";
 import IconButton from "@mui/material/IconButton";
 import { MdClose, MdMenu } from "react-icons/md";
 import Typography from "@mui/material/Typography";
-import Sidebar from "./Sidebar";
+import Sidebar, { GREEN } from "./Sidebar";
 
 // Open pages as tabs above the content, like VS Code: a sidebar click opens (or switches to)
 // a tab, × or a middle click closes it. Every open tab stays mounted, so a half-filled form
@@ -52,7 +52,7 @@ function Tab({ item, active, onSelect, onClose }) {
         borderRight: 1,
         borderColor: "divider",
         borderTop: "2px solid",
-        borderTopColor: active ? "#2563eb" : "transparent",
+        borderTopColor: active ? GREEN.active : "transparent",
         bgcolor: active ? "background.paper" : "transparent",
         color: active ? "text.primary" : "text.secondary",
         fontWeight: active ? 600 : 400,
@@ -126,15 +126,26 @@ export default function Layout({ user, menu, pages = {} }) {
     <Box sx={{ display: "flex", minHeight: "100vh" }}>
       <Sidebar menu={menu} mobileOpen={mobileOpen} onClose={() => setMobileOpen(false)} />
       <Box sx={{ flexGrow: 1, minWidth: 0 }}>
-        <AppBar position="sticky" color="inherit" elevation={0} sx={{ borderBottom: 1, borderColor: "divider" }}>
-          <Toolbar>
-            <IconButton edge="start" sx={{ mr: 1, display: { lg: "none" } }} onClick={() => setMobileOpen(true)}>
+        {/* Header: same light-green bar as the main site's top bar. */}
+        <AppBar
+          position="sticky"
+          color="inherit"
+          elevation={0}
+          sx={{
+            background: GREEN.headerBg,
+            borderBottom: `1px solid ${GREEN.border}`,
+            boxShadow: "0 1px 3px rgba(31,61,28,0.08)",
+            color: GREEN.textStrong,
+          }}
+        >
+          <Toolbar sx={{ minHeight: { xs: 64 } }}>
+            <IconButton edge="start" sx={{ mr: 1, color: "#3d5a38", display: { lg: "none" } }} onClick={() => setMobileOpen(true)}>
               <MdMenu size={24} />
             </IconButton>
-            <Typography variant="h6" sx={{ flexGrow: 1 }}>
+            <Typography sx={{ flexGrow: 1, fontSize: 17, fontWeight: 600, color: GREEN.textStrong }}>
               DMS
             </Typography>
-            <Typography variant="body2" color="text.secondary">
+            <Typography sx={{ fontSize: 12.5, fontWeight: 600, color: GREEN.textStrong }}>
               {user?.username}
             </Typography>
           </Toolbar>
@@ -144,9 +155,9 @@ export default function Layout({ user, menu, pages = {} }) {
               sx={{
                 display: "flex",
                 overflowX: "auto",
-                bgcolor: "grey.100",
-                borderTop: 1,
-                borderColor: "divider",
+                bgcolor: "#f6faf2",
+                borderTop: `1px solid ${GREEN.border}`,
+                "& [role=tab]": { borderColor: GREEN.border },
                 scrollbarWidth: "thin",
               }}
             >

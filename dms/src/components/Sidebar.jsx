@@ -18,15 +18,46 @@ import { MENU_GROUPS } from "../menu";
 
 const SIDEBAR_WIDTH = 250;
 
+// Same light-green look as the main site's sidebar (frontend/src/examples/Sidenav/index.js).
+export const GREEN = {
+  sidebarBg: "linear-gradient(to bottom, #e9f3df, #dcebcf, #c8e0b6)",
+  headerBg: "linear-gradient(to right, #e9f3df, #f1f7ea, #dcebcf)",
+  border: "#c9dcb8",
+  subBorder: "#b9d3a6",
+  text: "#2f4a2c",
+  textStrong: "#1f3d1c",
+  textMuted: "#5b7a52",
+  icon: "#5b8a52",
+  active: "#2e8b3c",
+  activeBar: "#1f6b2b",
+  hover: "rgba(255,255,255,0.6)",
+};
+
 const itemSx = {
-  borderRadius: 2,
+  position: "relative",
+  borderRadius: 3,
   mx: 1.5,
-  mb: 0.5,
-  color: "rgba(226,234,248,0.78)",
-  "& .MuiListItemIcon-root": { color: "inherit", minWidth: 38 },
-  "&:hover": { bgcolor: "rgba(255,255,255,0.07)", color: "#ffffff" },
-  "&.active": { bgcolor: "#2563eb", color: "#ffffff" },
-  "&.active:hover": { bgcolor: "#2563eb" },
+  mb: 0.25,
+  py: 0.75,
+  color: GREEN.text,
+  "& .MuiListItemIcon-root": { color: GREEN.icon, minWidth: 36 },
+  "&:hover": { bgcolor: GREEN.hover, color: GREEN.textStrong },
+  "&:hover .MuiListItemIcon-root": { color: GREEN.active },
+  "&.active": { bgcolor: GREEN.active, color: "#ffffff", boxShadow: "0 1px 2px rgba(46,139,60,0.3)" },
+  "&.active .MuiListItemIcon-root": { color: "#ffffff" },
+  "&.active:hover": { bgcolor: GREEN.active },
+  // Small bar on the left of the open page, like the main site.
+  "&.active::before": {
+    content: '""',
+    position: "absolute",
+    left: -12,
+    top: "50%",
+    width: 4,
+    height: 20,
+    transform: "translateY(-50%)",
+    borderRadius: "0 999px 999px 0",
+    bgcolor: GREEN.activeBar,
+  },
 };
 
 function SidebarItem({ icon: IconComponent, label, ...props }) {
@@ -35,7 +66,7 @@ function SidebarItem({ icon: IconComponent, label, ...props }) {
       <ListItemIcon>
         <IconComponent size={20} />
       </ListItemIcon>
-      <ListItemText primary={label} primaryTypographyProps={{ fontSize: 14 }} />
+      <ListItemText primary={label} primaryTypographyProps={{ fontSize: 13.5, fontWeight: 500 }} />
     </ListItemButton>
   );
 }
@@ -63,16 +94,17 @@ function SidebarGroup({ id, items, onNavigate }) {
   return (
     <>
       <ListItemButton
-        sx={{ ...itemSx, ...(containsActive && !open ? { color: "#ffffff", bgcolor: "rgba(255,255,255,0.07)" } : {}) }}
+        sx={{ ...itemSx, ...(containsActive && !open ? { color: GREEN.textStrong, bgcolor: GREEN.hover } : {}) }}
         onClick={toggle}
         aria-expanded={open}
       >
         <ListItemIcon>{Icon && <Icon size={20} />}</ListItemIcon>
-        <ListItemText primary={group.label} primaryTypographyProps={{ fontSize: 14 }} />
-        <MdExpandMore size={18} style={{ transition: "transform 150ms", transform: open ? "rotate(180deg)" : "none" }} />
+        <ListItemText primary={group.label} primaryTypographyProps={{ fontSize: 13.5, fontWeight: 500 }} />
+        <MdExpandMore size={18} style={{ opacity: 0.6, transition: "transform 150ms", transform: open ? "rotate(180deg)" : "none" }} />
       </ListItemButton>
       <Collapse in={open} timeout="auto" unmountOnExit>
-        <List disablePadding sx={{ pl: 1.5 }}>
+        {/* Sub-pages hang off a thin green line, like the main site. */}
+        <List disablePadding sx={{ ml: 3.5, pl: 0, borderLeft: `1px solid ${GREEN.subBorder}`, "& .MuiListItemButton-root.active::before": { display: "none" } }}>
           {items.map((item) => (
             <SidebarItem
               key={item.path}
@@ -164,15 +196,41 @@ function LogoutDialog({ open, busy, onCancel, onConfirm }) {
 function SidebarContent({ menu, onNavigate }) {
   const [askLogout, setAskLogout] = useState(false);
   const [leaving, setLeaving] = useState(false);
-  const dividerSx = { borderColor: "rgba(226,234,248,0.12)" };
+  const dividerSx = { borderColor: GREEN.border };
 
   return (
-    <Box sx={{ height: "100%", display: "flex", flexDirection: "column", bgcolor: "#0f2a5a", color: "#eef3fc" }}>
-      <Box sx={{ px: 3, py: 2.5, display: "flex", alignItems: "center", gap: 1.5 }}>
-        <MdInventory size={24} color="#f97316" />
-        <Typography variant="h6" fontWeight="bold">
-          Sales &amp; Purchase
-        </Typography>
+    <Box
+      sx={{
+        height: "100%",
+        display: "flex",
+        flexDirection: "column",
+        background: GREEN.sidebarBg,
+        borderRight: `1px solid ${GREEN.border}`,
+        color: GREEN.text,
+      }}
+    >
+      <Box sx={{ px: 2.5, height: 64, flexShrink: 0, display: "flex", alignItems: "center", gap: 1.5 }}>
+        <Box
+          sx={{
+            width: 36,
+            height: 36,
+            borderRadius: 3,
+            bgcolor: GREEN.active,
+            color: "#ffffff",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            flexShrink: 0,
+          }}
+        >
+          <MdInventory size={20} />
+        </Box>
+        <Box sx={{ minWidth: 0 }}>
+          <Typography sx={{ fontSize: 15, fontWeight: 700, lineHeight: 1.2, color: "#0f172a" }} noWrap>
+            Sales &amp; Purchase
+          </Typography>
+          <Typography sx={{ fontSize: 11, fontWeight: 500, color: GREEN.textMuted }}>Sales ERP</Typography>
+        </Box>
       </Box>
       <Divider sx={{ ...dividerSx, mb: 1 }} />
 
@@ -202,11 +260,33 @@ function SidebarContent({ menu, onNavigate }) {
       </List>
 
       <Divider sx={dividerSx} />
-      <List>
+      <List sx={{ pb: 0 }}>
         {/* Plain link: leaves the DMS app and loads the main site */}
         <SidebarItem icon={MdArrowBack} label="Back to Main" component="a" href={MAIN_SITE_URL} />
-        <SidebarItem icon={MdLogout} label="Logout" onClick={() => setAskLogout(true)} />
       </List>
+      {/* Logout: white button with a red outline, like the main site. */}
+      <Box sx={{ p: 1.5, pt: 0.5 }}>
+        <Button
+          fullWidth
+          onClick={() => setAskLogout(true)}
+          startIcon={<MdLogout size={18} />}
+          sx={{
+            justifyContent: "flex-start",
+            textTransform: "none",
+            fontSize: 13,
+            fontWeight: 600,
+            borderRadius: 3,
+            px: 1.5,
+            py: 1,
+            bgcolor: "#ffffff",
+            color: "#dc2626",
+            border: "1px solid #fecaca",
+            "&:hover": { bgcolor: "#fef2f2", borderColor: "#fca5a5" },
+          }}
+        >
+          Logout
+        </Button>
+      </Box>
 
       <LogoutDialog
         open={askLogout}

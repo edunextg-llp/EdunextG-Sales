@@ -28,6 +28,7 @@ import Footer from "examples/Footer";
 import { COMPANY_TYPES, useCompanyTypeLookup } from "utils/companyTypes";
 import AssignDialog from "./AssignDialog";
 import OutletAnalysis from "./OutletAnalysis";
+import CompanyInsights from "./CompanyInsights";
 import {
   COMPANY_NAME, MODE_COLORS, Icon as TwIcon, SelectField, DateField, IconAction, Panel, KpiCard, CollectionSplit,
   MonthlySalesChart, PaymentModeDonut, CollectionByPeriodChart, SalesStatusBars,
@@ -1482,6 +1483,9 @@ function Dashboard() {
               companyId={selectedSalesCompanyId}
               staffOptions={staffOptions}
             />
+
+            {/* Company-wise target vs achieved, distributors, outlets by bit, outlet performance, employee growth */}
+            <CompanyInsights companyId={selectedSalesCompanyId} />
           </>
         )}
 

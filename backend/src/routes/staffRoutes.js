@@ -23,6 +23,7 @@ import * as otherDaySaleRequestController from '../controllers/otherDaySaleReque
 import * as pincodeController from '../controllers/pincodeController.js';
 import * as documentAssignments from '../controllers/documentAssignmentController.js';
 import * as takenBillRequests from '../controllers/takenBillRequestController.js';
+import { getCompanyInsights } from '../controllers/companyInsightsController.js';
 import { requireAnyPermission, requirePermission, requireRole, verifyTokenMiddleware } from '../middlewares/authMiddleware.js';
 
 const upload = multer({
@@ -232,6 +233,7 @@ router.get('/sales/lookup/outlet-invoices', staffController.getLookupOutletInvoi
 router.get('/sales/cancelled', staffController.getCancelledDeliverySales);
 router.get('/reports', staffController.getReports);
 router.get('/reports/outlets', staffController.getOutletAnalysis);
+router.get('/reports/company-insights', getCompanyInsights);
 router.get('/reports/payments', staffController.getPaymentDetailsReport);
 router.get('/reports/payments/export', staffController.downloadPaymentDetailsExcel);
 router.get('/outlets-export', staffController.downloadOutletsExcel);
