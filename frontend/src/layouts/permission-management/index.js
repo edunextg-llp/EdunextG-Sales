@@ -235,13 +235,16 @@ function PermissionManagement() {
       : range.to !== "" && Number(range.to) < Number(range.from) ? "To day must be the From day or more (empty = no limit)."
         : ""
   );
+  const approverChanged = Boolean(selectedUser) && !sameApprover(approverTier, approverState(selectedUser.overdueApprover));
+  const addSalesRemoved = Boolean(selectedUser?.permissions?.includes("add_sales")) && !permissions.includes("add_sales");
+  const shouldUpdateApprover = approverChanged || addSalesRemoved;
 
   // Who can approve: other active logins with the Overdue Approval permission (they see Approvals > Overdue Requests).
   const approverOptions = useMemo(() => users.filter((user) => user.isActive !== false
     && String(user.id) !== String(selectedId)
     && (user.permissions || []).includes("overdue_approval")), [users, selectedId]);
   const approverName = (id) => users.find((user) => String(user.id) === String(id))?.name || "";
-  const approverError = approverTier.on && (
+  const approverError = shouldUpdateApprover && permissions.includes("add_sales") && approverTier.on && (
     !(Number(approverTier.from) >= 1) ? "Approver tier: From day must be 1 or more."
       : approverTier.to !== "" && Number(approverTier.to) < Number(approverTier.from) ? "Approver tier: To day must be the From day or more (empty = no limit)."
         : approverTier.maxAmount !== "" && !(Number(approverTier.maxAmount) > 0) ? "Approver tier: bill amount limit must be more than 0 (empty = any amount)."
@@ -331,10 +334,12 @@ function PermissionManagement() {
     setSaving(true);
     setError("");
     try {
+      const payload = { permissions: savedPermissions, overdueRange };
+      if (shouldUpdateApprover) payload.overdueApprover = overdueApprover;
       const response = await fetch(`${API}/delivery-boy/${selectedUser.id}/permissions`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ permissions: savedPermissions, overdueRange, overdueApprover }),
+        body: JSON.stringify(payload),
       });
       const data = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(data.error || "Unable to save permissions.");
@@ -344,7 +349,9 @@ function PermissionManagement() {
             ...user,
             permissions: savedPermissions,
             overdueRange,
-            overdueApprover: overdueApprover ? { ...overdueApprover, approverName: approverName(overdueApprover.approverId) } : null,
+            overdueApprover: shouldUpdateApprover
+              ? (overdueApprover ? { ...overdueApprover, approverName: approverName(overdueApprover.approverId) } : null)
+              : user.overdueApprover,
           }
           : user
       )));

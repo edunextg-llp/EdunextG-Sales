@@ -300,7 +300,10 @@ export const updatePermissionUser = async (req, res) => {
         const overdueRange = normalizedPermissions.includes('add_sales') ? readOverdueRange(req.body?.overdueRange) : null;
         // Approver tier: outside the own range, these days + bills below the limit go to the chosen
         // approver instead of Admin. The approver must be another active login with Overdue Approval.
-        const approverRule = normalizedPermissions.includes('add_sales') ? readApproverRule(req.body?.overdueApprover) : null;
+        const updatesApproverRule = Object.prototype.hasOwnProperty.call(req.body || {}, 'overdueApprover');
+        const approverRule = updatesApproverRule
+            ? (normalizedPermissions.includes('add_sales') ? readApproverRule(req.body?.overdueApprover) : null)
+            : undefined;
         if (approverRule) {
             if (approverRule.approverId === deliveryBoyId) {
                 return res.status(400).json({ error: 'Approver tier: a user cannot approve their own requests. Choose someone else.' });
@@ -318,7 +321,7 @@ export const updatePermissionUser = async (req, res) => {
             : normalizedPermissions;
         await DeliveryBoyModel.setPermissions(deliveryBoyId, saved);
         await DeliveryBoyModel.setOverdueRange(deliveryBoyId, overdueRange);
-        await DeliveryBoyModel.setApproverRule(deliveryBoyId, approverRule);
+        if (updatesApproverRule) await DeliveryBoyModel.setApproverRule(deliveryBoyId, approverRule);
         return res.status(200).json({ message: 'Permissions updated successfully.' });
     } catch (error) {
         if (error.statusCode === 400) return res.status(400).json({ error: error.message });
