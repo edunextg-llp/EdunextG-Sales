@@ -144,6 +144,13 @@ function AddCounter() {
   const outletUploadInputRef = useRef(null);
   const [editingOutletId, setEditingOutletId] = useState(null);
   const [editFormData, setEditFormData] = useState(createEmptyEditForm());
+  const [copyOutletOpen, setCopyOutletOpen] = useState(false);
+  const [copySourceCompany, setCopySourceCompany] = useState("");
+  const [copySourceStaffId, setCopySourceStaffId] = useState("");
+  const [copySourceOutlets, setCopySourceOutlets] = useState([]);
+  const [copyScope, setCopyScope] = useState("day");
+  const [copySourceGroup, setCopySourceGroup] = useState("");
+  const [loadingCopyOutlets, setLoadingCopyOutlets] = useState(false);
 
   const API = (process.env.REACT_APP_API_URL);
   const isCnfStaff = selectedStaff?.staff_type === "cnf";
@@ -253,6 +260,69 @@ function AddCounter() {
       console.error("Error fetching all staff outlets:", error);
       setAllStaffOutlets([]);
     }
+  };
+
+  const copySourceCompanies = [...new Set(staffOptions.flatMap(getStaffCompanies))]
+    .filter((company) => normalizeText(company) !== normalizeText(selectedCompanyName))
+    .sort((a, b) => a.localeCompare(b));
+  const copySourceStaffOptions = staffOptions.filter((staff) => (
+    String(staff.id) !== String(selectedStaff?.id) && getStaffCompanies(staff).includes(copySourceCompany)
+  ));
+  const copyGroupOptions = [...new Set(copySourceOutlets.map((outlet) => (
+    copyScope === "day" ? outlet.day : outlet.location_name
+  )).filter(Boolean))].sort((a, b) => a.localeCompare(b));
+  const outletsToCopy = copySourceOutlets.filter((outlet) => (
+    copySourceGroup && (copyScope === "day" ? outlet.day : outlet.location_name) === copySourceGroup
+  ));
+
+  const loadCopySourceOutlets = async (staffId) => {
+    setCopySourceStaffId(staffId);
+    setCopySourceGroup("");
+    setCopySourceOutlets([]);
+    if (!staffId) return;
+    setLoadingCopyOutlets(true);
+    try {
+      const response = await fetch(`${API}/staff/${staffId}/all-counters`);
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "Unable to load the company's outlets.");
+      setCopySourceOutlets(Array.isArray(data) ? data : []);
+    } catch (error) {
+      alert(error.message || "Unable to load the company's outlets.");
+    } finally {
+      setLoadingCopyOutlets(false);
+    }
+  };
+
+  const copySelectedOutlet = () => {
+    if (outletsToCopy.length === 0 || !selectedStaff || !selectedCompanyName) return;
+    const companyCode = selectedCompanyName.replace(/[^a-z0-9]/gi, "").slice(0, 6).toUpperCase() || "COPY";
+    const timestamp = Date.now().toString(36).toUpperCase();
+    const copiedOutlets = outletsToCopy.map((source, index) => {
+      const sourceId = String(source.outlet_erp_id || "OUTLET").replace(/[^a-z0-9]/gi, "").slice(-20).toUpperCase();
+      const uniquePart = `${timestamp}${index.toString(36).toUpperCase()}${Math.random().toString(36).slice(2, 5).toUpperCase()}`;
+      const outletErpId = `${sourceId}-${companyCode}-${uniquePart}`.slice(0, 50);
+      const contactNumber = String(source.contact_number || "");
+      const whatsappNumber = String(source.whatsapp_number || "");
+      return {
+        ...createEmptyOutlet(),
+        outletErpId,
+        outletName: source.outlet_name || "",
+        contactNumber,
+        whatsappNumber,
+        whatsappSameAsContact: !whatsappNumber || whatsappNumber === contactNumber,
+        hasGst: source.has_gst ? "yes" : "no",
+        gstNumber: source.has_gst ? (source.gst_number || "") : "",
+        address: source.address || "",
+        googleLocation: source.google_location || "",
+        operatingHours: parseWeeklySchedule(source.operating_hours),
+      };
+    });
+    setOutlets((current) => [...current, ...copiedOutlets]);
+    setCopyOutletOpen(false);
+    setCopySourceCompany("");
+    setCopySourceStaffId("");
+    setCopySourceOutlets([]);
+    setCopySourceGroup("");
   };
 
   useEffect(() => {
@@ -796,6 +866,11 @@ function AddCounter() {
                 <Icon name="upload_file" className="text-[18px] text-blue-600" />{uploadingOutlets ? "Uploading..." : "Upload Excel"}
               </button>
               <input ref={outletUploadInputRef} type="file" accept=".xls,.xlsx" hidden onChange={uploadOutletsExcel} />
+              {!isSelfService && (
+                <button type="button" className={btn.outline} onClick={() => setCopyOutletOpen(true)} disabled={copySourceCompanies.length === 0}>
+                  <Icon name="content_copy" className="text-[18px] text-blue-600" />Copy From Company
+                </button>
+              )}
               <button type="button" className={btn.primary} onClick={addOutletField}>
                 <Icon name="add" className="text-[18px]" />Add Outlet
               </button>
@@ -1054,6 +1129,68 @@ function AddCounter() {
               onTime={(day, field, value) => setEditFormData((prev) => ({ ...prev, operatingHours: { ...prev.operatingHours, [day]: { ...prev.operatingHours[day], [field]: value } } }))}
             />
           </div>
+        </div>
+      </Modal>
+      <Modal
+        open={copyOutletOpen}
+        onClose={() => setCopyOutletOpen(false)}
+        title={`Copy Outlet to ${selectedCompanyName || "Company"}`}
+        actions={(
+          <>
+            <button type="button" className={btn.ghost} onClick={() => setCopyOutletOpen(false)}>Cancel</button>
+            <button type="button" className={btn.primary} onClick={copySelectedOutlet} disabled={outletsToCopy.length === 0}>
+              <Icon name="content_copy" className="text-[18px]" />Copy {outletsToCopy.length || ""} Outlet{outletsToCopy.length === 1 ? "" : "s"}
+            </button>
+          </>
+        )}
+      >
+        <div className="space-y-4">
+          <p className="m-0 rounded-xl bg-blue-50 px-3 py-2 text-[12.5px] text-blue-800">
+            Choose a source company, person, and day or location. All outlets in that group will be copied into this form with new ERP IDs for {selectedCompanyName || "the destination company"}.
+          </p>
+          <Field label="Source company" width="w-full">
+            <select className={fieldClass} value={copySourceCompany} onChange={(event) => {
+              setCopySourceCompany(event.target.value);
+              setCopySourceStaffId("");
+              setCopySourceOutlets([]);
+              setCopySourceGroup("");
+            }}>
+              <option value="">Choose source company</option>
+              {copySourceCompanies.map((company) => <option key={company} value={company}>{company}</option>)}
+            </select>
+          </Field>
+          <Field label="Source person" width="w-full">
+            <select className={fieldClass} value={copySourceStaffId} disabled={!copySourceCompany} onChange={(event) => loadCopySourceOutlets(event.target.value)}>
+              <option value="">Choose person</option>
+              {copySourceStaffOptions.map((staff) => <option key={staff.id} value={staff.id}>{staff.name}</option>)}
+            </select>
+          </Field>
+          <Field label="Copy all outlets by" width="w-full">
+            <select className={fieldClass} value={copyScope} onChange={(event) => {
+              setCopyScope(event.target.value);
+              setCopySourceGroup("");
+            }}>
+              <option value="day">Day</option>
+              <option value="location">Location</option>
+            </select>
+          </Field>
+          <Field label={`Source ${copyScope}`} width="w-full">
+            <select className={fieldClass} value={copySourceGroup} disabled={!copySourceStaffId || loadingCopyOutlets} onChange={(event) => setCopySourceGroup(event.target.value)}>
+              <option value="">{loadingCopyOutlets ? "Loading outlets…" : `Choose ${copyScope}`}</option>
+              {copyGroupOptions.map((group) => <option key={group} value={group}>{group}</option>)}
+            </select>
+          </Field>
+          {copySourceGroup && !loadingCopyOutlets && (
+            <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+              <p className="m-0 mb-2 text-[12.5px] font-semibold text-slate-700">{outletsToCopy.length} outlet{outletsToCopy.length === 1 ? "" : "s"} will be copied from {copyScope} “{copySourceGroup}”:</p>
+              <ul className="m-0 max-h-32 list-inside list-disc space-y-1 overflow-y-auto text-[12px] text-slate-600">
+                {outletsToCopy.map((outlet) => <li key={outlet.id}>{outlet.outlet_name} · ERP {outlet.outlet_erp_id}</li>)}
+              </ul>
+            </div>
+          )}
+          {copySourceStaffId && !loadingCopyOutlets && copySourceOutlets.length === 0 && (
+            <p className="m-0 text-[12.5px] text-slate-500">No outlets found for this person.</p>
+          )}
         </div>
       </Modal>
       <Footer />
