@@ -38,9 +38,8 @@ const menu = [
   { label: "Physical Stock", icon: MdWarehouse, path: "/physical-stock", permission: "physical_stock", group: "stock" },
   // Physical stock assignments (company, assigned days, staff); same permission.
   { label: "Assign", icon: MdAssignmentInd, path: "/assign", permission: "physical_stock" },
-  // Sales. Add Distributor shows login passwords, so it is admin only for now (no staff
-  // permission is named "admin_only"; admins see every page).
-  { label: "Add Distributor", icon: MdGroupAdd, path: "/add-distributor", permission: "admin_only", group: "sales" },
+  // Access is granted through Sales & Purchase > Sales > Add Distributor.
+  { label: "Add Distributor", icon: MdGroupAdd, path: "/add-distributor", permission: "add_distributor", group: "sales" },
   // Free goods schemes (buy X, get Y free): admin only, like Add Distributor.
   { label: "Free Goods", icon: MdCardGiftcard, path: "/free-goods", permission: "admin_only", group: "sales" },
   // Bills to distributors / CNF or outlets (Create Sales permission).

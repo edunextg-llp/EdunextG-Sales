@@ -19,6 +19,7 @@ const PERMISSIONS = [
   ["item_list", "Add Purchase", "Add purchases and manage the product and stock item list."],
   ["purchase_history", "Purchase History", "View stock import history by company and seller."],
   ["seller_ledger", "Seller Ledger", "View each seller's purchases, payments and balance due, and record payments."],
+  ["add_distributor", "Add Distributor", "Add and manage distributors, their access, and login credentials in Sales & Purchase."],
   ["physical_stock", "Physical Stock", "Upload, count, approve and submit physical stock."],
   ["current_stock", "Current Stock", "View current stock levels for each company."],
   ["expiry_items", "Expiry Items", "View items that are expired or close to expiry."],
@@ -127,7 +128,7 @@ const PERMISSION_FOLDERS = [
     sections: [
       { key: "purchase", label: "Purchase", icon: "shopping_cart", children: ["add_seller", "add_item", "item_list", "purchase_history", "seller_ledger"] },
       { key: "stock", label: "Stock", icon: "inventory_2", children: ["physical_stock", "current_stock"] },
-      { key: "sales", label: "Sales", icon: "point_of_sale", children: ["create_sales"] },
+      { key: "sales", label: "Sales", icon: "point_of_sale", children: ["add_distributor", "create_sales"] },
       { key: "orders", label: "Orders", icon: "assignment", children: ["distributor_orders", "requisition_approval"] },
       { key: "expiry", label: "Expiry", icon: "event_busy", children: ["expiry_items", "expiry_list"] },
       { key: "old", label: "Older pages (main site)", icon: "history", children: ["damage_list", "purchase"] },

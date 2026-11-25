@@ -37,6 +37,7 @@ export const STAFF_PERMISSION_GROUPS = [
       ["damage_list", "Damage List"],
       ["purchase", "Purchase"],
       ["create_sales", "Create Sales"],
+      ["add_distributor", "Add Distributor"],
       ["requisition_approval", "Outlet Order Approval"],
       ["distributor_orders", "Distributor Order Approval"],
     ],
@@ -93,7 +94,7 @@ export const DMS_PAGE_KEYS = STAFF_PERMISSION_GROUPS.find((group) => group.key =
   .map(([key]) => key)
   .filter((key) => key !== "requisition_approval");
 // The new Sales / Order approval pages are not part of any role's starting set.
-const NEW_DMS_KEYS = ["create_sales", "distributor_orders"];
+const NEW_DMS_KEYS = ["create_sales", "distributor_orders", "add_distributor"];
 
 export const ALL_STAFF_PERMISSIONS = [
   "dms",

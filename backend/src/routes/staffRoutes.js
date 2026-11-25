@@ -214,12 +214,12 @@ router.post('/distributor-orders/:id/approve', requirePermission('distributor_or
 router.post('/distributor-orders/:id/reject', requirePermission('distributor_orders'), distributorOrders.rejectOrder);
 
 // Create Sales lists distributors to bill (no passwords in this list).
-router.get('/distributors', requireAnyPermission('create_sales'), distributors.listDistributors);
-router.post('/distributors', requireRole('admin'), distributors.createDistributor);
-router.put('/distributors/:id', requireRole('admin'), distributors.updateDistributor);
-router.get('/distributors/:id/credentials', requireRole('admin'), distributors.getDistributorCredentials);
-router.post('/distributors/:id/reset-password', requireRole('admin'), distributors.resetDistributorPassword);
-router.put('/distributors/:id/active', requireRole('admin'), distributors.setDistributorActive);
+router.get('/distributors', requireAnyPermission('create_sales', 'add_distributor'), distributors.listDistributors);
+router.post('/distributors', requirePermission('add_distributor'), distributors.createDistributor);
+router.put('/distributors/:id', requirePermission('add_distributor'), distributors.updateDistributor);
+router.get('/distributors/:id/credentials', requirePermission('add_distributor'), distributors.getDistributorCredentials);
+router.post('/distributors/:id/reset-password', requirePermission('add_distributor'), distributors.resetDistributorPassword);
+router.put('/distributors/:id/active', requirePermission('add_distributor'), distributors.setDistributorActive);
 router.get('/physical-stock/assignments', physicalStockAssignments.listAssignments);
 router.get('/physical-stock/assignments/all', physicalStockAssignments.listAllAssignments);
 router.get('/physical-stock/assignees', requireRole('admin'), physicalStockAssignments.getAssignees);
