@@ -31,6 +31,14 @@ export const getUser = () => {
   }
 };
 
+// Refresh the session once when Sales & Purchase opens so newly granted page
+// permissions are reflected in the menu without waiting for the access token to expire.
+export const refreshSession = async () => {
+  if (!getStoredValue(AUTH_KEYS.refreshToken)) return getUser();
+  const freshToken = await refreshAccessToken();
+  return freshToken ? getUser() : null;
+};
+
 export const logout = () => {
   [localStorage, sessionStorage].forEach((storage) => {
     storage.removeItem(AUTH_KEYS.token);

@@ -18,7 +18,7 @@ import DistributorOrders from "./pages/DistributorOrders";
 import OutletOrders from "./pages/OutletOrders";
 import ExpiryItems from "./pages/ExpiryItems";
 import ExpiryList from "./pages/ExpiryList";
-import { apiFetch, getToken, getUser, startIdleWatch, SIGN_IN_URL, MAIN_SITE_URL } from "./auth";
+import { apiFetch, getToken, getUser, refreshSession, startIdleWatch, SIGN_IN_URL, MAIN_SITE_URL } from "./auth";
 import { canAccessDms, canApproveOutletOrders, menuFor, OUTLET_ORDERS } from "./menu";
 
 // Built pages. Menu items without an entry here show the "coming soon" placeholder.
@@ -44,10 +44,19 @@ const isAdmin = (user) => (user?.role || "admin") === "admin";
 
 export default function App() {
   const token = getToken();
-  const user = getUser();
+  const [user, setUser] = useState(getUser);
+  const [sessionReady, setSessionReady] = useState(false);
   const dmsUser = Boolean(token) && canAccessDms(user);
   // Has a physical stock count assigned to them? (null while checking)
   const [hasAssignment, setHasAssignment] = useState(isAdmin(user) ? false : null);
+
+  useEffect(() => {
+    let active = true;
+    refreshSession()
+      .then((freshUser) => { if (active && freshUser) setUser(freshUser); })
+      .finally(() => { if (active) setSessionReady(true); });
+    return () => { active = false; };
+  }, []);
 
   useEffect(() => {
     if (!token) {
@@ -66,7 +75,7 @@ export default function App() {
   const allowed = Boolean(token) && (dmsUser || approver || hasAssignment === true);
 
   useEffect(() => {
-    if (!token || hasAssignment === null) return undefined;
+    if (!token || !sessionReady || hasAssignment === null) return undefined;
     // No DMS permission and nothing assigned: back to the main site.
     if (!allowed) {
       window.location.href = MAIN_SITE_URL;
@@ -74,9 +83,9 @@ export default function App() {
     }
     return startIdleWatch();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [hasAssignment]);
+  }, [hasAssignment, sessionReady]);
 
-  if (!token || hasAssignment === null || !allowed) return null;
+  if (!token || !sessionReady || hasAssignment === null || !allowed) return null;
 
   const menu = menuFor(user, hasAssignment);
   const pages = menu.filter((item) => item.path !== "/");
