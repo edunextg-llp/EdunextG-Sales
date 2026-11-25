@@ -3698,11 +3698,11 @@ export const getAllSalesByDate = async (req, res) => {
             const sales = await StaffModel.getAllSalesByDate(null, '', 'delivery_report', { companyId: companyId || null, from: from || null, to: to || null, statuses: ['out_for_delivery'] });
             return res.status(200).json(sales.filter((row) => Number(row.in_suspense) !== 1));
         }
-        if (scope === 'delivery_report') {
+        if (scope === 'bill_report' || scope === 'delivery_report') {
             const isDate = (value) => /^\d{4}-\d{2}-\d{2}$/.test(value || '') && !Number.isNaN(Date.parse(value));
             const { companyId, from, to, status } = req.query;
             const invoice = String(req.query.invoice || '').trim();
-            if (!invoice && !/^\d+$/.test(String(companyId || ''))) return res.status(400).json({ error: 'Choose a company.' });
+            if (scope === 'delivery_report' && !invoice && !/^\d+$/.test(String(companyId || ''))) return res.status(400).json({ error: 'Choose a company.' });
             if (companyId && !/^\d+$/.test(String(companyId))) return res.status(400).json({ error: 'Invalid company.' });
             if ((from && !isDate(from)) || (to && !isDate(to))) return res.status(400).json({ error: 'Invalid date range.' });
             if (from && to && from > to) return res.status(400).json({ error: 'From date must be on or before To date.' });
