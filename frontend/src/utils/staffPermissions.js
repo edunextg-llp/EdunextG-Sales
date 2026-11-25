@@ -16,6 +16,7 @@ export const STAFF_PERMISSION_GROUPS = [
     label: "Payment",
     items: [
       ["update_payment", "Update Payment"],
+      ["product_cancellation", "Product Cancellation"],
       ["db_collection", "D.B. Collection"],
       ["credits", "Give Credit"],
       ["bank_deposit", "Bank Deposit"],
@@ -138,6 +139,7 @@ export const BAWARCHEE_ROLE_PRESETS = {
 // Mirrors the backend clean-up: DMS pages need the DMS menu, sub-options need their page.
 export const normalizeStaffPermissions = (list = []) => {
   const set = new Set(list);
+  if (!set.has("update_payment")) set.delete("product_cancellation");
   if (!set.has("add_sales")) {
     set.delete("overdue_7_days");
     set.delete("overdue_own_permission");

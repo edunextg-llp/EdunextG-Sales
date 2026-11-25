@@ -94,6 +94,7 @@ const toInputDate = (value) => {
 function UpdatePayment() {
   const { user } = useAuth();
   const isAdmin = user?.role === "admin";
+  const canCancelProducts = isAdmin || user?.permissions?.includes("product_cancellation");
   const [searchQuery, setSearchQuery] = useState("");
   const [salesCompanyId, setSalesCompanyId] = useState("");
   const [salesCompanyType, setSalesCompanyType] = useState("");
@@ -1656,9 +1657,9 @@ function UpdatePayment() {
                           <button type="button" className={`${btn.icon} text-blue-600 hover:bg-blue-50`} title="Manage payments" aria-label="Manage payments" onClick={() => openPaymentDialog(sale)}>
                             <Icon name="payments" className="text-[19px]" />
                           </button>
-                          <button type="button" className={`${btn.icon} text-red-500 hover:bg-red-50 hover:text-red-600`} title="Order cancel" aria-label="Order cancel" onClick={() => openCancelDialog(sale)}>
+                          {canCancelProducts && <button type="button" className={`${btn.icon} text-red-500 hover:bg-red-50 hover:text-red-600`} title="Cancel product" aria-label="Cancel product" onClick={() => openCancelDialog(sale)}>
                             <Icon name="cancel" className="text-[19px]" />
-                          </button>
+                          </button>}
                           {Number(sale.payment_count || 0) === 0 && (
                             <button type="button" className={`${btn.icon} text-red-600 hover:bg-red-50`} title="Cancel full bill" aria-label="Cancel full bill" onClick={() => handleCancelFullBill(sale)} disabled={cancellingFullBillId === sale.id}>
                               {cancellingFullBillId === sale.id ? <Spinner className="size-4" /> : <Icon name="cancel_presentation" className="text-[19px]" />}

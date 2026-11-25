@@ -27,6 +27,7 @@ const PERMISSIONS = [
   ["damage_list", "Damage List", "Record and manage damaged stock returned from outlets."],
   ["purchase", "Purchase", "Create, edit and delete purchase entries from sellers."],
   ["update_payment", "Update Payment", "View sales and add, edit, or delete their payment entries."],
+  ["product_cancellation", "Product Cancellation", "Request cancellation of individual products from a bill. Admin approval is required before the cancellation is applied."],
   ["bank_deposit", "Bank Deposit", "View and manage cash, cheque, and UPI bank deposits."],
   ["db_collection", "D.B. Collection", "View delivery boy collections and settle them into payments."],
   ["credits", "Give Credit", "Open the Credits page to view and manage pending customer credit."],
@@ -91,7 +92,7 @@ const PERMISSIONS = [
 ];
 // Extra options shown under a page, only while that page is switched on.
 // The two old overdue options (7 days / 14+ days) are replaced by the overdue range below.
-const SUB_OPTIONS = { add_sales: ["other_day_own_permission"] };
+const SUB_OPTIONS = { add_sales: ["other_day_own_permission"], update_payment: ["product_cancellation"] };
 // Overdue on own reason: a range of overdue days, e.g. 1-14 or 14 with no upper limit.
 const RANGE_OFF = { on: false, from: "1", to: "" };
 const rangeState = (range) => (range && Number(range.from) > 0
@@ -291,7 +292,8 @@ function PermissionManagement() {
   const toggleSection = (folder, section) => setPermissions((current) => {
     const allOn = section.children.every((key) => current.includes(key));
     if (!allOn) return [...new Set([...current, folder.key, ...section.children])];
-    const next = current.filter((key) => !section.children.includes(key));
+    const removed = section.children.flatMap((key) => [key, ...(SUB_OPTIONS[key] || [])]);
+    const next = current.filter((key) => !removed.includes(key));
     return folder.children.some((key) => next.includes(key)) ? next : next.filter((key) => key !== folder.key);
   });
 

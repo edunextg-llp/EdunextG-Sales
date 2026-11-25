@@ -192,6 +192,14 @@ export const enforceManagedUserApiScope = (req, res, next) => {
         allowed = dms('purchase');
     } else if (path.startsWith('/seller-ledger')) {
         allowed = dms('seller_ledger');
+    } else if (path === '/distributors' || /^\/distributors\/\d+(?:\/(?:credentials|reset-password|active))?$/.test(path)) {
+        // Distributor list is also used by Create Sales; managing distributor records and
+        // credentials requires the dedicated Add Distributor permission.
+        if (path === '/distributors' && isGet) {
+            allowed = dms('add_distributor', 'create_sales');
+        } else {
+            allowed = dms('add_distributor');
+        }
     } else if (path.startsWith('/purchase-sellers')) {
         allowed = dms('add_seller')
             || (isGet && dms('add_item', 'item_list', 'purchase_history', 'expiry_list', 'damage_list', 'purchase'));
@@ -269,8 +277,8 @@ export const enforceManagedUserApiScope = (req, res, next) => {
     } else if (/^\/sales\/\d+\/cancel-log$/.test(path)) {
         allowed = permissions.has('update_payment');
     } else if (/^\/sales\/\d+\/cancellation-requests$/.test(path)) {
-        // Cancel Product on Update Payment: raises a request that the admin approves.
-        allowed = method === 'POST' && permissions.has('update_payment');
+        // Product Cancellation is an extra permission under Update Payment.
+        allowed = method === 'POST' && permissions.has('product_cancellation');
     } else if (/^\/sales\/\d+\/items$/.test(path)) {
         allowed = permissions.has('update_payment') || (isGet && permissions.has('delivery_report'));
     } else if (/^\/purchase-requisitions\/target-requests(?:\/\d+)?$/.test(path)) {

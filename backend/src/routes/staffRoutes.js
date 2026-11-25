@@ -275,7 +275,7 @@ router.get('/sales/:saleId/packaging-remarks', staffController.getPackagingRemar
 router.post('/sales/:saleId/packaging-remarks', staffController.savePackagingRemarks);
 router.post('/sales/:saleId/cancel-log', staffController.logOrderCancellation);
 router.get('/sales/:saleId/cancel-log', staffController.getOrderCancellations);
-router.post('/sales/:saleId/cancellation-requests', staffController.createCancellationRequest);
+router.post('/sales/:saleId/cancellation-requests', requirePermission('product_cancellation'), staffController.createCancellationRequest);
 router.get('/sales/:saleId/items', staffController.getSaleItems);
 
 router.get('/sales/:saleId/credit-photo', authorizeCreditPhoto, getCreditPhoto);

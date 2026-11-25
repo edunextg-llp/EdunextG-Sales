@@ -3,7 +3,7 @@
 export const PERMISSION_KEYS = [
     'dashboard', 'dms', 'add_seller', 'add_item', 'item_list', 'add_distributor',
     'purchase_history', 'seller_ledger', 'physical_stock', 'current_stock', 'expiry_items', 'expiry_list', 'damage_list', 'purchase',
-    'update_payment', 'bank_deposit', 'db_collection', 'credits', 'create_staff', 'add_outlet', 'location_assignments', 'add_sales',
+    'update_payment', 'product_cancellation', 'bank_deposit', 'db_collection', 'credits', 'create_staff', 'add_outlet', 'location_assignments', 'add_sales',
     'packaging', 'delivery', 'delivery_report', 'delivered', 'out_bill', 'requisition_approval', 'invoice_lookup',
     'chalan_add_sales', 'chalan_packaging', 'chalan_delivery', 'chalan_delivered', 'chalan_return',
     // Not a page: lets an Add Sales user bill an outlet overdue by up to 13 days with a reason (14+ needs admin).
@@ -33,6 +33,7 @@ export const PERMISSION_KEYS = [
 
 // Extra options that only make sense together with a page permission.
 export const PERMISSION_REQUIRES = {
+    product_cancellation: 'update_payment',
     overdue_7_days: 'add_sales',
     overdue_own_permission: 'add_sales',
     other_day_own_permission: 'add_sales',
@@ -72,6 +73,7 @@ export const NEW_PERMISSION_COLUMNS = [
     ['create_sales', null],
     ['distributor_orders', null],
     ['add_distributor', null],
+    ['product_cancellation', null],
 ];
 
 export const permissionColumnsSql = (alias = 'p') =>
