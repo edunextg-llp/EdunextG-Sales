@@ -18,12 +18,23 @@ const emptyForm = () => ({
   contactNo: "",
   email: "",
   address: "",
+  hasGodown: false,
+  godownSameAsOffice: false,
+  godownAddress: "",
+  godownCity: "",
+  godownDistrict: "",
+  godownState: "",
+  godownPinCode: "",
+  godownContactPerson: "",
+  godownContactNo: "",
   city: "",
   district: "",
   state: "",
   pinCode: "",
   hasGst: false,
   gstin: "",
+  hasFssai: false,
+  fssaiNumber: "",
 });
 
 const fromRow = (d) => ({
@@ -32,12 +43,23 @@ const fromRow = (d) => ({
   contactNo: d.contact_no || "",
   email: d.email || "",
   address: d.address || "",
+  hasGodown: d.has_godown ?? null,
+  godownSameAsOffice: Boolean(d.godown_same_as_office),
+  godownAddress: d.godown_address || "",
+  godownCity: d.godown_city || "",
+  godownDistrict: d.godown_district || "",
+  godownState: d.godown_state || "",
+  godownPinCode: d.godown_pin_code || "",
+  godownContactPerson: d.godown_contact_person || "",
+  godownContactNo: d.godown_contact_no || "",
   city: d.city || "",
   district: d.district || "",
   state: d.state || "",
   pinCode: d.pin_code || "",
   hasGst: Boolean(d.has_gst),
   gstin: d.gstin || "",
+  hasFssai: Boolean(d.fssai_number),
+  fssaiNumber: d.fssai_number || "",
 });
 
 const validate = (f) => {
@@ -45,7 +67,17 @@ const validate = (f) => {
   if (!/^\d{10}$/.test(f.contactNo.replace(/\D/g, ""))) return "Enter a 10-digit contact number.";
   if (f.email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(f.email.trim())) return "Enter a valid email.";
   if (f.pinCode && !/^\d{6}$/.test(f.pinCode)) return "Pin code must be 6 digits.";
+  if (f.hasGodown && !(f.godownSameAsOffice ? f.address : f.godownAddress).trim()) {
+    return f.godownSameAsOffice ? "Enter the office address for the godown." : "Enter the godown address.";
+  }
+  if (f.hasGodown && !f.godownSameAsOffice && f.godownPinCode && !/^\d{6}$/.test(f.godownPinCode)) {
+    return "Godown PIN code must be 6 digits.";
+  }
+  if (f.hasGodown && f.godownContactNo && !/^\d{10}$/.test(f.godownContactNo)) {
+    return "Enter a 10-digit godown contact number.";
+  }
   if (f.hasGst && !/^[0-9A-Z]{15}$/.test(f.gstin.trim().toUpperCase())) return "Enter the 15-character GSTIN.";
+  if (f.hasFssai && !/^[12]\d{13}$/.test(f.fssaiNumber)) return "Enter a 14-digit FSSAI number starting with 1 or 2.";
   return "";
 };
 
@@ -67,22 +99,29 @@ const copyText = async (value) => {
 // The form fields, shared by "Add" and the Edit dialog.
 function DistributorFields({ form, setForm }) {
   const [pinNote, setPinNote] = useState("");
-  const lastPin = useRef("");
+  const [godownPinNote, setGodownPinNote] = useState("");
+  const officePinRequest = useRef(0);
+  const godownPinRequest = useRef(0);
   const set = (field) => (e) => setForm((f) => ({ ...f, [field]: e.target.value }));
 
   const onPin = async (value) => {
     const pin = value.replace(/\D/g, "").slice(0, 6);
-    setForm((f) => ({ ...f, pinCode: pin }));
-    if (pin.length !== 6 || pin === lastPin.current) return;
-    lastPin.current = pin;
+    if (pin === form.pinCode) return;
+    const request = ++officePinRequest.current;
+    setForm((f) => ({ ...f, pinCode: pin, city: "", district: "", state: "" }));
+    if (pin.length !== 6) {
+      setPinNote("");
+      return;
+    }
     setPinNote("Looking up pin code…");
     const found = await lookupPincode(pin);
+    if (request !== officePinRequest.current) return;
     if (!found) {
       setPinNote("Pin code not found; fill city / district / state yourself.");
       return;
     }
     setPinNote("");
-    setForm((f) => ({
+    setForm((f) => (f.pinCode !== pin ? f : {
       ...f,
       city: f.city || found.city || found.district || "",
       district: f.district || found.district || "",
@@ -90,8 +129,44 @@ function DistributorFields({ form, setForm }) {
     }));
   };
 
+  const onGodownPin = async (value) => {
+    const pin = value.replace(/\D/g, "").slice(0, 6);
+    if (pin === form.godownPinCode) return;
+    const request = ++godownPinRequest.current;
+    setForm((f) => ({
+      ...f,
+      godownPinCode: pin,
+      godownCity: "",
+      godownDistrict: "",
+      godownState: "",
+    }));
+    if (pin.length !== 6) {
+      setGodownPinNote("");
+      return;
+    }
+    setGodownPinNote("Looking up pin code…");
+    const found = await lookupPincode(pin);
+    if (request !== godownPinRequest.current) return;
+    setGodownPinNote(found ? "" : "Pin code not found. Enter the godown city, district, and state manually.");
+    if (!found) return;
+    setForm((f) => {
+      if (f.godownPinCode !== pin || !f.hasGodown || f.godownSameAsOffice) return f;
+      const location = {
+        godownCity: found.city || found.district,
+        godownDistrict: found.district,
+        godownState: matchState(found.state),
+      };
+      const updated = { ...f };
+      for (const [field, result] of Object.entries(location)) {
+        if (result && !f[field]) updated[field] = result;
+      }
+      return updated;
+    });
+  };
+
   return (
     <div className="grid grid-cols-1 gap-x-4 gap-y-3 sm:grid-cols-2 lg:grid-cols-4">
+      <h3 className="col-span-full text-sm font-semibold">Distributor details</h3>
       <Field label="Distributor name" required className="sm:col-span-2">
         <input className="input w-full" maxLength={255} value={form.distributorName} onChange={set("distributorName")} />
       </Field>
@@ -110,7 +185,8 @@ function DistributorFields({ form, setForm }) {
       <Field label="Email">
         <input type="email" className="input w-full" maxLength={255} value={form.email} onChange={set("email")} />
       </Field>
-      <Field label="Address" className="sm:col-span-3">
+      <h3 className="col-span-full mt-2 border-t border-base-300 pt-3 text-sm font-semibold">Office address</h3>
+      <Field label="Office address" className="sm:col-span-3">
         <input className="input w-full" maxLength={1000} value={form.address} onChange={set("address")} />
       </Field>
       <Field label="Pin code" hint={pinNote || undefined}>
@@ -132,6 +208,79 @@ function DistributorFields({ form, setForm }) {
           ))}
         </select>
       </Field>
+      <h3 className="col-span-full mt-2 border-t border-base-300 pt-3 text-sm font-semibold">Godown details</h3>
+      <Field label="Has a godown?">
+        <select
+          className="select w-full"
+          value={form.hasGodown === null ? "" : String(form.hasGodown)}
+          onChange={(e) => {
+            const hasGodown = e.target.value === "true";
+            setForm((f) => ({ ...f, hasGodown }));
+          }}
+        >
+          {form.hasGodown === null && <option value="" disabled>Not recorded</option>}
+          <option value="false">No</option>
+          <option value="true">Yes</option>
+        </select>
+      </Field>
+      {form.hasGodown && (
+        <>
+          <label className="flex items-center gap-2 text-sm sm:col-span-2 lg:col-span-3">
+            <input
+              type="checkbox"
+              className="checkbox checkbox-sm"
+              checked={form.godownSameAsOffice}
+              onChange={(e) => {
+                const godownSameAsOffice = e.target.checked;
+                setForm((f) => ({ ...f, godownSameAsOffice }));
+              }}
+            />
+            Godown address is the same as the office address
+          </label>
+          {!form.godownSameAsOffice && (
+            <fieldset className="grid grid-cols-1 gap-x-4 gap-y-3 sm:col-span-2 sm:grid-cols-2 lg:col-span-4 lg:grid-cols-4">
+              <legend className="mb-2 text-sm font-semibold">Godown address</legend>
+              <Field label="Street address" required className="lg:col-span-2">
+                <input className="input w-full" maxLength={1000} value={form.godownAddress} onChange={set("godownAddress")} />
+              </Field>
+              <Field label="Godown PIN code" hint={godownPinNote || undefined}>
+                <input className="input w-full" inputMode="numeric" maxLength={6} value={form.godownPinCode}
+                  onChange={(e) => onGodownPin(e.target.value)}
+                />
+              </Field>
+              <Field label="Godown city">
+                <input className="input w-full" maxLength={100} value={form.godownCity} onChange={set("godownCity")} />
+              </Field>
+              <Field label="Godown district">
+                <input className="input w-full" maxLength={100} value={form.godownDistrict} onChange={set("godownDistrict")} />
+              </Field>
+              <Field label="Godown state">
+                <select className="select w-full" value={form.godownState} onChange={set("godownState")}>
+                  <option value="">Select state</option>
+                  {INDIAN_STATES.map((state) => <option key={state} value={state}>{state}</option>)}
+                </select>
+              </Field>
+            </fieldset>
+          )}
+          <Field label="Godown contact person" className="sm:col-start-1">
+            <input className="input w-full" maxLength={255} value={form.godownContactPerson} onChange={set("godownContactPerson")} />
+          </Field>
+          <Field label="Godown contact number">
+            <input
+              type="tel"
+              className="input w-full"
+              inputMode="numeric"
+              maxLength={10}
+              value={form.godownContactNo}
+              onChange={(e) => {
+                const godownContactNo = e.target.value.replace(/\D/g, "").slice(0, 10);
+                setForm((f) => ({ ...f, godownContactNo }));
+              }}
+            />
+          </Field>
+        </>
+      )}
+      <h3 className="col-span-full mt-2 border-t border-base-300 pt-3 text-sm font-semibold">Registrations</h3>
       <Field label="GST">
         <label className="flex h-10 items-center gap-2 text-sm">
           <input
@@ -150,6 +299,34 @@ function DistributorFields({ form, setForm }) {
             maxLength={15}
             value={form.gstin}
             onChange={(e) => setForm((f) => ({ ...f, gstin: e.target.value.toUpperCase() }))}
+          />
+        </Field>
+      )}
+      <Field label="FSSAI" className="sm:col-start-1 lg:col-start-3">
+        <label className="flex h-10 items-center gap-2 text-sm">
+          <input
+            type="checkbox"
+            className="checkbox checkbox-sm"
+            checked={form.hasFssai}
+            onChange={(e) => {
+              const hasFssai = e.target.checked;
+              setForm((f) => ({ ...f, hasFssai }));
+            }}
+          />
+          Has an FSSAI number
+        </label>
+      </Field>
+      {form.hasFssai && (
+        <Field label="FSSAI number" required>
+          <input
+            className="input w-full font-mono"
+            inputMode="numeric"
+            maxLength={14}
+            value={form.fssaiNumber}
+            onChange={(e) => {
+              const fssaiNumber = e.target.value.replace(/\D/g, "").slice(0, 14);
+              setForm((f) => ({ ...f, fssaiNumber }));
+            }}
           />
         </Field>
       )}
@@ -255,6 +432,7 @@ export default function AddDistributor() {
     contactPerson: f.contactPerson.trim(),
     email: f.email.trim(),
     gstin: f.hasGst ? f.gstin.trim().toUpperCase() : "",
+    fssaiNumber: f.hasFssai ? f.fssaiNumber : "",
   });
 
   const add = async (e) => {
@@ -387,12 +565,24 @@ export default function AddDistributor() {
             { header: "Contact no.", key: "contact_no", width: 14 },
             { header: "Email", key: "email", width: 24 },
             { header: "Company", key: "company_name", width: 20 },
-            { header: "Address", key: "address", width: 30 },
+            { header: "Office address", key: "address", width: 30 },
             { header: "City", key: "city", width: 14 },
             { header: "District", key: "district", width: 14 },
             { header: "State", key: "state", width: 16 },
             { header: "Pin code", key: "pin_code", width: 10 },
+            { header: "Has godown", value: (d) => (d.has_godown == null ? "" : d.has_godown ? "Yes" : "No"), width: 12 },
+            {
+              header: "Godown address", width: 40,
+              value: (d) => d.godown_same_as_office ? d.address : d.godown_address,
+            },
+            { header: "Godown city", value: (d) => d.godown_same_as_office ? d.city : d.godown_city, width: 14 },
+            { header: "Godown district", value: (d) => d.godown_same_as_office ? d.district : d.godown_district, width: 14 },
+            { header: "Godown state", value: (d) => d.godown_same_as_office ? d.state : d.godown_state, width: 16 },
+            { header: "Godown PIN code", value: (d) => d.godown_same_as_office ? d.pin_code : d.godown_pin_code, width: 16 },
+            { header: "Godown contact person", key: "godown_contact_person", width: 24 },
+            { header: "Godown contact number", key: "godown_contact_no", width: 24 },
             { header: "GSTIN", key: "gstin", width: 18 },
+            { header: "FSSAI number", key: "fssai_number", width: 18 },
             { header: "Status", value: (d) => (d.is_active ? "Active" : "Inactive"), width: 10 },
             { header: "Added on", value: (d) => String(d.created_at || "").slice(0, 10), width: 12, type: "date" },
           ],

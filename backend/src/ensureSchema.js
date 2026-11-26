@@ -1471,6 +1471,25 @@ export async function ensureSchema() {
             );
         `);
 
+        for (const definition of [
+            'has_godown TINYINT(1) NULL',
+            'godown_same_as_office TINYINT(1) NOT NULL DEFAULT 0',
+            'godown_address TEXT NULL',
+            'godown_city VARCHAR(100) NULL',
+            'godown_district VARCHAR(100) NULL',
+            'godown_state VARCHAR(100) NULL',
+            'godown_pin_code VARCHAR(10) NULL',
+            'godown_contact_person VARCHAR(255) NULL',
+            'godown_contact_no VARCHAR(20) NULL',
+            'fssai_number VARCHAR(14) NULL',
+        ]) {
+            try {
+                await connection.query(`ALTER TABLE distributors ADD COLUMN ${definition}`);
+            } catch (error) {
+                if (error.code !== 'ER_DUP_FIELDNAME') throw error;
+            }
+        }
+
         // DMS Sales > Create Sales: a bill to a distributor / CNF (made on Add Distributor) or to an
         // outlet. Prices are GST-inclusive (as entered on purchases); stock comes off lot by lot.
         await connection.query(`

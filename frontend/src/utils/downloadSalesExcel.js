@@ -42,6 +42,10 @@ export async function createSalesWorkbook(rows, columns) {
 
 export async function downloadSalesExcel(rows, filename, columns) {
   const workbook = await createSalesWorkbook(rows, columns);
+  await downloadWorkbook(workbook, filename);
+}
+
+export async function downloadWorkbook(workbook, filename) {
   const buffer = await workbook.xlsx.writeBuffer();
   const url = URL.createObjectURL(new Blob([buffer], {
     type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",

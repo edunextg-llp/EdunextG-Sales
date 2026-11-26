@@ -1,6 +1,7 @@
-import { Fragment, useCallback, useDeferredValue, useEffect, useMemo, useState } from "react";
+import { Fragment, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import DashboardLayout from "examples/LayoutContainers/DashboardLayout";
 import DashboardNavbar from "examples/Navbars/DashboardNavbar";
+import { downloadWorkbook } from "utils/downloadSalesExcel";
 
 const API = process.env.REACT_APP_API_URL;
 const formatDate = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
@@ -60,6 +61,13 @@ export default function BillReport() {
   const deferredSearch = useDeferredValue(search); const [page, setPage] = useState(0);
   const [rows, setRows] = useState([]); const [loading, setLoading] = useState(false);
   const [error, setError] = useState(""); const [open, setOpen] = useState({});
+  const [exporting, setExporting] = useState(false);
+  const [exportError, setExportError] = useState("");
+  const [loadedFilters, setLoadedFilters] = useState(null);
+  const latestRequest = useRef(0);
+  const reportFilters = new URLSearchParams({ scope: "bill_report", from, to });
+  if (companyId) reportFilters.set("companyId", companyId);
+  const reportQuery = reportFilters.toString();
   const [paymentHistory, setPaymentHistory] = useState({}); const [paymentLoading, setPaymentLoading] = useState({});
   useEffect(() => {
     const token = localStorage.getItem("auth_token") || sessionStorage.getItem("auth_token");
@@ -72,17 +80,23 @@ export default function BillReport() {
       .catch(() => setCompanies([]));
   }, []);
   const load = useCallback(async () => {
+    const requestId = ++latestRequest.current;
     setLoading(true); setError("");
+    setLoadedFilters(null);
     try {
-      const params = new URLSearchParams({ scope: "bill_report", from, to });
-      if (companyId) params.set("companyId", companyId);
       const token = localStorage.getItem("auth_token") || sessionStorage.getItem("auth_token");
-      const response = await fetch(`${API}/staff/sales/by-date?${params}`, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
+      const response = await fetch(`${API}/staff/sales/by-date?${reportQuery}`, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
       const body = await response.json().catch(() => []);
       if (!response.ok) throw new Error(body.error || "Unable to load bill report.");
+      if (requestId !== latestRequest.current) return;
       setRows(Array.isArray(body) ? body : []);
-    } catch (err) { setError(err.message); } finally { setLoading(false); }
-  }, [from, to, companyId]);
+      setLoadedFilters(reportQuery);
+    } catch (err) {
+      if (requestId === latestRequest.current) setError(err.message);
+    } finally {
+      if (requestId === latestRequest.current) setLoading(false);
+    }
+  }, [reportQuery]);
   useEffect(() => { void load(); }, [load]);
   useEffect(() => { setPage(0); }, [from, to, companyId, search, stepFilter]);
   const toggleBill = async (sale) => {
@@ -116,6 +130,43 @@ export default function BillReport() {
   }, [rows]);
   const pageCount = Math.max(1, Math.ceil(filteredRows.length / PAGE_SIZE));
   const visibleRows = filteredRows.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
+  const canExport = !loading && !exporting && loadedFilters === reportQuery
+    && deferredSearch === search && filteredRows.length > 0;
+
+  const exportExcel = async () => {
+    setExporting(true);
+    setExportError("");
+    try {
+      const { default: ExcelJS } = await import("exceljs");
+      const workbook = new ExcelJS.Workbook();
+      const sheet = workbook.addWorksheet("Bill Report", { views: [{ state: "frozen", ySplit: 1 }] });
+      sheet.columns = [
+        { header: "SR", width: 8 },
+        { header: "Bill No", width: 24 },
+        { header: "Company", width: 30 },
+        { header: "Date", width: 16 },
+        { header: "Outlet", width: 34 },
+        { header: "Status", width: 42 },
+        { header: "Payment", width: 34 },
+      ];
+      sheet.addRows(filteredRows.map((sale, index) => [
+        index + 1,
+        String(sale.invoice_number || sale.sticker_number || `#${sale.id}`),
+        sale.company_name || "",
+        sale.sale_day || sale.sale_date || "",
+        sale.outlet_name || "",
+        statuses[getStatus(sale)][0],
+        getPaymentState(sale).label,
+      ]));
+      sheet.getRow(1).font = { bold: true };
+      sheet.autoFilter = { from: "A1", to: `G${sheet.rowCount}` };
+      await downloadWorkbook(workbook, `Bill_Report_${from || "all"}_${to || "all"}`);
+    } catch {
+      setExportError("Unable to download the Bill Report. Please try again.");
+    } finally {
+      setExporting(false);
+    }
+  };
 
   return <DashboardLayout><DashboardNavbar /><main className="py-6 text-slate-800">
     <header className="mb-5"><h1 className="m-0 text-2xl font-bold">Bill Report</h1><p className="m-0 mt-1 text-sm text-slate-500">Bills and their Add Sales, packing, delivery, and payment progress.</p></header>
@@ -126,9 +177,12 @@ export default function BillReport() {
       <label className="flex flex-col gap-1 text-xs text-slate-500">Company<select className="select select-sm min-w-48" value={companyId} onChange={(e) => setCompanyId(e.target.value)}><option value="">All companies</option>{companies.map((company) => <option key={company.id} value={String(company.id)}>{company.name}</option>)}</select></label>
       <label className="flex flex-col gap-1 text-xs text-slate-500">Step filter<select className="select select-sm min-w-48" value={stepFilter} onChange={(e) => setStepFilter(e.target.value)}><option value="all">All steps</option>{statuses.map(([label], index) => <option key={label} value={String(index)}>{label}</option>)}</select></label>
       <label className="flex min-w-56 flex-col gap-1 text-xs text-slate-500">Search bills<input className="input input-sm" type="search" placeholder="Bill number, outlet, employee…" value={search} onChange={(e) => setSearch(e.target.value)} /></label>
-      <button type="button" className="btn btn-sm btn-primary" onClick={load} disabled={loading}>{loading ? "Loading…" : "Show report"}</button><span className="ml-auto text-sm text-slate-500">{filteredRows.length} matching bills</span>
+      <button type="button" className="btn btn-sm btn-primary" onClick={load} disabled={loading}>{loading ? "Loading…" : "Show report"}</button>
+      <button type="button" className="btn btn-sm" onClick={exportExcel} disabled={!canExport}>{exporting ? "Preparing Excel…" : "Download filtered Excel"}</button>
+      <span className="ml-auto text-sm text-slate-500">{filteredRows.length} matching bills</span>
     </section>
     {error && <div role="alert" className="alert alert-error mb-4">{error}</div>}
+    {exportError && <div role="alert" className="alert alert-error mb-4">{exportError}</div>}
     <section className="overflow-hidden rounded-lg bg-white shadow"><div className="overflow-x-auto"><table className="table table-sm">
       <thead><tr><th>SR</th><th>Bill No</th><th>Company</th><th>Date</th><th>Outlet</th><th>Status</th><th>Payment</th><th>View</th></tr></thead>
       <tbody>{!visibleRows.length && <tr><td colSpan="8" className="py-8 text-center text-slate-500">{loading ? "Loading bills…" : "No bills match these filters."}</td></tr>}
