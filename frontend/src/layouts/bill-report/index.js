@@ -26,11 +26,18 @@ const statuses = [
   ["Out of delivery", "#f18b61", "Delivery completed"], ["Cancel the material", "#a1a1a1", "Bill cancelled"],
   ["Payment credit", "#242424", "Credit payment recorded"], ["Payment done", "#18810a", "Bill fully paid"],
   ["Suspense", "#fa5a5c", "Bill is in suspense"], ["Delivery done but not update payment", "#995700", "Delivered; payment still due"],
+  ["Payment updated", "#0f766e", "Delivered; partial payment collected, balance remains"],
+  ["First credit · not collected", "#f5cf59", "Delivered; credit recorded but no payment collected"],
 ];
 function getStatus(sale) {
   if (Number(sale.in_suspense) === 1) return 8;
   if (sale.packaging_status === "cancelled") return 5;
-  if (sale.packaging_status === "delivered") return Number(sale.balance_amount) <= 0 ? 7 : 9;
+  if (sale.packaging_status === "delivered") {
+    if (Number(sale.balance_amount) <= 0) return 7;
+    if (Number(sale.paid_amount) > 0) return 10;
+    if (sale.payment_mode === "credit" || Number(sale.payment_count) > 0) return 11;
+    return 9;
+  }
   if (["out_for_delivery", "returned", "packing_done"].includes(sale.packaging_status)) return 3;
   if (sale.packaging_status === "packing") return 2;
   if (Number(sale.balance_amount) <= 0 && Number(sale.payment_count) > 0) return 7;
@@ -141,7 +148,7 @@ export default function BillReport() {
             ["Payment", paymentProgress, "", paid],
           ];
           return <Fragment key={sale.id}>
-          <tr style={{ backgroundColor: `${color}22` }}><td>{String(page * PAGE_SIZE + index + 1).padStart(2, "0")}</td><td className="font-semibold">{sale.invoice_number || sale.sticker_number || `#${sale.id}`}</td><td>{sale.company_name || "—"}</td><td>{sale.sale_day || sale.sale_date || "—"}</td><td>{sale.outlet_name || "—"}</td><td><span className="inline-flex whitespace-nowrap rounded-full px-2.5 py-1 text-xs font-bold" style={{ backgroundColor: color, color: ["#7f1d1d", "#ffffff", "#ffffff", "#4a044e", "#7c2d12", "#1f2937", "#ffffff", "#ffffff", "#7f1d1d", "#ffffff"][getStatus(sale)] }}>{label}</span></td><td>{(() => { const paymentState = getPaymentState(sale); return <span className={`inline-flex whitespace-nowrap rounded-full px-2.5 py-1 text-xs font-bold ${paymentState.className}`}>{paymentState.label}</span>; })()}</td><td><button type="button" className="btn btn-ghost btn-xs" aria-expanded={expanded} onClick={() => toggleBill(sale)}>{expanded ? "Hide details" : "View details"}</button></td></tr>
+          <tr style={{ backgroundColor: `${color}22` }}><td>{String(page * PAGE_SIZE + index + 1).padStart(2, "0")}</td><td className="font-semibold">{sale.invoice_number || sale.sticker_number || `#${sale.id}`}</td><td>{sale.company_name || "—"}</td><td>{sale.sale_day || sale.sale_date || "—"}</td><td>{sale.outlet_name || "—"}</td><td><span className="inline-flex whitespace-nowrap rounded-full px-2.5 py-1 text-xs font-bold" style={{ backgroundColor: color, color: ["#7f1d1d", "#ffffff", "#ffffff", "#4a044e", "#7c2d12", "#1f2937", "#ffffff", "#ffffff", "#7f1d1d", "#ffffff", "#ffffff", "#713f12"][getStatus(sale)] }}>{label}</span></td><td>{(() => { const paymentState = getPaymentState(sale); return <span className={`inline-flex whitespace-nowrap rounded-full px-2.5 py-1 text-xs font-bold ${paymentState.className}`}>{paymentState.label}</span>; })()}</td><td><button type="button" className="btn btn-ghost btn-xs" aria-expanded={expanded} onClick={() => toggleBill(sale)}>{expanded ? "Hide details" : "View details"}</button></td></tr>
           {expanded && <tr><td colSpan="8" className="bg-slate-50 p-4">
             <div className="mb-3 flex flex-wrap items-center justify-between gap-2"><div><p className="m-0 text-base font-bold text-slate-800">Bill progress</p><p className="m-0 mt-0.5 text-xs text-slate-500">{sale.company_name || "Company not recorded"}{sale.outlet_name ? ` · ${sale.outlet_name}` : ""}</p></div><span className="rounded-full px-3 py-1 text-xs font-semibold text-white" style={{ backgroundColor: color }}>{label}</span></div>
             <div className="grid gap-2 md:grid-cols-5">{steps.map(([title, person, date, complete], stepIndex) => <div key={title} className={`relative rounded-lg border p-3 ${complete ? "border-emerald-200 bg-emerald-50" : "border-slate-200 bg-white"}`}>
