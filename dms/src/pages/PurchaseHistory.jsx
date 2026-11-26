@@ -23,8 +23,7 @@ const parseRaw = (raw) => {
 const str = (v) => (v == null ? "" : String(v));
 
 // A saved invoice line -> a line on the Add Purchase screen.
-// MRP-priced lines come back as MRP lines (with Everest's three discounts);
-// older DP-priced lines keep their DP and sale prices so re-saving them changes nothing.
+// Both pricing modes carry their saved sale prices into Add Purchase.
 function toEntryLine(item) {
   const raw = parseRaw(item.raw_data);
   const mrpMode = raw["Pricing Mode"] === "mrp";
@@ -51,6 +50,10 @@ function toEntryLine(item) {
     cgstAmount: str(item.cgst_amount || 0),
     sgstAmount: str(item.sgst_amount || 0),
     totalValue: num(item.total_value).toFixed(4),
+    retailPrice: str(item.retail_price || ""),
+    wholesalePrice: str(item.wholesale_price || ""),
+    retailMargin: str(item.retail_margin || ""),
+    wholesaleMargin: str(item.wholesale_margin || ""),
     isUpdate: true,
   };
   if (mrpMode) {
@@ -70,10 +73,6 @@ function toEntryLine(item) {
     dpPrice: str(item.dp_price || ""),
     pricePerPiece: str(item.dp_price || ""),
     purchasePrice: str(item.dp_price || ""),
-    retailPrice: str(item.retail_price || ""),
-    wholesalePrice: str(item.wholesale_price || ""),
-    retailMargin: str(item.retail_margin || ""),
-    wholesaleMargin: str(item.wholesale_margin || ""),
   };
 }
 
@@ -231,6 +230,8 @@ function InvoicePanel({ invoice, canEdit, onClose, onEdit }) {
                   <th className="bg-base-200 text-right">GST</th>
                   <th className="bg-base-200 text-right">Total</th>
                   <th className="bg-base-200 text-right">Cost / pc</th>
+                  <th className="bg-base-200 text-right">Wholesale / pc</th>
+                  <th className="bg-base-200 text-right">Retail / pc</th>
                 </tr>
               </thead>
               <tbody>
@@ -268,6 +269,8 @@ function InvoicePanel({ invoice, canEdit, onClose, onEdit }) {
                       <td className="text-right tabular-nums">{rupees(num(it.cgst_amount) + num(it.sgst_amount))}</td>
                       <td className="text-right font-semibold tabular-nums">{rupees(it.total_value)}</td>
                       <td className="text-right tabular-nums">{rupees(it.purchase_price ?? it.price_per_piece, 4)}</td>
+                      <td className="text-right tabular-nums">{Number(it.wholesale_price) > 0 ? rupees(it.wholesale_price) : "—"}</td>
+                      <td className="text-right tabular-nums">{Number(it.retail_price) > 0 ? rupees(it.retail_price) : "—"}</td>
                     </tr>
                   );
                 })}

@@ -514,6 +514,12 @@ export default function Stock() {
                               {multi && <li className="pt-0.5 text-[11px] text-primary">{it.prices.length} prices · one stock</li>}
                             </ul>
                           )}
+                          {(num(it.wholesale_price) > 0 || num(it.retail_price) > 0) && (
+                            <div className="mt-1 flex flex-wrap gap-x-3 text-xs tabular-nums text-base-content/70">
+                              {num(it.wholesale_price) > 0 && <span>Wholesale {rupees(it.wholesale_price)}</span>}
+                              {num(it.retail_price) > 0 && <span>Retail {rupees(it.retail_price)}</span>}
+                            </div>
+                          )}
                         </td>
                         <td className="whitespace-nowrap text-right tabular-nums">
                           {rupees(it.price_per_piece, 4)}

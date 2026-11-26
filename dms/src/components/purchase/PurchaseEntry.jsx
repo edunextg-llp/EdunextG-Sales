@@ -193,8 +193,13 @@ export default function PurchaseEntry({ companies, draft, onClose, onSaved, onSt
       setLine(emptyLine());
       return;
     }
-    // Keep numbers already typed in; replace only what belongs to the item.
-    setLine((prev) => ({ ...prev, ...itemFields(item) }));
+    // Selling prices belong to the product. Quantities and other typed values stay in the form.
+    setLine((prev) => ({
+      ...prev,
+      ...itemFields(item),
+      ...(prev.productErpId && erpKey(prev.productErpId) !== erpKey(item.product_erp_id)
+        ? { wholesalePrice: "", retailPrice: "" } : {}),
+    }));
     if (!saleBill || !item.product_erp_id) return;
     // Prefill wholesale / retail with the item's last prices (only boxes still empty).
     const picked = item.product_erp_id;
@@ -216,7 +221,7 @@ export default function PurchaseEntry({ companies, draft, onClose, onSaved, onSt
 
   const calc = calcLine(line, everest);
   const dpAmt = dpAmtPerPiece(line);
-  const belowDp = (p) => p !== "" && p != null && dpAmt > 0 && Number(p) < dpAmt - 0.00005;
+  const belowDp = (p) => p !== "" && p != null && calc.dp > 0 && Number(p) < calc.dp - 0.00005;
 
   const resetLine = () => {
     setLine(emptyLine());
@@ -235,7 +240,7 @@ export default function PurchaseEntry({ companies, draft, onClose, onSaved, onSt
     // the same item at the same MRP replaces the earlier line. Stock adds them up per item.
     const key = lineKey(line);
     const replacing = lines.some((l) => lineKey(l) === key && l.id !== editingId);
-    const snapshot = lineSnapshot(line, everest, replacing);
+    let snapshot = lineSnapshot(line, everest, replacing);
 
     // Lines that came from a saved invoice are updated in the database straight away.
     if (snapshot.sourceDmsItemId) {
@@ -244,6 +249,12 @@ export default function PurchaseEntry({ companies, draft, onClose, onSaved, onSt
         const res = await jsonPost(`/staff/dms-stock/items/${snapshot.sourceDmsItemId}`, snapshot, "PUT");
         const data = await readJson(res);
         if (!res.ok) throw new Error(data.error || "Could not save this line.");
+        const saved = data.items?.find((item) => Number(item.id) === Number(snapshot.sourceDmsItemId));
+        if (saved) snapshot = {
+          ...snapshot,
+          wholesalePrice: saved.wholesale_price > 0 ? String(saved.wholesale_price) : "",
+          retailPrice: saved.retail_price > 0 ? String(saved.retail_price) : "",
+        };
         onStockChanged(data);
       } catch (err) {
         setError(err.message);
@@ -602,11 +613,11 @@ export default function PurchaseEntry({ companies, draft, onClose, onSaved, onSt
                   strong
                 />
                 <Field label="Wholesale price / pc">
-                  <input type="number" min={dpAmt ? dpAmt.toFixed(2) : "0"} step="0.01" className={`input w-full ${belowDp(line.wholesalePrice) ? "input-error" : ""}`} placeholder="Last price if blank" value={line.wholesalePrice} onChange={set("wholesalePrice")} />
+                  <input type="number" min={calc.dp || 0} step="any" className={`input w-full ${belowDp(line.wholesalePrice) ? "input-error" : ""}`} placeholder="Last price if blank" value={line.wholesalePrice} onChange={set("wholesalePrice")} />
                 </Field>
                 <MarginBox label="Wholesale margin / pc" price={line.wholesalePrice} dpPrice={calc.dp} />
                 <Field label="Retail price / pc">
-                  <input type="number" min={dpAmt ? dpAmt.toFixed(2) : "0"} step="0.01" className={`input w-full ${belowDp(line.retailPrice) ? "input-error" : ""}`} placeholder="Last price if blank" value={line.retailPrice} onChange={set("retailPrice")} />
+                  <input type="number" min={calc.dp || 0} step="any" className={`input w-full ${belowDp(line.retailPrice) ? "input-error" : ""}`} placeholder="Last price if blank" value={line.retailPrice} onChange={set("retailPrice")} />
                 </Field>
                 <MarginBox label="Retail margin / pc" price={line.retailPrice} dpPrice={calc.dp} />
               </div>
@@ -734,12 +745,12 @@ export default function PurchaseEntry({ companies, draft, onClose, onSaved, onSt
                     <td className="text-right tabular-nums">{rupees(dpAmtPerPiece({ ...l, dpPrice: l.dpPrice || l.mrp }), 4)}</td>
                     {saleBill && (
                       <td className="text-right tabular-nums">
-                        {Number(l.wholesalePrice) > 0 ? rupees(l.wholesalePrice) : <span className="text-base-content/45">last</span>}
+                        {Number(l.wholesalePrice) > 0 ? rupees(l.wholesalePrice) : <span className="text-base-content/45">{l.sourceDmsItemId ? "—" : "last"}</span>}
                       </td>
                     )}
                     {saleBill && (
                       <td className="text-right tabular-nums">
-                        {Number(l.retailPrice) > 0 ? rupees(l.retailPrice) : <span className="text-base-content/45">last</span>}
+                        {Number(l.retailPrice) > 0 ? rupees(l.retailPrice) : <span className="text-base-content/45">{l.sourceDmsItemId ? "—" : "last"}</span>}
                       </td>
                     )}
                     <td className="text-xs">{showDate(l.mfgDate)}</td>

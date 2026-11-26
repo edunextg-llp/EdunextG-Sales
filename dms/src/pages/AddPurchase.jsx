@@ -63,6 +63,8 @@ const COLUMNS = [
   { head: "Loose pcs", num: true, cell: (it) => qty(it.current_stock_in_pcs) },
   { head: "Total pcs", num: true, strong: true, cell: (it) => qty(it.total_current_stock_in_pcs) },
   { head: "Purchase / pc", num: true, tint: true, cell: (it) => rupees(purchaseRate(it)) },
+  { head: "Wholesale / pc", num: true, cell: (it) => Number(it.wholesale_price) > 0 ? rupees(it.wholesale_price) : "—" },
+  { head: "Retail / pc", num: true, cell: (it) => Number(it.retail_price) > 0 ? rupees(it.retail_price) : "—" },
   {
     head: "Purchase value",
     num: true,

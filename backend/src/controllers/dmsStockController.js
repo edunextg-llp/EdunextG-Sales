@@ -93,17 +93,15 @@ const isSalePriceInvalid = (price, dpPrice, discountPercent, optional) => {
     if (optional && (price === '' || price == null || toNumber(price) <= 0)) return false;
     return Number(price) < getDpPriceAfterDiscount(dpPrice, discountPercent);
 };
-const dpAmtOf = (calc) => roundRate(calc.dpPrice * (1 + calc.gstPercent / 100));
-
-// Wholesale / retail typed on a DMS line can't be below DP amt. Blank prices are not
+// Wholesale / retail typed on a DMS line can't be below DP. Blank prices are not
 // checked (they fall back to the last known price). Returns an error or ''.
-const salePriceBelowDpAmt = (item, calc, label = '') => {
-    const dpAmt = dpAmtOf(calc);
+const salePriceBelowDp = (item, calc, label = '') => {
+    const dp = calc.dpPrice;
     for (const [key, name] of [['wholesalePrice', 'Wholesale'], ['retailPrice', 'Retail']]) {
         const raw = item?.[key];
         if (raw === undefined || raw === null || String(raw).trim() === '') continue;
-        if (roundRate(toNumber(raw)) < dpAmt) {
-            return `${label}${name} price ₹${roundRate(toNumber(raw))} can't be below DP amt ₹${dpAmt} (DP + GST).`;
+        if (roundRate(toNumber(raw)) < dp) {
+            return `${label}${name} price ₹${roundRate(toNumber(raw))} can't be below the DP price of ₹${dp}.`;
         }
     }
     return '';
@@ -787,7 +785,7 @@ export const createManualDmsStock = async (req, res) => {
 
         for (const [index, item] of items.entries()) {
             if (!isMrpPricing(item)) continue;
-            const problem = salePriceBelowDpAmt(item, calcMrpLine(item, 0), `${textValue(item.productErpId) || `Row ${index + 1}`}: `);
+            const problem = salePriceBelowDp(item, calcMrpLine(item, 0), `${textValue(item.productErpId) || `Row ${index + 1}`}: `);
             if (problem) return res.status(400).json({ error: problem });
         }
 
@@ -934,8 +932,8 @@ export const updateDmsStockItem = async (req, res) => {
             const raw = req.body?.[key];
             return raw === undefined || raw === null || String(raw).trim() === '' ? fallback : raw;
         };
-        const retailPrice = roundRate(toNumber(salePrice('retailPrice', existing.retail_price)));
-        const wholesalePrice = roundRate(toNumber(salePrice('wholesalePrice', existing.wholesale_price)));
+        let retailPrice = roundRate(toNumber(salePrice('retailPrice', existing.retail_price)));
+        let wholesalePrice = roundRate(toNumber(salePrice('wholesalePrice', existing.wholesale_price)));
 
         if (isMrpPricing(req.body)) {
             const calc = calcMrpLine({
@@ -943,8 +941,14 @@ export const updateDmsStockItem = async (req, res) => {
                 mrp: value('mrp', existing.mrp),
                 dpPrice: value('dpPrice', existing.dp_price),
             }, totalPieces);
-            const priceProblem = salePriceBelowDpAmt(req.body, calc);
+            const priceProblem = salePriceBelowDp(req.body, calc);
             if (priceProblem) return res.status(400).json({ error: priceProblem });
+            if (!wholesalePrice || !retailPrice) {
+                const key = String(existing.product_erp_id || '').trim().toLowerCase();
+                const prices = await DmsStockModel.getLastSalePrices(existing.company_id, [key]);
+                wholesalePrice ||= toNumber(prices.get(key)?.wholesale_price);
+                retailPrice ||= toNumber(prices.get(key)?.retail_price);
+            }
             const mrpRow = {
                 batchNumber: textValue(value('batchNumber', existing.batch_number)),
                 mfgDate: textValue(value('mfgDate', existing.mfg_date)),

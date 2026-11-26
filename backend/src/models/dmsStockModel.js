@@ -298,8 +298,14 @@ class DmsStockModel {
             });
         });
 
-        return [...byItem.values()].slice(0, numericLimit).map(({ cost_total: costTotal, ...item }) => ({
+        const items = [...byItem.values()].slice(0, numericLimit);
+        const lastPrices = await this.getLastSalePrices(company, items
+            .filter((item) => !item.wholesale_price || !item.retail_price)
+            .map((item) => item.product_erp_id));
+        return items.map(({ cost_total: costTotal, ...item }) => ({
             ...item,
+            wholesale_price: item.wholesale_price || toNumber(lastPrices.get(String(item.product_erp_id).trim().toLowerCase())?.wholesale_price),
+            retail_price: item.retail_price || toNumber(lastPrices.get(String(item.product_erp_id).trim().toLowerCase())?.retail_price),
             // Average cost over the item's lines.
             price_per_piece: item.total_current_stock_in_pcs
                 ? Math.round((costTotal / item.total_current_stock_in_pcs) * 10000) / 10000
@@ -579,17 +585,20 @@ class DmsStockModel {
              ORDER BY i.upload_date DESC, dsi.id DESC`,
             [companyId, keys]
         );
-        rows.forEach((row) => {
-            if (!prices.has(row.erp_key)) prices.set(row.erp_key, row);
-        });
+        for (const row of rows) {
+            const last = prices.get(row.erp_key) || { wholesale_price: 0, retail_price: 0 };
+            if (!last.wholesale_price) last.wholesale_price = toNumber(row.wholesale_price);
+            if (!last.retail_price) last.retail_price = toNumber(row.retail_price);
+            prices.set(row.erp_key, last);
+        }
         return prices;
     }
 
     static async getItemById(itemId) {
         const [rows] = await db.execute(
-            `SELECT dsi.*, DATE_FORMAT(dsi.mfg_date, '%Y-%m-%d') AS mfg_date,
+            `SELECT dsi.*, i.company_id, DATE_FORMAT(dsi.mfg_date, '%Y-%m-%d') AS mfg_date,
                     DATE_FORMAT(dsi.expiry_date, '%Y-%m-%d') AS expiry_date
-             FROM dms_stock_items dsi
+             FROM dms_stock_items dsi JOIN dms_stock_imports i ON i.id = dsi.import_id
              WHERE dsi.id = ?
              LIMIT 1`,
             [itemId]

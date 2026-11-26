@@ -115,7 +115,7 @@ export function calcLine(line, everest) {
   };
 }
 
-/** DP amt per piece = DP + GST (no discount). Sale prices can't go below it. */
+/** DP amt per piece = DP + GST (no discount). */
 export const dpAmtPerPiece = (line) => {
   const gst = line.gstPercent === "" || line.gstPercent == null ? 5 : clampPct(line.gstPercent);
   return num(line.dpPrice) * (1 + gst / 100);
@@ -139,12 +139,12 @@ export function validateLine(line, everest) {
   if ([line.wholesalePrice, line.retailPrice].some((p) => p !== "" && p != null && Number(p) < 0)) {
     return "Sale prices can't be negative.";
   }
-  // Wholesale / retail can't be below DP amt (DP + GST per piece). Blank = last price, not checked.
-  const dpAmt = dpAmtPerPiece(line);
+  // Blank sale prices can reuse the last saved price.
+  const dp = Number(line.dpPrice);
   for (const [key, name] of [["wholesalePrice", "Wholesale"], ["retailPrice", "Retail"]]) {
     const p = line[key];
-    if (p !== "" && p != null && Math.round(Number(p) * 10000) < Math.round(dpAmt * 10000)) {
-      return `${name} price can't be below DP amt ${rupees(dpAmt, 4)} (DP + GST).`;
+    if (p !== "" && p != null && Math.round(Number(p) * 10000) < Math.round(dp * 10000)) {
+      return `${name} price can't be below the DP price of ${rupees(dp, 4)}.`;
     }
   }
   return "";
