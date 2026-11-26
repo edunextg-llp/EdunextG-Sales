@@ -16,7 +16,7 @@ import Dialog from "@mui/material/Dialog";
 import { logout, MAIN_SITE_URL } from "../auth";
 import { MENU_GROUPS } from "../menu";
 
-const SIDEBAR_WIDTH = 250;
+export const SIDEBAR_WIDTH = 250;
 
 // Same light-green look as the main site's sidebar (frontend/src/examples/Sidenav/index.js).
 export const GREEN = {

@@ -2,8 +2,6 @@ import { useEffect, useMemo, useState } from "react";
 import Alert from "@mui/material/Alert";
 import Autocomplete from "@mui/material/Autocomplete";
 import Box from "@mui/material/Box";
-import Card from "@mui/material/Card";
-import CardContent from "@mui/material/CardContent";
 import Grid from "@mui/material/Grid";
 import MenuItem from "@mui/material/MenuItem";
 import Skeleton from "@mui/material/Skeleton";
@@ -12,6 +10,7 @@ import Typography from "@mui/material/Typography";
 import { LineChart } from "@mui/x-charts/LineChart";
 import { ScatterChart } from "@mui/x-charts/ScatterChart";
 import { apiFetch } from "../auth";
+import { Panel } from "../components/DashboardCards";
 import { readJson } from "../components/ui";
 import { qty, rupees } from "../utils/purchaseCalc";
 
@@ -51,18 +50,6 @@ function buildItems({ sales, purchases }, stock) {
     item.stock = (item.stock ?? 0) + (Number(row.total_current_stock_in_pcs) || 0);
   }
   return [...items.values()].sort((a, b) => b.units - a.units || a.name.localeCompare(b.name));
-}
-
-function ChartCard({ title, detail, children }) {
-  return (
-    <Card variant="outlined" sx={{ height: "100%", borderColor: "#dfe6f2", borderRadius: 2 }}>
-      <CardContent>
-        <Typography component="h3" variant="subtitle1" fontWeight={600}>{title}</Typography>
-        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>{detail}</Typography>
-        {children}
-      </CardContent>
-    </Card>
-  );
 }
 
 function ChartEmpty({ children }) {
@@ -169,7 +156,7 @@ function CompanyInsights({ row }) {
   return (
     <Grid container spacing={2}>
       <Grid item xs={12} lg={6}>
-        <ChartCard title="Item sales trend" detail="Compare up to three products across 12 months, including this month.">
+        <Panel title="Item sales trend" subtitle="Compare up to three products across 12 months, including this month.">
           <Box display="flex" flexWrap="wrap" gap={1}>
             <Autocomplete multiple size="small" options={salesItems} value={trendItems}
               onChange={(_, value) => setTrendSelection(value)}
@@ -193,10 +180,10 @@ function CompanyInsights({ row }) {
           {trendItems.map((item, index) => (
             <Typography key={item.key} component="div" variant="caption" sx={{ fontWeight: 600, color: colors[index] }}>{itemLabel(item)}</Typography>
           ))}
-        </ChartCard>
+        </Panel>
       </Grid>
       <Grid item xs={12} lg={6}>
-        <ChartCard title="Purchases vs. sales" detail="Pieces purchased on recorded purchase invoices and pieces sold each month.">
+        <Panel title="Purchases vs. sales" subtitle="Pieces purchased on recorded purchase invoices and pieces sold each month.">
           <Autocomplete size="small" options={comparisonItems} value={comparison}
             onChange={(_, item) => setComparisonKey(item?.key || "")} disableClearable={Boolean(comparison)}
             getOptionLabel={itemLabel} isOptionEqualToValue={(a, b) => a.key === b.key}
@@ -209,17 +196,17 @@ function CompanyInsights({ row }) {
               { label: "Sold", data: months.map((month) => comparison.sales.get(month)?.units || 0), color: "#b45309", area: true, showMark: false, curve: "linear" },
             ]}
           /> : <ChartEmpty>No purchase or sales item history in the last 12 months.</ChartEmpty>}
-        </ChartCard>
+        </Panel>
       </Grid>
       <Grid item xs={12} lg={6}>
-        <ChartCard title="Stock at risk" detail="Up to 10 items with 14 days of stock or less, estimated from the last 30 days of sales.">
+        <Panel title="Stock at risk" subtitle="Up to 10 items with 14 days of stock or less, estimated from the last 30 days of sales.">
           <StockRisk items={items} available={row.available} />
-        </ChartCard>
+        </Panel>
       </Grid>
       <Grid item xs={12} lg={6}>
-        <ChartCard title="Slow-moving stock" detail="Up to 30 items with stock on hand and five or fewer pieces sold, prioritised by stock on hand.">
+        <Panel title="Slow-moving stock" subtitle="Up to 30 items with stock on hand and five or fewer pieces sold, prioritised by stock on hand.">
           <SlowStock items={items} available={row.available} />
-        </ChartCard>
+        </Panel>
       </Grid>
     </Grid>
   );
@@ -233,7 +220,7 @@ export default function ItemStockInsights({ companies }) {
   return (
     <Box component="section" aria-label="Item stock insights" sx={{ mt: 3 }}>
       <Box display="flex" justifyContent="space-between" alignItems="center" flexWrap="wrap" gap={2} mb={2}>
-        <Typography component="h2" variant="h5" fontWeight={600}>Item stock insights</Typography>
+        <Typography component="h2" variant="h6" fontWeight={700}>Item stock insights</Typography>
         <TextField select size="small" label="Company" value={String(row.company.id)} onChange={(event) => setSelected(event.target.value)}
           sx={{ bgcolor: "#fff", minWidth: 180 }}>
           {companies.map(({ company }) => <MenuItem value={String(company.id)} key={company.id}>{company.name}</MenuItem>)}

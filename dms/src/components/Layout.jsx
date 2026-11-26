@@ -6,7 +6,7 @@ import Toolbar from "@mui/material/Toolbar";
 import IconButton from "@mui/material/IconButton";
 import { MdClose, MdMenu } from "react-icons/md";
 import Typography from "@mui/material/Typography";
-import Sidebar, { GREEN } from "./Sidebar";
+import Sidebar, { GREEN, SIDEBAR_WIDTH } from "./Sidebar";
 
 // Open pages as tabs above the content, like VS Code: a sidebar click opens (or switches to)
 // a tab, × or a middle click closes it. Every open tab stays mounted, so a half-filled form
@@ -142,8 +142,20 @@ export default function Layout({ user, menu, pages = {} }) {
             <IconButton edge="start" sx={{ mr: 1, color: "#3d5a38", display: { lg: "none" } }} onClick={() => setMobileOpen(true)}>
               <MdMenu size={24} />
             </IconButton>
-            <Typography sx={{ flexGrow: 1, fontSize: 17, fontWeight: 600, color: GREEN.textStrong }}>
-              DMS
+            <Typography
+              component="span"
+              sx={{
+                flex: "1 1 auto",
+                minWidth: 0,
+                mr: 2,
+                fontSize: { xs: 16, sm: 20 },
+                fontWeight: 700,
+                lineHeight: 1.2,
+                letterSpacing: "-0.025em",
+                color: GREEN.textStrong,
+              }}
+            >
+              Bawarchee Stock Management
             </Typography>
             <Typography sx={{ fontSize: 12.5, fontWeight: 600, color: GREEN.textStrong }}>
               {user?.username}
@@ -173,7 +185,7 @@ export default function Layout({ user, menu, pages = {} }) {
             </Box>
           )}
         </AppBar>
-        <Box component="main" sx={{ p: 3 }}>
+        <Box component="main" sx={{ p: 3, pb: { xs: 11, sm: 8 } }}>
           {/* Redirect routes (e.g. old URLs) still render here. */}
           <Outlet />
           {tabs.map((path) => (
@@ -181,6 +193,45 @@ export default function Layout({ user, menu, pages = {} }) {
               {pages[path]}
             </Box>
           ))}
+        </Box>
+        <Box
+          component="footer"
+          sx={{
+            position: "fixed",
+            bottom: 0,
+            left: { xs: 0, lg: SIDEBAR_WIDTH },
+            right: 0,
+            zIndex: (theme) => theme.zIndex.appBar,
+            minHeight: 44,
+            display: "grid",
+            gridTemplateColumns: { xs: "1fr", sm: "1fr auto 1fr" },
+            alignItems: "center",
+            justifyItems: { xs: "center", sm: "stretch" },
+            gap: { xs: 0.25, sm: 2 },
+            px: { xs: 2, sm: 3 },
+            py: 0.75,
+            bgcolor: "rgba(255, 255, 255, 0.96)",
+            borderTop: "1px solid #e2e8f0",
+            color: "#475569",
+            backdropFilter: "blur(8px)",
+            fontSize: 12.5,
+          }}
+        >
+          <Box component="span">© {new Date().getFullYear()} Bawarchee Food Packaging Pvt. Ltd.</Box>
+          <Box component="span" sx={{ textAlign: "center" }}>
+            Maintained by{" "}
+            <Box component="a" href="https://edunextg.in" target="_blank" rel="noopener noreferrer"
+              sx={{ color: "#334155", fontWeight: 600, textDecoration: "none", "&:hover": { textDecoration: "underline" } }}>
+              EduNextG India LLP
+            </Box>
+          </Box>
+          <Box
+            component="a"
+            href="/privacy-policy"
+            sx={{ justifySelf: { xs: "center", sm: "end" }, color: "#334155", fontWeight: 600, textDecoration: "none", "&:hover": { textDecoration: "underline" } }}
+          >
+            Privacy Policy
+          </Box>
         </Box>
       </Box>
     </Box>

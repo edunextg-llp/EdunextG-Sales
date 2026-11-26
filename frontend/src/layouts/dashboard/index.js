@@ -1292,7 +1292,7 @@ function Dashboard() {
         {/* Company header: plain, no background */}
         <div className="flex flex-wrap items-center gap-4">
           <div className="min-w-0 grow">
-            <h2 className="m-0 truncate text-[22px] font-bold leading-tight text-slate-900">{COMPANY_NAME}</h2>
+            <h2 className="m-0 truncate text-[22px] font-bold leading-tight text-slate-900">Bawarchee Food Packaging Pvt. Ltd.</h2>
             <p className="m-0 mt-0.5 text-[12.5px] text-slate-500">Live sales, collection, outstanding, cheque and dues overview · {todayLabel}</p>
           </div>
           <button

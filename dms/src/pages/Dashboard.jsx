@@ -1,13 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Box from "@mui/material/Box";
-import Button from "@mui/material/Button";
-import CircularProgress from "@mui/material/CircularProgress";
-import Card from "@mui/material/Card";
-import CardContent from "@mui/material/CardContent";
 import Chip from "@mui/material/Chip";
 import FormControl from "@mui/material/FormControl";
 import Grid from "@mui/material/Grid";
-import IconButton from "@mui/material/IconButton";
 import InputLabel from "@mui/material/InputLabel";
 import LinearProgress from "@mui/material/LinearProgress";
 import MenuItem from "@mui/material/MenuItem";
@@ -28,10 +23,11 @@ import Tooltip from "@mui/material/Tooltip";
 import Typography from "@mui/material/Typography";
 import { BarChart } from "@mui/x-charts/BarChart";
 import { PieChart } from "@mui/x-charts/PieChart";
-import { MdArrowDownward, MdArrowUpward, MdCheckCircle, MdError, MdFileDownload, MdRefresh, MdWarning } from "react-icons/md";
+import { MdArrowDownward, MdArrowUpward, MdCheckCircle, MdError, MdFileDownload, MdInventory2, MdRefresh, MdShoppingCart, MdWarning } from "react-icons/md";
 import { downloadExcel } from "../utils/excel";
 import { apiFetch } from "../auth";
 import { COMPANY_TYPES, readJson, useCompanies } from "../components/ui";
+import { DashboardFilters, DashboardSectionHeading, DashboardSelect, Panel, StatTile, dashboardActionClass } from "../components/DashboardCards";
 import { todayLocal } from "../utils/purchaseCalc";
 import PurchaseDashboard from "./PurchaseDashboard";
 import ItemStockInsights from "./ItemStockInsights";
@@ -44,7 +40,7 @@ const ITEM_SALES_COLORS = [...SERIES, "#007b85", "#a75417"];
 const SINGLE = SERIES[0]; // one-series bars
 const OTHER = "#898781";
 const STATUS = { good: "#0ca30c", warning: "#fab219", critical: "#d03b3b" };
-const INK = { primary: "#0b0b0b", secondary: "#52514e", muted: "#898781", grid: "#e1e0d9" };
+const INK = { primary: "#0f172a", secondary: "#475569", muted: "#64748b", grid: "#e2e8f0" };
 
 const inr = new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 });
 const inrCompact = new Intl.NumberFormat("en-IN", {
@@ -124,52 +120,6 @@ function useDashboardData(companies) {
 
 // ---------------------------------------------------------------------------
 // Small pieces
-
-function Panel({ title, subtitle, action, children, minHeight }) {
-  return (
-    <Card variant="outlined" sx={{ height: "100%", borderColor: "#dfe6f2", borderRadius: 2 }}>
-      <CardContent sx={{ p: 2.5, "&:last-child": { pb: 2.5 }, minHeight }}>
-        <Box display="flex" alignItems="flex-start" justifyContent="space-between" gap={2} mb={1.5}>
-          <Box>
-            <Typography variant="subtitle1" fontWeight={600} color={INK.primary} lineHeight={1.3}>
-              {title}
-            </Typography>
-            {subtitle && (
-              <Typography variant="caption" color={INK.secondary}>
-                {subtitle}
-              </Typography>
-            )}
-          </Box>
-          {action}
-        </Box>
-        {children}
-      </CardContent>
-    </Card>
-  );
-}
-
-function StatTile({ label, value, note, icon, tone }) {
-  return (
-    <Card variant="outlined" sx={{ height: "100%", borderColor: "#dfe6f2", borderRadius: 2 }}>
-      <CardContent sx={{ p: 2, "&:last-child": { pb: 2 } }}>
-        <Box display="flex" alignItems="center" gap={0.75} color={INK.secondary}>
-          {icon && <Box component="span" sx={{ color: tone, display: "flex" }}>{icon}</Box>}
-          <Typography variant="body2" color={INK.secondary}>
-            {label}
-          </Typography>
-        </Box>
-        <Typography sx={{ fontSize: 28, fontWeight: 600, color: INK.primary, mt: 0.5, lineHeight: 1.2 }}>
-          {value}
-        </Typography>
-        {note && (
-          <Typography variant="caption" color={INK.secondary} component="div" mt={0.5}>
-            {note}
-          </Typography>
-        )}
-      </CardContent>
-    </Card>
-  );
-}
 
 function Delta({ current, previous }) {
   if (!previous) return <span>No purchases last month</span>;
@@ -430,79 +380,38 @@ function StockDashboard({ user }) {
   };
 
   return (
-    <Box sx={{ maxWidth: 1400, mx: "auto" }}>
-      {/* Header + one filter row for everything below */}
-      <Box display="flex" flexWrap="wrap" alignItems="flex-end" justifyContent="space-between" gap={2} mb={2.5}>
-        <Box>
-          <Typography variant="overline" color="#c2410c" fontWeight={700} lineHeight={1.5}>
-            Stock report
-          </Typography>
-          <Typography variant="h5" fontWeight={600} color={INK.primary}>
-            Dashboard
-          </Typography>
-          <Typography variant="body2" color={INK.secondary}>
-            Welcome, {user?.username || "User"}. Current stock is physical stock minus DMS, per company.
-          </Typography>
-        </Box>
-        <Box display="flex" flexWrap="wrap" alignItems="center" gap={1.5}>
-          <ToggleButtonGroup
-            size="small"
-            exclusive
-            value={type}
-            onChange={(_, v) => {
-              if (!v) return;
-              setType(v);
-              setCompanyId("all");
-            }}
-            sx={{ bgcolor: "#fff" }}
-          >
-            <ToggleButton value="all">All</ToggleButton>
-            {COMPANY_TYPES.map((t) => (
-              <ToggleButton key={t.value} value={t.value}>
-                {t.label}
-              </ToggleButton>
-            ))}
-          </ToggleButtonGroup>
-          <FormControl size="small" sx={filterSx}>
-            <InputLabel>Company</InputLabel>
-            <Select label="Company" value={companyId} onChange={(e) => setCompanyId(e.target.value)}>
-              <MenuItem value="all">All companies</MenuItem>
-              {sortedCompanies
-                .filter((c) => type === "all" || c.type === type)
-                .map((c) => (
-                  <MenuItem key={c.id} value={String(c.id)}>
-                    {c.name}
-                  </MenuItem>
-                ))}
-            </Select>
-          </FormControl>
-          <FormControl size="small" sx={{ ...filterSx, minWidth: 140 }}>
-            <InputLabel>Purchases</InputLabel>
-            <Select label="Purchases" value={months} onChange={(e) => setMonths(e.target.value)}>
-              <MenuItem value={3}>Last 3 months</MenuItem>
-              <MenuItem value={6}>Last 6 months</MenuItem>
-              <MenuItem value={12}>Last 12 months</MenuItem>
-            </Select>
-          </FormControl>
-          <Button
-            variant="outlined"
-            size="medium"
+    <Box>
+      <DashboardFilters>
+        <DashboardSelect label="Company type" value={type} onChange={(value) => { setType(value); setCompanyId("all"); }}>
+          <option value="all">All types</option>
+          {COMPANY_TYPES.map((entry) => <option key={entry.value} value={entry.value}>{entry.label}</option>)}
+        </DashboardSelect>
+        <DashboardSelect label="Company" value={companyId} onChange={setCompanyId}>
+          <option value="all">All companies</option>
+          {sortedCompanies.filter((c) => type === "all" || c.type === type)
+            .map((c) => <option key={c.id} value={String(c.id)}>{c.name}</option>)}
+        </DashboardSelect>
+        <DashboardSelect label="Purchase period" value={months} onChange={(value) => setMonths(Number(value))}>
+          <option value={3}>Last 3 months</option>
+          <option value={6}>Last 6 months</option>
+          <option value={12}>Last 12 months</option>
+        </DashboardSelect>
+        <div className="ml-auto flex gap-2">
+          <button
+            type="button"
             onClick={exportReport}
             disabled={!loadedOnce || exporting || noAccess}
-            startIcon={exporting ? <CircularProgress size={16} /> : <MdFileDownload size={18} />}
-            sx={{ bgcolor: "#fff", textTransform: "none", borderColor: "#cdd7e6", color: INK.primary, height: 40 }}
+            className={`${dashboardActionClass} bg-blue-600 text-white hover:bg-blue-700`}
           >
-            Download Excel
-          </Button>
-          <Tooltip title="Refresh">
-            <span>
-              <IconButton onClick={reload} disabled={loading} sx={{ bgcolor: "#fff", border: "1px solid #dfe6f2" }}>
-                <MdRefresh size={20} />
-              </IconButton>
-            </span>
-          </Tooltip>
-        </Box>
-      </Box>
+            <MdFileDownload size={18} aria-hidden="true" />
+            {exporting ? "Preparing Excel…" : "Download Excel"}
+          </button>
+          <button type="button" onClick={reload} disabled={loading} aria-label="Refresh stock" title="Refresh stock"
+            className={`${dashboardActionClass} border border-slate-300 bg-white text-slate-700 hover:bg-slate-50`}>
+            <MdRefresh size={19} aria-hidden="true" />
+          </button>
+        </div>
+      </DashboardFilters>
 
       {loading && loadedOnce && <LinearProgress sx={{ mb: 1, height: 2 }} />}
 
@@ -526,11 +435,12 @@ function StockDashboard({ user }) {
         </Panel>
       ) : (
         <Box sx={{ opacity: loading ? 0.6 : 1, transition: "opacity .2s" }}>
-          {/* KPI row */}
+          <DashboardSectionHeading>Stock overview</DashboardSectionHeading>
           <Grid container spacing={2} mb={2}>
             <Grid item xs={12} sm={6} lg>
               <StatTile
                 label="Current stock value"
+                icon={<MdInventory2 size={20} />}
                 value={inrCompact.format(totals.value)}
                 note={`${inr.format(totals.value)} · ${count.format(totals.pieces)} pcs`}
               />
@@ -565,12 +475,14 @@ function StockDashboard({ user }) {
             <Grid item xs={12} sm={6} lg>
               <StatTile
                 label="Purchases this month"
+                icon={<MdShoppingCart size={20} />}
                 value={inrCompact.format(thisMonth)}
                 note={<Delta current={thisMonth} previous={lastMonth} />}
               />
             </Grid>
           </Grid>
 
+          <DashboardSectionHeading>Stock and purchase performance</DashboardSectionHeading>
           <Grid container spacing={2} mb={2}>
             {/* Stock value by company */}
             {!single && (
@@ -1000,10 +912,10 @@ function ItemSalesSection() {
   const [metric, setMetric] = useState("quantity");
 
   return (
-    <Box component="section" aria-label="Item-wise sales" sx={{ maxWidth: 1400, mx: "auto", mt: 3 }}>
+    <Box component="section" aria-label="Item-wise sales" sx={{ mt: 3 }}>
       <Box display="flex" flexWrap="wrap" alignItems="center" justifyContent="space-between" gap={2} mb={2.5}>
         <Box>
-          <Typography variant="h5" fontWeight={600} color={INK.primary}>Item-wise sales</Typography>
+          <Typography component="h2" variant="h6" fontWeight={700} color={INK.primary}>Item-wise sales</Typography>
           <Typography variant="body2" color={INK.secondary}>Sales rankings exclude cancelled bills and free goods.</Typography>
         </Box>
         <Box display="flex" flexWrap="wrap" alignItems="center" gap={1.5}>
@@ -1057,25 +969,44 @@ export default function Dashboard({ user }) {
   const current = showPurchase ? tab : "stock";
 
   return (
-    <Box>
+    <Box sx={{ maxWidth: 1600, mx: "auto" }}>
+      <header className="mb-5">
+        <h1 className="m-0 text-[22px] font-bold leading-tight text-slate-900">Bawarchee Food Packaging Pvt. Ltd.</h1>
+        <p className="m-0 mt-1 text-[12.5px] text-slate-500">
+          {current === "stock"
+            ? "Stock and item sales overview · Current stock is physical stock minus DMS, per company"
+            : "Purchase invoices, supplier discounts, taxable value and GST"}
+        </p>
+      </header>
       {showPurchase && (
-        <Box sx={{ maxWidth: 1400, mx: "auto", mb: 2, borderBottom: "1px solid #dfe6f2" }}>
+        <Box sx={{ mb: 2, overflowX: "auto" }}>
           <Tabs
             value={current}
             onChange={(_, v) => setTab(v)}
-            sx={{ minHeight: 40, "& .MuiTab-root": { minHeight: 40, textTransform: "none", fontWeight: 600, px: 2 } }}
+            aria-label="Dashboard views"
+            sx={{
+              display: "inline-flex",
+              minHeight: 42,
+              p: 0.5,
+              bgcolor: "#fff",
+              border: "1px solid #e2e8f0",
+              borderRadius: 3,
+              "& .MuiTabs-indicator": { display: "none" },
+              "& .MuiTab-root": { minHeight: 34, minWidth: 0, textTransform: "none", fontSize: 13, fontWeight: 600, px: { xs: 1, sm: 2 }, py: 0.5, borderRadius: 2, color: "#475569" },
+              "& .MuiTab-root.Mui-selected": { bgcolor: "#eff6ff", color: "#1d4ed8" },
+            }}
           >
-            <Tab value="stock" label="Stock Dashboard" />
-            <Tab value="purchase" label="Purchase Dashboard" />
+            <Tab id="stock-dashboard-tab" aria-controls="stock-dashboard-panel" value="stock" label="Stock Dashboard" />
+            <Tab id="purchase-dashboard-tab" aria-controls="purchase-dashboard-panel" value="purchase" label="Purchase Dashboard" />
           </Tabs>
         </Box>
       )}
-      <Box sx={{ display: current === "stock" ? "block" : "none" }}>
+      <Box id="stock-dashboard-panel" role={showPurchase ? "tabpanel" : undefined} aria-labelledby={showPurchase ? "stock-dashboard-tab" : undefined} hidden={current !== "stock"}>
         <StockDashboard user={user} />
       </Box>
       {showPurchase && (
-        <Box sx={{ display: current === "purchase" ? "block" : "none" }}>
-          <PurchaseDashboard user={user} />
+        <Box id="purchase-dashboard-panel" role="tabpanel" aria-labelledby="purchase-dashboard-tab" hidden={current !== "purchase"}>
+          <PurchaseDashboard />
         </Box>
       )}
     </Box>

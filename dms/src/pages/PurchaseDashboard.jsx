@@ -1,26 +1,20 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Box from "@mui/material/Box";
-import Card from "@mui/material/Card";
-import CardContent from "@mui/material/CardContent";
-import FormControl from "@mui/material/FormControl";
 import Grid from "@mui/material/Grid";
-import IconButton from "@mui/material/IconButton";
-import InputLabel from "@mui/material/InputLabel";
 import LinearProgress from "@mui/material/LinearProgress";
-import MenuItem from "@mui/material/MenuItem";
-import Select from "@mui/material/Select";
 import Tooltip from "@mui/material/Tooltip";
 import Typography from "@mui/material/Typography";
 import { BarChart } from "@mui/x-charts/BarChart";
 import { MdLocalOffer, MdPercent, MdReceiptLong, MdRefresh, MdShoppingCart, MdStorefront } from "react-icons/md";
 import { apiFetch } from "../auth";
+import { DashboardFilters, DashboardSectionHeading, DashboardSelect, Panel, StatTile, dashboardActionClass } from "../components/DashboardCards";
 import { readJson, useFlash } from "../components/ui";
 
 // Dashboard > Purchase tab. Moved here from the main site's Dashboard ("Purchase Dashboard"
 // tab). Same data: GET /staff/purchase-reports?startDate&endDate.
 
 const SINGLE = "#2a78d6";
-const INK = { primary: "#0b0b0b", secondary: "#52514e", muted: "#898781", grid: "#e1e0d9" };
+const INK = { primary: "#0f172a", secondary: "#475569", muted: "#64748b", grid: "#e2e8f0" };
 // How an invoice's gross value splits: discounts, cash discount, taxable value, GST.
 const PART = { discount: "#eb6834", cash: "#eda100", taxable: "#2a78d6", gst: "#1baf7a" };
 
@@ -84,50 +78,6 @@ const monthLabel = (key) => {
 
 // ---------------------------------------------------------------------------
 
-function Panel({ title, subtitle, action, children }) {
-  return (
-    <Card variant="outlined" sx={{ height: "100%", borderColor: "#dfe6f2", borderRadius: 2 }}>
-      <CardContent sx={{ p: 2.5, "&:last-child": { pb: 2.5 } }}>
-        <Box display="flex" alignItems="flex-start" justifyContent="space-between" gap={2} mb={1.5}>
-          <Box>
-            <Typography variant="subtitle1" fontWeight={600} color={INK.primary} lineHeight={1.3}>
-              {title}
-            </Typography>
-            {subtitle && (
-              <Typography variant="caption" color={INK.secondary}>
-                {subtitle}
-              </Typography>
-            )}
-          </Box>
-          {action}
-        </Box>
-        {children}
-      </CardContent>
-    </Card>
-  );
-}
-
-function StatTile({ label, value, note, icon, tone }) {
-  return (
-    <Card variant="outlined" sx={{ height: "100%", borderColor: "#dfe6f2", borderRadius: 2 }}>
-      <CardContent sx={{ p: 2, "&:last-child": { pb: 2 } }}>
-        <Box display="flex" alignItems="center" gap={0.75}>
-          {icon && <Box component="span" sx={{ color: tone, display: "flex" }}>{icon}</Box>}
-          <Typography variant="body2" color={INK.secondary}>
-            {label}
-          </Typography>
-        </Box>
-        <Typography sx={{ fontSize: 28, fontWeight: 600, color: INK.primary, mt: 0.5, lineHeight: 1.2 }}>{value}</Typography>
-        {note && (
-          <Typography variant="caption" color={INK.secondary} component="div" mt={0.5}>
-            {note}
-          </Typography>
-        )}
-      </CardContent>
-    </Card>
-  );
-}
-
 // One line of the gross-to-payable breakdown.
 function Line({ label, value, share, color, strong, minus, indent }) {
   return (
@@ -167,11 +117,9 @@ const chartSx = {
   "& .MuiChartsGrid-line": { stroke: INK.grid },
 };
 
-const filterSx = { minWidth: 150, bgcolor: "#fff" };
-
 // ---------------------------------------------------------------------------
 
-export default function PurchaseDashboard({ user }) {
+export default function PurchaseDashboard() {
   const [flash, flashNode] = useFlash();
   const years = useMemo(() => financialYearOptions(), []);
   const [financialYear, setFinancialYear] = useState(years[0].value);
@@ -244,64 +192,27 @@ export default function PurchaseDashboard({ user }) {
   const best = chartHasData ? chart.values.indexOf(Math.max(...chart.values)) : -1;
 
   return (
-    <Box sx={{ maxWidth: 1400, mx: "auto" }}>
-      <Box display="flex" flexWrap="wrap" alignItems="flex-end" justifyContent="space-between" gap={2} mb={2.5}>
-        <Box>
-          <Typography variant="overline" color="#c2410c" fontWeight={700} lineHeight={1.5}>
-            Purchase report
-          </Typography>
-          <Typography variant="h5" fontWeight={600} color={INK.primary}>
-            Purchase Dashboard
-          </Typography>
-          <Typography variant="body2" color={INK.secondary}>
-            Welcome, {user?.username || "User"}. Purchase invoices, discounts, taxable value and GST · {periodText}
-          </Typography>
-        </Box>
-        <Box display="flex" flexWrap="wrap" alignItems="center" gap={1.5}>
-          <FormControl size="small" sx={filterSx}>
-            <InputLabel>Financial year</InputLabel>
-            <Select
-              label="Financial year"
-              value={financialYear}
-              onChange={(e) => {
-                setFinancialYear(e.target.value);
-                setMonth("");
-              }}
-            >
-              <MenuItem value="">All years</MenuItem>
-              {years.map((y) => (
-                <MenuItem key={y.value} value={y.value}>
-                  {y.label}
-                </MenuItem>
-              ))}
-            </Select>
-          </FormControl>
-          <FormControl size="small" sx={filterSx} disabled={!financialYear}>
-            <InputLabel>Month</InputLabel>
-            <Select label="Month" value={month} onChange={(e) => setMonth(e.target.value)}>
-              <MenuItem value="">All months</MenuItem>
-              {months.map((m) => (
-                <MenuItem key={m.value} value={m.value}>
-                  {m.label}
-                </MenuItem>
-              ))}
-            </Select>
-          </FormControl>
-          <Tooltip title="Reload">
-            <span>
-              <IconButton onClick={load} disabled={loading} size="small">
-                <MdRefresh />
-              </IconButton>
-            </span>
-          </Tooltip>
-        </Box>
-      </Box>
+    <Box>
+      <DashboardFilters>
+        <DashboardSelect label="Financial year" value={financialYear} onChange={(value) => { setFinancialYear(value); setMonth(""); }}>
+          <option value="">All years</option>
+          {years.map((year) => <option key={year.value} value={year.value}>{year.label}</option>)}
+        </DashboardSelect>
+        <DashboardSelect label="Month" value={month} onChange={setMonth} disabled={!financialYear}>
+          <option value="">All months</option>
+          {months.map((entry) => <option key={entry.value} value={entry.value}>{entry.label}</option>)}
+        </DashboardSelect>
+        <button type="button" onClick={load} disabled={loading} aria-label="Refresh purchases" title="Refresh purchases"
+          className={`${dashboardActionClass} ml-auto border border-slate-300 bg-white text-slate-700 hover:bg-slate-50`}>
+          <MdRefresh size={19} aria-hidden="true" />
+        </button>
+      </DashboardFilters>
 
       <Box height={4} mb={2}>
         {loading && <LinearProgress sx={{ borderRadius: 1 }} />}
       </Box>
 
-      {/* Headline numbers */}
+      <DashboardSectionHeading>Purchase overview · {periodText}</DashboardSectionHeading>
       <Grid container spacing={2}>
         <Grid item xs={12} sm={6} lg={3}>
           <StatTile
@@ -341,7 +252,8 @@ export default function PurchaseDashboard({ user }) {
         </Grid>
       </Grid>
 
-      <Grid container spacing={2} mt={0}>
+      <DashboardSectionHeading>Purchase performance</DashboardSectionHeading>
+      <Grid container spacing={2}>
         {/* Monthly trend */}
         <Grid item xs={12} lg={7}>
           <Panel
