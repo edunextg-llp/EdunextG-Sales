@@ -27,7 +27,7 @@ const PERMISSIONS = [
   ["damage_list", "Damage List", "Record and manage damaged stock returned from outlets."],
   ["purchase", "Purchase", "Create, edit and delete purchase entries from sellers."],
   ["update_payment", "Update Payment", "View sales and add, edit, or delete their payment entries."],
-  ["product_cancellation", "Product Cancellation", "Request cancellation of individual products from a bill. Admin approval is required before the cancellation is applied."],
+  ["product_cancellation", "Product Cancellation", "Cancel individual products from a bill directly without admin approval."],
   ["bank_deposit", "Bank Deposit", "View and manage cash, cheque, and UPI bank deposits."],
   ["db_collection", "D.B. Collection", "View delivery boy collections and settle them into payments."],
   ["credits", "Give Credit", "Open the Credits page to view and manage pending customer credit."],

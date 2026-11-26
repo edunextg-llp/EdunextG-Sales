@@ -102,9 +102,9 @@ function NewOrder({ onPlaced }) {
   const [onlyOffers, setOnlyOffers] = useState(false);
   const [cart, setCart] = useState({}); // productErpId -> qty string
   const [remarks, setRemarks] = useState("");
-  // Retail or wholesale price for the whole order (Retail unless changed). A CNF company's
+  // Retail or wholesale price for the whole order (Wholesale unless changed). A CNF company's
   // distributors have no choice: their orders are at the product MRP (data.mrpOnly).
-  const [chosenPrice, setPriceType] = useState("retail");
+  const [chosenPrice, setPriceType] = useState("wholesale");
   const [busy, setBusy] = useState(false);
   const cartRef = useRef(null);
 

@@ -4610,6 +4610,19 @@ export const createCancellationRequest = async (req, res) => {
         if (!String(body.reason || '').trim() || !String(body.productName || '').trim()) return res.status(400).json({ error: 'Cancellation reason and product are required.' });
         if (!Number.isFinite(amount) || amount <= 0 || !Number.isFinite(qty) || qty <= 0) return res.status(400).json({ error: 'Enter a valid cancellation quantity and amount.' });
         if (!String(body.invoiceImageUrl || '').trim()) return res.status(400).json({ error: 'Upload the cancellation invoice image.' });
+        // Product Cancellation is the explicit authority to apply this change. Record it
+        // immediately; admin approval remains reserved for requests without that permission.
+        if (req.user?.role === 'admin' || (Array.isArray(req.user?.permissions) && req.user.permissions.includes('product_cancellation'))) {
+            let result;
+            const response = { status: (code) => ({ json: (payload) => { result = { code, payload }; } }) };
+            await logOrderCancellation({ params: { saleId }, body: {
+                outletName: body.outletName, invoiceNumber: body.invoiceNumber, productName: body.productName,
+                saleItemId: body.saleItemId, productErpId: body.productErpId, productQty: qty,
+                amount, reason: body.reason, remarks: body.remarks,
+            } }, response);
+            if (!result || result.code >= 400) return res.status(result?.code || 500).json(result?.payload || { error: 'Unable to apply cancellation.' });
+            return res.status(201).json({ ...result.payload, message: 'Product cancellation applied successfully.' });
+        }
         const saleItemId = Number(body.saleItemId);
         const requester = await getRequester(req.user);
         const [result] = await db.execute(

@@ -847,7 +847,7 @@ function UpdatePayment() {
       );
 
       if (response.ok) {
-        alert("Cancellation request sent to the admin for approval.");
+        alert("Product cancellation applied successfully.");
         closeAddCancelDialog();
         await fetchSales();
         await fetchCancellationHistory(cancelDialogSale.id);

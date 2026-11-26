@@ -632,6 +632,7 @@ export default function CreateSales({ user }) {
           void loadDrafts();
         }}
         outlet={billBuyer}
+        forceWholesale={companyType === "cnf"}
         initialRequisitionNumber={billRequisition}
         initialDraft={activeDraft?.payload}
         selectedDate={saleDate}

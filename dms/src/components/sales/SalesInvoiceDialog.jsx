@@ -141,6 +141,7 @@ export default function SalesInvoiceDialog({
   submitting = false,
   onSubmit,
   onSaveDraft,
+  forceWholesale = false,
 }) {
   /* ── state ── */
   const [billNo, setBillNo] = useState("");
@@ -221,7 +222,7 @@ export default function SalesInvoiceDialog({
     } else {
       setLineItems([]);
     }
-    setDraft({ ...emptyLineItem, ...initialDraft?.pendingLine });
+    setDraft({ ...emptyLineItem, ...initialDraft?.pendingLine, ...(forceWholesale ? { priceType: "wholesale" } : {}) });
     setEditingIdx(null);
     setFlatDiscount(initialDraft?.flatDiscount || "");
     setRoundOff(initialDraft?.roundOff || "0");
@@ -547,16 +548,17 @@ export default function SalesInvoiceDialog({
       productDivision: product.product_division || "",
       variantName: product.variant_name || "",
       availableStock: Number(product.total_current_stock_in_pcs) || 0,
-      priceType: "retail",
+      priceType: forceWholesale ? "wholesale" : "retail",
       retailPrice: retail,
       wholesalePrice: wholesale,
       gstPercent: Number(product.gst_percent) || 5,
-      rate: retail || product.mrp || product.price_per_piece || "",
+      rate: (forceWholesale ? wholesale : retail) || product.mrp || product.price_per_piece || "",
       rateEdited: false,
     }));
   };
 
   const handlePriceTypeChange = (priceType) => {
+    if (forceWholesale && priceType !== "wholesale") return;
     setDraft((prev) => ({
       ...prev,
       priceType,
@@ -1061,7 +1063,7 @@ export default function SalesInvoiceDialog({
                 {[
                   ["retail", "Retail"],
                   ["wholesale", "Wholesale"],
-                ].map(([value, label]) => (
+                ].filter(([value]) => !forceWholesale || value === "wholesale").map(([value, label]) => (
                   <button
                     key={value}
                     type="button"
@@ -1330,7 +1332,7 @@ export default function SalesInvoiceDialog({
                   {[
                     ["retail", "Retail"],
                     ["wholesale", "Wholesale"],
-                  ].map(([value, label]) => (
+                  ].filter(([value]) => !forceWholesale || value === "wholesale").map(([value, label]) => (
                     <button
                       key={value}
                       type="button"
