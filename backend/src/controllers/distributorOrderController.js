@@ -45,9 +45,9 @@ const ORDER_SQL = `
 
 const normalize = (row) => ({ ...row, total_qty: num(row.total_qty), item_count: num(row.item_count) });
 
-async function itemsOf(orderIds) {
+async function itemsOf(orderIds, executor = db) {
     if (!orderIds.length) return new Map();
-    const [rows] = await db.query(
+    const [rows] = await executor.query(
         `SELECT order_id, product_erp_id, product_name, variant_name, qty, is_free, free_for_erp_id, free_note,
                 scheme_buy_qty, scheme_free_qty
          FROM distributor_order_items WHERE order_id IN (?) ORDER BY order_id, sort_order, id`,
@@ -406,6 +406,13 @@ export async function getOrderFreeSchemes({ requisitionNumber, distributorId, co
     if (!order) throw httpError(400, `Requisition ${code} was not found for this distributor and company.`);
     if (order.status !== 'approved') throw httpError(409, `Requisition ${code} is ${order.status}.`);
     const items = await itemsOf([order.id]);
+    return orderFreeSchemes(items.get(order.id) || []);
+}
+
+export async function getBilledOrderFreeSchemes(saleId, executor = db) {
+    const [[order]] = await executor.execute('SELECT id FROM distributor_orders WHERE dms_sale_id = ? LIMIT 1', [saleId]);
+    if (!order) return null;
+    const items = await itemsOf([order.id], executor);
     return orderFreeSchemes(items.get(order.id) || []);
 }
 

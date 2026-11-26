@@ -1525,6 +1525,12 @@ export async function ensureSchema() {
                 FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE CASCADE
             );
         `);
+        try {
+            await connection.query('ALTER TABLE dms_sales ADD COLUMN edit_revision INT NOT NULL DEFAULT 0');
+        } catch (error) {
+            if (error.code !== 'ER_DUP_FIELDNAME') throw error;
+        }
+
         await connection.query(`
             CREATE TABLE IF NOT EXISTS dms_sale_items (
                 id INT AUTO_INCREMENT PRIMARY KEY,
@@ -1550,6 +1556,33 @@ export async function ensureSchema() {
                 INDEX idx_dms_sale_items_sale (sale_id)
             );
         `);
+        await connection.query(`
+            CREATE TABLE IF NOT EXISTS dms_sale_drafts (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                owner_role VARCHAR(32) NOT NULL,
+                owner_id INT NOT NULL,
+                company_id INT NOT NULL,
+                buyer_name VARCHAR(255) NOT NULL,
+                invoice_number VARCHAR(50) NULL,
+                sale_date DATE NOT NULL,
+                payload JSON NOT NULL,
+                revision INT NOT NULL DEFAULT 1,
+                client_key CHAR(32) NULL,
+                updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                UNIQUE KEY uq_dms_sale_draft_client (owner_role, owner_id, client_key),
+                INDEX idx_dms_sale_drafts_owner (owner_role, owner_id, updated_at)
+            );
+        `);
+        for (const [sql, duplicateCode] of [
+            ['ALTER TABLE dms_sale_drafts ADD COLUMN client_key CHAR(32) NULL', 'ER_DUP_FIELDNAME'],
+            ['ALTER TABLE dms_sale_drafts ADD UNIQUE KEY uq_dms_sale_draft_client (owner_role, owner_id, client_key)', 'ER_DUP_KEYNAME'],
+        ]) {
+            try {
+                await connection.query(sql);
+            } catch (error) {
+                if (error.code !== duplicateCode) throw error;
+            }
+        }
         await connection.query(`
             CREATE TABLE IF NOT EXISTS dms_sale_payments (
                 id INT AUTO_INCREMENT PRIMARY KEY,

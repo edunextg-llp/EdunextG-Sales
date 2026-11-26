@@ -1,11 +1,12 @@
 // Create Bill popup (Sales > Create Sales). Same form and rules as the main site's Add Sales >
 // "Yes, Create Bill" (frontend/src/layouts/add-sales/components/SalesInvoiceDialog.js), in the DMS look.
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { MdAdd, MdCheck, MdClose, MdDeleteOutline, MdEdit, MdInventory2, MdReceiptLong } from "react-icons/md";
 import { lotKey, lotLabel, lotPrice, remainingLots, takeFromLots } from "../../utils/stockLots";
 import { apiFetch } from "../../auth";
 import ItemPicker from "../purchase/ItemPicker";
 import { buildInvoiceNumber, getInvoicePrefix, getInvoiceSuffix } from "../../utils/invoicePrefix";
+import { todayLocal } from "../../utils/purchaseCalc";
 
 /* ─────────────────────────────────────────────────────────────
    HELPERS
@@ -39,9 +40,17 @@ function formatDisplayDate(value) {
   return value;
 }
 
-function calcLine(item) {
+const roundMoney = (value) => Math.round((value + Number.EPSILON) * 100) / 100;
+
+function calcLine(item, postedEdit = false) {
   const qty = Number(item.qty) || 0;
   const rate = Number(item.rate) || 0;
+  if (postedEdit) {
+    const netTotal = roundMoney(qty * rate);
+    const taxable = roundMoney(netTotal / (1 + (item.gstPercent ?? 5) / 100));
+    const gst = roundMoney(netTotal - taxable);
+    return { qty, rate, total: taxable, disc: 0, taxable, cgst: gst / 2, sgst: gst / 2, gst, netTotal };
+  }
   const total = qty * rate;
   const taxable = total;
   const cgst = taxable * 0.025;
@@ -54,23 +63,84 @@ function calcLine(item) {
 
 // Fixed default: a new [] on every render would re-run the reset effect and clear the form.
 const NO_LINE_ITEMS = [];
+function addPaidBillLines(current, added, postedEdit) {
+  const rows = [...current];
+  const erpKey = (value) => String(value || "").trim().toLowerCase();
+  for (const line of added) {
+    const index = rows.findIndex((row) =>
+      !row.isFree && erpKey(row.productErpId) === erpKey(line.productErpId)
+      && lotKey(row) === lotKey(line) && Number(row.rate) === Number(line.rate)
+      && (postedEdit
+        ? Number(row.gstPercent ?? 5) === Number(line.gstPercent ?? 5)
+        : Number(row.mrp) > 0 && row.priceType === line.priceType));
+    if (index < 0) rows.push(line);
+    else {
+      const qty = Number(rows[index].qty) + Number(line.qty);
+      rows[index] = { ...rows[index], qty: String(postedEdit ? roundMoney(qty) : qty) };
+    }
+  }
+  return rows;
+}
+
+// The posted bill's quantities are currently deducted. Show what the editor can reuse.
+function stockForPostedEdit(items, billLines) {
+  const key = (id) => String(id || "").trim().toLowerCase();
+  const products = new Map(items.map((item) => [key(item.product_erp_id), {
+    ...item, lots: (item.lots || []).map((lot) => ({ ...lot })),
+  }]));
+  for (const line of billLines) {
+    const id = key(line.productErpId);
+    const product = products.get(id) || {
+      product_erp_id: line.productErpId, product_name: line.productName, variant_name: line.variantName,
+      gst_percent: line.gstPercent, total_current_stock_in_pcs: 0, lots: [],
+    };
+    const originalLot = { mrp: line.mrp, batchNumber: line.batchNumber, expiryDate: line.expiryDate };
+    const count = Number(line.qty) || 0;
+    const existing = product.lots.find((lot) => lotKey(lot) === lotKey(originalLot));
+    if (existing) existing.pcs = (Number(existing.pcs) || 0) + count;
+    else product.lots.push({ ...originalLot, pcs: count });
+    product.total_current_stock_in_pcs = (Number(product.total_current_stock_in_pcs) || 0) + count;
+    products.set(id, product);
+  }
+  for (const product of products.values()) {
+    product.lots.sort((a, b) => (a.expiryDate || "9999-12-31").localeCompare(b.expiryDate || "9999-12-31")
+      || (Number(a.mrp) || 0) - (Number(b.mrp) || 0));
+  }
+  return [...products.values()];
+}
+const draftKeyFor = ({ billNo, requisitionNumber, remarks, flatDiscount, roundOff, lineItems, pendingLine }) => JSON.stringify({
+  invoiceNumber: billNo.trim(),
+  requisitionNumber: requisitionNumber.trim(),
+  remarks,
+  flatDiscount,
+  roundOff,
+  lineItems: lineItems.filter((item) => !item.isFree),
+  pendingLine,
+});
 
 export default function SalesInvoiceDialog({
   open,
   onClose,
   outlet,
   selectedDate,
+  onDateChange,
   companyName = "",
   invoiceNumber,
   prevBillNo = "",
   fetchNextBillNumber,
   editMode = false,
+  postedEdit = false,
+  postedSaleId,
+  paidAmount = 0,
   initialItemCount = "",
   initialPrice = "",
   initialLineItems = NO_LINE_ITEMS,
   initialRequisitionNumber = "",
+  initialDraft = null,
+  initialRemarks = "",
   submitting = false,
   onSubmit,
+  onSaveDraft,
 }) {
   /* ── state ── */
   const [billNo, setBillNo] = useState("");
@@ -82,6 +152,15 @@ export default function SalesInvoiceDialog({
   const [remarks, setRemarks] = useState("");
   const [requisitionNumber, setRequisitionNumber] = useState("");
   const [orderOffer, setOrderOffer] = useState(null);
+  const [draftStatus, setDraftStatus] = useState("");
+  const [closingDraft, setClosingDraft] = useState(false);
+  const savedDraftKey = useRef("");
+  const pendingDraftSave = useRef(null);
+  const draftSaveNeedsRetry = useRef(false);
+  const posting = useRef(false);
+  const draftKey = draftKeyFor({ billNo, requisitionNumber, remarks, flatDiscount, roundOff, lineItems, pendingLine: draft });
+  const latestDraftKey = useRef(draftKey);
+  latestDraftKey.current = draftKey;
   const [stockItems, setStockItems] = useState([]);
   const [loadingStock, setLoadingStock] = useState(false);
   const [stockError, setStockError] = useState("");
@@ -97,7 +176,7 @@ export default function SalesInvoiceDialog({
     () => stockItems.filter((item) => String(item.product_erp_id || "").trim()),
     [stockItems]
   );
-  const invoicePrefix = getInvoicePrefix(companyName);
+  const invoicePrefix = postedEdit ? "" : getInvoicePrefix(companyName);
 
   const buildExistingSaleLine = (itemCount, price) => {
     const qty = Math.max(1, Number(itemCount) || 1);
@@ -116,6 +195,10 @@ export default function SalesInvoiceDialog({
 
   /* reset when dialog opens; clear when it closes */
   useEffect(() => {
+    pendingDraftSave.current = null;
+    draftSaveNeedsRetry.current = false;
+    setClosingDraft(false);
+    setDraftStatus(initialDraft && open ? "Draft saved" : "");
     if (!open) {
       // Cleared on close too: on the next open the free-goods effect runs in the same pass as
       // this reset and would otherwise see (and put back) the previous bill's lines.
@@ -133,17 +216,82 @@ export default function SalesInvoiceDialog({
       } else {
         setLineItems([buildExistingSaleLine(initialItemCount, initialPrice)]);
       }
+    } else if (initialDraft) {
+      setLineItems(initialDraft.lineItems || []);
     } else {
       setLineItems([]);
     }
-    setDraft({ ...emptyLineItem });
+    setDraft({ ...emptyLineItem, ...initialDraft?.pendingLine });
     setEditingIdx(null);
-    setFlatDiscount("");
-    setRoundOff("0");
-    setRemarks("");
-    setRequisitionNumber(initialRequisitionNumber || "");
+    setFlatDiscount(initialDraft?.flatDiscount || "");
+    setRoundOff(initialDraft?.roundOff || "0");
+    setRemarks(initialDraft?.remarks || initialRemarks);
+    setRequisitionNumber(initialDraft?.requisitionNumber || initialRequisitionNumber || "");
+    setOrderOffer(null);
+    savedDraftKey.current = draftKeyFor({
+      billNo: invoiceNumber || "",
+      requisitionNumber: initialDraft?.requisitionNumber || initialRequisitionNumber || "",
+      remarks: initialDraft?.remarks || "",
+      flatDiscount: initialDraft?.flatDiscount || "",
+      roundOff: initialDraft?.roundOff || "0",
+      lineItems: initialDraft?.lineItems || [],
+      pendingLine: { ...emptyLineItem, ...initialDraft?.pendingLine },
+    });
     setEditPopup({ open: false, index: null, draft: { ...emptyLineItem } });
-  }, [open, invoiceNumber, editMode, initialItemCount, initialPrice, initialLineItems, initialRequisitionNumber]);
+  }, [open, invoiceNumber, editMode, initialItemCount, initialPrice, initialLineItems, initialRequisitionNumber, initialDraft, initialRemarks]);
+
+  const persistDraft = useCallback((key, force = false) => {
+    if (!onSaveDraft || editMode) return Promise.resolve(true);
+    const pending = pendingDraftSave.current;
+    if (pending?.key === key) return pending.task;
+    if (!pending && !force && !draftSaveNeedsRetry.current && key === savedDraftKey.current) return Promise.resolve(true);
+    setDraftStatus("Saving draft…");
+    const request = { key };
+    request.task = onSaveDraft(JSON.parse(key)).then(() => {
+      if (pendingDraftSave.current === request) {
+        savedDraftKey.current = key;
+        pendingDraftSave.current = null;
+        draftSaveNeedsRetry.current = false;
+        setDraftStatus("Draft saved");
+      }
+      return true;
+    }).catch((error) => {
+      if (pendingDraftSave.current === request) {
+        pendingDraftSave.current = null;
+        draftSaveNeedsRetry.current = true;
+        setDraftStatus(error.message || "Draft could not be saved. Try again.");
+      }
+      return false;
+    });
+    pendingDraftSave.current = request;
+    return request.task;
+  }, [onSaveDraft, editMode]);
+
+  useEffect(() => {
+    if (!open || editMode || !onSaveDraft || submitting || closingDraft) return undefined;
+    if (!pendingDraftSave.current && !draftSaveNeedsRetry.current && draftKey === savedDraftKey.current) return undefined;
+    const timer = setTimeout(() => {
+      if (!posting.current) void persistDraft(draftKey);
+    }, 750);
+    return () => clearTimeout(timer);
+  }, [open, editMode, onSaveDraft, submitting, closingDraft, draftKey, persistDraft]);
+
+  const closeBill = async (force = false) => {
+    if (posting.current) return;
+    if (!onSaveDraft || editMode) { onClose(); return; }
+    setClosingDraft(true);
+    let key = latestDraftKey.current;
+    let saved = await persistDraft(key, force);
+    while (saved && key !== latestDraftKey.current) {
+      key = latestDraftKey.current;
+      saved = await persistDraft(key);
+    }
+    if (saved || (!force && window.confirm("The latest draft changes could not be saved. Close anyway?"))) {
+      onClose();
+    } else {
+      setClosingDraft(false);
+    }
+  };
 
   /* load Current Stock (Physical − DMS) for the selected company */
   const fetchCurrentStock = useCallback(async () => {
@@ -163,18 +311,18 @@ export default function SalesInvoiceDialog({
       const response = await apiFetch(`/staff/current-stock?${params.toString()}`);
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "Failed to load current stock");
-      const items = data.items || [];
+      const items = postedEdit ? stockForPostedEdit(data.items || [], initialLineItems) : data.items || [];
       setStockItems(items);
       setStockError("");
       return items;
     } catch (fetchError) {
-      setStockItems([]);
+      setStockItems(postedEdit ? stockForPostedEdit([], initialLineItems) : []);
       setStockError(fetchError.message || "Failed to load current stock");
       return [];
     } finally {
       setLoadingStock(false);
     }
-  }, [companyName]);
+  }, [companyName, postedEdit, initialLineItems]);
 
   useEffect(() => {
     if (!open) return undefined;
@@ -184,8 +332,10 @@ export default function SalesInvoiceDialog({
 
   /* Free goods (DMS Sales > Free Goods): running schemes of this company. */
   const [freeSchemes, setFreeSchemes] = useState([]);
+  const [postedOffers, setPostedOffers] = useState(null);
+  const [offerRetry, setOfferRetry] = useState(0);
   useEffect(() => {
-    if (!open || !String(companyName || "").trim()) {
+    if (!open || postedEdit || !String(companyName || "").trim()) {
       setFreeSchemes([]);
       return;
     }
@@ -200,14 +350,32 @@ export default function SalesInvoiceDialog({
       })
       .catch(() => { if (!controller.signal.aborted) setFreeSchemes([]); });
     return () => controller.abort();
-  }, [open, companyName, selectedDate]);
+  }, [open, postedEdit, companyName, selectedDate]);
+
+  useEffect(() => {
+    if (!open || !postedEdit || !selectedDate) return undefined;
+    const controller = new AbortController();
+    const params = new URLSearchParams({ date: selectedDate });
+    setPostedOffers(null);
+    apiFetch(`/staff/dms-sales/${postedSaleId}/edit-offers?${params}`, { signal: controller.signal })
+      .then(async (res) => {
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error || "Could not load offers for this bill.");
+        if (!controller.signal.aborted) setPostedOffers({ date: selectedDate, schemes: data.schemes || [] });
+      })
+      .catch((error) => {
+        if (!controller.signal.aborted) setPostedOffers({ date: selectedDate, error: error.message });
+      });
+    return () => controller.abort();
+  }, [open, postedEdit, postedSaleId, selectedDate, offerRetry]);
 
   // Free lines follow the paid lines: for every full "buy" qty of an item, its free pieces
   // are added at rate 0 (taken from stock lot by lot; only what is in stock).
   // ERP IDs are matched ignoring case / spaces, as the backend does (the scheme's IDs come
   // from the seller items, the stock's from the uploads).
   useEffect(() => {
-    if (!open || editMode) return;
+    if (!open || (editMode && !postedEdit)) return;
+    if (postedEdit && (!postedOffers?.schemes || postedOffers.date !== selectedDate || loadingStock)) return;
     const key = (v) => String(v || "").trim().toLowerCase();
     const paid = lineItems.filter((it) => !it.isFree);
     const bought = new Map();
@@ -215,9 +383,10 @@ export default function SalesInvoiceDialog({
     const free = [];
     const short = [];
     const code = requisitionNumber.trim().toUpperCase();
-    const schemes = outlet?.buyerType === "distributor" && /^DRQ/.test(code)
-      ? (orderOffer?.code === code ? orderOffer.schemes : [])
-      : freeSchemes;
+    const schemes = postedEdit ? postedOffers.schemes
+      : outlet?.buyerType === "distributor" && /^DRQ/.test(code)
+        ? (orderOffer?.code === code ? orderOffer.schemes : [])
+        : freeSchemes;
     schemes.forEach((scheme) => {
       const qty = bought.get(key(scheme.product_erp_id)) || 0;
       const sets = scheme.buy_qty > 0 ? Math.floor(qty / scheme.buy_qty) : 0;
@@ -267,7 +436,7 @@ export default function SalesInvoiceDialog({
     const sig = (list) => list.map((it) => `${it.isFree ? "F" : "P"}|${it.productErpId}|${lotKey(it)}|${it.qty}|${it.rate}|${it.freeNote || ""}`).join(",");
     if (sig(lineItems) === sig(ordered)) return;
     setLineItems(ordered);
-  }, [open, editMode, lineItems, freeSchemes, stockItems, outlet?.buyerType, requisitionNumber, orderOffer]);
+  }, [open, editMode, postedEdit, postedOffers, selectedDate, loadingStock, lineItems, freeSchemes, stockItems, outlet?.buyerType, requisitionNumber, orderOffer]);
 
   /* ── derived strings ── */
   // const saleTo  = outlet ? `${outlet.outlet_name || ""}${outlet.outlet_erp_id ? `, Class: 0 Section: 0 Adm. No. : ${outlet.outlet_erp_id}` : ""}` : "";
@@ -279,7 +448,7 @@ export default function SalesInvoiceDialog({
   const totals = useMemo(() => {
     const base = lineItems.reduce(
       (acc, it) => {
-        const c = calcLine(it);
+        const c = calcLine(it, postedEdit);
         acc.amount += c.total;
         acc.disc += c.disc;
         acc.taxable += c.taxable;
@@ -292,6 +461,11 @@ export default function SalesInvoiceDialog({
       },
       { amount: 0, disc: 0, taxable: 0, cgst: 0, sgst: 0, gst: 0, netTotal: 0, qty: 0 }
     );
+    if (postedEdit) {
+      const grandTotal = roundMoney(base.netTotal);
+      const netPayable = Math.round(grandTotal);
+      return { ...base, flatDisc: 0, discountedTaxable: base.taxable, grandTotal, netPayable, round: roundMoney(netPayable - grandTotal) };
+    }
     const flatDiscountPercent = Math.min(100, Math.max(0, Number(flatDiscount) || 0));
     const flatDisc = base.taxable * flatDiscountPercent / 100;
     const discountedTaxable = Math.max(0, base.taxable - flatDisc);
@@ -314,7 +488,7 @@ export default function SalesInvoiceDialog({
       netPayable,
       items: lineItems.length,
     };
-  }, [lineItems, flatDiscount, roundOff]);
+  }, [lineItems, flatDiscount, roundOff, postedEdit]);
 
   /* ── available stock (minus already-added qty of same ERP) ── */
   const availableStock = useMemo(() => {
@@ -329,7 +503,7 @@ export default function SalesInvoiceDialog({
     return Math.max(0, orig - used);
   }, [draft.productErpId, stockItems, lineItems, editingIdx]);
 
-  const draftCalc = calcLine(draft);
+  const draftCalc = calcLine(draft, postedEdit);
 
   // The selected product's lots still free on this bill, in selling order.
   const draftLots = useMemo(() => {
@@ -343,7 +517,7 @@ export default function SalesInvoiceDialog({
     const p = stockItems.find((x) => x.product_erp_id === editDraft.productErpId);
     if (!p) return Number(editDraft.availableStock) || 0;
     // A line of one MRP lot can take only what is left of that lot.
-    if (Number(editDraft.mrp) > 0 && p.lots?.length) {
+    if (!postedEdit && Number(editDraft.mrp) > 0 && p.lots?.length) {
       const lot = remainingLots(p, lineItems, editIndex).find((l) => lotKey(l) === lotKey(editDraft));
       return Math.max(0, Number(lot?.pcs) || 0);
     }
@@ -353,9 +527,9 @@ export default function SalesInvoiceDialog({
       return it.productErpId === editDraft.productErpId ? s + (Number(it.qty) || 0) : s;
     }, 0);
     return Math.max(0, orig - used);
-  }, [editPopup, stockItems, lineItems]);
+  }, [editPopup, stockItems, lineItems, postedEdit]);
 
-  const editPopupCalc = calcLine(editPopup.draft);
+  const editPopupCalc = calcLine(editPopup.draft, postedEdit);
 
   /* ── handlers ── */
   const resetDraft = () => { setDraft({ ...emptyLineItem }); setEditingIdx(null); };
@@ -376,6 +550,7 @@ export default function SalesInvoiceDialog({
       priceType: "retail",
       retailPrice: retail,
       wholesalePrice: wholesale,
+      gstPercent: Number(product.gst_percent) || 5,
       rate: retail || product.mrp || product.price_per_piece || "",
       rateEdited: false,
     }));
@@ -419,20 +594,9 @@ export default function SalesInvoiceDialog({
         // A rate typed by hand applies to every lot; otherwise each lot has its own.
         rate: draft.rateEdited ? draft.rate : String(lotPrice(lot, draft.priceType) || draft.rate),
       }));
-      setLineItems((prev) => {
-        // A lot already on the bill at the same price type and rate: add to that line.
-        const next = [...prev];
-        lines.forEach((line) => {
-          const same = next.findIndex((it) => it.productErpId === line.productErpId
-            && Number(it.mrp) > 0 && lotKey(it) === lotKey(line)
-            && it.priceType === line.priceType && Number(it.rate) === Number(line.rate));
-          if (same >= 0) next[same] = { ...next[same], qty: String(Number(next[same].qty) + Number(line.qty)) };
-          else next.push(line);
-        });
-        return next;
-      });
+      setLineItems((prev) => addPaidBillLines(prev, lines, postedEdit));
     } else {
-      setLineItems((prev) => [...prev, payload]);
+      setLineItems((prev) => postedEdit ? addPaidBillLines(prev, [payload], true) : [...prev, payload]);
     }
     resetDraft();
     return undefined;
@@ -443,10 +607,18 @@ export default function SalesInvoiceDialog({
   };
 
   const handleEdit = (i) => {
+    const item = lineItems[i];
+    const product = postedEdit ? stockItems.find((stock) => stock.product_erp_id === item.productErpId) : null;
+    const lot = product?.lots?.find((stockLot) => lotKey(stockLot) === lotKey(item));
     setEditPopup({
       open: true,
       index: i,
-      draft: { ...lineItems[i] },
+      draft: postedEdit ? {
+        ...item,
+        retailPrice: Number(lot?.retail_price || product?.retail_price) || item.retailPrice || 0,
+        wholesalePrice: Number(lot?.wholesale_price || product?.wholesale_price) || item.wholesalePrice || 0,
+        availableStock: Number(product?.total_current_stock_in_pcs ?? item.qty),
+      } : { ...item },
     });
   };
 
@@ -455,10 +627,12 @@ export default function SalesInvoiceDialog({
       setEditPopup((prev) => ({ ...prev, draft: { ...emptyLineItem } }));
       return;
     }
+    if (postedEdit && product.product_erp_id === editPopup.draft.productErpId) return;
     setEditPopup((prev) => ({
       ...prev,
       draft: {
         ...prev.draft,
+        ...(postedEdit ? { saleItemId: undefined, gstPercent: Number(product.gst_percent) || 5 } : {}),
         productErpId: product.product_erp_id || "",
         productName: product.product_name || "",
         productDivision: product.product_division || "",
@@ -668,23 +842,42 @@ export default function SalesInvoiceDialog({
   };
 
   useEffect(() => {
-    if (open && !editMode && initialRequisitionNumber) {
+    if (open && !editMode && !initialDraft && initialRequisitionNumber) {
       loadRequisition(initialRequisitionNumber);
     }
     // The request is intentionally triggered only when this dialog opens with a new requisition.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, editMode, initialRequisitionNumber]);
+  }, [open, editMode, initialRequisitionNumber, initialDraft]);
+
+  useEffect(() => {
+    const code = initialDraft?.requisitionNumber?.trim().toUpperCase();
+    if (!open || outlet?.buyerType !== "distributor" || !code?.startsWith("DRQ")) return undefined;
+    const controller = new AbortController();
+    const params = new URLSearchParams({ distributorId: String(outlet.id) });
+    apiFetch(`/staff/distributor-orders/requisition/${encodeURIComponent(code)}?${params}`, { signal: controller.signal })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((body) => {
+        if (body?.order && !controller.signal.aborted) setOrderOffer({ code, schemes: body.order.freeSchemes || [] });
+      })
+      .catch(() => {});
+    return () => controller.abort();
+  }, [open, initialDraft, outlet?.buyerType, outlet?.id]);
 
   const validateForm = () => {
+    if (postedEdit && (!selectedDate || !postedOffers?.schemes || postedOffers.date !== selectedDate || loadingStock)) {
+      alert("Choose a sale date and wait for free goods and stock to finish loading.");
+      return false;
+    }
     if (!billNo.trim()) { alert("Bill No. is required."); return false; }
     if (lineItems.length === 0) { alert("Add at least one item."); return false; }
     if (totals.netPayable <= 0) { alert("Net payable must be > 0."); return false; }
     return true;
   };
 
-  const handleSubmit = () => {
-    if (!validateForm()) return;
-    onSubmit({
+  const handleSubmit = async () => {
+    if (posting.current || !validateForm()) return;
+    posting.current = true;
+    const ok = await onSubmit({
       invoiceNumber: billNo.trim(),
       requisitionNumber: requisitionNumber.trim(),
       itemCount: totals.qty || lineItems.length,
@@ -694,10 +887,13 @@ export default function SalesInvoiceDialog({
       totals,
       addAnother: false,
     });
+    posting.current = false;
+    if (!ok) void persistDraft(latestDraftKey.current);
   };
 
   const handleAddAnother = async () => {
-    if (!validateForm()) return;
+    if (posting.current || !validateForm()) return;
+    posting.current = true;
     const ok = await onSubmit({
       invoiceNumber: billNo.trim(),
       requisitionNumber: requisitionNumber.trim(),
@@ -712,10 +908,16 @@ export default function SalesInvoiceDialog({
       await fetchCurrentStock();
       const nextBillNo =
         typeof fetchNextBillNumber === "function" ? await fetchNextBillNumber() : "";
+      savedDraftKey.current = draftKeyFor({
+        billNo: nextBillNo, requisitionNumber: "", remarks: "", flatDiscount: "", roundOff: "0", lineItems: [], pendingLine: emptyLineItem,
+      });
+      setDraftStatus("");
       setBillNo(nextBillNo);
       setLineItems([]); setDraft({ ...emptyLineItem }); setEditingIdx(null);
       setFlatDiscount(""); setRoundOff("0"); setRemarks(""); setRequisitionNumber("");
     }
+    posting.current = false;
+    if (!ok) void persistDraft(latestDraftKey.current);
   };
 
   /* ─────────────────────────────────────────────────────────
@@ -736,6 +938,10 @@ export default function SalesInvoiceDialog({
   const buyerName = outlet?.distributor_name || outlet?.outlet_name || "";
   const buyerCode = outlet?.login_id || outlet?.outlet_erp_id || "";
   const editDraft = editPopup.draft;
+  const selectedOffer = postedEdit && postedOffers?.date === selectedDate
+    ? postedOffers.schemes?.find((scheme) =>
+      String(scheme.product_erp_id).trim().toLowerCase() === String(draft.productErpId).trim().toLowerCase())
+    : null;
 
   return (
     <div data-theme="bill" className="fixed inset-0 z-[1300] flex items-start justify-center overflow-y-auto bg-neutral/60 p-2 backdrop-blur-[2px] sm:p-4" role="dialog" aria-modal="true">
@@ -757,7 +963,7 @@ export default function SalesInvoiceDialog({
               {address ? <span> · {address}</span> : null}
             </p>
           </div>
-          <button type="button" aria-label="Close" className="btn btn-ghost btn-sm btn-circle text-primary-content hover:bg-primary-content/15" onClick={onClose} disabled={submitting}>
+          <button type="button" aria-label="Close" className="btn btn-ghost btn-sm btn-circle text-primary-content hover:bg-primary-content/15" onClick={() => closeBill()} disabled={submitting || closingDraft}>
             <MdClose size={20} />
           </button>
         </div>
@@ -778,7 +984,7 @@ export default function SalesInvoiceDialog({
               />
             </span>
           </label>
-          <label className="flex flex-col gap-1">
+          {!postedEdit && <label className="flex flex-col gap-1">
             <span className="text-[10px] font-bold uppercase tracking-wide text-[#dbeafe]">Requisition No. (optional)</span>
             <span className="join w-full">
               <input
@@ -791,17 +997,31 @@ export default function SalesInvoiceDialog({
                 Load
               </button>
             </span>
-          </label>
-          <div className="flex flex-col gap-1">
+          </label>}
+          <label className="flex flex-col gap-1">
             <span className="text-[10px] font-bold uppercase tracking-wide text-[#dbeafe]">Date</span>
-            <span className="input input-xs h-7 w-full bg-[#eef3fc] text-[#444]">{formatDisplayDate(selectedDate)}</span>
-          </div>
+            {postedEdit ? (
+              <input type="date" className="input input-xs h-7 w-full" max={todayLocal()} value={selectedDate} onChange={(event) => onDateChange(event.target.value)} />
+            ) : <span className="input input-xs h-7 w-full bg-[#eef3fc] text-[#444]">{formatDisplayDate(selectedDate)}</span>}
+          </label>
         </div>
 
         {/* ── Add item ── */}
         <div className="bg-secondary px-4 py-2">
           {stockError && <p className="mb-2 text-xs font-medium text-error">{stockError}</p>}
-          {!editMode && freeShort.length > 0 && (
+          {postedEdit && postedOffers?.error && (
+            <p role="alert" className="mb-2 text-xs font-medium text-error">
+              {postedOffers.error}{" "}
+              <button type="button" className="underline" onClick={() => setOfferRetry((attempt) => attempt + 1)}>Retry</button>
+            </p>
+          )}
+          {selectedOffer && (
+            <p className="mb-2 text-xs font-medium text-success">
+              Buy {selectedOffer.buy_qty} pcs, get {selectedOffer.free_qty} pcs of{" "}
+              {selectedOffer.free_item_name || selectedOffer.free_product_erp_id || "the same item"} free.
+            </p>
+          )}
+          {freeShort.length > 0 && (
             <p className="mb-2 rounded-sm bg-warning/15 px-2 py-1 text-xs font-medium text-warning-content">
               Free goods: {freeShort.join(" · ")}
             </p>
@@ -855,7 +1075,7 @@ export default function SalesInvoiceDialog({
               </div>
             </div>
             <label className="flex flex-col gap-1">
-              <span className="text-[10px] font-bold uppercase tracking-wide text-[#0f2a5a]">Rate (before GST)</span>
+              <span className="text-[10px] font-bold uppercase tracking-wide text-[#0f2a5a]">{postedEdit ? "Rate (incl. GST)" : "Rate (before GST)"}</span>
               <input
                 type="number"
                 min="0"
@@ -880,7 +1100,7 @@ export default function SalesInvoiceDialog({
                 Total <b className="tabular-nums text-base-content">₹{fmt(draftCalc.total)}</b>
               </span>
               <span>
-                GST 5% <b className="tabular-nums text-base-content">₹{fmt(draftCalc.gst)}</b>
+                {postedEdit ? "GST" : "GST 5%"} <b className="tabular-nums text-base-content">₹{fmt(draftCalc.gst)}</b>
               </span>
               <span>
                 Net <b className="tabular-nums text-base-content">₹{fmt(draftCalc.netTotal)}</b>
@@ -928,7 +1148,7 @@ export default function SalesInvoiceDialog({
                     </tr>
                   ) : (
                     lineItems.map((item, i) => {
-                      const c = calcLine(item);
+                      const c = calcLine(item, postedEdit);
                       return (
                         <tr key={`${item.productErpId}-${i}`} className={item.isFree ? "bg-success/10" : i % 2 ? "border-[#dfe6f2] bg-[#f8fafe] hover:bg-[#eaf1fd]" : "border-[#dfe6f2] bg-white hover:bg-[#eaf1fd]"}>
                           <td className="text-right tabular-nums text-base-content/50">{i + 1}</td>
@@ -987,11 +1207,10 @@ export default function SalesInvoiceDialog({
             <h3 className="text-sm font-semibold">Summary</h3>
             <div>
               {[
-                ["Amount", totals.amount],
-                ["Discount", totals.flatDisc],
+                ...(!postedEdit ? [["Amount", totals.amount], ["Discount", totals.flatDisc]] : []),
                 ["Taxable", totals.discountedTaxable],
-                ["CGST 2.5%", totals.cgst],
-                ["SGST 2.5%", totals.sgst],
+                [postedEdit ? "CGST" : "CGST 2.5%", totals.cgst],
+                [postedEdit ? "SGST" : "SGST 2.5%", totals.sgst],
               ].map(([k, v]) => (
                 <div key={k} className="flex justify-between py-0.5 text-[#cfdcf3]">
                   <span>{k}</span>
@@ -1003,7 +1222,12 @@ export default function SalesInvoiceDialog({
                 <span className="tabular-nums">₹{fmt(totals.grandTotal)}</span>
               </div>
             </div>
-            <div className="grid grid-cols-2 gap-2">
+            {postedEdit ? (
+              <div className="space-y-1 text-[#cfdcf3]">
+                <div className="flex justify-between"><span>Round off</span><span className="tabular-nums">₹{fmt(totals.round)}</span></div>
+                <div className="flex justify-between"><span>Already paid</span><span className="tabular-nums">₹{fmt(paidAmount)}</span></div>
+              </div>
+            ) : <div className="grid grid-cols-2 gap-2">
               <label className="flex flex-col gap-1">
                 <span className="text-xs font-medium text-[#cfdcf3]">Flat discount %</span>
                 <input
@@ -1020,18 +1244,31 @@ export default function SalesInvoiceDialog({
                 <span className="text-xs font-medium text-[#cfdcf3]">Round off</span>
                 <input type="number" className="input input-xs h-7 w-full bg-white tabular-nums text-[#0f1d33]" value={roundOff} onChange={(e) => setRoundOff(e.target.value)} />
               </label>
-            </div>
+            </div>}
             <div className="rounded-box bg-[#0b1f44] px-3 py-2 text-white">
               <div className="text-xs opacity-80">Net payable</div>
               <div className="text-xl font-bold tabular-nums">₹{fmt(totals.netPayable)}</div>
             </div>
             <div className="mt-auto flex flex-col gap-2">
-              <button type="button" className="btn btn-sm border-0 bg-[#22c55e] text-white hover:bg-[#16a34a]" onClick={handleSubmit} disabled={submitting}>
+              {onSaveDraft && !editMode && (
+                <>
+                  <p role="status" className="text-xs text-[#cfdcf3]">
+                    {draftStatus === "Draft saved" && draftKey !== savedDraftKey.current
+                      ? "Waiting to save…"
+                      : draftStatus || "Changes save automatically as a draft."}
+                  </p>
+                  <button type="button" className="btn btn-outline btn-sm border-white/60 text-white hover:border-white hover:bg-white/10"
+                    disabled={submitting || closingDraft} onClick={() => closeBill(true)}>
+                    {closingDraft ? "Saving…" : "Save draft & close"}
+                  </button>
+                </>
+              )}
+              <button type="button" className="btn btn-sm border-0 bg-[#22c55e] text-white hover:bg-[#16a34a]" onClick={handleSubmit} disabled={submitting || closingDraft}>
                 {submitting ? <span className="loading loading-spinner loading-sm" /> : <MdCheck size={18} />}
-                {submitting ? (editMode ? "Updating…" : "Submitting…") : editMode ? "Update" : "Submit & print"}
+                {submitting ? (editMode ? "Updating…" : "Submitting…") : editMode ? "Save changes" : "Submit & print"}
               </button>
               {!editMode && (
-                <button type="button" className="btn btn-outline btn-sm border-white/60 text-white hover:border-white hover:bg-white/10" onClick={handleAddAnother} disabled={submitting}>
+                <button type="button" className="btn btn-outline btn-sm border-white/60 text-white hover:border-white hover:bg-white/10" onClick={handleAddAnother} disabled={submitting || closingDraft}>
                   Submit &amp; add another
                 </button>
               )}
@@ -1067,7 +1304,8 @@ export default function SalesInvoiceDialog({
                   value={pickerItems.find((p) => p.product_erp_id === editDraft.productErpId) || null}
                   onPick={(picked) => handleEditPopupProductChange(pickStock(picked))}
                   loading={loadingStock}
-                compact
+                  compact
+                  disabled={postedEdit && editDraft.isFree}
                 />
               </label>
               <div className="flex flex-col gap-1">
@@ -1078,7 +1316,8 @@ export default function SalesInvoiceDialog({
                 <span className="text-xs font-medium text-base-content/70">Qty (pcs)</span>
                 <input
                   type="number"
-                  min="1"
+                  min={postedEdit ? "0.01" : "1"}
+                  step={postedEdit ? "0.01" : undefined}
                   max={editPopupStock || undefined}
                   className="input input-xs h-7 w-full tabular-nums"
                   value={editDraft.qty}
@@ -1095,6 +1334,7 @@ export default function SalesInvoiceDialog({
                     <button
                       key={value}
                       type="button"
+                      disabled={postedEdit && editDraft.isFree}
                       className={`btn btn-xs h-7 join-item flex-1 ${(editDraft.priceType || "retail") === value ? "btn-primary" : "btn-outline field-border"}`}
                       onClick={() =>
                         setEditPopup((prev) => ({
@@ -1109,11 +1349,12 @@ export default function SalesInvoiceDialog({
                 </div>
               </div>
               <label className="flex flex-col gap-1">
-                <span className="text-xs font-medium text-base-content/70">Rate (before GST)</span>
+                <span className="text-xs font-medium text-base-content/70">{postedEdit ? "Rate (incl. GST)" : "Rate (before GST)"}</span>
                 <input
                   type="number"
                   min="0"
                   step="0.01"
+                  readOnly={postedEdit && editDraft.isFree}
                   className="input input-xs h-7 w-full tabular-nums"
                   value={editDraft.rate}
                   onChange={(e) => setEditPopup((prev) => ({ ...prev, draft: { ...prev.draft, rate: e.target.value } }))}

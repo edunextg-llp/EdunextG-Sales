@@ -27,6 +27,7 @@ const app = express();
 
 // Middleware
 app.use(cors());
+app.use('/api/staff/dms-sales/drafts', bodyParser.json({ limit: '1mb' }));
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
 // After the body parsers (their stream callbacks would drop the context):

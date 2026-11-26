@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { MdAdd, MdPrint, MdRefresh, MdSearch } from "react-icons/md";
+import { MdAdd, MdEdit, MdPrint, MdRefresh, MdSearch } from "react-icons/md";
 import { apiFetch } from "../auth";
 import { CompanyPicker, ExcelButton, Field, PageHeader, readJson, useCompanies, useFlash } from "../components/ui";
 import SalesInvoiceDialog from "../components/sales/SalesInvoiceDialog";
@@ -16,10 +16,17 @@ import { printInvoice } from "../utils/dmsInvoice";
 
 const num = (v) => Number(v) || 0;
 const round2 = (v) => Math.round((num(v) + Number.EPSILON) * 100) / 100;
+const newDraftSession = (saved) => ({
+  id: saved?.id,
+  revision: saved?.revision,
+  clientKey: Array.from(crypto.getRandomValues(new Uint8Array(16)), (byte) => byte.toString(16).padStart(2, "0")).join(""),
+  task: Promise.resolve(),
+});
 
 
 
-export default function CreateSales() {
+export default function CreateSales({ user }) {
+  const isAdmin = user?.role === "admin";
   const companies = useCompanies();
   const [show, flashNode] = useFlash();
 
@@ -31,6 +38,7 @@ export default function CreateSales() {
   const [companyId, setCompanyId] = useState("");
   const company = companies.find((c) => String(c.id) === String(companyId));
   const [distributors, setDistributors] = useState([]);
+  const [distributorsFor, setDistributorsFor] = useState("");
   const [outlets, setOutlets] = useState([]);
   // Which company the outlets list was loaded for (the requisition link waits for it).
   const [outletsFor, setOutletsFor] = useState("");
@@ -45,6 +53,11 @@ export default function CreateSales() {
   // Requisition the bill opens with (Outlet Orders > Create Sales); the form loads its items.
   const [billRequisition, setBillRequisition] = useState("");
   const [saving, setSaving] = useState(false);
+  const [activeDraft, setActiveDraft] = useState(null);
+  const draftSession = useRef(null);
+  const [pendingDraft, setPendingDraft] = useState(null);
+  const [openingDraft, setOpeningDraft] = useState(null);
+  const [draftList, setDraftList] = useState({ loading: true, drafts: [], error: "" });
 
   // Bills list
   const [sales, setSales] = useState([]);
@@ -52,6 +65,9 @@ export default function CreateSales() {
   const [listFrom, setListFrom] = useState("");
   const [listTo, setListTo] = useState("");
   const [search, setSearch] = useState("");
+  const [openingSale, setOpeningSale] = useState(null);
+  const [editingSale, setEditingSale] = useState(null);
+  const [editingSaleDate, setEditingSaleDate] = useState("");
 
   // Company: its distributors and outlets.
   useEffect(() => {
@@ -60,20 +76,26 @@ export default function CreateSales() {
     setStaffId("");
     setLocationName("");
     setDistributors([]);
+    setDistributorsFor("");
     setOutlets([]);
     setOutletsFor("");
-    if (!companyId) return;
-    apiFetch(`/staff/distributors?${new URLSearchParams({ companyId })}`)
-      .then(readJson)
-      .then((b) => setDistributors((b.distributors || []).filter((d) => d.is_active)))
-      .catch(() => {});
-    apiFetch(`/staff/dms-sales/outlets?${new URLSearchParams({ companyId })}`)
+    if (!companyId) return undefined;
+    const controller = new AbortController();
+    apiFetch(`/staff/distributors?${new URLSearchParams({ companyId })}`, { signal: controller.signal })
       .then(readJson)
       .then((b) => {
-        setOutlets(b.outlets || []);
-        setOutletsFor(companyId);
+        if (!controller.signal.aborted) setDistributors((b.distributors || []).filter((d) => d.is_active));
       })
-      .catch(() => setOutletsFor(companyId));
+      .catch(() => {})
+      .finally(() => { if (!controller.signal.aborted) setDistributorsFor(companyId); });
+    apiFetch(`/staff/dms-sales/outlets?${new URLSearchParams({ companyId })}`, { signal: controller.signal })
+      .then(readJson)
+      .then((b) => {
+        if (!controller.signal.aborted) setOutlets(b.outlets || []);
+      })
+      .catch(() => {})
+      .finally(() => { if (!controller.signal.aborted) setOutletsFor(companyId); });
+    return () => controller.abort();
   }, [companyId]);
 
   const buyer =
@@ -108,10 +130,96 @@ export default function CreateSales() {
     }
   };
   const openBill = async () => {
+    draftSession.current = newDraftSession();
+    setActiveDraft(null);
     setBillRequisition("");
     setBillNumber(await fetchNextBillNumber());
     setBillOpen(true);
   };
+
+  const loadDrafts = useCallback(async () => {
+    setDraftList((previous) => ({ ...previous, loading: true, error: "" }));
+    try {
+      const res = await apiFetch("/staff/dms-sales/drafts");
+      const body = await readJson(res);
+      if (!res.ok) throw new Error(body.error || "Could not load sales drafts.");
+      setDraftList({ loading: false, drafts: body.drafts || [], error: "" });
+    } catch (error) {
+      setDraftList({ loading: false, drafts: [], error: error.message });
+    }
+  }, []);
+
+  useEffect(() => { void loadDrafts(); }, [loadDrafts]);
+
+  const openSavedDraft = async (id) => {
+    setOpeningDraft(id);
+    try {
+      const res = await apiFetch(`/staff/dms-sales/drafts/${id}`);
+      const body = await readJson(res);
+      if (!res.ok || !body.draft) throw new Error(body.error || "Could not open the draft.");
+      const savedCompany = companies.find((entry) => Number(entry.id) === Number(body.draft.company_id));
+      if (!savedCompany) throw new Error("The draft’s company is unavailable.");
+      setBillOpen(false);
+      setCompanyType(savedCompany.type);
+      setCompanyId(String(savedCompany.id));
+      setPendingDraft(body.draft);
+    } catch (error) {
+      setOpeningDraft(null);
+      show(false, error.message);
+    }
+  };
+
+  useEffect(() => {
+    if (!pendingDraft || String(pendingDraft.company_id) !== companyId) return;
+    const distributor = pendingDraft.payload.buyerType === "distributor";
+    if ((distributor ? distributorsFor : outletsFor) !== companyId) return;
+    const savedBuyer = (distributor ? distributors : outlets)
+      .find((entry) => Number(entry.id) === Number(pendingDraft.payload.buyerId));
+    setOpeningDraft(null);
+    setPendingDraft(null);
+    if (!savedBuyer) {
+      show(false, "The draft’s buyer is unavailable.");
+      return;
+    }
+    if (!distributor) {
+      setStaffId(String(savedBuyer.staff_id || ""));
+      setLocationName(String(savedBuyer.location_name || "").trim());
+    }
+    setBuyerId(String(savedBuyer.id));
+    setSaleDate(pendingDraft.sale_date);
+    setBillNumber(pendingDraft.invoice_number || "");
+    setBillRequisition("");
+    setActiveDraft(pendingDraft);
+    draftSession.current = newDraftSession(pendingDraft);
+    setBillOpen(true);
+  }, [pendingDraft, companyId, distributorsFor, outletsFor, distributors, outlets, show]);
+
+  const saveDraft = useCallback((form) => {
+    const session = draftSession.current;
+    if (!session) return Promise.reject(new Error("Open a bill before saving a draft."));
+    const task = session.task.catch(() => {}).then(async () => {
+      const res = await apiFetch(session.id ? `/staff/dms-sales/drafts/${session.id}` : "/staff/dms-sales/drafts", {
+        method: session.id ? "PUT" : "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...form,
+          companyId: Number(companyId),
+          buyerType,
+          distributorId: buyerType === "distributor" ? Number(buyerId) : undefined,
+          outletId: buyerType === "outlet" ? Number(buyerId) : undefined,
+          saleDate,
+          clientKey: session.clientKey,
+          revision: session.revision,
+        }),
+      });
+      const body = await readJson(res);
+      if (!res.ok) throw new Error(body.error || "Could not save the draft.");
+      session.id = body.id || session.id;
+      session.revision = body.revision;
+    });
+    session.task = task;
+    return task;
+  }, [companyId, buyerType, buyerId, saleDate]);
 
   // Outlet Orders > Create Sales opens /create-sales?requisition=PRQ...: load that approved
   // requisition, choose its company, staff, location and outlet, then open the bill with it.
@@ -167,6 +275,8 @@ export default function CreateSales() {
       if (!company || !buyer) return;
       stop();
       (async () => {
+        draftSession.current = newDraftSession();
+        setActiveDraft(null);
         setBillNumber(await fetchNextBillNumber());
         setBillRequisition(requisition.requisition_number);
         setBillOpen(true);
@@ -184,8 +294,10 @@ export default function CreateSales() {
       return false;
     }
     const discount = 1 - num(totals?.flatDiscountPercent) / 100;
+    const session = draftSession.current;
     setSaving(true);
     try {
+      await session?.task;
       const res = await apiFetch("/staff/dms-sales", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -198,6 +310,8 @@ export default function CreateSales() {
           // A distributor order's DRQ number: the server marks that order billed with this bill.
           requisitionNumber: String(requisitionNumber || "").trim() || undefined,
           saleDate,
+          draftId: session?.id,
+          draftRevision: session?.revision,
           lines: lineItems
             .filter((l) => !l.isFree && num(l.qty) > 0)
             .map((l) => ({
@@ -217,6 +331,13 @@ export default function CreateSales() {
       if (!res.ok) throw new Error(body.error || "Could not save the bill.");
       show(true, body.message || "Saved.");
       if (!addAnother) setBillOpen(false);
+      draftSession.current = addAnother ? newDraftSession() : null;
+      if (activeDraft) {
+        setActiveDraft(null);
+      }
+      if (session?.id) {
+        void loadDrafts();
+      }
       setBillRequisition("");
       loadSales();
       if (body.id) openPrint(body.id);
@@ -262,6 +383,75 @@ export default function CreateSales() {
       printInvoice(body);
     } catch (err) {
       show(false, err.message);
+    }
+  };
+
+  const openSaleEdit = async (id) => {
+    setOpeningSale(id);
+    try {
+      const response = await apiFetch(`/staff/dms-sales/${id}`);
+      const body = await readJson(response);
+      if (!response.ok) throw new Error(body.error || "Could not open the bill.");
+      if (body.sale.status !== "active") throw new Error("Cancelled bills cannot be edited.");
+      setEditingSaleDate(body.sale.sale_date);
+      setEditingSale({
+        sale: body.sale,
+        lines: (body.items || []).map((item) => ({
+          saleItemId: item.id,
+          productErpId: item.product_erp_id,
+          productName: item.product_name || "",
+          variantName: item.variant_name || "",
+          qty: String(item.qty),
+          rate: String(item.rate),
+          mrp: item.mrp,
+          batchNumber: item.batch_number || "",
+          expiryDate: item.expiry_date || "",
+          isFree: Number(item.is_free) === 1,
+          freeNote: item.free_note,
+          gstPercent: Number(item.gst_percent),
+        })),
+      });
+    } catch (error) {
+      show(false, error.message);
+    } finally {
+      setOpeningSale(null);
+    }
+  };
+
+  const submitSaleEdit = async ({ invoiceNumber, remarks, lineItems }) => {
+    const { sale } = editingSale;
+    setSaving(true);
+    try {
+      const response = await apiFetch(`/staff/dms-sales/${sale.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          invoiceNumber,
+          saleDate: editingSaleDate,
+          remarks,
+          revision: Number(sale.edit_revision),
+          lines: lineItems.filter((item) => !item.isFree).map((item) => ({
+            id: item.saleItemId,
+            productErpId: item.productErpId,
+            qty: item.qty,
+            rate: item.rate,
+            mrp: item.mrp,
+            batchNumber: item.batchNumber,
+            expiryDate: item.expiryDate,
+          })),
+        }),
+      });
+      const body = await readJson(response);
+      if (!response.ok) throw new Error(body.error || "Could not update the bill.");
+      setEditingSale(null);
+      show(true, body.message || "Bill updated.");
+      void loadSales();
+      return true;
+    } catch (error) {
+      alert(error.message);
+      return false;
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -336,11 +526,12 @@ export default function CreateSales() {
         companies={companies}
         type={companyType}
         onTypeChange={(t) => {
+          if (openingDraft !== null) return;
           setCompanyType(t);
           setCompanyId("");
         }}
         companyId={companyId}
-        onCompanyChange={setCompanyId}
+        onCompanyChange={(id) => { if (openingDraft === null) setCompanyId(id); }}
         className="lg:flex-nowrap lg:gap-x-3"
         companyClassName="min-w-44 flex-1"
       >
@@ -426,7 +617,7 @@ export default function CreateSales() {
         <Field label="Date" required className="w-40">
           <input type="date" className="input input-sm w-full" max={todayLocal()} disabled={!ready} value={saleDate} onChange={(e) => setSaleDate(e.target.value)} />
         </Field>
-        <button type="button" className="btn btn-primary btn-sm" disabled={!ready} onClick={openBill}>
+        <button type="button" className="btn btn-primary btn-sm" disabled={!ready || openingDraft !== null} onClick={openBill}>
           <MdAdd size={18} /> Create Bill
         </button>
       </section>
@@ -434,18 +625,63 @@ export default function CreateSales() {
       <SalesInvoiceDialog
         open={billOpen && ready}
         onClose={() => {
+          draftSession.current = null;
           setBillOpen(false);
           setBillRequisition("");
+          setActiveDraft(null);
+          void loadDrafts();
         }}
         outlet={billBuyer}
         initialRequisitionNumber={billRequisition}
+        initialDraft={activeDraft?.payload}
         selectedDate={saleDate}
         companyName={company?.name || ""}
         invoiceNumber={billNumber}
         fetchNextBillNumber={fetchNextBillNumber}
         submitting={saving}
         onSubmit={submitBill}
+        onSaveDraft={saveDraft}
       />
+
+      <section className="mb-5 rounded-box border border-base-300 bg-base-100">
+        <header className="flex items-center justify-between gap-3 border-b border-base-300 px-4 py-3">
+          <div>
+            <h2 className="font-semibold">Saved drafts</h2>
+            <p className="text-xs text-base-content/60">Resume an unfinished bill. Stock is deducted when you submit the bill.</p>
+          </div>
+          <button type="button" className="btn btn-ghost btn-sm" onClick={loadDrafts} disabled={draftList.loading} aria-label="Refresh drafts">
+            <MdRefresh size={18} />
+          </button>
+        </header>
+        {draftList.error ? <p role="alert" className="px-4 py-3 text-sm text-error">{draftList.error}</p>
+          : draftList.loading ? <p className="px-4 py-3 text-sm text-base-content/60">Loading drafts…</p>
+            : draftList.drafts.length === 0 ? <p className="px-4 py-3 text-sm text-base-content/60">No saved drafts.</p>
+              : (
+                <div className="overflow-x-auto">
+                  <table className="table table-sm">
+                    <thead><tr><th>Bill number</th><th>Company</th><th>Buyer</th><th>Sale date</th><th className="text-right">Lines</th><th>Last saved</th><th><span className="sr-only">Action</span></th></tr></thead>
+                    <tbody>
+                      {draftList.drafts.map((entry) => (
+                        <tr key={entry.id}>
+                          <td>{entry.invoice_number || `Draft #${entry.id}`}</td>
+                          <td>{entry.company_name || "—"}</td>
+                          <td>{entry.buyer_name}</td>
+                          <td className="whitespace-nowrap">{showDate(entry.sale_date)}</td>
+                          <td className="text-right tabular-nums">{showQty(entry.line_count)}</td>
+                          <td className="whitespace-nowrap">{showDate(entry.updated_at, true)}</td>
+                          <td className="text-right">
+                            <button type="button" className="btn btn-outline btn-xs" disabled={openingDraft !== null || saving}
+                              onClick={() => openSavedDraft(entry.id)}>
+                              {openingDraft === entry.id ? "Opening…" : "Edit draft"}
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+      </section>
 
       {/* Bills */}
       <section className="rounded-box border border-base-300 bg-base-100">
@@ -519,6 +755,11 @@ export default function CreateSales() {
                       <td className="text-right tabular-nums">{rupees(s.paid_amount)}</td>
                       <td className={`text-right tabular-nums ${due && !cancelled ? "font-semibold text-error" : ""}`}>{rupees(s.balance_amount)}</td>
                       <td className="text-right">
+                        {isAdmin && !cancelled && (
+                          <button type="button" className="btn btn-ghost btn-xs" disabled={openingSale !== null} onClick={() => openSaleEdit(s.id)}>
+                            <MdEdit size={15} /> {openingSale === s.id ? "Opening…" : "Edit"}
+                          </button>
+                        )}
                         <button type="button" className="btn btn-ghost btn-xs" title="Print / PDF" onClick={() => openPrint(s.id)}>
                           <MdPrint size={15} /> Print
                         </button>
@@ -532,6 +773,30 @@ export default function CreateSales() {
         )}
       </section>
 
+      {isAdmin && editingSale && (
+        <SalesInvoiceDialog
+          open
+          editMode
+          postedEdit
+          postedSaleId={editingSale.sale.id}
+          onClose={() => setEditingSale(null)}
+          outlet={{
+            outlet_name: editingSale.sale.buyer_name,
+            outlet_erp_id: editingSale.sale.buyer_code,
+            address: editingSale.sale.buyer_address,
+            contact_number: editingSale.sale.buyer_contact,
+          }}
+          companyName={editingSale.sale.company_name}
+          selectedDate={editingSaleDate}
+          onDateChange={setEditingSaleDate}
+          invoiceNumber={editingSale.sale.invoice_number}
+          initialLineItems={editingSale.lines}
+          initialRemarks={editingSale.sale.remarks || ""}
+          paidAmount={editingSale.sale.paid_amount}
+          submitting={saving}
+          onSubmit={submitSaleEdit}
+        />
+      )}
       {flashNode}
     </div>
   );

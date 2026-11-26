@@ -533,18 +533,18 @@ class PhysicalStockModel {
         return rows.map((row) => PhysicalStockModel.normalizeImport(row));
     }
 
-    static async getCurrentItemsByDmsImportId(dmsImportId, limit = 2000) {
-        return PhysicalStockModel.getMergedItemsByDmsImportId(dmsImportId, limit, true);
+    static async getCurrentItemsByDmsImportId(dmsImportId, limit = 2000, executor = db) {
+        return PhysicalStockModel.getMergedItemsByDmsImportId(dmsImportId, limit, true, executor);
     }
 
-    static async getMergedItemsByDmsImportId(dmsImportId, limit = 2000, companyWide = false) {
+    static async getMergedItemsByDmsImportId(dmsImportId, limit = 2000, companyWide = false, executor = db) {
         const numericLimit = Math.min(Math.max(parseInt(limit, 10) || 2000, 1), 2000);
         // A partial upload must not hide products saved in earlier uploads of this company.
         const importScope = companyWide
             ? `IN (SELECT id FROM dms_stock_imports WHERE company_id =
                 (SELECT company_id FROM dms_stock_imports WHERE id = ?))`
             : '= ?';
-        const [rows] = await db.execute(
+        const [rows] = await executor.execute(
             `SELECT psi.id, psi.import_id, psi.product_erp_id, psi.product_name, psi.product_division,
                     psi.variant_name, psi.pcs_per_box, psi.physical_stock_in_case, psi.physical_stock_in_pcs,
                     psi.total_physical_stock_in_pcs,
@@ -661,21 +661,36 @@ class PhysicalStockModel {
         };
     }
 
+    static async lockCurrentItem(connection, item) {
+        const [[current]] = await connection.execute(
+            'SELECT total_physical_stock_in_pcs, raw_data FROM physical_stock_items WHERE id = ? FOR UPDATE',
+            [item.id]
+        );
+        if (!current) throw new Error(`Stock for ${item.product_erp_id} changed. Please try again.`);
+        const raw = parseRawData(current.raw_data);
+        return {
+            ...item,
+            total_physical_stock_in_pcs: toNumber(current.total_physical_stock_in_pcs),
+            approved_as_current_stock: raw.approvedAsCurrentStock === true,
+            mrp_lines: Array.isArray(raw.mrpLines) ? raw.mrpLines : [],
+        };
+    }
+
     static async deductStockForCompany(connection, companyName, lineItems = [], sourceLabel = 'Sales Deduction') {
         const name = String(companyName || '').trim();
         if (!name || !Array.isArray(lineItems) || !lineItems.length) {
             return;
         }
 
-        const dmsImport = await DmsStockModel.getLatestImportByCompanyName(name);
+        const dmsImport = await DmsStockModel.getLatestImportByCompanyName(name, connection);
         if (!dmsImport?.id) {
             throw new Error(`No DMS stock upload found for company "${name}".`);
         }
 
         const dmsImportId = dmsImport.id;
         const [physicalItems, dmsItems] = await Promise.all([
-            PhysicalStockModel.getCurrentItemsByDmsImportId(dmsImportId, 2000),
-            DmsStockModel.getLatestItemsByCompanyId(dmsImport.company_id, 2000),
+            PhysicalStockModel.getCurrentItemsByDmsImportId(dmsImportId, 2000, connection),
+            DmsStockModel.getLatestItemsByCompanyId(dmsImport.company_id, 2000, connection),
         ]);
 
         if (!physicalItems.length) {
@@ -715,11 +730,13 @@ class PhysicalStockModel {
 
         const touchedImportIds = new Set();
 
-        for (const [erpKey, qty] of deductions.entries()) {
-            const physicalItem = physicalByErp.get(erpKey);
-            if (!physicalItem) {
+        for (const erpKey of [...deductions.keys()].sort()) {
+            const qty = deductions.get(erpKey);
+            const stockItem = physicalByErp.get(erpKey);
+            if (!stockItem) {
                 throw new Error(`Product "${erpKey}" is not available in current stock.`);
             }
+            const physicalItem = await PhysicalStockModel.lockCurrentItem(connection, stockItem);
 
             const dmsPieces = dmsByErp.get(erpKey) || 0;
             const currentPieces = calculateAvailableStockPieces(
@@ -1043,12 +1060,12 @@ class PhysicalStockModel {
         const name = String(companyName || '').trim();
         if (!name || !Array.isArray(lineItems) || !lineItems.length) return;
 
-        const dmsImport = await DmsStockModel.getLatestImportByCompanyName(name);
+        const dmsImport = await DmsStockModel.getLatestImportByCompanyName(name, connection);
         if (!dmsImport?.id) {
             throw new Error(`No DMS stock upload found for company "${name}".`);
         }
 
-        const physicalItems = await PhysicalStockModel.getCurrentItemsByDmsImportId(dmsImport.id, 2000);
+        const physicalItems = await PhysicalStockModel.getCurrentItemsByDmsImportId(dmsImport.id, 2000, connection);
         const physicalByErp = new Map(physicalItems.map((item) => [
             String(item.product_erp_id || '').trim().toLowerCase(),
             item,
@@ -1070,10 +1087,12 @@ class PhysicalStockModel {
 
         const touchedImportIds = new Set();
         let fallbackImportId = null;
-        for (const [erpKey, restoration] of restorations.entries()) {
-            const { qty, line, parts } = restoration;
+        for (const erpKey of [...restorations.keys()].sort()) {
+            const { qty, line, parts } = restorations.get(erpKey);
             let physicalItem = physicalByErp.get(erpKey);
-            if (!physicalItem) {
+            if (physicalItem) {
+                physicalItem = await PhysicalStockModel.lockCurrentItem(connection, physicalItem);
+            } else {
                 if (!fallbackImportId) {
                     const [importRows] = await connection.execute(
                         `SELECT id FROM physical_stock_imports

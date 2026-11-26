@@ -4,7 +4,7 @@ import DmsStockModel from '../models/dmsStockModel.js';
 import PhysicalStockModel from '../models/physicalStockModel.js';
 import { buildCurrentStockDiff } from './currentStockController.js';
 import { activeSchemesFor, freeFor } from './freeGoodsController.js';
-import { getOrderFreeSchemes, markOrderBilled } from './distributorOrderController.js';
+import { getBilledOrderFreeSchemes, getOrderFreeSchemes, markOrderBilled } from './distributorOrderController.js';
 import { takeFromLots } from '../utils/stockLots.js';
 import { getCompanyBillPrefix, normalizeInvoiceNumber } from '../utils/invoiceNumber.js';
 
@@ -45,15 +45,20 @@ const lineMoney = (qty, rate, gstPercent) => {
     return { amount, taxable, gst: money(amount - taxable) };
 };
 
-export async function companyStock(company) {
-    const dmsImport = await DmsStockModel.getLatestImportByCompanyName(company.name);
+export async function companyStock(company, executor = db, lockProducts = null) {
+    const dmsImport = await DmsStockModel.getLatestImportByCompanyName(company.name, executor);
     if (!dmsImport) throw httpError(400, `No stock found for ${company.name}.`);
-    const [dms, physical] = await Promise.all([
-        DmsStockModel.getLatestItemsByCompanyId(company.id, 2000),
-        PhysicalStockModel.getCurrentItemsByDmsImportId(dmsImport.id),
+    const [dms, countedStock] = await Promise.all([
+        DmsStockModel.getLatestItemsByCompanyId(company.id, 2000, executor),
+        PhysicalStockModel.getCurrentItemsByDmsImportId(dmsImport.id, 2000, executor),
     ]);
+    const physical = [];
+    for (const item of countedStock) {
+        physical.push(lockProducts?.has(erpKey(item.product_erp_id))
+            ? await PhysicalStockModel.lockCurrentItem(executor, item) : item);
+    }
     const stock = buildCurrentStockDiff(physical, dms);
-    const [codes] = await db.execute(
+    const [codes] = await executor.execute(
         'SELECT product_erp_id, MAX(item_code) AS item_code, MAX(hsn_code) AS hsn_code FROM seller_items WHERE company_id = ? GROUP BY product_erp_id',
         [company.id]
     );
@@ -291,6 +296,140 @@ export const getItemStockInsights = async (req, res) => {
     }
 };
 
+const draftOwner = (user) => {
+    const id = Number(user?.id || user?.deliveryBoyId || user?.staffId);
+    if (!Number.isSafeInteger(id) || id <= 0 || !user?.role) throw httpError(403, 'Sign in to use sales drafts.');
+    return [user.role, id];
+};
+
+const draftFields = `d.id, d.company_id, c.name AS company_name, d.buyer_name, d.invoice_number, d.revision,
+    DATE_FORMAT(d.sale_date, '%Y-%m-%d') AS sale_date,
+    DATE_FORMAT(d.updated_at, '%Y-%m-%d %H:%i:%s') AS updated_at`;
+
+export const listSaleDrafts = async (req, res) => {
+    try {
+        const [drafts] = await db.execute(
+            `SELECT ${draftFields}, JSON_LENGTH(JSON_EXTRACT(d.payload, '$.lineItems')) AS line_count
+             FROM dms_sale_drafts d LEFT JOIN companies c ON c.id = d.company_id
+             WHERE d.owner_role = ? AND d.owner_id = ?
+             ORDER BY d.updated_at DESC, d.id DESC`,
+            draftOwner(req.user)
+        );
+        return res.json({ drafts });
+    } catch (error) {
+        return sendError(res, error, 'Unable to load sales drafts.');
+    }
+};
+
+export const getSaleDraft = async (req, res) => {
+    try {
+        const [rows] = await db.execute(
+            `SELECT ${draftFields}, d.payload FROM dms_sale_drafts d LEFT JOIN companies c ON c.id = d.company_id
+             WHERE d.owner_role = ? AND d.owner_id = ? AND d.id = ?`,
+            [...draftOwner(req.user), parseId(req.params.id) || 0]
+        );
+        const draft = rows[0];
+        if (!draft) throw httpError(404, 'Sales draft not found.');
+        return res.json({ draft: { ...draft, payload: typeof draft.payload === 'string' ? JSON.parse(draft.payload) : draft.payload } });
+    } catch (error) {
+        return sendError(res, error, 'Unable to open the sales draft.');
+    }
+};
+
+const draftText = (value, limit) => ['string', 'number'].includes(typeof value) ? String(value).trim().slice(0, limit) : '';
+const draftLine = (line) => ({
+    productErpId: draftText(line?.productErpId, 100),
+    productName: draftText(line?.productName, 255),
+    productDivision: draftText(line?.productDivision, 255),
+    variantName: draftText(line?.variantName, 255),
+    availableStock: num(line?.availableStock),
+    qty: draftText(line?.qty, 32),
+    rate: draftText(line?.rate, 32),
+    priceType: ['retail', 'wholesale'].includes(line?.priceType) ? line.priceType : 'retail',
+    retailPrice: num(line?.retailPrice),
+    wholesalePrice: num(line?.wholesalePrice),
+    mrp: draftText(line?.mrp, 32),
+    batchNumber: draftText(line?.batchNumber, 100),
+    expiryDate: draftText(line?.expiryDate, 10),
+    rateEdited: line?.rateEdited === true,
+});
+
+export const saveSaleDraft = async (req, res) => {
+    try {
+        const owner = draftOwner(req.user);
+        const body = req.body || {};
+        const companyId = parseId(body.companyId);
+        const company = companyId ? await CompanyModel.getById(companyId) : null;
+        if (!company) throw httpError(400, 'Select a company.');
+        const buyer = await resolveBuyer(body, companyId);
+        const saleDate = isoDate(body.saleDate);
+        if (!saleDate || saleDate !== body.saleDate || saleDate > todayIst()
+            || Number.isNaN(Date.parse(saleDate)) || new Date(saleDate).toISOString().slice(0, 10) !== saleDate) {
+            throw httpError(400, 'Choose a valid sale date.');
+        }
+        const lines = Array.isArray(body.lineItems) ? body.lineItems : [];
+        if (lines.length > 500) throw httpError(400, 'A draft can hold up to 500 items.');
+        const payload = JSON.stringify({
+            buyerType: buyer.buyerType,
+            buyerId: buyer.distributorId || buyer.outletId,
+            lineItems: lines.filter((line) => line?.productErpId && !line.isFree).map(draftLine),
+            pendingLine: draftLine(body.pendingLine),
+            requisitionNumber: draftText(body.requisitionNumber, 50),
+            remarks: draftText(body.remarks, 1000),
+            flatDiscount: draftText(body.flatDiscount, 32),
+            roundOff: draftText(body.roundOff, 32),
+        });
+        const values = [companyId, buyer.name, draftText(body.invoiceNumber, 50) || null, saleDate, payload];
+        const sameDraft = `company_id = ? AND buyer_name = ? AND invoice_number <=> ? AND sale_date = ? AND payload = CAST(? AS JSON)`;
+        if (req.params.id !== undefined) {
+            const id = parseId(req.params.id) || 0;
+            const revision = parseId(body.revision) || 0;
+            const [result] = await db.execute(
+                `UPDATE dms_sale_drafts SET company_id = ?, buyer_name = ?, invoice_number = ?, sale_date = ?, payload = ?, revision = revision + 1
+                 WHERE owner_role = ? AND owner_id = ? AND id = ? AND revision = ?`,
+                [...values, ...owner, id, revision]
+            );
+            if (!result.affectedRows) {
+                // A previous autosave may have committed before its response was lost.
+                const [[saved]] = await db.execute(
+                    `SELECT id FROM dms_sale_drafts
+                     WHERE owner_role = ? AND owner_id = ? AND id = ? AND revision = ? AND ${sameDraft}`,
+                    [...owner, id, revision + 1, ...values]
+                );
+                if (!saved) throw httpError(409, 'This draft has changed or is no longer available. Reopen it from the drafts list.');
+            }
+            return res.json({ id, revision: revision + 1, message: 'Draft updated.' });
+        }
+        const clientKey = typeof body.clientKey === 'string' && /^[a-f0-9]{32}$/.test(body.clientKey) ? body.clientKey : null;
+        try {
+            const [result] = await db.execute(
+                'INSERT INTO dms_sale_drafts (owner_role, owner_id, company_id, buyer_name, invoice_number, sale_date, payload, client_key) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+                [...owner, ...values, clientKey]
+            );
+            return res.status(201).json({ id: result.insertId, revision: 1, message: 'Draft saved.' });
+        } catch (error) {
+            if (!clientKey || error.code !== 'ER_DUP_ENTRY') throw error;
+            const [[saved]] = await db.execute(
+                `SELECT id, revision FROM dms_sale_drafts WHERE owner_role = ? AND owner_id = ? AND client_key = ? AND ${sameDraft}`,
+                [...owner, clientKey, ...values]
+            );
+            if (!saved) throw httpError(409, 'This draft already exists. Reopen it from the drafts list before saving more changes.');
+            return res.json({ ...saved, message: 'Draft saved.' });
+        }
+    } catch (error) {
+        return sendError(res, error, 'Unable to save the draft.');
+    }
+};
+
+async function getBillItems(executor, id) {
+    const [items] = await executor.execute(
+        `SELECT *, DATE_FORMAT(expiry_date, '%Y-%m-%d') AS expiry_date
+         FROM dms_sale_items WHERE sale_id = ? ORDER BY sort_order, id`,
+        [id]
+    );
+    return items;
+}
+
 export const getSale = async (req, res) => {
     try {
         const id = parseId(req.params.id);
@@ -300,11 +439,7 @@ export const getSale = async (req, res) => {
             [id || 0]
         );
         if (!rows.length) throw httpError(404, 'Sale not found.');
-        const [items] = await db.execute(
-            `SELECT *, DATE_FORMAT(expiry_date, '%Y-%m-%d') AS expiry_date FROM dms_sale_items
-             WHERE sale_id = ? ORDER BY sort_order, id`,
-            [id]
-        );
+        const items = await getBillItems(db, id);
         const [payments] = await db.execute(
             `SELECT id, DATE_FORMAT(payment_date, '%Y-%m-%d') AS payment_date, amount, payment_mode, reference, created_by_name
              FROM dms_sale_payments WHERE sale_id = ? ORDER BY payment_date, id`,
@@ -313,6 +448,241 @@ export const getSale = async (req, res) => {
         return res.json({ sale: rows[0], items, payments });
     } catch (error) {
         return sendError(res, error, 'Unable to load the sale.');
+    }
+};
+
+async function saveBillItems(connection, saleId, rows) {
+    for (const [index, r] of rows.entries()) {
+        await connection.execute(
+            `INSERT INTO dms_sale_items
+                (sale_id, product_erp_id, item_code, product_name, variant_name, hsn_code, mrp, batch_number, expiry_date,
+                 qty, rate, gst_percent, taxable_amount, gst_amount, amount, is_free, free_note, sort_order)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            [
+                saleId, r.product.product_erp_id, r.product.item_code || null, r.product.product_name || null,
+                r.product.variant_name || null, r.product.hsn_code || null, num(r.lot.mrp) || null,
+                r.lot.batchNumber || null, isoDate(r.lot.expiryDate), r.qty, r.rate, r.gstPercent, r.taxable, r.gst,
+                r.amount, r.isFree ? 1 : 0, r.freeNote || null, index,
+            ]
+        );
+    }
+}
+
+const stockLinesOf = (rows) => rows.map(({ product, lot, qty }) => ({
+    productErpId: product.product_erp_id, qty, mrp: lot.mrp, batchNumber: lot.batchNumber, expiryDate: lot.expiryDate,
+}));
+
+const savedLotOf = (item) => ({ mrp: item.mrp, batchNumber: item.batch_number, expiryDate: item.expiry_date });
+
+function recordedBillOffers(items) {
+    const paid = new Map();
+    const free = new Map();
+    let main;
+    for (const item of items) {
+        if (!Number(item.is_free)) {
+            main = item;
+            const key = erpKey(item.product_erp_id);
+            paid.set(key, (paid.get(key) || 0) + num(item.qty));
+        } else if (main) {
+            const key = erpKey(main.product_erp_id);
+            if (!free.has(key)) free.set(key, { main, item, qty: 0 });
+            free.get(key).qty += num(item.qty);
+        }
+    }
+    const schemes = new Map();
+    for (const [key, { main, item, qty }] of free) {
+        const terms = /\(buy (\d+(?:\.\d+)?) get (\d+(?:\.\d+)?)\)$/.exec(item.free_note || '');
+        schemes.set(key, {
+            product_erp_id: main.product_erp_id,
+            item_name: main.variant_name || main.product_name,
+            free_product_erp_id: item.product_erp_id,
+            free_item_name: item.variant_name || item.product_name,
+            buy_qty: Number(terms?.[1]) || paid.get(key),
+            free_qty: Number(terms?.[2]) || qty,
+            free_note: item.free_note,
+        });
+    }
+    return { recorded: free, schemes };
+}
+
+async function offersForSaleEdit(sale, date, previous, executor) {
+    const historical = recordedBillOffers(previous);
+    const orderSchemes = sale.buyer_type === 'distributor' ? await getBilledOrderFreeSchemes(sale.id, executor) : null;
+    const schemes = orderSchemes ?? await activeSchemesFor(sale.company_id, date, executor);
+    if (orderSchemes || date === sale.sale_day) {
+        for (const [key, scheme] of historical.schemes) {
+            if (!orderSchemes || !schemes.has(key)) schemes.set(key, scheme);
+        }
+    }
+    return { schemes, recorded: historical.recorded };
+}
+
+export const getSaleEditOffers = async (req, res) => {
+    try {
+        const id = parseId(req.params.id) || 0;
+        const [[sale]] = await db.execute(
+            "SELECT *, DATE_FORMAT(sale_date, '%Y-%m-%d') AS sale_day FROM dms_sales WHERE id = ?",
+            [id]
+        );
+        if (!sale) throw httpError(404, 'Sale not found.');
+        if (sale.status !== 'active') throw httpError(409, 'Cancelled bills cannot be edited.');
+        const date = req.query.date || sale.sale_day;
+        if (isoDate(date) !== date || Number.isNaN(Date.parse(date)) || new Date(date).toISOString().slice(0, 10) !== date) {
+            throw httpError(400, 'Choose a valid sale date.');
+        }
+        const { schemes } = await offersForSaleEdit(sale, date, await getBillItems(db, id), db);
+        return res.json({ schemes: [...schemes.values()] });
+    } catch (error) {
+        return sendError(res, error, 'Unable to load the free goods offers for this bill.');
+    }
+};
+
+function appendBillFreeGoods(lines, offers, stock, lotsOf) {
+    const freeByMain = new Map();
+    for (const { scheme, freeErpId, freeQty } of offers) {
+        const key = erpKey(freeErpId);
+        const product = stock.get(key);
+        if (!product) continue;
+        const mainKey = erpKey(scheme.product_erp_id);
+        const mainItem = stock.get(mainKey);
+        const mainName = scheme.item_name || mainItem?.variant_name || mainItem?.product_name || scheme.product_erp_id;
+        const freeNote = (scheme.free_note || `Free with ${mainName} (buy ${scheme.buy_qty} get ${scheme.free_qty})`).slice(0, 255);
+        freeByMain.set(mainKey, takeFromLots(lotsOf(key), freeQty).taken.map(({ lot, qty }) => ({
+            product, lot, qty, rate: 0, isFree: true, freeNote,
+        })));
+    }
+    const lastLineByItem = new Map(lines.map((line, index) => [erpKey(line.product.product_erp_id), index]));
+    return lines.flatMap((line, index) => {
+        const key = erpKey(line.product.product_erp_id);
+        return lastLineByItem.get(key) === index ? [line, ...(freeByMain.get(key) || [])] : [line];
+    });
+}
+
+export const updateSale = async (req, res) => {
+    const connection = await db.getConnection();
+    try {
+        const id = parseId(req.params.id) || 0;
+        const invoiceNumber = String(req.body?.invoiceNumber || '').trim();
+        const saleDate = isoDate(req.body?.saleDate);
+        if (!invoiceNumber || invoiceNumber.length > 50) throw httpError(400, 'Enter an invoice number up to 50 characters.');
+        if (!saleDate || saleDate !== req.body.saleDate || saleDate > todayIst()
+            || Number.isNaN(Date.parse(saleDate)) || new Date(saleDate).toISOString().slice(0, 10) !== saleDate) {
+            throw httpError(400, 'Choose a valid sale date.');
+        }
+        const requested = req.body?.lines;
+        if (!Array.isArray(requested) || !requested.length || requested.length > 500) {
+            throw httpError(400, 'Enter between 1 and 500 bill lines.');
+        }
+        await connection.beginTransaction();
+        const [[sale]] = await connection.execute(
+            "SELECT *, DATE_FORMAT(sale_date, '%Y-%m-%d') AS sale_day FROM dms_sales WHERE id = ? FOR UPDATE",
+            [id]
+        );
+        if (!sale) throw httpError(404, 'Sale not found.');
+        if (sale.status !== 'active') throw httpError(409, 'Cancelled bills cannot be edited.');
+        if (req.body.revision !== Number(sale.edit_revision)) throw httpError(409, 'This bill changed. Reopen it before editing.');
+        const [[company]] = await connection.execute('SELECT id, name FROM companies WHERE id = ?', [sale.company_id]);
+        if (!company) throw httpError(400, 'The company for this bill is unavailable.');
+
+        if (invoiceNumber !== sale.invoice_number) {
+            const [duplicates] = await connection.execute(
+                `SELECT id FROM dms_sales WHERE company_id = ? AND invoice_number = ? AND id <> ?
+                 UNION ALL SELECT id FROM staff_sales WHERE TRIM(invoice_number) = ? LIMIT 1`,
+                [sale.company_id, invoiceNumber, id, invoiceNumber]
+            );
+            if (duplicates.length) throw httpError(409, `Invoice ${invoiceNumber} already exists.`);
+        }
+
+        const previous = await getBillItems(connection, id);
+        const byId = new Map(previous.map((item) => [Number(item.id), item]));
+        const usedIds = new Set();
+        const lines = requested.filter((line) => !Number(byId.get(Number(line?.id))?.is_free)).map((line) => {
+            const key = erpKey(line?.productErpId);
+            const qty = Number(line?.qty);
+            const rate = Number(line?.rate);
+            const itemId = Number(line?.id);
+            const existing = itemId ? byId.get(itemId) : null;
+            if (!key || !Number.isFinite(qty) || qty <= 0 || qty > 999999999999
+                || Number(qty.toFixed(2)) !== qty || !Number.isFinite(rate) || rate < 0 || rate > 9999999999) {
+                throw httpError(400, 'Each line needs a product, a positive quantity, and a valid rate.');
+            }
+            if (itemId && (!existing || usedIds.has(itemId) || erpKey(existing.product_erp_id) !== key)) {
+                throw httpError(400, 'An edited line does not match this bill.');
+            }
+            if (existing) usedIds.add(itemId);
+            const preferredLot = existing ? savedLotOf(existing) : num(line.mrp) > 0
+                ? { mrp: line.mrp, batchNumber: draftText(line.batchNumber, 100), expiryDate: isoDate(line.expiryDate) }
+                : null;
+            return { key, qty, rate: money(rate), existing, preferredLot };
+        });
+        if (!lines.some((line) => line.rate > 0)) throw httpError(400, 'Add at least one paid item.');
+        const { schemes, recorded } = await offersForSaleEdit(sale, saleDate, previous, connection);
+        const bought = new Map();
+        for (const { key, qty } of lines) bought.set(key, (bought.get(key) || 0) + qty);
+        const offers = freeFor(schemes, bought);
+        const stockChanged = lines.length !== previous.filter((item) => !Number(item.is_free)).length
+            || lines.some(({ existing, qty }) => !existing || qty !== Number(existing.qty))
+            || offers.length !== recorded.size
+            || offers.some(({ scheme, freeErpId, freeQty }) => {
+                const old = recorded.get(erpKey(scheme.product_erp_id));
+                return !old || erpKey(old.item.product_erp_id) !== erpKey(freeErpId) || freeQty !== old.qty;
+            });
+        let current = null;
+        if (stockChanged) {
+            await PhysicalStockModel.restoreStockForCompany(connection, company.name, previous, `DMS Sale Edit #${id} · restore`);
+            const products = new Set([...lines.map(({ key }) => key), ...offers.map(({ freeErpId }) => erpKey(freeErpId))]);
+            current = await companyStock(company, connection, products);
+            for (const product of current.values()) {
+                for (const lot of product.lots) lot.pcs = Math.floor(Math.round(lot.pcs * 10000) / 100) / 100;
+            }
+        }
+        const paid = [];
+        for (const { key, qty, rate, existing, preferredLot } of lines) {
+            const product = existing || current?.get(key);
+            if (!product) throw httpError(400, `Product ${key} is unavailable.`);
+            const gstPercent = existing ? num(existing.gst_percent) : num(product.gst_percent) || 5;
+            const lots = stockChanged ? current.get(key)?.lots || [] : null;
+            const available = stockChanged ? takeFromLots(lots, qty, preferredLot) : { taken: [{ lot: preferredLot, qty }], short: 0 };
+            if (available.short > 0) throw httpError(400, `Not enough stock for ${product.variant_name || product.product_name || key}.`);
+            paid.push(...available.taken.map(({ lot, qty: lotQty }) => ({
+                product, lot, qty: lotQty, rate, gstPercent,
+            })));
+        }
+        const paidById = new Map(paid.map((line) => [Number(line.product.id), line]));
+        const ordered = stockChanged
+            ? appendBillFreeGoods(paid, offers, current, (key) => current.get(key)?.lots || [])
+            : previous.map((item) => Number(item.is_free) ? {
+                product: item, lot: savedLotOf(item), qty: num(item.qty), rate: 0,
+                gstPercent: num(item.gst_percent), isFree: true, freeNote: item.free_note,
+            } : paidById.get(Number(item.id)));
+        const rows = ordered.map((line) => {
+            const gstPercent = line.gstPercent ?? (num(line.product.gst_percent) || 5);
+            return { ...line, gstPercent, ...lineMoney(line.qty, line.rate, gstPercent) };
+        });
+        const sum = (field) => money(rows.reduce((total, row) => total + num(row[field]), 0));
+        const exact = sum('amount');
+        const total = Math.round(exact);
+        if (total < num(sale.paid_amount)) throw httpError(409, 'The new total cannot be below the payments already recorded.');
+
+        if (stockChanged) {
+            await PhysicalStockModel.deductStockForCompany(connection, company.name, stockLinesOf(rows), `DMS Sale Edit #${id} · deduct`);
+        }
+        await connection.execute('DELETE FROM dms_sale_items WHERE sale_id = ?', [id]);
+        await saveBillItems(connection, id, rows);
+        await connection.execute(
+            `UPDATE dms_sales SET invoice_number = ?, sale_date = ?, remarks = ?, item_count = ?, total_qty = ?,
+                taxable_amount = ?, gst_amount = ?, round_off = ?, total_amount = ?, balance_amount = ?,
+                edit_revision = edit_revision + 1 WHERE id = ?`,
+            [invoiceNumber, saleDate, String(req.body.remarks || '').trim().slice(0, 1000) || null,
+                rows.length, sum('qty'), sum('taxable'), sum('gst'), money(total - exact), total, money(total - num(sale.paid_amount)), id]
+        );
+        await connection.commit();
+        return res.json({ message: `Invoice ${invoiceNumber} updated.` });
+    } catch (error) {
+        await connection.rollback().catch(() => {});
+        return sendError(res, error, 'Unable to update the bill.');
+    } finally {
+        connection.release();
     }
 };
 
@@ -368,32 +738,11 @@ export const createSale = async (req, res) => {
             : await activeSchemesFor(companyId, saleDate);
         const bought = new Map();
         lines.forEach((l) => bought.set(erpKey(l.product.product_erp_id), (bought.get(erpKey(l.product.product_erp_id)) || 0) + l.qty));
-        const freeByMain = new Map();
-        for (const { scheme, freeErpId, freeQty } of freeFor(schemes, bought)) {
-            const key = erpKey(freeErpId);
-            const product = stock.get(key);
-            if (!product) continue;
-            // The note names the bought (main) item, so the print shows what the free goods came with.
-            const mainKey = erpKey(scheme.product_erp_id);
-            const mainItem = stock.get(mainKey);
-            const mainName = scheme.item_name || mainItem?.variant_name || mainItem?.product_name || scheme.product_erp_id;
-            const freeNote = (scheme.free_note || `Free with ${mainName} (buy ${scheme.buy_qty} get ${scheme.free_qty})`).slice(0, 255);
-            const freeLines = takeFromLots(lotsOf(key), freeQty).taken.map(({ lot, qty }) => ({
-                product, lot, qty, rate: 0, isFree: true, freeNote,
-            }));
-            freeByMain.set(mainKey, [...(freeByMain.get(mainKey) || []), ...freeLines]);
-        }
-        const ordered = [];
-        lines.forEach((l, i) => {
-            ordered.push(l);
-            const key = erpKey(l.product.product_erp_id);
-            const isLastOfItem = !lines.slice(i + 1).some((x) => erpKey(x.product.product_erp_id) === key);
-            if (isLastOfItem && freeByMain.has(key)) ordered.push(...freeByMain.get(key));
-        });
+        const ordered = appendBillFreeGoods(lines, freeFor(schemes, bought), stock, lotsOf);
 
-        const rows = ordered.map((l, index) => {
+        const rows = ordered.map((l) => {
             const gstPercent = num(l.product.gst_percent) || 5;
-            return { ...l, index, gstPercent, ...lineMoney(l.qty, l.rate, gstPercent) };
+            return { ...l, gstPercent, ...lineMoney(l.qty, l.rate, gstPercent) };
         });
         const sum = (field) => money(rows.reduce((t, r) => t + num(r[field]), 0));
         const exact = sum('amount');
@@ -404,6 +753,13 @@ export const createSale = async (req, res) => {
         const mode = PAYMENT_MODES.includes(req.body?.paymentMode) ? req.body.paymentMode : 'cash';
 
         await connection.beginTransaction();
+        if (req.body?.draftId != null) {
+            const [draft] = await connection.execute(
+                'DELETE FROM dms_sale_drafts WHERE owner_role = ? AND owner_id = ? AND id = ? AND revision = ?',
+                [...draftOwner(req.user), parseId(req.body.draftId) || 0, parseId(req.body.draftRevision) || 0]
+            );
+            if (!draft.affectedRows) throw httpError(409, 'This draft has changed or is no longer available. Reopen it from the drafts list.');
+        }
         const [result] = await connection.execute(
             `INSERT INTO dms_sales
                 (invoice_number, sale_date, company_id, buyer_type, distributor_id, outlet_id, buyer_name, buyer_code,
@@ -418,20 +774,7 @@ export const createSale = async (req, res) => {
             ]
         );
         const saleId = result.insertId;
-        for (const r of rows) {
-            await connection.execute(
-                `INSERT INTO dms_sale_items
-                    (sale_id, product_erp_id, item_code, product_name, variant_name, hsn_code, mrp, batch_number, expiry_date,
-                     qty, rate, gst_percent, taxable_amount, gst_amount, amount, is_free, free_note, sort_order)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-                [
-                    saleId, r.product.product_erp_id, r.product.item_code || null, r.product.product_name || null,
-                    r.product.variant_name || null, r.product.hsn_code || null, num(r.lot.mrp) || null,
-                    r.lot.batchNumber || null, isoDate(r.lot.expiryDate), r.qty, r.rate, r.gstPercent, r.taxable, r.gst,
-                    r.amount, r.isFree ? 1 : 0, r.freeNote || null, r.index,
-                ]
-            );
-        }
+        await saveBillItems(connection, saleId, rows);
         if (paid > 0) {
             await connection.execute(
                 `INSERT INTO dms_sale_payments (sale_id, payment_date, amount, payment_mode, reference, created_by_name)
@@ -443,13 +786,7 @@ export const createSale = async (req, res) => {
         await PhysicalStockModel.deductStockForCompany(
             connection,
             company.name,
-            rows.map((r) => ({
-                productErpId: r.product.product_erp_id,
-                qty: r.qty,
-                mrp: r.lot.mrp,
-                batchNumber: r.lot.batchNumber,
-                expiryDate: r.lot.expiryDate,
-            })),
+            stockLinesOf(rows),
             `DMS Sale ${invoiceNumber}`
         );
         // A bill made from a distributor's approved order (requisition DRQ...): that order is billed.

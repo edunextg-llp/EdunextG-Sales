@@ -83,9 +83,9 @@ async function companyItems(companyId, executor = db) {
 const itemName = (item) => item?.variant_name || item?.sku_name || item?.product_erp_id || '';
 
 // A dated scheme takes precedence over an existing undated offer for the same item.
-export async function activeSchemesFor(companyId, date = schemeToday()) {
+export async function activeSchemesFor(companyId, date = schemeToday(), executor = db) {
     if (!parseId(companyId)) return new Map();
-    const [rows] = await db.execute(
+    const [rows] = await executor.execute(
         `${SELECT_SQL} WHERE s.company_id = ? AND s.is_active = 1
            AND (s.valid_from IS NULL OR s.valid_from <= ?) AND (s.valid_to IS NULL OR s.valid_to >= ?)
          ORDER BY (s.valid_from IS NULL AND s.valid_to IS NULL), s.valid_from DESC, s.id DESC`,

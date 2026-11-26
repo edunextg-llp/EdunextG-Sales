@@ -197,7 +197,13 @@ router.get('/dms-sales/next-invoice', requirePermission('create_sales'), dmsSale
 router.get('/dms-sales', requirePermission('create_sales'), dmsSales.listSales);
 router.get('/dms-sales/item-ranking', requirePermission('create_sales'), dmsSales.getItemSalesRanking);
 router.get('/dms-sales/item-stock-insights', requirePermission('create_sales'), dmsSales.getItemStockInsights);
+router.get('/dms-sales/drafts', requirePermission('create_sales'), dmsSales.listSaleDrafts);
+router.get('/dms-sales/drafts/:id', requirePermission('create_sales'), dmsSales.getSaleDraft);
+router.post('/dms-sales/drafts', requirePermission('create_sales'), dmsSales.saveSaleDraft);
+router.put('/dms-sales/drafts/:id', requirePermission('create_sales'), dmsSales.saveSaleDraft);
 router.get('/dms-sales/:id', requirePermission('create_sales'), dmsSales.getSale);
+router.get('/dms-sales/:id/edit-offers', requireRole('admin'), dmsSales.getSaleEditOffers);
+router.put('/dms-sales/:id', requireRole('admin'), dmsSales.updateSale);
 router.post('/dms-sales', requirePermission('create_sales'), dmsSales.createSale);
 router.post('/dms-sales/:id/payments', requirePermission('create_sales'), dmsSales.addPayment);
 router.post('/dms-sales/:id/cancel', requirePermission('create_sales'), dmsSales.cancelSale);

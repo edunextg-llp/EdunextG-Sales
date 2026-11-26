@@ -220,14 +220,14 @@ class DmsStockModel {
         return DmsStockModel.normalizeProductItem(rows[0]);
     }
 
-    static async getLatestItemsByCompanyId(companyId, limit = 2000) {
+    static async getLatestItemsByCompanyId(companyId, limit = 2000, executor = db) {
         const company = parseInt(companyId, 10);
         if (!Number.isFinite(company) || company <= 0) return [];
 
         const numericLimit = Math.min(Math.max(parseInt(limit, 10) || 2000, 1), 2000);
         // Each item's latest invoice, with ALL of that item's lines on it (an invoice can
         // carry the same item at two MRPs). The lines are added up into one row below.
-        const [rows] = await db.execute(
+        const [rows] = await executor.execute(
             `SELECT dsi.id, dsi.import_id, dsi.product_erp_id, dsi.product_name,
                     dsi.product_division, dsi.variant_name, dsi.pcs_per_box,
                     dsi.current_stock_in_case, dsi.current_stock_in_pcs,
@@ -301,7 +301,7 @@ class DmsStockModel {
         const items = [...byItem.values()].slice(0, numericLimit);
         const lastPrices = await this.getLastSalePrices(company, items
             .filter((item) => !item.wholesale_price || !item.retail_price)
-            .map((item) => item.product_erp_id));
+            .map((item) => item.product_erp_id), executor);
         return items.map(({ cost_total: costTotal, ...item }) => ({
             ...item,
             wholesale_price: item.wholesale_price || toNumber(lastPrices.get(String(item.product_erp_id).trim().toLowerCase())?.wholesale_price),
@@ -571,11 +571,11 @@ class DmsStockModel {
     }
 
     /** Latest non-zero retail/wholesale price per ERP id for a company (keys lower-cased). */
-    static async getLastSalePrices(companyId, productErpIds = []) {
+    static async getLastSalePrices(companyId, productErpIds = [], executor = db) {
         const keys = [...new Set(productErpIds.map((id) => String(id || '').trim().toLowerCase()).filter(Boolean))];
         const prices = new Map();
         if (!companyId || !keys.length) return prices;
-        const [rows] = await db.query(
+        const [rows] = await executor.query(
             `SELECT LOWER(TRIM(dsi.product_erp_id)) AS erp_key, dsi.retail_price, dsi.wholesale_price
              FROM dms_stock_items dsi
              INNER JOIN dms_stock_imports i ON i.id = dsi.import_id
@@ -834,13 +834,13 @@ class DmsStockModel {
         return rows[0] || null;
     }
 
-    static async getLatestImportByCompanyName(companyName) {
+    static async getLatestImportByCompanyName(companyName, executor = db) {
         const name = String(companyName || '').trim();
         if (!name) {
             return null;
         }
 
-        const [rows] = await db.execute(
+        const [rows] = await executor.execute(
             `SELECT i.id, i.file_name, i.company_id, c.name AS company_name, i.row_count,
                     DATE_FORMAT(i.upload_date, '%Y-%m-%d') AS upload_date,
                     i.total_purchase_units, i.total_purchase_value,
