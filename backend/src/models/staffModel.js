@@ -1573,7 +1573,7 @@ class StaffModel {
         return rows[0] ? rows[0].packaging_status : null;
     }
 
-    static async getSaleItemsByCompany(connection, saleId) {
+    static async getSaleItemsByCompany(connection, saleId, { remainingOnly = false } = {}) {
         const [saleRows] = await connection.execute(
             `SELECT COALESCE(c.name, '') AS company_name
              FROM staff_sales ss
@@ -1583,14 +1583,19 @@ class StaffModel {
             [saleId]
         );
         const [saleItems] = await connection.execute(
-            `SELECT product_erp_id, product_name, product_division, variant_name, qty, rate,
-                    mrp, batch_number, DATE_FORMAT(expiry_date, '%Y-%m-%d') AS expiry_date
-             FROM staff_sale_items WHERE sale_id = ? ORDER BY sort_order ASC, id ASC`,
+            `SELECT i.product_erp_id, i.product_name, i.product_division, i.variant_name, i.rate,
+                    i.mrp, i.batch_number, DATE_FORMAT(i.expiry_date, '%Y-%m-%d') AS expiry_date,
+                    ${remainingOnly ? `GREATEST(i.qty - COALESCE((
+                        SELECT SUM(oc.product_qty) FROM order_cancellations oc
+                        WHERE oc.sale_id = i.sale_id AND oc.sale_item_id = i.id
+                    ), 0), 0)` : 'i.qty'} AS qty
+             FROM staff_sale_items i WHERE i.sale_id = ? ORDER BY i.sort_order ASC, i.id ASC`,
             [saleId]
         );
 
         const itemsByCompany = new Map();
         for (const item of saleItems) {
+            if (!(Number(item.qty) > 0)) continue;
             const companyName = String(item.product_division || saleRows[0]?.company_name || '').trim();
             if (!companyName) {
                 throw new Error(`Company could not be determined for cancelled product ${item.product_erp_id}.`);
@@ -1601,10 +1606,16 @@ class StaffModel {
         return itemsByCompany;
     }
 
+    static async restoreCancelledBillStock(connection, saleId) {
+        const itemsByCompany = await this.getSaleItemsByCompany(connection, saleId, { remainingOnly: true });
+        for (const [companyName, items] of itemsByCompany) {
+            await PhysicalStockModel.restoreStockForCompany(connection, companyName, items, `Full Bill Cancellation #${saleId}`);
+        }
+    }
+
     // Reverses a mistaken full-bill cancellation. A bill that had been packed
     // goes to Pending Deliveries; one cancelled before packing goes back to
-    // Packaging. Stock is only taken again if that cancellation put it back:
-    // cancels made from the delivery apps do not restore stock.
+    // Packaging. Stock is only taken again if that cancellation put it back.
     // Records an invoice that was never billed because the outlet's overdue is too old. It is
     // cancelled from the start, so no stock is deducted and any requisition stays unused.
     static async saveOverdueCancelledSale(staffId, date, sale, { remark = '' } = {}) {
@@ -1668,7 +1679,7 @@ class StaffModel {
             // its own label so it doesn't cancel out a later "Full Bill Cancellation" restore.
             const neverDeducted = sale.cancellation_reason === OVERDUE_CANCEL_REASON;
             if (neverDeducted || Number(stockRows[0].restored) > Number(stockRows[0].undone)) {
-                const itemsByCompany = await StaffModel.getSaleItemsByCompany(connection, saleId);
+                const itemsByCompany = await StaffModel.getSaleItemsByCompany(connection, saleId, { remainingOnly: !neverDeducted });
                 for (const [companyName, items] of itemsByCompany.entries()) {
                     try {
                         await PhysicalStockModel.deductStockForCompany(
@@ -1748,15 +1759,7 @@ class StaffModel {
 
             if (status === 'cancelled') {
                 if (currentStatus !== 'cancelled') {
-                    const itemsByCompany = await StaffModel.getSaleItemsByCompany(connection, saleId);
-                    for (const [companyName, items] of itemsByCompany.entries()) {
-                        await PhysicalStockModel.restoreStockForCompany(
-                            connection,
-                            companyName,
-                            items,
-                            `Full Bill Cancellation #${saleId}`
-                        );
-                    }
+                    await StaffModel.restoreCancelledBillStock(connection, saleId);
 
                     if (statusDate) {
                         await connection.execute(

@@ -1,5 +1,6 @@
 import { resolveGoogleMapsCoordinates } from '../utils/googleMapsLocation.js';
 import db from '../config/db.js';
+import StaffModel from './staffModel.js';
 import { actorParams } from '../utils/requestContext.js';
 import bcrypt from 'bcryptjs';
 import { PERMISSION_KEYS, approverRuleFromRow, permissionColumnsSql, permissionsFromRow } from '../utils/permissionKeys.js';
@@ -520,13 +521,12 @@ class DeliveryBoyModel {
             if (companyStaff && status === 'delivered' && !sale.google_location?.trim()) throw new Error('OUTLET_LOCATION_REQUIRED');
 
             if (status === 'cancelled') {
-                if (sale.packaging_status !== 'cancelled') {
-                    await connection.execute(
-                        `INSERT INTO staff_sale_status_history (sale_id, status, changed_at, changed_by_type, changed_by_id)
-                         VALUES (?, 'cancelled', NOW(), ?, ?)`,
-                        [saleId, ...actorParams()]
-                    );
-                }
+                await StaffModel.restoreCancelledBillStock(connection, saleId);
+                await connection.execute(
+                    `INSERT INTO staff_sale_status_history (sale_id, status, changed_at, changed_by_type, changed_by_id)
+                     VALUES (?, 'cancelled', NOW(), ?, ?)`,
+                    [saleId, ...actorParams()]
+                );
 
                 const [itemRows] = await connection.execute(
                     'SELECT item_count FROM staff_sales WHERE id = ?',

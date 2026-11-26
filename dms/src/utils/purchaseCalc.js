@@ -98,6 +98,7 @@ export function calcLine(line, everest) {
   const sgst = cgst;
   return {
     qty,
+    dp,
     net,
     discountPercent,
     discountAmount,

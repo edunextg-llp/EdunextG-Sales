@@ -52,17 +52,16 @@ function ReadBox({ label, value, mono, strong }) {
   );
 }
 
-/** Sale price minus DP amt (DP + GST) per piece; red when below it. */
-function MarginBox({ label, price, cost }) {
+function MarginBox({ label, price, dpPrice }) {
   const p = Number(price);
-  if (!(p > 0)) return <ReadBox label={label} value="" />;
-  const margin = p - cost;
+  if (!(p > 0) || !(Number(dpPrice) > 0)) return <ReadBox label={label} value="" />;
+  const margin = p - Number(dpPrice);
   return (
     <Field label={label}>
       <input
         readOnly
         tabIndex={-1}
-        value={`${rupees(margin)}${cost > 0 ? ` (${((margin / cost) * 100).toFixed(1)}%)` : ""}`}
+        value={rupees(margin)}
         className={`input w-full bg-base-200/60 tabular-nums ${margin < 0 ? "text-error font-semibold" : "text-success"}`}
       />
     </Field>
@@ -216,7 +215,6 @@ export default function PurchaseEntry({ companies, draft, onClose, onSaved, onSt
   };
 
   const calc = calcLine(line, everest);
-  // DP amt / pc = DP + GST. Wholesale / retail margin = sale price - DP amt.
   const dpAmt = dpAmtPerPiece(line);
   const belowDp = (p) => p !== "" && p != null && dpAmt > 0 && Number(p) < dpAmt - 0.00005;
 
@@ -606,11 +604,11 @@ export default function PurchaseEntry({ companies, draft, onClose, onSaved, onSt
                 <Field label="Wholesale price / pc">
                   <input type="number" min={dpAmt ? dpAmt.toFixed(2) : "0"} step="0.01" className={`input w-full ${belowDp(line.wholesalePrice) ? "input-error" : ""}`} placeholder="Last price if blank" value={line.wholesalePrice} onChange={set("wholesalePrice")} />
                 </Field>
-                <MarginBox label="Wholesale margin / pc" price={line.wholesalePrice} cost={dpAmt} />
+                <MarginBox label="Wholesale margin / pc" price={line.wholesalePrice} dpPrice={calc.dp} />
                 <Field label="Retail price / pc">
                   <input type="number" min={dpAmt ? dpAmt.toFixed(2) : "0"} step="0.01" className={`input w-full ${belowDp(line.retailPrice) ? "input-error" : ""}`} placeholder="Last price if blank" value={line.retailPrice} onChange={set("retailPrice")} />
                 </Field>
-                <MarginBox label="Retail margin / pc" price={line.retailPrice} cost={dpAmt} />
+                <MarginBox label="Retail margin / pc" price={line.retailPrice} dpPrice={calc.dp} />
               </div>
             )}
           </fieldset>

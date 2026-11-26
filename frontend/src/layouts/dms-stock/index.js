@@ -312,10 +312,10 @@ const calcManualTotals = (item) => {
     cgstAmount: cgstAmount ? cgstAmount.toFixed(2) : "",
     sgstAmount: sgstAmount ? sgstAmount.toFixed(2) : "",
     retailMargin: retailPrice && dpPrice
-      ? (retailPrice - dpPriceAfterDiscount).toFixed(2)
+      ? (retailPrice - dpPrice).toFixed(2)
       : "",
     wholesaleMargin: wholesalePrice && dpPrice
-      ? (wholesalePrice - dpPriceAfterDiscount).toFixed(2)
+      ? (wholesalePrice - dpPrice).toFixed(2)
       : "",
   };
 };
@@ -1276,8 +1276,8 @@ function DmsStock() {
                         <TableCell align="right" sx={stickyHeadRowSx(tableHeadSx)}>Total Price</TableCell>
                         <TableCell align="right" sx={stickyHeadRowSx(tableHeadSx)}>Retail Price (Incl. GST)</TableCell>
                         <TableCell align="right" sx={stickyHeadRowSx(tableHeadSx)}>Wholesale Price (Incl. GST)</TableCell>
-                        <TableCell align="right" sx={stickyHeadRowSx(tableHeadSx)}>Retail Margin (Excl. GST)</TableCell>
-                        <TableCell align="right" sx={stickyHeadRowSx(tableHeadSx)}>Wholesale Margin (Excl. GST)</TableCell>
+                        <TableCell align="right" sx={stickyHeadRowSx(tableHeadSx)}>Retail Margin</TableCell>
+                        <TableCell align="right" sx={stickyHeadRowSx(tableHeadSx)}>Wholesale Margin</TableCell>
                       </TableRow>
                     </TableHead>
                     <TableBody>
@@ -1884,12 +1884,12 @@ function DmsStock() {
                   sx={{ "& .MuiInputBase-root": { backgroundColor: "#fff", height: 40 } }} />
               </Grid>
               <Grid item xs={6} md={2}>
-                <MDTypography sx={fieldLabelSx}>Retail Margin (Excl. GST)</MDTypography>
+                <MDTypography sx={fieldLabelSx}>Retail Margin</MDTypography>
                 <MDInput fullWidth disabled value={manualItem.retailMargin ? `Rs. ${manualItem.retailMargin}` : ""}
                   sx={{ "& .MuiInputBase-root": { backgroundColor: "#f1f5f9", height: 40 } }} />
               </Grid>
               <Grid item xs={6} md={2}>
-                <MDTypography sx={fieldLabelSx}>Wholesale Margin (Excl. GST)</MDTypography>
+                <MDTypography sx={fieldLabelSx}>Wholesale Margin</MDTypography>
                 <MDInput fullWidth disabled value={manualItem.wholesaleMargin ? `Rs. ${manualItem.wholesaleMargin}` : ""}
                   sx={{ "& .MuiInputBase-root": { backgroundColor: "#f1f5f9", height: 40 } }} />
               </Grid>

@@ -1,7 +1,7 @@
 import { parse } from 'csv-parse/sync';
 import xlsx from 'xlsx';
 import CompanyModel from '../models/companyModel.js';
-import DmsStockModel from '../models/dmsStockModel.js';
+import DmsStockModel, { marginFromDp } from '../models/dmsStockModel.js';
 import PhysicalStockModel from '../models/physicalStockModel.js';
 import SellerItemModel from '../models/sellerItemModel.js';
 import PurchaseSellerModel from '../models/purchaseSellerModel.js';
@@ -93,13 +93,7 @@ const isSalePriceInvalid = (price, dpPrice, discountPercent, optional) => {
     if (optional && (price === '' || price == null || toNumber(price) <= 0)) return false;
     return Number(price) < getDpPriceAfterDiscount(dpPrice, discountPercent);
 };
-// No price entered -> no margin (instead of a negative margin).
-const saleMargin = (price, dpPrice, discountPercent) =>
-    (price > 0 ? roundRate(price - getDpPriceAfterDiscount(dpPrice, discountPercent)) : 0);
-
-// DMS Add Purchase lines: margin = sale price - DP amt, where DP amt = DP + GST per piece.
 const dpAmtOf = (calc) => roundRate(calc.dpPrice * (1 + calc.gstPercent / 100));
-const dpAmtMargin = (price, calc) => (price > 0 ? roundRate(price - dpAmtOf(calc)) : 0);
 
 // Wholesale / retail typed on a DMS line can't be below DP amt. Blank prices are not
 // checked (they fall back to the last known price). Returns an error or ''.
@@ -831,8 +825,8 @@ export const createManualDmsStock = async (req, res) => {
                         taxableAmount: calc.taxableAmount,
                         retailPrice,
                         wholesalePrice,
-                        retailMargin: dpAmtMargin(retailPrice, calc),
-                        wholesaleMargin: dpAmtMargin(wholesalePrice, calc),
+                        retailMargin: marginFromDp(retailPrice, calc.dpPrice),
+                        wholesaleMargin: marginFromDp(wholesalePrice, calc.dpPrice),
                     };
                 }
                 const dpPrice = roundRate(toNumber(item.dpPrice));
@@ -866,8 +860,8 @@ export const createManualDmsStock = async (req, res) => {
                     taxableAmount,
                     retailPrice,
                     wholesalePrice,
-                    retailMargin: saleMargin(retailPrice, dpPrice, discountPercent),
-                    wholesaleMargin: saleMargin(wholesalePrice, dpPrice, discountPercent),
+                    retailMargin: marginFromDp(retailPrice, dpPrice),
+                    wholesaleMargin: marginFromDp(wholesalePrice, dpPrice),
                 };
             })
             .filter((row) => row.productErpId || row.productName)
@@ -968,8 +962,8 @@ export const updateDmsStockItem = async (req, res) => {
                 totalValue: calc.totalValue,
                 retailPrice,
                 wholesalePrice,
-                retailMargin: dpAmtMargin(retailPrice, calc),
-                wholesaleMargin: dpAmtMargin(wholesalePrice, calc),
+                retailMargin: marginFromDp(retailPrice, calc.dpPrice),
+                wholesaleMargin: marginFromDp(wholesalePrice, calc.dpPrice),
                 rawData: { ...parseRawData(existing.raw_data), ...calc.rawFields },
             };
             const datePattern = /^\d{4}-\d{2}-\d{2}$/;
@@ -1008,8 +1002,8 @@ export const updateDmsStockItem = async (req, res) => {
             totalValue: roundRate(taxableAmount + cgstAmount + sgstAmount),
             retailPrice,
             wholesalePrice,
-            retailMargin: saleMargin(retailPrice, dpPrice, discountPercent),
-            wholesaleMargin: saleMargin(wholesalePrice, dpPrice, discountPercent),
+            retailMargin: marginFromDp(retailPrice, dpPrice),
+            wholesaleMargin: marginFromDp(wholesalePrice, dpPrice),
         };
         const salePriceOptional = isSalePriceOptionalCompany(
             await DmsStockModel.getImportCompanyName(existing.import_id) || existing.product_division

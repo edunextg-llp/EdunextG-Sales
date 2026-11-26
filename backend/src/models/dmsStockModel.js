@@ -5,6 +5,10 @@ const toNumber = (value) => {
     return Number.isFinite(parsed) ? parsed : 0;
 };
 
+export const marginFromDp = (price, dpPrice) => toNumber(price) > 0
+    ? Math.round((toNumber(price) - toNumber(dpPrice) + Number.EPSILON) * 10000) / 10000
+    : 0;
+
 class DmsStockModel {
     static async getImports() {
         const [rows] = await db.execute(
@@ -153,8 +157,8 @@ class DmsStockModel {
             sgst_amount: toNumber(row.sgst_amount),
             retail_price: toNumber(row.retail_price),
             wholesale_price: toNumber(row.wholesale_price),
-            retail_margin: toNumber(row.retail_margin),
-            wholesale_margin: toNumber(row.wholesale_margin),
+            retail_margin: toNumber(row.dp_price) > 0 ? marginFromDp(row.retail_price, row.dp_price) : toNumber(row.retail_margin),
+            wholesale_margin: toNumber(row.dp_price) > 0 ? marginFromDp(row.wholesale_price, row.dp_price) : toNumber(row.wholesale_margin),
         };
     }
 
@@ -938,8 +942,8 @@ class DmsStockModel {
             sgst_amount: toNumber(row.sgst_amount),
             retail_price: toNumber(row.retail_price),
             wholesale_price: toNumber(row.wholesale_price),
-            retail_margin: toNumber(row.retail_margin),
-            wholesale_margin: toNumber(row.wholesale_margin),
+            retail_margin: toNumber(row.dp_price) > 0 ? marginFromDp(row.retail_price, row.dp_price) : toNumber(row.retail_margin),
+            wholesale_margin: toNumber(row.dp_price) > 0 ? marginFromDp(row.wholesale_price, row.dp_price) : toNumber(row.wholesale_margin),
         }));
     }
 

@@ -4486,11 +4486,19 @@ export const logOrderCancellation = async (req, res) => {
         try {
             await connection.beginTransaction();
 
-            const salePrice = await PaymentModel.getSalePrice(connection, saleId);
-            if (salePrice === null) {
+            const [[sale]] = await connection.execute(
+                'SELECT price, packaging_status FROM staff_sales WHERE id = ? FOR UPDATE',
+                [saleId]
+            );
+            if (!sale) {
                 await connection.rollback();
                 return res.status(404).json({ error: 'Sale not found' });
             }
+            if (saleItemId && sale.packaging_status === 'cancelled') {
+                await connection.rollback();
+                return res.status(409).json({ error: 'This bill has already been cancelled.' });
+            }
+            const salePrice = Number(sale.price);
 
             const alreadyCancelled = await OrderCancellationModel.getTotalCancelledAmount(connection, saleId);
             const remainingInvoiceAmount = Math.round((salePrice - alreadyCancelled) * 100) / 100;
