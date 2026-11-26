@@ -1704,6 +1704,8 @@ export async function ensureSchema() {
                 is_free TINYINT(1) NOT NULL DEFAULT 0,
                 free_for_erp_id VARCHAR(100) NULL,
                 free_note VARCHAR(255) NULL,
+                scheme_buy_qty INT NULL,
+                scheme_free_qty INT NULL,
                 sort_order INT NOT NULL DEFAULT 0,
                 FOREIGN KEY (order_id) REFERENCES distributor_orders(id) ON DELETE CASCADE,
                 INDEX idx_distributor_order_items_order (order_id)
@@ -1717,10 +1719,17 @@ export async function ensureSchema() {
         await tryQuery(connection, `ALTER TABLE distributor_orders ADD COLUMN price_type ENUM('retail', 'wholesale') NOT NULL DEFAULT 'wholesale' AFTER status`, 'price_type on distributor_orders');
         // CNF distributors order at the product MRP (no Retail / Wholesale choice).
         await tryQuery(connection, `ALTER TABLE distributor_orders MODIFY COLUMN price_type ENUM('retail', 'wholesale', 'mrp') NOT NULL DEFAULT 'wholesale'`, 'mrp price_type on distributor_orders');
-        // Free goods earned on the order (shown to the distributor; the bill works them out again).
+        // Free goods earned on the order, with the terms used when it was placed.
         await tryQuery(connection, `ALTER TABLE distributor_order_items ADD COLUMN is_free TINYINT(1) NOT NULL DEFAULT 0 AFTER qty`, 'is_free on distributor_order_items');
         await tryQuery(connection, `ALTER TABLE distributor_order_items ADD COLUMN free_for_erp_id VARCHAR(100) NULL AFTER is_free`, 'free_for_erp_id on distributor_order_items');
         await tryQuery(connection, `ALTER TABLE distributor_order_items ADD COLUMN free_note VARCHAR(255) NULL AFTER free_for_erp_id`, 'free_note on distributor_order_items');
+        for (const column of ['scheme_buy_qty', 'scheme_free_qty']) {
+            try {
+                await connection.query(`ALTER TABLE distributor_order_items ADD COLUMN ${column} INT NULL`);
+            } catch (error) {
+                if (error.code !== 'ER_DUP_FIELDNAME') throw error;
+            }
+        }
 
         // A distributor login is made under one company, as a Distributor or a CNF.
         await tryQuery(

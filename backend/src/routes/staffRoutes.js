@@ -195,6 +195,8 @@ router.post('/physical-stock/set-current', physicalStockController.approvePhysic
 router.get('/dms-sales/outlets', requirePermission('create_sales'), dmsSales.listOutlets);
 router.get('/dms-sales/next-invoice', requirePermission('create_sales'), dmsSales.nextInvoiceNumber);
 router.get('/dms-sales', requirePermission('create_sales'), dmsSales.listSales);
+router.get('/dms-sales/item-ranking', requirePermission('create_sales'), dmsSales.getItemSalesRanking);
+router.get('/dms-sales/item-stock-insights', requirePermission('create_sales'), dmsSales.getItemStockInsights);
 router.get('/dms-sales/:id', requirePermission('create_sales'), dmsSales.getSale);
 router.post('/dms-sales', requirePermission('create_sales'), dmsSales.createSale);
 router.post('/dms-sales/:id/payments', requirePermission('create_sales'), dmsSales.addPayment);

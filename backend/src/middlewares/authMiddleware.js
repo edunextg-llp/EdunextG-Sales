@@ -192,6 +192,8 @@ export const enforceManagedUserApiScope = (req, res, next) => {
         allowed = dms('purchase');
     } else if (path.startsWith('/seller-ledger')) {
         allowed = dms('seller_ledger');
+    } else if (path === '/dms-sales/item-ranking' || path === '/dms-sales/item-stock-insights') {
+        allowed = isGet && dms('create_sales');
     } else if (path === '/distributors' || /^\/distributors\/\d+(?:\/(?:credentials|reset-password|active))?$/.test(path)) {
         // Distributor list is also used by Create Sales; managing distributor records and
         // credentials requires the dedicated Add Distributor permission.

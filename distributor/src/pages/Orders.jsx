@@ -300,6 +300,7 @@ function NewOrder({ onPlaced }) {
                       {scheme && (
                         <div className="mt-1.5 flex flex-wrap items-center gap-2">
                           <OfferBadge scheme={scheme} />
+                          {scheme.validTo && <span className="text-xs text-muted-foreground">Through {showDate(scheme.validTo)}</span>}
                           {free > 0 ? (
                             <span className="text-xs font-medium text-emerald-700">
                               You get {qty(free)} pcs {scheme.sameItem ? "" : `${scheme.freeItemName} `}free

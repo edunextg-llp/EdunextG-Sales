@@ -5,7 +5,7 @@ import DeliveryBoyModel from '../models/deliveryBoyModel.js';
 import OtherDaySaleRequestModel, { isTodaysBit, todayDate, todayDayName } from '../models/otherDaySaleRequestModel.js';
 import OverdueSaleRequestModel, { cleanSaleForRequest, getOverdueOutlets, SELF_APPROVE_OVERDUE_DAYS } from '../models/overdueSaleRequestModel.js';
 import { createSalesFromRequest } from '../controllers/overdueSaleRequestController.js';
-import { approvalRouteFor, overdueRangeFor, rangeCovers } from '../utils/permissionKeys.js';
+import { approvalRouteFor, canUseOwnOverduePermission } from '../utils/permissionKeys.js';
 import { companyInvoiceNo, dropsInPrefix } from '../utils/pdfInvoiceNumbers.js';
 
 // Auto Add Sales.
@@ -56,6 +56,7 @@ async function loadActor(task) {
             permissions: access?.isActive ? access.permissions : [],
             overdueRange: access?.overdueRange || null,
             overdueApproverRule: access?.approverRule || null,
+            overdueApprovesTiers: access?.approvesTiers || [],
         };
     }
     const [rows] = await db.query('SELECT id, name FROM staff WHERE id = ?', [task.assignee_id]);
@@ -191,7 +192,7 @@ async function processInvoice(task, detail, actor, ownApproval = null) {
         }
         const dateCheck = checkDate(saleDate, base);
         if (dateCheck) return dateCheck;
-        const own = rangeCovers(overdueRangeFor(actor), days);
+        const own = canUseOwnOverduePermission(actor, days, sale.price);
         const ownKind = days > SELF_APPROVE_OVERDUE_DAYS ? 'own' : '7day';
         if (own && !ownApproval) {
             return { ...base, status: 'needs_own', kind: 'overdue', days, reason: `Overdue ${days} days: ${actor.name} can approve it on own permission.` };

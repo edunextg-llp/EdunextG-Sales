@@ -298,7 +298,7 @@ export const updatePermissionUser = async (req, res) => {
         }
         // The overdue range replaces the old two options; it needs Add Sales.
         const overdueRange = normalizedPermissions.includes('add_sales') ? readOverdueRange(req.body?.overdueRange) : null;
-        // Approver tier: outside the own range, these days + bills below the limit go to the chosen
+        // Approver tier: these days + bills below the limit go to the chosen
         // approver instead of Admin. The approver must be another active login with Overdue Approval.
         const updatesApproverRule = Object.prototype.hasOwnProperty.call(req.body || {}, 'overdueApprover');
         const approverRule = updatesApproverRule
@@ -311,9 +311,6 @@ export const updatePermissionUser = async (req, res) => {
             const approver = await DeliveryBoyModel.getCurrentPermissions(approverRule.approverId);
             if (!approver?.isActive || !approver.permissions.includes('overdue_approval')) {
                 return res.status(400).json({ error: 'Approver tier: the approver must be an active login with the Overdue Approval permission.' });
-            }
-            if (overdueRange && overdueRange.to == null && approverRule.from >= overdueRange.from) {
-                return res.status(400).json({ error: 'Approver tier: the own-reason range has no upper limit, so it already covers these days. Set a To day on the own-reason range first.' });
             }
         }
         const saved = overdueRange

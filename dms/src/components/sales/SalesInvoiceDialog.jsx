@@ -81,6 +81,7 @@ export default function SalesInvoiceDialog({
   const [roundOff, setRoundOff] = useState("0");
   const [remarks, setRemarks] = useState("");
   const [requisitionNumber, setRequisitionNumber] = useState("");
+  const [orderOffer, setOrderOffer] = useState(null);
   const [stockItems, setStockItems] = useState([]);
   const [loadingStock, setLoadingStock] = useState(false);
   const [stockError, setStockError] = useState("");
@@ -122,6 +123,7 @@ export default function SalesInvoiceDialog({
       setDraft({ ...emptyLineItem });
       setEditingIdx(null);
       setFreeShort([]);
+      setOrderOffer(null);
       return;
     }
     setBillNo(invoiceNumber || "");
@@ -187,11 +189,18 @@ export default function SalesInvoiceDialog({
       setFreeSchemes([]);
       return;
     }
-    apiFetch(`/staff/free-goods/active?${new URLSearchParams({ companyName })}`)
+    const controller = new AbortController();
+    const params = new URLSearchParams({ companyName });
+    if (selectedDate) params.set("date", selectedDate);
+    setFreeSchemes([]);
+    apiFetch(`/staff/free-goods/active?${params}`, { signal: controller.signal })
       .then((res) => (res.ok ? res.json() : { schemes: [] }))
-      .then((data) => setFreeSchemes(Array.isArray(data.schemes) ? data.schemes : []))
-      .catch(() => setFreeSchemes([]));
-  }, [open, companyName]);
+      .then((data) => {
+        if (!controller.signal.aborted) setFreeSchemes(Array.isArray(data.schemes) ? data.schemes : []);
+      })
+      .catch(() => { if (!controller.signal.aborted) setFreeSchemes([]); });
+    return () => controller.abort();
+  }, [open, companyName, selectedDate]);
 
   // Free lines follow the paid lines: for every full "buy" qty of an item, its free pieces
   // are added at rate 0 (taken from stock lot by lot; only what is in stock).
@@ -205,12 +214,16 @@ export default function SalesInvoiceDialog({
     paid.forEach((it) => bought.set(key(it.productErpId), (bought.get(key(it.productErpId)) || 0) + (Number(it.qty) || 0)));
     const free = [];
     const short = [];
-    freeSchemes.forEach((scheme) => {
+    const code = requisitionNumber.trim().toUpperCase();
+    const schemes = outlet?.buyerType === "distributor" && /^DRQ/.test(code)
+      ? (orderOffer?.code === code ? orderOffer.schemes : [])
+      : freeSchemes;
+    schemes.forEach((scheme) => {
       const qty = bought.get(key(scheme.product_erp_id)) || 0;
       const sets = scheme.buy_qty > 0 ? Math.floor(qty / scheme.buy_qty) : 0;
       if (sets <= 0) return;
       const freeErp = scheme.free_product_erp_id || scheme.product_erp_id;
-      const wanted = sets * scheme.free_qty;
+      const wanted = Math.min(sets * scheme.free_qty, scheme.max_free_qty ?? Infinity);
       const freeName = scheme.free_item_name || freeErp;
       const product = stockItems.find((x) => key(x.product_erp_id) === key(freeErp));
       if (!product) {
@@ -238,7 +251,7 @@ export default function SalesInvoiceDialog({
         expiryDate: lot.expiryDate || "",
         isFree: true,
         freeForErpId: key(scheme.product_erp_id),
-        freeNote: `Free with ${scheme.item_name || scheme.product_erp_id} (buy ${scheme.buy_qty} get ${scheme.free_qty})`,
+        freeNote: scheme.free_note || `Free with ${scheme.item_name || scheme.product_erp_id} (buy ${scheme.buy_qty} get ${scheme.free_qty})`,
       }));
     });
     setFreeShort((prev) => (prev.join("\n") === short.join("\n") ? prev : short));
@@ -254,7 +267,7 @@ export default function SalesInvoiceDialog({
     const sig = (list) => list.map((it) => `${it.isFree ? "F" : "P"}|${it.productErpId}|${lotKey(it)}|${it.qty}|${it.rate}|${it.freeNote || ""}`).join(",");
     if (sig(lineItems) === sig(ordered)) return;
     setLineItems(ordered);
-  }, [open, editMode, lineItems, freeSchemes, stockItems]);
+  }, [open, editMode, lineItems, freeSchemes, stockItems, outlet?.buyerType, requisitionNumber, orderOffer]);
 
   /* ── derived strings ── */
   // const saleTo  = outlet ? `${outlet.outlet_name || ""}${outlet.outlet_erp_id ? `, Class: 0 Section: 0 Adm. No. : ${outlet.outlet_erp_id}` : ""}` : "";
@@ -514,7 +527,7 @@ export default function SalesInvoiceDialog({
       const pick = (retail, wholesale) => (pt === "retail" ? retail || wholesale : wholesale || retail);
       const rows = [];
       const short = [];
-      // Free lines on the order are for show only: the bill adds free goods itself.
+      // Paid lines use live stock. The bill preview applies the terms stored with the order.
       (order.items || []).filter((item) => !item.is_free).forEach((item) => {
         const wanted = Number(item.qty) || 0;
         const name = item.variant_name || item.product_name || item.product_erp_id;
@@ -572,6 +585,7 @@ export default function SalesInvoiceDialog({
       });
       if (!rows.length) throw new Error(`None of the items of ${order.requisition_number} are in stock.\n${short.join("\n")}`);
       setRequisitionNumber(order.requisition_number);
+      setOrderOffer({ code: order.requisition_number.toUpperCase(), schemes: order.freeSchemes || [] });
       setDraft({ ...emptyLineItem });
       setEditingIdx(null);
       setLineItems(rows);

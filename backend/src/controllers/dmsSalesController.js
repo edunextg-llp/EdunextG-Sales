@@ -4,7 +4,7 @@ import DmsStockModel from '../models/dmsStockModel.js';
 import PhysicalStockModel from '../models/physicalStockModel.js';
 import { buildCurrentStockDiff } from './currentStockController.js';
 import { activeSchemesFor, freeFor } from './freeGoodsController.js';
-import { markOrderBilled } from './distributorOrderController.js';
+import { getOrderFreeSchemes, markOrderBilled } from './distributorOrderController.js';
 import { takeFromLots } from '../utils/stockLots.js';
 import { getCompanyBillPrefix, normalizeInvoiceNumber } from '../utils/invoiceNumber.js';
 
@@ -192,6 +192,105 @@ export const listSales = async (req, res) => {
     }
 };
 
+const soldLinesSql = (filters = '') => `
+    SELECT s.company_id, s.sale_date, i.product_erp_id, i.variant_name, i.product_name, i.qty, i.amount
+    FROM dms_sales s
+    JOIN dms_sale_items i ON i.sale_id = s.id
+    WHERE s.status = 'active' AND i.is_free = 0${filters}
+
+    UNION ALL
+
+    SELECT c.id, s.sale_date, i.product_erp_id, i.variant_name, i.product_name, i.qty, i.line_total
+    FROM staff_sales s
+    JOIN staff_sale_items i ON i.sale_id = s.id
+    LEFT JOIN staff employee ON employee.id = s.staff_id
+    JOIN companies c ON (
+        c.name = NULLIF(TRIM(i.product_division), '')
+        OR (NULLIF(TRIM(i.product_division), '') IS NULL AND c.id = employee.company_id)
+    )
+    WHERE COALESCE(s.packaging_status, '') <> 'cancelled' AND i.rate > 0
+    ${filters.replace('s.company_id', 'c.id')}`;
+
+export const getItemSalesRanking = async (req, res) => {
+    try {
+        const { month, companyId, metric = 'quantity' } = req.query;
+        if (month !== undefined && !/^[1-9]\d{3}-(0[1-9]|1[0-2])$/.test(month)) {
+            throw httpError(400, 'Choose a valid sales month.');
+        }
+        if (companyId !== undefined && !/^[1-9]\d*$/.test(companyId)) {
+            throw httpError(400, 'Choose a valid company.');
+        }
+        if (!['quantity', 'amount'].includes(metric)) throw httpError(400, 'Choose a valid ranking metric.');
+
+        const conditions = [];
+        const params = [];
+        if (month) {
+            conditions.push('s.sale_date >= ? AND s.sale_date < DATE_ADD(?, INTERVAL 1 MONTH)');
+            params.push(`${month}-01`, `${month}-01`);
+        }
+        if (companyId) {
+            conditions.push('s.company_id = ?');
+            params.push(companyId);
+        }
+        const orderBy = metric === 'amount' ? 'amount_sold' : 'quantity_sold';
+        const filters = conditions.length ? ` AND ${conditions.join(' AND ')}` : '';
+        const [items] = await db.execute(
+            `WITH sold_lines AS (${soldLinesSql(filters)})
+             SELECT c.id AS company_id, c.name AS company_name, i.product_erp_id,
+                    COALESCE(MAX(NULLIF(i.variant_name, '')), MAX(NULLIF(i.product_name, '')), i.product_erp_id) AS item_name,
+                    SUM(i.qty) AS quantity_sold, SUM(i.amount) AS amount_sold
+             FROM sold_lines i
+             JOIN companies c ON c.id = i.company_id
+             GROUP BY c.id, c.name, i.product_erp_id
+             ORDER BY ${orderBy} DESC, c.id, i.product_erp_id
+             LIMIT 10`,
+            [...params, ...params]
+        );
+        return res.json({ items });
+    } catch (error) {
+        return sendError(res, error, 'Unable to load item sales.');
+    }
+};
+
+export const getItemStockInsights = async (req, res) => {
+    try {
+        const { companyId } = req.query;
+        if (!/^[1-9]\d*$/.test(companyId)) throw httpError(400, 'Choose a valid company.');
+        const asOf = todayIst();
+        const monthStart = `${asOf.slice(0, 7)}-01`;
+        const salesParams = [companyId, monthStart, asOf];
+        const [salesResult, purchaseResult] = await Promise.all([
+            db.execute(
+                `WITH sold_lines AS (${soldLinesSql(' AND s.company_id = ? AND s.sale_date >= DATE_SUB(?, INTERVAL 11 MONTH) AND s.sale_date <= ?')})
+                 SELECT LOWER(TRIM(product_erp_id)) AS item_key,
+                        COALESCE(MAX(NULLIF(variant_name, '')), MAX(NULLIF(product_name, '')), MAX(product_erp_id)) AS item_name,
+                        DATE_FORMAT(sale_date, '%Y-%m') AS month_key, SUM(qty) AS units, SUM(amount) AS amount,
+                        SUM(CASE WHEN sale_date >= DATE_SUB(?, INTERVAL 29 DAY) THEN qty ELSE 0 END) AS units_30,
+                        SUM(CASE WHEN sale_date >= DATE_SUB(?, INTERVAL 59 DAY) THEN qty ELSE 0 END) AS units_60,
+                        SUM(CASE WHEN sale_date >= DATE_SUB(?, INTERVAL 89 DAY) THEN qty ELSE 0 END) AS units_90
+                 FROM sold_lines
+                 GROUP BY item_key, month_key`,
+                [...salesParams, ...salesParams, asOf, asOf, asOf]
+            ),
+            db.execute(
+                `SELECT LOWER(TRIM(i.product_erp_id)) AS item_key,
+                        COALESCE(MAX(NULLIF(i.variant_name, '')), MAX(NULLIF(i.product_name, '')), MAX(i.product_erp_id)) AS item_name,
+                        DATE_FORMAT(p.upload_date, '%Y-%m') AS month_key, SUM(i.total_pieces) AS units
+                 FROM dms_stock_imports p
+                 JOIN dms_stock_items i ON i.import_id = p.id
+                 WHERE p.company_id = ? AND p.upload_date BETWEEN DATE_SUB(?, INTERVAL 11 MONTH) AND ?
+                   AND (p.seller_id IS NOT NULL OR NULLIF(TRIM(p.invoice_number), '') IS NOT NULL OR p.file_name = 'Manual Entry')
+                   AND NULLIF(TRIM(i.product_erp_id), '') IS NOT NULL
+                 GROUP BY item_key, month_key`,
+                salesParams
+            ),
+        ]);
+        return res.json({ asOf, sales: salesResult[0], purchases: purchaseResult[0] });
+    } catch (error) {
+        return sendError(res, error, 'Unable to load item stock insights.');
+    }
+};
+
 export const getSale = async (req, res) => {
     try {
         const id = parseId(req.params.id);
@@ -233,6 +332,9 @@ export const createSale = async (req, res) => {
         const [oldDup] = await db.execute('SELECT id FROM staff_sales WHERE TRIM(invoice_number) = ? LIMIT 1', [invoiceNumber]);
         if (oldDup.length) throw httpError(409, `Invoice ${invoiceNumber} is already used on an Add Sales bill. Use another number.`);
         const buyer = await resolveBuyer(req.body, companyId);
+        const requisitionNumber = String(req.body?.requisitionNumber || '').trim();
+        const distributorOrderBilling = buyer.buyerType === 'distributor' && /^DRQ/i.test(requisitionNumber);
+        const orderDetails = { requisitionNumber, distributorId: buyer.distributorId, companyId };
 
         const stock = await companyStock(company);
         const lotsByErp = new Map();
@@ -261,7 +363,9 @@ export const createSale = async (req, res) => {
         // Free goods from the running schemes, rate 0, only what is in stock.
         // Each item's free lines are placed right under that item's last paid line, so with many
         // items on one bill it is clear which free goods came with which item.
-        const schemes = await activeSchemesFor(companyId);
+        const schemes = distributorOrderBilling
+            ? await getOrderFreeSchemes(orderDetails)
+            : await activeSchemesFor(companyId, saleDate);
         const bought = new Map();
         lines.forEach((l) => bought.set(erpKey(l.product.product_erp_id), (bought.get(erpKey(l.product.product_erp_id)) || 0) + l.qty));
         const freeByMain = new Map();
@@ -273,7 +377,7 @@ export const createSale = async (req, res) => {
             const mainKey = erpKey(scheme.product_erp_id);
             const mainItem = stock.get(mainKey);
             const mainName = scheme.item_name || mainItem?.variant_name || mainItem?.product_name || scheme.product_erp_id;
-            const freeNote = `Free with ${mainName} (buy ${scheme.buy_qty} get ${scheme.free_qty})`.slice(0, 255);
+            const freeNote = (scheme.free_note || `Free with ${mainName} (buy ${scheme.buy_qty} get ${scheme.free_qty})`).slice(0, 255);
             const freeLines = takeFromLots(lotsOf(key), freeQty).taken.map(({ lot, qty }) => ({
                 product, lot, qty, rate: 0, isFree: true, freeNote,
             }));
@@ -349,8 +453,7 @@ export const createSale = async (req, res) => {
             `DMS Sale ${invoiceNumber}`
         );
         // A bill made from a distributor's approved order (requisition DRQ...): that order is billed.
-        const requisitionNumber = String(req.body?.requisitionNumber || '').trim();
-        if (buyer.buyerType === 'distributor' && /^DRQ/i.test(requisitionNumber)) {
+        if (distributorOrderBilling) {
             await markOrderBilled(connection, {
                 requisitionNumber, distributorId: buyer.distributorId, companyId, saleId,
             });

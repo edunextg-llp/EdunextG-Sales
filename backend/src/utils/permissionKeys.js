@@ -157,6 +157,16 @@ export const approvalRouteFor = (rule, overdueDays, billAmount) => {
     return { to: 'admin' };
 };
 
+export const canUseOwnOverduePermission = (user, overdueDays, billAmount) => {
+    if (rangeCovers(user?.overdueApproverRule, overdueDays)) return false;
+    const permissions = user?.permissions || [];
+    const tiers = permissions.includes('add_sales') && permissions.includes('overdue_approval')
+        ? (user.overdueApprovesTiers || []).filter((tier) => rangeCovers(tier, overdueDays))
+        : [];
+    if (tiers.length) return tiers.some((tier) => approvalRouteFor(tier, overdueDays, billAmount).to === 'approver');
+    return rangeCovers(overdueRangeFor(user), overdueDays);
+};
+
 export const permissionsFromRow = (row) => PERMISSION_KEYS.filter((key) => Boolean(Number(row?.[`can_${key}`])));
 
 // Roles a Bawarchee Staff login can have. The role is a label plus a starting set

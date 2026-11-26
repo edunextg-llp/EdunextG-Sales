@@ -134,7 +134,7 @@ import DeliveryCollectionModel from '../models/deliveryCollectionModel.js';
 import ExpiryListModel from '../models/expiryListModel.js';
 import DamageListModel from '../models/damageListModel.js';
 import OverdueSaleRequestModel, { cleanSaleForRequest, getOverdueOutlets, salesMatchApproval, SELF_APPROVE_OVERDUE_DAYS } from '../models/overdueSaleRequestModel.js';
-import { approvalRouteFor, overdueRangeFor, rangeCovers, rangeText } from '../utils/permissionKeys.js';
+import { approvalRouteFor, canUseOwnOverduePermission, overdueRangeFor, rangeCovers, rangeText } from '../utils/permissionKeys.js';
 import SuspenseRequestModel from '../models/suspenseRequestModel.js';
 import { getRequester } from './overdueSaleRequestController.js';
 import OtherDaySaleRequestModel, { getOtherDayOutlets } from '../models/otherDaySaleRequestModel.js';
@@ -1854,10 +1854,7 @@ export const recordSales = async (req, res) => {
         const approvesTiers = !isAdmin && userPermissions.includes('add_sales') && userPermissions.includes('overdue_approval')
             ? (Array.isArray(req.user?.overdueApprovesTiers) ? req.user.overdueApprovesTiers : [])
             : [];
-        const inApproverTier = (outlet) => approvesTiers.some(
-            (tier) => approvalRouteFor(tier, outlet.maxOverdueDays, billFor(outlet.outletId)).to === 'approver'
-        );
-        const inRange = (outlet) => rangeCovers(ownRange, Number(outlet.maxOverdueDays)) || inApproverTier(outlet);
+        const inRange = (outlet) => canUseOwnOverduePermission(req.user, outlet.maxOverdueDays, billFor(outlet.outletId));
         const ownLimitText = [
             ownRange ? rangeText(ownRange) : '',
             ...approvesTiers.map((tier) => `${rangeText(tier)}${tier.maxAmount == null ? '' : ` below Rs. ${tier.maxAmount}`} (your approver tier)`),
@@ -1870,7 +1867,13 @@ export const recordSales = async (req, res) => {
         const withApprovalRoute = (outlets) => outlets.map((outlet) => {
             const bill = billFor(outlet.outletId);
             const route = approvalRouteFor(approverRule, outlet.maxOverdueDays, bill);
-            return { ...outlet, billAmount: bill, approvalTo: route.to, approverName: route.approverName || null };
+            return {
+                ...outlet,
+                billAmount: bill,
+                approvalTo: route.to,
+                approverName: route.approverName || null,
+                requiresTierApproval: rangeCovers(approverRule, outlet.maxOverdueDays),
+            };
         });
 
         // 14 days or more overdue: the invoice can't be billed. The user cancels it or sends it for

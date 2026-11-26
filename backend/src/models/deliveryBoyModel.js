@@ -222,10 +222,12 @@ class DeliveryBoyModel {
                     p.overdue_from_days, p.overdue_to_days,
                     p.approver_from_days, p.approver_to_days, p.approver_max_amount, p.approver_delivery_boy_id,
                     approver.name AS approver_name,
+                    (approver.is_active = 1 AND ap.can_overdue_approval = 1) AS approver_can_review,
                     ${permissionColumnsSql()}
              FROM delivery_boys db
              LEFT JOIN delivery_user_permissions p ON p.delivery_boy_id = db.id
              LEFT JOIN delivery_boys approver ON approver.id = p.approver_delivery_boy_id
+             LEFT JOIN delivery_user_permissions ap ON ap.delivery_boy_id = approver.id
              WHERE db.id = ?
              LIMIT 1`,
             [deliveryBoyId]
@@ -243,7 +245,9 @@ class DeliveryBoyModel {
         const [tierRows] = await db.execute(
             `SELECT DISTINCT approver_from_days, approver_to_days, approver_max_amount
              FROM delivery_user_permissions
-             WHERE approver_delivery_boy_id = ? AND approver_from_days IS NOT NULL AND delivery_boy_id <> ?`,
+             JOIN delivery_boys requester ON requester.id = delivery_user_permissions.delivery_boy_id
+             WHERE approver_delivery_boy_id = ? AND approver_from_days IS NOT NULL
+               AND delivery_boy_id <> ? AND requester.is_active = 1 AND can_add_sales = 1`,
             [deliveryBoyId, deliveryBoyId]
         );
         const approvesTiers = tierRows.map((row) => ({
@@ -257,7 +261,7 @@ class DeliveryBoyModel {
             permissions: permissionsFromRow(rows[0]),
             companyIds,
             overdueRange,
-            approverRule: approverRuleFromRow(rows[0]),
+            approverRule: Number(rows[0].approver_can_review) === 1 ? approverRuleFromRow(rows[0]) : null,
             approvesTiers,
         };
     }

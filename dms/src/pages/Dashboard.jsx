@@ -21,21 +21,26 @@ import TableContainer from "@mui/material/TableContainer";
 import TableHead from "@mui/material/TableHead";
 import TableRow from "@mui/material/TableRow";
 import Tabs from "@mui/material/Tabs";
+import TextField from "@mui/material/TextField";
 import ToggleButton from "@mui/material/ToggleButton";
 import ToggleButtonGroup from "@mui/material/ToggleButtonGroup";
 import Tooltip from "@mui/material/Tooltip";
 import Typography from "@mui/material/Typography";
 import { BarChart } from "@mui/x-charts/BarChart";
+import { PieChart } from "@mui/x-charts/PieChart";
 import { MdArrowDownward, MdArrowUpward, MdCheckCircle, MdError, MdFileDownload, MdRefresh, MdWarning } from "react-icons/md";
 import { downloadExcel } from "../utils/excel";
 import { apiFetch } from "../auth";
 import { COMPANY_TYPES, readJson, useCompanies } from "../components/ui";
+import { todayLocal } from "../utils/purchaseCalc";
 import PurchaseDashboard from "./PurchaseDashboard";
+import ItemStockInsights from "./ItemStockInsights";
 
 // ---------------------------------------------------------------------------
 // Colours (dataviz reference palette, validated on the card surface).
 // Categorical slots follow the company (fixed by company id order), never its rank.
 const SERIES = ["#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#e87ba4", "#008300", "#6250d6", "#e34948"];
+const ITEM_SALES_COLORS = [...SERIES, "#007b85", "#a75417"];
 const SINGLE = SERIES[0]; // one-series bars
 const OTHER = "#898781";
 const STATUS = { good: "#0ca30c", warning: "#fab219", critical: "#d03b3b" };
@@ -87,9 +92,12 @@ function useDashboardData(companies) {
     const stockResults = await Promise.all(
       companies.map(async (c) => {
         try {
-          const res = await apiFetch(`/staff/current-stock?companyName=${encodeURIComponent(c.name)}`);
+          const params = new URLSearchParams({ companyName: c.name, allowMissing: "1" });
+          const res = await apiFetch(`/staff/current-stock?${params}`);
           const data = await readJson(res);
-          if (!res.ok || !Array.isArray(data.items)) return [c.id, { error: data.error || "No stock", status: res.status }];
+          if (!res.ok || data.error || !Array.isArray(data.items)) {
+            return [c.id, { error: data.error || "No stock", status: res.status }];
+          }
           return [c.id, { items: data.items, summary: data.import || {} }];
         } catch {
           return [c.id, { error: "Network error" }];
@@ -248,6 +256,7 @@ const chartSx = {
 };
 
 const noLegend = { legend: { hidden: true } };
+const filterSx = { bgcolor: "#fff", minWidth: 180 };
 
 // ---------------------------------------------------------------------------
 
@@ -284,6 +293,7 @@ function StockDashboard({ user }) {
           company: c,
           available: Boolean(s?.items),
           error: s?.error,
+          status: s?.status,
           items,
           value: Number(s?.summary?.totalValue) || items.reduce((t, it) => t + (Number(it.total_value) || 0), 0),
           pieces: Number(s?.summary?.totalPieces) || 0,
@@ -342,7 +352,6 @@ function StockDashboard({ user }) {
   const byHealth = [...withStock].sort((a, b) => b.items.length - a.items.length);
   const noAccess = loadedOnce && rows.length > 0 && rows.every((r) => r.error && [401, 403].includes(r.status));
 
-  const filterSx = { bgcolor: "#fff", minWidth: 180 };
 
   const [exporting, setExporting] = useState(false);
   const exportReport = async () => {
@@ -832,15 +841,215 @@ function StockDashboard({ user }) {
           </Panel>
         </Box>
       )}
+      {canSeeSales(user) && (
+        <>
+          <ItemSalesSection />
+          <ItemStockInsights companies={rows} />
+        </>
+      )}
     </Box>
   );
 }
 
 // ---------------------------------------------------------------------------
-// Dashboard tabs: Stock (above) and Purchase (moved from the main site's Dashboard; needs the
-// Dashboard permission, as it did there). Both stay mounted so switching keeps their filters.
+function ItemSalesRanking({ title, subtitle, companyId, month, metric, chart = "column" }) {
+  const params = new URLSearchParams({ metric });
+  if (companyId !== "all") params.set("companyId", companyId);
+  if (month) params.set("month", month);
+  const query = params.toString();
+  const [result, setResult] = useState(null);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    const load = async () => {
+      try {
+        const response = await apiFetch(`/staff/dms-sales/item-ranking?${query}`, { signal: controller.signal });
+        const body = await readJson(response);
+        if (!response.ok) throw new Error(body.error || "Unable to load item sales.");
+        if (!controller.signal.aborted) setResult({ query, items: body.items || [] });
+      } catch (error) {
+        if (!controller.signal.aborted) setResult({ query, error: error.message });
+      }
+    };
+    void load();
+    return () => controller.abort();
+  }, [query]);
+
+  const current = result?.query === query ? result : null;
+  const items = current?.items || [];
+  const byAmount = metric === "amount";
+  const quantity = new Intl.NumberFormat("en-IN", { maximumFractionDigits: 2 });
+  const currency = new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR" });
+  const itemLabel = (item) => `${item.item_name} · ${item.company_name}`;
+  const itemValue = (item) => Number(byAmount ? item.amount_sold : item.quantity_sold);
+  const formatValue = (value) => byAmount ? currency.format(value) : `${quantity.format(value)} pcs`;
+  const isDonut = chart === "donut";
+  const slices = isDonut ? items.map((item, index) => ({
+    id: `${item.company_id}:${item.product_erp_id}`,
+    label: itemLabel(item),
+    value: itemValue(item),
+    color: ITEM_SALES_COLORS[index],
+  })) : [];
+  const total = slices.reduce((sum, slice) => sum + slice.value, 0);
+  const share = (value) => `${(100 * value / total).toFixed(1)}%`;
+
+  return (
+    <Panel title={title} subtitle={subtitle}>
+      {!current ? (
+        <Skeleton variant="rounded" height={180} />
+      ) : current.error ? (
+        <Typography role="alert" color="error" variant="body2">{current.error}</Typography>
+      ) : items.length === 0 ? (
+        <Empty>No item sales for this period.</Empty>
+      ) : (<>
+        {isDonut ? (
+        total > 0 ? (
+          <Box display="flex" alignItems="center" justifyContent="center" minHeight={245}>
+            <PieChart
+              width={190}
+              height={190}
+              margin={{ top: 4, right: 4, bottom: 4, left: 4 }}
+              series={[{
+                data: slices.filter((slice) => slice.value > 0),
+                innerRadius: 52,
+                outerRadius: 87,
+                paddingAngle: 2,
+                cornerRadius: 3,
+                arcLabel: ({ value }) => share(value),
+                arcLabelMinAngle: 25,
+                valueFormatter: ({ value }) => `${formatValue(value)} · ${share(value)}`,
+              }]}
+              slotProps={noLegend}
+              sx={{ "& .MuiPieArcLabel-root": { fill: "#fff", fontSize: 11, fontWeight: 700, paintOrder: "stroke", stroke: "#222", strokeWidth: 2 } }}
+            />
+          </Box>
+        ) : <Empty>No positive sales for this measure.</Empty>
+      ) : (
+        <Box sx={{ overflowX: "auto" }}>
+          <Box sx={{ minWidth: 360 }}>
+            <BarChart
+              height={245}
+              margin={{ left: 65, right: 16, top: 14, bottom: 35 }}
+              xAxis={[{
+                scaleType: "band",
+                data: items.map((_, index) => String(index)),
+                valueFormatter: (key, { location }) => location === "tick" ? String(Number(key) + 1) : itemLabel(items[Number(key)]),
+                categoryGapRatio: 0.3,
+              }]}
+              yAxis={[{ valueFormatter: (value) => (byAmount ? inrCompact : quantity).format(value), tickNumber: 4 }]}
+              series={[{
+                data: items.map(itemValue),
+                label: byAmount ? "Sales value" : "Quantity sold",
+                valueFormatter: (_, { dataIndex }) => {
+                  const item = items[dataIndex];
+                  return `${quantity.format(item.quantity_sold)} pcs · ${currency.format(item.amount_sold)}`;
+                },
+                color: SINGLE,
+              }]}
+              grid={{ horizontal: true }}
+              borderRadius={4}
+              slotProps={noLegend}
+              sx={chartSx}
+            />
+          </Box>
+        </Box>
+        )}
+        <TableContainer sx={{ mt: 1, border: "1px solid #dfe6f2", borderRadius: 1 }}>
+          <Table size="small" aria-label={title} sx={{ "& .MuiTableCell-root": { px: 1, py: 0.85, fontSize: "0.75rem" } }}>
+            <TableHead sx={{ bgcolor: "#f2f5fa" }}>
+              <TableRow>
+                <TableCell align="center">Rank</TableCell>
+                <TableCell>Product</TableCell>
+                <TableCell sx={{ display: { xs: "none", sm: "table-cell" } }}>Company</TableCell>
+                <TableCell align="right">{byAmount ? "Sales value" : "Quantity"}</TableCell>
+                {isDonut && <TableCell align="right">Share</TableCell>}
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {items.map((item, index) => (
+                <TableRow key={`${item.company_id}:${item.product_erp_id}`} hover sx={{ "&:last-child td, &:last-child th": { borderBottom: 0 } }}>
+                  <TableCell align="center">
+                    <Box component="span" sx={{ display: "inline-flex", alignItems: "center", gap: 0.5 }}>
+                      {isDonut && <Box component="span" sx={{ width: 8, height: 8, borderRadius: "50%", bgcolor: slices[index].color }} />}
+                      {index + 1}
+                    </Box>
+                  </TableCell>
+                  <TableCell component="th" scope="row" sx={{ fontWeight: 600, overflowWrap: "anywhere" }}>
+                    {item.item_name}
+                    <Box component="span" sx={{ display: { xs: "block", sm: "none" }, color: INK.secondary, fontWeight: 400 }}>
+                      {item.company_name}
+                    </Box>
+                  </TableCell>
+                  <TableCell sx={{ display: { xs: "none", sm: "table-cell" }, color: INK.secondary }}>{item.company_name}</TableCell>
+                  <TableCell align="right" sx={{ whiteSpace: "nowrap", fontVariantNumeric: "tabular-nums" }}>{formatValue(itemValue(item))}</TableCell>
+                  {isDonut && <TableCell align="right" sx={{ whiteSpace: "nowrap", fontVariantNumeric: "tabular-nums" }}>{total > 0 ? share(itemValue(item)) : "—"}</TableCell>}
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </TableContainer>
+      </>)}
+    </Panel>
+  );
+}
+
+function ItemSalesSection() {
+  const companies = useCompanies();
+  const [companyId, setCompanyId] = useState("all");
+  const [month, setMonth] = useState(() => monthKey(todayLocal()));
+  const [metric, setMetric] = useState("quantity");
+
+  return (
+    <Box component="section" aria-label="Item-wise sales" sx={{ maxWidth: 1400, mx: "auto", mt: 3 }}>
+      <Box display="flex" flexWrap="wrap" alignItems="center" justifyContent="space-between" gap={2} mb={2.5}>
+        <Box>
+          <Typography variant="h5" fontWeight={600} color={INK.primary}>Item-wise sales</Typography>
+          <Typography variant="body2" color={INK.secondary}>Sales rankings exclude cancelled bills and free goods.</Typography>
+        </Box>
+        <Box display="flex" flexWrap="wrap" alignItems="center" gap={1.5}>
+          <FormControl size="small" sx={filterSx}>
+            <InputLabel id="item-sales-company">Company</InputLabel>
+            <Select labelId="item-sales-company" label="Company" value={companyId} onChange={(e) => setCompanyId(e.target.value)}>
+              <MenuItem value="all">All companies</MenuItem>
+              {companies.map((company) => <MenuItem key={company.id} value={String(company.id)}>{company.name}</MenuItem>)}
+            </Select>
+          </FormControl>
+          <TextField
+            size="small"
+            type="month"
+            label="Sales month"
+            value={month}
+            onChange={(e) => { if (e.target.value) setMonth(e.target.value); }}
+            InputLabelProps={{ shrink: true }}
+            sx={{ bgcolor: "#fff" }}
+          />
+          <ToggleButtonGroup
+            size="small"
+            exclusive
+            aria-label="Rank items by"
+            value={metric}
+            onChange={(_, value) => { if (value) setMetric(value); }}
+            sx={{ bgcolor: "#fff" }}
+          >
+            <ToggleButton value="quantity">Quantity</ToggleButton>
+            <ToggleButton value="amount">Sales value</ToggleButton>
+          </ToggleButtonGroup>
+        </Box>
+      </Box>
+      <Grid container spacing={2}>
+        <Grid item xs={12} lg={6}>
+          <ItemSalesRanking title="Top 10 items by month" subtitle={monthLabel(month)} companyId={companyId} month={month} metric={metric} />
+        </Grid>
+        <Grid item xs={12} lg={6}>
+          <ItemSalesRanking title="Top 10 items overall" subtitle="Share of the top 10 across all sale dates" companyId={companyId} metric={metric} chart="donut" />
+        </Grid>
+      </Grid>
+    </Box>
+  );
+}
 
 const canSeePurchase = (user) => (user?.role || "admin") === "admin" || (user?.permissions || []).includes("dashboard");
+const canSeeSales = (user) => user?.role === "admin" || (user?.permissions || []).includes("create_sales");
 
 export default function Dashboard({ user }) {
   const showPurchase = canSeePurchase(user);

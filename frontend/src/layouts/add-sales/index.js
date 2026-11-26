@@ -580,6 +580,11 @@ function AddSales() {
   // Only today's bit can be billed without admin approval (admin can bill any bit).
   const [otherDayDialog, setOtherDayDialog] = useState(emptyOtherDayDialog);
   const [overdueCancelDialog, setOverdueCancelDialog] = useState(emptyOverdueCancelDialog);
+  const approvalDestinations = [...new Set(overdueCancelDialog.outlets.map((outlet) =>
+    outlet.approvalTo === "approver" ? outlet.approverName || "the assigned approver" : "Admin"
+  ))];
+  const requiresTierApproval = overdueCancelDialog.outlets.some((outlet) => outlet.requiresTierApproval);
+  const overdueApprovalDestination = approvalDestinations.join(" and ") || "Admin";
   const outletDayById = useMemo(() => {
     const map = new Map();
     (allOutlets || []).forEach((outlet) => map.set(Number(outlet.id), outlet.day));
@@ -797,7 +802,7 @@ function AddSales() {
     const { sales, pendingPayload, lineMapPatch, adminNote } = overdueCancelDialog;
     const note = String(adminNote || "").trim();
     if (!note) {
-      setOverdueCancelDialog((prev) => ({ ...prev, error: "Enter the reason for sending this to admin." }));
+      setOverdueCancelDialog((prev) => ({ ...prev, error: "Enter the reason for requesting approval." }));
       return;
     }
     const outletIds = [...new Set(sales.map((sale) => Number(sale.outletId)))];
@@ -815,11 +820,11 @@ function AddSales() {
         }),
       });
       const data = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(data.error || "Unable to send this to admin.");
+      if (!response.ok) throw new Error(data.error || "Unable to send this for approval.");
       await applySalesSuccess(outletIds, lineMapPatch);
       loadPendingRequests();
       setOverdueCancelDialog(emptyOverdueCancelDialog);
-      alert("Sent to admin. The sale is created automatically once admin approves it.");
+      alert(`${data.message || "Sent for approval."} The sale is created automatically after approval.`);
       await submitOtherOutlets(pendingPayload, sales, lineMapPatch);
     } catch (error) {
       setOverdueCancelDialog((prev) => ({ ...prev, saving: false, error: error.message }));
@@ -1982,7 +1987,7 @@ function AddSales() {
         title={overdueCancelDialog.entering
           ? "Cancel Invoice — Enter Invoice Number"
           : overdueCancelDialog.sendingToAdmin
-            ? "Send to Admin — Enter Reason"
+            ? `Send to ${overdueApprovalDestination} — Enter Reason`
             : overdueCancelDialog.ownPermission
               ? "Own Permission — Enter Reason"
               : "Outlet Overdue by More Than 13 Days"}
@@ -1995,7 +2000,7 @@ function AddSales() {
               </button>
             ) : overdueCancelDialog.sendingToAdmin ? (
               <button type="button" className={btn.primary} disabled={overdueCancelDialog.saving} onClick={handleSendOverdueToAdmin}>
-                {overdueCancelDialog.saving ? "Sending..." : "Confirm Send to Admin"}
+                {overdueCancelDialog.saving ? "Sending..." : "Confirm send"}
               </button>
             ) : overdueCancelDialog.ownPermission ? (
               <button type="button" className={`${btn.primary} bg-emerald-600 hover:bg-emerald-700`} disabled={overdueCancelDialog.saving} onClick={handleOwnPermissionSave}>
@@ -2003,11 +2008,11 @@ function AddSales() {
               </button>
             ) : (
               <>
-                <button type="button" className={btn.outline} disabled={overdueCancelDialog.saving} onClick={handleSendOverdueToStaff}>
+                {!requiresTierApproval && <button type="button" className={btn.outline} disabled={overdueCancelDialog.saving} onClick={handleSendOverdueToStaff}>
                   {overdueCancelDialog.saving ? "Sending..." : "Send to Marketing Staff"}
-                </button>
+                </button>}
                 <button type="button" className={btn.primary} disabled={overdueCancelDialog.saving} onClick={() => setOverdueCancelDialog((prev) => ({ ...prev, sendingToAdmin: true, error: "" }))}>
-                  Send to Admin
+                  {approvalDestinations.length > 1 ? "Send for approval" : `Send to ${overdueApprovalDestination}`}
                 </button>
                 {overdueCancelDialog.canOwnPermission && (
                   <button type="button" className={`${btn.primary} bg-emerald-600 hover:bg-emerald-700`} disabled={overdueCancelDialog.saving} onClick={() => setOverdueCancelDialog((prev) => ({ ...prev, ownPermission: true, error: "" }))}>
@@ -2032,6 +2037,9 @@ function AddSales() {
                   .reduce((total, credit) => total + (Number(credit.balanceAmount) || 0), 0)
                   .toLocaleString("en-IN", { maximumFractionDigits: 2 })}
               </span>
+              {outlet.approvalTo === "approver" && (
+                <span className="block text-[12px] font-semibold text-indigo-700">Approver: {outlet.approverName}</span>
+              )}
             </div>
           ))}
         </div>
@@ -2062,8 +2070,8 @@ function AddSales() {
         ) : overdueCancelDialog.sendingToAdmin ? (
           <>
             <p className="m-0 mb-3 text-[13px] text-slate-600">
-              If admin approves, the sale is created automatically (stock is deducted then). If admin rejects, the
-              invoice goes to Delivered → Cancelled Items.
+              This request goes to {overdueApprovalDestination}. Approval creates the sale and deducts stock.
+              Rejection sends the invoice to Delivered → Cancelled Items.
             </p>
             <label className="flex flex-col gap-1">
               <span className={label}>Reason *</span>

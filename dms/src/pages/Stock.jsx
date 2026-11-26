@@ -121,9 +121,12 @@ export default function Stock() {
     const results = await Promise.all(
       companies.map(async (c) => {
         try {
-          const res = await apiFetch(`/staff/current-stock?companyName=${encodeURIComponent(c.name)}`);
+          const params = new URLSearchParams({ companyName: c.name, allowMissing: "1" });
+          const res = await apiFetch(`/staff/current-stock?${params}`);
           const data = await readJson(res);
-          if (!res.ok || !Array.isArray(data.items)) return [c.id, { error: data.error || "No stock yet" }];
+          if (!res.ok || data.error || !Array.isArray(data.items)) {
+            return [c.id, { error: data.error || "No stock yet" }];
+          }
           return [c.id, { items: data.items }];
         } catch {
           return [c.id, { error: "Network error" }];

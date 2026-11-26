@@ -1,6 +1,6 @@
 import db from '../config/db.js';
 
-// DMS Sales > Free Goods. A scheme is set per company and item: "buy 100 pcs, get 30 pcs
+// DMS Sales > Free Goods. A scheme is set per company, item and date range: "buy 100 pcs, get 30 pcs
 // free". On an order (requisition) or a bill (Add Sales) the free pieces come as their own
 // line at rate 0, for every full "buy" quantity: 100 -> 30 free, 250 -> 60 free. The free
 // item is the same item unless the scheme names another item of that company.
@@ -35,11 +35,40 @@ const normalize = (row) => ({
     is_active: Number(row.is_active) === 1,
 });
 
-// A scheme runs while it is started (no dates).
-const runsOn = (scheme) => scheme.is_active;
+export const schemeToday = () => new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit',
+}).format(new Date());
 
-async function companyItems(companyId) {
-    const [rows] = await db.execute(
+function monthRange(month) {
+    if (typeof month !== 'string' || !/^[1-9]\d{3}-(0[1-9]|1[0-2])$/.test(month)) {
+        throw httpError(400, 'Choose a valid scheme month.');
+    }
+    const [year, number] = month.split('-').map(Number);
+    return { validFrom: `${month}-01`, validTo: `${month}-${new Date(Date.UTC(year, number, 0)).getUTCDate()}` };
+}
+
+const isDate = (date) => typeof date === 'string' && /^[1-9]\d{3}-\d{2}-\d{2}$/.test(date)
+    && !Number.isNaN(Date.parse(date)) && new Date(date).toISOString().slice(0, 10) === date;
+
+function readDates(body = {}, current) {
+    if (body.validFrom === undefined && body.validTo === undefined) {
+        if (body.month) return monthRange(body.month);
+        if (current) return { validFrom: current.valid_from, validTo: current.valid_to };
+    }
+    const validFrom = body.validFrom || null;
+    const validTo = body.validTo || null;
+    if (current && validFrom === current.valid_from && validTo === current.valid_to) return { validFrom, validTo };
+    if (!isDate(validFrom) || !isDate(validTo)) throw httpError(400, 'Choose a valid start and end date.');
+    if (validFrom > validTo) throw httpError(400, 'End date must be on or after the start date.');
+    return { validFrom, validTo };
+}
+
+const runsOn = (scheme, date) => scheme.is_active
+    && (!scheme.valid_from || scheme.valid_from <= date)
+    && (!scheme.valid_to || scheme.valid_to >= date);
+
+async function companyItems(companyId, executor = db) {
+    const [rows] = await executor.execute(
         `SELECT si.product_erp_id, MAX(si.sku_name) AS sku_name, MAX(si.variant_name) AS variant_name,
                 MAX(si.item_code) AS item_code, MAX(si.hsn_code) AS hsn_code, MAX(si.pcs_per_box) AS pcs_per_box
          FROM seller_items si
@@ -53,11 +82,21 @@ async function companyItems(companyId) {
 
 const itemName = (item) => item?.variant_name || item?.sku_name || item?.product_erp_id || '';
 
-// Schemes running today for a company, keyed by the bought item.
-export async function activeSchemesFor(companyId) {
+// A dated scheme takes precedence over an existing undated offer for the same item.
+export async function activeSchemesFor(companyId, date = schemeToday()) {
     if (!parseId(companyId)) return new Map();
-    const [rows] = await db.execute(`${SELECT_SQL} WHERE s.company_id = ? AND s.is_active = 1`, [companyId]);
-    return new Map(rows.map(normalize).filter(runsOn).map((s) => [erpKey(s.product_erp_id), s]));
+    const [rows] = await db.execute(
+        `${SELECT_SQL} WHERE s.company_id = ? AND s.is_active = 1
+           AND (s.valid_from IS NULL OR s.valid_from <= ?) AND (s.valid_to IS NULL OR s.valid_to >= ?)
+         ORDER BY (s.valid_from IS NULL AND s.valid_to IS NULL), s.valid_from DESC, s.id DESC`,
+        [companyId, date, date]
+    );
+    const schemes = new Map();
+    for (const row of rows) {
+        const key = erpKey(row.product_erp_id);
+        if (!schemes.has(key)) schemes.set(key, normalize(row));
+    }
+    return schemes;
 }
 
 // Free pieces earned by the bought quantities: [{ scheme, freeErpId, freeQty }].
@@ -71,14 +110,15 @@ export function freeFor(schemes, boughtByErp) {
         out.push({
             scheme,
             freeErpId: scheme.free_product_erp_id || scheme.product_erp_id,
-            freeQty: sets * scheme.free_qty,
+            freeQty: Math.min(sets * scheme.free_qty, scheme.max_free_qty ?? Infinity),
         });
     }
     return out;
 }
 
-const readScheme = async (body, companyId) => {
-    const items = await companyItems(companyId);
+const readScheme = async (body, companyId, current, executor) => {
+    const dates = readDates(body, current);
+    const items = await companyItems(companyId, executor);
     const find = (erp) => items.find((it) => erpKey(it.product_erp_id) === erpKey(erp));
     const item = find(body?.productErpId);
     if (!item) throw httpError(400, 'Choose an item of this company.');
@@ -95,22 +135,56 @@ const readScheme = async (body, companyId) => {
         freeItemName: itemName(freeItem),
         buyQty,
         freeQty,
-        // No dates: a scheme runs until it is stopped.
-        validFrom: null,
-        validTo: null,
+        ...dates,
         note: String(body?.note || '').trim().slice(0, 500) || null,
     };
 };
 
-// One active scheme per item of a company.
-async function assertNoOtherActive(companyId, productErpId, exceptId = 0) {
-    const [rows] = await db.execute(
+async function withCompanyLock(companyId, action) {
+    const connection = await db.getConnection();
+    try {
+        await connection.beginTransaction();
+        const [companies] = await connection.execute('SELECT id FROM companies WHERE id = ? FOR UPDATE', [companyId]);
+        if (!companies.length) throw httpError(404, 'Company not found.');
+        const result = await action(connection);
+        await connection.commit();
+        return result;
+    } catch (error) {
+        await connection.rollback().catch(() => {});
+        throw error;
+    } finally {
+        connection.release();
+    }
+}
+
+async function assertNoOtherActive(connection, companyId, { productErpId, validFrom, validTo }, exceptId = 0) {
+    const dated = Boolean(validFrom || validTo);
+    const dateFilter = dated
+        ? `(valid_from IS NOT NULL OR valid_to IS NOT NULL)
+           AND (? IS NULL OR valid_from IS NULL OR valid_from <= ?)
+           AND (? IS NULL OR valid_to IS NULL OR valid_to >= ?)`
+        : 'valid_from IS NULL AND valid_to IS NULL';
+    const [rows] = await connection.execute(
         `SELECT id FROM free_goods_schemes
          WHERE company_id = ? AND LOWER(TRIM(product_erp_id)) = LOWER(TRIM(?)) AND is_active = 1 AND id <> ?
-         LIMIT 1`,
-        [companyId, productErpId, exceptId]
+           AND ${dateFilter}
+         LIMIT 1 FOR UPDATE`,
+        [companyId, productErpId, exceptId, ...(dated ? [validTo, validTo, validFrom, validFrom] : [])]
     );
-    if (rows.length) throw httpError(409, 'This item already has an active free goods scheme. Edit or stop that one.');
+    if (rows.length) throw httpError(409, 'This item already has an overlapping free goods scheme. Edit or stop that scheme first.');
+}
+
+async function editCompanyScheme(id, action) {
+    const [rows] = await db.execute('SELECT company_id FROM free_goods_schemes WHERE id = ?', [id || 0]);
+    if (!rows.length) throw httpError(404, 'Scheme not found.');
+    return withCompanyLock(rows[0].company_id, async (connection) => {
+        const [current] = await connection.execute(
+            `${SELECT_SQL} WHERE s.id = ? FOR UPDATE`,
+            [id]
+        );
+        if (!current.length) throw httpError(404, 'Scheme not found.');
+        return action(connection, current[0]);
+    });
 }
 
 export const getItems = async (req, res) => {
@@ -137,10 +211,17 @@ export const listSchemes = async (req, res) => {
             params.push(req.query.type);
         }
         const [rows] = await db.execute(
-            `${SELECT_SQL} ${where.length ? `WHERE ${where.join(' AND ')}` : ''} ORDER BY s.is_active DESC, s.id DESC`,
+            `${SELECT_SQL} ${where.length ? `WHERE ${where.join(' AND ')}` : ''} ORDER BY s.valid_from DESC, s.id DESC`,
             params
         );
-        return res.json({ schemes: rows.map(normalize).map((s) => ({ ...s, running: runsOn(s) })) });
+        const today = schemeToday();
+        return res.json({ schemes: rows.map(normalize).map((s) => ({
+            ...s,
+            running: runsOn(s, today),
+            status: s.valid_to && s.valid_to < today ? 'expired'
+                : !s.is_active ? 'stopped'
+                : s.valid_from && s.valid_from > today ? 'scheduled' : 'running',
+        })) });
     } catch (error) {
         return sendError(res, error, 'Unable to load free goods schemes.');
     }
@@ -149,13 +230,17 @@ export const listSchemes = async (req, res) => {
 // Schemes running today for a company (Add Sales uses this to add the free lines).
 export const getActiveSchemes = async (req, res) => {
     try {
+        const date = req.query.date ?? schemeToday();
+        if (!isDate(date)) {
+            throw httpError(400, 'Choose a valid date for free goods.');
+        }
         let companyId = parseId(req.query.companyId);
         if (!companyId && req.query.companyName) {
             const [rows] = await db.execute('SELECT id FROM companies WHERE LOWER(TRIM(name)) = LOWER(TRIM(?)) LIMIT 1', [req.query.companyName]);
             companyId = rows[0]?.id || null;
         }
         if (!companyId) return res.json({ schemes: [] });
-        return res.json({ schemes: [...(await activeSchemesFor(companyId)).values()] });
+        return res.json({ schemes: [...(await activeSchemesFor(companyId, date)).values()] });
     } catch (error) {
         return sendError(res, error, 'Unable to load free goods schemes.');
     }
@@ -165,18 +250,19 @@ export const createScheme = async (req, res) => {
     try {
         const companyId = parseId(req.body?.companyId);
         if (!companyId) throw httpError(400, 'Select a company.');
-        const [companies] = await db.execute('SELECT id FROM companies WHERE id = ?', [companyId]);
-        if (!companies.length) throw httpError(404, 'Company not found.');
-        const scheme = await readScheme(req.body, companyId);
-        await assertNoOtherActive(companyId, scheme.productErpId);
-        const [result] = await db.execute(
-            `INSERT INTO free_goods_schemes
-                (company_id, product_erp_id, item_name, buy_qty, free_qty, free_product_erp_id, free_item_name,
-                 valid_from, valid_to, note, created_by_name)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-            [companyId, scheme.productErpId, scheme.itemName, scheme.buyQty, scheme.freeQty, scheme.freeProductErpId,
-                scheme.freeItemName, scheme.validFrom, scheme.validTo, scheme.note, req.user?.role === 'admin' ? 'Admin' : null]
-        );
+        const { result, scheme } = await withCompanyLock(companyId, async (connection) => {
+            const scheme = await readScheme(req.body, companyId, null, connection);
+            await assertNoOtherActive(connection, companyId, scheme);
+            const [result] = await connection.execute(
+                `INSERT INTO free_goods_schemes
+                    (company_id, product_erp_id, item_name, buy_qty, free_qty, free_product_erp_id, free_item_name,
+                     valid_from, valid_to, note, created_by_name)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                [companyId, scheme.productErpId, scheme.itemName, scheme.buyQty, scheme.freeQty, scheme.freeProductErpId,
+                    scheme.freeItemName, scheme.validFrom, scheme.validTo, scheme.note, req.user?.role === 'admin' ? 'Admin' : null]
+            );
+            return { result, scheme };
+        });
         return res.status(201).json({
             id: result.insertId,
             message: `Free goods: buy ${scheme.buyQty} ${scheme.itemName}, get ${scheme.freeQty} ${scheme.freeItemName} free.`,
@@ -189,18 +275,18 @@ export const createScheme = async (req, res) => {
 export const updateScheme = async (req, res) => {
     try {
         const id = parseId(req.params.id);
-        const [rows] = await db.execute('SELECT company_id, is_active FROM free_goods_schemes WHERE id = ?', [id || 0]);
-        if (!rows.length) throw httpError(404, 'Scheme not found.');
-        const scheme = await readScheme(req.body, rows[0].company_id);
-        if (Number(rows[0].is_active) === 1) await assertNoOtherActive(rows[0].company_id, scheme.productErpId, id);
-        await db.execute(
-            `UPDATE free_goods_schemes
-             SET product_erp_id = ?, item_name = ?, buy_qty = ?, free_qty = ?, free_product_erp_id = ?, free_item_name = ?,
-                 valid_from = ?, valid_to = ?, note = ?
-             WHERE id = ?`,
-            [scheme.productErpId, scheme.itemName, scheme.buyQty, scheme.freeQty, scheme.freeProductErpId,
-                scheme.freeItemName, scheme.validFrom, scheme.validTo, scheme.note, id]
-        );
+        await editCompanyScheme(id, async (connection, current) => {
+            const scheme = await readScheme(req.body, current.company_id, current, connection);
+            if (Number(current.is_active) === 1) await assertNoOtherActive(connection, current.company_id, scheme, id);
+            await connection.execute(
+                `UPDATE free_goods_schemes
+                 SET product_erp_id = ?, item_name = ?, buy_qty = ?, free_qty = ?, free_product_erp_id = ?, free_item_name = ?,
+                     valid_from = ?, valid_to = ?, note = ?
+                 WHERE id = ?`,
+                [scheme.productErpId, scheme.itemName, scheme.buyQty, scheme.freeQty, scheme.freeProductErpId,
+                    scheme.freeItemName, scheme.validFrom, scheme.validTo, scheme.note, id]
+            );
+        });
         return res.json({ message: 'Scheme updated.' });
     } catch (error) {
         return sendError(res, error, 'Unable to update the scheme.');
@@ -210,11 +296,18 @@ export const updateScheme = async (req, res) => {
 export const setSchemeActive = async (req, res) => {
     try {
         const id = parseId(req.params.id);
-        const [rows] = await db.execute('SELECT company_id, product_erp_id FROM free_goods_schemes WHERE id = ?', [id || 0]);
-        if (!rows.length) throw httpError(404, 'Scheme not found.');
         const active = Boolean(req.body?.isActive);
-        if (active) await assertNoOtherActive(rows[0].company_id, rows[0].product_erp_id, id);
-        await db.execute('UPDATE free_goods_schemes SET is_active = ? WHERE id = ?', [active ? 1 : 0, id]);
+        await editCompanyScheme(id, async (connection, current) => {
+            if (active) {
+                if (current.valid_to && current.valid_to < schemeToday()) {
+                    throw httpError(409, 'This scheme has expired. Update its dates before starting it.');
+                }
+                await assertNoOtherActive(connection, current.company_id, {
+                    productErpId: current.product_erp_id, validFrom: current.valid_from, validTo: current.valid_to,
+                }, id);
+            }
+            await connection.execute('UPDATE free_goods_schemes SET is_active = ? WHERE id = ?', [active ? 1 : 0, id]);
+        });
         return res.json({ message: active ? 'Scheme started.' : 'Scheme stopped.' });
     } catch (error) {
         return sendError(res, error, 'Unable to change the scheme.');

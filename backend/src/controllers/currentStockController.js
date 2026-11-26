@@ -167,13 +167,14 @@ export const getCurrentStock = async (req, res) => {
     try {
         let dmsImportId = parseDmsImportId(req.query.dmsImportId);
         const companyName = String(req.query.companyName || '').trim();
+        const missingStock = (error) => req.query.allowMissing === '1'
+            ? res.json({ import: null, items: [], error })
+            : res.status(404).json({ error });
 
         if (!dmsImportId && companyName) {
             const companyImport = await DmsStockModel.getLatestImportByCompanyName(companyName);
             if (!companyImport) {
-                return res.status(404).json({
-                    error: `No DMS stock upload found for company "${companyName}".`,
-                });
+                return missingStock(`No DMS stock upload found for company "${companyName}".`);
             }
             dmsImportId = companyImport.id;
         }
@@ -208,15 +209,11 @@ export const getCurrentStock = async (req, res) => {
         ]);
 
         if (!physicalItems.length) {
-            return res.status(404).json({
-                error: 'Physical stock is not available for this DMS import. Add Physical Stock first.',
-            });
+            return missingStock('Physical stock is not available for this DMS import. Add Physical Stock first.');
         }
 
         if (!dmsItems.length) {
-            return res.status(404).json({
-                error: 'DMS stock has no products for this company.',
-            });
+            return missingStock('DMS stock has no products for this company.');
         }
 
         const items = buildCurrentStockDiff(physicalItems, dmsItems)

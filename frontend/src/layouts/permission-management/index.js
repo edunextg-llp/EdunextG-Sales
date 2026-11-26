@@ -106,7 +106,7 @@ const RANGE_PRESETS = [
   { label: "14+ days", from: "14", to: "" },
   { label: "Any overdue", from: "1", to: "" },
 ];
-// Approver tier: outside the own-reason range, an outlet overdue inside From-To days whose bill is
+// Approver tier: an outlet overdue inside From-To days whose bill is
 // below the amount limit goes to the chosen approver instead of Admin. Anything else goes to Admin.
 const APPROVER_OFF = { on: false, from: "", to: "", maxAmount: "", approverId: "" };
 const approverState = (rule) => (rule && Number(rule.from) > 0 && rule.approverId
@@ -244,15 +244,19 @@ function PermissionManagement() {
     && String(user.id) !== String(selectedId)
     && (user.permissions || []).includes("overdue_approval")), [users, selectedId]);
   const approverName = (id) => users.find((user) => String(user.id) === String(id))?.name || "";
+  const incomingApprovals = permissions.includes("overdue_approval") ? users.filter((user) =>
+    user.isActive !== false && String(user.id) !== String(selectedId)
+    && user.permissions?.includes("add_sales")
+    && String(user.overdueApprover?.approverId) === String(selectedId)
+  ) : [];
   const approverError = shouldUpdateApprover && permissions.includes("add_sales") && approverTier.on && (
     !(Number(approverTier.from) >= 1) ? "Approver tier: From day must be 1 or more."
       : approverTier.to !== "" && Number(approverTier.to) < Number(approverTier.from) ? "Approver tier: To day must be the From day or more (empty = no limit)."
         : approverTier.maxAmount !== "" && !(Number(approverTier.maxAmount) > 0) ? "Approver tier: bill amount limit must be more than 0 (empty = any amount)."
-          : !approverTier.approverId ? "Approver tier: choose who approves."
-            : range.on && range.to === "" && Number(approverTier.from) >= Number(range.from)
-              ? "Approver tier: the own-reason range has no upper limit, so it already covers these days. Set its To day first."
-              : ""
+          : !approverTier.approverId ? "Approver tier: choose who approves." : ""
   );
+  const unavailableApprover = approverTier.on && approverTier.approverId
+    && !approverOptions.some((user) => String(user.id) === String(approverTier.approverId));
 
   const filteredUsers = useMemo(() => {
     const term = search.trim().toLowerCase();
@@ -383,9 +387,8 @@ function PermissionManagement() {
     const days = `${approverTier.from || "?"}${approverTier.to ? `-${approverTier.to}` : "+"} days overdue`;
     const bill = approverTier.maxAmount ? ` and bill below ${rupees(approverTier.maxAmount)}` : "";
     const who = approverName(approverTier.approverId) || "the approver";
-    const rest = approverTier.to || approverTier.maxAmount
-      ? ` Anything else (${[approverTier.to && `more than ${approverTier.to} days`, approverTier.maxAmount && `bill ${rupees(approverTier.maxAmount)} or more`].filter(Boolean).join(", or ")}) goes to Admin.`
-      : "";
+    const rest = approverTier.maxAmount
+      ? ` Within these days, bills of ${rupees(approverTier.maxAmount)} or more need Admin approval.` : "";
     return `${days}${bill} → ${who} approves.${rest}`;
   };
 
@@ -395,9 +398,9 @@ function PermissionManagement() {
       <label className="flex cursor-pointer items-start gap-2.5">
         <Icon name="how_to_reg" className="mt-0.5 text-[19px] text-indigo-600" />
         <span className="min-w-0 grow">
-          <span className="block text-[13px] font-semibold text-slate-800">Approver tier (instead of Admin)</span>
+          <span className="block text-[13px] font-semibold text-slate-800">Send this user’s bills to another approver</span>
           <span className="block text-[12px] leading-snug text-slate-500">
-            Outside the own-reason range: outlets overdue by these days whose bill is below the limit go to the chosen approver. Both must match; anything else goes to Admin.
+            Turn this on to send this user’s qualifying bills to someone else for approval.
           </span>
         </span>
         <Toggle checked={approverTier.on} onChange={toggleApproverTier} label="Approver tier" />
@@ -421,14 +424,15 @@ function PermissionManagement() {
               <select className={fieldClass} value={approverTier.approverId}
                 onChange={(e) => setApproverTier((t) => ({ ...t, approverId: e.target.value }))}>
                 <option value="" disabled>{approverOptions.length ? "Choose approver" : "No one has Overdue Approval"}</option>
+                {unavailableApprover && <option value={approverTier.approverId} disabled>{approverName(approverTier.approverId) || "Saved approver"} (unavailable)</option>}
                 {approverOptions.map((user) => (
                   <option key={user.id} value={String(user.id)}>{user.name} · {roleLabel(user.role)}</option>
                 ))}
               </select>
             </Field>
           </div>
-          <p className={`m-0 mt-2 text-[12px] ${approverError ? "font-medium text-red-700" : "text-indigo-800"}`}>
-            {approverError || tierSummary()}
+          <p className={`m-0 mt-2 text-[12px] ${approverError || unavailableApprover ? "font-medium text-red-700" : "text-indigo-800"}`}>
+            {approverError || (unavailableApprover ? "The saved approver is inactive or lacks Overdue Approval. Choose an eligible approver to use this tier." : tierSummary())}
           </p>
           {!approverOptions.length && (
             <p className="m-0 mt-1 text-[12px] text-slate-500">
@@ -480,7 +484,7 @@ function PermissionManagement() {
             </div>
           </div>
           <p className={`m-0 mt-2 text-[12px] ${rangeError ? "font-medium text-red-700" : "text-amber-800"}`}>
-            {rangeError || `Own reason for ${range.from || "?"}${range.to ? ` to ${range.to}` : "+"} days overdue${range.to ? "; more needs admin" : ""}. Leave "To day" empty for no limit.`}
+            {rangeError || `Base own-reason range: ${range.from || "?"}${range.to ? ` to ${range.to}` : "+"} days overdue. Approver-tier limits apply where the ranges overlap.`}
           </p>
         </div>
       )}
@@ -500,6 +504,21 @@ function PermissionManagement() {
           <Toggle checked={on} onChange={() => togglePermission(key)} label={PERMISSION_MAP[key].label} />
         </label>
         {key === "add_sales" && on && renderOverdueRange()}
+        {key === "add_sales" && on && incomingApprovals.length > 0 && (
+          <div className="mb-3 ml-1 mr-1 rounded-xl border border-emerald-200 bg-emerald-50/60 p-3">
+            <h3 className="m-0 text-[13px] font-semibold text-slate-800">Own reason as approver</h3>
+            <p className="m-0 mt-1 text-[12px] text-slate-600">This user can create their own qualifying bills by giving a reason and review requests from the users listed below.</p>
+            <ul className="m-0 mt-2 list-none space-y-1 p-0 text-[12px] text-emerald-900">
+              {incomingApprovals.map(({ id, name, overdueApprover: tier }) => (
+                <li key={id}>
+                  <strong>{tier.from}{tier.to == null ? "+" : `–${tier.to}`} days overdue</strong>
+                  {tier.maxAmount == null ? " · Any bill amount" : ` · Bill below ${rupees(tier.maxAmount)}`}
+                  {` · Assigned by rule for ${name}`}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
         {key === "add_sales" && on && renderApproverTier()}
         {on && (SUB_OPTIONS[key] || []).map((option) => (
           <label key={option} className="mb-2 ml-1 mr-1 flex cursor-pointer items-start gap-2.5 rounded-xl border border-amber-200 bg-amber-50/60 p-3">

@@ -3,12 +3,15 @@ import { MdAdd, MdCheck, MdEdit, MdSearch } from "react-icons/md";
 import { apiFetch } from "../auth";
 import { CompanyPicker, EditDialog, Field, PageHeader, readJson, useCompanies, useFlash } from "../components/ui";
 import ItemPicker from "../components/purchase/ItemPicker";
+import { showDate } from "../utils/purchaseCalc";
 
 // Sales > Free Goods: for an item of a company, "buy 100 pcs, get 30 pcs free". On orders
 // (requisitions, web and app) and bills (Add Sales) the free pieces come as their own line
 // at price 0, for every full "buy" qty (100 -> 30, 250 -> 60).
 
 const emptyForm = () => ({
+  validFrom: new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date()),
+  validTo: "",
   productErpId: "",
   sameItem: true,
   freeProductErpId: "",
@@ -18,6 +21,9 @@ const emptyForm = () => ({
 });
 
 const fromScheme = (s) => ({
+  validFrom: s.valid_from || "",
+  validTo: s.valid_to || "",
+  originalRange: { from: s.valid_from || "", to: s.valid_to || "" },
   productErpId: s.product_erp_id,
   sameItem: !s.free_product_erp_id || s.free_product_erp_id === s.product_erp_id,
   freeProductErpId: s.free_product_erp_id || "",
@@ -27,6 +33,9 @@ const fromScheme = (s) => ({
 });
 
 const validate = (f) => {
+  const sameDates = f.originalRange?.from === f.validFrom && f.originalRange?.to === f.validTo;
+  if (!sameDates && (!f.validFrom || !f.validTo)) return "Choose a start and end date.";
+  if (f.validFrom && f.validTo && f.validFrom > f.validTo) return "End date must be on or after the start date.";
   if (!f.productErpId) return "Choose the item.";
   if (!f.sameItem && !f.freeProductErpId) return "Choose the free item.";
   if (!(Math.floor(Number(f.buyQty)) > 0)) return "Enter how many pieces they must buy.";
@@ -54,6 +63,14 @@ function SchemeFields({ form, setForm, pickerItems, loading }) {
     : find(form.freeProductErpId)?.variant_name || find(form.freeProductErpId)?.sku_name;
   return (
     <div className="flex flex-col gap-4">
+      <div className="grid max-w-lg grid-cols-1 gap-x-4 gap-y-3 sm:grid-cols-2">
+        <Field label="Start date" required={Boolean(form.validTo) || !form.originalRange}>
+          <input type="date" className="input w-full" value={form.validFrom} onChange={(e) => setForm((f) => ({ ...f, validFrom: e.target.value }))} />
+        </Field>
+        <Field label="End date" required={Boolean(form.validFrom) || !form.originalRange}>
+          <input type="date" className="input w-full" min={form.validFrom || undefined} value={form.validTo} onChange={(e) => setForm((f) => ({ ...f, validTo: e.target.value }))} />
+        </Field>
+      </div>
       <div className="grid grid-cols-1 gap-x-4 gap-y-3 md:grid-cols-[minmax(240px,2fr)_1fr_1fr]">
         <Field label="Item" required>
           <ItemPicker
@@ -140,6 +157,7 @@ export default function FreeGoods() {
   const [editError, setEditError] = useState("");
   const [editBusy, setEditBusy] = useState(false);
   const [search, setSearch] = useState("");
+  const [dateFilter, setDateFilter] = useState("");
 
   const pickerItems = useMemo(() => toPicker(items), [items]);
 
@@ -179,6 +197,8 @@ export default function FreeGoods() {
   }, [load]);
 
   const toBody = (f) => ({
+    validFrom: f.validFrom,
+    validTo: f.validTo,
     companyId: Number(companyId),
     productErpId: f.productErpId,
     freeProductErpId: f.sameItem ? f.productErpId : f.freeProductErpId,
@@ -203,7 +223,7 @@ export default function FreeGoods() {
       const body = await readJson(res);
       if (!res.ok) throw new Error(body.error || "Could not save the scheme.");
       show(true, body.message || "Saved.");
-      setForm(emptyForm());
+      setForm({ ...emptyForm(), validFrom: form.validFrom, validTo: form.validTo });
       load();
     } catch (err) {
       setError(err.message);
@@ -256,18 +276,17 @@ export default function FreeGoods() {
 
   const shown = useMemo(() => {
     const words = search.trim().toLowerCase().split(/\s+/).filter(Boolean);
-    if (!words.length) return schemes;
     return schemes.filter((s) => {
+      if (dateFilter && ((s.valid_from && s.valid_from > dateFilter) || (s.valid_to && s.valid_to < dateFilter))) return false;
       const hay = [s.product_erp_id, s.item_name, s.free_item_name, s.company_name, s.note].join(" ").toLowerCase();
       return words.every((w) => hay.includes(w));
     });
-  }, [schemes, search]);
+  }, [schemes, search, dateFilter]);
 
   return (
     <div data-theme="dms" className="bg-transparent pb-20">
       <PageHeader eyebrow="Sales" title="Free Goods">
-        Set free pieces on an item: buy 100 pcs, get 30 pcs free. Orders and bills then add the free pieces as their own
-        line at price ₹0.
+        Schedule buy-and-get offers with a start and end date. Distributors earn free items on orders placed within those dates.
       </PageHeader>
 
       <CompanyPicker
@@ -287,8 +306,8 @@ export default function FreeGoods() {
         {company && (
           <p className="pb-1.5 text-sm text-base-content/70">
             <span className="font-semibold text-base-content">{items.length}</span> items ·{" "}
-            <span className="font-semibold text-base-content">{schemes.filter((s) => s.is_active).length}</span> running scheme
-            {schemes.filter((s) => s.is_active).length === 1 ? "" : "s"}
+            <span className="font-semibold text-base-content">{schemes.filter((s) => s.running).length}</span> running scheme
+            {schemes.filter((s) => s.running).length === 1 ? "" : "s"}
           </p>
         )}
       </CompanyPicker>
@@ -330,13 +349,17 @@ export default function FreeGoods() {
             <MdSearch size={16} className="opacity-50" />
             <input placeholder="Item, ERP ID, company" value={search} onChange={(e) => setSearch(e.target.value)} />
           </label>
+          <Field label="Valid on">
+            <input type="date" className="input input-sm" value={dateFilter} onChange={(e) => setDateFilter(e.target.value)} />
+          </Field>
+          {dateFilter && <button type="button" className="btn btn-ghost btn-sm" onClick={() => setDateFilter("")}>Clear date</button>}
         </div>
         {loading ? (
           <p className="px-4 py-10 text-center text-sm text-base-content/55">
             <span className="loading loading-spinner loading-sm" />
           </p>
         ) : shown.length === 0 ? (
-          <p className="px-4 py-10 text-center text-sm text-base-content/55">No free goods schemes yet.</p>
+          <p className="px-4 py-10 text-center text-sm text-base-content/55">No free goods schemes match.</p>
         ) : (
           <div className="overflow-x-auto">
             <table className="table table-sm whitespace-nowrap">
@@ -344,6 +367,8 @@ export default function FreeGoods() {
                 <tr className="bg-base-200/60 text-base-content/70">
                   <th className="w-10 text-right">Sr</th>
                   <th>Company</th>
+                  <th>Start date</th>
+                  <th>End date</th>
                   <th>Item</th>
                   <th className="text-right">Buy</th>
                   <th className="text-right">Free</th>
@@ -357,9 +382,11 @@ export default function FreeGoods() {
               </thead>
               <tbody>
                 {shown.map((s, i) => (
-                  <tr key={s.id} className={s.is_active ? "hover:bg-base-200/50" : "opacity-60 hover:bg-base-200/50"}>
+                  <tr key={s.id} className={s.is_active && s.status !== "expired" ? "hover:bg-base-200/50" : "opacity-60 hover:bg-base-200/50"}>
                     <td className="text-right tabular-nums text-base-content/50">{i + 1}</td>
                     <td className="text-xs">{s.company_name}</td>
+                    <td className="text-xs">{showDate(s.valid_from)}</td>
+                    <td className="text-xs">{showDate(s.valid_to)}</td>
                     <td className="max-w-64">
                       <div className="truncate font-medium">{s.item_name}</div>
                       <div className="truncate font-mono text-xs text-base-content/55">{s.product_erp_id}</div>
@@ -372,11 +399,9 @@ export default function FreeGoods() {
                     </td>
                     <td className="text-right tabular-nums">₹0</td>
                     <td>
-                      {s.is_active ? (
-                        <span className="badge badge-success badge-sm">Running</span>
-                      ) : (
-                        <span className="badge badge-ghost badge-sm">Stopped</span>
-                      )}
+                      <span className={`badge badge-sm ${s.running ? "badge-success" : s.status === "scheduled" ? "badge-info" : "badge-ghost"}`}>
+                        {{ running: "Running", scheduled: "Scheduled", expired: "Expired", stopped: "Stopped" }[s.status]}
+                      </span>
                     </td>
                     <td className="text-right">
                       <button
@@ -388,13 +413,13 @@ export default function FreeGoods() {
                       >
                         <MdEdit size={16} />
                       </button>
-                      <button type="button" className="btn btn-ghost btn-xs" onClick={() => setActive(s, !s.is_active)}>
+                      {s.status !== "expired" && <button type="button" className="btn btn-ghost btn-xs" onClick={() => setActive(s, !s.is_active)}>
                         {s.is_active ? "Stop" : (
                           <>
                             <MdCheck size={14} /> Start
                           </>
                         )}
-                      </button>
+                      </button>}
                     </td>
                   </tr>
                 ))}

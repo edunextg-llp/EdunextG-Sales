@@ -4,7 +4,7 @@ import OverdueSaleRequestModel, {
     ADMIN_APPROVAL_LEVEL, ASSIGNED_ADD_APPROVAL_LEVEL, ASSIGNED_APPROVAL_LEVEL, ASSIGNED_LEVELS,
     cleanSaleForRequest, getOverdueOutlets, SELF_APPROVE_OVERDUE_DAYS, summarizeSales,
 } from '../models/overdueSaleRequestModel.js';
-import { approvalRouteFor } from '../utils/permissionKeys.js';
+import { approvalRouteFor, rangeCovers } from '../utils/permissionKeys.js';
 
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 const STATUSES = ['awaiting_staff', 'pending', 'approved', 'rejected', 'used', 'open', 'self_approved', 'own_permission', 'all'];
@@ -206,6 +206,11 @@ export const sendToMarketingStaff = async (req, res) => {
         const send = await readTooOldOverdueSend(req.body);
         if (send.error) return res.status(send.status).json({ error: send.error });
         const { staffId, saleDate, overdue, salesPayloadByOutlet } = send;
+
+        if (req.user?.role !== 'admin'
+            && overdue.some((outlet) => rangeCovers(req.user?.overdueApproverRule, outlet.maxOverdueDays))) {
+            return res.status(409).json({ error: 'This bill is in a configured approver range. Use the approval button in Add Sales.' });
+        }
 
         const outlets = [];
         for (const outlet of overdue) {

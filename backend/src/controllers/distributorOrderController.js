@@ -1,7 +1,7 @@
 import db from '../config/db.js';
 import CompanyModel from '../models/companyModel.js';
 import { companyStock } from './dmsSalesController.js';
-import { activeSchemesFor, freeFor } from './freeGoodsController.js';
+import { activeSchemesFor, freeFor, schemeToday } from './freeGoodsController.js';
 
 // Distributor orders.
 // 1. Distributor Portal > Orders: a distributor orders items (qty in pcs) from the company it
@@ -48,7 +48,8 @@ const normalize = (row) => ({ ...row, total_qty: num(row.total_qty), item_count:
 async function itemsOf(orderIds) {
     if (!orderIds.length) return new Map();
     const [rows] = await db.query(
-        `SELECT order_id, product_erp_id, product_name, variant_name, qty, is_free, free_for_erp_id, free_note
+        `SELECT order_id, product_erp_id, product_name, variant_name, qty, is_free, free_for_erp_id, free_note,
+                scheme_buy_qty, scheme_free_qty
          FROM distributor_order_items WHERE order_id IN (?) ORDER BY order_id, sort_order, id`,
         [orderIds]
     );
@@ -58,6 +59,31 @@ async function itemsOf(orderIds) {
         map.get(r.order_id).push({ ...r, qty: num(r.qty), is_free: Number(r.is_free) === 1 });
     });
     return map;
+}
+
+function orderFreeSchemes(items) {
+    const ordered = new Map();
+    for (const item of items) {
+        if (!item.is_free) ordered.set(erpKey(item.product_erp_id), item);
+    }
+    const schemes = new Map();
+    for (const item of items) {
+        if (!item.is_free || item.qty <= 0) continue;
+        const key = erpKey(item.free_for_erp_id);
+        const bought = ordered.get(key);
+        if (!bought?.qty) continue;
+        schemes.set(key, {
+            product_erp_id: bought.product_erp_id,
+            item_name: bought.variant_name || bought.product_name,
+            free_product_erp_id: item.product_erp_id,
+            free_item_name: item.variant_name || item.product_name,
+            buy_qty: Number(item.scheme_buy_qty) || bought.qty,
+            free_qty: Number(item.scheme_free_qty) || item.qty,
+            max_free_qty: item.qty,
+            free_note: item.free_note,
+        });
+    }
+    return schemes;
 }
 
 async function getOrder(id) {
@@ -132,7 +158,8 @@ export const portalOrderItems = async (req, res) => {
             // No stock uploaded yet for the company: nothing to order.
         }
         // Running free goods offers of the company: buy X pcs of an item, get Y pcs (of it or another item) free.
-        const schemes = [...(await activeSchemesFor(company.id)).values()].map((sc) => ({
+        const date = schemeToday();
+        const schemes = [...(await activeSchemesFor(company.id, date)).values()].map((sc) => ({
             productErpId: sc.product_erp_id,
             itemName: sc.item_name || sc.product_erp_id,
             buyQty: sc.buy_qty,
@@ -140,6 +167,8 @@ export const portalOrderItems = async (req, res) => {
             freeProductErpId: sc.free_product_erp_id || sc.product_erp_id,
             freeItemName: sc.free_item_name || sc.item_name || sc.free_product_erp_id || sc.product_erp_id,
             sameItem: !sc.free_product_erp_id || erpKey(sc.free_product_erp_id) === erpKey(sc.product_erp_id),
+            validFrom: sc.valid_from,
+            validTo: sc.valid_to,
             note: sc.note || '',
         }));
         return res.json({ companyName: company.name, items, schemes, mrpOnly: isCnfCompany(company) });
@@ -162,6 +191,7 @@ export const portalListOrders = async (req, res) => {
 };
 
 export const portalCreateOrder = async (req, res) => {
+    const orderDate = schemeToday();
     const connection = await db.getConnection();
     try {
         const { distributor, company } = await distributorOf(req.distributorId);
@@ -196,9 +226,8 @@ export const portalCreateOrder = async (req, res) => {
         });
         const totalQty = lines.reduce((t, l) => t + l.qty, 0);
 
-        // Free goods earned now (for the distributor to see). The bill works them out again
-        // from the schemes running on the bill day, so these lines are never billed themselves.
-        const schemes = await activeSchemesFor(company.id);
+        // Keep the terms with the order when it is billed after the offer ends.
+        const schemes = await activeSchemesFor(company.id, orderDate);
         const bought = new Map(lines.map((l) => [erpKey(l.productErpId), l.qty]));
         const freeLines = freeFor(schemes, bought).map(({ scheme, freeErpId, freeQty }) => {
             const product = stock.get(erpKey(freeErpId));
@@ -208,6 +237,8 @@ export const portalCreateOrder = async (req, res) => {
                 variantName: product?.variant_name || null,
                 qty: freeQty,
                 freeForErpId: scheme.product_erp_id,
+                schemeBuyQty: scheme.buy_qty,
+                schemeFreeQty: scheme.free_qty,
                 freeNote: `Free with ${scheme.item_name || scheme.product_erp_id} (buy ${scheme.buy_qty} get ${scheme.free_qty})`.slice(0, 255),
             };
         });
@@ -226,10 +257,12 @@ export const portalCreateOrder = async (req, res) => {
         for (const [index, l] of ordered.entries()) {
             await connection.execute(
                 `INSERT INTO distributor_order_items
-                    (order_id, product_erp_id, product_name, variant_name, qty, is_free, free_for_erp_id, free_note, sort_order)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                    (order_id, product_erp_id, product_name, variant_name, qty, is_free, free_for_erp_id, free_note,
+                     scheme_buy_qty, scheme_free_qty, sort_order)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
                 [result.insertId, l.productErpId, l.productName, l.variantName, l.qty,
-                    l.freeNote ? 1 : 0, l.freeForErpId || null, l.freeNote || null, index]
+                    l.freeNote ? 1 : 0, l.freeForErpId || null, l.freeNote || null,
+                    l.schemeBuyQty ?? null, l.schemeFreeQty ?? null, index]
             );
         }
         const orderNumber = formatOrderNumber(result.insertId);
@@ -356,11 +389,25 @@ export const getByRequisition = async (req, res) => {
         }
         if (order.status !== 'approved') throw httpError(409, `Requisition ${code} is ${order.status}.`);
         const items = await itemsOf([order.id]);
-        return res.json({ order: { ...normalize(order), items: items.get(order.id) || [] } });
+        const orderItems = items.get(order.id) || [];
+        return res.json({ order: { ...normalize(order), items: orderItems, freeSchemes: [...orderFreeSchemes(orderItems).values()] } });
     } catch (error) {
         return sendError(res, error, 'Unable to load the requisition.');
     }
 };
+
+export async function getOrderFreeSchemes({ requisitionNumber, distributorId, companyId }) {
+    const code = requisitionNumber.trim().toUpperCase();
+    const [rows] = await db.execute(
+        'SELECT id, status FROM distributor_orders WHERE requisition_number = ? AND distributor_id = ? AND company_id = ?',
+        [code, distributorId, companyId]
+    );
+    const order = rows[0];
+    if (!order) throw httpError(400, `Requisition ${code} was not found for this distributor and company.`);
+    if (order.status !== 'approved') throw httpError(409, `Requisition ${code} is ${order.status}.`);
+    const items = await itemsOf([order.id]);
+    return orderFreeSchemes(items.get(order.id) || []);
+}
 
 // Called inside Create Sales' transaction: the approved order of this distributor and
 // company becomes 'billed' with the sale. Throws if it cannot be used.
