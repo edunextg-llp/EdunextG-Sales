@@ -38,7 +38,7 @@ import { EmptyState, PageHeader } from "@/components/common";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { qty, rupees, showDate } from "@/lib/format";
-import { orderRate, printOrderCopy, priceTypeLabel, rateWithGst } from "@/lib/orderCopy";
+import { orderRate, printOrderCopy, priceTypeLabel, rateWithGst, roundMoney } from "@/lib/orderCopy";
 
 // Orders. "New order": the company's items in stock (left) and the order being built (right).
 // Items with a free goods offer show it ("Buy 100 pcs, get 30 pcs <item> free"), and the order
@@ -148,9 +148,14 @@ function NewOrder({ onPlaced }) {
   const totalPcs = lines.reduce((t, l) => t + l.pcs, 0);
   const totalFree = lines.reduce((t, l) => t + l.free, 0);
   const priceOf = (item) => Number(item.wholesalePrice) || 0;
-  const estTaxable = lines.reduce((total, line) => total + line.pcs * priceOf(line.item), 0);
-  const estGst = lines.reduce((total, line) =>
-    total + line.pcs * priceOf(line.item) * ((line.item.gstPercent || 5) / 100), 0);
+  const estimate = lines.reduce((totals, { item, pcs }) => {
+    const gstPercent = item.gstPercent || 5;
+    const amount = roundMoney(pcs * rateWithGst(priceOf(item), gstPercent));
+    const taxable = roundMoney(amount / (1 + gstPercent / 100));
+    return { taxable: totals.taxable + taxable, total: totals.total + amount };
+  }, { taxable: 0, total: 0 });
+  const estTaxable = estimate.taxable;
+  const estGst = roundMoney(estimate.total - estTaxable);
 
   const setQty = (erp, v) => setCart((c) => ({ ...c, [erp]: v }));
   const step = (it, by) => {
@@ -293,7 +298,7 @@ function NewOrder({ onPlaced }) {
                         <span className="block text-sm font-semibold tabular-nums">{qty(l.pcs)} pcs</span>
                         {priceType && (
                           <span className="block text-xs tabular-nums text-muted-foreground">
-                            × {rupees(priceOf(l.item))} = {rupees(l.pcs * priceOf(l.item))}
+                            × {rupees(rateWithGst(priceOf(l.item), l.item.gstPercent))} = {rupees(l.pcs * rateWithGst(priceOf(l.item), l.item.gstPercent))} incl. GST
                           </span>
                         )}
                       </span>

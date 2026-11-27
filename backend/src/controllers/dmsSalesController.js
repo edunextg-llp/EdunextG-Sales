@@ -39,12 +39,7 @@ const PAYMENT_MODES = ['cash', 'upi', 'bank', 'cheque', 'credit'];
 const byName = (user) => (user?.role === 'admin' ? 'Admin' : user?.username || null);
 
 // Amount, taxable and GST of a line (rate includes GST).
-const lineMoney = (qty, rate, gstPercent, rateBeforeGst) => {
-    if (rateBeforeGst != null) {
-        const taxable = money(qty * rateBeforeGst);
-        const gst = money(taxable * num(gstPercent) / 100);
-        return { amount: money(taxable + gst), taxable, gst };
-    }
+const lineMoney = (qty, rate, gstPercent) => {
     const amount = money(qty * rate);
     const taxable = money(amount / (1 + num(gstPercent) / 100));
     return { amount, taxable, gst: money(amount - taxable) };
@@ -667,7 +662,7 @@ export const updateSale = async (req, res) => {
             } : paidById.get(Number(item.id)));
         const rows = ordered.map((line) => {
             const gstPercent = line.gstPercent ?? (num(line.product.gst_percent) || 5);
-            return { ...line, gstPercent, ...lineMoney(line.qty, line.rate, gstPercent, line.rateBeforeGst) };
+            return { ...line, gstPercent, ...lineMoney(line.qty, line.rate, gstPercent) };
         });
         const sum = (field) => money(rows.reduce((total, row) => total + num(row[field]), 0));
         const exact = sum('amount');
@@ -732,7 +727,7 @@ export const createSale = async (req, res) => {
             const product = stock.get(key);
             if (!product) throw httpError(400, `${line.productErpId} is not in ${company.name}'s stock.`);
             const qty = num(line.qty);
-            const beforeGst = distributorOrderBilling && line.rateBeforeGst != null;
+            const beforeGst = (distributorOrderBilling || company.type === 'cnf') && line.rateBeforeGst != null;
             const enteredRate = Number(beforeGst ? line.rateBeforeGst : line.rate);
             if (beforeGst && (!Number.isFinite(enteredRate) || enteredRate < 0 || enteredRate > 9999999999)) {
                 throw httpError(400, `Enter a valid wholesale rate for ${line.productErpId}.`);
@@ -759,7 +754,7 @@ export const createSale = async (req, res) => {
 
         const rows = ordered.map((l) => {
             const gstPercent = num(l.product.gst_percent) || 5;
-            return { ...l, gstPercent, ...lineMoney(l.qty, l.rate, gstPercent, l.rateBeforeGst) };
+            return { ...l, gstPercent, ...lineMoney(l.qty, l.rate, gstPercent) };
         });
         const sum = (field) => money(rows.reduce((t, r) => t + num(r[field]), 0));
         const exact = sum('amount');

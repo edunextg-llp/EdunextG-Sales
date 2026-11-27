@@ -72,7 +72,7 @@ export function printInvoice({ sale, items = [] }) {
     const lot = [it.mrp ? `MRP ${money(it.mrp)}` : "", it.batch_number, it.expiry_date ? `Exp ${day(it.expiry_date)}` : ""].filter(Boolean).join(" · ");
     const pieces = num(it.qty);
     const beforeGst = it.is_free ? 0 : it.rate_before_gst ?? (pieces > 0 ? num(it.taxable_amount) / pieces : 0);
-    const afterGst = it.is_free ? 0 : it.rate_before_gst != null && pieces > 0 ? num(it.amount) / pieces : it.rate;
+    const afterGst = it.is_free ? 0 : it.rate;
     return `
           <tr>
             <td class="center">${i + 1}</td>

@@ -25,7 +25,8 @@ const STATUS = {
 export const priceTypeLabel = (type) => (type === "mrp" ? "MRP" : type === "retail" ? "Retail" : "Wholesale");
 
 export const orderRate = (value) => num(value).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 4 });
-export const rateWithGst = (rate, gstPercent) => num(rate) * (1 + num(gstPercent) / 100);
+export const roundMoney = (value) => Math.round((value + Number.EPSILON) * 100) / 100;
+export const rateWithGst = (rate, gstPercent) => roundMoney(num(rate) * (1 + num(gstPercent) / 100));
 
 export function orderCopyHtml(order, profile) {
   const orderNo = order.order_number || `ORD${String(order.id).padStart(6, "0")}`;
@@ -46,7 +47,7 @@ export function orderCopyHtml(order, profile) {
       return `<tr><td class="c">${sr}</td><td>${name}</td><td class="mono">${esc(it.product_erp_id)}</td>
         <td class="r b">${qty(it.qty)}</td><td class="r"></td>
         <td class="r">${it.rate_before_gst == null ? "—" : orderRate(it.rate_before_gst)}</td>
-        <td class="r">${it.rate_before_gst == null ? "—" : rateWithGst(it.rate_before_gst, it.gst_percent).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td></tr>`;
+        <td class="r">${it.rate_before_gst == null ? "—" : orderRate(rateWithGst(it.rate_before_gst, it.gst_percent))}</td></tr>`;
     })
     .join("");
 

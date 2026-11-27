@@ -42,21 +42,21 @@ function formatDisplayDate(value) {
 
 const roundMoney = (value) => Math.round((value + Number.EPSILON) * 100) / 100;
 
-function calcLine(item, postedEdit = false) {
+function calcLine(item, postedEdit = false, priceFactor = 1) {
   const qty = Number(item.qty) || 0;
   const rate = Number(item.rate) || 0;
-  if (postedEdit) {
+  if (postedEdit || item.rateBeforeGst) {
     const gstFraction = (item.gstPercent ?? 5) / 100;
-    const amount = roundMoney(qty * rate);
-    const taxable = item.rateBeforeGst ? amount : roundMoney(amount / (1 + gstFraction));
-    const gst = roundMoney(item.rateBeforeGst ? taxable * gstFraction : amount - taxable);
-    const netTotal = roundMoney(taxable + gst);
+    const beforeGst = Number((rate * priceFactor).toFixed(4));
+    const unitRate = item.rateBeforeGst ? roundMoney(beforeGst * (1 + gstFraction)) : rate;
+    const netTotal = roundMoney(qty * unitRate);
+    const taxable = roundMoney(netTotal / (1 + gstFraction));
+    const gst = roundMoney(netTotal - taxable);
     return { qty, rate, total: taxable, disc: 0, taxable, cgst: gst / 2, sgst: gst / 2, gst, netTotal };
   }
   const total = qty * rate;
   const taxable = total;
-  const taxFraction = (item.rateBeforeGst ? item.gstPercent ?? 5 : 5) / 100;
-  const cgst = taxable * taxFraction / 2;
+  const cgst = taxable * 0.025;
   const sgst = cgst;
   const gst = cgst + sgst;
   const netTotal = taxable + gst;
@@ -476,10 +476,18 @@ export default function SalesInvoiceDialog({
       return { ...base, flatDisc: 0, discountedTaxable: base.taxable, grandTotal, netPayable, round: roundMoney(netPayable - grandTotal) };
     }
     const flatDiscountPercent = Math.min(100, Math.max(0, Number(flatDiscount) || 0));
-    const flatDisc = base.taxable * flatDiscountPercent / 100;
-    const discountedTaxable = Math.max(0, base.taxable - flatDisc);
-    const cgst = base.cgst * (1 - flatDiscountPercent / 100);
-    const sgst = base.sgst * (1 - flatDiscountPercent / 100);
+    const priceFactor = 1 - flatDiscountPercent / 100;
+    const discounted = lineItems.reduce((sum, item) => {
+      const line = calcLine(item, false, priceFactor);
+      const factor = item.rateBeforeGst ? 1 : priceFactor;
+      sum.taxable += line.taxable * factor;
+      sum.gst += line.gst * factor;
+      return sum;
+    }, { taxable: 0, gst: 0 });
+    const discountedTaxable = discounted.taxable;
+    const flatDisc = base.taxable - discountedTaxable;
+    const cgst = discounted.gst / 2;
+    const sgst = discounted.gst / 2;
     const gst = cgst + sgst;
     const grandTotal = discountedTaxable + gst;
     const round = Number(roundOff) || 0;
@@ -557,7 +565,7 @@ export default function SalesInvoiceDialog({
       variantName: product.variant_name || "",
       availableStock: Number(product.total_current_stock_in_pcs) || 0,
       priceType: forceWholesale ? "wholesale" : "retail",
-      rateBeforeGst: postedEdit && forceWholesale,
+      rateBeforeGst: forceWholesale,
       retailPrice: retail,
       wholesalePrice: wholesale,
       gstPercent: Number(product.gst_percent) || 5,
@@ -638,7 +646,7 @@ export default function SalesInvoiceDialog({
           wholesalePrice,
           availableStock: Number(product?.total_current_stock_in_pcs ?? item.qty),
         } : {}),
-        ...(forceWholesale ? { priceType: "wholesale", wholesalePrice, rate: wholesalePrice || "", rateBeforeGst: postedEdit } : {}),
+        ...(forceWholesale ? { priceType: "wholesale", wholesalePrice, rate: wholesalePrice || "", rateBeforeGst: true } : {}),
       },
     });
   };
@@ -657,14 +665,15 @@ export default function SalesInvoiceDialog({
       ...prev,
       draft: {
         ...prev.draft,
-        ...(postedEdit ? { saleItemId: undefined, gstPercent: Number(product.gst_percent) || 5 } : {}),
+        ...(postedEdit ? { saleItemId: undefined } : {}),
+        gstPercent: Number(product.gst_percent) || 5,
         productErpId: product.product_erp_id || "",
         productName: product.product_name || "",
         productDivision: product.product_division || "",
         variantName: product.variant_name || "",
         availableStock: Number(product.total_current_stock_in_pcs) || 0,
         priceType: forceWholesale ? "wholesale" : "retail",
-        rateBeforeGst: postedEdit && forceWholesale,
+        rateBeforeGst: forceWholesale,
         retailPrice: Number(product.retail_price) || 0,
         wholesalePrice,
         rate: forceWholesale ? wholesalePrice || "" : product.retail_price || product.mrp || product.price_per_piece || prev.draft.rate || "",
