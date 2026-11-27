@@ -47,6 +47,7 @@ const SELLER = {
   cin: "U15549WB2021PTC245833",
 };
 const rs = (v) => `Rs. ${money(v)}`;
+const unitRate = (v) => num(v).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 4 });
 
 // Long bills go over several sheets: up to `rows` rows on a page, the last page (with the
 // totals and footer) up to `lastRows`. Each page also shrinks a little if needed.
@@ -69,6 +70,9 @@ export function printInvoice({ sale, items = [] }) {
   const rowHtml = items.map((it, i) => {
     const name = `${it.product_name || "Item"}${it.variant_name ? `, ${it.variant_name}` : ""}`;
     const lot = [it.mrp ? `MRP ${money(it.mrp)}` : "", it.batch_number, it.expiry_date ? `Exp ${day(it.expiry_date)}` : ""].filter(Boolean).join(" · ");
+    const pieces = num(it.qty);
+    const beforeGst = it.is_free ? 0 : it.rate_before_gst ?? (pieces > 0 ? num(it.taxable_amount) / pieces : 0);
+    const afterGst = it.is_free ? 0 : it.rate_before_gst != null && pieces > 0 ? num(it.amount) / pieces : it.rate;
     return `
           <tr>
             <td class="center">${i + 1}</td>
@@ -78,7 +82,8 @@ export function printInvoice({ sale, items = [] }) {
             <td class="num">${it.is_free ? 0 : qty(it.qty)}</td>
             <td class="num">${it.is_free ? qty(it.qty) : 0}</td>
             <td class="num">${qty(it.qty)}</td>
-            <td class="num">${rs(it.rate)}</td>
+            <td class="num">${unitRate(beforeGst)}</td>
+            <td class="num">${unitRate(afterGst)}</td>
             <td class="num">${rs(it.amount)}</td>
           </tr>`;
   });
@@ -132,9 +137,10 @@ export function printInvoice({ sale, items = [] }) {
   const thead = `
         <thead>
           <tr>
-            <th style="width:5%">S No.</th><th style="width:29%">Item Name</th><th style="width:8%">HSN</th><th style="width:6%">Unit</th>
-            <th style="width:8%">Order Qty</th><th style="width:7%">Free Qty</th><th style="width:8%">Invoice Qty</th>
-            <th style="width:14%">Price/Piece</th><th style="width:15%">Total Value (Rs.)</th>
+            <th style="width:4%">S No.</th><th style="width:27%">Item Name</th><th style="width:8%">HSN</th><th style="width:5%">Unit</th>
+            <th style="width:7%">Order Qty</th><th style="width:6%">Free Qty</th><th style="width:7%">Invoice Qty</th>
+            <th style="width:11%">Rate/Pc Before GST (Rs.)</th><th style="width:11%">Rate/Pc After GST (Rs.)</th>
+            <th style="width:14%">Total Value (Rs.)</th>
           </tr>
         </thead>`;
 
@@ -142,7 +148,7 @@ export function printInvoice({ sale, items = [] }) {
           <tr class="total-row">
             <td colspan="4" class="center">Total</td>
             <td class="num">${qty(paidQty)}</td><td class="num">${qty(freeQty)}</td><td class="num">${qty(paidQty + freeQty)}</td>
-            <td></td><td class="num">${rs(beforeRound)}</td>
+            <td colspan="2"></td><td class="num">${rs(beforeRound)}</td>
           </tr>`;
 
   const footer = `
@@ -180,7 +186,7 @@ export function printInvoice({ sale, items = [] }) {
         ${thead}
         <tbody>
           ${chunk.join("")}
-          ${last ? totalRow : `<tr><td colspan="9" class="center sub">Continued on page ${p + 2}</td></tr>`}
+          ${last ? totalRow : `<tr><td colspan="10" class="center sub">Continued on page ${p + 2}</td></tr>`}
         </tbody>
       </table>
       </div>
