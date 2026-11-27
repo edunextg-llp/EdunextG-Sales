@@ -22,6 +22,7 @@ export default defineConfig({
 
   // `npm run dev` only (ignored by `npm run build`).
   server: {
+    fs: { allow: [import.meta.dirname, path.resolve(import.meta.dirname, "../dms/src/utils")] },
     port: 3002,
     strictPort: true,
     host: true,

@@ -42,6 +42,7 @@ export default defineConfig({
         manualChunks(id) {
           if (!id.includes("node_modules")) return undefined;
           if (id.includes("exceljs")) return "excel";
+          if (id.includes("/node_modules/jodit")) return "invoice-editor";
           if (id.includes("@mui/x-charts") || id.includes("d3-")) return "charts";
           if (id.includes("@mui") || id.includes("@emotion")) return "mui";
           if (id.includes("react-icons")) return "icons";

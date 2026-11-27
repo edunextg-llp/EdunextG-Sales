@@ -50,6 +50,125 @@ const SELLER = {
 };
 const rs = (v) => `Rs. ${money(v)}`;
 const unitRate = (v) => num(v).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 4 });
+export const DEFAULT_DECLARATION = "<p>We declare that this invoice shows the actual price of the goods described and that all particulars are true and correct.</p>";
+export const isCnfInvoice = (sale) => sale.company_type === "cnf" && sale.buyer_type === "distributor";
+
+const printTags = new Set(["p", "br", "div", "b", "strong", "i", "em", "u", "ul", "ol", "li"]);
+const nonContentTags = new Set(["script", "style", "iframe", "object", "svg", "math", "template"]);
+export function invoiceRichText(html) {
+  const template = document.createElement("template");
+  template.innerHTML = typeof html === "string" ? html : "";
+  const render = (node) => {
+    if (node.nodeType === 3) return esc(node.textContent);
+    if (node.nodeType !== 1 || nonContentTags.has(node.localName)) return "";
+    if (node.localName === "br") return "<br>";
+    const children = Array.from(node.childNodes, render).join("");
+    return printTags.has(node.localName) ? `<${node.localName}>${children}</${node.localName}>` : children;
+  };
+  return Array.from(template.content.childNodes, render).join("");
+}
+
+function cnfHeader(sale, payments) {
+  const buyer = `<strong>${esc(sale.buyer_name || "—")}</strong>
+    <div class="address">${esc(sale.buyer_address || "—")}</div>
+    <div>GSTIN/UIN: ${esc(sale.buyer_gstin || "—")}</div>
+    ${sale.buyer_contact ? `<div>Phone: ${esc(sale.buyer_contact)}</div>` : ""}`;
+  const paymentModes = [...new Set(payments.map((payment) => payment.payment_mode).filter(Boolean))].join(", ");
+  const detail = (label, value) => `<div class="invoice-detail"><span>${label}</span><strong>${esc(value || "—")}</strong></div>`;
+  return `
+    <div class="title">Tax Invoice</div>
+    <div class="cnf-header">
+      <div class="cnf-parties">
+        <section><strong>${SELLER.name}</strong><div>${SELLER.address}</div>
+          <div>GSTIN/UIN: ${SELLER.gst}</div><div>State: West Bengal, Code: 19</div><div>CIN: ${SELLER.cin}</div>
+        </section>
+        <section><div class="cnf-label">Consignee (Ship to)</div>${buyer}</section>
+        <section><div class="cnf-label">Buyer (Bill to)</div>${buyer}</section>
+      </div>
+      <div class="cnf-details">
+        ${detail("Invoice No.", sale.invoice_number)}${detail("Dated", day(sale.sale_date))}
+        ${detail("Reference No.", sale.requisition_number)}${detail("Mode/Terms of Payment", paymentModes || (num(sale.balance_amount) > 0 ? "Credit" : ""))}
+        ${detail("Buyer’s Order No.", sale.order_number)}${detail("Company", sale.company_name)}
+        ${detail("Dispatch Doc. No.", sale.dispatch_document_number)}${detail("Delivery Note Date", day(sale.delivery_note_date))}
+        ${detail("Dispatched through", sale.dispatched_through)}${detail("Destination", sale.destination)}
+        <section class="cnf-terms"><div class="cnf-label">Terms of Delivery</div>
+          <div class="rich-text">${invoiceRichText(sale.invoice_delivery_terms_html ?? sale.delivery_terms_html) || "—"}</div>
+        </section>
+      </div>
+    </div>`;
+}
+
+function cnfTaxSummary(items) {
+  const groups = new Map();
+  for (const item of items) {
+    if (Number(item.is_free)) continue;
+    const hsn = item.hsn_code || "—";
+    const rate = num(item.gst_percent);
+    const key = `${hsn}:${rate}`;
+    const group = groups.get(key) || { hsn, rate, taxablePaise: 0, gstPaise: 0 };
+    group.taxablePaise += Math.round(num(item.taxable_amount) * 100);
+    group.gstPaise += Math.round(num(item.gst_amount) * 100);
+    groups.set(key, group);
+  }
+  let cgstTotal = 0;
+  let sgstTotal = 0;
+  const rates = new Set();
+  const taxRows = Array.from(groups.values(), ({ hsn, rate, taxablePaise, gstPaise }) => {
+    const cgst = Math.floor(gstPaise / 2);
+    const sgst = gstPaise - cgst;
+    cgstTotal += cgst;
+    sgstTotal += sgst;
+    rates.add(rate);
+    return `<tr><td>${esc(hsn)}</td><td class="num">${money(taxablePaise / 100)}</td>
+      <td class="num">${unitRate(rate / 2)}%</td><td class="num">${money(cgst / 100)}</td>
+      <td class="num">${unitRate(rate / 2)}%</td><td class="num">${money(sgst / 100)}</td>
+      <td class="num">${money(gstPaise / 100)}</td></tr>`;
+  }).join("");
+  return {
+    taxRows,
+    cgst: cgstTotal / 100,
+    sgst: sgstTotal / 100,
+    halfRate: rates.size === 1 ? rates.values().next().value / 2 : null,
+  };
+}
+
+function cnfAmountBreakdown(sale, tax) {
+  const rate = tax.halfRate == null ? "" : `${unitRate(tax.halfRate)}%`;
+  const row = (label, percent, amount) => `<tr class="cnf-amount-breakdown">
+    <td></td><td class="num">${label}</td>${"<td></td>".repeat(6)}
+    <td class="num">${percent}</td><td class="num">${rs(amount)}</td></tr>`;
+  return [
+    row("Taxable subtotal", "", sale.taxable_amount),
+    row("Output CGST", rate, tax.cgst),
+    row("Output SGST", rate, tax.sgst),
+    num(sale.round_off) ? row("Round off", "", sale.round_off) : "",
+  ].join("");
+}
+
+function cnfFooter(sale, tax, cancelled) {
+  const due = num(sale.balance_amount);
+  const paid = num(sale.paid_amount);
+  return `
+    <div class="cnf-words">Amount Chargeable (in words)<br><strong>${rupeesInWords(sale.total_amount)}</strong></div>
+    <table class="cnf-tax"><thead>
+      <tr><th rowspan="2">HSN/SAC</th><th rowspan="2">Taxable Value</th><th colspan="2">CGST</th><th colspan="2">SGST</th><th rowspan="2">Total Tax Amount</th></tr>
+      <tr><th>Rate</th><th>Amount</th><th>Rate</th><th>Amount</th></tr>
+    </thead><tbody>${tax.taxRows}
+      <tr class="total-row"><td>Total</td><td class="num">${money(sale.taxable_amount)}</td><td></td>
+        <td class="num">${money(tax.cgst)}</td><td></td><td class="num">${money(tax.sgst)}</td>
+        <td class="num">${money(sale.gst_amount)}</td></tr>
+    </tbody></table>
+    <div class="cnf-words">Tax Amount (in words): <strong>${rupeesInWords(sale.gst_amount)}</strong>
+      ${paid > 0 ? `<div>Paid: <strong>${rs(paid)}</strong></div>` : ""}
+      ${due > 0 && !cancelled ? `<div>Balance Due: <strong>${rs(due)}</strong></div>` : ""}
+      ${sale.remarks ? `<div>Remarks: ${esc(sale.remarks)}</div>` : ""}
+    </div>
+    <div class="cnf-declaration">
+      <section><div class="cnf-label">Declaration</div><div class="rich-text">${invoiceRichText(sale.invoice_declaration_html ?? sale.declaration_html ?? DEFAULT_DECLARATION)}</div></section>
+      <section class="cnf-sign"><strong>For ${SELLER.name}</strong><span>Authorised Signatory</span></section>
+    </div>
+    <div class="cnf-computer-note">This is a Computer Generated Invoice</div>`;
+}
 
 // Long bills go over several sheets: up to `rows` rows on a page, the last page (with the
 // totals and footer) up to `lastRows`. Each page also shrinks a little if needed.
@@ -61,8 +180,10 @@ const PAPER = {
 
 // Same layout as the Add Sales "Tax Invoice" (templates/salesInvoicePrintTemplate.js), on A5
 // landscape sheets (outlet bills) or A4 portrait sheets (bills to a distributor), one or more.
-export function printInvoice({ sale, items = [] }) {
+export function printInvoice({ sale, items = [], payments = [] }) {
   const paper = sale.buyer_type === "distributor" ? PAPER.a4 : PAPER.a5;
+  const cnf = isCnfInvoice(sale);
+  const cnfTax = cnf ? cnfTaxSummary(items) : null;
   const cancelled = sale.status === "cancelled";
   const paidQty = items.filter((it) => !it.is_free).reduce((t, it) => t + num(it.qty), 0);
   const freeQty = items.filter((it) => it.is_free).reduce((t, it) => t + num(it.qty), 0);
@@ -76,7 +197,7 @@ export function printInvoice({ sale, items = [] }) {
     const beforeGst = it.is_free ? 0 : it.rate_before_gst ?? (pieces > 0 ? num(it.taxable_amount) / pieces : 0);
     const afterGst = it.is_free ? 0 : it.rate;
     return `
-          <tr>
+          <tr class="invoice-item">
             <td class="center">${i + 1}</td>
             <td>${it.is_free ? "&#8627; " : ""}${esc(name)}${it.is_free ? " <b>(FREE)</b>" : ""}${it.is_free && it.free_note ? `<div class="sub"><b>${esc(it.free_note)}</b></div>` : ""}${lot ? `<div class="sub">${esc(lot)}</div>` : ""}</td>
             <td class="center">${esc(it.hsn_code || "--")}</td>
@@ -91,7 +212,10 @@ export function printInvoice({ sale, items = [] }) {
   });
   const chunks = [];
   const rest = rowHtml.slice();
-  while (rest.length > paper.lastRows) chunks.push(rest.splice(0, paper.rows));
+  while (rest.length > paper.lastRows) {
+    const count = cnf ? Math.min(paper.rows, Math.max(rest.length - paper.lastRows, Math.ceil(rest.length / 2))) : paper.rows;
+    chunks.push(rest.splice(0, count));
+  }
   chunks.push(rest);
   const pageCount = chunks.length;
 
@@ -179,20 +303,26 @@ export function printInvoice({ sale, items = [] }) {
     .map((chunk, p) => {
       const last = p === pageCount - 1;
       return `
-    <div class="sheet"><main class="page"><div class="fit">
+    <div class="sheet"><main class="page${cnf ? " cnf-page" : ""}"><div class="fit">
       ${cancelled ? '<div class="stamp">CANCELLED</div>' : ""}
       <div class="top-meta"><span>${p + 1}/${pageCount}</span><span>Seller Copy</span></div>
-      ${header}
+      ${cnf ? `<div class="watermark" aria-hidden="true">Bawarchee Food Packging Pvt. Ltd.</div>${cnfHeader(sale, payments)}` : header}
       <div class="grow">
       <table>
         ${thead}
         <tbody>
           ${chunk.join("")}
-          ${last ? totalRow : `<tr><td colspan="10" class="center sub">Continued on page ${p + 2}</td></tr>`}
+          ${cnf ? `<tr class="cnf-spacer" aria-hidden="true">${"<td></td>".repeat(10)}</tr>` : ""}
+          ${last && cnf ? cnfAmountBreakdown(sale, cnfTax) : ""}
+          ${last ? cnf ? `
+            <tr class="total-row"><td colspan="4" class="num">Total incl. GST</td><td class="num">${qty(paidQty)}</td>
+              <td class="num">${qty(freeQty)}</td><td class="num">${qty(paidQty + freeQty)}</td><td colspan="2"></td>
+              <td class="num">${rs(sale.total_amount)}</td></tr>` : totalRow
+            : `<tr><td colspan="10" class="center sub">Continued on page ${p + 2}</td></tr>`}
         </tbody>
       </table>
       </div>
-      ${last ? footer : ""}
+      ${last ? cnf ? cnfFooter(sale, cnfTax, cancelled) : footer : ""}
     </div></main></div>`;
     })
     .join("");
@@ -235,6 +365,32 @@ export function printInvoice({ sale, items = [] }) {
       .summary-total { border-top: 1px solid #000; margin-top: 3px; padding-top: 3px; font-size: 9px; }
       .signature { display: flex; justify-content: flex-end; padding-top: 14px; font-size: 7px; font-weight: 700; }
       .stamp { position: absolute; top: 30%; left: 30%; color: #dc2626; border: 3px solid #dc2626; padding: 4px 14px; font-size: 22px; font-weight: 800; transform: rotate(-12deg); opacity: .6; }
+      .watermark { position: absolute; top: 49%; left: 50%; transform: translate(-50%, -50%) rotate(-28deg); color: #000; opacity: .075; font-size: 40px; font-weight: 800; white-space: nowrap; pointer-events: none; }
+      .cnf-header { display: grid; grid-template-columns: 1fr 1fr; border: 1px solid #000; border-bottom: 0; }
+      .cnf-page .grow { display: flex; }
+      .cnf-page .grow tr { height: 1px; }
+      .cnf-page .grow tr.cnf-spacer { height: auto; }
+      .cnf-page .grow :is(.invoice-item, .cnf-amount-breakdown, .cnf-spacer) td { border-top: 0; border-bottom: 0; }
+      .cnf-page .invoice-item td { vertical-align: top; }
+      .cnf-amount-breakdown td:nth-child(2), .cnf-amount-breakdown td:last-child { font-weight: 700; }
+      .cnf-amount-breakdown td:nth-child(2) { font-style: italic; }
+      .cnf-parties { border-right: 1px solid #000; }
+      .cnf-parties section, .cnf-terms, .cnf-declaration section { padding: 4px 6px; overflow-wrap: anywhere; }
+      .cnf-parties section + section { border-top: 1px solid #000; }
+      .cnf-parties .address { white-space: pre-line; }
+      .cnf-details { display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: repeat(5, minmax(25px, auto)) 1fr; }
+      .invoice-detail { padding: 2px 5px; border-bottom: 1px solid #000; overflow-wrap: anywhere; }
+      .invoice-detail:nth-child(odd) { border-right: 1px solid #000; }
+      .invoice-detail span, .invoice-detail strong { display: block; }
+      .cnf-label, .invoice-detail span { color: #333; }
+      .cnf-terms { grid-column: 1 / -1; min-height: 40px; }
+      .rich-text p, .rich-text div { margin: 2px 0; }
+      .rich-text ul, .rich-text ol { margin: 3px 0; padding-left: 18px; }
+      .cnf-words { border: 1px solid #000; border-top: 0; padding: 4px 6px; }
+      .cnf-tax th { font-size: 8px; }
+      .cnf-declaration { display: grid; grid-template-columns: 1fr 1fr; min-height: 58px; border: 1px solid #000; border-top: 0; }
+      .cnf-declaration .cnf-sign { display: flex; flex-direction: column; justify-content: space-between; align-items: flex-end; text-align: right; border-left: 1px solid #000; }
+      .cnf-computer-note { text-align: center; padding-top: 4px; }
       .noprint { margin: 8px; font-family: Arial, sans-serif; }
       @media screen { body { background: #e5e7eb; } .sheet { margin: 0 auto 16px; box-shadow: 0 2px 10px rgba(0,0,0,.25); } }
       @media print { body { -webkit-print-color-adjust: exact; print-color-adjust: exact; } .noprint { display: none; } }

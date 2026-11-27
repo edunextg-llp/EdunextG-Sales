@@ -436,7 +436,11 @@ export const getSale = async (req, res) => {
     try {
         const id = parseId(req.params.id);
         const [rows] = await db.execute(
-            `SELECT s.*, DATE_FORMAT(s.sale_date, '%Y-%m-%d') AS sale_date, c.name AS company_name, c.type AS company_type
+            `SELECT s.*, DATE_FORMAT(s.sale_date, '%Y-%m-%d') AS sale_date, c.name AS company_name, c.type AS company_type,
+                    COALESCE(c.delivery_terms_html, s.delivery_terms_html) AS invoice_delivery_terms_html,
+                    COALESCE(c.declaration_html, s.declaration_html) AS invoice_declaration_html,
+                    (SELECT o.order_number FROM distributor_orders o WHERE o.dms_sale_id = s.id ORDER BY o.id DESC LIMIT 1) AS order_number,
+                    (SELECT o.requisition_number FROM distributor_orders o WHERE o.dms_sale_id = s.id ORDER BY o.id DESC LIMIT 1) AS requisition_number
              FROM dms_sales s LEFT JOIN companies c ON c.id = s.company_id WHERE s.id = ?`,
             [id || 0]
         );
@@ -450,6 +454,45 @@ export const getSale = async (req, res) => {
         return res.json({ sale: rows[0], items, payments });
     } catch (error) {
         return sendError(res, error, 'Unable to load the sale.');
+    }
+};
+
+export const getCompanyInvoicePrintDetails = async (req, res) => {
+    try {
+        const id = parseId(req.params.id);
+        const [[company]] = await db.execute(
+            "SELECT id, name, delivery_terms_html, declaration_html FROM companies WHERE id = ? AND type = 'cnf'",
+            [id || 0]
+        );
+        if (!company) throw httpError(404, 'CNF company not found.');
+        const [distributors] = await db.execute(
+            `SELECT id, distributor_name, login_id, is_active FROM distributors
+             WHERE company_id = ? ORDER BY distributor_name, id`,
+            [id]
+        );
+        return res.json({ company, distributors });
+    } catch (error) {
+        return sendError(res, error, 'Unable to load company invoice details.');
+    }
+};
+
+export const updateCompanyInvoicePrintDetails = async (req, res) => {
+    try {
+        const id = parseId(req.params.id);
+        const { deliveryTerms, declaration } = req.body || {};
+        if ([deliveryTerms, declaration].some((value) => typeof value !== 'string' || value.length > 4000)) {
+            throw httpError(400, 'Terms and declaration must each be under 4,000 characters, including formatting.');
+        }
+        // These fields are untrusted rich text. Print clients render only allowed formatting.
+        const [result] = await db.execute(
+            `UPDATE companies SET delivery_terms_html = ?, declaration_html = ?
+             WHERE id = ? AND type = 'cnf'`,
+            [deliveryTerms, declaration, id || 0]
+        );
+        if (!result.affectedRows) throw httpError(404, 'CNF company not found.');
+        return res.json({ message: 'Company invoice print details saved.' });
+    } catch (error) {
+        return sendError(res, error, 'Unable to save invoice print details.');
     }
 };
 

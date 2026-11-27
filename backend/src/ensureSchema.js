@@ -1531,6 +1531,19 @@ export async function ensureSchema() {
             if (error.code !== 'ER_DUP_FIELDNAME') throw error;
         }
 
+        for (const column of ['delivery_terms_html', 'declaration_html']) {
+            try {
+                await connection.query(`ALTER TABLE dms_sales ADD COLUMN ${column} TEXT NULL`);
+            } catch (error) {
+                if (error.code !== 'ER_DUP_FIELDNAME') throw error;
+            }
+            try {
+                await connection.query(`ALTER TABLE companies ADD COLUMN ${column} TEXT NULL`);
+            } catch (error) {
+                if (error.code !== 'ER_DUP_FIELDNAME') throw error;
+            }
+        }
+
         await connection.query(`
             CREATE TABLE IF NOT EXISTS dms_sale_items (
                 id INT AUTO_INCREMENT PRIMARY KEY,

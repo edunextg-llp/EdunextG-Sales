@@ -64,11 +64,13 @@ const fromRow = (d) => ({
 
 const validate = (f) => {
   if (!f.distributorName.trim()) return "Distributor name is required.";
+  if (!f.contactPerson.trim()) return "Office contact person name is required.";
   if (!/^\d{10}$/.test(f.contactNo.replace(/\D/g, ""))) return "Enter a 10-digit contact number.";
+  if (!f.address.trim()) return "Office address is required.";
   if (f.email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(f.email.trim())) return "Enter a valid email.";
   if (f.pinCode && !/^\d{6}$/.test(f.pinCode)) return "Pin code must be 6 digits.";
-  if (f.hasGodown && !(f.godownSameAsOffice ? f.address : f.godownAddress).trim()) {
-    return f.godownSameAsOffice ? "Enter the office address for the godown." : "Enter the godown address.";
+  if (f.hasGodown && !f.godownSameAsOffice && !f.godownAddress.trim()) {
+    return "Enter the godown address.";
   }
   if (f.hasGodown && !f.godownSameAsOffice && f.godownPinCode && !/^\d{6}$/.test(f.godownPinCode)) {
     return "Godown PIN code must be 6 digits.";
@@ -170,27 +172,27 @@ function DistributorFields({ form, setForm }) {
       <Field label="Distributor name" required className="sm:col-span-2">
         <input className="input w-full" maxLength={255} value={form.distributorName} onChange={set("distributorName")} />
       </Field>
-      <Field label="Contact person">
-        <input className="input w-full" maxLength={255} value={form.contactPerson} onChange={set("contactPerson")} />
-      </Field>
       <Field label="Contact no." required>
         <input
+          type="tel"
           className="input w-full"
           inputMode="numeric"
-          maxLength={10}
           value={form.contactNo}
-          onChange={(e) => setForm((f) => ({ ...f, contactNo: e.target.value.replace(/\D/g, "").slice(0, 10) }))}
+          onChange={(e) => setForm((f) => ({ ...f, contactNo: e.target.value.replace(/\D/g, "") }))}
         />
       </Field>
       <Field label="Email">
         <input type="email" className="input w-full" maxLength={255} value={form.email} onChange={set("email")} />
       </Field>
       <h3 className="col-span-full mt-2 border-t border-base-300 pt-3 text-sm font-semibold">Office address</h3>
-      <Field label="Office address" className="sm:col-span-3">
+      <Field label="Office address" required className="sm:col-span-3">
         <input className="input w-full" maxLength={1000} value={form.address} onChange={set("address")} />
       </Field>
       <Field label="Pin code" hint={pinNote || undefined}>
         <input className="input w-full" inputMode="numeric" maxLength={6} value={form.pinCode} onChange={(e) => onPin(e.target.value)} />
+      </Field>
+      <Field label="Office contact person name" required>
+        <input className="input w-full" maxLength={255} value={form.contactPerson} onChange={set("contactPerson")} />
       </Field>
       <Field label="City">
         <input className="input w-full" maxLength={100} value={form.city} onChange={set("city")} />
@@ -270,10 +272,9 @@ function DistributorFields({ form, setForm }) {
               type="tel"
               className="input w-full"
               inputMode="numeric"
-              maxLength={10}
               value={form.godownContactNo}
               onChange={(e) => {
-                const godownContactNo = e.target.value.replace(/\D/g, "").slice(0, 10);
+                const godownContactNo = e.target.value.replace(/\D/g, "");
                 setForm((f) => ({ ...f, godownContactNo }));
               }}
             />

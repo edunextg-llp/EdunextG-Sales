@@ -978,6 +978,7 @@ class StaffModel {
                     END AS balance_amount,
                     ss.payment_mode,
                     COALESCE(sp.payment_count, 0) AS payment_count,
+                    COALESCE(sp.credit_count, 0) AS credit_count,
                     sc.outlet_name, sc.outlet_erp_id, sc.location_name, sc.google_location, s.name as staff_name,
                     outlet_staff.id AS outlet_staff_id, outlet_staff.name AS outlet_staff_name,
                     DATE_FORMAT(ss.sale_date, '%d-%m-%Y') as formatted_date,
@@ -1003,6 +1004,7 @@ class StaffModel {
              LEFT JOIN (
                  SELECT sale_id,
                         COUNT(*) AS payment_count,
+                        SUM(payment_mode = 'credit') AS credit_count,
                         SUM(CASE
                             WHEN payment_mode IN ('cash', 'upi', 'cheque') THEN amount
                             ELSE 0

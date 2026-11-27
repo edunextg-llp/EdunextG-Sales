@@ -1,5 +1,6 @@
 // Printable Tax Invoice for a bill (same layout as the DMS / Add Sales invoice, A5 sheets).
 // Opens in a new window and starts the print dialog; choose "Save as PDF" there for a PDF.
+import { isCnfInvoice, printInvoice as printCnfInvoice } from "../../../dms/src/utils/dmsInvoice.js";
 
 const esc = (v) =>
   String(v ?? "")
@@ -54,7 +55,8 @@ const LAST_PAGE_ROWS = 10;
 
 // Same layout as the Add Sales "Tax Invoice" (templates/salesInvoicePrintTemplate.js), on A5
 // landscape sheets (210 × 148 mm), one or more.
-export function printInvoice({ sale, items = [] }) {
+export function printInvoice({ sale, items = [], payments = [] }) {
+  if (isCnfInvoice(sale)) return printCnfInvoice({ sale, items, payments });
   const cancelled = sale.status === "cancelled";
   const paidQty = items.filter((it) => !it.is_free).reduce((t, it) => t + num(it.qty), 0);
   const freeQty = items.filter((it) => it.is_free).reduce((t, it) => t + num(it.qty), 0);

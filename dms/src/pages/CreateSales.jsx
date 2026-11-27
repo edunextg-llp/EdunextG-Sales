@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { MdAdd, MdEdit, MdPrint, MdRefresh, MdSearch } from "react-icons/md";
 import { apiFetch } from "../auth";
@@ -8,6 +8,8 @@ import { getInvoicePrefix } from "../utils/invoicePrefix";
 import { downloadExcel } from "../utils/excel";
 import { qty as showQty, rupees, showDate, todayLocal } from "../utils/purchaseCalc";
 import { printInvoice } from "../utils/dmsInvoice";
+
+const CnfInvoicePrintDialog = lazy(() => import("../components/sales/CnfInvoicePrintDialog"));
 
 // Sales > Create Sales: a bill to a distributor / CNF (Add Distributor) or to an outlet.
 // "Create Bill" opens the same form as Add Sales > "Yes, Create Bill" (SalesInvoiceDialog).
@@ -68,6 +70,7 @@ export default function CreateSales({ user }) {
   const [openingSale, setOpeningSale] = useState(null);
   const [editingSale, setEditingSale] = useState(null);
   const [editingSaleDate, setEditingSaleDate] = useState("");
+  const [invoiceSettingsCompanyId, setInvoiceSettingsCompanyId] = useState(null);
 
   // Company: its distributors and outlets.
   useEffect(() => {
@@ -623,6 +626,11 @@ export default function CreateSales({ user }) {
         <button type="button" className="btn btn-primary btn-sm" disabled={!ready || openingDraft !== null} onClick={openBill}>
           <MdAdd size={18} /> Create Bill
         </button>
+        {isAdmin && company?.type === "cnf" && (
+          <button type="button" className="btn btn-outline btn-sm" onClick={() => setInvoiceSettingsCompanyId(company.id)}>
+            Invoice settings
+          </button>
+        )}
       </section>
 
       <SalesInvoiceDialog
@@ -801,6 +809,11 @@ export default function CreateSales({ user }) {
           submitting={saving}
           onSubmit={submitSaleEdit}
         />
+      )}
+      {invoiceSettingsCompanyId && (
+        <Suspense fallback={<p role="status">Loading invoice editor…</p>}>
+          <CnfInvoicePrintDialog key={invoiceSettingsCompanyId} companyId={invoiceSettingsCompanyId} onClose={() => setInvoiceSettingsCompanyId(null)} />
+        </Suspense>
       )}
       {flashNode}
     </div>

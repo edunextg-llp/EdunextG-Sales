@@ -39,7 +39,7 @@ const readForm = (body = {}, existing = null) => {
     const form = {
         distributorName: text(body.distributorName),
         contactPerson: text(body.contactPerson),
-        contactNo: String(body.contactNo || '').replace(/\D/g, '').slice(0, 15),
+        contactNo: String(body.contactNo || '').replace(/\D/g, ''),
         email: text(body.email).toLowerCase(),
         address: text(body.address, 1000),
         hasGodown,
@@ -60,13 +60,15 @@ const readForm = (body = {}, existing = null) => {
         fssaiNumber: String(body.fssaiNumber ?? existing?.fssai_number ?? '').trim(),
     };
     if (!form.distributorName) throw httpError(400, 'Distributor name is required.');
+    if (!form.contactPerson) throw httpError(400, 'Office contact person name is required.');
     if (!/^\d{10}$/.test(form.contactNo)) throw httpError(400, 'Enter a 10-digit contact number.');
+    if (!form.address) throw httpError(400, 'Office address is required.');
     if (form.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)) throw httpError(400, 'Enter a valid email.');
     if (form.pinCode && !/^\d{6}$/.test(form.pinCode)) throw httpError(400, 'Pin code must be 6 digits.');
     if (form.godownPinCode && !/^\d{6}$/.test(form.godownPinCode)) throw httpError(400, 'Godown PIN code must be 6 digits.');
     if (form.godownContactNo && !/^\d{10}$/.test(form.godownContactNo)) throw httpError(400, 'Enter a 10-digit godown contact number.');
-    if (form.hasGodown && !(form.sameAsOffice ? form.address : form.godownAddress)) {
-        throw httpError(400, form.sameAsOffice ? 'Enter the office address for the godown.' : 'Enter the godown address.');
+    if (separateGodown && !form.godownAddress) {
+        throw httpError(400, 'Enter the godown address.');
     }
     if (form.hasGst && !/^[0-9A-Z]{15}$/.test(form.gstin)) throw httpError(400, 'Enter the 15-character GSTIN.');
     if (form.fssaiNumber && !/^[12]\d{13}$/.test(form.fssaiNumber)) throw httpError(400, 'Enter a 14-digit FSSAI number starting with 1 or 2.');
@@ -100,14 +102,6 @@ const normalize = (row) => ({
 async function getById(id) {
     const [rows] = await db.execute(`${SELECT_SQL} WHERE d.id = ?`, [id]);
     return rows[0] ? normalize(rows[0]) : null;
-}
-
-async function assertUniqueContact(contactNo, exceptId = 0) {
-    const [rows] = await db.execute(
-        'SELECT distributor_name FROM distributors WHERE contact_no = ? AND id <> ? LIMIT 1',
-        [contactNo, exceptId]
-    );
-    if (rows.length) throw httpError(409, `${rows[0].distributor_name} already uses this contact number.`);
 }
 
 const adminName = (user) => (user?.role === 'admin' ? 'Admin' : user?.username || null);
@@ -150,7 +144,6 @@ export const createDistributor = async (req, res) => {
             throw httpError(400, `${companies[0].name} is not a CNF company. Distributors can be added only under a CNF company.`);
         }
         const form = readForm(req.body);
-        await assertUniqueContact(form.contactNo);
         const password = generateDistributorPassword();
         await connection.beginTransaction();
         const [result] = await connection.execute(
@@ -195,7 +188,6 @@ export const updateDistributor = async (req, res) => {
         const existing = id ? await getById(id) : null;
         if (!existing) throw httpError(404, 'Distributor not found.');
         const form = readForm(req.body, existing);
-        await assertUniqueContact(form.contactNo, id);
         await db.execute(
             // Company and CNF / Distributor stay as the login was made.
             `UPDATE distributors

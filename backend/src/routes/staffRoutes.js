@@ -203,6 +203,8 @@ router.post('/dms-sales/drafts', requirePermission('create_sales'), dmsSales.sav
 router.put('/dms-sales/drafts/:id', requirePermission('create_sales'), dmsSales.saveSaleDraft);
 router.get('/dms-sales/:id', requirePermission('create_sales'), dmsSales.getSale);
 router.get('/dms-sales/:id/edit-offers', requireRole('admin'), dmsSales.getSaleEditOffers);
+router.get('/companies/:id/invoice-print-details', requireRole('admin'), dmsSales.getCompanyInvoicePrintDetails);
+router.put('/companies/:id/invoice-print-details', requireRole('admin'), dmsSales.updateCompanyInvoicePrintDetails);
 router.put('/dms-sales/:id', requireRole('admin'), dmsSales.updateSale);
 router.post('/dms-sales', requirePermission('create_sales'), dmsSales.createSale);
 router.post('/dms-sales/:id/payments', requirePermission('create_sales'), dmsSales.addPayment);
@@ -243,6 +245,7 @@ router.get('/reports', staffController.getReports);
 router.get('/reports/outlets', staffController.getOutletAnalysis);
 router.get('/reports/company-insights', getCompanyInsights);
 router.get('/reports/payments', staffController.getPaymentDetailsReport);
+router.get('/reports/today', verifyTokenMiddleware, requireAnyPermission('dashboard'), staffController.getTodayReport);
 router.get('/reports/payments/export', staffController.downloadPaymentDetailsExcel);
 router.get('/outlets-export', staffController.downloadOutletsExcel);
 router.get('/outlets-template', staffController.downloadOutletUploadTemplate);

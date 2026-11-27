@@ -3642,6 +3642,56 @@ export const downloadPaymentDetailsExcel = async (req, res) => {
     }
 };
 
+export const getTodayReport = async (req, res) => {
+    const { date } = req.query;
+    if (typeof date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(date)
+        || Number.isNaN(Date.parse(date)) || new Date(date).toISOString().slice(0, 10) !== date) {
+        return res.status(400).json({ error: 'Choose a valid report date.' });
+    }
+    try {
+        const [sales, payments] = await Promise.all([
+            StaffModel.getAllSalesByDate(date, '', 'assignments'),
+            ReportModel.getPaymentDetails(date, date),
+        ]);
+        const emptyTotals = () => ({ cash: 0, cheque: 0, upi: 0 });
+        const totals = emptyTotals();
+        const bySale = new Map();
+        for (const payment of payments) {
+            const saleId = String(payment.sale_id);
+            const amounts = bySale.get(saleId) || emptyTotals();
+            const paise = Math.round(Number(payment.amount) * 100);
+            totals[payment.payment_mode] += paise;
+            amounts[payment.payment_mode] += paise;
+            bySale.set(saleId, amounts);
+        }
+        const rupees = ({ cash, cheque, upi }) => ({
+            cash: cash / 100, cheque: cheque / 100, upi: upi / 100, total: (cash + cheque + upi) / 100,
+        });
+        const bills = sales.filter((sale) => sale.delivery_staff_id || sale.delivery_boy_id)
+            .map((sale) => ({
+                id: sale.id,
+                invoice_number: sale.invoice_number,
+                sticker_number: sale.sticker_number,
+                company_name: sale.company_name,
+                outlet_name: sale.outlet_name,
+                delivery_staff_id: sale.delivery_staff_id,
+                delivery_boy_id: sale.delivery_boy_id,
+                delivery_boy_name: sale.delivery_boy_name,
+                packaging_status: sale.packaging_status,
+                in_suspense: sale.in_suspense,
+                payment_mode: sale.payment_mode,
+                credit_count: sale.credit_count,
+                paid_amount: sale.paid_amount,
+                balance_amount: sale.balance_amount,
+                collections: rupees(bySale.get(String(sale.id)) || emptyTotals()),
+            }));
+        return res.json({ bills, collections: rupees(totals) });
+    } catch (error) {
+        console.error('Error fetching today report:', error);
+        return res.status(500).json({ error: 'Unable to load Today Report.' });
+    }
+};
+
 export const getPaymentDetailsReport = async (req, res) => {
     try {
         const { startDate, endDate, companyId, staffId } = req.query;

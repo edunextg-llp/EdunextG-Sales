@@ -49,6 +49,7 @@ import CurrentStock from "layouts/current-stock";
 import PhysicalStock from "layouts/physical-stock";
 import InvoiceReport from "layouts/invoice-report";
 import BillReport from "layouts/bill-report";
+import TodayReport from "layouts/today-report";
 // import ExpiredStock from "layouts/expired-stock";
 // @mui icons
 import Icon from "@mui/material/Icon";
@@ -93,7 +94,17 @@ const routes = [
         component: <BillReport />,
         allowedRoles: ["admin", "packaging_staff", "bawarchee_staff", "delivery_boy"],
         requiredPermission: "dashboard",
-      }
+      },
+      {
+        type: "collapse",
+        name: "Today Report",
+        key: "today-report",
+        icon: <Icon fontSize="small">today</Icon>,
+        route: "/today-report",
+        component: <TodayReport />,
+        allowedRoles: ["admin", "packaging_staff", "bawarchee_staff", "delivery_boy"],
+        requiredPermission: "dashboard",
+      },
     ],
   },
   {

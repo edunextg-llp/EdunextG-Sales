@@ -245,7 +245,11 @@ export const getPurchase = async (req, res) => {
     try {
         const id = parseId(req.params.id);
         const [sales] = await db.execute(
-            `SELECT s.*, DATE_FORMAT(s.sale_date, '%Y-%m-%d') AS sale_date, c.name AS company_name
+            `SELECT s.*, DATE_FORMAT(s.sale_date, '%Y-%m-%d') AS sale_date, c.name AS company_name, c.type AS company_type,
+                    COALESCE(c.delivery_terms_html, s.delivery_terms_html) AS invoice_delivery_terms_html,
+                    COALESCE(c.declaration_html, s.declaration_html) AS invoice_declaration_html,
+                    (SELECT o.order_number FROM distributor_orders o WHERE o.dms_sale_id = s.id ORDER BY o.id DESC LIMIT 1) AS order_number,
+                    (SELECT o.requisition_number FROM distributor_orders o WHERE o.dms_sale_id = s.id ORDER BY o.id DESC LIMIT 1) AS requisition_number
              FROM dms_sales s LEFT JOIN companies c ON c.id = s.company_id
              WHERE s.id = ? AND s.buyer_type = 'distributor' AND s.distributor_id = ?`,
             [id || 0, req.distributorId]
