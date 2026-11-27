@@ -1545,6 +1545,7 @@ export async function ensureSchema() {
                 expiry_date DATE NULL,
                 qty DECIMAL(14, 2) NOT NULL DEFAULT 0,
                 rate DECIMAL(12, 2) NOT NULL DEFAULT 0,
+                rate_before_gst DECIMAL(14, 4) NULL,
                 gst_percent DECIMAL(5, 2) NOT NULL DEFAULT 5,
                 taxable_amount DECIMAL(14, 2) NOT NULL DEFAULT 0,
                 gst_amount DECIMAL(14, 2) NOT NULL DEFAULT 0,
@@ -1556,6 +1557,11 @@ export async function ensureSchema() {
                 INDEX idx_dms_sale_items_sale (sale_id)
             );
         `);
+        try {
+            await connection.query('ALTER TABLE dms_sale_items ADD COLUMN rate_before_gst DECIMAL(14, 4) NULL');
+        } catch (error) {
+            if (error.code !== 'ER_DUP_FIELDNAME') throw error;
+        }
         await connection.query(`
             CREATE TABLE IF NOT EXISTS dms_sale_drafts (
                 id INT AUTO_INCREMENT PRIMARY KEY,

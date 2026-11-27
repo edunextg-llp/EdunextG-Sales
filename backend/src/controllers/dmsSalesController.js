@@ -39,7 +39,12 @@ const PAYMENT_MODES = ['cash', 'upi', 'bank', 'cheque', 'credit'];
 const byName = (user) => (user?.role === 'admin' ? 'Admin' : user?.username || null);
 
 // Amount, taxable and GST of a line (rate includes GST).
-const lineMoney = (qty, rate, gstPercent) => {
+const lineMoney = (qty, rate, gstPercent, rateBeforeGst) => {
+    if (rateBeforeGst != null) {
+        const taxable = money(qty * rateBeforeGst);
+        const gst = money(taxable * num(gstPercent) / 100);
+        return { amount: money(taxable + gst), taxable, gst };
+    }
     const amount = money(qty * rate);
     const taxable = money(amount / (1 + num(gstPercent) / 100));
     return { amount, taxable, gst: money(amount - taxable) };
@@ -456,12 +461,12 @@ async function saveBillItems(connection, saleId, rows) {
         await connection.execute(
             `INSERT INTO dms_sale_items
                 (sale_id, product_erp_id, item_code, product_name, variant_name, hsn_code, mrp, batch_number, expiry_date,
-                 qty, rate, gst_percent, taxable_amount, gst_amount, amount, is_free, free_note, sort_order)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                 qty, rate, rate_before_gst, gst_percent, taxable_amount, gst_amount, amount, is_free, free_note, sort_order)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
             [
                 saleId, r.product.product_erp_id, r.product.item_code || null, r.product.product_name || null,
                 r.product.variant_name || null, r.product.hsn_code || null, num(r.lot.mrp) || null,
-                r.lot.batchNumber || null, isoDate(r.lot.expiryDate), r.qty, r.rate, r.gstPercent, r.taxable, r.gst,
+                r.lot.batchNumber || null, isoDate(r.lot.expiryDate), r.qty, r.rate, r.rateBeforeGst ?? null, r.gstPercent, r.taxable, r.gst,
                 r.amount, r.isFree ? 1 : 0, r.freeNote || null, index,
             ]
         );
@@ -599,7 +604,8 @@ export const updateSale = async (req, res) => {
         const lines = requested.filter((line) => !Number(byId.get(Number(line?.id))?.is_free)).map((line) => {
             const key = erpKey(line?.productErpId);
             const qty = Number(line?.qty);
-            const rate = Number(line?.rate);
+            const beforeGst = line?.rateBeforeGst != null;
+            const rate = Number(beforeGst ? line.rateBeforeGst : line?.rate);
             const itemId = Number(line?.id);
             const existing = itemId ? byId.get(itemId) : null;
             if (!key || !Number.isFinite(qty) || qty <= 0 || qty > 999999999999
@@ -613,7 +619,7 @@ export const updateSale = async (req, res) => {
             const preferredLot = existing ? savedLotOf(existing) : num(line.mrp) > 0
                 ? { mrp: line.mrp, batchNumber: draftText(line.batchNumber, 100), expiryDate: isoDate(line.expiryDate) }
                 : null;
-            return { key, qty, rate: money(rate), existing, preferredLot };
+            return { key, qty, rate: beforeGst ? Number(rate.toFixed(4)) : money(rate), beforeGst, existing, preferredLot };
         });
         if (!lines.some((line) => line.rate > 0)) throw httpError(400, 'Add at least one paid item.');
         const { schemes, recorded } = await offersForSaleEdit(sale, saleDate, previous, connection);
@@ -637,7 +643,7 @@ export const updateSale = async (req, res) => {
             }
         }
         const paid = [];
-        for (const { key, qty, rate, existing, preferredLot } of lines) {
+        for (const { key, qty, rate, beforeGst, existing, preferredLot } of lines) {
             const product = existing || current?.get(key);
             if (!product) throw httpError(400, `Product ${key} is unavailable.`);
             const gstPercent = existing ? num(existing.gst_percent) : num(product.gst_percent) || 5;
@@ -645,7 +651,9 @@ export const updateSale = async (req, res) => {
             const available = stockChanged ? takeFromLots(lots, qty, preferredLot) : { taken: [{ lot: preferredLot, qty }], short: 0 };
             if (available.short > 0) throw httpError(400, `Not enough stock for ${product.variant_name || product.product_name || key}.`);
             paid.push(...available.taken.map(({ lot, qty: lotQty }) => ({
-                product, lot, qty: lotQty, rate, gstPercent,
+                product, lot, qty: lotQty, gstPercent,
+                rate: beforeGst ? money(rate * (1 + gstPercent / 100)) : rate,
+                rateBeforeGst: beforeGst ? rate : null,
             })));
         }
         const paidById = new Map(paid.map((line) => [Number(line.product.id), line]));
@@ -657,7 +665,7 @@ export const updateSale = async (req, res) => {
             } : paidById.get(Number(item.id)));
         const rows = ordered.map((line) => {
             const gstPercent = line.gstPercent ?? (num(line.product.gst_percent) || 5);
-            return { ...line, gstPercent, ...lineMoney(line.qty, line.rate, gstPercent) };
+            return { ...line, gstPercent, ...lineMoney(line.qty, line.rate, gstPercent, line.rateBeforeGst) };
         });
         const sum = (field) => money(rows.reduce((total, row) => total + num(row[field]), 0));
         const exact = sum('amount');

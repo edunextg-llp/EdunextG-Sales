@@ -46,9 +46,11 @@ function calcLine(item, postedEdit = false) {
   const qty = Number(item.qty) || 0;
   const rate = Number(item.rate) || 0;
   if (postedEdit) {
-    const netTotal = roundMoney(qty * rate);
-    const taxable = roundMoney(netTotal / (1 + (item.gstPercent ?? 5) / 100));
-    const gst = roundMoney(netTotal - taxable);
+    const gstFraction = (item.gstPercent ?? 5) / 100;
+    const amount = roundMoney(qty * rate);
+    const taxable = item.rateBeforeGst ? amount : roundMoney(amount / (1 + gstFraction));
+    const gst = roundMoney(item.rateBeforeGst ? taxable * gstFraction : amount - taxable);
+    const netTotal = roundMoney(taxable + gst);
     return { qty, rate, total: taxable, disc: 0, taxable, cgst: gst / 2, sgst: gst / 2, gst, netTotal };
   }
   const total = qty * rate;
@@ -70,6 +72,7 @@ function addPaidBillLines(current, added, postedEdit) {
     const index = rows.findIndex((row) =>
       !row.isFree && erpKey(row.productErpId) === erpKey(line.productErpId)
       && lotKey(row) === lotKey(line) && Number(row.rate) === Number(line.rate)
+      && Boolean(row.rateBeforeGst) === Boolean(line.rateBeforeGst)
       && (postedEdit
         ? Number(row.gstPercent ?? 5) === Number(line.gstPercent ?? 5)
         : Number(row.mrp) > 0 && row.priceType === line.priceType));
@@ -553,6 +556,7 @@ export default function SalesInvoiceDialog({
       variantName: product.variant_name || "",
       availableStock: Number(product.total_current_stock_in_pcs) || 0,
       priceType: forceWholesale ? "wholesale" : "retail",
+      rateBeforeGst: postedEdit && forceWholesale,
       retailPrice: retail,
       wholesalePrice: wholesale,
       gstPercent: Number(product.gst_percent) || 5,
@@ -633,7 +637,7 @@ export default function SalesInvoiceDialog({
           wholesalePrice,
           availableStock: Number(product?.total_current_stock_in_pcs ?? item.qty),
         } : {}),
-        ...(forceWholesale ? { priceType: "wholesale", wholesalePrice, rate: wholesalePrice || "" } : {}),
+        ...(forceWholesale ? { priceType: "wholesale", wholesalePrice, rate: wholesalePrice || "", rateBeforeGst: postedEdit } : {}),
       },
     });
   };
@@ -659,6 +663,7 @@ export default function SalesInvoiceDialog({
         variantName: product.variant_name || "",
         availableStock: Number(product.total_current_stock_in_pcs) || 0,
         priceType: forceWholesale ? "wholesale" : "retail",
+        rateBeforeGst: postedEdit && forceWholesale,
         retailPrice: Number(product.retail_price) || 0,
         wholesalePrice,
         rate: forceWholesale ? wholesalePrice || "" : product.retail_price || product.mrp || product.price_per_piece || prev.draft.rate || "",
@@ -1095,7 +1100,7 @@ export default function SalesInvoiceDialog({
               </div>
             </div>
             <label className="flex flex-col gap-1">
-              <span className="text-[10px] font-bold uppercase tracking-wide text-[#0f2a5a]">{postedEdit ? "Rate (incl. GST)" : "Rate (before GST)"}</span>
+              <span className="text-[10px] font-bold uppercase tracking-wide text-[#0f2a5a]">{postedEdit && !forceWholesale ? "Rate (incl. GST)" : "Rate (before GST)"}</span>
               <input
                 type="number"
                 min="0"
@@ -1193,7 +1198,12 @@ export default function SalesInvoiceDialog({
                             {item.expiryDate ? <div className="text-xs text-base-content/50">exp {formatDisplayDate(item.expiryDate)}</div> : null}
                           </td>
                           <td className="text-right font-semibold tabular-nums">{item.qty}</td>
-                          <td className="text-right tabular-nums">{fmt(c.rate)}</td>
+                          <td className="text-right tabular-nums">
+                            {fmt(c.rate)}
+                            {postedEdit && forceWholesale && !item.isFree && (
+                              <span className="block text-[10px] text-base-content/60">{item.rateBeforeGst ? "Before GST" : "Incl. GST"}</span>
+                            )}
+                          </td>
                           <td className="text-right tabular-nums">{fmt(c.total)}</td>
                           <td className="text-right tabular-nums">{fmt(c.gst)}</td>
                           <td className="text-right font-semibold tabular-nums">{fmt(c.netTotal)}</td>
@@ -1369,7 +1379,7 @@ export default function SalesInvoiceDialog({
                 </div>
               </div>
               <label className="flex flex-col gap-1">
-                <span className="text-xs font-medium text-base-content/70">{postedEdit ? "Rate (incl. GST)" : "Rate (before GST)"}</span>
+                <span className="text-xs font-medium text-base-content/70">{postedEdit && !editDraft.rateBeforeGst ? "Rate (incl. GST)" : "Rate (before GST)"}</span>
                 <input
                   type="number"
                   min="0"
