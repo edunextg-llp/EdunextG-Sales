@@ -632,7 +632,7 @@ export default function CreateSales({ user }) {
           void loadDrafts();
         }}
         outlet={billBuyer}
-        forceWholesale={companyType === "cnf"}
+        forceWholesale={company?.type === "cnf"}
         initialRequisitionNumber={billRequisition}
         initialDraft={activeDraft?.payload}
         selectedDate={saleDate}
@@ -788,6 +788,7 @@ export default function CreateSales({ user }) {
             contact_number: editingSale.sale.buyer_contact,
           }}
           companyName={editingSale.sale.company_name}
+          forceWholesale={editingSale.sale.company_type === "cnf"}
           selectedDate={editingSaleDate}
           onDateChange={setEditingSaleDate}
           invoiceNumber={editingSale.sale.invoice_number}

@@ -434,7 +434,7 @@ export const getSale = async (req, res) => {
     try {
         const id = parseId(req.params.id);
         const [rows] = await db.execute(
-            `SELECT s.*, DATE_FORMAT(s.sale_date, '%Y-%m-%d') AS sale_date, c.name AS company_name
+            `SELECT s.*, DATE_FORMAT(s.sale_date, '%Y-%m-%d') AS sale_date, c.name AS company_name, c.type AS company_type
              FROM dms_sales s LEFT JOIN companies c ON c.id = s.company_id WHERE s.id = ?`,
             [id || 0]
         );

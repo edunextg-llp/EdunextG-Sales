@@ -222,7 +222,13 @@ export default function SalesInvoiceDialog({
     } else {
       setLineItems([]);
     }
-    setDraft({ ...emptyLineItem, ...initialDraft?.pendingLine, ...(forceWholesale ? { priceType: "wholesale" } : {}) });
+    const pendingLine = { ...emptyLineItem, ...initialDraft?.pendingLine };
+    if (forceWholesale && pendingLine.priceType !== "wholesale") {
+      pendingLine.priceType = "wholesale";
+      pendingLine.rate = pendingLine.wholesalePrice || "";
+      pendingLine.rateEdited = false;
+    }
+    setDraft(pendingLine);
     setEditingIdx(null);
     setFlatDiscount(initialDraft?.flatDiscount || "");
     setRoundOff(initialDraft?.roundOff || "0");
@@ -236,10 +242,10 @@ export default function SalesInvoiceDialog({
       flatDiscount: initialDraft?.flatDiscount || "",
       roundOff: initialDraft?.roundOff || "0",
       lineItems: initialDraft?.lineItems || [],
-      pendingLine: { ...emptyLineItem, ...initialDraft?.pendingLine },
+      pendingLine,
     });
     setEditPopup({ open: false, index: null, draft: { ...emptyLineItem } });
-  }, [open, invoiceNumber, editMode, initialItemCount, initialPrice, initialLineItems, initialRequisitionNumber, initialDraft, initialRemarks]);
+  }, [open, invoiceNumber, editMode, initialItemCount, initialPrice, initialLineItems, initialRequisitionNumber, initialDraft, initialRemarks, forceWholesale]);
 
   const persistDraft = useCallback((key, force = false) => {
     if (!onSaveDraft || editMode) return Promise.resolve(true);
@@ -550,7 +556,7 @@ export default function SalesInvoiceDialog({
       retailPrice: retail,
       wholesalePrice: wholesale,
       gstPercent: Number(product.gst_percent) || 5,
-      rate: (forceWholesale ? wholesale : retail) || product.mrp || product.price_per_piece || "",
+      rate: forceWholesale ? wholesale || "" : retail || product.mrp || product.price_per_piece || "",
       rateEdited: false,
     }));
   };
@@ -569,7 +575,7 @@ export default function SalesInvoiceDialog({
     if (!draft.productErpId) return alert("Please select a product.");
     if (!draft.qty || Number(draft.qty) <= 0) return alert("Enter a valid quantity.");
     if (Number(draft.qty) > availableStock) return alert("Qty exceeds available stock.");
-    if (!draft.rate || Number(draft.rate) < 0) return alert("Enter a valid rate.");
+    if (!draft.rate || Number(draft.rate) < 0) return alert(forceWholesale ? "Enter a valid wholesale rate." : "Enter a valid rate.");
 
     const p = stockItems.find((x) => x.product_erp_id === draft.productErpId);
     const orig = p ? (Number(p.total_current_stock_in_pcs) || 0) : 0;
@@ -583,6 +589,10 @@ export default function SalesInvoiceDialog({
       const lots = remainingLots(p, lineItems);
       const { taken, short } = takeFromLots(lots, Number(draft.qty));
       if (short > 0) return alert("Qty exceeds available stock.");
+      if (forceWholesale && !draft.rateEdited
+        && taken.some(({ lot }) => !(Number(lot.wholesale_price) || Number(p.wholesale_price)))) {
+        return alert("A selected stock lot has no wholesale price. Enter a wholesale rate.");
+      }
       const lines = taken.map(({ lot, qty }) => ({
         ...payload,
         qty: String(qty),
@@ -592,7 +602,9 @@ export default function SalesInvoiceDialog({
         retailPrice: Number(lot.retail_price) || draft.retailPrice,
         wholesalePrice: Number(lot.wholesale_price) || draft.wholesalePrice,
         // A rate typed by hand applies to every lot; otherwise each lot has its own.
-        rate: draft.rateEdited ? draft.rate : String(lotPrice(lot, draft.priceType) || draft.rate),
+        rate: draft.rateEdited ? draft.rate : String(
+          (forceWholesale ? Number(lot.wholesale_price) || Number(p.wholesale_price) : lotPrice(lot, draft.priceType)) || draft.rate
+        ),
       }));
       setLineItems((prev) => addPaidBillLines(prev, lines, postedEdit));
     } else {
@@ -608,17 +620,21 @@ export default function SalesInvoiceDialog({
 
   const handleEdit = (i) => {
     const item = lineItems[i];
-    const product = postedEdit ? stockItems.find((stock) => stock.product_erp_id === item.productErpId) : null;
+    const product = postedEdit || forceWholesale ? stockItems.find((stock) => stock.product_erp_id === item.productErpId) : null;
     const lot = product?.lots?.find((stockLot) => lotKey(stockLot) === lotKey(item));
+    const wholesalePrice = Number(lot?.wholesale_price) || Number(product?.wholesale_price) || item.wholesalePrice || 0;
     setEditPopup({
       open: true,
       index: i,
-      draft: postedEdit ? {
+      draft: {
         ...item,
-        retailPrice: Number(lot?.retail_price || product?.retail_price) || item.retailPrice || 0,
-        wholesalePrice: Number(lot?.wholesale_price || product?.wholesale_price) || item.wholesalePrice || 0,
-        availableStock: Number(product?.total_current_stock_in_pcs ?? item.qty),
-      } : { ...item },
+        ...(postedEdit ? {
+          retailPrice: Number(lot?.retail_price || product?.retail_price) || item.retailPrice || 0,
+          wholesalePrice,
+          availableStock: Number(product?.total_current_stock_in_pcs ?? item.qty),
+        } : {}),
+        ...(forceWholesale ? { priceType: "wholesale", wholesalePrice, rate: wholesalePrice || "" } : {}),
+      },
     });
   };
 
@@ -628,6 +644,10 @@ export default function SalesInvoiceDialog({
       return;
     }
     if (postedEdit && product.product_erp_id === editPopup.draft.productErpId) return;
+    const firstLot = forceWholesale
+      ? remainingLots(product, lineItems, editPopup.index).find((lot) => Number(lot.pcs) > 0)
+      : null;
+    const wholesalePrice = Number(firstLot?.wholesale_price) || Number(product.wholesale_price) || 0;
     setEditPopup((prev) => ({
       ...prev,
       draft: {
@@ -638,10 +658,10 @@ export default function SalesInvoiceDialog({
         productDivision: product.product_division || "",
         variantName: product.variant_name || "",
         availableStock: Number(product.total_current_stock_in_pcs) || 0,
-        priceType: "retail",
+        priceType: forceWholesale ? "wholesale" : "retail",
         retailPrice: Number(product.retail_price) || 0,
-        wholesalePrice: Number(product.wholesale_price) || 0,
-        rate: product.retail_price || product.mrp || product.price_per_piece || prev.draft.rate || "",
+        wholesalePrice,
+        rate: forceWholesale ? wholesalePrice || "" : product.retail_price || product.mrp || product.price_per_piece || prev.draft.rate || "",
         mrp: "",
         batchNumber: "",
         expiryDate: "",
@@ -658,7 +678,7 @@ export default function SalesInvoiceDialog({
     if (!isExistingPlaceholder && Number(editDraft.qty) > editPopupStock) {
       return alert("Qty exceeds available stock.");
     }
-    if (!editDraft.rate || Number(editDraft.rate) < 0) return alert("Enter a valid rate.");
+    if (!editDraft.rate || Number(editDraft.rate) < 0) return alert(forceWholesale ? "Enter a valid wholesale rate." : "Enter a valid rate.");
 
     const p = stockItems.find((x) => x.product_erp_id === editDraft.productErpId);
     const orig = p
@@ -1066,7 +1086,7 @@ export default function SalesInvoiceDialog({
                     key={value}
                     type="button"
                     disabled={!draft.productErpId}
-                    className={`btn btn-xs h-7 join-item flex-1 ${(draft.priceType || "retail") === value ? "btn-neutral" : "btn-outline border-neutral/40 bg-base-100 text-neutral"}`}
+                    className={`btn btn-xs h-7 join-item flex-1 ${(forceWholesale ? "wholesale" : draft.priceType || "retail") === value ? "btn-neutral" : "btn-outline border-neutral/40 bg-base-100 text-neutral"}`}
                     onClick={() => handlePriceTypeChange(value)}
                   >
                     {label}
@@ -1184,7 +1204,7 @@ export default function SalesInvoiceDialog({
                               </span>
                             ) : (
                               <span className="inline-flex gap-1">
-                                <button type="button" className="btn btn-ghost btn-xs btn-square text-info" title="Edit" onClick={() => handleEdit(i)}>
+                                <button type="button" className="btn btn-ghost btn-xs btn-square text-info" title="Edit" disabled={forceWholesale && loadingStock} onClick={() => handleEdit(i)}>
                                   <MdEdit size={15} />
                                 </button>
                                 <button type="button" className="btn btn-ghost btn-xs btn-square text-error" title="Remove" onClick={() => handleDelete(i)}>
