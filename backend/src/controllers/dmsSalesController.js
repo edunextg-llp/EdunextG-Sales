@@ -665,8 +665,7 @@ export const updateSale = async (req, res) => {
             return { ...line, gstPercent, ...lineMoney(line.qty, line.rate, gstPercent) };
         });
         const sum = (field) => money(rows.reduce((total, row) => total + num(row[field]), 0));
-        const exact = sum('amount');
-        const total = Math.round(exact);
+        const total = sum('amount');
         if (total < num(sale.paid_amount)) throw httpError(409, 'The new total cannot be below the payments already recorded.');
 
         if (stockChanged) {
@@ -679,7 +678,7 @@ export const updateSale = async (req, res) => {
                 taxable_amount = ?, gst_amount = ?, round_off = ?, total_amount = ?, balance_amount = ?,
                 edit_revision = edit_revision + 1 WHERE id = ?`,
             [invoiceNumber, saleDate, String(req.body.remarks || '').trim().slice(0, 1000) || null,
-                rows.length, sum('qty'), sum('taxable'), sum('gst'), money(total - exact), total, money(total - num(sale.paid_amount)), id]
+                rows.length, sum('qty'), sum('taxable'), sum('gst'), 0, total, money(total - num(sale.paid_amount)), id]
         );
         await connection.commit();
         return res.json({ message: `Invoice ${invoiceNumber} updated.` });
@@ -757,9 +756,7 @@ export const createSale = async (req, res) => {
             return { ...l, gstPercent, ...lineMoney(l.qty, l.rate, gstPercent) };
         });
         const sum = (field) => money(rows.reduce((t, r) => t + num(r[field]), 0));
-        const exact = sum('amount');
-        const total = Math.round(exact);
-        const roundOff = money(total - exact);
+        const total = sum('amount');
         const paid = Math.min(money(req.body?.paidAmount), total);
         if (paid < 0) throw httpError(400, 'Paid amount cannot be negative.');
         const mode = PAYMENT_MODES.includes(req.body?.paymentMode) ? req.body.paymentMode : 'cash';
@@ -781,7 +778,7 @@ export const createSale = async (req, res) => {
             [
                 invoiceNumber, saleDate, companyId, buyer.buyerType, buyer.distributorId, buyer.outletId, buyer.name,
                 buyer.code || null, buyer.contact || null, buyer.address || null, buyer.gstin,
-                rows.length, sum('qty'), sum('taxable'), sum('gst'), roundOff, total, paid, money(total - paid),
+                rows.length, sum('qty'), sum('taxable'), sum('gst'), 0, total, paid, money(total - paid),
                 String(req.body?.remarks || '').trim().slice(0, 1000) || null, byName(req.user),
             ]
         );

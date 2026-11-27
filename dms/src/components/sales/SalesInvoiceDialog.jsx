@@ -112,12 +112,11 @@ function stockForPostedEdit(items, billLines) {
   }
   return [...products.values()];
 }
-const draftKeyFor = ({ billNo, requisitionNumber, remarks, flatDiscount, roundOff, lineItems, pendingLine }) => JSON.stringify({
+const draftKeyFor = ({ billNo, requisitionNumber, remarks, flatDiscount, lineItems, pendingLine }) => JSON.stringify({
   invoiceNumber: billNo.trim(),
   requisitionNumber: requisitionNumber.trim(),
   remarks,
   flatDiscount,
-  roundOff,
   lineItems: lineItems.filter((item) => !item.isFree),
   pendingLine,
 });
@@ -153,7 +152,6 @@ export default function SalesInvoiceDialog({
   const [draft, setDraft] = useState({ ...emptyLineItem });
   const [editingIdx, setEditingIdx] = useState(null);
   const [flatDiscount, setFlatDiscount] = useState("");
-  const [roundOff, setRoundOff] = useState("0");
   const [remarks, setRemarks] = useState("");
   const [requisitionNumber, setRequisitionNumber] = useState("");
   const [orderOffer, setOrderOffer] = useState(null);
@@ -163,7 +161,7 @@ export default function SalesInvoiceDialog({
   const pendingDraftSave = useRef(null);
   const draftSaveNeedsRetry = useRef(false);
   const posting = useRef(false);
-  const draftKey = draftKeyFor({ billNo, requisitionNumber, remarks, flatDiscount, roundOff, lineItems, pendingLine: draft });
+  const draftKey = draftKeyFor({ billNo, requisitionNumber, remarks, flatDiscount, lineItems, pendingLine: draft });
   const latestDraftKey = useRef(draftKey);
   latestDraftKey.current = draftKey;
   const [stockItems, setStockItems] = useState([]);
@@ -235,7 +233,6 @@ export default function SalesInvoiceDialog({
     setDraft(pendingLine);
     setEditingIdx(null);
     setFlatDiscount(initialDraft?.flatDiscount || "");
-    setRoundOff(initialDraft?.roundOff || "0");
     setRemarks(initialDraft?.remarks || initialRemarks);
     setRequisitionNumber(initialDraft?.requisitionNumber || initialRequisitionNumber || "");
     setOrderOffer(null);
@@ -244,7 +241,6 @@ export default function SalesInvoiceDialog({
       requisitionNumber: initialDraft?.requisitionNumber || initialRequisitionNumber || "",
       remarks: initialDraft?.remarks || "",
       flatDiscount: initialDraft?.flatDiscount || "",
-      roundOff: initialDraft?.roundOff || "0",
       lineItems: initialDraft?.lineItems || [],
       pendingLine,
     });
@@ -472,8 +468,7 @@ export default function SalesInvoiceDialog({
     );
     if (postedEdit) {
       const grandTotal = roundMoney(base.netTotal);
-      const netPayable = Math.round(grandTotal);
-      return { ...base, flatDisc: 0, discountedTaxable: base.taxable, grandTotal, netPayable, round: roundMoney(netPayable - grandTotal) };
+      return { ...base, flatDisc: 0, discountedTaxable: base.taxable, grandTotal, netPayable: grandTotal, round: 0 };
     }
     const flatDiscountPercent = Math.min(100, Math.max(0, Number(flatDiscount) || 0));
     const priceFactor = 1 - flatDiscountPercent / 100;
@@ -489,9 +484,8 @@ export default function SalesInvoiceDialog({
     const cgst = discounted.gst / 2;
     const sgst = discounted.gst / 2;
     const gst = cgst + sgst;
-    const grandTotal = discountedTaxable + gst;
-    const round = Number(roundOff) || 0;
-    const netPayable = Math.max(0, grandTotal + round);
+    const grandTotal = roundMoney(discountedTaxable + gst);
+    const netPayable = grandTotal;
     return {
       ...base,
       flatDiscountPercent,
@@ -501,11 +495,11 @@ export default function SalesInvoiceDialog({
       sgst,
       gst,
       grandTotal,
-      round,
+      round: 0,
       netPayable,
       items: lineItems.length,
     };
-  }, [lineItems, flatDiscount, roundOff, postedEdit]);
+  }, [lineItems, flatDiscount, postedEdit]);
 
   /* ── available stock (minus already-added qty of same ERP) ── */
   const availableStock = useMemo(() => {
@@ -947,12 +941,12 @@ export default function SalesInvoiceDialog({
       const nextBillNo =
         typeof fetchNextBillNumber === "function" ? await fetchNextBillNumber() : "";
       savedDraftKey.current = draftKeyFor({
-        billNo: nextBillNo, requisitionNumber: "", remarks: "", flatDiscount: "", roundOff: "0", lineItems: [], pendingLine: emptyLineItem,
+        billNo: nextBillNo, requisitionNumber: "", remarks: "", flatDiscount: "", lineItems: [], pendingLine: emptyLineItem,
       });
       setDraftStatus("");
       setBillNo(nextBillNo);
       setLineItems([]); setDraft({ ...emptyLineItem }); setEditingIdx(null);
-      setFlatDiscount(""); setRoundOff("0"); setRemarks(""); setRequisitionNumber("");
+      setFlatDiscount(""); setRemarks(""); setRequisitionNumber("");
     }
     posting.current = false;
     if (!ok) void persistDraft(latestDraftKey.current);
@@ -1282,10 +1276,6 @@ export default function SalesInvoiceDialog({
                   value={flatDiscount}
                   onChange={(e) => setFlatDiscount(e.target.value)}
                 />
-              </label>
-              <label className="flex flex-col gap-1">
-                <span className="text-xs font-medium text-[#cfdcf3]">Round off</span>
-                <input type="number" className="input input-xs h-7 w-full bg-white tabular-nums text-[#0f1d33]" value={roundOff} onChange={(e) => setRoundOff(e.target.value)} />
               </label>
             </div>}
             <div className="rounded-box bg-[#0b1f44] px-3 py-2 text-white">

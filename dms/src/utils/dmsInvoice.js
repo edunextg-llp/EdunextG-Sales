@@ -21,8 +21,9 @@ const twoDigits = (n) => (n < 20 ? ONES[n] : `${TENS[Math.floor(n / 10)]}${n % 1
 const threeDigits = (n) =>
   [n >= 100 ? `${ONES[Math.floor(n / 100)]} Hundred` : "", twoDigits(n % 100)].filter(Boolean).join(" ");
 export function rupeesInWords(amount) {
-  let n = Math.round(num(amount));
-  if (!n) return "Zero Rupees Only";
+  const totalPaise = Math.round(num(amount) * 100);
+  const paise = totalPaise % 100;
+  let n = Math.floor(totalPaise / 100);
   const parts = [];
   const crore = Math.floor(n / 10000000);
   n %= 10000000;
@@ -34,7 +35,8 @@ export function rupeesInWords(amount) {
   if (lakh) parts.push(`${twoDigits(lakh)} Lakh`);
   if (thousand) parts.push(`${twoDigits(thousand)} Thousand`);
   if (n) parts.push(threeDigits(n));
-  return `${parts.join(" ")} Rupees Only`;
+  const rupees = parts.join(" ") || "Zero";
+  return `${rupees} Rupees${paise ? ` and ${twoDigits(paise)} Paise` : ""} Only`;
 }
 
 // Seller letterhead, as on the main site's Add Sales invoice (utils/printSalesInvoicePdf.js).
