@@ -46,7 +46,7 @@ export function orderCopyHtml(order, profile) {
       return `<tr><td class="c">${sr}</td><td>${name}</td><td class="mono">${esc(it.product_erp_id)}</td>
         <td class="r b">${qty(it.qty)}</td><td class="r"></td>
         <td class="r">${it.rate_before_gst == null ? "—" : orderRate(it.rate_before_gst)}</td>
-        <td class="r">${it.rate_before_gst == null ? "—" : orderRate(rateWithGst(it.rate_before_gst, it.gst_percent))}</td></tr>`;
+        <td class="r">${it.rate_before_gst == null ? "—" : rateWithGst(it.rate_before_gst, it.gst_percent).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td></tr>`;
     })
     .join("");
 

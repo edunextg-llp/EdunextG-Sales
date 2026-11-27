@@ -83,7 +83,7 @@ export function printInvoice({ sale, items = [] }) {
             <td class="num">${it.is_free ? qty(it.qty) : 0}</td>
             <td class="num">${qty(it.qty)}</td>
             <td class="num">${unitRate(beforeGst)}</td>
-            <td class="num">${unitRate(afterGst)}</td>
+            <td class="num">${money(afterGst)}</td>
             <td class="num">${rs(it.amount)}</td>
           </tr>`;
   });
