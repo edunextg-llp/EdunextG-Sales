@@ -49,7 +49,7 @@ async function itemsOf(orderIds, executor = db) {
     if (!orderIds.length) return new Map();
     const [rows] = await executor.query(
         `SELECT order_id, product_erp_id, product_name, variant_name, qty, is_free, free_for_erp_id, free_note,
-                scheme_buy_qty, scheme_free_qty
+                scheme_buy_qty, scheme_free_qty, rate_before_gst, gst_percent
          FROM distributor_order_items WHERE order_id IN (?) ORDER BY order_id, sort_order, id`,
         [orderIds]
     );
@@ -106,7 +106,7 @@ async function distributorOf(distributorId) {
 }
 
 // Retail / wholesale price per piece (before GST) of the lot that sells first, else the item's.
-// Each falls back to the other, then MRP / price per piece (as Create Bill does).
+// Wholesale orders require a configured wholesale price.
 function pricesOf(p) {
     const lot = (p.lots || []).find((l) => num(l.pcs) > 0) || {};
     const retail = num(lot.retail_price) || num(p.retail_price);
@@ -114,13 +114,12 @@ function pricesOf(p) {
     const last = num(lot.mrp) || num(p.mrp) || num(p.price_per_piece);
     return {
         retailPrice: retail || wholesale || last,
-        wholesalePrice: wholesale || retail || last,
-        // MRP per piece (incl. GST): what a CNF company's distributors order at.
+        wholesalePrice: wholesale,
+        // MRP per piece (incl. GST) for clients using the existing CNF order flow.
         mrp: num(lot.mrp) || num(p.mrp) || num(p.price_per_piece),
     };
 }
 
-// A CNF company's distributors do not choose Retail / Wholesale: their orders are at the product MRP.
 const isCnfCompany = (company) => String(company?.type || '').toLowerCase() === 'cnf';
 const PRICE_TYPES = ['retail', 'wholesale', 'mrp'];
 
@@ -196,8 +195,9 @@ export const portalCreateOrder = async (req, res) => {
     try {
         const { distributor, company } = await distributorOf(req.distributorId);
         const requested = Array.isArray(req.body?.items) ? req.body.items : [];
-        // CNF company: always MRP (no Retail / Wholesale choice). Others choose Retail or Wholesale.
-        const priceType = isCnfCompany(company) ? 'mrp' : req.body?.priceType;
+        const priceType = req.body?.priceType === 'wholesale'
+            ? 'wholesale'
+            : isCnfCompany(company) ? 'mrp' : req.body?.priceType;
         if (!PRICE_TYPES.includes(priceType) || (priceType === 'mrp' && !isCnfCompany(company))) {
             throw httpError(400, 'Choose Retail or Wholesale price.');
         }
@@ -216,11 +216,17 @@ export const portalCreateOrder = async (req, res) => {
         const lines = [...byErp.entries()].map(([key, qty], index) => {
             const product = stock.get(key);
             if (!product) throw httpError(400, `${key.toUpperCase()} is not an item of ${company.name}.`);
+            const wholesalePrice = pricesOf(product).wholesalePrice;
+            if (priceType === 'wholesale' && !(wholesalePrice > 0)) {
+                throw httpError(400, `Wholesale price is missing for ${product.variant_name || product.product_erp_id}.`);
+            }
             return {
                 productErpId: product.product_erp_id,
                 productName: product.product_name || null,
                 variantName: product.variant_name || null,
                 qty,
+                rateBeforeGst: priceType === 'wholesale' ? wholesalePrice : null,
+                gstPercent: priceType === 'wholesale' ? num(product.gst_percent) || 5 : null,
                 index,
             };
         });
@@ -258,11 +264,11 @@ export const portalCreateOrder = async (req, res) => {
             await connection.execute(
                 `INSERT INTO distributor_order_items
                     (order_id, product_erp_id, product_name, variant_name, qty, is_free, free_for_erp_id, free_note,
-                     scheme_buy_qty, scheme_free_qty, sort_order)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                     scheme_buy_qty, scheme_free_qty, sort_order, rate_before_gst, gst_percent)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
                 [result.insertId, l.productErpId, l.productName, l.variantName, l.qty,
                     l.freeNote ? 1 : 0, l.freeForErpId || null, l.freeNote || null,
-                    l.schemeBuyQty ?? null, l.schemeFreeQty ?? null, index]
+                    l.schemeBuyQty ?? null, l.schemeFreeQty ?? null, index, l.rateBeforeGst ?? null, l.gstPercent ?? null]
             );
         }
         const orderNumber = formatOrderNumber(result.insertId);

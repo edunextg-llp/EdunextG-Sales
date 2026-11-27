@@ -1,5 +1,5 @@
 // Order copy (A4, black and white) for a distributor order: order details, the distributor, and the ordered items
-// with their free goods. Only CNF distributors get it (Orders > My orders > Order copy).
+// with their free goods (Orders > My orders > Order copy).
 // Same layout as the Bawarchee app's order copy (Bawarchee-App/src/distributor/order-copy.ts).
 // Opens in a new window and starts the print dialog; choose "Save as PDF" there for a PDF.
 
@@ -24,7 +24,8 @@ const STATUS = {
 // Order price: Retail, Wholesale, or MRP (CNF company's distributors).
 export const priceTypeLabel = (type) => (type === "mrp" ? "MRP" : type === "retail" ? "Retail" : "Wholesale");
 
-export const isCnf = (profile) => String(profile?.companyType || "").toLowerCase() === "cnf";
+export const orderRate = (value) => num(value).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 4 });
+export const rateWithGst = (rate, gstPercent) => num(rate) * (1 + num(gstPercent) / 100);
 
 export function orderCopyHtml(order, profile) {
   const orderNo = order.order_number || `ORD${String(order.id).padStart(6, "0")}`;
@@ -38,11 +39,14 @@ export function orderCopyHtml(order, profile) {
       const name = esc(it.variant_name || it.product_name || it.product_erp_id);
       if (it.is_free) {
         return `<tr class="free"><td></td><td>&#8627; <b>FREE</b> ${name}${it.free_note ? `<div class="note">${esc(it.free_note)}</div>` : ""}</td>
-          <td class="mono">${esc(it.product_erp_id)}</td><td class="r"></td><td class="r">${qty(it.qty)}</td></tr>`;
+          <td class="mono">${esc(it.product_erp_id)}</td><td class="r"></td><td class="r">${qty(it.qty)}</td>
+          <td class="r">0.00</td><td class="r">0.00</td></tr>`;
       }
       sr += 1;
       return `<tr><td class="c">${sr}</td><td>${name}</td><td class="mono">${esc(it.product_erp_id)}</td>
-        <td class="r b">${qty(it.qty)}</td><td class="r"></td></tr>`;
+        <td class="r b">${qty(it.qty)}</td><td class="r"></td>
+        <td class="r">${it.rate_before_gst == null ? "—" : orderRate(it.rate_before_gst)}</td>
+        <td class="r">${it.rate_before_gst == null ? "—" : orderRate(rateWithGst(it.rate_before_gst, it.gst_percent))}</td></tr>`;
     })
     .join("");
 
@@ -126,9 +130,9 @@ export function orderCopyHtml(order, profile) {
   </div>
 
   <table class="items">
-    <thead><tr><th class="c" style="width:40px">#</th><th>Item</th><th style="width:130px">ERP ID</th><th class="r" style="width:90px">Qty (pcs)</th><th class="r" style="width:90px">Free (pcs)</th></tr></thead>
+    <thead><tr><th class="c">#</th><th>Item</th><th>ERP ID</th><th class="r">Qty (pcs)</th><th class="r">Free (pcs)</th><th class="r">Rate/Pc Before GST (Rs.)</th><th class="r">Rate/Pc After GST (Rs.)</th></tr></thead>
     <tbody>${rows}</tbody>
-    <tfoot><tr><td></td><td>Total · ${paid.length} item${paid.length === 1 ? "" : "s"}</td><td></td><td class="r">${qty(paidTotal)}</td><td class="r">${freeTotal ? qty(freeTotal) : ""}</td></tr></tfoot>
+    <tfoot><tr><td></td><td>Total · ${paid.length} item${paid.length === 1 ? "" : "s"}</td><td></td><td class="r">${qty(paidTotal)}</td><td class="r">${freeTotal ? qty(freeTotal) : ""}</td><td colspan="2"></td></tr></tfoot>
   </table>
 
   ${order.remarks ? `<div class="remarks"><b>Note:</b> ${esc(order.remarks)}</div>` : ""}

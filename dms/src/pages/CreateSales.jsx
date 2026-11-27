@@ -317,7 +317,9 @@ export default function CreateSales({ user }) {
             .map((l) => ({
               productErpId: l.productErpId,
               qty: num(l.qty),
-              rate: round2(num(l.rate) * discount * 1.05),
+              ...(l.rateBeforeGst
+                ? { rateBeforeGst: num(l.rate) * discount }
+                : { rate: round2(num(l.rate) * discount * 1.05) }),
               mrp: l.mrp,
               batchNumber: l.batchNumber,
               expiryDate: l.expiryDate,

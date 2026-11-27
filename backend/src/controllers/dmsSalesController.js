@@ -357,6 +357,8 @@ const draftLine = (line) => ({
     batchNumber: draftText(line?.batchNumber, 100),
     expiryDate: draftText(line?.expiryDate, 10),
     rateEdited: line?.rateEdited === true,
+    rateBeforeGst: line?.rateBeforeGst === true,
+    gstPercent: line?.gstPercent == null ? null : num(line.gstPercent),
 });
 
 export const saveSaleDraft = async (req, res) => {
@@ -730,12 +732,19 @@ export const createSale = async (req, res) => {
             const product = stock.get(key);
             if (!product) throw httpError(400, `${line.productErpId} is not in ${company.name}'s stock.`);
             const qty = num(line.qty);
-            const rate = money(line.rate);
+            const beforeGst = distributorOrderBilling && line.rateBeforeGst != null;
+            const enteredRate = Number(beforeGst ? line.rateBeforeGst : line.rate);
+            if (beforeGst && (!Number.isFinite(enteredRate) || enteredRate < 0 || enteredRate > 9999999999)) {
+                throw httpError(400, `Enter a valid wholesale rate for ${line.productErpId}.`);
+            }
+            const gstPercent = num(product.gst_percent) || 5;
+            const rateBeforeGst = beforeGst ? Number(enteredRate.toFixed(4)) : null;
+            const rate = beforeGst ? money(rateBeforeGst * (1 + gstPercent / 100)) : money(line.rate);
             if (rate < 0) throw httpError(400, `Enter a valid rate for ${line.productErpId}.`);
             const preferred = num(line.mrp) > 0 ? { mrp: line.mrp, batchNumber: line.batchNumber, expiryDate: line.expiryDate } : null;
             const { taken, short } = takeFromLots(lotsOf(key), qty, preferred);
             if (short > 0) throw httpError(400, `Not enough stock of ${product.variant_name || product.product_name}: ${qty - short} pcs left.`);
-            taken.forEach(({ lot, qty: lotQty }) => lines.push({ product, lot, qty: lotQty, rate, isFree: false }));
+            taken.forEach(({ lot, qty: lotQty }) => lines.push({ product, lot, qty: lotQty, rate, rateBeforeGst, isFree: false }));
         }
 
         // Free goods from the running schemes, rate 0, only what is in stock.
@@ -750,7 +759,7 @@ export const createSale = async (req, res) => {
 
         const rows = ordered.map((l) => {
             const gstPercent = num(l.product.gst_percent) || 5;
-            return { ...l, gstPercent, ...lineMoney(l.qty, l.rate, gstPercent) };
+            return { ...l, gstPercent, ...lineMoney(l.qty, l.rate, gstPercent, l.rateBeforeGst) };
         });
         const sum = (field) => money(rows.reduce((t, r) => t + num(r[field]), 0));
         const exact = sum('amount');

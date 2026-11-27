@@ -55,8 +55,9 @@ function calcLine(item, postedEdit = false) {
   }
   const total = qty * rate;
   const taxable = total;
-  const cgst = taxable * 0.025;
-  const sgst = taxable * 0.025;
+  const taxFraction = (item.rateBeforeGst ? item.gstPercent ?? 5 : 5) / 100;
+  const cgst = taxable * taxFraction / 2;
+  const sgst = cgst;
   const gst = cgst + sgst;
   const netTotal = taxable + gst;
   return { qty, rate, total, disc: 0, taxable, cgst, sgst, gst, netTotal };
@@ -477,8 +478,8 @@ export default function SalesInvoiceDialog({
     const flatDiscountPercent = Math.min(100, Math.max(0, Number(flatDiscount) || 0));
     const flatDisc = base.taxable * flatDiscountPercent / 100;
     const discountedTaxable = Math.max(0, base.taxable - flatDisc);
-    const cgst = discountedTaxable * 0.025;
-    const sgst = discountedTaxable * 0.025;
+    const cgst = base.cgst * (1 - flatDiscountPercent / 100);
+    const sgst = base.sgst * (1 - flatDiscountPercent / 100);
     const gst = cgst + sgst;
     const grandTotal = discountedTaxable + gst;
     const round = Number(roundOff) || 0;
@@ -729,6 +730,7 @@ export default function SalesInvoiceDialog({
       // Paid lines use live stock. The bill preview applies the terms stored with the order.
       (order.items || []).filter((item) => !item.is_free).forEach((item) => {
         const wanted = Number(item.qty) || 0;
+        const orderedRate = item.rate_before_gst == null ? null : Number(item.rate_before_gst);
         const name = item.variant_name || item.product_name || item.product_erp_id;
         const product = liveStock.find((p) => key(p.product_erp_id) === key(item.product_erp_id));
         if (!product) {
@@ -743,6 +745,8 @@ export default function SalesInvoiceDialog({
           variantName: product.variant_name || "",
           availableStock: Number(product.total_current_stock_in_pcs) || 0,
           priceType: pt,
+          rateBeforeGst: orderedRate != null,
+          gstPercent: Number(product.gst_percent) || 5,
           requisitionNumber: order.requisition_number,
         };
         const lots = remainingLots(product, rows);
@@ -759,7 +763,7 @@ export default function SalesInvoiceDialog({
             qty: String(qty),
             retailPrice: Number(product.retail_price) || 0,
             wholesalePrice: Number(product.wholesale_price) || 0,
-            rate: String(price),
+            rate: String(orderedRate ?? price),
           });
           return;
         }
@@ -774,11 +778,11 @@ export default function SalesInvoiceDialog({
           retailPrice: Number(lot.retail_price) || Number(product.retail_price) || 0,
           wholesalePrice: Number(lot.wholesale_price) || Number(product.wholesale_price) || 0,
           // Same fallbacks as adding the item by hand: wholesale, retail, then MRP / price per piece.
-          rate: String(atMrp
+          rate: String(orderedRate ?? (atMrp
             ? Number(lot.mrp) || Number(product.mrp) || Number(product.price_per_piece) || 0
             : lotPrice(lot, pt)
             || pick(Number(product.retail_price), Number(product.wholesale_price))
-            || Number(lot.mrp) || Number(product.mrp) || Number(product.price_per_piece) || 0
+            || Number(lot.mrp) || Number(product.mrp) || Number(product.price_per_piece) || 0)
           ),
         }));
       });
@@ -1125,7 +1129,7 @@ export default function SalesInvoiceDialog({
                 Total <b className="tabular-nums text-base-content">₹{fmt(draftCalc.total)}</b>
               </span>
               <span>
-                {postedEdit ? "GST" : "GST 5%"} <b className="tabular-nums text-base-content">₹{fmt(draftCalc.gst)}</b>
+                GST <b className="tabular-nums text-base-content">₹{fmt(draftCalc.gst)}</b>
               </span>
               <span>
                 Net <b className="tabular-nums text-base-content">₹{fmt(draftCalc.netTotal)}</b>
@@ -1239,8 +1243,8 @@ export default function SalesInvoiceDialog({
               {[
                 ...(!postedEdit ? [["Amount", totals.amount], ["Discount", totals.flatDisc]] : []),
                 ["Taxable", totals.discountedTaxable],
-                [postedEdit ? "CGST" : "CGST 2.5%", totals.cgst],
-                [postedEdit ? "SGST" : "SGST 2.5%", totals.sgst],
+                ["CGST", totals.cgst],
+                ["SGST", totals.sgst],
               ].map(([k, v]) => (
                 <div key={k} className="flex justify-between py-0.5 text-[#cfdcf3]">
                   <span>{k}</span>

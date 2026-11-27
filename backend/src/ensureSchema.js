@@ -1745,6 +1745,8 @@ export async function ensureSchema() {
                 free_note VARCHAR(255) NULL,
                 scheme_buy_qty INT NULL,
                 scheme_free_qty INT NULL,
+                rate_before_gst DECIMAL(14, 4) NULL,
+                gst_percent DECIMAL(5, 2) NULL,
                 sort_order INT NOT NULL DEFAULT 0,
                 FOREIGN KEY (order_id) REFERENCES distributor_orders(id) ON DELETE CASCADE,
                 INDEX idx_distributor_order_items_order (order_id)
@@ -1765,6 +1767,13 @@ export async function ensureSchema() {
         for (const column of ['scheme_buy_qty', 'scheme_free_qty']) {
             try {
                 await connection.query(`ALTER TABLE distributor_order_items ADD COLUMN ${column} INT NULL`);
+            } catch (error) {
+                if (error.code !== 'ER_DUP_FIELDNAME') throw error;
+            }
+        }
+        for (const [column, type] of [['rate_before_gst', 'DECIMAL(14, 4)'], ['gst_percent', 'DECIMAL(5, 2)']]) {
+            try {
+                await connection.query(`ALTER TABLE distributor_order_items ADD COLUMN ${column} ${type} NULL`);
             } catch (error) {
                 if (error.code !== 'ER_DUP_FIELDNAME') throw error;
             }

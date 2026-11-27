@@ -38,7 +38,7 @@ import { EmptyState, PageHeader } from "@/components/common";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { qty, rupees, showDate } from "@/lib/format";
-import { isCnf, printOrderCopy, priceTypeLabel } from "@/lib/orderCopy";
+import { orderRate, printOrderCopy, priceTypeLabel, rateWithGst } from "@/lib/orderCopy";
 
 // Orders. "New order": the company's items in stock (left) and the order being built (right).
 // Items with a free goods offer show it ("Buy 100 pcs, get 30 pcs <item> free"), and the order
@@ -102,9 +102,6 @@ function NewOrder({ onPlaced }) {
   const [onlyOffers, setOnlyOffers] = useState(false);
   const [cart, setCart] = useState({}); // productErpId -> qty string
   const [remarks, setRemarks] = useState("");
-  // Retail or wholesale price for the whole order (Wholesale unless changed). A CNF company's
-  // distributors have no choice: their orders are at the product MRP (data.mrpOnly).
-  const [chosenPrice, setPriceType] = useState("wholesale");
   const [busy, setBusy] = useState(false);
   const cartRef = useRef(null);
 
@@ -112,7 +109,7 @@ function NewOrder({ onPlaced }) {
     setData(null);
     setError("");
     api("/order-items")
-      .then((d) => setData({ companyName: d.companyName || "", items: d.items || [], schemes: d.schemes || [], mrpOnly: Boolean(d.mrpOnly) }))
+      .then((d) => setData({ companyName: d.companyName || "", items: d.items || [], schemes: d.schemes || [] }))
       .catch((err) => {
         setData({ companyName: "", items: [], schemes: [] });
         setError(err.message);
@@ -121,8 +118,7 @@ function NewOrder({ onPlaced }) {
   useEffect(load, []);
 
   const items = data?.items || [];
-  const mrpOnly = Boolean(data?.mrpOnly);
-  const priceType = mrpOnly ? "mrp" : chosenPrice;
+  const priceType = "wholesale";
   const schemeOf = useMemo(() => new Map((data?.schemes || []).map((s) => [key(s.productErpId), s])), [data]);
   const itemByKey = useMemo(() => new Map(items.map((it) => [key(it.productErpId), it])), [items]);
 
@@ -151,17 +147,10 @@ function NewOrder({ onPlaced }) {
   );
   const totalPcs = lines.reduce((t, l) => t + l.pcs, 0);
   const totalFree = lines.reduce((t, l) => t + l.free, 0);
-  const priceOf = (it) =>
-    (priceType === "retail" ? it.retailPrice : priceType === "wholesale" ? it.wholesalePrice : priceType === "mrp" ? it.mrp : 0) || 0;
-  // Estimate only: the bill sets the final rates (lot by lot) and free goods.
-  // Retail / wholesale are before GST; MRP already includes GST.
-  const gross = lines.reduce((t, l) => t + l.pcs * priceOf(l.item), 0);
-  const estGst = lines.reduce((t, l) => {
-    const amount = l.pcs * priceOf(l.item);
-    const rate = (l.item.gstPercent || 5) / 100;
-    return t + (mrpOnly ? amount - amount / (1 + rate) : amount * rate);
-  }, 0);
-  const estTaxable = mrpOnly ? gross - estGst : gross;
+  const priceOf = (item) => Number(item.wholesalePrice) || 0;
+  const estTaxable = lines.reduce((total, line) => total + line.pcs * priceOf(line.item), 0);
+  const estGst = lines.reduce((total, line) =>
+    total + line.pcs * priceOf(line.item) * ((line.item.gstPercent || 5) / 100), 0);
 
   const setQty = (erp, v) => setCart((c) => ({ ...c, [erp]: v }));
   const step = (it, by) => {
@@ -171,7 +160,7 @@ function NewOrder({ onPlaced }) {
 
   const submit = async () => {
     if (!lines.length) return toast.error("Enter a quantity for at least one item.");
-    if (!priceType) return toast.error("Choose Retail or Wholesale price.");
+    if (lines.some((line) => priceOf(line.item) <= 0)) return toast.error("A selected item is missing its wholesale price.");
     setBusy(true);
     try {
       const res = await api("/orders", {
@@ -207,47 +196,6 @@ function NewOrder({ onPlaced }) {
     <div className="grid items-start gap-4 pb-20 lg:grid-cols-[minmax(0,1fr)_360px] lg:pb-0">
       {/* Products */}
       <div className="grid min-w-0 gap-4">
-        {mrpOnly ? (
-          <Card className="gap-0 py-0">
-            <div className="flex flex-wrap items-center gap-3 p-3">
-              <div className="min-w-0 flex-1">
-                <div className="font-medium">Price</div>
-                <div className="text-xs text-muted-foreground">The order is billed at the product MRP. Rates are per piece, incl. GST.</div>
-              </div>
-              <Badge variant="outline">MRP</Badge>
-            </div>
-          </Card>
-        ) : (
-          <Card className={`gap-0 py-0 ${priceType ? "" : "ring-2 ring-amber-500/60"}`}>
-            <div className="flex flex-wrap items-center gap-3 p-3">
-              <div className="min-w-0 flex-1">
-                <div className="font-medium">Price</div>
-                <div className="text-xs text-muted-foreground">
-                  {priceType ? "The order is billed at this price. Rates are per piece, before GST." : "Choose the price for this order first."}
-                </div>
-              </div>
-              <div className="inline-flex rounded-lg border p-0.5">
-                {[
-                  ["retail", "Retail price"],
-                  ["wholesale", "Wholesale price"],
-                ].map(([value, label]) => (
-                  <Button
-                    key={value}
-                    type="button"
-                    size="sm"
-                    variant={priceType === value ? "default" : "ghost"}
-                    className="rounded-md"
-                    onClick={() => setPriceType(value)}
-                    aria-pressed={priceType === value}
-                  >
-                    {priceType === value && <CheckCircle2 />}
-                    {label}
-                  </Button>
-                ))}
-              </div>
-            </div>
-          </Card>
-        )}
         <Card className="gap-0 py-0">
           <div className="flex flex-wrap items-center gap-2 border-b p-3">
             <div className="relative min-w-56 flex-1">
@@ -287,15 +235,11 @@ function NewOrder({ onPlaced }) {
                         <span className="font-mono">{it.productErpId}</span>
                         {it.pcsPerBox > 1 && <span>{it.pcsPerBox} pcs/box</span>}
                         <span>In stock {qty(it.available)} pcs</span>
-                        {priceType ? (
+                        {priceOf(it) > 0 ? (
                           <span className="font-medium text-foreground">
-                            {rupees(priceOf(it))}/pc <span className="font-normal text-muted-foreground">{priceTypeLabel(priceType).toLowerCase()}</span>
+                            ₹{orderRate(priceOf(it))}/pc before GST · ₹{orderRate(rateWithGst(priceOf(it), it.gstPercent))}/pc after GST
                           </span>
-                        ) : (
-                          <span>
-                            Retail {rupees(it.retailPrice)} · Wholesale {rupees(it.wholesalePrice)}
-                          </span>
-                        )}
+                        ) : <span>Wholesale price unavailable</span>}
                       </div>
                       {scheme && (
                         <div className="mt-1.5 flex flex-wrap items-center gap-2">
@@ -423,7 +367,7 @@ function NewOrder({ onPlaced }) {
               {busy ? <Loader2 className="animate-spin" /> : <Send />} Submit order
             </Button>
           </div>
-          <p className="text-xs text-muted-foreground">{priceType ? "Amounts are an estimate. " : "Choose Retail or Wholesale price to submit. "}Rates and free goods are confirmed on the bill, by the prices, offers and stock on that day.</p>
+          <p className="text-xs text-muted-foreground">The order copy records your wholesale rates and GST. The tax invoice confirms the final billed amounts and free goods.</p>
         </CardContent>
       </Card>
 
@@ -519,6 +463,11 @@ function OrderCard({ order, sr, onCancel, profile }) {
                   <span className="min-w-0">
                     <span className="mr-2 inline-block w-5 text-right tabular-nums text-muted-foreground">{itemNo[i]}.</span>
                     <span className="font-medium">{it.variant_name || it.product_name || it.product_erp_id}</span>
+                    {it.rate_before_gst != null && (
+                      <span className="ml-7 block text-xs text-muted-foreground">
+                        ₹{orderRate(it.rate_before_gst)}/pc before GST · ₹{orderRate(rateWithGst(it.rate_before_gst, it.gst_percent))}/pc after GST
+                      </span>
+                    )}
                     <span className="ml-2 font-mono text-xs text-muted-foreground">{it.product_erp_id}</span>
                   </span>
                   <b className="shrink-0 tabular-nums">{qty(it.qty)} pcs</b>
@@ -527,10 +476,7 @@ function OrderCard({ order, sr, onCancel, profile }) {
             )}
           </ul>
           {order.remarks && <p className="mt-2 text-xs text-muted-foreground">Your note: “{order.remarks}”</p>}
-          {(order.status === "pending" || isCnf(profile)) && (
-            <div className="mt-3 flex flex-wrap justify-end gap-2">
-              {/* A4 order copy: CNF distributors only. */}
-              {isCnf(profile) && (
+          <div className="mt-3 flex flex-wrap justify-end gap-2">
                 <Button
                   variant="outline"
                   size="sm"
@@ -544,14 +490,12 @@ function OrderCard({ order, sr, onCancel, profile }) {
                 >
                   <Printer /> Order copy (A4)
                 </Button>
-              )}
               {order.status === "pending" && (
                 <Button variant="destructive" size="sm" onClick={() => onCancel(order)}>
                   Cancel order
                 </Button>
               )}
-            </div>
-          )}
+          </div>
         </CardContent>
       )}
     </Card>
