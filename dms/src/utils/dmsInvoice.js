@@ -141,6 +141,7 @@ function cnfAmountBreakdown(sale, tax) {
     row("Taxable subtotal", "", sale.taxable_amount),
     row("Output CGST", rate, tax.cgst),
     row("Output SGST", rate, tax.sgst),
+    num(sale.round_off) ? row("Subtotal incl. GST", "", num(sale.total_amount) - num(sale.round_off)) : "",
     num(sale.round_off) ? row("Round off", "", sale.round_off) : "",
   ].join("");
 }
@@ -190,7 +191,9 @@ export function printInvoice({ sale, items = [], payments = [] }) {
   const gst = num(sale.gst_amount);
   const beforeRound = num(sale.total_amount) - num(sale.round_off);
 
-  const rowHtml = items.map((it, i) => {
+  let serial = 0;
+  const rowHtml = items.map((it) => {
+    const serialLabel = Number(it.is_free) ? "" : ++serial;
     const name = `${it.product_name || "Item"}${it.variant_name ? `, ${it.variant_name}` : ""}`;
     const lot = [it.mrp ? `MRP ${money(it.mrp)}` : "", it.batch_number, it.expiry_date ? `Exp ${day(it.expiry_date)}` : ""].filter(Boolean).join(" · ");
     const pieces = num(it.qty);
@@ -198,7 +201,7 @@ export function printInvoice({ sale, items = [], payments = [] }) {
     const afterGst = it.is_free ? 0 : it.rate;
     return `
           <tr class="invoice-item">
-            <td class="center">${i + 1}</td>
+            <td class="center">${serialLabel}</td>
             <td>${it.is_free ? "&#8627; " : ""}${esc(name)}${it.is_free ? " <b>(FREE)</b>" : ""}${it.is_free && it.free_note ? `<div class="sub"><b>${esc(it.free_note)}</b></div>` : ""}${lot ? `<div class="sub">${esc(lot)}</div>` : ""}</td>
             <td class="center">${esc(it.hsn_code || "--")}</td>
             <td class="center">PCS</td>

@@ -206,6 +206,7 @@ router.get('/dms-sales/:id/edit-offers', requireRole('admin'), dmsSales.getSaleE
 router.get('/companies/:id/invoice-print-details', requireRole('admin'), dmsSales.getCompanyInvoicePrintDetails);
 router.put('/companies/:id/invoice-print-details', requireRole('admin'), dmsSales.updateCompanyInvoicePrintDetails);
 router.put('/dms-sales/:id', requireRole('admin'), dmsSales.updateSale);
+router.post('/dms-sales/:id/restore-paise', requireRole('admin'), dmsSales.restoreSalePaise);
 router.post('/dms-sales', requirePermission('create_sales'), dmsSales.createSale);
 router.post('/dms-sales/:id/payments', requirePermission('create_sales'), dmsSales.addPayment);
 router.post('/dms-sales/:id/cancel', requirePermission('create_sales'), dmsSales.cancelSale);

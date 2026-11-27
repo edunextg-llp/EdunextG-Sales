@@ -2,7 +2,7 @@ import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } fro
 import { useLocation, useNavigate } from "react-router-dom";
 import { MdAdd, MdEdit, MdPrint, MdRefresh, MdSearch } from "react-icons/md";
 import { apiFetch } from "../auth";
-import { CompanyPicker, ExcelButton, Field, PageHeader, readJson, useCompanies, useFlash } from "../components/ui";
+import { CompanyPicker, ConfirmDialog, ExcelButton, Field, PageHeader, readJson, useCompanies, useFlash } from "../components/ui";
 import SalesInvoiceDialog from "../components/sales/SalesInvoiceDialog";
 import { getInvoicePrefix } from "../utils/invoicePrefix";
 import { downloadExcel } from "../utils/excel";
@@ -70,6 +70,8 @@ export default function CreateSales({ user }) {
   const [openingSale, setOpeningSale] = useState(null);
   const [editingSale, setEditingSale] = useState(null);
   const [editingSaleDate, setEditingSaleDate] = useState("");
+  const [roundingSale, setRoundingSale] = useState(null);
+  const [restoringPaise, setRestoringPaise] = useState(false);
   const [invoiceSettingsCompanyId, setInvoiceSettingsCompanyId] = useState(null);
 
   // Company: its distributors and outlets.
@@ -388,6 +390,23 @@ export default function CreateSales({ user }) {
       printInvoice(body);
     } catch (err) {
       show(false, err.message);
+    }
+  };
+
+  const restorePaise = async () => {
+    setRestoringPaise(true);
+    try {
+      const response = await apiFetch(`/staff/dms-sales/${roundingSale.id}/restore-paise`, { method: "POST" });
+      const body = await readJson(response);
+      if (!response.ok) throw new Error(body.error || "Could not remove round-off.");
+      setRoundingSale(null);
+      show(true, body.message);
+      void loadSales();
+    } catch (err) {
+      setRoundingSale(null);
+      show(false, err.message);
+    } finally {
+      setRestoringPaise(false);
     }
   };
 
@@ -772,6 +791,11 @@ export default function CreateSales({ user }) {
                             <MdEdit size={15} /> {openingSale === s.id ? "Opening…" : "Edit"}
                           </button>
                         )}
+                        {isAdmin && !cancelled && num(s.round_off) !== 0 && (
+                          <button type="button" className="btn btn-ghost btn-xs" onClick={() => setRoundingSale(s)}>
+                            Remove round-off
+                          </button>
+                        )}
                         <button type="button" className="btn btn-ghost btn-xs" title="Print / PDF" onClick={() => openPrint(s.id)}>
                           <MdPrint size={15} /> Print
                         </button>
@@ -814,6 +838,13 @@ export default function CreateSales({ user }) {
         <Suspense fallback={<p role="status">Loading invoice editor…</p>}>
           <CnfInvoicePrintDialog key={invoiceSettingsCompanyId} companyId={invoiceSettingsCompanyId} onClose={() => setInvoiceSettingsCompanyId(null)} />
         </Suspense>
+      )}
+      {roundingSale && (
+        <ConfirmDialog title="Remove invoice round-off" confirmLabel="Remove round-off" busy={restoringPaise}
+          onCancel={() => setRoundingSale(null)} onConfirm={restorePaise}>
+          Bill {roundingSale.invoice_number} will change from {rupees(roundingSale.total_amount)} to{" "}
+          {rupees(round2(num(roundingSale.total_amount) - num(roundingSale.round_off)))}. The balance due will be recalculated.
+        </ConfirmDialog>
       )}
       {flashNode}
     </div>

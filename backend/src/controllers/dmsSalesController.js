@@ -874,6 +874,35 @@ export const createSale = async (req, res) => {
 };
 
 // A later payment against a bill's balance.
+export const restoreSalePaise = async (req, res) => {
+    const connection = await db.getConnection();
+    try {
+        await connection.beginTransaction();
+        const [[sale]] = await connection.execute(
+            'SELECT status, total_amount, paid_amount, round_off FROM dms_sales WHERE id = ? FOR UPDATE',
+            [parseId(req.params.id) || 0]
+        );
+        if (!sale || sale.status !== 'active') throw httpError(404, 'Active bill not found.');
+        const total = money(num(sale.total_amount) - num(sale.round_off));
+        const balance = money(total - num(sale.paid_amount));
+        if (balance < 0) throw httpError(409, 'The corrected total is lower than the recorded payments.');
+        if (num(sale.round_off)) {
+            await connection.execute(
+                `UPDATE dms_sales SET total_amount = ?, balance_amount = ?, round_off = 0,
+                 edit_revision = edit_revision + 1 WHERE id = ?`,
+                [total, balance, parseId(req.params.id)]
+            );
+        }
+        await connection.commit();
+        return res.json({ total, balance, message: 'Invoice total now includes paise.' });
+    } catch (error) {
+        await connection.rollback().catch(() => {});
+        return sendError(res, error, 'Unable to restore paise on this bill.');
+    } finally {
+        connection.release();
+    }
+};
+
 export const addPayment = async (req, res) => {
     const connection = await db.getConnection();
     try {
