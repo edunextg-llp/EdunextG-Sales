@@ -208,7 +208,7 @@ export default function SalesInvoiceDialog({
   // Free lines follow the paid lines: for every full "buy" qty of an item, its free pieces
   // are added at rate 0 (taken from stock lot by lot; only what is in stock).
   useEffect(() => {
-    if (!open || editMode) return;
+    if (!open || editMode || loadingStock) return;
     const paid = lineItems.filter((it) => !it.isFree);
     const bought = new Map();
     paid.forEach((it) => bought.set(it.productErpId, (bought.get(it.productErpId) || 0) + (Number(it.qty) || 0)));
@@ -222,7 +222,9 @@ export default function SalesInvoiceDialog({
       if (!product) return;
       const lots = remainingLots(product, [...paid, ...free]);
       const wanted = sets * scheme.free_qty;
-      const parts = lots.length ? takeFromLots(lots, wanted).taken : [{ lot: { mrp: product.mrp }, qty: wanted }];
+      // Free goods must come from physical stock lots; never create a free line from
+      // catalogue price data when no stock lot is available.
+      const parts = lots.length ? takeFromLots(lots, wanted).taken : [];
       parts.forEach(({ lot, qty: freeQty }) => free.push({
         ...emptyLineItem,
         productErpId: product.product_erp_id,
@@ -244,7 +246,7 @@ export default function SalesInvoiceDialog({
     const current = lineItems.filter((it) => it.isFree);
     if (sig(current) === sig(free)) return;
     setLineItems([...paid, ...free]);
-  }, [open, editMode, lineItems, freeSchemes, stockItems]);
+  }, [open, editMode, loadingStock, lineItems, freeSchemes, stockItems]);
 
   /* ── derived strings ── */
   // const saleTo  = outlet ? `${outlet.outlet_name || ""}${outlet.outlet_erp_id ? `, Class: 0 Section: 0 Adm. No. : ${outlet.outlet_erp_id}` : ""}` : "";

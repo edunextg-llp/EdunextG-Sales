@@ -1,4 +1,5 @@
 import db from '../config/db.js';
+import PhysicalStockModel from '../models/physicalStockModel.js';
 
 // DMS Sales > Free Goods. A scheme is set per company, item and date range: "buy 100 pcs, get 30 pcs
 // free". On an order (requisition) or a bill (Add Sales) the free pieces come as their own
@@ -80,6 +81,17 @@ async function companyItems(companyId, executor = db) {
     return rows;
 }
 
+async function stockedProductKeys(companyId, executor = db) {
+    const [[dmsImport]] = await executor.execute(
+        'SELECT id FROM dms_stock_imports WHERE company_id = ? ORDER BY id DESC LIMIT 1',
+        [companyId]
+    );
+    if (!dmsImport) return new Set();
+    const items = await PhysicalStockModel.getCurrentItemsByDmsImportId(dmsImport.id, 2000, executor);
+    return new Set(items.filter((item) => item.total_physical_stock_in_pcs > 0)
+        .map((item) => erpKey(item.product_erp_id)));
+}
+
 const itemName = (item) => item?.variant_name || item?.sku_name || item?.product_erp_id || '';
 
 // A dated scheme takes precedence over an existing undated offer for the same item.
@@ -124,6 +136,15 @@ const readScheme = async (body, companyId, current, executor) => {
     if (!item) throw httpError(400, 'Choose an item of this company.');
     const freeItem = body?.freeProductErpId ? find(body.freeProductErpId) : item;
     if (!freeItem) throw httpError(400, 'Choose the free item from this company.');
+    const itemKey = erpKey(item.product_erp_id);
+    const freeKey = erpKey(freeItem.product_erp_id);
+    const itemChanged = itemKey !== erpKey(current?.product_erp_id);
+    const freeChanged = freeKey !== erpKey(current?.free_product_erp_id || current?.product_erp_id);
+    if (itemChanged || freeChanged) {
+        const stocked = await stockedProductKeys(companyId, executor);
+        if (itemChanged && !stocked.has(itemKey)) throw httpError(400, 'Choose an item with physical stock.');
+        if (freeChanged && !stocked.has(freeKey)) throw httpError(400, 'Choose a free item with physical stock.');
+    }
     const buyQty = Math.floor(Number(body?.buyQty));
     const freeQty = Math.floor(Number(body?.freeQty));
     if (!(buyQty > 0)) throw httpError(400, 'Enter how many pieces they must buy.');
@@ -191,7 +212,8 @@ export const getItems = async (req, res) => {
     try {
         const companyId = parseId(req.query.companyId);
         if (!companyId) throw httpError(400, 'Select a company.');
-        return res.json({ items: await companyItems(companyId) });
+        const [items, stocked] = await Promise.all([companyItems(companyId), stockedProductKeys(companyId)]);
+        return res.json({ items: items.filter((item) => stocked.has(erpKey(item.product_erp_id))) });
     } catch (error) {
         return sendError(res, error, 'Unable to load items.');
     }

@@ -175,7 +175,7 @@ export const createDistributor = async (req, res) => {
         const loginId = formatDistributorLoginId(result.insertId);
         await connection.execute('UPDATE distributors SET login_id = ? WHERE id = ?', [loginId, result.insertId]);
         await connection.commit();
-        return res.status(201).json({
+        return res.set('Cache-Control', 'no-store').status(201).json({
             message: `${form.distributorName} added under ${companies[0].name} (${typeLabel(sellerType)}). Login ID ${loginId}.`,
             distributor: await getById(result.insertId),
             // Shown once in the "Login details" box; can be viewed again any time.
@@ -227,8 +227,7 @@ export const getDistributorCredentials = async (req, res) => {
         const [rows] = await db.execute('SELECT login_id, password_encrypted FROM distributors WHERE id = ?', [id || 0]);
         if (!rows.length) throw httpError(404, 'Distributor not found.');
         const password = decryptPassword(rows[0].password_encrypted);
-        if (!password) throw httpError(409, 'The saved password cannot be read. Make a new password.');
-        return res.json({ credentials: { loginId: rows[0].login_id, password } });
+        return res.set('Cache-Control', 'no-store').json({ credentials: { loginId: rows[0].login_id, password } });
     } catch (error) {
         return sendError(res, error, 'Unable to load the login details.');
     }
@@ -244,7 +243,7 @@ export const resetDistributorPassword = async (req, res) => {
             'UPDATE distributors SET password_hash = ?, password_encrypted = ? WHERE id = ?',
             [await bcrypt.hash(password, 10), encryptPassword(password), id]
         );
-        return res.json({
+        return res.set('Cache-Control', 'no-store').json({
             message: `New password made for ${distributor.distributor_name}.`,
             credentials: { loginId: distributor.login_id, password },
         });

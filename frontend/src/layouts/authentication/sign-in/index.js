@@ -59,6 +59,24 @@ function Basic() {
     fetchCaptcha();
   }, [fetchCaptcha]);
 
+  useEffect(() => {
+    const opener = window.opener;
+    if (!opener || new URLSearchParams(window.location.search).get("distributorLogin") !== "1") return undefined;
+
+    const origin = window.location.origin;
+    const prefill = (event) => {
+      if (event.origin !== origin || event.source !== opener || event.data?.type !== "distributor-login-prefill") return;
+      window.removeEventListener("message", prefill);
+      window.opener = null;
+      setEmail(event.data.loginId || "");
+      setPassword(event.data.password || "");
+      if (!event.data.password) setError("The saved password is unavailable. Enter it manually or reset it in Add Distributor.");
+    };
+    window.addEventListener("message", prefill);
+    opener.postMessage({ type: "distributor-login-ready" }, origin);
+    return () => window.removeEventListener("message", prefill);
+  }, []);
+
   // Tick once a second while the OTP screen is open (expiry + resend timers).
   useEffect(() => {
     if (!otpStep) return undefined;

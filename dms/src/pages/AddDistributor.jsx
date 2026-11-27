@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { MdContentCopy, MdEdit, MdKey, MdLockReset, MdSearch, MdVisibility } from "react-icons/md";
-import { apiFetch } from "../auth";
+import { apiFetch, SIGN_IN_URL } from "../auth";
 import { CompanyPicker, ConfirmDialog, EditDialog, ExcelButton, Field, PageHeader, readJson, useCompanies, useFlash } from "../components/ui";
 import { downloadExcel } from "../utils/excel";
 import { INDIAN_STATES, lookupPincode, matchState } from "../utils/pincode";
@@ -335,7 +335,7 @@ function DistributorFields({ form, setForm }) {
 }
 
 // Login ID + password, with copy buttons.
-function CredentialsDialog({ data, onClose, onCopied }) {
+function CredentialsDialog({ data, onClose, onCopied, onReset }) {
   if (!data) return null;
   const { name, loginId, password, fresh } = data;
   const copy = async (value, what) => onCopied((await copyText(value)) ? `${what} copied.` : "Copy failed; select and copy it.");
@@ -356,21 +356,27 @@ function CredentialsDialog({ data, onClose, onCopied }) {
           ].map(([label, value]) => (
             <div key={label} className="flex items-center gap-2 rounded-box border border-base-300 bg-base-200/60 px-3 py-2">
               <span className="w-20 text-xs text-base-content/60">{label}</span>
-              <span className="flex-1 select-all font-mono text-base font-semibold tracking-wide">{value}</span>
-              <button type="button" className="btn btn-ghost btn-xs btn-square" title={`Copy ${label}`} onClick={() => copy(value, label)}>
+              <span className="flex-1 select-all font-mono text-base font-semibold tracking-wide">{value || "Unavailable"}</span>
+              {value && <button type="button" className="btn btn-ghost btn-xs btn-square" title={`Copy ${label}`} onClick={() => copy(value, label)}>
                 <MdContentCopy size={15} />
-              </button>
+              </button>}
             </div>
           ))}
         </div>
+        {!password && <p className="mt-3 text-sm text-base-content/70">The saved password can’t be opened with the current server key.</p>}
         <div className="modal-action">
-          <button
+          {password && loginId && <button
             type="button"
             className="btn btn-soft btn-primary btn-sm"
             onClick={() => copy(`Login ID: ${loginId}\nPassword: ${password}`, "Login ID and password")}
           >
             <MdContentCopy size={15} /> Copy both
-          </button>
+          </button>}
+          {!password && data.row && (
+            <button type="button" className="btn btn-outline btn-sm" onClick={() => onReset(data.row)}>
+              <MdLockReset size={16} /> Make a new password
+            </button>
+          )}
           <button type="button" className="btn btn-primary btn-sm" onClick={onClose}>
             Done
           </button>
@@ -463,16 +469,44 @@ export default function AddDistributor() {
     return undefined;
   };
 
-  const viewLogin = async (row) => {
+  const viewLogin = async (row, openSignIn = false) => {
+    const origin = window.location.origin;
+    const loginWindow = openSignIn ? window.open(`${SIGN_IN_URL}?distributorLogin=1`, "_blank") : null;
+    let stopListening = () => {};
+    const ready = loginWindow && new Promise((resolve) => {
+      const receiveReady = (event) => {
+        if (event.origin !== origin || event.source !== loginWindow || event.data?.type !== "distributor-login-ready") return;
+        stopListening();
+        resolve(true);
+      };
+      const timeout = window.setTimeout(() => {
+        stopListening();
+        resolve(false);
+      }, 15000);
+      stopListening = () => {
+        window.clearTimeout(timeout);
+        window.removeEventListener("message", receiveReady);
+      };
+      window.addEventListener("message", receiveReady);
+    });
     setBusyId(row.id);
     try {
       const res = await apiFetch(`/staff/distributors/${row.id}/credentials`);
       const body = await readJson(res);
       if (!res.ok) throw new Error(body.error || "Could not load the login details.");
-      setCreds({ name: row.distributor_name, ...body.credentials });
+      const { loginId, password } = body.credentials;
+      if (await ready && !loginWindow.closed) {
+        loginWindow.postMessage({ type: "distributor-login-prefill", loginId, password }, origin);
+        if (password) return;
+      } else if (openSignIn) {
+        show(false, "Could not open the prefilled sign-in page. You can copy the login details below.");
+      }
+      setCreds({ name: row.distributor_name, row, loginId, password });
     } catch (err) {
+      loginWindow?.close();
       show(false, err.message);
     } finally {
+      stopListening();
       setBusyId(null);
     }
   };
@@ -717,10 +751,19 @@ export default function AddDistributor() {
                         type="button"
                         className="btn btn-soft btn-primary btn-xs"
                         disabled={busyId === d.id}
-                        title="Show login ID and password"
+                        title="Open distributor sign-in"
+                        onClick={() => viewLogin(d, true)}
+                      >
+                        <MdKey size={14} /> Login
+                      </button>
+                      <button
+                        type="button"
+                        className="btn btn-ghost btn-xs"
+                        disabled={busyId === d.id}
+                        title="View login ID and password"
                         onClick={() => viewLogin(d)}
                       >
-                        <MdVisibility size={14} /> Login
+                        <MdVisibility size={14} /> View
                       </button>
                       <button type="button" className="btn btn-ghost btn-xs btn-square" title="Edit" onClick={() => { setEditError(""); setEditing({ row: d, form: fromRow(d) }); }}>
                         <MdEdit size={16} />
@@ -768,7 +811,10 @@ export default function AddDistributor() {
         </ConfirmDialog>
       )}
 
-      <CredentialsDialog data={creds} onClose={() => setCreds(null)} onCopied={(msg) => show(true, msg)} />
+      <CredentialsDialog data={creds} onClose={() => setCreds(null)} onCopied={(msg) => show(true, msg)} onReset={(row) => {
+        setCreds(null);
+        setToReset(row);
+      }} />
       {flashNode}
     </div>
   );

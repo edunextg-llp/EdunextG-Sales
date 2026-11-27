@@ -396,10 +396,8 @@ export default function SalesInvoiceDialog({
       const wanted = Math.min(sets * scheme.free_qty, scheme.max_free_qty ?? Infinity);
       const freeName = scheme.free_item_name || freeErp;
       const product = stockItems.find((x) => key(x.product_erp_id) === key(freeErp));
-      if (!product) {
-        short.push(`${freeName}: not in this company's current stock (${wanted} pcs free not added)`);
-        return;
-      }
+      // Offers are usable only when their free item has physical stock lots.
+      if (!product || !(Number(product.total_current_stock_in_pcs) > 0)) return;
       const lots = remainingLots(product, [...paid, ...free]);
       const taking = lots.length ? takeFromLots(lots, wanted) : { taken: [], short: wanted };
       const parts = taking.taken;

@@ -25,8 +25,10 @@ const fromScheme = (s) => ({
   validTo: s.valid_to || "",
   originalRange: { from: s.valid_from || "", to: s.valid_to || "" },
   productErpId: s.product_erp_id,
+  originalItem: { product_erp_id: s.product_erp_id, variant_name: s.item_name },
   sameItem: !s.free_product_erp_id || s.free_product_erp_id === s.product_erp_id,
   freeProductErpId: s.free_product_erp_id || "",
+  originalFreeItem: { product_erp_id: s.free_product_erp_id, variant_name: s.free_item_name },
   buyQty: String(s.buy_qty),
   freeQty: String(s.free_qty),
   note: s.note || "",
@@ -55,12 +57,13 @@ const toPicker = (items) =>
   }));
 
 function SchemeFields({ form, setForm, pickerItems, loading }) {
-  const find = (erp) => pickerItems.find((p) => p.product_erp_id === erp) || null;
+  const find = (erp, original) => pickerItems.find((p) => p.product_erp_id === erp)
+    || (erp && original?.product_erp_id === erp ? original : null);
+  const selectedItem = find(form.productErpId, form.originalItem);
+  const selectedFreeItem = form.sameItem ? selectedItem : find(form.freeProductErpId, form.originalFreeItem);
   const buy = Math.floor(Number(form.buyQty)) || 0;
   const free = Math.floor(Number(form.freeQty)) || 0;
-  const freeName = form.sameItem
-    ? find(form.productErpId)?.variant_name || find(form.productErpId)?.sku_name
-    : find(form.freeProductErpId)?.variant_name || find(form.freeProductErpId)?.sku_name;
+  const freeName = selectedFreeItem?.variant_name || selectedFreeItem?.sku_name;
   return (
     <div className="flex flex-col gap-4">
       <div className="grid max-w-lg grid-cols-1 gap-x-4 gap-y-3 sm:grid-cols-2">
@@ -75,7 +78,7 @@ function SchemeFields({ form, setForm, pickerItems, loading }) {
         <Field label="Item" required>
           <ItemPicker
             items={pickerItems}
-            value={find(form.productErpId)}
+            value={selectedItem}
             onPick={(it) => setForm((f) => ({ ...f, productErpId: it?.product_erp_id || "" }))}
             loading={loading}
           />
@@ -116,7 +119,7 @@ function SchemeFields({ form, setForm, pickerItems, loading }) {
           {!form.sameItem && (
             <ItemPicker
               items={pickerItems}
-              value={find(form.freeProductErpId)}
+              value={selectedFreeItem}
               onPick={(it) => setForm((f) => ({ ...f, freeProductErpId: it?.product_erp_id || "" }))}
               loading={loading}
             />
@@ -164,13 +167,20 @@ export default function FreeGoods() {
   useEffect(() => {
     setItems([]);
     setForm(emptyForm());
-    if (!companyId) return;
-    setLoadingItems(true);
-    apiFetch(`/staff/free-goods/items?${new URLSearchParams({ companyId })}`)
+    setEditing(null);
+    setLoadingItems(Boolean(companyId));
+    if (!companyId) return undefined;
+    const request = new AbortController();
+    apiFetch(`/staff/free-goods/items?${new URLSearchParams({ companyId })}`, { signal: request.signal })
       .then(readJson)
-      .then((body) => setItems(Array.isArray(body.items) ? body.items : []))
-      .catch(() => setItems([]))
-      .finally(() => setLoadingItems(false));
+      .then((body) => {
+        if (!request.signal.aborted) setItems(Array.isArray(body.items) ? body.items : []);
+      })
+      .catch(() => {})
+      .finally(() => {
+        if (!request.signal.aborted) setLoadingItems(false);
+      });
+    return () => request.abort();
   }, [companyId]);
 
   const load = useCallback(async () => {
@@ -305,7 +315,7 @@ export default function FreeGoods() {
       >
         {company && (
           <p className="pb-1.5 text-sm text-base-content/70">
-            <span className="font-semibold text-base-content">{items.length}</span> items ·{" "}
+            <span className="font-semibold text-base-content">{items.length}</span> items in physical stock ·{" "}
             <span className="font-semibold text-base-content">{schemes.filter((s) => s.running).length}</span> running scheme
             {schemes.filter((s) => s.running).length === 1 ? "" : "s"}
           </p>
